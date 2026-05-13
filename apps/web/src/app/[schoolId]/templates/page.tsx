@@ -313,6 +313,17 @@ export default function TemplatesPage() {
   const [activeHoliday, setActiveHoliday] = useState('');
   const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+  // 2026-05-13 — top-pill canvas filter. 'all' shows everything;
+  // 'landscape' / 'portrait' filter by orientation; 'custom' filters
+  // to nothing extra but enables the resolution inputs so that
+  // selecting ANY template after picking custom auto-adapts it to
+  // the operator's W×H. Operator ask: "just add it to the pill up
+  // top, so its landscape, portrait, then custom...get rid of the
+  // little arrows that opn the window today and dump the preset
+  // pill so its not too busy up top".
+  const [shapeFilter, setShapeFilter] = useState<'all' | 'landscape' | 'portrait' | 'custom'>('all');
+  const [customW, setCustomW] = useState(960);
+  const [customH, setCustomH] = useState(1080);
   const [showCreate, setShowCreate] = useState(false);
   // Phase D3 — AI generate-touch modal. Distinct from the regular
   // create flow: operator types a prompt instead of picking a preset,
@@ -404,6 +415,16 @@ export default function TemplatesPage() {
     // empty bgColor. Real portrait variants (with dedicated
     // *PortraitWidget components) ship one at a time post-launch.
     if (LETTERBOXED_PORTRAIT_PRESETS.has(t.id)) return false;
+    // 2026-05-13 — top-pill shape filter. Landscape = wider than tall,
+    // Portrait = taller than wide, Custom = show every aspect (the
+    // operator will adapt whichever one they pick to their W×H).
+    if (shapeFilter === 'landscape' || shapeFilter === 'portrait') {
+      const w = t.screenWidth || 1920;
+      const h = t.screenHeight || 1080;
+      const isLandscape = w >= h;
+      if (shapeFilter === 'landscape' && !isLandscape) return false;
+      if (shapeFilter === 'portrait' && isLandscape) return false;
+    }
     if (activeCategory && t.category !== activeCategory) return false;
     if (activeLevel) {
       // UNIVERSAL (or missing) is always shown — it's grade-agnostic.
@@ -483,6 +504,45 @@ export default function TemplatesPage() {
       openInBuilder({ ...result, ...flipped });
     } else {
       openInBuilder(result);
+    }
+  }
+
+  /**
+   * Open-template router that respects the top-pill canvas mode.
+   *
+   *   shapeFilter === 'custom' → duplicate at (customW × customH) FIRST,
+   *     then open the duplicate in the builder. Source template (and
+   *     any system preset) stays unchanged. Default name encodes the
+   *     new dimensions so the operator can tell siblings apart.
+   *   shapeFilter !== 'custom' → open the source as-is (the existing
+   *     behavior — system presets get auto-converted to a custom row
+   *     on first save inside the builder).
+   *
+   * Wired into both the gallery card Edit / Customize buttons and the
+   * preview modal's Customize / Edit footer. Operator picks Custom +
+   * resolution at the top → every template click after that auto-
+   * adapts. No more arrow icons or per-card modals.
+   */
+  async function openForCanvas(source: Template) {
+    if (shapeFilter === 'custom') {
+      const w = Math.max(100, Math.min(15360, Math.round(customW)));
+      const h = Math.max(100, Math.min(15360, Math.round(customH)));
+      const result = await duplicateTemplate.mutateAsync({
+        id: source.id,
+        screenWidth: w,
+        screenHeight: h,
+        orientation: h > w ? 'PORTRAIT' : 'LANDSCAPE',
+      });
+      openInBuilder(result);
+      return;
+    }
+    // Non-custom: same as before — open source directly. System
+    // presets route through the read-only builder URL; custom
+    // templates open in the editable builder.
+    if (source.isSystem) {
+      router.push(`/${params?.schoolId}/templates/builder/${source.id}`);
+    } else {
+      openInBuilder(source);
     }
   }
 
@@ -791,64 +851,48 @@ export default function TemplatesPage() {
         />
       )}
 
-      {/* Two-tier filter bar.
-          K12: Primary = grade level (Elementary / Middle / High);
-          Secondary = room category (LOBBY / HALLWAY / CAFETERIA / …),
-          which only appears once a level is chosen.
-          Non-K12 (GYM / RETAIL / QSR / CORPORATE / FASHION): drop the
-          grade-level row entirely (gyms don't have grades) and surface
-          the vertical-specific category tabs as the PRIMARY filter so
-          a gym admin sees "Class & training / Welcome / Promo" right
-          on the catalog instead of "Elementary / Middle / High". */}
+      {/* 2026-05-13 — Top-pill shape filter. Replaces the prior
+          two-tier "grade level + category sub-filter" stack per
+          operator ask: "just add it to the pill up top, so its
+          landscape, portrait, then custom...get rid of the little
+          arrows that opn the window today and dump the preset pill
+          so its not too busy up top". Single row: All / Landscape /
+          Portrait / Custom + search. When Custom is active, an inline
+          W×H input row + 1-6 panel chips appear; subsequent template
+          clicks auto-adapt to the chosen resolution via the existing
+          Adapt-for-LED duplicate flow. The grade-level + category
+          + holiday filters are still wired up internally; they're just
+          not surfaced as chrome here — the operator already drills
+          via search. */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-3 items-center">
-          {tenantCopy.showSchoolLevelFilter && (
-            <div className="flex gap-1.5 items-center">
-              {SCHOOL_LEVEL_CHIPS.map(chip => (
+          <div className="flex gap-1.5 items-center flex-wrap">
+            {([
+              { key: 'all',       label: 'All',       icon: null },
+              { key: 'landscape', label: 'Landscape', icon: Monitor },
+              { key: 'portrait',  label: 'Portrait',  icon: Smartphone },
+              { key: 'custom',    label: 'Custom',    icon: Settings2 },
+            ] as const).map((chip) => {
+              const active = shapeFilter === chip.key;
+              const Icon = chip.icon;
+              return (
                 <button
                   key={chip.key}
                   type="button"
-                  onClick={() => setActiveLevel(chip.key)}
-                  aria-pressed={activeLevel === chip.key}
-                  className={`px-4 py-2 rounded-full text-sm font-bold border transition-all ${
-                    activeLevel === chip.key
+                  onClick={() => setShapeFilter(chip.key as typeof shapeFilter)}
+                  aria-pressed={active}
+                  className={`px-4 py-2 rounded-full text-sm font-bold border transition-all flex items-center gap-1.5 ${
+                    active
                       ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                       : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
                   }`}
                 >
-                  <span className="mr-1.5" aria-hidden>{chip.emoji}</span>
+                  {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}
                   {chip.label}
                 </button>
-              ))}
-            </div>
-          )}
-          {!tenantCopy.showSchoolLevelFilter && (
-            // Non-K12 verticals: vertical-specific category chips as
-            // the primary filter row. Picks straight from
-            // useTenantCopy().templateCategories so a GYM tenant sees
-            // "All / Class & training / Welcome / Promo" and a RETAIL
-            // tenant sees "All / Welcome / Promo / Pricing / Lookbook".
-            <div className="flex gap-1.5 items-center flex-wrap">
-              {tenantCopy.templateCategories.map(tab => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => {
-                    setActiveCategory(tab.key);
-                    if (tab.key !== 'HOLIDAYS') setActiveHoliday('');
-                  }}
-                  aria-pressed={activeCategory === tab.key}
-                  className={`px-4 py-2 rounded-full text-sm font-bold border transition-all ${
-                    activeCategory === tab.key
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          )}
+              );
+            })}
+          </div>
           <div className="relative flex-1 min-w-[200px] max-w-md">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
             <input
@@ -861,23 +905,56 @@ export default function TemplatesPage() {
             />
           </div>
         </div>
-        {/* Room/category sub-filter. Only renders for K12 once a grade
-            level is active — non-K12 tenants already have categories on
-            the primary row so this would just duplicate them. */}
-        {tenantCopy.showSchoolLevelFilter && activeLevel && (
-          <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit flex-wrap">
-            {tenantCopy.templateCategories.map(tab => (
-              <button key={tab.key} onClick={() => {
-                setActiveCategory(tab.key);
-                // Reset the holiday sub-filter when switching away
-                // from HOLIDAYS so it doesn't silently filter the
-                // next category to nothing.
-                if (tab.key !== 'HOLIDAYS') setActiveHoliday('');
-              }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeCategory === tab.key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                {tab.label}
-              </button>
-            ))}
+        {/* Custom-resolution row. Appears only when the operator picks
+            "Custom" above. Two inputs (W × H) + 1-6 panel LED shortcuts
+            so the Nova Star panel-chain configs are one click away.
+            Subsequent template Customize / Edit clicks auto-duplicate
+            at this resolution. */}
+        {shapeFilter === 'custom' && (
+          <div className="flex flex-col gap-2 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl">
+            <div className="flex items-center gap-2 text-xs font-bold text-indigo-700">
+              <Settings2 className="w-3.5 h-3.5" />
+              Custom canvas — any template you open will be sized to this resolution
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={100}
+                max={15360}
+                value={customW}
+                onChange={(e) => setCustomW(parseInt(e.target.value) || 1920)}
+                className="w-28 px-3 py-2 rounded-lg bg-white border border-indigo-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                aria-label="Custom canvas width in pixels"
+              />
+              <span className="text-slate-400 text-xs font-bold">×</span>
+              <input
+                type="number"
+                min={100}
+                max={15360}
+                value={customH}
+                onChange={(e) => setCustomH(parseInt(e.target.value) || 1080)}
+                className="w-28 px-3 py-2 rounded-lg bg-white border border-indigo-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                aria-label="Custom canvas height in pixels"
+              />
+              <span className="text-[11px] text-slate-500 ml-1">{customW > customH ? 'landscape' : customH > customW ? 'portrait' : 'square'}</span>
+              <div className="flex gap-1 ml-3 flex-wrap">
+                {[1,2,3,4,5,6].map((n) => {
+                  const w = n * 320;
+                  const active = customW === w && customH === 1080;
+                  return (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => { setCustomW(w); setCustomH(1080); }}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                      title={`${n} panel${n > 1 ? 's' : ''} · ${w}×1080`}
+                    >
+                      {n} panel{n > 1 ? 's' : ''}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
         {/* Holiday-specific sub-filter — only when category=HOLIDAYS.
@@ -955,9 +1032,8 @@ export default function TemplatesPage() {
                     key={t.id}
                     template={t}
                     portraitSibling={portraitSiblingFor(t)}
-                    onEdit={() => openInBuilder(t)}
+                    onEdit={() => openForCanvas(t)}
                     onDuplicate={() => handleDuplicate(t)}
-                    onAdaptForLED={() => setAdaptTemplate(t)}
                     onDelete={async () => {
                       const ok = await appConfirm({
                         title: 'Delete this template?',
@@ -986,29 +1062,21 @@ export default function TemplatesPage() {
         <TemplatePreviewModal
           template={previewTemplate}
           onClose={() => setPreviewTemplate(null)}
+          // Both Customize (presets) and Edit (custom templates) now
+          // route through openForCanvas — which auto-adapts to the
+          // top-pill's customW×customH when shapeFilter === 'custom',
+          // and otherwise opens the source as-is. One handler, two
+          // entry points, no per-card modals.
           onCustomize={previewTemplate.isSystem ? () => {
             const t = previewTemplate;
             setPreviewTemplate(null);
-            router.push(`/${params?.schoolId}/templates/builder/${t.id}`);
+            openForCanvas(t);
           } : undefined}
           onEdit={!previewTemplate.isSystem ? () => {
             const t = previewTemplate;
             setPreviewTemplate(null);
-            openInBuilder(t);
+            openForCanvas(t);
           } : undefined}
-          // Available for BOTH system presets and custom templates —
-          // operator: "i dont see the custom button in the templates
-          // when i go to open them, i click the template it opens to
-          // preview, then just customization option that takes me into
-          // the editor but nothing for the custom canvas". The card-
-          // level Maximize2 icon was easy to miss; surfacing the action
-          // inside the Preview bottom bar where the operator already
-          // expects to find the primary CTAs.
-          onAdaptForLED={() => {
-            const t = previewTemplate;
-            setPreviewTemplate(null);
-            setAdaptTemplate(t);
-          }}
         />
       )}
     </div>
@@ -1132,16 +1200,11 @@ function TemplatePreviewModal({
                 <Pencil className="w-3.5 h-3.5" /> Customize
               </button>
             )}
-            {onAdaptForLED && (
-              <button
-                type="button"
-                onClick={onAdaptForLED}
-                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-full flex items-center gap-1.5 border border-white/20"
-                title="Duplicate this template at a different LED canvas size"
-              >
-                <Maximize2 className="w-3.5 h-3.5" /> Adapt for LED
-              </button>
-            )}
+            {/* 2026-05-13 — Adapt-for-LED button removed from preview
+                modal. Top-pill Custom mode now drives canvas overrides;
+                the operator picks Custom + resolution in the page
+                header, then any template they Customize / Edit gets
+                duplicated at that resolution automatically. */}
           </div>
         </div>
       )}
@@ -1511,11 +1574,12 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
               <Copy className="w-3.5 h-3.5" />
             </button>
           )}
-          {onAdaptForLED && (
-            <button onClick={onAdaptForLED} disabled={isViewerDisabled} title={isViewerDisabled ? 'Read-only — viewer role' : 'Adapt for a custom LED size'} className="py-2 px-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-              <Maximize2 className="w-3.5 h-3.5" />
-            </button>
-          )}
+          {/* 2026-05-13 — Maximize2 "Adapt for LED" icon removed per
+              operator: "get rid of the little arrows that opn the
+              window today". The action is now triggered from the top-
+              pill Custom mode + W×H inputs. Prop kept on the component
+              signature so future surfaces can re-enable if needed
+              without an interface change. */}
           {onDelete && (
             <button onClick={onDelete} disabled={isViewerDisabled} title={isViewerDisabled ? 'Read-only — viewer role' : 'Delete'} className="py-2 px-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               <Trash2 className="w-3.5 h-3.5" />
