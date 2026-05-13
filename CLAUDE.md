@@ -1373,6 +1373,66 @@ No commercial vendors until we have funding. All free/open-source or self-hosted
    UI, always verify in the rendered DOM (manual click, screenshot,
    or browser-MCP eval) BEFORE telling the user it shipped.
 
+10. **NEVER use `inset: 0` (or any `inset` shorthand) in widget or
+    player styles.** NovaStar Taurus LED controllers — one of our
+    production targets — ship Chromium 83 (June 2020). The CSS `inset`
+    shorthand was added in Chrome 87. On Chromium 83, `inset: 0` is
+    silently dropped: in inline styles set via React's CSSOM (every
+    `"use client"` page on the player route), the property never even
+    reaches the DOM's `style` attribute string. In `<style>` blocks
+    inside JSX, the CSS parser drops the rule entirely. Either way:
+    `position: absolute` with no top/right/bottom/left collapses the
+    element to its in-flow position with auto-sized dimensions,
+    typically rendering at 0×0 in the top-left of its parent. Every
+    widget that uses `useScaleToFit` then measures `offsetWidth=0` and
+    renders `transform: scale(0)` — invisible.
+
+    2026-05-13: 136 widget files (68 inline-style + 98 CSS-rule) had
+    `inset: 0` and the operator's Rainbow Animated Portrait template
+    was unrenderable on the Taurus until we mass-replaced them. Same
+    bug pattern as the 2026-05-09 Safari minified-bridge regression
+    in `reference_recurring_failure_patterns.md` — modern Chromium
+    tolerates Web platform features ahead of spec; older Chromium
+    forks (Android System WebView on locked-firmware controllers,
+    Smart TVs, Tizen, WebOS) do not.
+
+    **Rule:** always use the four long-hand sides:
+    ```jsx
+    style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+    ```
+    Same in CSS:
+    ```css
+    .my-thing { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+    ```
+
+    The find/replace is mechanical and safe — `inset: 0` is defined in
+    the CSS spec as exactly this long-hand, so modern Chromium / WebKit
+    / Firefox compute identical styles either way. **Zero regression
+    risk** for Pi / standard Android boxes / modern browsers; only
+    upside for Chromium-83 LED controllers.
+
+    Catch leftover violations with:
+    ```bash
+    grep -rn 'inset: 0' apps/web/src/components/widgets \
+      apps/web/src/app/player apps/web/src/components/player
+    ```
+    Anything that returns a hit is a regression on Taurus. (The two
+    intentional callsites — `KioskSplash.tsx` line 401 and the
+    `TemplateScaler` outer in `player/page.tsx` — declare BOTH the
+    shorthand AND the long-hand on adjacent lines, so modern engines
+    parse the shorthand and Chromium 83 falls back to the long-hand.)
+
+    Other Chromium-83 gotchas in the same vein, all already fixed but
+    worth knowing exist:
+    - **`gap` on flex containers** — Chrome 84+. Use per-child
+      `margin` if you must space buttons in a flex row that ships
+      to the player.
+    - **`100vh` after viewport-meta `height=` pinning** — sometimes
+      unreliable in Android System WebView; pair with explicit
+      `documentElement.style.height` via the layout.tsx script.
+    - **`backdrop-filter`** — Chromium 76+ but flaky on Android
+      WebView builds older than 88. Provide a fallback solid bg.
+
 ---
 
-**Last Updated:** 2026-05-12
+**Last Updated:** 2026-05-13

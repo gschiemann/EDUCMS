@@ -12,3 +12,42 @@ if ! pnpm install --frozen-lockfile --lockfile-only --silent 2>/tmp/pnpm-precomm
   echo ""
   exit 1
 fi
+
+# 2026-05-13 — block `inset: 0` regressions in widget / player code.
+# NovaStar Taurus LED controllers ship Chromium 83 which doesn't support
+# the CSS `inset` shorthand. Every offending widget collapses to 0×0 on
+# the LED. See CLAUDE.md rule #10 + memory/feedback_no_inset_shorthand_widgets.md.
+# Allowlist: KioskSplash + the player page intentionally pair `inset: 0`
+# with long-hand on adjacent lines for modern-engine readability — they
+# stay in the exclude list below.
+# Pipe trailing `|| true` per stage — husky runs with `sh -e`, which
+# bails on any non-zero exit; grep returns 1 when it finds nothing, and
+# that's exactly the path we want (no staged widget files = no problem).
+STAGED=$(git diff --cached --name-only --diff-filter=AM \
+  | { grep -E '^apps/web/src/(components/(widgets|player)|app/player)' || true; } \
+  | { grep -E '\.(tsx|ts|css)$' || true; } \
+  | { grep -v 'KioskSplash.tsx' || true; } \
+  | { grep -v 'app/player/page.tsx' || true; } \
+  | { grep -v 'app/player/layout.tsx' || true; })
+
+if [ -n "$STAGED" ]; then
+  INSET_HITS=$(echo "$STAGED" | xargs grep -ln 'inset: 0[^.0-9]\|inset:0[^.0-9]' 2>/dev/null || true)
+  if [ -n "$INSET_HITS" ]; then
+    echo ""
+    echo "✗ pre-commit blocked: 'inset: 0' found in player / widget code."
+    echo ""
+    echo "  Files:"
+    echo "$INSET_HITS" | sed 's/^/    /'
+    echo ""
+    echo "  NovaStar Taurus LED controllers ship Chromium 83 which doesn't"
+    echo "  support the CSS \`inset\` shorthand. Use long-hand instead:"
+    echo "    position: absolute; top: 0; right: 0; bottom: 0; left: 0;"
+    echo "  See CLAUDE.md rule #10 for full background."
+    echo ""
+    echo "  Quick fix (re-stage after running):"
+    echo "    sed -i '' 's/inset: 0,/top: 0, right: 0, bottom: 0, left: 0,/g' <file>"
+    echo "    sed -i '' 's/inset: 0;/top: 0; right: 0; bottom: 0; left: 0;/g' <file>"
+    echo ""
+    exit 1
+  fi
+fi
