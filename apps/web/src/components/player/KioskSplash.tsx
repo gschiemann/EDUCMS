@@ -385,6 +385,25 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@600;700&display=swap');
 
 .kiosk-splash {
+  /* 2026-05-13 — DON'T rely on Tailwind utility classes for layout.
+     The Player WebView on a Taurus controller was failing to load
+     the global Tailwind CSS bundle (cert / cache / CDN reach — root
+     cause varied per Taurus model), and the splash root was using
+     "fixed inset-0" Tailwind classes for positioning. With Tailwind
+     missing, the splash collapsed to inline-flow / zero height and
+     the body's bg-slate-50 (#f8fafc) showed through as a "white"
+     screen. Operator (2026-05-13) lost an evening to this.
+
+     Solution: declare position + inset + size INLINE here so the
+     splash works even if Tailwind fails to load. Layout is now
+     self-contained in this <style> block. */
+  position: fixed;
+  inset: 0;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  z-index: 0;
   font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
   color: #f1f5f9;
   background: #05060f;
