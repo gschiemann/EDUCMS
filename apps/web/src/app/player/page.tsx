@@ -5538,7 +5538,10 @@ function PlayerPage() {
                 jammed together. Per-button horizontal margin reproduces
                 14px between adjacent buttons regardless of gap support. */}
             <style suppressHydrationWarning>{`
-              .edu-action-row > button { margin: 4px 7px; }
+              .edu-action-row > button,
+              .edu-action-row > * > button {
+                margin: 4px 7px !important;
+              }
             `}</style>
             <div
               className="edu-action-row flex flex-wrap items-center justify-center gap-3 flex-shrink-0 mt-6 w-full"

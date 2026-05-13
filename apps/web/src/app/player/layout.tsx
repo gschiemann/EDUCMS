@@ -118,6 +118,39 @@ export default function PlayerLayout({
           }
         }catch(e){}})();`}
       </Script>
+      {/* 2026-05-13 — Chromium-83 CSS-inset polyfill.
+          NovaStar Taurus controllers ship Chromium 83. The CSS `inset`
+          shorthand was added in Chrome 87, so EVERY widget that uses
+          `position: absolute; inset: 0` (which is ~25+ of our themed
+          widgets — AnimatedWelcomePortrait, StorybookCafeteria, etc.)
+          collapses to a 0×0 element at the top-left of its parent.
+          Their `useScaleToFit` hook then reads offsetWidth=0, sets
+          scale=0, and the content renders invisibly — operator saw the
+          template's background gradient but no actual scene content.
+          This attribute-selector trick force-applies long-hand sides
+          to any element with inline `inset: 0` or `inset: 0px`. Doesn't
+          touch widgets that explicitly set their own top/left/right/
+          bottom values (we only override side values when inset=0 was
+          set, and !important so external CSS wins over the inline 0
+          values that browsers normally resolve from `inset`). */}
+      <style>{`
+        /* Match either "inset: 0" or "inset:0" anywhere in the style
+           attribute. CSS attribute selectors compare the raw HTML
+           attribute string, so matching works regardless of whether
+           Chromium 83 actually parsed the inset property — which it
+           doesn't. The two variants cover React's CSSOM serialization
+           (with-space) and any inline minified style strings (no-space).
+           Sub-pixel values like "inset: 0.5em" would also match here
+           and get clobbered to 0 — but we don't use fractional inset
+           values anywhere in the widget pack, so the override is safe. */
+        [style*="inset: 0"],
+        [style*="inset:0"] {
+          top: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          left: 0 !important;
+        }
+      `}</style>
       <div
         className="fixed inset-0 bg-black overflow-hidden"
         style={{
