@@ -15,7 +15,7 @@
  * <AppDialogHost /> must be mounted exactly once at the app root.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
 
 type DialogTone = 'default' | 'danger' | 'warn' | 'info';
@@ -143,6 +143,15 @@ const TONE_STYLES: Record<DialogTone, { ring: string; icon: any; iconColor: stri
 export function AppDialogHost() {
   const [current, setCurrent] = useState<DialogRequest | null>(null);
   const [promptValue, setPromptValue] = useState('');
+  // 2026-05-13 — refs for the confirm row buttons so TV-remote arrow
+  // keys can move focus between Cancel and Confirm. Operator hit this:
+  // "the remote control works on the standard splash screen but when
+  // i select unpair and the window pops up to cancel or unpair, the
+  // remote doesnt move around and highlight ones of the buttons."
+  // Android-TV / kiosk remote D-pad sends arrow-key events, not Tab,
+  // so the browser's default Tab traversal never gets a chance.
+  const cancelBtnRef = useRef<HTMLButtonElement>(null);
+  const confirmBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const l: Listener = (req) => {
@@ -162,9 +171,31 @@ export function AppDialogHost() {
         else (current as AlertRequest).resolve(true);
         dismiss(current.id);
       } else if (e.key === 'Enter' && current.kind !== 'prompt') {
-        if (current.kind === 'confirm') (current as ConfirmRequest).resolve(true);
-        else (current as AlertRequest).resolve(true);
+        // Enter activates whatever button currently has focus. Falls
+        // back to confirm if focus isn't on a tracked button (e.g.
+        // first-render Enter before the user has navigated).
+        const focused = document.activeElement;
+        if (focused === cancelBtnRef.current) {
+          if (current.kind === 'confirm') (current as ConfirmRequest).resolve(false);
+          else (current as AlertRequest).resolve(true);
+        } else {
+          if (current.kind === 'confirm') (current as ConfirmRequest).resolve(true);
+          else (current as AlertRequest).resolve(true);
+        }
         dismiss(current.id);
+      } else if (
+        (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
+        current.kind === 'confirm'
+      ) {
+        // D-pad navigation between the two confirm-row buttons.
+        // Left/Up → Cancel; Right/Down → Confirm. Prevent default so
+        // the arrow doesn't scroll the page underneath.
+        e.preventDefault();
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+          cancelBtnRef.current?.focus();
+        } else {
+          confirmBtnRef.current?.focus();
+        }
       }
     };
     window.addEventListener('keydown', onKey);
@@ -237,22 +268,27 @@ export function AppDialogHost() {
           </div>
         </div>
 
-        {/* Footer actions */}
+        {/* Footer actions. Refs wired so the keydown handler above can
+            move focus between Cancel and Confirm on D-pad arrow keys.
+            focus:ring is intentionally thick (ring-2) so the focused
+            button is obvious from 8 feet away on a TV screen. */}
         <div className="px-6 pb-5 pt-2 flex items-center justify-end gap-2 bg-slate-50/40">
           {current.kind !== 'alert' && (
             <button
+              ref={cancelBtnRef}
               type="button"
               onClick={() => close(current.kind === 'prompt' ? null : false)}
-              className="px-4 py-2 rounded-lg text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="px-4 py-2 rounded-lg text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
             >
               {current.cancelLabel || 'Cancel'}
             </button>
           )}
           <button
+            ref={confirmBtnRef}
             type="button"
             autoFocus={current.kind !== 'prompt'}
             onClick={() => close(current.kind === 'prompt' ? promptValue : true)}
-            className={`px-4 py-2 rounded-lg text-sm font-bold text-white transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400 ${tone.confirmBtn}`}
+            className={`px-4 py-2 rounded-lg text-sm font-bold text-white transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 ${tone.confirmBtn}`}
           >
             {current.confirmLabel || (current.kind === 'alert' ? 'OK' : current.kind === 'prompt' ? 'Submit' : 'Confirm')}
           </button>

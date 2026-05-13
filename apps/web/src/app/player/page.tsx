@@ -3954,6 +3954,47 @@ function PlayerPage() {
     setExitUnavailable(true);
   };
 
+  /**
+   * Operator-triggered full unpair. Mirrors the TENANT_CHANGED WS
+   * handler (the original full-teardown path) so a button-click unpair
+   * and a server-pushed re-pair clear the same state. The previous
+   * inline handler only cleared `edu_device_fp` — leaving the device
+   * token, the manifest cache, AND (critically) the native APK's
+   * DataStore-persisted token. Operator reported "tried to unpair and
+   * it didn't unpair": the APK's `?token=...` URL param survived, the
+   * server saw the same fingerprint, and the player re-paired on the
+   * next register.
+   *
+   * Now: clear every piece of pairing state on BOTH sides, fire the
+   * native bridge so the APK wipes its DataStore + reloads with an
+   * empty token, and reset phase to 'registering' for browser-only
+   * fallback when no bridge is present.
+   */
+  const handleUnpair = () => {
+    try { localStorage.removeItem('edu_device_token'); } catch { /* ignore */ }
+    try { localStorage.removeItem('edu_device_fp'); } catch { /* ignore */ }
+    try { localStorage.removeItem('edu_manifest_cache_v1'); } catch { /* ignore */ }
+    try { localStorage.removeItem('edu_emergency_cache_v1'); } catch { /* ignore */ }
+    try {
+      navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_CACHE', tier: 'all' });
+    } catch { /* ignore */ }
+    // Native bridge wipes DataStore + reloads WebView with empty token.
+    // On non-APK (browser tab) clients the bridge is undefined; fall
+    // through to the React-side reset below.
+    try {
+      const bridge = (window as any).EduCmsNative;
+      if (bridge && typeof bridge.unpair === 'function') {
+        bridge.unpair();
+        return;
+      }
+    } catch { /* fall through to React-only path */ }
+    setActiveEmergency(null);
+    setPlaybackStopped(false);
+    setExitUnavailable(false);
+    setShowOverlay(false);
+    setPhase('registering');
+  };
+
   // ─── OTA progress overlay — rendered on top of every phase
   //     when an admin has just clicked "Push update" from the
   //     dashboard. Stage label morphs the same way the dashboard
@@ -5639,11 +5680,7 @@ function PlayerPage() {
                       tone: 'danger',
                       confirmLabel: 'Unpair device',
                     });
-                    if (ok) {
-                      localStorage.removeItem('edu_device_fp');
-                      setPhase('registering');
-                      setShowOverlay(false);
-                    }
+                    if (ok) handleUnpair();
                   }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-red-100 hover:bg-red-50 text-slate-700 hover:text-red-600 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative group">
                     <Power className="w-4 h-4 text-slate-400 group-hover:text-red-500" /> Unpair
                   </button>
@@ -5687,12 +5724,7 @@ function PlayerPage() {
                     tone: 'danger',
                     confirmLabel: 'Unpair device',
                   });
-                  if (ok) {
-                    try { localStorage.removeItem('edu_device_fp'); } catch {}
-                    setPlaybackStopped(false);
-                    setExitUnavailable(false);
-                    setPhase('registering');
-                  }
+                  if (ok) handleUnpair();
                 }}
                 className="mt-3 text-xs font-medium text-slate-500 hover:text-red-600 transition-colors px-3 py-1"
               >
