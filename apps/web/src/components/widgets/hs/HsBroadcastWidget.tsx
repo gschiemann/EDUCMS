@@ -261,7 +261,7 @@ export function HsBroadcastWidget({ config, live }: { config?: HsBroadcastConfig
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;900&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap');
-.hs-bc-scan { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 2px, transparent 2px 5px), radial-gradient(ellipse at 70% 90%, rgba(239,43,43,.12), transparent 60%); }
+.hs-bc-scan { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 2px, transparent 2px 5px), radial-gradient(ellipse at 70% 90%, rgba(239,43,43,.12), transparent 60%); }
 .hs-bc-netbar { position: absolute; top: 0; left: 0; right: 0; height: 120px; background: linear-gradient(180deg, #0a0f1a, #0a0f1a 80%, rgba(10,15,26,0)); display: flex; align-items: center; justify-content: space-between; padding: 0 80px; box-sizing: border-box; z-index: 5; }
 .hs-bc-brandmark { display: flex; align-items: center; gap: 24px; font-family: 'Barlow Condensed', sans-serif; font-weight: 900; font-size: 64px; letter-spacing: .04em; color: #fff; }
 .hs-bc-chip { background: #ef2b2b; color: #fff; padding: 6px 20px 8px; font-size: 58px; letter-spacing: .12em; }
@@ -286,7 +286,7 @@ const CSS = `
 .hs-bc-guest { position: absolute; top: 1080px; left: 80px; width: 1820px; background: #f3f5f9; color: #0a0f1a; padding: 40px 48px; display: grid; grid-template-columns: 360px 1fr; gap: 48px; align-items: center; }
 .hs-bc-guest::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 16px; background: #ef2b2b; }
 .hs-bc-portrait { width: 360px; height: 360px; background: linear-gradient(135deg, #cbd5e1 0%, #94a3b8 100%); position: relative; overflow: hidden; display: grid; place-items: center; }
-.hs-bc-portrait::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, rgba(0,0,0,.04) 0 6px, transparent 6px 12px); }
+.hs-bc-portrait::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: repeating-linear-gradient(45deg, rgba(0,0,0,.04) 0 6px, transparent 6px 12px); }
 .hs-bc-mono { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 52px; color: #0a0f1a; background: #fff; padding: 8px 14px; z-index: 1; position: relative; }
 .hs-bc-guest-eyebrow { display: inline-block; font-family: 'Barlow Condensed', sans-serif; font-weight: 900; background: #0a0f1a; color: #fff; padding: 8px 22px; font-size: 58px; letter-spacing: .18em; text-transform: uppercase; }
 .hs-bc-h2 { font-family: 'Barlow Condensed', sans-serif; font-weight: 900; font-size: 150px; line-height: .9; margin: 10px 0 6px; color: #0a0f1a; text-transform: uppercase; }

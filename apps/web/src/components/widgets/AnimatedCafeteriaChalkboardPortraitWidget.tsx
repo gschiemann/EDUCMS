@@ -216,7 +216,7 @@ export function AnimatedCafeteriaChalkboardPortraitWidget({ config, live }: { co
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#0a0e27',
       }}
@@ -442,7 +442,7 @@ const CSS_CHP = `
     linear-gradient(180deg, #1f3b2a 0%, #14532d 50%, #0f3d2b 100%);
 }
 .chp-stage::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background:
     repeating-linear-gradient(45deg, transparent 0 80px, rgba(255,255,255,.012) 80px 82px),
     repeating-linear-gradient(-30deg, transparent 0 110px, rgba(255,255,255,.009) 110px 112px);

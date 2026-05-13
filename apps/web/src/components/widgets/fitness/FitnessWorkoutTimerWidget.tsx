@@ -219,7 +219,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800;900&family=Inter+Mono:wght@500;600&family=JetBrains+Mono:wght@500;600&display=swap');
 
 .fwtw-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   font-family: 'Outfit', sans-serif;
@@ -228,14 +228,14 @@ const CSS = `
   user-select: none;
 }
 .fwtw-bg {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
   background: linear-gradient(160deg, #07070c 0%, #0b0b14 60%, #0a0a0f 100%);
   transition: background 600ms ease;
 }
 /* Subtle phase-colour wash on the background */
 .fwtw-root::before {
   content: '';
-  position: absolute; inset: 0; z-index: 1;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 1;
   background: radial-gradient(ellipse 70% 50% at 50% 50%, var(--fwtw-bg-tint, #ff2a4d), transparent 70%);
   opacity: 0.06;
   pointer-events: none;
@@ -252,7 +252,7 @@ const CSS = `
 /* Flash overlay for phase transition */
 .fwtw-flash::after {
   content: '';
-  position: absolute; inset: 0; z-index: 50;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 50;
   background: var(--fwtw-accent, #ff2a4d);
   opacity: 0.18;
   animation: fwtw-flashin 500ms ease-out forwards;
@@ -320,7 +320,7 @@ const CSS = `
   display: flex; align-items: center; justify-content: center;
 }
 .fwtw-svg {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   width: 100%; height: 100%;
   transform: rotate(-90deg);   /* start arc at top */
 }

@@ -253,7 +253,7 @@ export function AnimatedWelcomeHighWidget({ config, live }: { config: Cfg; live?
   return (
     <div
       ref={wrapperRef}
-      style={{ position: 'absolute', inset: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fce7f3' }}
+      style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fce7f3' }}
     >
       <style>{CSS_HS}</style>
 
@@ -428,7 +428,7 @@ const CSS_HS = `
     linear-gradient(180deg, #fce7f3 0%, #ffe4e6 30%, #fef3c7 70%, #fed7aa 100%);
   overflow: hidden;
 }
-.hs-confettiLayer { position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
+.hs-confettiLayer { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 4; overflow: hidden; }
 .hs-confetti {
   position: absolute; top: -30px; width: 14px; height: 22px; border-radius: 3px;
   animation: hs-confettiFall linear infinite; will-change: transform;
@@ -535,7 +535,7 @@ const CSS_HS = `
 /* CLOCK — sunburst */
 .hs-clock { position: relative; width: 220px; height: 220px; display: flex; align-items: center; justify-content: center; }
 .hs-rays {
-  position: absolute; inset: 0; border-radius: 50%;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 50%;
   background: conic-gradient(from 0deg,
     #fbbf24 0 20deg, transparent 20deg 40deg,
     #ec4899 40deg 60deg, transparent 60deg 80deg,
@@ -637,7 +637,7 @@ const CSS_HS = `
   clip-path: polygon(0 0, 100% 0, 30% 100%);
   border-right: 6px solid #ec4899; border-bottom: 6px solid #ec4899;
 }
-.hs-stars { position: absolute; inset: 0; pointer-events: none; }
+.hs-stars { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; }
 .hs-stars span { position: absolute; font-size: 40px; opacity: .9; animation: hs-twinkle 2.5s ease-in-out infinite; }
 .hs-stars span:nth-child(1) { top: 4%;  left: 8%; }
 .hs-stars span:nth-child(2) { top: 8%;  right: 12%; animation-delay: .3s; }

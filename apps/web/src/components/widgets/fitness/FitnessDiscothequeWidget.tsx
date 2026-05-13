@@ -172,7 +172,7 @@ const CSS = `
 .fd-disco-stage::before {
   content: '';
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   pointer-events: none;
   background-image: repeating-linear-gradient(45deg, rgba(255,30,124,.025) 0 2px, transparent 2px 80px);
 }
@@ -185,7 +185,7 @@ const CSS = `
   animation: fd-ball-spin 18s linear infinite;
 }
 .fd-ball::after {
-  content: ''; position: absolute; inset: 0; border-radius: 50%;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 50%;
   background-image:
     repeating-linear-gradient(0deg, rgba(0,0,0,.3) 0 2px, transparent 2px 22px),
     repeating-linear-gradient(90deg, rgba(0,0,0,.3) 0 2px, transparent 2px 22px);

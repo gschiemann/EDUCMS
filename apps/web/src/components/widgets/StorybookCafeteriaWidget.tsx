@@ -152,7 +152,7 @@ export function StorybookCafeteriaWidget({ config, live }: { config: Cfg; live?:
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#1c1206',
       }}
@@ -292,12 +292,12 @@ const CSS_BOOK = `
   overflow: hidden;
 }
 .book-stage::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(120,53,15,.025) 3px 4px);
   mix-blend-mode: multiply;
 }
 .book-stage::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   box-shadow: inset 0 0 80px rgba(120,53,15,.35);
 }
 

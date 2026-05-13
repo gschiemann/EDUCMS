@@ -341,12 +341,12 @@ export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live
 /** Inlined CSS — every pixel is sized for the 2160×3840 portrait stage. */
 const CSS = `
 .hs-bcp-scan {
-  position: absolute; inset: 0; pointer-events: none;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background: repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 2px, transparent 2px 5px), radial-gradient(ellipse at 70% 80%, rgba(239,43,43,.10), transparent 60%);
   z-index: 1;
 }
 .hs-bcp-grid {
-  position: absolute; inset: 0; pointer-events: none; opacity: .25;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; opacity: .25;
   background-image:
     linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
@@ -517,7 +517,7 @@ const CSS = `
   clip-path: polygon(0 0, 50% 50%, 100% 0, 100% 100%, 0 100%);
 }
 .hs-bcp-portrait-stripes {
-  position: absolute; inset: 0; pointer-events: none;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background: repeating-linear-gradient(45deg, rgba(0,0,0,.05) 0 8px, transparent 8px 16px);
   z-index: 2;
 }

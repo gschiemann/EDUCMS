@@ -199,7 +199,7 @@ export function StorybookCafeteriaPortraitWidget({ config, live }: { config?: Cf
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#1c1206',
       }}
@@ -388,7 +388,7 @@ const CSS_BOOK_PORTRAIT = `
 }
 /* Old-book paper grain */
 .bkp-stage::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 1;
   background:
     repeating-linear-gradient(0deg, transparent 0 4px, rgba(120,53,15,.025) 4px 5px),
     repeating-linear-gradient(90deg, transparent 0 9px, rgba(120,53,15,.018) 9px 10px);
@@ -396,7 +396,7 @@ const CSS_BOOK_PORTRAIT = `
 }
 /* Vignette darkening at corners */
 .bkp-stage::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 1;
   box-shadow: inset 0 0 200px rgba(120,53,15,.40), inset 0 0 60px rgba(120,53,15,.25);
 }
 
@@ -494,7 +494,7 @@ const CSS_BOOK_PORTRAIT = `
   z-index: 5;
 }
 .bkp-featuredFrame {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   border: 5px double #8b5a2b;
   background:
     radial-gradient(ellipse at 30% 0%, rgba(255,255,255,.35), transparent 65%),

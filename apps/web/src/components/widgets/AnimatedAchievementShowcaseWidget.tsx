@@ -102,7 +102,7 @@ export function AnimatedAchievementShowcaseWidget({ config, live }: { config?: C
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#0f172a',
       }}
@@ -226,7 +226,7 @@ const CSS_AS = `
   overflow: hidden;
 }
 .as-stage::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .08;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; opacity: .08;
   background: conic-gradient(from 0deg at 50% 30%,
     transparent 0 10deg, #fbbf24 10deg 12deg,
     transparent 12deg 25deg, #fbbf24 25deg 27deg,

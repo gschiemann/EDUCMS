@@ -196,7 +196,7 @@ export function MSHallTicker({ config }: { config: any }) {
     }}>
       {/* Dot matrix overlay texture */}
       <div style={{
-        position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 5, pointerEvents: 'none',
         backgroundImage: 'radial-gradient(rgba(0,0,0,0.6) 1px, transparent 1px)',
         backgroundSize: '4px 4px',
       }} />

@@ -249,7 +249,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800;900&family=Inter:wght@500;600&display=swap');
 
 .fabw-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   background: #0a0a0f;
   color: #f8fafc;
@@ -257,7 +257,7 @@ const CSS = `
   container-type: size;
 }
 .fabw-slide {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   transition: opacity 600ms ease-in-out;
 }
 .fabw-media {
@@ -269,7 +269,7 @@ const CSS = `
 
 /* ─── Synthetic creative (no image/video provided) ─── */
 .fabw-synth {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: linear-gradient(135deg, #0f172a, #1e1b4b, #0f172a);
   display: flex; align-items: center; justify-content: center;
   overflow: hidden;

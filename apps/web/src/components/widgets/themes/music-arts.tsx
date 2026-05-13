@@ -111,7 +111,7 @@ export function MusicArtsRichText({ config, compact }: { config: any; compact?: 
   return (
     <div className="absolute inset-0 p-8 flex flex-col items-center justify-center" style={{ containerType: 'size' }}>
       <div style={{
-        position: 'absolute', inset: 0,
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         background: 'gradient(linear, left top, left bottom, from(rgba(88,28,135,0.4)), to(rgba(112,26,117,0.1)))',
         backdropFilter: 'blur(12px)', zIndex: 0
       }} />

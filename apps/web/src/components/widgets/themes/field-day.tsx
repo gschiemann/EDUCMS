@@ -368,7 +368,7 @@ export function FieldDayCountdown({ config, compact, onConfigChange }: { config:
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%', transform: 'rotate(-3deg)' }}>
         <svg viewBox="0 0 520 640" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, filter: 'drop-shadow(0 12px 20px rgba(0,0,0,0.4))' }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: 'drop-shadow(0 12px 20px rgba(0,0,0,0.4))' }}>
           {/* ribbon tails */}
           <path d="M160 40 L160 240 L210 210 L260 240 L260 40 Z" fill={FD.red} stroke={FD.ink} strokeWidth="10" />
           <path d="M260 40 L260 240 L310 210 L360 240 L360 40 Z" fill={FD.blue} stroke={FD.ink} strokeWidth="10" />
@@ -750,7 +750,7 @@ export function FieldDayTicker({ config }: { config: any; compact?: boolean }) {
         }}>LIVE</div>
         {/* LED dot pattern overlay */}
         <div style={{
-          position: 'absolute', inset: 0,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
           backgroundImage: `radial-gradient(rgba(255,176,32,0.08) 1px, transparent 1.5px)`,
           backgroundSize: '8px 8px',
           pointerEvents: 'none',

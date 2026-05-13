@@ -90,7 +90,7 @@ export function ScorebugLogo({ config }: { config: any; compact?: boolean }) {
         }} />
         {/* Diagonal highlight sheen */}
         <div style={{
-          position: 'absolute', inset: 0,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
           background: 'linear-gradient(120deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%)',
           pointerEvents: 'none',
         }} />
@@ -962,7 +962,7 @@ export function ScorebugImageCarousel({ config }: { config: any; compact?: boole
             </div>
             {/* 16:9 gradient overlay for legibility */}
             <div style={{
-              position: 'absolute', inset: 0,
+              position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
               background: 'linear-gradient(180deg, rgba(0,0,0,0.2) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.6) 100%)',
               pointerEvents: 'none',
             }} />

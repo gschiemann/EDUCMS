@@ -158,7 +158,7 @@ export function AnimatedCafeteriaFoodtruckWidget({ config, live }: { config: Cfg
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#0a0e27',
       }}
@@ -669,7 +669,7 @@ const CSS_FT = `
 }
 @keyframes ft-burstSpin { to { transform: rotate(360deg); } }
 .ft-rays {
-  position: absolute; inset: 0; border-radius: 50%;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 50%;
   background: conic-gradient(from 0deg,
     #fde68a 0 20deg, #fbbf24 20deg 40deg,
     #fde68a 40deg 60deg, #fbbf24 60deg 80deg,

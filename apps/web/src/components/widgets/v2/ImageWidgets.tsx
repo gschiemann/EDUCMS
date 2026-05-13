@@ -19,7 +19,7 @@ export function ImageNeonBannerWidget({ config }: WidgetProps<ImgCfg>) {
     <div style={frameStyle(r)}>
       <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', borderRadius: 10, border: `2px solid ${r.accent.primary}`, boxShadow: `0 0 24px ${r.accent.primary}88, inset 0 0 60px ${r.accent.primary}22` }}>
         {c.url ? <img src={c.url} alt={c.alt || ''} style={{ width: '100%', height: '100%', objectFit: c.fit || 'cover', filter: 'saturate(1.3) contrast(1.1)' }} /> : <Placeholder color={r.accent.primary} label={c.alt} />}
-        <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(180deg, transparent 40%, rgba(10,0,20,0.85))`, pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: `linear-gradient(180deg, transparent 40%, rgba(10,0,20,0.85))`, pointerEvents: 'none' }} />
         {c.eyebrow && <div style={{ position: 'absolute', top: 14, left: 14, padding: '4px 12px', background: r.accent.primary, color: '#0a0014', fontSize: '0.7em', letterSpacing: '0.3em', fontWeight: 800, boxShadow: `0 0 16px ${r.accent.primary}` }}>● {c.eyebrow}</div>}
         {c.caption && <div style={{ position: 'absolute', bottom: 18, left: 18, right: 18, color: r.accent.primary, fontSize: r.font.size, letterSpacing: '0.1em', textShadow: `0 0 12px ${r.accent.primary}` }}>{c.caption}</div>}
       </div>

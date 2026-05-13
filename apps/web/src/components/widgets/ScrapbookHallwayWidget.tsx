@@ -115,7 +115,7 @@ export function ScrapbookHallwayWidget({ config, live }: { config: Cfg; live?: b
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#0f172a',
       }}

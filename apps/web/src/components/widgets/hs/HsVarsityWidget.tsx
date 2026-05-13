@@ -353,7 +353,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Bungee&family=Inter:wght@500;700&display=swap');
 
 .hs-varsity-stripes {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(-12deg, transparent 0 240px, rgba(255,196,43,.06) 240px 480px);
   pointer-events: none;
 }
@@ -479,7 +479,7 @@ const CSS = `
 }
 .hs-varsity-coach::before { content: ''; position: absolute; top: -8px; left: -8px; right: -8px; height: 28px; background: #e03b1c; }
 .hs-varsity-portrait { width: 420px; height: 520px; background: #cbd5e1; display: grid; place-items: center; overflow: hidden; position: relative; }
-.hs-varsity-portrait::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, rgba(13,27,61,.08) 0 8px, transparent 8px 16px); }
+.hs-varsity-portrait::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: repeating-linear-gradient(45deg, rgba(13,27,61,.08) 0 8px, transparent 8px 16px); }
 .hs-varsity-jersey-num { font-family: 'Bungee', sans-serif; font-size: 320px; color: #0d1b3d; line-height: .85; opacity: .25; }
 .hs-varsity-coach-eyebrow { color: #e03b1c; margin-top: 0; font-size: 62px; }
 .hs-varsity-h2 { font-family: 'Bungee', sans-serif; font-size: 160px; line-height: .9; margin: 12px 0 8px; color: #0d1b3d; text-transform: uppercase; }

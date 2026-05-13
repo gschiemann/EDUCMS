@@ -206,7 +206,7 @@ export function AnimatedCafeteriaMiddlePortraitWidget({ config, live }: { config
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#0a0e27',
       }}
@@ -536,12 +536,12 @@ const CSS_MSP = `
   overflow: hidden;
 }
 .msp-scoreboard::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background:
     repeating-linear-gradient(0deg, rgba(251,191,36,.04) 0 4px, transparent 4px 8px),
     radial-gradient(ellipse at 50% 50%, transparent 60%, rgba(0,0,0,.6));
 }
-.msp-sbBulbs { position: absolute; inset: 0; pointer-events: none; }
+.msp-sbBulbs { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; }
 .msp-sbBulb {
   position: absolute; width: 22px; height: 22px;
   border-radius: 50%;

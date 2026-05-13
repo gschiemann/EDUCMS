@@ -236,7 +236,7 @@ const CSS = `
 .fv-stage::before {
   content: '';
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   pointer-events: none;
   opacity: .5;
   background-image:
@@ -273,7 +273,7 @@ const CSS = `
   display: grid; grid-template-columns: 1.2fr 1fr; gap: 60px;
 }
 .fv-board::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .4;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; opacity: .4;
   background-image:
     radial-gradient(circle at 30% 70%, rgba(255,255,255,.08) 0, transparent 35%),
     radial-gradient(circle at 80% 20%, rgba(255,255,255,.06) 0, transparent 30%);

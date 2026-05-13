@@ -223,7 +223,7 @@ export function BulletinBoardClock({ config, compact }: { config: any; compact?:
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 520 520" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ filter: PAPER_SHADOW, position: 'absolute', inset: 0, overflow: 'visible' }}>
+          style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
           {/* Paper clock face */}
           <circle cx="260" cy="260" r="230" fill={BB.paper} stroke={BB.ink} strokeWidth="6" />
           <circle cx="260" cy="260" r="230" fill="none" stroke={BB.corkDark} strokeWidth="1.5" opacity="0.4" />
@@ -360,7 +360,7 @@ export function BulletinBoardWeather({ config, compact }: { config: any; compact
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 500" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ filter: PAPER_SHADOW, position: 'absolute', inset: 0, overflow: 'visible' }}>
+          style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
           {/* Index-card paper base — stretches with the zone so text
               always matches the visible card. */}
           <rect x="10" y="40" width="680" height="440" rx="8" fill={BB.paper}
@@ -373,7 +373,7 @@ export function BulletinBoardWeather({ config, compact }: { config: any; compact
         {/* The weather illustration rides in a PROPORTIONED inner SVG
             so the cloud/sun never stretches even when the card does. */}
         <svg viewBox="0 0 700 500" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, overflow: 'visible', pointerEvents: 'none' }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible', pointerEvents: 'none' }}>
           {Illus}
           <Pushpin cx={350} cy={60} r={18} color={BB.pinRed} id="wx" />
         </svg>
@@ -423,7 +423,7 @@ export function BulletinBoardCountdown({ config, compact, onConfigChange }: { co
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 700" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ filter: PAPER_SHADOW, position: 'absolute', inset: 0, overflow: 'visible' }}>
+          style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
           {/* Torn-paper banner body. Irregular edges made from polyline. */}
           <path d="M80 120
             L120 108 L160 122 L200 110 L240 124 L280 112 L320 122 L360 110 L400 122 L440 112 L480 122 L520 110 L560 122 L600 112 L620 120
@@ -484,7 +484,7 @@ export function BulletinBoardAnnouncement({ config, compact, onConfigChange }: {
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 1800 500" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ filter: PAPER_SHADOW, position: 'absolute', inset: 0, overflow: 'visible' }}>
+          style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
           {/* Card body, slight rotation (-1.5deg) */}
           <g transform="rotate(-1.5 900 250)">
             <rect x="40" y="40" width="1720" height="420" rx="8" fill={BB.paper}
@@ -729,7 +729,7 @@ export function BulletinBoardImageCarousel({ config }: { config: any; compact?: 
       }}>
         {/* Photo */}
         <div style={{
-          position: 'absolute', inset: 0,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
           background: BB.paper,
           border: `3px solid ${BB.ink}`,
           boxShadow: `0 16px 28px ${BB.shadow}`,
@@ -772,7 +772,7 @@ export function BulletinBoardImageCarousel({ config }: { config: any; compact?: 
         </div>
         {/* Four pushpins, one per corner */}
         <svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0, overflow: 'visible', pointerEvents: 'none' }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible', pointerEvents: 'none' }}>
           <g style={{ filter: PIN_SHADOW }}>
             <Pushpin cx={6} cy={6} r={4} color={BB.pinRed} id="ic-tl" />
             <Pushpin cx={94} cy={6} r={4} color={BB.pinYellow} id="ic-tr" />
@@ -803,7 +803,7 @@ export function BulletinBoardTicker({ config, compact }: { config: any; compact?
   return (
     <div className="absolute inset-0" style={{ overflow: 'visible' }}>
       <svg viewBox="0 0 2000 220" width="100%" height="100%" preserveAspectRatio="none"
-        style={{ position: 'absolute', inset: 0, filter: PAPER_SHADOW, overflow: 'visible' }}>
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: PAPER_SHADOW, overflow: 'visible' }}>
         {/* Scalloped paper strip — wavy top and bottom */}
         <path d="
           M 0 40

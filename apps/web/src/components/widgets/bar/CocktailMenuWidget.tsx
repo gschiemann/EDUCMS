@@ -132,7 +132,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Permanent+Marker&family=Special+Elite&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&display=swap');
 
 .bcm-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   color: #fef3c7;
   font-family: 'Caveat', cursive;
@@ -143,14 +143,14 @@ const CSS = `
 
 /* ─── Slate texture ─── */
 .bcm-slate {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
   background:
     radial-gradient(900px 500px at 30% 20%, rgba(255,255,255,0.04), transparent 60%),
     radial-gradient(700px 400px at 80% 90%, rgba(255,255,255,0.03), transparent 60%),
     linear-gradient(160deg, #1c1917 0%, #1f1d1b 50%, #1a1916 100%);
 }
 .bcm-noise {
-  position: absolute; inset: 0; z-index: 1;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 1;
   pointer-events: none;
   opacity: 0.18;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.7'/></svg>");

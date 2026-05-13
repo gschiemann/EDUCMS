@@ -762,7 +762,7 @@ const CSS = `
 
 /* Stage kraft-paper noise overlay */
 .ms-fn-stage-noise {
-  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 0;
   background-image:
     radial-gradient(rgba(60,38,12,.16) 1px, transparent 1.5px),
     radial-gradient(rgba(120,90,50,.10) 1px, transparent 2px);
@@ -929,7 +929,7 @@ const CSS = `
     inset 0 0 60px rgba(160,120,60,.12);
 }
 .ms-fn-page::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background-image: repeating-linear-gradient(180deg, transparent 0 71px, rgba(110, 80, 40, .22) 71px 73px);
   pointer-events: none;
 }
@@ -959,7 +959,7 @@ const CSS = `
   background: repeating-linear-gradient(180deg, #d8b370 0 12px, transparent 12px 22px);
 }
 .ms-fn-spine::after {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background-image:
     repeating-linear-gradient(180deg,
       transparent 0 44px,

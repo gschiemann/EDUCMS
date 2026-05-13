@@ -131,7 +131,7 @@ export function AnimatedMorningNewsPortraitWidget({ config, live }: { config?: C
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#0f172a',
       }}
@@ -288,7 +288,7 @@ const CSS_MNP = `
   overflow: hidden;
 }
 .mnp-stage::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 9;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 9;
   background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,.012) 3px 5px);
 }
 
@@ -363,7 +363,7 @@ const CSS_MNP = `
   overflow: hidden;
 }
 .mnp-studioGrid {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background:
     repeating-linear-gradient(0deg, transparent 0 4px, rgba(255,255,255,.05) 4px 6px),
     repeating-linear-gradient(90deg, transparent 0 80px, rgba(255,255,255,.04) 80px 82px);
@@ -613,7 +613,7 @@ const CSS_MNP = `
   overflow: hidden;
 }
 .mnp-pledgeCard::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(90deg, transparent 0 80px, rgba(255,255,255,.05) 80px 82px);
   pointer-events: none;
 }

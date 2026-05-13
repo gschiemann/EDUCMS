@@ -334,7 +334,7 @@ const CSS = `
 
 /* ── Root ── */
 .fsl-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   color: #f8fafc;
   font-family: 'Inter', system-ui, sans-serif;
@@ -343,11 +343,11 @@ const CSS = `
 
 /* ── Backgrounds ── */
 .fsl-bg {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
   transition: background 0.6s ease;
 }
 .fsl-grain {
-  position: absolute; inset: 0; z-index: 1;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 1;
   pointer-events: none; opacity: 0.045;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");
   mix-blend-mode: overlay;
@@ -387,7 +387,7 @@ const CSS = `
    LAUNCHING SCENE
 ══════════════════════════════════════════════════════ */
 .fsl-launching-scene {
-  position: absolute; inset: 0; z-index: 10;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 10;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   gap: clamp(8px, 2cqh, 18px);
@@ -395,7 +395,7 @@ const CSS = `
 
 /* Particle streaks */
 .fsl-streaks {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   pointer-events: none;
 }
 .fsl-streak {
@@ -511,7 +511,7 @@ const CSS = `
    READY SCENE
 ══════════════════════════════════════════════════════ */
 .fsl-ready-scene {
-  position: absolute; inset: 0; z-index: 10;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 10;
   display: flex; align-items: center;
   gap: clamp(20px, 5cqw, 56px);
   padding: clamp(20px, 6%, 56px);
@@ -601,7 +601,7 @@ const CSS = `
    OFFLINE SCENE
 ══════════════════════════════════════════════════════ */
 .fsl-offline-scene {
-  position: absolute; inset: 0; z-index: 10;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 10;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   gap: clamp(6px, 1.2cqh, 14px);

@@ -795,7 +795,7 @@ const CSS = `
   transform: rotate(-2deg);
 }
 .ms-hr-badge::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background-image:
     radial-gradient(rgba(247,243,230,.10) 1.6px, transparent 1.7px),
     radial-gradient(rgba(247,243,230,.06) 1px,   transparent 1.1px);
@@ -1045,7 +1045,7 @@ const CSS = `
   transform: rotate(-1deg);
 }
 .ms-hr-countdown::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background-image: repeating-linear-gradient(180deg,
     transparent 0 56px, rgba(59,109,191,.18) 56px 58px);
   pointer-events: none;

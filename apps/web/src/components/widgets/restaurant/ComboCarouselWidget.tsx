@@ -169,14 +169,14 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap');
 
 .rcc-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   color: #fbf6ee;
   font-family: 'Inter', system-ui, sans-serif;
   container-type: size;
 }
 .rcc-bg {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
   background: linear-gradient(140deg, #1a1714 0%, #2a211c 60%, #1a1714 100%);
 }
 .rcc-glow {
@@ -223,7 +223,7 @@ const CSS = `
 }
 
 .rcc-stage {
-  position: absolute; inset: 0; z-index: 5;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 5;
   display: flex; align-items: center; gap: clamp(14px, 3cqw, 36px);
   padding: clamp(40px, 8cqh, 80px) clamp(18px, 3cqw, 36px) clamp(18px, 3cqh, 32px);
 }
@@ -239,7 +239,7 @@ const CSS = `
   box-shadow: 0 12px 40px rgba(0,0,0,0.45), inset 0 0 0 2px rgba(251,246,238,0.08);
 }
 .rcc-tile-img {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   width: 100%; height: 100%;
   object-fit: cover;
 }

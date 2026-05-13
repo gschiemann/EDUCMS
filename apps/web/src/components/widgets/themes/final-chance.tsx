@@ -156,7 +156,7 @@ function GlassCard({ children, padding = '6%', accent, emojis }: { children: Rea
     >
       {accent && (
         <div style={{
-          position: 'absolute', inset: 0,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
           background: `radial-gradient(circle at 0% 0%, ${accent}55 0%, transparent 60%)`,
           pointerEvents: 'none', borderRadius: 28,
         }} />

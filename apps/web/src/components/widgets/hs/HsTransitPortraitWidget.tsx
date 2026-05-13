@@ -382,7 +382,7 @@ export function HsTransitPortraitWidget({ config, live }: { config?: Cfg; live?:
 /** Inlined CSS — every pixel is sized for the 2160×3840 portrait stage. */
 const CSS = `
 .hs-trp-scan {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(0deg, rgba(255,176,32,.025) 0 2px, transparent 2px 4px);
   pointer-events: none; z-index: 1;
 }

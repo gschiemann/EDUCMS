@@ -134,7 +134,7 @@ export function StorybookHallwayPortraitWidget({ config, live }: { config?: Cfg;
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#1c1206',
       }}
@@ -308,7 +308,7 @@ const CSS_SHP = `
 }
 /* Old-book paper grain — fine horizontal lines + foxing flecks. */
 .shp-book::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background:
     repeating-linear-gradient(0deg, transparent 0 5px, rgba(120,53,15,.022) 5px 6px),
     radial-gradient(circle at 18% 32%, rgba(140, 80, 30, .08) 0 8px, transparent 9px),
@@ -318,7 +318,7 @@ const CSS_SHP = `
 }
 /* Vignette — darker at the edges, like a fragile old page. */
 .shp-book::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   box-shadow: inset 0 0 240px rgba(120,53,15,.45);
 }
 

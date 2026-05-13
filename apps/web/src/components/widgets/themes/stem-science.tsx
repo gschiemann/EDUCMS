@@ -177,7 +177,7 @@ export function StemScienceImageCarousel({ config, compact }: { config: any; com
       }}>
         {/* Tech scanline overlay */}
         <div style={{
-          position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none',
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10, pointerEvents: 'none',
           background: 'linear-gradient(rgba(6,182,212,0.05) 1px, transparent 1px)',
           backgroundSize: '100% 4px'
         }} />

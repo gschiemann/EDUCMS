@@ -651,7 +651,7 @@ const CSS = `
 
 /* Tape-recorder scanline overlay (mockup paints on .stage::before) */
 .ms-st-scanlines {
-  position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 1;
   background: repeating-linear-gradient(0deg, transparent 0 4px, rgba(255,255,255,.012) 4px 5px);
 }
 
@@ -685,7 +685,7 @@ const CSS = `
 }
 .ms-st-onair::after {
   /* corner screws — four little aluminum dots */
-  content:''; position: absolute; inset: 0;
+  content:''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background:
     radial-gradient(circle at 22px 22px, #b9b3aa 3px, #5a564f 4px, transparent 5px),
     radial-gradient(circle at calc(100% - 22px) 22px, #b9b3aa 3px, #5a564f 4px, transparent 5px),
@@ -694,7 +694,7 @@ const CSS = `
   pointer-events: none;
 }
 .ms-st-onair-text {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 24px;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; gap: 24px;
   z-index: 2;
 }
 .ms-st-onair-dot {
@@ -808,7 +808,7 @@ const CSS = `
 }
 .ms-st-poster::before {
   /* faint amber sweep */
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: radial-gradient(ellipse 1200px 700px at 0% 0%, rgba(244,185,66,.10), transparent 60%);
   pointer-events: none;
 }
@@ -937,7 +937,7 @@ const CSS = `
 }
 .ms-st-turntable::before {
   /* wood grain */
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background:
     repeating-linear-gradient(98deg, transparent 0 4px, rgba(0,0,0,.10) 4px 6px),
     repeating-linear-gradient(98deg, transparent 0 60px, rgba(255,180,140,.04) 60px 64px);
@@ -978,7 +978,7 @@ const CSS = `
 @keyframes msStSpin { to { transform: rotate(360deg); } }
 .ms-st-platter::before {
   /* concentric grooves */
-  content: ''; position: absolute; inset: 0; border-radius: 50%;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 50%;
   background: repeating-radial-gradient(circle at 50% 50%, transparent 0 4px, rgba(255,255,255,.04) 4px 5px);
 }
 .ms-st-platter::after {
@@ -1281,7 +1281,7 @@ const CSS = `
 }
 .ms-st-tape::before {
   /* shell screws */
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background:
     radial-gradient(circle at 16px 16px,            #4a4744 2.5px, transparent 3.5px),
     radial-gradient(circle at calc(100% - 16px) 16px, #4a4744 2.5px, transparent 3.5px),
@@ -1352,7 +1352,7 @@ const CSS = `
 }
 .ms-st-hub::before {
   /* spokes */
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: conic-gradient(from 0deg,
     transparent 0deg 35deg, rgba(244,185,66,.15) 35deg 60deg,
     transparent 60deg 100deg, rgba(244,185,66,.15) 100deg 125deg,
@@ -1443,7 +1443,7 @@ const CSS = `
 }
 .ms-st-slate::before {
   /* yellow caution stripes */
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(135deg, transparent 0 40px, rgba(0,0,0,.08) 40px 46px);
   pointer-events: none;
 }
@@ -1492,7 +1492,7 @@ const CSS = `
 }
 .ms-st-vfd::before {
   /* VFD scanlines */
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(77,208,225,.04) 3px 4px);
   pointer-events: none;
 }

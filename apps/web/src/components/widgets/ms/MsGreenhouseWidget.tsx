@@ -954,7 +954,7 @@ const CSS = `
 /* Foxing/aging spots — randomly scattered tiny rust marks
    (mockup paints these on .stage::before; HsStage owns its own ::before). */
 .ms-gh-foxing {
-  position: absolute; inset: 0; pointer-events: none; opacity: .55; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; opacity: .55; z-index: 0;
   background-image:
     radial-gradient(circle at 12% 18%, rgba(140,63,41,.18) 0 4px, transparent 5px),
     radial-gradient(circle at 23% 76%, rgba(140,63,41,.15) 0 5px, transparent 6px),
@@ -968,7 +968,7 @@ const CSS = `
 /* Conservatory glasshouse mullion arches at the top corners
    (mockup paints these on .stage::after). */
 .ms-gh-mullions {
-  position: absolute; inset: 0; pointer-events: none; z-index: 0; opacity: .10;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 0; opacity: .10;
   background-image:
     linear-gradient(180deg, rgba(31,42,28,.4) 0 2px, transparent 2px 100%),
     repeating-linear-gradient(90deg, rgba(31,42,28,.2) 0 2px, transparent 2px 240px),

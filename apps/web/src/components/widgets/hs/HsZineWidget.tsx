@@ -257,7 +257,7 @@ export function HsZineWidget({ config, live }: { config?: HsZineConfig; live?: b
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Special+Elite&family=Permanent+Marker&family=Courier+Prime:wght@400;700&display=swap');
-.hs-zn-streaks { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, transparent 40%, rgba(0,0,0,.04) 60%, transparent 80%), linear-gradient(90deg, transparent 10%, rgba(0,0,0,.05) 13%, transparent 17%); }
+.hs-zn-streaks { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; background: linear-gradient(90deg, transparent 40%, rgba(0,0,0,.04) 60%, transparent 80%), linear-gradient(90deg, transparent 10%, rgba(0,0,0,.05) 13%, transparent 17%); }
 .hs-zn-mast { position: absolute; top: 60px; left: 80px; right: 80px; height: 260px; display: flex; justify-content: space-between; align-items: flex-start; }
 .hs-zn-title { font-family: 'Archivo Black', sans-serif; font-size: 200px; line-height: .85; letter-spacing: -.02em; color: #15120d; transform: rotate(-2deg); text-transform: uppercase; position: relative; }
 .hs-zn-title::after { content: ''; position: absolute; top: 40%; left: -20px; right: -20px; height: 20px; background: #ffd84d; z-index: -1; transform: rotate(1.5deg); }
@@ -278,7 +278,7 @@ const CSS = `
 .hs-zn-poster { background: #e8e2d0; padding: 28px; position: relative; transform: rotate(1.5deg); box-shadow: 4px 4px 0 rgba(0,0,0,.12); }
 .hs-zn-poster::before { content: ''; position: absolute; top: -18px; left: 80px; width: 140px; height: 40px; background: rgba(193,40,26,.75); transform: rotate(-4deg); }
 .hs-zn-img { width: 100%; height: 560px; background: #444; background-image: radial-gradient(circle at 35% 35%, #888 0 60px, transparent 60px), radial-gradient(circle at 35% 35%, transparent 0 55px, #222 55px 140px, transparent 140px), linear-gradient(180deg, #666 0%, #333 100%); filter: contrast(1.6) grayscale(1); position: relative; overflow: hidden; }
-.hs-zn-img::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 3px, rgba(0,0,0,.15) 3px 5px); mix-blend-mode: multiply; }
+.hs-zn-img::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 3px, rgba(0,0,0,.15) 3px 5px); mix-blend-mode: multiply; }
 .hs-zn-caption { font-family: 'Permanent Marker', sans-serif; font-size: 64px; color: #15120d; transform: rotate(-1deg); margin-top: 20px; line-height: 1; }
 .hs-zn-caption-sub { display: block; font-family: 'Special Elite', monospace; font-size: 56px; color: #c1281a; margin-top: 12px; letter-spacing: .1em; }
 .hs-zn-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -296,7 +296,7 @@ const CSS = `
 .hs-zn-polaroid::before { content: ''; position: absolute; top: -20px; left: 40%; width: 180px; height: 50px; background: rgba(255,216,77,.7); transform: rotate(-4deg); }
 .hs-zn-polaroid.hs-zn-count::before { background: rgba(255,216,77,.85); }
 .hs-zn-pic { width: 100%; height: 280px; background: linear-gradient(135deg, #999, #333); filter: contrast(1.5) grayscale(1); position: relative; overflow: hidden; }
-.hs-zn-pic::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.06) 0 2px, rgba(0,0,0,.1) 2px 4px); mix-blend-mode: multiply; }
+.hs-zn-pic::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.06) 0 2px, rgba(0,0,0,.1) 2px 4px); mix-blend-mode: multiply; }
 .hs-zn-when { font-family: 'Permanent Marker', sans-serif; font-size: 50px; color: #c1281a; margin-top: 18px; line-height: 1; }
 .hs-zn-name { font-family: 'Special Elite', monospace; font-size: 64px; color: #15120d; margin-top: 10px; line-height: 1.15; }
 .hs-zn-num { font-family: 'Archivo Black', sans-serif; font-size: 280px; line-height: .85; color: #fff; text-shadow: 4px 4px 0 rgba(0,0,0,.3); }

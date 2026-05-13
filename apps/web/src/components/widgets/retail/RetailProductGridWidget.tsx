@@ -157,7 +157,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
 .rpgw-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: var(--rpgw-bg, #faf6f1);
   color: var(--rpgw-ink, #1a1411);
   font-family: 'Inter', sans-serif;
@@ -213,7 +213,7 @@ const CSS = `
   display: block;
 }
 .rpgw-swatch {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   display: flex; align-items: center; justify-content: center;
 }
 .rpgw-emoji {

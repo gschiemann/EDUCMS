@@ -114,7 +114,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Playfair+Display:ital,wght@1,700&family=Inter:wght@400;500;600;700;800&display=swap');
 
 .rsc-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   color: var(--rsc-soft, #fbf6ee);
   font-family: 'Inter', system-ui, sans-serif;
@@ -123,7 +123,7 @@ const CSS = `
   text-align: center;
 }
 .rsc-grain {
-  position: absolute; inset: 0; z-index: 1;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 1;
   pointer-events: none;
   opacity: 0.06;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>");

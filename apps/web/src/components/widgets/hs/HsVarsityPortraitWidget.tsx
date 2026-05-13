@@ -428,7 +428,7 @@ export function HsVarsityPortraitWidget({ config, live }: { config?: Cfg; live?:
 /** Inlined CSS — every pixel is sized for the 2160×3840 portrait stage. */
 const CSS = `
 .hs-vp-stripes {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(-12deg, transparent 0 240px, rgba(255,196,43,.06) 240px 480px);
   pointer-events: none;
 }
@@ -587,7 +587,7 @@ const CSS = `
   box-shadow: inset 0 0 0 6px #ffc42b, 0 16px 32px rgba(0,0,0,.4);
 }
 .hs-vp-portrait::after {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(45deg, rgba(13,27,61,.10) 0 10px, transparent 10px 20px);
 }
 .hs-vp-jersey-num {

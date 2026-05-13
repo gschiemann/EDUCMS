@@ -157,7 +157,7 @@ export function AnimatedHallwayScheduleWidget({ config, live }: { config?: Cfg; 
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#fef8e7',
       }}
@@ -296,7 +296,7 @@ const CSS_HS = `
   overflow: hidden;
 }
 .hs-stage::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .35;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; opacity: .35;
   background:
     repeating-radial-gradient(circle at 10% 20%, transparent 0 2px, rgba(180,83,9,.015) 2px 3px),
     repeating-radial-gradient(circle at 70% 80%, transparent 0 3px, rgba(180,83,9,.015) 3px 4px);
@@ -357,7 +357,7 @@ const CSS_HS = `
   overflow: hidden;
 }
 .hs-notebook::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(180deg, transparent 0 50px, rgba(59,130,246,.22) 50px 51px);
   pointer-events: none; opacity: .8;
 }

@@ -335,7 +335,7 @@ const CSS = `
 .fz-stage::before {
   content: '';
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   pointer-events: none;
   background-image:
     radial-gradient(circle at 80% 10%, rgba(138,156,123,.10), transparent 50%),

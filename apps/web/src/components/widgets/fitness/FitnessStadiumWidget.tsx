@@ -266,7 +266,7 @@ const CSS = `
 .fs-stadium-stage::before {
   content: '';
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   pointer-events: none;
   background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 1px, transparent 1px 4px);
 }
@@ -305,13 +305,13 @@ const CSS = `
   overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.6);
 }
 .fs-crt {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background:
     radial-gradient(1600px 900px at 50% 40%, rgba(0,212,255,.16), transparent 60%),
     linear-gradient(180deg, #0a0d14 0%, #1a2030 50%, #0a0d14 100%);
 }
 .fs-crt::after {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(0deg, rgba(255,255,255,.04) 0 2px, transparent 2px 6px);
   mix-blend-mode: screen;
 }
@@ -366,7 +366,7 @@ const CSS = `
   position: relative; overflow: hidden;
 }
 .fs-np-art::after {
-  content: '\\266B'; position: absolute; inset: 0; display: grid; place-items: center;
+  content: '\\266B'; position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: grid; place-items: center;
   font-family: 'Archivo Black'; font-size: 200px; color: rgba(0,0,0,.85);
 }
 .fs-np-title { font-family: 'Archivo Black'; font-size: 80px; line-height: .95; letter-spacing: -.02em; }

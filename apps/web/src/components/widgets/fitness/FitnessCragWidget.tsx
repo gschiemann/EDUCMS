@@ -442,7 +442,7 @@ const CSS = `
 .fg-stage::before {
   content: '';
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   pointer-events: none;
   opacity: .18;
   background-image:
@@ -458,7 +458,7 @@ const CSS = `
 .fg-stage::after {
   content: '';
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   pointer-events: none;
   background-image: repeating-linear-gradient(45deg, transparent 0 3px, rgba(61,46,31,.02) 3px 4px);
 }

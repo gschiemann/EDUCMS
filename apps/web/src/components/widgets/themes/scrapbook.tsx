@@ -188,7 +188,7 @@ export function ScrapbookText({ config, compact, onConfigChange }: {
 
         {/* Torn paper strip background (SVG) */}
         <svg viewBox="0 0 2000 380" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0, filter: `drop-shadow(0 8px 16px ${SC.shadow})` }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 8px 16px ${SC.shadow})` }}>
           {/* Pastel stripe body */}
           <rect x="0" y="20" width="2000" height="320" fill={SC.paper} />
           {/* Washi tape across top */}
@@ -524,7 +524,7 @@ export function ScrapbookCountdown({ config, compact, onConfigChange }: {
 
         {/* Ticket stub SVG background */}
         <svg viewBox="0 0 600 380" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0, filter: `drop-shadow(0 10px 20px ${SC.shadow})` }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 10px 20px ${SC.shadow})` }}>
           {/* Main ticket body */}
           <rect x="4" y="10" width="592" height="340" rx="12" fill={SC.paperBlush} stroke={SC.ink} strokeWidth="4" />
           {/* Left stub notch */}
@@ -939,7 +939,7 @@ export function ScrapbookTicker({ config, compact }: { config: any; compact?: bo
       <div style={{ position: 'relative', width: '100%', height: '60%' }}>
         {/* Paper strip body */}
         <div style={{
-          position: 'absolute', inset: 0,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
           background: SC.washiYellow,
           border: `2px solid ${SC.pencil}`,
           borderRadius: 6,
@@ -950,7 +950,7 @@ export function ScrapbookTicker({ config, compact }: { config: any; compact?: bo
         }}>
           {/* Diagonal stripe texture */}
           <div style={{
-            position: 'absolute', inset: 0,
+            position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
             backgroundImage: `repeating-linear-gradient(
               -45deg,
               transparent 0px,

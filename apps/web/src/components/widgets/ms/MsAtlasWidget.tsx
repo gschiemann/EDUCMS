@@ -630,7 +630,7 @@ const CSS = `
 
 /* Faint contour-line decoration drifting across the stage. */
 .ms-atl-contour {
-  position: absolute; inset: 0; pointer-events: none; opacity: .18; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; opacity: .18; z-index: 0;
   background-image:
     radial-gradient(circle at 78% 68%, transparent 280px, rgba(11,18,32,.3) 281px, transparent 285px),
     radial-gradient(circle at 78% 68%, transparent 340px, rgba(11,18,32,.3) 341px, transparent 345px),
@@ -844,7 +844,7 @@ const CSS = `
   background: #ece3cc;
   border: 2px solid #0b1220;
 }
-.ms-atl-map-canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ms-atl-map-canvas svg { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; }
 .ms-atl-pin-label {
   position: absolute;
   display: inline-flex; align-items: center; gap: 10px;

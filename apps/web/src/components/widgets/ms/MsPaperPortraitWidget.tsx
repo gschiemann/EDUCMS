@@ -698,7 +698,7 @@ const CSS = `
 
 /* Paper FX overlay — horizontal fold across centre + edge vignette */
 .ms-pp-p-paperfx {
-  position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 1;
   background:
     linear-gradient(to bottom,
       transparent 49.85%,
@@ -1008,7 +1008,7 @@ const CSS = `
     radial-gradient(ellipse 140px 110px at 50% 80%, rgba(40,30,20,.92) 70%, transparent 72%);
 }
 .ms-pp-p-photo .ms-pp-p-frame::after {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: linear-gradient(135deg, rgba(255,255,255,.06), transparent 60%);
 }
 .ms-pp-p-photo .ms-pp-p-caption {

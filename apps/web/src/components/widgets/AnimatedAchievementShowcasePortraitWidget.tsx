@@ -142,7 +142,7 @@ export function AnimatedAchievementShowcasePortraitWidget({ config, live }: { co
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#0f172a',
       }}
@@ -300,7 +300,7 @@ const CSS_ASP = `
   overflow: hidden;
 }
 .asp-stage::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .08;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; opacity: .08;
   background: conic-gradient(from 0deg at 50% 25%,
     transparent 0 10deg, #fbbf24 10deg 12deg,
     transparent 12deg 25deg, #fbbf24 25deg 27deg,
@@ -477,7 +477,7 @@ const CSS_ASP = `
   display: flex; align-items: center; justify-content: center;
 }
 .asp-portraitRing {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   border-radius: 36px;
   background:
     conic-gradient(from 0deg, #fbbf24, #ec4899, #60a5fa, #fbbf24);

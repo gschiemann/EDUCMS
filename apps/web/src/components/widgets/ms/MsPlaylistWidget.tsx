@@ -618,7 +618,7 @@ const CSS = `
 
 /* Subtle film-grain noise overlay — matches .stage::before */
 .ms-pl-grain {
-  position: absolute; inset: 0; pointer-events: none; z-index: 0; opacity: .4;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 0; opacity: .4;
   background-image:
     radial-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
     radial-gradient(rgba(255,255,255,.012) 1px, transparent 1px);
@@ -797,7 +797,7 @@ const CSS = `
 }
 .ms-pl-cover::before {
   /* Glossy highlight + paper grain */
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background:
     radial-gradient(circle at 22% 18%, rgba(255,255,255,.32), transparent 38%),
     radial-gradient(circle at 80% 80%, rgba(0,0,0,.45), transparent 52%),
@@ -812,7 +812,7 @@ const CSS = `
   opacity: .85;
 }
 .ms-pl-albumtxt {
-  position: absolute; inset: 0; padding: 64px;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; padding: 64px;
   display: flex; flex-direction: column; justify-content: space-between;
   z-index: 1;
 }
@@ -940,7 +940,7 @@ const CSS = `
   position: relative; overflow: visible;
 }
 .ms-pl-fill {
-  position: absolute; inset: 0; width: 62%;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 62%;
   background: linear-gradient(90deg, #169c45, #1ed760 80%, #4cffa1);
   border-radius: 999px;
   box-shadow: 0 0 24px rgba(30,215,96,.6);
@@ -1056,7 +1056,7 @@ const CSS = `
   position: relative; overflow: hidden;
 }
 .ms-pl-art::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background:
     radial-gradient(circle at 28% 22%, rgba(255,255,255,.25), transparent 50%),
     radial-gradient(circle at 80% 85%, rgba(0,0,0,.32), transparent 55%);
@@ -1146,7 +1146,7 @@ const CSS = `
   position: relative; overflow: hidden;
 }
 .ms-pl-featured-pic::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background:
     radial-gradient(circle at 28% 22%, rgba(255,255,255,.28), transparent 55%),
     radial-gradient(circle at 80% 80%, rgba(0,0,0,.35), transparent 55%);

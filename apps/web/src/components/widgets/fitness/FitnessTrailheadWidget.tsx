@@ -386,7 +386,7 @@ const CSS = `
 .fh-stage::before {
   content: '';
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   pointer-events: none;
   opacity: .22;
   background-image:

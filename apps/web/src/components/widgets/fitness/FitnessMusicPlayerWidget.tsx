@@ -213,14 +213,14 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
 
 .fmpw-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   color: #f8fafc;
   font-family: 'Inter', system-ui, sans-serif;
   container-type: size;
 }
 .fmpw-bg {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
   background:
     linear-gradient(135deg, #0b0b10 0%, #141419 50%, #0b0b10 100%);
 }
@@ -233,7 +233,7 @@ const CSS = `
   filter: blur(80px);
 }
 .fmpw-grain {
-  position: absolute; inset: 0; z-index: 2;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 2;
   pointer-events: none;
   opacity: 0.05;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");
@@ -268,7 +268,7 @@ const CSS = `
 
 /* ─── Main content row ─── */
 .fmpw-content {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   z-index: 10;
   display: flex; align-items: center; justify-content: center;
   gap: clamp(16px, 4cqw, 40px);
@@ -295,7 +295,7 @@ const CSS = `
   50%      { transform: scale(1.04); opacity: 0.75; }
 }
 .fmpw-art {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   border-radius: 12px;
   overflow: hidden;
   box-shadow:

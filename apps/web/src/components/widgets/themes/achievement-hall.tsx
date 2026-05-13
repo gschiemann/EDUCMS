@@ -57,7 +57,7 @@ export const AH_FONT_SCRIPT  = "'Caveat', cursive";
 function BrassFrame({ rounded = 8 }: { rounded?: number }) {
   return (
     <svg viewBox="0 0 400 300" preserveAspectRatio="none"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+      style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
       <defs>
         <linearGradient id="ahBrassH" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%"   stopColor={AH.brassDark} />
@@ -192,14 +192,14 @@ export function AchievementHallText({ config, compact, onConfigChange }: { confi
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Ivory plaque background */}
         <div style={{
-          position: 'absolute', inset: 0,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
           background: `linear-gradient(160deg, ${AH.ivory} 0%, #e8dcc8 100%)`,
           borderRadius: 6,
           boxShadow: `inset 0 2px 8px ${AH.shadow}, 0 8px 24px ${AH.shadow}`,
         }} />
         {/* Subtle wood-grain line texture */}
         <div style={{
-          position: 'absolute', inset: 0, borderRadius: 6, opacity: 0.06,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 6, opacity: 0.06,
           backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.4) 3px, rgba(0,0,0,0.4) 4px)',
         }} />
         <BrassFrame rounded={6} />
@@ -475,7 +475,7 @@ export function AchievementHallWeather({ config, compact }: { config: any; compa
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Dark iron backing */}
         <div style={{
-          position: 'absolute', inset: 0, borderRadius: 8,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 8,
           background: `linear-gradient(160deg, #2a1e12 0%, ${AH.woodDark} 100%)`,
           boxShadow: `inset 0 0 20px ${AH.shadow}, 0 8px 24px ${AH.shadow}`,
         }} />
@@ -539,7 +539,7 @@ export function AchievementHallCountdown({ config, compact, onConfigChange }: { 
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Plaque background */}
         <div style={{
-          position: 'absolute', inset: 0, borderRadius: 4,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 4,
           background: `linear-gradient(160deg, ${AH.ivory} 0%, #e2d5be 100%)`,
           boxShadow: `inset 0 2px 8px ${AH.shadow}, 0 10px 30px ${AH.shadow}`,
         }} />
@@ -626,13 +626,13 @@ export function AchievementHallAnnouncement({ config, compact, onConfigChange }:
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Velvet backing */}
         <div style={{
-          position: 'absolute', inset: 0, borderRadius: 6,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 6,
           background: `linear-gradient(160deg, #3a2020 0%, ${AH.velvet} 100%)`,
           boxShadow: `inset 0 0 24px rgba(0,0,0,0.6), 0 8px 24px ${AH.shadow}`,
         }} />
         {/* Velvet texture — subtle diagonal stripe */}
         <div style={{
-          position: 'absolute', inset: 0, borderRadius: 6, opacity: 0.04,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 6, opacity: 0.04,
           backgroundImage: 'repeating-linear-gradient(45deg, #fff 0, #fff 1px, transparent 1px, transparent 8px)',
         }} />
         <BrassFrame rounded={6} />
@@ -721,7 +721,7 @@ export function AchievementHallCalendar({ config }: { config: any; compact?: boo
         }}>
           {/* Ivory plaque background */}
           <div style={{
-            position: 'absolute', inset: 0,
+            position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
             background: i % 2 === 0
               ? `linear-gradient(135deg, ${AH.ivory} 0%, #e8dcca 100%)`
               : `linear-gradient(135deg, #ede3cf 0%, ${AH.ivory} 100%)`,
@@ -830,7 +830,7 @@ export function AchievementHallStaffSpotlight({ config, onConfigChange }: { conf
         flex: '0 0 30%', width: '100%', position: 'relative', minHeight: 0,
       }}>
         <div style={{
-          position: 'absolute', inset: 0, borderRadius: 3,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 3,
           background: `linear-gradient(160deg, ${AH.ivory} 0%, #e0d4bc 100%)`,
           boxShadow: `inset 0 1px 6px ${AH.shadow}, 0 4px 12px ${AH.shadow}`,
         }} />
@@ -900,7 +900,7 @@ export function AchievementHallImageCarousel({ config }: { config: any; compact?
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Ornate frame SVG overlay */}
         <svg viewBox="0 0 400 300" preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', zIndex: 2, pointerEvents: 'none' }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%', zIndex: 2, pointerEvents: 'none' }}>
           <defs>
             <linearGradient id="ahFrameH" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%"   stopColor={AH.brassDark} />
@@ -997,7 +997,7 @@ export function AchievementHallTicker({ config, compact }: { config: any; compac
     <div className="absolute inset-0" style={{ overflow: 'hidden' }}>
       {/* Brass strip background */}
       <div style={{
-        position: 'absolute', inset: 0,
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         background: `linear-gradient(180deg, ${AH.brassLight} 0%, ${AH.brass} 40%, ${AH.brassDark} 100%)`,
         boxShadow: `inset 0 3px 8px rgba(0,0,0,0.5), inset 0 -3px 8px rgba(0,0,0,0.35)`,
       }} />

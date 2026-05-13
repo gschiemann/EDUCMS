@@ -126,7 +126,7 @@ export function StemLabText({
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* PCB card background */}
         <svg viewBox="0 0 1800 340" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0, filter: neonFilter(SL.neonGreen, 4) }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: neonFilter(SL.neonGreen, 4) }}>
           {/* Board */}
           <rect x="0" y="0" width="1800" height="340" rx="12" fill={SL.grid} stroke={SL.neonGreen} strokeWidth="3" />
           {/* Top trace line */}
@@ -219,7 +219,7 @@ export function StemLabClock({ config, compact }: { config: any; compact?: boole
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 560" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, filter: neonFilter(SL.neonBlue, 4) }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: neonFilter(SL.neonBlue, 4) }}>
           {/* Outer PCB frame */}
           <rect x="10" y="10" width="680" height="540" rx="16" fill={SL.grid} stroke={SL.neonBlue} strokeWidth="3" />
           {/* Horizontal trace lines */}
@@ -400,7 +400,7 @@ export function StemLabCountdown({
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 600 700" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, filter: neonFilter(SL.amber, 6) }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: neonFilter(SL.amber, 6) }}>
           {/* Rocket body */}
           <path d="M300 40 C300 40 240 100 230 240 L230 480 L370 480 L370 240 C360 100 300 40 300 40Z"
             fill={SL.grid} stroke={SL.neonBlue} strokeWidth="3" />
@@ -665,7 +665,7 @@ export function StemLabStaffSpotlight({
         padding: '4%', overflow: 'hidden', position: 'relative',
       }}>
         {/* HUD scan lines overlay */}
-        <svg style={{ position: 'absolute', inset: 0, pointerEvents: 'none', width: '100%', height: '100%' }}
+        <svg style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, pointerEvents: 'none', width: '100%', height: '100%' }}
           preserveAspectRatio="none" viewBox="0 0 400 300">
           {Array.from({length: 12}).map((_,i) => (
             <line key={i} x1="0" y1={i * 28} x2="400" y2={i * 28}
@@ -763,7 +763,7 @@ export function StemLabImageCarousel({ config }: { config: any; compact?: boolea
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Microscope frame SVG */}
         <svg viewBox="0 0 700 700" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, filter: neonFilter(SL.neonBlue, 4) }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: neonFilter(SL.neonBlue, 4) }}>
           {/* Outer ring */}
           <circle cx="350" cy="350" r="310" fill="none" stroke={SL.neonBlue} strokeWidth="4" />
           {/* Inner ring (lens border) */}

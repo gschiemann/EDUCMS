@@ -450,19 +450,19 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
 /** Inlined CSS — every pixel is sized for the 2160×3840 portrait stage. */
 const CSS = `
 .hs-tp-scan {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0 3px, transparent 3px 6px);
   pointer-events: none; z-index: 5;
   animation: hsTpScanDrift 9s linear infinite;
 }
 @keyframes hsTpScanDrift { from { background-position: 0 0; } to { background-position: 0 6px; } }
 .hs-tp-vignette {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   box-shadow: inset 0 0 480px rgba(0,0,0,.78);
   pointer-events: none; z-index: 4;
 }
 .hs-tp-flicker {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: rgba(155,255,155,.02);
   pointer-events: none; z-index: 6;
   animation: hsTpFlicker 4.2s steps(2) infinite;
@@ -473,7 +473,7 @@ const CSS = `
   99% { opacity: .85; }
 }
 .hs-tp-overlay {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: linear-gradient(180deg, rgba(155,255,155,.04) 0%, transparent 30%, transparent 70%, rgba(155,255,155,.04) 100%);
   pointer-events: none; z-index: 3;
 }

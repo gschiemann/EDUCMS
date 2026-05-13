@@ -592,7 +592,7 @@ const CSS = `
 
 /* Faint scanline overlay (mockup paints on .stage::before). */
 .ms-st-p-scanlines {
-  position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 1;
   background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(0,0,0,.12) 3px 4px);
 }
 
@@ -1017,7 +1017,7 @@ const CSS = `
 }
 .ms-st-p-tape::before {
   /* shell screws */
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background:
     radial-gradient(circle at 14px 14px,            #4a4744 2.5px, transparent 3.5px),
     radial-gradient(circle at calc(100% - 14px) 14px, #4a4744 2.5px, transparent 3.5px),
@@ -1116,7 +1116,7 @@ const CSS = `
   border-right: 2px solid #0a0608;
 }
 .ms-st-p-slate::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(135deg, transparent 0 56px, rgba(0,0,0,.08) 56px 64px);
   pointer-events: none;
 }
@@ -1161,7 +1161,7 @@ const CSS = `
   overflow: hidden;
 }
 .ms-st-p-vfd::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(77,208,225,.04) 3px 4px);
   pointer-events: none;
 }

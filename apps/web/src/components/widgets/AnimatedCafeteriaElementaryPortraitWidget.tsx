@@ -197,7 +197,7 @@ export function AnimatedCafeteriaElementaryPortraitWidget({ config, live }: { co
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#fce7f3',
       }}
@@ -664,7 +664,7 @@ const CSS_CAFE_PORTRAIT = `
 .cep-burst { position: relative; width: 380px; height: 380px; animation: cep-burstSpin 14s linear infinite; }
 @keyframes cep-burstSpin { to { transform: rotate(360deg); } }
 .cep-rays {
-  position: absolute; inset: 0; border-radius: 50%;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 50%;
   background: conic-gradient(from 0deg,
     #fde68a 0 20deg, #fbbf24 20deg 40deg,
     #fde68a 40deg 60deg, #fbbf24 60deg 80deg,
@@ -737,7 +737,7 @@ const CSS_CAFE_PORTRAIT = `
   text-shadow: 0 2px 0 rgba(255,255,255,.7);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.cep-confetti { position: absolute; inset: 0; pointer-events: none; }
+.cep-confetti { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; }
 .cep-confetti span {
   position: absolute; font-size: 60px; line-height: 1;
   animation: cep-confettiFloat 3.4s ease-in-out infinite;

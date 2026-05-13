@@ -60,7 +60,7 @@ function ScaleWrap({ naturalW, naturalH, children, bg }: {
     <div
       ref={ref}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: bg || 'transparent',
       }}
@@ -277,7 +277,7 @@ export function RainbowAnimatedAnnouncement({ config }: { config: any } & { onCo
           zIndex: -1,
         }} />
         {/* Twinkling stars */}
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1 }}>
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, pointerEvents: 'none', zIndex: 1 }}>
           <span style={{ position: 'absolute', top: 50, left: 130, fontSize: 44, opacity: .9, animation: 'rar-twinkle 1.4s ease-in-out infinite' }}>⭐</span>
           <span style={{ position: 'absolute', top: 80, right: 140, fontSize: 44, opacity: .9, animation: 'rar-twinkle 1.4s ease-in-out infinite .3s' }}>✨</span>
           <span style={{ position: 'absolute', bottom: 80, left: 160, fontSize: 44, opacity: .9, animation: 'rar-twinkle 1.4s ease-in-out infinite .6s' }}>🌟</span>

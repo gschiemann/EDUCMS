@@ -302,7 +302,7 @@ const CSS = `
   position: relative; overflow: hidden;
 }
 .fi-tutorial::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: radial-gradient(800px 500px at 50% 40%, rgba(255,42,77,.15), transparent 60%);
 }
 .fi-stamp {

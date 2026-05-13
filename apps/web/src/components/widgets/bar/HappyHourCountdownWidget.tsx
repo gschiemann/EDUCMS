@@ -183,7 +183,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@500;600;700;800;900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@600;700&display=swap');
 
 .bhh-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   color: #f8fafc;
   font-family: 'Inter', system-ui, sans-serif;
@@ -192,7 +192,7 @@ const CSS = `
 }
 
 .bhh-bg {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
   background:
     radial-gradient(900px 600px at 20% 10%, rgba(236,72,153,0.18), transparent 60%),
     radial-gradient(800px 500px at 80% 95%, rgba(245,158,11,0.13), transparent 60%),
@@ -211,7 +211,7 @@ const CSS = `
   50%      { opacity: 0.28; }
 }
 .bhh-grain {
-  position: absolute; inset: 0; z-index: 2;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 2;
   pointer-events: none;
   opacity: 0.06;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>");

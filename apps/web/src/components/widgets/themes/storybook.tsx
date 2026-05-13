@@ -225,7 +225,7 @@ export function StorybookClock({ config, compact }: { config: any; compact?: boo
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 520 620" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ filter: PAPER_SHADOW, position: 'absolute', inset: 0, overflow: 'visible' }}>
+          style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
           <defs>
             <radialGradient id="sb-bezel" cx="35%" cy="30%" r="70%">
               <stop offset="0%" stopColor={SB.goldLight} />
@@ -404,7 +404,7 @@ export function StorybookWeather({ config, compact }: { config: any; compact?: b
           <path d="M 660 40 L 700 30 L 700 90 Z" fill={SB.parchmentDark} opacity="0.4" />
         </svg>
         <svg viewBox="0 0 700 500" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, overflow: 'visible', pointerEvents: 'none' }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible', pointerEvents: 'none' }}>
           {isClear && InkSun}
           {isPartly && (<>{InkCloud(SB.white)}{SmallSunPeek}</>)}
           {isOvercast && (<>{InkCloud('#D8DDE8')}</>)}
@@ -458,7 +458,7 @@ export function StorybookCountdown({ config, compact, onConfigChange }: { config
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 500 700" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ filter: PAPER_SHADOW, position: 'absolute', inset: 0, overflow: 'visible' }}>
+          style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
           <defs>
             <linearGradient id="sb-ribbon" x1="0" x2="1" y1="0" y2="0">
               <stop offset="0%" stopColor="#8A2F22" />
@@ -530,7 +530,7 @@ export function StorybookAnnouncement({ config, compact, onConfigChange }: { con
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 1800 500" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ filter: PAPER_SHADOW, position: 'absolute', inset: 0, overflow: 'visible' }}>
+          style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
           <defs>
             <linearGradient id="sb-page" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor={SB.parchmentLight} />
@@ -811,7 +811,7 @@ export function StorybookImageCarousel({ config }: { config: any; compact?: bool
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Parchment plate backing */}
         <div style={{
-          position: 'absolute', inset: 0,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
           background: `radial-gradient(ellipse at center, ${SB.parchmentLight}, ${SB.parchment} 70%, ${SB.parchmentDark})`,
           border: `4px solid ${SB.ink}`,
           borderRadius: '50% / 50%',
@@ -909,7 +909,7 @@ export function StorybookTicker({ config, compact }: { config: any; compact?: bo
   return (
     <div className="absolute inset-0" style={{ overflow: 'visible' }}>
       <svg viewBox="0 0 2000 220" width="100%" height="100%" preserveAspectRatio="none"
-        style={{ position: 'absolute', inset: 0, filter: PAPER_SHADOW, overflow: 'visible' }}>
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: PAPER_SHADOW, overflow: 'visible' }}>
         <defs>
           <linearGradient id="sb-banner" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor={SB.parchmentLight} />
@@ -927,7 +927,7 @@ export function StorybookTicker({ config, compact }: { config: any; compact?: bo
       </svg>
       {/* Rope tassels on both ends */}
       <svg viewBox="0 0 2000 220" width="100%" height="100%" preserveAspectRatio="none"
-        style={{ position: 'absolute', inset: 0, overflow: 'visible', pointerEvents: 'none' }}>
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible', pointerEvents: 'none' }}>
         {/* left rope */}
         <path d="M 10 110 Q -20 130 -30 170 Q -38 200 -20 210"
           stroke={SB.gold} strokeWidth="5" fill="none" strokeLinecap="round"

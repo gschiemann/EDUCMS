@@ -116,7 +116,7 @@ export function AnimatedMorningNewsWidget({ config, live }: { config?: Cfg; live
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#0f172a',
       }}
@@ -251,7 +251,7 @@ const CSS_MN = `
   overflow: hidden;
 }
 .mn-stage::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 7;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 7;
   background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(255,255,255,.015) 2px 4px);
 }
 
@@ -317,7 +317,7 @@ const CSS_MN = `
     linear-gradient(135deg, #1e3a8a 0%, #831843 100%);
 }
 .mn-screen::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,.04) 3px 4px);
 }
 .mn-iconic {

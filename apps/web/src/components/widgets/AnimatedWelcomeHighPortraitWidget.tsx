@@ -305,7 +305,7 @@ export function AnimatedWelcomeHighPortraitWidget({
   return (
     <div
       ref={wrapperRef}
-      style={{ position: 'absolute', inset: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fce7f3' }}
+      style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fce7f3' }}
     >
       <style>{CSS_HSP}</style>
 
@@ -497,7 +497,7 @@ const CSS_HSP = `
     linear-gradient(180deg, #fce7f3 0%, #ffe4e6 30%, #fef3c7 70%, #fed7aa 100%);
   overflow: hidden;
 }
-.hsp-confettiLayer { position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
+.hsp-confettiLayer { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 4; overflow: hidden; }
 .hsp-confetti {
   position: absolute; top: -60px; width: 28px; height: 44px; border-radius: 6px;
   animation: hsp-confettiFall linear infinite; will-change: transform;
@@ -619,7 +619,7 @@ const CSS_HSP = `
 }
 .hsp-clock { position: relative; width: 600px; height: 600px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .hsp-rays {
-  position: absolute; inset: 0; border-radius: 50%;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 50%;
   background: conic-gradient(from 0deg,
     #fbbf24 0 20deg, transparent 20deg 40deg,
     #ec4899 40deg 60deg, transparent 60deg 80deg,
@@ -752,7 +752,7 @@ const CSS_HSP = `
   clip-path: polygon(0 0, 100% 0, 30% 100%);
   border-right: 12px solid #ec4899; border-bottom: 12px solid #ec4899;
 }
-.hsp-stars { position: absolute; inset: 0; pointer-events: none; }
+.hsp-stars { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; }
 .hsp-stars span { position: absolute; font-size: 70px; opacity: .9; animation: hsp-twinkle 2.5s ease-in-out infinite; }
 .hsp-stars span:nth-child(1) { top: 4%;  left: 8%; }
 .hsp-stars span:nth-child(2) { top: 8%;  right: 12%; animation-delay: .3s; }
@@ -815,7 +815,7 @@ const CSS_HSP = `
   box-shadow: 0 16px 40px rgba(236, 72, 153, .25);
   overflow: hidden;
 }
-.hsp-bdConfettiLayer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+.hsp-bdConfettiLayer { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 1; overflow: hidden; }
 .hsp-bdConfetti {
   position: absolute; top: -30px;
   animation: hsp-bdConfettiFall linear infinite; will-change: transform;
@@ -826,7 +826,7 @@ const CSS_HSP = `
   100% { transform: translateY(420px) rotate(540deg); opacity: .8; }
 }
 .hsp-bdContent {
-  position: absolute; inset: 0; z-index: 2;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 2;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 24px 40px; gap: 18px;
 }

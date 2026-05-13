@@ -170,7 +170,7 @@ export function AnimatedCafeteriaMiddleWidget({ config, live }: { config?: Cfg; 
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#0a0e27',
       }}
@@ -454,7 +454,7 @@ const CSS_MS = `
   overflow: hidden;
 }
 .ms-board::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: #000;
   box-shadow: inset 0 0 30px rgba(251,191,36,.12);
   z-index: 0;

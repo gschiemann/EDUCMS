@@ -168,7 +168,7 @@ export function LockerHallwayText({
       <div style={{ flex: !compact && subtitle ? '0 0 62%' : '0 0 100%', minHeight: 0, position: 'relative' }}>
         {/* Brushed-steel horizontal strip */}
         <svg viewBox="0 0 1800 220" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0, filter: `drop-shadow(0 8px 18px ${LH.shadow})` }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 8px 18px ${LH.shadow})` }}>
           <defs>
             <linearGradient id="lhStripGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={LH.steelLight} />
@@ -220,7 +220,7 @@ export function LockerHallwayText({
       {!compact && subtitle && (
         <div style={{ flex: '1 1 0', minHeight: 0, position: 'relative' }}>
           <svg viewBox="0 0 1800 90" width="100%" height="100%" preserveAspectRatio="none"
-            style={{ position: 'absolute', inset: 0, filter: `drop-shadow(0 4px 8px ${LH.shadow})` }}>
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 4px 8px ${LH.shadow})` }}>
             <rect x="0" y="0" width="1800" height="90" rx="6" fill={LH.notebook}
               stroke={LH.steelDark} strokeWidth="4" vectorEffect="non-scaling-stroke" />
             {/* Notebook rule lines */}
@@ -281,7 +281,7 @@ export function LockerHallwayClock({
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 600 600" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, filter: `drop-shadow(0 10px 24px ${LH.shadow})` }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 10px 24px ${LH.shadow})` }}>
           <defs>
             <radialGradient id="lhDialGrad" cx="38%" cy="35%" r="70%">
               <stop offset="0%" stopColor={LH.steelLight} />
@@ -476,7 +476,7 @@ export function LockerHallwayWeather({
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Locker door with paper taped inside */}
         <svg viewBox="0 0 600 540" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, filter: `drop-shadow(0 8px 20px ${LH.shadow})` }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 8px 20px ${LH.shadow})` }}>
           {/* Door body */}
           <LockerFaceRect x={20} y={20} w={560} h={500} />
           {/* Notebook paper taped inside */}
@@ -550,7 +550,7 @@ export function LockerHallwayCountdown({
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 540" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, filter: `drop-shadow(0 10px 22px ${LH.shadow})` }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 10px 22px ${LH.shadow})` }}>
           {/* Locker door backdrop */}
           <LockerFaceRect x={20} y={20} w={660} h={500} />
           {/* Pennant — triangle shape */}
@@ -618,7 +618,7 @@ export function LockerHallwayAnnouncement({
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 1600 500" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0, filter: `drop-shadow(0 10px 22px ${LH.shadow})` }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 10px 22px ${LH.shadow})` }}>
           {/* Locker body strip */}
           <defs>
             <linearGradient id="lhAnnGrad" x1="0" y1="0" x2="0" y2="1">
@@ -767,7 +767,7 @@ export function LockerHallwayStaffSpotlight({
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 640 580" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, filter: `drop-shadow(0 8px 20px ${LH.shadow})` }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 8px 20px ${LH.shadow})` }}>
           {/* Locker door */}
           <LockerFaceRect x={0} y={0} w={640} h={580} />
           {/* Polaroid frame */}
@@ -862,7 +862,7 @@ export function LockerHallwayImageCarousel({
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Locker-steel background plate */}
         <svg viewBox="0 0 700 560" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0, filter: `drop-shadow(0 8px 18px ${LH.shadow})` }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 8px 18px ${LH.shadow})` }}>
           <defs>
             <linearGradient id="lhCarGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={LH.steelLight} />
@@ -996,7 +996,7 @@ export function LockerHallwayTicker({
 
       {/* Scrolling message text */}
       <div style={{
-        position: 'absolute', inset: 0,
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         display: 'flex', alignItems: 'center',
         paddingLeft: '3%', paddingRight: '3%',
         fontFamily: LH_FONT_DISPLAY,

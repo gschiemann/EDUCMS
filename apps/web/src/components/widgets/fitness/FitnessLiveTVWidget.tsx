@@ -466,16 +466,16 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&display=swap');
 
 .fltv-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: #000;
   overflow: hidden;
   font-family: 'Outfit', sans-serif;
 }
 .fltv-frame {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
 }
 .fltv-video, .fltv-iframe {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   width: 100%; height: 100%;
   border: 0;
   background: #000;
@@ -532,7 +532,7 @@ const CSS = `
 
 /* ─── Broadcast-monitor aesthetic ─── */
 .fltv-scanlines {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   z-index: 5; pointer-events: none;
   background-image: repeating-linear-gradient(
     to bottom,
@@ -543,12 +543,12 @@ const CSS = `
   opacity: 0.5;
 }
 .fltv-vignette {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   z-index: 6; pointer-events: none;
   box-shadow: inset 0 0 120px rgba(0,0,0,0.6);
 }
 .fltv-glow-frame {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   z-index: 7; pointer-events: none;
   box-shadow:
     inset 0 0 0 2px var(--fltv-accent, #ff2a4d),
@@ -563,13 +563,13 @@ const CSS = `
 
 /* ─── Demo placeholder (no stream configured or preview) ─── */
 .fltv-demo {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: linear-gradient(135deg, #0a0a0f, #1a1a22);
   display: flex; align-items: center; justify-content: center;
   overflow: hidden;
 }
 .fltv-demo-grid {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
@@ -600,7 +600,7 @@ const CSS = `
 
 /* ─── Overlay states (errors, loading, placeholder) ─── */
 .fltv-overlay-state {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   z-index: 8;
   background: linear-gradient(135deg, #0a0a0f, #1a1a22);
   display: flex;

@@ -275,14 +275,14 @@ const CSS = `
 
 .fp-stage::before {
   content: '';
-  position: absolute; inset: 0; pointer-events: none;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background-image:
     linear-gradient(0deg, rgba(255,255,255,.08) 0 2px, transparent 2px 100px),
     linear-gradient(90deg, rgba(255,255,255,.08) 0 2px, transparent 2px 100px);
 }
 .fp-stage::after {
   content: '';
-  position: absolute; inset: 0; pointer-events: none;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background-image:
     radial-gradient(ellipse 200px 30px at 30% 40%, rgba(255,255,255,.18), transparent 70%),
     radial-gradient(ellipse 300px 40px at 70% 70%, rgba(255,255,255,.14), transparent 70%),

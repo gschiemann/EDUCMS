@@ -139,7 +139,7 @@ export function CountdownGlassRingWidget({ config, live = true }: WidgetProps<Cd
             <circle cx="100" cy="100" r="84" fill="none" stroke="rgba(99,102,241,0.15)" strokeWidth="14" />
             <circle cx="100" cy="100" r="84" fill="none" stroke="url(#cdg)" strokeWidth="14" strokeLinecap="round" strokeDasharray={`${pct * 528} 528`} />
           </svg>
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ fontSize: 68, fontWeight: 200, lineHeight: 1, letterSpacing: '-0.04em' }}>{v.d}</div>
             <div style={{ fontSize: '0.7em', color: '#64748b', fontWeight: 600, letterSpacing: '0.2em' }}>DAYS</div>
           </div>

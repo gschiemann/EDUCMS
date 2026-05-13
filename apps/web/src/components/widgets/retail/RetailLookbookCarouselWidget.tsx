@@ -165,7 +165,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap');
 
 .rlcw-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   background: #1a1411;
   color: var(--rlcw-ink, #ffffff);
@@ -173,7 +173,7 @@ const CSS = `
   container-type: size;
 }
 .rlcw-slide {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   transition: opacity var(--rlcw-fade, 800ms) ease-in-out;
 }
 .rlcw-image {
@@ -183,7 +183,7 @@ const CSS = `
   display: block;
 }
 .rlcw-swatch {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   display: flex; align-items: center; justify-content: center;
 }
 .rlcw-emoji {
@@ -191,7 +191,7 @@ const CSS = `
   filter: drop-shadow(0 16px 56px rgba(0,0,0,0.35));
 }
 .rlcw-overlay {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: linear-gradient(180deg,
     rgba(0,0,0,0) 30%,
     rgba(0,0,0,0.4) 70%,

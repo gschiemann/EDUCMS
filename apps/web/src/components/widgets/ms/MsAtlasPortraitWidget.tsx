@@ -643,7 +643,7 @@ const CSS = `
    sized for portrait. Mirrors the mockup's .stage::before; HsStage owns
    its own ::before so we use a dedicated div. */
 .ms-atl-p-contour {
-  position: absolute; inset: 0; pointer-events: none; opacity: .16; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; opacity: .16; z-index: 0;
   background-image:
     radial-gradient(circle at 82% 22%, transparent 320px, rgba(11,18,32,.30) 322px, transparent 328px),
     radial-gradient(circle at 82% 22%, transparent 400px, rgba(11,18,32,.30) 402px, transparent 408px),
@@ -893,7 +893,7 @@ const CSS = `
   z-index: 2;
 }
 .ms-atl-p-alm-sun::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: conic-gradient(from 0deg,
     #0b1220 0deg 4deg, transparent 4deg 30deg,
     #0b1220 30deg 34deg, transparent 34deg 60deg,

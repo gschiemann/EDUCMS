@@ -171,7 +171,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
 
 .btl-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   color: #f8fafc;
   font-family: 'Inter', system-ui, sans-serif;
@@ -180,7 +180,7 @@ const CSS = `
 
 /* ─── Background ─── */
 .btl-bg {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
   background:
     radial-gradient(800px 500px at 80% 100%, rgba(180,83,9,0.10), transparent 60%),
     radial-gradient(700px 400px at 10% 0%, rgba(245,158,11,0.07), transparent 60%),
@@ -194,7 +194,7 @@ const CSS = `
   filter: blur(80px);
 }
 .btl-grain {
-  position: absolute; inset: 0; z-index: 2;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 2;
   pointer-events: none;
   opacity: 0.05;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>");

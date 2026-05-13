@@ -728,7 +728,7 @@ export function SeniorCountdownImageCarousel({ config }: { config: any; compact?
         overflow: 'hidden',
       }}>
         {/* Frame corner ornaments (SVG overlay) */}
-        <svg style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 2 }} width="100%" height="100%">
+        <svg style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, pointerEvents: 'none', zIndex: 2 }} width="100%" height="100%">
           {[['0%','0%','8 0 0 8'],['100%','0%','-8 0 0 8'],['0%','100%','8 0 0 -8'],['100%','100%','-8 0 0 -8']].map(([x,y,r],i) => (
             <g key={i} transform={`translate(${x} ${y}) scale(${r})`} opacity="0.9">
               <path d="M 0 30 L 0 0 L 30 0" stroke={SCD.goldLight} strokeWidth="3" fill="none" />

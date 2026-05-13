@@ -173,7 +173,7 @@ export function AnimatedCafeteriaFoodtruckPortraitWidget({ config, live }: { con
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#0a0e27',
       }}
@@ -504,7 +504,7 @@ const CSS_FTP = `
   display: flex; align-items: center; justify-content: center;
 }
 .ftp-rays {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: conic-gradient(from 0deg, #fbbf24, #ec4899, #06b6d4, #fbbf24, #ec4899, #06b6d4, #fbbf24);
   border-radius: 50%;
   animation: ftp-burstSpin 12s linear infinite;

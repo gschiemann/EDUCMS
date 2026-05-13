@@ -421,7 +421,7 @@ const CSS = `
 
 /* ── Root ── */
 .falw-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   color: #f1f5f9;
   font-family: 'Inter', system-ui, sans-serif;
@@ -432,7 +432,7 @@ const CSS = `
 
 /* ── Background layers ── */
 .falw-bg {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
   background: linear-gradient(145deg, #0a0a10 0%, #12121c 55%, #0b0b12 100%);
 }
 .falw-glow-a {
@@ -462,7 +462,7 @@ const CSS = `
   to   { transform: translate(-6cqw, -5cqh) scale(1.08); }
 }
 .falw-grain {
-  position: absolute; inset: 0; z-index: 2;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 2;
   pointer-events: none;
   opacity: 0.04;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");

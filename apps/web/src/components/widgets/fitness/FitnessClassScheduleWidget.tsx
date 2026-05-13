@@ -226,7 +226,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&family=Inter+Mono:wght@400;500&display=swap');
 
 .fcsw-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   color: #f8fafc;
   font-family: 'Inter', system-ui, sans-serif;
@@ -235,7 +235,7 @@ const CSS = `
 
 /* ─── Background stack ─── */
 .fcsw-bg {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
   background: linear-gradient(160deg, #07070c 0%, #0a0a0f 55%, #0b0b10 100%);
 }
 .fcsw-glow {
@@ -246,7 +246,7 @@ const CSS = `
   filter: blur(72px);
 }
 .fcsw-grain {
-  position: absolute; inset: 0; z-index: 2;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 2;
   pointer-events: none;
   opacity: 0.04;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");

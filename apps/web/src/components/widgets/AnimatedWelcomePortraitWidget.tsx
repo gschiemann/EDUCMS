@@ -285,7 +285,7 @@ export function AnimatedWelcomePortraitWidget({
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0,
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#BFE8FF',
@@ -494,7 +494,7 @@ const CSS = `
 .awp-stage::after { animation-duration: 130s; animation-delay: -40s; opacity: .65; }
 @keyframes awp-cloudDrift { from { transform: translateX(0); } to { transform: translateX(50%); } }
 
-.awp-confettiLayer { position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
+.awp-confettiLayer { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 4; overflow: hidden; }
 .awp-confetti {
   position: absolute; top: -20px; width: 12px; height: 18px; border-radius: 2px;
   animation: awp-confettiFall linear infinite; will-change: transform;
@@ -675,7 +675,7 @@ const CSS = `
     0 16px 32px rgba(0,0,0,.18);
   z-index: -1;
 }
-.awp-stars { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.awp-stars { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 1; }
 .awp-stars span { position: absolute; font-size: 42px; opacity: .9; animation: awp-twinkle 1.4s ease-in-out infinite; }
 .awp-stars span:nth-child(1) { top: 46px;  left: 120px; }
 .awp-stars span:nth-child(2) { top: 70px;  right: 130px; animation-delay: .3s; }

@@ -331,7 +331,7 @@ const CSS = `
 .fc-channel-stage::before {
   content: '';
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   pointer-events: none;
   background-image: repeating-linear-gradient(0deg, rgba(0,212,255,.04) 0 1px, transparent 1px 4px);
 }
@@ -363,7 +363,7 @@ const CSS = `
   position: relative; overflow: hidden;
 }
 .fc-screen::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: radial-gradient(900px 600px at 50% 40%, rgba(0,212,255,.18), transparent 60%);
 }
 .fc-chnum {

@@ -299,7 +299,7 @@ const CSS = `
 .hs-gl-cap { font-family: 'EB Garamond', serif; font-style: italic; font-weight: 400; font-size: 64px; color: #1a1814; margin-top: 12px; line-height: 1.2; opacity: .75; }
 .hs-gl-feature { position: absolute; bottom: 200px; left: 120px; width: 2100px; height: 580px; display: grid; grid-template-columns: 520px 1fr; gap: 60px; border-top: 1px solid #2a2724; padding-top: 40px; }
 .hs-gl-portrait { width: 520px; height: 540px; background: linear-gradient(160deg, #d8cfba, #b5a88d); position: relative; overflow: hidden; }
-.hs-gl-portrait::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 35% 35%, rgba(0,0,0,.1), transparent 40%), repeating-linear-gradient(35deg, rgba(0,0,0,.03) 0 10px, transparent 10px 20px); }
+.hs-gl-portrait::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: radial-gradient(circle at 35% 35%, rgba(0,0,0,.1), transparent 40%), repeating-linear-gradient(35deg, rgba(0,0,0,.03) 0 10px, transparent 10px 20px); }
 .hs-gl-tag { position: absolute; bottom: 24px; left: 24px; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 52px; color: #1a1814; background: #f5f1e8; padding: 10px 18px; letter-spacing: .2em; text-transform: uppercase; z-index: 1; }
 .hs-gl-text .hs-gl-label { margin-bottom: 22px; }
 .hs-gl-h2 { font-family: 'EB Garamond', serif; font-weight: 400; font-style: italic; font-size: 170px; line-height: .92; margin: 0 0 14px; color: #1a1814; letter-spacing: -.02em; }

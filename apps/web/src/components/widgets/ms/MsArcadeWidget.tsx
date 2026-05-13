@@ -466,7 +466,7 @@ const CSS = `
 }
 
 .ms-arc-glow {
-  position: absolute; inset: 0; pointer-events: none;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background: radial-gradient(ellipse 1600px 900px at 50% 18%, rgba(93,242,141,.10), transparent 60%);
 }
 

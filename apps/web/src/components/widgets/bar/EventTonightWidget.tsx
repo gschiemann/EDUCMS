@@ -166,7 +166,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Anton&family=Outfit:wght@500;600;700;800&family=Inter:wght@500;600&family=Permanent+Marker&display=swap');
 
 .bet-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   color: #f8fafc;
   font-family: 'Inter', system-ui, sans-serif;
@@ -175,7 +175,7 @@ const CSS = `
 }
 
 .bet-bg {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
   background: linear-gradient(155deg, #160730 0%, #0a0218 50%, #200822 100%);
 }
 .bet-glow1 {
@@ -193,14 +193,14 @@ const CSS = `
   filter: blur(70px);
 }
 .bet-grain {
-  position: absolute; inset: 0; z-index: 2;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 2;
   pointer-events: none;
   opacity: 0.10;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/></svg>");
   mix-blend-mode: overlay;
 }
 .bet-halftone {
-  position: absolute; inset: 0; z-index: 3;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 3;
   width: 100%; height: 100%;
   opacity: 0.06;
   mix-blend-mode: screen;

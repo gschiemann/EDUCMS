@@ -663,7 +663,7 @@ export function ArtStudioStaffSpotlight({ config, onConfigChange }: { config: an
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 420 360" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
           {/* Easel legs */}
           <line x1="210" y1="290" x2="120" y2="360" stroke="#8A6030" strokeWidth="9" strokeLinecap="round" />
           <line x1="210" y1="290" x2="300" y2="360" stroke="#8A6030" strokeWidth="9" strokeLinecap="round" />
@@ -753,7 +753,7 @@ export function ArtStudioImageCarousel({ config }: { config: any; compact?: bool
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 420 370" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
           {/* Easel legs */}
           <line x1="210" y1="290" x2="115" y2="370" stroke="#8A6030" strokeWidth="10" strokeLinecap="round" />
           <line x1="210" y1="290" x2="305" y2="370" stroke="#8A6030" strokeWidth="10" strokeLinecap="round" />

@@ -512,7 +512,7 @@ const CSS = `
 
 /* Soft ambient green vignette near the top (matches .stage::before). */
 .ms-arc-p-glow {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background: radial-gradient(ellipse 1400px 1100px at 50% 14%, rgba(93,242,141,.12), transparent 60%);
 }
 

@@ -167,7 +167,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600;700&display=swap');
 
 .rmb-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   font-family: 'Inter', system-ui, sans-serif;
   container-type: size;

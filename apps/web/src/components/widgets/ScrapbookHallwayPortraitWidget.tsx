@@ -141,7 +141,7 @@ export function ScrapbookHallwayPortraitWidget({ config, live }: { config?: Cfg;
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#fff7ed',
       }}
@@ -303,7 +303,7 @@ const CSS_SBHP = `
   animation: sbhp-paperSway 18s ease-in-out infinite;
 }
 .sbhp-stage::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .35; z-index: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; opacity: .35; z-index: 0;
   background:
     repeating-radial-gradient(circle at 12% 22%, transparent 0 2px, rgba(180,83,9,.018) 2px 3px),
     repeating-radial-gradient(circle at 72% 78%, transparent 0 3px, rgba(180,83,9,.018) 3px 4px);

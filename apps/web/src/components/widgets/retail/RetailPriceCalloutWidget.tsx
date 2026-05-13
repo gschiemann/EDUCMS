@@ -144,7 +144,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap');
 
 .rpcw-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: var(--rpcw-bg, #faf6f1);
   color: var(--rpcw-ink, #1a1411);
   font-family: 'Inter', sans-serif;
@@ -165,7 +165,7 @@ const CSS = `
   display: block;
 }
 .rpcw-swatch {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   display: flex; align-items: center; justify-content: center;
 }
 .rpcw-emoji {
@@ -182,7 +182,7 @@ const CSS = `
   animation: rpcw-spin 14s linear infinite;
 }
 .rpcw-starburst-svg {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   width: 100%; height: 100%;
   filter: drop-shadow(0 6px 16px rgba(0,0,0,0.2));
 }

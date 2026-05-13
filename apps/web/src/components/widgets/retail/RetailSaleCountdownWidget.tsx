@@ -137,7 +137,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap');
 
 .rscw-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: var(--rscw-bg, #1a1411);
   color: var(--rscw-ink, #faf6f1);
   font-family: 'Inter', sans-serif;

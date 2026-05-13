@@ -24,7 +24,7 @@ export function PhotoNeonGlitchWidget({ config }: WidgetProps<PhotoCfg>) {
       {r.anim.on && <style>{`@keyframes glitch { 0%,90%,100% { transform: translate(0); } 92% { transform: translate(-3px,2px); } 95% { transform: translate(2px,-2px); } }`}</style>}
       <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: 8, overflow: 'hidden', border: `2px solid ${r.accent.primary}`, boxShadow: `0 0 24px ${r.accent.primary}88`, animation: r.anim.on ? `glitch ${dur * 6}s steps(2) infinite` : 'none' }}>
         {photos[idx]?.url ? <img src={photos[idx].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'saturate(1.4) contrast(1.1)' }} /> : <Placeholder accent={r.accent.primary} label={photos[idx]?.caption || 'photo'} />}
-        <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(180deg, transparent 50%, rgba(255,43,214,0.15) 100%)`, mixBlendMode: 'screen' }} />
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: `linear-gradient(180deg, transparent 50%, rgba(255,43,214,0.15) 100%)`, mixBlendMode: 'screen' }} />
         <div style={{ position: 'absolute', bottom: 12, left: 12, right: 12, color: r.accent.primary, fontSize: r.font.size, letterSpacing: '0.2em', textShadow: `0 0 12px ${r.accent.primary}` }}>● {photos[idx]?.caption || c.title || 'GALLERY'}</div>
         <div style={{ position: 'absolute', top: 8, right: 12, color: r.accent.secondary, fontSize: '0.75em', letterSpacing: '0.2em' }}>{idx + 1} / {photos.length}</div>
       </div>

@@ -174,7 +174,7 @@ export function VarsityAthleticText({ config, compact, onConfigChange }: { confi
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Jumbotron frame */}
         <svg viewBox="0 0 3200 400" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0, filter: 'drop-shadow(0 8px 24px rgba(5,16,31,0.8))' }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: 'drop-shadow(0 8px 24px rgba(5,16,31,0.8))' }}>
           <defs>
             <linearGradient id="jumboBg" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#1A3560" />
@@ -1045,7 +1045,7 @@ export function VarsityAthleticTicker({ config, compact }: { config: any; compac
     <div className="absolute inset-0" style={{ overflow: 'hidden' }} ref={containerRef}>
       {/* Dark scoreboard bg */}
       <div style={{
-        position: 'absolute', inset: 0,
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         background: `linear-gradient(180deg, #0A1A0A 0%, #050A05 100%)`,
         border: `3px solid ${VA.chromeDark}`,
         borderRadius: 6,

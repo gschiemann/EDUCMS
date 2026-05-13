@@ -232,7 +232,7 @@ export function JumbotronProText({ config, compact, onConfigChange }: { config: 
                   position: 'relative', overflow: 'hidden',
                 }}>
                   <div style={{
-                    position: 'absolute', inset: 0,
+                    position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
                     background: LED_SCANLINES,
                     pointerEvents: 'none',
                   }} />
@@ -293,7 +293,7 @@ export function JumbotronProText({ config, compact, onConfigChange }: { config: 
                   position: 'relative', overflow: 'hidden',
                 }}>
                   <div style={{
-                    position: 'absolute', inset: 0,
+                    position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
                     background: LED_SCANLINES,
                     pointerEvents: 'none',
                   }} />
@@ -709,7 +709,7 @@ export function JumbotronProCountdown({ config, compact, onConfigChange }: { con
                 zIndex: 3,
               }} />
               <div style={{
-                position: 'absolute', inset: 0,
+                position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
                 background: `${LED_SCANLINES}`,
                 pointerEvents: 'none', zIndex: 2,
               }} />
@@ -1169,7 +1169,7 @@ export function JumbotronProImageCarousel({ config }: { config: any; compact?: b
           )}
           {/* Scanline overlay */}
           <div style={{
-            position: 'absolute', inset: 0,
+            position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
             background: LED_SCANLINES,
             pointerEvents: 'none',
             mixBlendMode: 'overlay',
@@ -1221,7 +1221,7 @@ export function JumbotronProTicker({ config }: { config: any; compact?: boolean 
   return (
     <div className="absolute inset-0" style={{ overflow: 'hidden' }}>
       <div style={{
-        position: 'absolute', inset: 0,
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         background: `linear-gradient(180deg, ${JP.stadiumBlack} 0%, #020407 50%, ${JP.stadiumBlack} 100%)`,
         borderTop: `2px solid ${JP.ledAmber}`,
         borderBottom: `2px solid ${JP.ledAmber}`,

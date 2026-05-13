@@ -316,8 +316,8 @@ export function HsTerminalWidget({ config, live }: { config?: HsTerminalConfig; 
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=VT323&display=swap');
-.hs-tm-scan { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 2px, transparent 2px 4px); pointer-events: none; z-index: 3; }
-.hs-tm-vignette { position: absolute; inset: 0; box-shadow: inset 0 0 400px rgba(0,0,0,.7); pointer-events: none; z-index: 2; }
+.hs-tm-scan { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 2px, transparent 2px 4px); pointer-events: none; z-index: 3; }
+.hs-tm-vignette { position: absolute; top: 0; right: 0; bottom: 0; left: 0; box-shadow: inset 0 0 400px rgba(0,0,0,.7); pointer-events: none; z-index: 2; }
 .hs-tm-topbar { position: absolute; top: 40px; left: 40px; right: 40px; height: 100px; border: 3px solid #9bff9b; padding: 0 28px; display: flex; align-items: center; justify-content: space-between; font-size: 56px; letter-spacing: .08em; background: rgba(0,20,0,.4); }
 .hs-tm-left { display: flex; gap: 36px; align-items: center; }
 .hs-tm-host { color: #ffe37a; font-weight: 700; }

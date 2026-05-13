@@ -675,7 +675,7 @@ const CSS = `
 
 /* Faint horizontal fold line + edge vignette for "real paper" */
 .ms-pp-paperfx {
-  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 0;
   background:
     linear-gradient(to bottom, transparent 50%, rgba(0,0,0,.05) 50%, rgba(0,0,0,.05) 50.1%, transparent 50.2%),
     radial-gradient(ellipse at center, transparent 60%, rgba(60, 40, 20, .12) 100%);
@@ -971,7 +971,7 @@ const CSS = `
     radial-gradient(ellipse 110px 90px at 50% 80%, rgba(40,30,20,.92) 70%, transparent 72%);
 }
 .ms-pp-photo .ms-pp-frame::after {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: linear-gradient(135deg, rgba(255,255,255,.06), transparent 60%);
 }
 .ms-pp-photo .ms-pp-caption {

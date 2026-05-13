@@ -459,7 +459,7 @@ export function TrackDayAnnouncement({ config, compact, onConfigChange }: { conf
       }}>
         {/* Clipboard backing */}
         <div style={{
-          position: 'absolute', inset: 0,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
           background: '#A1662F',
           borderRadius: 10,
           border: `4px solid ${TD.ink}`,

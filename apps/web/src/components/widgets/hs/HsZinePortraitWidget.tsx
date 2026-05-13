@@ -443,7 +443,7 @@ export function HsZinePortraitWidget({ config, live }: { config?: Cfg; live?: bo
 /** Inlined CSS — every pixel is sized for the 2160×3840 portrait stage. */
 const CSS = `
 .hs-zp-streaks {
-  position: absolute; inset: 0; pointer-events: none;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background:
     linear-gradient(90deg, transparent 36%, rgba(0,0,0,.05) 60%, transparent 80%),
     linear-gradient(90deg, transparent 8%, rgba(0,0,0,.06) 13%, transparent 18%),
@@ -619,7 +619,7 @@ const CSS = `
   position: relative; overflow: hidden;
 }
 .hs-zp-pic::after {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(0deg, rgba(255,255,255,.06) 0 2px, rgba(0,0,0,.1) 2px 4px);
   mix-blend-mode: multiply;
 }
@@ -675,7 +675,7 @@ const CSS = `
   position: relative; overflow: hidden;
 }
 .hs-zp-poster-img::after {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 3px, rgba(0,0,0,.15) 3px 5px);
   mix-blend-mode: multiply;
 }

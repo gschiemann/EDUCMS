@@ -157,7 +157,7 @@ export function AnimatedEventCountdownWidget({ config, live }: { config: Cfg; li
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#1e3a8a',
       }}
@@ -260,7 +260,7 @@ const CSS_EC = `
   overflow: hidden;
 }
 
-.ec-confettiLayer { position: absolute; inset: 0; pointer-events: none; z-index: 2; overflow: hidden; }
+.ec-confettiLayer { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 2; overflow: hidden; }
 .ec-confetti {
   position: absolute; top: -30px; width: 14px; height: 22px; border-radius: 3px;
   animation: ec-fall linear infinite; will-change: transform;
@@ -283,7 +283,7 @@ const CSS_EC = `
 @keyframes ec-spot { 0%, 100% { opacity: .25; } 50% { opacity: .6; } }
 
 .ec-stars {
-  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 1; pointer-events: none;
   background:
     radial-gradient(1px 1px at 10% 12%, #fff, transparent),
     radial-gradient(2px 2px at 24% 28%, #fff, transparent),

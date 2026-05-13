@@ -276,7 +276,7 @@ export function HsYearbookWidget({ config, live }: { config?: HsYearbookConfig; 
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
-.hs-yb-grain { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 30% 20%, rgba(0,0,0,.02), transparent 40%), radial-gradient(circle at 80% 70%, rgba(0,0,0,.03), transparent 50%), repeating-linear-gradient(0deg, rgba(0,0,0,.005) 0 2px, transparent 2px 4px); }
+.hs-yb-grain { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; background: radial-gradient(circle at 30% 20%, rgba(0,0,0,.02), transparent 40%), radial-gradient(circle at 80% 70%, rgba(0,0,0,.03), transparent 50%), repeating-linear-gradient(0deg, rgba(0,0,0,.005) 0 2px, transparent 2px 4px); }
 .hs-yb-divider { position: absolute; top: 80px; bottom: 80px; left: 50%; width: 1px; background: #d6cfbe; pointer-events: none; }
 .hs-yb-masthead { position: absolute; top: 60px; left: 80px; right: 80px; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 3px solid #1a1a17; padding-bottom: 20px; }
 .hs-yb-title { font-family: 'Playfair Display', serif; font-weight: 900; font-size: 100px; line-height: .9; letter-spacing: -.01em; color: #1a1a17; font-style: italic; }
@@ -298,7 +298,7 @@ const CSS = `
 .hs-yb-twin { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
 .hs-yb-feature { position: absolute; top: 1100px; left: 80px; width: 1780px; height: 640px; }
 .hs-yb-photo { width: 100%; height: 460px; background: linear-gradient(135deg, #d6cfbe, #b0a897); position: relative; border: 2px solid #1a1a17; overflow: hidden; }
-.hs-yb-photo::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, rgba(0,0,0,.06) 0 10px, transparent 10px 20px); }
+.hs-yb-photo::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: repeating-linear-gradient(45deg, rgba(0,0,0,.06) 0 10px, transparent 10px 20px); }
 .hs-yb-photo-tag { position: absolute; bottom: 20px; left: 20px; background: #fff; border: 2px solid #1a1a17; padding: 10px 18px; font-family: 'JetBrains Mono', monospace; font-size: 48px; letter-spacing: .12em; text-transform: uppercase; }
 .hs-yb-caption { padding-top: 24px; display: flex; gap: 24px; align-items: flex-start; border-top: 2px solid #1a1a17; margin-top: 16px; }
 .hs-yb-num { font-family: 'Playfair Display', serif; font-style: italic; font-weight: 900; font-size: 100px; line-height: .8; color: #b23b20; flex-shrink: 0; }
@@ -306,7 +306,7 @@ const CSS = `
 .hs-yb-cbody { font-family: 'Inter', sans-serif; font-weight: 400; font-size: 62px; color: #333; margin-top: 12px; line-height: 1.2; max-width: 1500px; }
 .hs-yb-featured { position: absolute; top: 1100px; right: 80px; width: 1740px; height: 640px; background: #fff; border: 2px solid #1a1a17; padding: 32px; display: grid; grid-template-columns: 620px 1fr; gap: 36px; }
 .hs-yb-portrait { width: 620px; height: 580px; background: linear-gradient(160deg, #d6cfbe, #a09680); position: relative; border: 2px solid #1a1a17; overflow: hidden; }
-.hs-yb-portrait::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(-45deg, rgba(0,0,0,.05) 0 8px, transparent 8px 16px); }
+.hs-yb-portrait::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: repeating-linear-gradient(-45deg, rgba(0,0,0,.05) 0 8px, transparent 8px 16px); }
 .hs-yb-frame { position: absolute; bottom: 18px; left: 18px; background: #fff; border: 2px solid #1a1a17; padding: 8px 16px; font-family: 'JetBrains Mono', monospace; font-size: 48px; letter-spacing: .08em; }
 .hs-yb-feat-h2 { font-family: 'Playfair Display', serif; font-weight: 900; font-style: italic; font-size: 170px; line-height: .9; margin: 10px 0 0; color: #1a1a17; letter-spacing: -.01em; }
 .hs-yb-meta { font-family: 'JetBrains Mono', monospace; font-size: 56px; color: #666; letter-spacing: .1em; margin-top: 14px; text-transform: uppercase; }

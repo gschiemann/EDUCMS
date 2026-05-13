@@ -224,7 +224,7 @@ export function SpiritRallyClock({ config, compact }: { config: any; compact?: b
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Scoreboard frame */}
         <svg viewBox="0 0 700 460" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, filter: 'drop-shadow(0 12px 24px rgba(0,0,0,0.55))' }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: 'drop-shadow(0 12px 24px rgba(0,0,0,0.55))' }}>
           {/* Outer scoreboard housing */}
           <rect x="10" y="10" width="680" height="440" rx="24" fill={SR.ink} stroke={SR.gold} strokeWidth="8" />
           {/* LED-style inner panel */}
@@ -369,7 +369,7 @@ export function SpiritRallyWeather({ config, compact }: { config: any; compact?:
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 400" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.4))' }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.4))' }}>
           {/* Pennant flag body */}
           <polygon points="40,20 640,200 40,380" fill={SR.navy} stroke={SR.gold} strokeWidth="8" />
           {/* Inner pennant detail stripe */}
@@ -444,7 +444,7 @@ export function SpiritRallyCountdown({
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 700" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0, filter: 'drop-shadow(0 18px 28px rgba(0,0,0,0.45))' }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: 'drop-shadow(0 18px 28px rgba(0,0,0,0.45))' }}>
           {/* Foam finger pointing at burst — top left */}
           <g transform="translate(60 80) rotate(35)">
             <rect x="-20" y="-90" width="56" height="100" rx="14" fill={SR.gold} stroke={SR.ink} strokeWidth="5" />
@@ -539,7 +539,7 @@ export function SpiritRallyAnnouncement({
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 1800 520" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0, filter: 'drop-shadow(0 16px 28px rgba(0,0,0,0.5))' }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: 'drop-shadow(0 16px 28px rgba(0,0,0,0.5))' }}>
           {/* Stadium spotlight cone behind banner */}
           <polygon points="900,0 400,520 1400,520" fill={SR.spotlight} />
           <polygon points="900,0 600,520 1200,520" fill="rgba(246,224,94,0.15)" />

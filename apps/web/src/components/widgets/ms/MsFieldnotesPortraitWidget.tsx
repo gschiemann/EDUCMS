@@ -824,7 +824,7 @@ const CSS = `
 
 /* Stage kraft-paper noise overlay (mockup .stage::before) */
 .ms-fn-p-stage-noise {
-  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 0;
   background-image:
     radial-gradient(rgba(60,38,12,.16) 1px, transparent 1.5px),
     radial-gradient(rgba(120,90,50,.10) 1px, transparent 2px);
@@ -835,7 +835,7 @@ const CSS = `
 }
 /* Foxing stains overlay (mockup .stage::after) */
 .ms-fn-p-stage-foxing {
-  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 0;
   background-image:
     radial-gradient(circle at 92% 18%, rgba(120,70,30,.18) 0 80px, transparent 120px),
     radial-gradient(circle at 6% 42%, rgba(120,70,30,.14) 0 60px, transparent 110px),
@@ -1070,7 +1070,7 @@ const CSS = `
   padding: 56px 80px 48px 200px;
 }
 .ms-fn-p-hero::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background-image:
     repeating-linear-gradient(180deg, transparent 0 79px, rgba(110, 80, 40, .22) 79px 81px);
   pointer-events: none;

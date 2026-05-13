@@ -177,7 +177,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@500;600;700&display=swap');
 
 .rwmw-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: var(--rwmw-bg, #faf6f1);
   color: var(--rwmw-ink, #1a1411);
   font-family: 'Inter', sans-serif;
@@ -213,12 +213,12 @@ const CSS = `
   min-height: 0;
 }
 .rwmw-map {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   width: 100%; height: 100%;
   display: block;
 }
 .rwmw-labels {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   pointer-events: none;
 }
 .rwmw-label {

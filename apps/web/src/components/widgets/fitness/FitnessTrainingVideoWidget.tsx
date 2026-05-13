@@ -226,7 +226,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap');
 
 .ftvw-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   color: #f8fafc;
   font-family: 'Inter', system-ui, sans-serif;
@@ -235,7 +235,7 @@ const CSS = `
 
 /* ─── Background stack (matches fitness pack DNA) ─── */
 .ftvw-bg {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
   background: linear-gradient(145deg, #07070c 0%, #0a0a0f 60%, #0b0b10 100%);
 }
 .ftvw-glow {
@@ -246,7 +246,7 @@ const CSS = `
   filter: blur(80px);
 }
 .ftvw-grain {
-  position: absolute; inset: 0; z-index: 2;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 2;
   pointer-events: none;
   opacity: 0.04;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");
@@ -287,7 +287,7 @@ const CSS = `
 
 /* ─── 65 / 35 split ─── */
 .ftvw-split {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   z-index: 10;
   display: flex;
 }
@@ -304,7 +304,7 @@ const CSS = `
 
 /* Neon accent ring — breathes like the music widget's pulse ring */
 .ftvw-video-ring {
-  position: absolute; inset: 0; z-index: 5;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 5;
   border-radius: 10px;
   pointer-events: none;
   box-shadow:
@@ -319,7 +319,7 @@ const CSS = `
 }
 
 .ftvw-video {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   width: 100%; height: 100%;
   object-fit: cover;
   display: block;
@@ -329,14 +329,14 @@ const CSS = `
 
 /* ─── Placeholder (no videoUrl / load error) ─── */
 .ftvw-placeholder {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   border-radius: 10px;
   overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   background: #0d0d14;
 }
 .ftvw-placeholder-anim {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: linear-gradient(
     120deg,
     #0d0d14 0%,

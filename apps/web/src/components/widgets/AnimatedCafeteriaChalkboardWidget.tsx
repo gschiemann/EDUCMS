@@ -165,7 +165,7 @@ export function AnimatedCafeteriaChalkboardWidget({ config, live }: { config: Cf
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#0a0e27',
       }}
@@ -346,7 +346,7 @@ const CSS_CHALK = `
     linear-gradient(135deg, #0f3d2b 0%, #14532d 50%, #0f3d2b 100%);
 }
 .ch-stage::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background:
     repeating-linear-gradient(45deg, transparent 0 60px, rgba(255,255,255,.012) 60px 62px),
     repeating-linear-gradient(-30deg, transparent 0 80px, rgba(255,255,255,.008) 80px 82px);
@@ -460,7 +460,7 @@ const CSS_CHALK = `
   50%      { transform: rotate(2deg); }
 }
 .ch-clock::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   border-radius: 50%;
   background:
     radial-gradient(circle, transparent 82px, rgba(254,243,199,.9) 82px, rgba(254,243,199,.9) 90px, transparent 90px);
@@ -561,7 +561,7 @@ const CSS_CHALK = `
   padding: 40px 60px;
 }
 .ch-menu::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   border: 6px dashed rgba(254,243,199,.55);
   border-radius: 20px;
   filter: blur(.2px);
@@ -638,7 +638,7 @@ const CSS_CHALK = `
   50%      { transform: rotate(8deg); }
 }
 .ch-crust {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: linear-gradient(180deg, #f59e0b 0%, #d97706 60%, #92400e 100%);
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
   filter: drop-shadow(0 6px 10px rgba(0,0,0,.4));

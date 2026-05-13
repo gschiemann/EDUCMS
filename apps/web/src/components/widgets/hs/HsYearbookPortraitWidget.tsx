@@ -379,7 +379,7 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
 /** Inlined CSS — every pixel is sized for the 2160×3840 portrait stage. */
 const CSS = `
 .hs-ybp-grain {
-  position: absolute; inset: 0; pointer-events: none;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background:
     radial-gradient(circle at 30% 20%, rgba(0,0,0,.025), transparent 40%),
     radial-gradient(circle at 80% 70%, rgba(0,0,0,.035), transparent 50%),
@@ -438,14 +438,14 @@ const CSS = `
   box-shadow: 0 16px 32px rgba(0,0,0,.18);
 }
 .hs-ybp-feat-photo::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background:
     repeating-radial-gradient(circle at 22% 38%, rgba(26,22,20,.12) 0 2px, transparent 2px 6px),
     repeating-radial-gradient(circle at 70% 64%, rgba(26,22,20,.10) 0 2px, transparent 2px 7px);
   mix-blend-mode: multiply;
 }
 .hs-ybp-feat-photo::after {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(45deg, rgba(0,0,0,.06) 0 4px, transparent 4px 9px);
 }
 .hs-ybp-feat-photo-tag {
@@ -538,14 +538,14 @@ const CSS = `
   position: relative; overflow: hidden;
 }
 .hs-ybp-pull-portrait::before {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background:
     radial-gradient(circle at 50% 40%, rgba(247,243,234,.55) 0 80px, transparent 110px),
     radial-gradient(ellipse at 50% 78%, rgba(26,22,20,.35) 0 120px, transparent 200px);
   mix-blend-mode: overlay;
 }
 .hs-ybp-pull-portrait::after {
-  content: ''; position: absolute; inset: 0;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: repeating-linear-gradient(-45deg, rgba(0,0,0,.06) 0 4px, transparent 4px 9px);
 }
 .hs-ybp-pull-frame {

@@ -62,7 +62,7 @@ export function BusLoopClock({ config, compact }: { config: any; compact?: boole
       containerType: 'size'
     }}>
       {/* LED grid overlay */}
-      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '4px 4px', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '4px 4px', pointerEvents: 'none' }} />
       
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '2cqi', color: BL.yellow, position: 'relative', zIndex: 10 }}>
         <span style={{ fontFamily: BL_DISPLAY, fontSize: 'clamp(3rem, 25cqi, 10rem)', fontWeight: 900, textShadow: '0 0 20px rgba(255,204,0,0.6)' }}>
@@ -88,7 +88,7 @@ export function BusLoopTicker({ config, compact }: { config: any; compact?: bool
       containerType: 'size'
     }}>
       {/* LED grid overlay */}
-      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(rgba(0,255,0,0.1) 1px, transparent 1px)', backgroundSize: '3px 3px', pointerEvents: 'none', zIndex: 10 }} />
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'radial-gradient(rgba(0,255,0,0.1) 1px, transparent 1px)', backgroundSize: '3px 3px', pointerEvents: 'none', zIndex: 10 }} />
       
       <div style={{
         whiteSpace: 'nowrap',

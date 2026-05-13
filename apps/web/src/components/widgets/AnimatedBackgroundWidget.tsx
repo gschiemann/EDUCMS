@@ -87,7 +87,7 @@ export function AnimatedBackgroundWidget({ config }: { config: Cfg }) {
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: 'transparent',
         pointerEvents: 'none', // Background is purely decorative, never blocks editor clicks
@@ -133,7 +133,7 @@ const CSS = `
 .abw-stage::after { animation-duration: 130s; animation-delay: -40s; opacity: .65; }
 @keyframes abw-cloudDrift { from { transform: translateX(0); } to { transform: translateX(50%); } }
 
-.abw-confettiLayer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.abw-confettiLayer { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; overflow: hidden; }
 .abw-confetti {
   position: absolute; top: -20px; width: 12px; height: 18px; border-radius: 2px;
   animation: abw-confettiFall linear infinite; will-change: transform;

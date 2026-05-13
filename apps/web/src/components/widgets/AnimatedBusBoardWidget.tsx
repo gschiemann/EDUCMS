@@ -107,7 +107,7 @@ export function AnimatedBusBoardWidget({ config, live }: { config?: Cfg; live?: 
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#bae6fd',
       }}
@@ -307,7 +307,7 @@ const CSS_BB = `
 }
 @keyframes bb-crestBob { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
 .bb-shield {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: radial-gradient(circle at 35% 30%, #fde68a, #f59e0b 60%, #b45309);
   clip-path: polygon(50% 0%, 100% 12%, 100% 60%, 50% 100%, 0 60%, 0 12%);
   display: flex; align-items: center; justify-content: center;
@@ -370,7 +370,7 @@ const CSS_BB = `
   100% { left: 100%; }
 }
 .bb-bus .bb-body {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 70%, #d97706 100%);
   border: 5px solid #1f2937;
   border-radius: 20px 20px 4px 4px;

@@ -347,7 +347,7 @@ export function AnimatedWelcomeWidget({ config, live }: { config: Cfg; live?: bo
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0,
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#BFE8FF',
@@ -592,7 +592,7 @@ const CSS = `
 .aw-stage::after { animation-duration: 130s; animation-delay: -40s; opacity: .65; }
 @keyframes aw-cloudDrift { from { transform: translateX(0); } to { transform: translateX(50%); } }
 
-.aw-confettiLayer { position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
+.aw-confettiLayer { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 4; overflow: hidden; }
 .aw-confetti {
   position: absolute; top: -20px; width: 12px; height: 18px; border-radius: 2px;
   animation: aw-confettiFall linear infinite; will-change: transform;
@@ -752,7 +752,7 @@ const CSS = `
     0 16px 32px rgba(0,0,0,.18);
   z-index: -1;
 }
-.aw-stars { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.aw-stars { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 1; }
 .aw-stars span { position: absolute; font-size: 44px; opacity: .9; animation: aw-twinkle 1.4s ease-in-out infinite; }
 .aw-stars span:nth-child(1) { top: 50px; left: 130px; }
 .aw-stars span:nth-child(2) { top: 80px; right: 140px; animation-delay: .3s; }

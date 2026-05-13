@@ -271,7 +271,7 @@ const CSS = `
 .fn-stage::before {
   content: '';
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   pointer-events: none;
   opacity: .35;
   background-image: radial-gradient(circle at center, rgba(0,0,0,.6) 1px, transparent 1.6px);
@@ -281,7 +281,7 @@ const CSS = `
 .fn-stage::after {
   content: '';
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   pointer-events: none;
   background-image:
     repeating-linear-gradient(102deg, transparent 0 80px, rgba(255,255,255,.04) 80px 82px),

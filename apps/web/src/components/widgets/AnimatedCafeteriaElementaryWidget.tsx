@@ -199,7 +199,7 @@ export function AnimatedCafeteriaElementaryWidget({ config, live }: { config: Cf
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#fce7f3',
       }}
@@ -653,7 +653,7 @@ const CSS_CAFE = `
 .cafe-burst { position: relative; width: 240px; height: 240px; animation: cafe-burst 14s linear infinite; }
 @keyframes cafe-burst { to { transform: rotate(360deg); } }
 .cafe-rays {
-  position: absolute; inset: 0; border-radius: 50%;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 50%;
   background: conic-gradient(from 0deg,
     #fde68a 0 20deg, #fbbf24 20deg 40deg,
     #fde68a 40deg 60deg, #fbbf24 60deg 80deg,

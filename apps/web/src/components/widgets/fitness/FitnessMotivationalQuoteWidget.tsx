@@ -227,7 +227,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Inter:ital,wght@1,400;1,500&display=swap');
 
 .fmqw-root {
-  position: absolute; inset: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   overflow: hidden;
   font-family: 'Outfit', sans-serif;
   color: #f8fafc;
@@ -236,14 +236,14 @@ const CSS = `
 
 /* ─── Dark charcoal gradient background ─── */
 .fmqw-bg {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
   background:
     linear-gradient(160deg, #07070c 0%, #0d0d14 45%, #0a0a0f 100%);
 }
 
 /* ─── Slow-drifting vertical light rays ─── */
 .fmqw-rays {
-  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 1; pointer-events: none;
   overflow: hidden;
 }
 .fmqw-ray {
@@ -270,7 +270,7 @@ const CSS = `
 
 /* ─── Center quote column ─── */
 .fmqw-center {
-  position: absolute; inset: 0; z-index: 10;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 10;
   display: flex;
   align-items: center;
   justify-content: center;

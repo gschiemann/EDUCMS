@@ -209,7 +209,7 @@ export function AnimatedBellScheduleWidget({ config, live }: { config?: Cfg; liv
     <div
       ref={wrapperRef}
       style={{
-        position: 'absolute', inset: 0, overflow: 'hidden',
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#0f172a',
       }}
@@ -324,7 +324,7 @@ const CSS_BS = `
   overflow: hidden;
 }
 .bs-stage::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .08;
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; opacity: .08;
   background:
     linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px) 0 0 / 60px 60px,
     linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px) 0 0 / 60px 60px;
