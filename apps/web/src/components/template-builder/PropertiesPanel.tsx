@@ -2085,27 +2085,29 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       // icon is useless; treat it as a reset signal instead).
       fields.push(
         <ColorPickerField
-          key="bgColor"
-          label="Button background"
-          value={cfg.bgColor || ''}
-          onChange={(v) => setField({ bgColor: v || undefined })}
-          allowTransparent
-        />
-      );
-      fields.push(
-        <ColorPickerField
           key="color"
-          label="Icon / text color"
+          label="Icon color"
           value={cfg.color || ''}
           onChange={(v) => setField({ color: v || undefined })}
           allowTransparent
         />
       );
       fields.push(
+        <ColorPickerField
+          key="bgColor"
+          label="Button background (optional)"
+          value={cfg.bgColor === 'transparent' ? '' : (cfg.bgColor || '')}
+          onChange={(v) => setField({ bgColor: v ? v : 'transparent' })}
+          allowTransparent
+        />
+      );
+      fields.push(
         <p key="reset-tip" className="text-[10px] text-slate-400 -mt-1 leading-snug">
-          <strong>Clear background</strong> → renders the icon only (no button disc behind it).
+          Touch widgets render <strong>icon-only</strong> by default — the zone stays transparent.
           <br />
-          <strong>Clear icon color</strong> → falls back to the tenant brand color.
+          <strong>Add a button background</strong> by picking a color above; an inscribed circular disc paints behind the icon.
+          <br />
+          <strong>Clear icon color</strong> to fall back to the tenant brand color.
         </p>
       );
       break;

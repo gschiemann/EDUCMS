@@ -834,7 +834,18 @@ for (const tv of TOUCH_VARIANTS) {
     description: tv.description,
     category: 'MODERN',
     render: TouchTile as ComponentType<ThemeWidgetProps>,
-    defaultConfig: { variant: tv.id, ...(tv.extraConfig || {}) },
+    // Operator (2026-05-13): "the square should stay transparent and
+    // we should just be able to update the two layers of the circle
+    // shown in the image." Defaulting bgColor='transparent' makes the
+    // touch widget render as JUST THE ICON — no disc behind it — so
+    // the zone rectangle stays transparent. Operator opts INTO a
+    // background by picking a color in Properties (which adds an
+    // inscribed circular disc behind the icon).
+    defaultConfig: {
+      variant: tv.id,
+      bgColor: 'transparent',
+      ...(tv.extraConfig || {}),
+    },
     previewOnly: true,
   });
 }
