@@ -1175,6 +1175,13 @@ export default function PlayerPageWrapper() {
 
 function PlayerPage() {
   const [phase, setPhase] = useState<Phase>('registering');
+  // 2026-05-13 — ref-mirror of phase so callbacks captured by long-
+  // running timers (bundle-drift watcher, sustained-failure recovery,
+  // anything that fires from a setTimeout/setInterval) can read the
+  // CURRENT phase without restarting the effect on every transition.
+  // Bound below in a tiny useEffect that just syncs the ref.
+  const phaseRef = useRef<Phase>('registering');
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
   const [storageInfo, setStorageInfo] = useState({ used: '1.2 GB', total: '32 GB', percent: 4 });
 
   // One-shot admin-token handoff for preview mode. The dashboard appends
@@ -2592,7 +2599,18 @@ function PlayerPage() {
       const sinceLastReloadMs = Date.now() - lastNativeReloadAtRef.current;
       const SUSTAINED_MS = 60_000;
       const RELOAD_COOLDOWN_MS = 5 * 60_000;
+      // 2026-05-13 — operator rule: "once content is live, it stays
+      // live...even if the damn internet drops." Don't reload the
+      // WebView if we're currently playing content — that flashes
+      // back to splash and replays from item 0, which the operator
+      // flagged as the most-jarring failure mode. The reconnecting
+      // toast above already covers the "is something wrong?" affordance
+      // without blanking the screen. The fetch will keep retrying in
+      // the background; when the network recovers, the new manifest
+      // applies cleanly at the next item boundary.
+      const playingNow = phaseRef.current === 'playing';
       if (
+        !playingNow &&
         fetchFailCountRef.current >= 10 &&
         streakAgeMs >= SUSTAINED_MS &&
         sinceLastReloadMs >= RELOAD_COOLDOWN_MS &&
@@ -2604,11 +2622,19 @@ function PlayerPage() {
         lastNativeReloadAtRef.current = Date.now();
         nativeReload();
       }
-      // ALWAYS schedule another connecting transition. Even the native
-      // reload path needs a backup — a WebView reload can fail silently
-      // on some Android OEMs if the renderer process is wedged, so we
-      // keep the timer armed either way.
-      setTimeout(() => setPhase('connecting'), Math.max(2_000, retryDelay));
+      // Schedule another connecting transition ONLY when we're not
+      // already playing. During playback, the reconnect happens
+      // silently via the fetchContent retry queue without flipping
+      // the visible phase, so the current content keeps rolling.
+      if (!playingNow) {
+        setTimeout(() => setPhase('connecting'), Math.max(2_000, retryDelay));
+      } else {
+        // Background-retry the fetch without phase change. Same
+        // delay; just call fetchContent() directly when it fires.
+        setTimeout(() => {
+          if (phaseRef.current === 'playing') fetchContent();
+        }, Math.max(2_000, retryDelay));
+      }
     }
   }, [screenId, playlist]);
 
@@ -2707,6 +2733,26 @@ function PlayerPage() {
           const cachedEm = readCachedEmergency();
           if (cachedEm) {
             console.log('[bundle-drift] emergency active — deferring reload');
+            scheduledReloadTimer = null;
+            return;
+          }
+          // 2026-05-13 — never reload during playback. Operator: "once
+          // content is live, it stays live...even if the damn internet
+          // drops the player stays live with the content." A bundle-
+          // drift reload flashes back to the splash and replays from
+          // the first item — which the operator (correctly) called out
+          // as a "huge issue" that can't ever happen mid-content.
+          //
+          // If we're playing, defer entirely. The watcher polls again
+          // every 5 min; sooner or later the player will hit an idle
+          // state (paired but no schedule, all-clear from emergency,
+          // playlist exhausted) where reload IS safe. Until then, the
+          // operator gets uninterrupted content even when we've
+          // shipped a JS fix. phaseRef gives us the CURRENT phase at
+          // timer-fire time, not whatever it was when this useEffect
+          // last ran (which was at mount, so phase='registering').
+          if (phaseRef.current === 'playing') {
+            console.log('[bundle-drift] content playing — deferring reload until idle');
             scheduledReloadTimer = null;
             return;
           }
