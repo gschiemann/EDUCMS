@@ -435,3 +435,42 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ── iOS Safari "input zoom" fix (2026-05-14) ─────────────────────
+ * Operator: "the mobile app doesnt resize to full screen as you go
+ * from menu to menu, it stays zoomed in just a little for some
+ * reason".
+ *
+ * Root cause: iOS Safari (and the WKWebView used by every iOS app
+ * including the PWA shell) auto-zooms into any text input whose
+ * `font-size < 16px` when the user taps it. Tap a search box →
+ * Safari zooms 1.05x to make the text "readable" → user navigates
+ * away via the bottom tab bar → the zoom DOESN'T fully reset → every
+ * subsequent screen renders at ~95% of viewport.
+ *
+ * Our dashboard uses lots of compact form controls — text-xs (12px)
+ * search inputs, text-[11px] folder names, py-1.5 px-3 text-sm
+ * playlist inputs — all below the 16px Safari threshold. Every one
+ * of them triggers the zoom-trap.
+ *
+ * Standard fix: clamp inputs/selects/textareas to 16px minimum on
+ * mobile touch viewports. Above the md breakpoint (768px) Safari's
+ * auto-zoom doesn't fire (it's a touch-only heuristic), so the
+ * desktop's compact form chrome is preserved.
+ *
+ * We use `font-size: max(16px, 1em)` — Safari ignores the zoom-
+ * trigger when the COMPUTED font-size is ≥ 16px, but if the
+ * component's intended size is larger (e.g. text-lg = 18px) we
+ * keep it. Cheaper than overriding every Tailwind utility.
+ *
+ * Excluded: [data-allow-small-input] escape-hatch for places where
+ * 16px would break a tight layout (e.g. inline edit chips in the
+ * template builder — the builder is desktop-only, so this rule
+ * shouldn't fire there anyway, but the hatch exists). */
+@media (hover: none) and (pointer: coarse), (max-width: 767px) {
+  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([data-allow-small-input]),
+  select:not([data-allow-small-input]),
+  textarea:not([data-allow-small-input]) {
+    font-size: max(16px, 1em) !important;
+  }
+}
