@@ -133,7 +133,7 @@ export function InstallPromptBanner() {
           <Download className="w-5 h-5 text-indigo-300" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold leading-tight mb-0.5">Install EduCMS on this phone</p>
+          <p className="text-sm font-bold leading-tight mb-0.5">Install Venue OS on this phone</p>
           {deferredPrompt ? (
             <p className="text-[12px] text-slate-300 leading-snug">
               Get the dashboard as an icon on your home screen — opens full-screen, faster, and lets us send safety push alerts.

@@ -142,7 +142,7 @@ export default function AccountPage() {
       <div className="pt-4 pb-2 text-center">
         <div className="text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
           <Info className="w-3 h-3" />
-          EduCMS dashboard
+          Venue OS dashboard
           {buildSha && <span className="font-mono">· {buildSha}</span>}
         </div>
       </div>

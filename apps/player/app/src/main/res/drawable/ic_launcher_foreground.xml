@@ -1,19 +1,96 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Venue OS launcher icon — hex network (Option 4).
+
+  Background is set elsewhere (values/ic_launcher_background.xml,
+  #0F172A indigo-slate) so we only draw the hex pattern + center
+  control-plane dot here.
+
+  Geometry:
+    Viewport 108×108dp. Adaptive-icon safe zone is the central
+    ~70%, so the central hex sits at (54, 54) with circumradius
+    R=22 (occupies roughly a 44×38dp box — well inside the safe
+    area). One ring of 6 outline hexes circles it at R=12,
+    spaced 33dp apart center-to-center.
+
+  Reads at the smallest launcher render (24dp) because the central
+  filled hex + bright white dot stays high-contrast against the
+  dark background — even when the outer ring blurs into a glow.
+
+  2026-05-14 — replaces the previous play-monitor design which
+  signaled "video player" specifically. The new mark says
+  "operating system / network" which matches the Venue OS rebrand.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Indigo monitor screen -->
+
+    <!-- Outer-ring hexes (6 around the central). Flat-top hexagons
+         with circumradius 12, centers at 33dp out from (54,54)
+         along 0°/60°/120°/180°/240°/300°. Stroke-only, faded —
+         these read as "other venues in the network." -->
+    <path
+        android:strokeColor="#A5B4FC"
+        android:strokeWidth="1.4"
+        android:strokeAlpha="0.45"
+        android:pathData="M 81,54 L 87,43.6 L 99,43.6 L 105,54 L 99,64.4 L 87,64.4 Z" />
+    <path
+        android:strokeColor="#A5B4FC"
+        android:strokeWidth="1.4"
+        android:strokeAlpha="0.45"
+        android:pathData="M 64.5,82.6 L 70.5,72.2 L 82.5,72.2 L 88.5,82.6 L 82.5,93 L 70.5,93 Z" />
+    <path
+        android:strokeColor="#A5B4FC"
+        android:strokeWidth="1.4"
+        android:strokeAlpha="0.45"
+        android:pathData="M 31.5,82.6 L 37.5,72.2 L 49.5,72.2 L 55.5,82.6 L 49.5,93 L 37.5,93 Z" />
+    <path
+        android:strokeColor="#A5B4FC"
+        android:strokeWidth="1.4"
+        android:strokeAlpha="0.45"
+        android:pathData="M 15,54 L 21,43.6 L 33,43.6 L 39,54 L 33,64.4 L 21,64.4 Z" />
+    <path
+        android:strokeColor="#A5B4FC"
+        android:strokeWidth="1.4"
+        android:strokeAlpha="0.45"
+        android:pathData="M 31.5,25.4 L 37.5,15 L 49.5,15 L 55.5,25.4 L 49.5,35.8 L 37.5,35.8 Z" />
+    <path
+        android:strokeColor="#A5B4FC"
+        android:strokeWidth="1.4"
+        android:strokeAlpha="0.45"
+        android:pathData="M 64.5,25.4 L 70.5,15 L 82.5,15 L 88.5,25.4 L 82.5,35.8 L 70.5,35.8 Z" />
+
+    <!-- Central hex (the OS / control plane).
+         Flat-top hex, circumradius 22, centered at (54, 54).
+         Filled with the brand-indigo gradient so it pops against
+         the dark background. -->
+    <path
+        android:pathData="M 32,54 L 43,35 L 65,35 L 76,54 L 65,73 L 43,73 Z">
+        <aapt:attr
+            xmlns:aapt="http://schemas.android.com/aapt"
+            name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54" android:startY="35"
+                android:endX="54"   android:endY="73">
+                <item android:offset="0"   android:color="#A5B4FC" />
+                <item android:offset="0.55" android:color="#6366F1" />
+                <item android:offset="1"   android:color="#4338CA" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Center hex outline — subtle dark edge for definition
+         against the bright indigo gradient. -->
+    <path
+        android:strokeColor="#1E1B4B"
+        android:strokeWidth="0.8"
+        android:pathData="M 32,54 L 43,35 L 65,35 L 76,54 L 65,73 L 43,73 Z" />
+
+    <!-- White center dot — the focal point. Reads at every
+         density right down to mdpi (where the whole icon is 48px). -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M30,32 h48 a4,4 0 0 1 4,4 v32 a4,4 0 0 1 -4,4 h-48 a4,4 0 0 1 -4,-4 v-32 a4,4 0 0 1 4,-4 z"/>
-    <!-- Stand -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M50,72 h8 v6 h6 v3 h-20 v-3 h6 z"/>
-    <!-- Play triangle -->
-    <path
-        android:fillColor="#6366F1"
-        android:pathData="M48,46 L66,54 L48,62 z"/>
+        android:pathData="M 54,54 m -5,0 a 5,5 0 1,0 10,0 a 5,5 0 1,0 -10,0" />
 </vector>

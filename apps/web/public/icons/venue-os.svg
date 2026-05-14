@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- OPTION 4 — Hexagonal Network
+       Vibe: distributed infrastructure. A grid of hexagons with the
+       center hex filled (the OS / control plane) and outer hexes
+       outlined (the venues being managed).
+       Communicates: multi-tenant, distributed, infrastructure, "OS".
+       Why for Venue OS: the literal mental model — one control plane,
+       many venues. Hexagons read as "engineering / network / cells"
+       without feeling cliché. Great for a B2B platform identity.
+       Holds up at 60px because the center hex stays bright even when
+       the outer hexes blur into a halo. -->
+  <defs>
+    <linearGradient id="bg4" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#312e81"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="hex-center" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a5b4fc"/>
+      <stop offset="0.55" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#4338ca"/>
+    </linearGradient>
+    <radialGradient id="hex-halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#a5b4fc" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#a5b4fc" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg4)"/>
+  <!-- Center hex's halo bleeds into surrounding ones -->
+  <circle cx="512" cy="512" r="380" fill="url(#hex-halo)"/>
+
+  <!-- Hex math: flat-top hexagons.
+       For a hex with circumradius R: vertical spacing = R * sqrt(3),
+       horizontal spacing = R * 1.5. With R = 110 we get spacing
+       (165, 190.5) which fits a clean 3-deep ring in the 1024 canvas. -->
+  <g stroke="#a5b4fc" stroke-width="5" fill="none" stroke-opacity="0.55">
+    <!-- Outer ring (12 hexes around the inner ring) -->
+    <polygon points="402,237 567,237 622,332 567,427 402,427 347,332"/>
+    <polygon points="567,427 732,427 787,522 732,617 567,617 512,522"/>
+    <polygon points="732,617 897,617 952,712 897,807 732,807 677,712"/>
+    <polygon points="402,617 567,617 622,712 567,807 402,807 347,712"/>
+    <polygon points="237,427 402,427 457,522 402,617 237,617 182,522"/>
+    <polygon points="72,522 237,522 292,617 237,712 72,712 17,617"/>
+    <polygon points="72,332 237,332 292,427 237,522 72,522 17,427"/>
+  </g>
+  <!-- Inner ring (6 around the center) — slightly brighter -->
+  <g stroke="#c7d2fe" stroke-width="6" fill="none" stroke-opacity="0.7">
+    <polygon points="567,427 677,427 732,522 677,617 567,617 512,522"/>
+    <polygon points="402,427 512,427 567,522 512,617 402,617 347,522"/>
+    <polygon points="402,617 512,617 567,712 512,807 402,807 347,712"/>
+    <polygon points="567,617 677,617 732,712 677,807 567,807 512,712"/>
+    <polygon points="237,522 347,522 402,617 347,712 237,712 182,617"/>
+    <polygon points="237,332 347,332 402,427 347,522 237,522 182,427"/>
+  </g>
+  <!-- Center hex — filled, the control plane -->
+  <polygon
+    points="457,427 567,427 622,522 567,617 457,617 402,522"
+    fill="url(#hex-center)"
+    stroke="#1e1b4b"
+    stroke-width="4"/>
+  <!-- Inner dot inside the center hex — solid white pulse -->
+  <circle cx="512" cy="522" r="34" fill="#ffffff"/>
+</svg>

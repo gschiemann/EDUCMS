@@ -32,8 +32,14 @@ const caveat = Caveat({
 });
 
 export const metadata: Metadata = {
-  title: 'Digital Signage CMS',
-  description: 'Centralized school signage management.',
+  // 2026-05-14 — rebrand. "Venue OS" replaces "EduCMS" as the
+  // user-facing product name. The product was always going to be
+  // bigger than K-12 (restaurants / retail / healthcare / corporate
+  // lobbies were all in the roadmap); "Venue OS" frames it as an
+  // operating system for any venue's screens + safety surfaces
+  // rather than a school-only signage tool.
+  title: 'Venue OS',
+  description: 'Operating system for venues — content, screens, and emergency response on every display.',
   // 2026-05-14 — PWA wiring (Phase 1 of MOBILE_APP_ROADMAP.md). The
   // manifest opts the dashboard into Add-to-Home-Screen on iOS / Android,
   // applies the indigo theme color to the status bar, and surfaces a
@@ -42,20 +48,40 @@ export const metadata: Metadata = {
   // (apps/web/src/app/player/layout.tsx); this one is for the operator
   // dashboard surface only.
   manifest: '/manifest.webmanifest',
+  // Explicit icon list — iOS Safari prioritizes `apple-touch-icon`
+  // links for the home-screen badge over the manifest. Next.js
+  // emits <link rel="apple-touch-icon"> for the matching `icons`
+  // entry; we surface 180px (iPhone @3x default) + 167px (iPad Pro)
+  // + 152px (iPad). Browser falls back to /apple-touch-icon.png at
+  // root for legacy clients (also written by the generator).
+  icons: {
+    icon: [
+      { url: '/icons/venue-os.svg', type: 'image/svg+xml' },
+      { url: '/icons/venue-os-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/venue-os-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/icons/venue-os-180.png', sizes: '180x180' },
+      { url: '/icons/venue-os-167.png', sizes: '167x167' },
+      { url: '/icons/venue-os-152.png', sizes: '152x152' },
+    ],
+    shortcut: '/icons/venue-os-256.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'EduCMS',
+    title: 'Venue OS',
   },
 };
 
 // Next.js 14+ requires themeColor / viewport-meta options in a
 // separate viewport export (the metadata export only carries SEO + OG
-// fields now). 'black-translucent' Apple status-bar pairs with this
-// indigo so the iOS notch / status bar reads as one continuous brand
-// surface.
+// fields now). 'black-translucent' Apple status-bar pairs with the
+// hex-logo background so the iOS notch / status bar reads as one
+// continuous brand surface (the dark indigo at the top of the SVG
+// gradient matches the navy header tone).
 export const viewport: Viewport = {
-  themeColor: '#6366f1',
+  themeColor: '#312e81',
   width: 'device-width',
   initialScale: 1,
   // Allow user-scale on the dashboard so an admin with vision needs

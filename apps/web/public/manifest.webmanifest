@@ -1,32 +1,50 @@
 {
-  "name": "EduCMS — School Signage",
-  "short_name": "EduCMS",
-  "description": "Manage school displays, playlists, and emergency alerts from your phone.",
+  "name": "Venue OS",
+  "short_name": "Venue OS",
+  "description": "Operating system for venues — content, screens, and emergency response on every display.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0f172a",
-  "theme_color": "#6366f1",
+  "theme_color": "#312e81",
   "scope": "/",
   "lang": "en-US",
   "icons": [
     {
-      "src": "/panic-icon.png",
+      "src": "/icons/venue-os.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/venue-os-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/panic-icon.png",
+      "src": "/icons/venue-os-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/panic-icon.png",
+      "src": "/icons/venue-os-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/venue-os-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "/icons/venue-os-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "shortcuts": [
@@ -38,5 +56,5 @@
       "icons": [{ "src": "/panic-icon.png", "sizes": "192x192" }]
     }
   ],
-  "categories": ["education", "productivity", "business"]
+  "categories": ["business", "productivity", "education"]
 }
