@@ -797,10 +797,28 @@ export default function TemplatesPage() {
       {adaptTemplate && (
         <AdaptForLedModal
           source={adaptTemplate}
+          portraitSibling={portraitSiblingFor(adaptTemplate)}
           onClose={() => setAdaptTemplate(null)}
           onAdapt={async ({ screenWidth, screenHeight, orientation }) => {
+            // 2026-05-14 — auto-route to the portrait sibling when the
+            // operator picks a portrait-aspect canvas. Saves them
+            // toggling the card to Portrait first. Picks based on
+            // smaller aspect-difference, so a square-ish canvas
+            // (e.g. 960×1080 ≈ 0.89) routes through whichever sibling
+            // is closer (landscape 1920×1080 = 1.78 → diff 0.50,
+            // portrait 1080×1920 ≈ 0.56 → diff 0.30 → portrait wins).
+            const sibling = portraitSiblingFor(adaptTemplate);
+            const targetAspect = screenWidth / screenHeight;
+            let bestSource = adaptTemplate;
+            if (sibling) {
+              const adaptAspect = (adaptTemplate.screenWidth || 1920) / (adaptTemplate.screenHeight || 1080);
+              const siblingAspect = (sibling.screenWidth || 1080) / (sibling.screenHeight || 1920);
+              const adaptDiff = Math.abs(targetAspect - adaptAspect);
+              const siblingDiff = Math.abs(targetAspect - siblingAspect);
+              if (siblingDiff < adaptDiff) bestSource = sibling;
+            }
             const result = await duplicateTemplate.mutateAsync({
-              id: adaptTemplate.id,
+              id: bestSource.id,
               screenWidth,
               screenHeight,
               orientation,
@@ -1084,11 +1102,18 @@ function TemplatePreviewModal({
  */
 function AdaptForLedModal({
   source,
+  portraitSibling,
   onClose,
   onAdapt,
   pending,
 }: {
   source: Template;
+  /** When the operator picks a portrait-aspect canvas size, we use
+   *  this template's portrait sibling as the base instead of `source`
+   *  so the widget layout starts from the portrait variant — much
+   *  better fit than squeezing the landscape widget into a tall
+   *  zone. (2026-05-14 operator ask.) */
+  portraitSibling?: Template;
   onClose: () => void;
   onAdapt: (canvas: { screenWidth: number; screenHeight: number; orientation: 'LANDSCAPE' | 'PORTRAIT' }) => void | Promise<void>;
   pending: boolean;
@@ -1100,6 +1125,21 @@ function AdaptForLedModal({
   const [mode, setMode] = useState<'PORTRAIT' | 'LANDSCAPE' | 'CUSTOM'>(sourceOrient);
   const [customW, setCustomW] = useState(source.screenWidth || 1920);
   const [customH, setCustomH] = useState(source.screenHeight || 1080);
+
+  // Compute the effective canvas size + which base the parent's
+  // auto-router will pick. Mirrors the math in onAdapt so the UI
+  // hint matches reality.
+  const previewCanvas: { w: number; h: number; orientation: 'LANDSCAPE' | 'PORTRAIT' } =
+    mode === 'PORTRAIT' ? { w: 1080, h: 1920, orientation: 'PORTRAIT' }
+    : mode === 'LANDSCAPE' ? { w: 1920, h: 1080, orientation: 'LANDSCAPE' }
+    : { w: customW, h: customH, orientation: customH > customW ? 'PORTRAIT' : 'LANDSCAPE' };
+  const previewBase: Template = (() => {
+    if (!portraitSibling) return source;
+    const target = previewCanvas.w / previewCanvas.h;
+    const adaptA = (source.screenWidth || 1920) / (source.screenHeight || 1080);
+    const siblingA = (portraitSibling.screenWidth || 1080) / (portraitSibling.screenHeight || 1920);
+    return Math.abs(target - siblingA) < Math.abs(target - adaptA) ? portraitSibling : source;
+  })();
 
   // The LED-poster shortcuts the operator uses in production. Each
   // chip prefills the custom W/H so they can hit Adapt without typing.
@@ -1222,6 +1262,19 @@ function AdaptForLedModal({
           </div>
         )}
 
+        {/* Auto-pick hint. When a portrait sibling exists AND the
+            target canvas is portrait-shaped, we route through the
+            portrait variant instead of the landscape source — much
+            better starting layout. Surfaced here so the operator
+            sees which base they're getting before they click Adapt. */}
+        {previewBase.id !== source.id && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5 flex items-start gap-2">
+            <Sparkles className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+            <p className="text-[11px] text-emerald-800 leading-relaxed">
+              We'll start from <strong>{previewBase.name}</strong> — its portrait layout is a closer match to your {previewCanvas.w}×{previewCanvas.h} canvas than the landscape version.
+            </p>
+          </div>
+        )}
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 flex items-start gap-2">
           <Sparkles className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
           <p className="text-[11px] text-amber-800 leading-relaxed">
