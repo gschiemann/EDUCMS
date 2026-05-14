@@ -985,10 +985,26 @@ function TemplatePreviewModal({
 }) {
   // Live viewport size — recomputed on resize so the template scales
   // to fill the available area instead of a once-at-mount snapshot.
-  const [vh, setVh] = useState<number>(typeof window !== 'undefined' ? window.innerHeight : 800);
+  //
+  // 2026-05-14 — was `useState(typeof window !== 'undefined' ?
+  // window.innerHeight : 800)`, which is the textbook React hydration
+  // mismatch trap: server renders 800, client hydrates with the real
+  // viewport height (could be anything from 568 on an iPhone SE to
+  // 1440 on a 4K monitor). The mismatched HTML fires React error
+  // #418 on EVERY tenant — Prod Smoke had been failing for 30+
+  // commits because of this, even after the earlier dashboard
+  // hydration fix (5d929d4). Same pattern, different file.
+  //
+  // Fix: start with the safe 800 default (matches server), then
+  // bump to the real innerHeight inside the same useEffect that
+  // wires the resize listener. First paint matches SSR; second
+  // render (post-mount) gets the real value with no hydration
+  // boundary in between.
+  const [vh, setVh] = useState<number>(800);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     const onResize = () => setVh(window.innerHeight);
+    onResize(); // grab the real height once mounted
     window.addEventListener('keydown', onKey);
     window.addEventListener('resize', onResize);
     return () => {
