@@ -1,5 +1,6 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
+  "//forceRebuild": "2026-05-14T17:45Z — bump to force Railway to skip its Docker layer cache and rebuild from latest master. Previous deploy was stuck on 3d9f074 even after f4103ec landed on apps/api. Touching railway.json itself is the surest cache-buster since the file is at the watchPatterns root.",
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
