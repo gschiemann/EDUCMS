@@ -419,6 +419,74 @@ export class TemplatesController {
     return mapTemplate(template);
   }
 
+  /**
+   * 2026-05-14 — Player-facing template fetch for `goto-template`
+   * touch navigation. Separate from `GET :id` because the regular
+   * endpoint is RBAC-gated to user roles (SUPER_ADMIN /
+   * DISTRICT_ADMIN / SCHOOL_ADMIN / CONTRIBUTOR) — the device JWT a
+   * kiosk player carries has `kind: 'device'` with no user role, so
+   * every `goto-template` action on a real kiosk silently 403'd. The
+   * touch-diag toast showed "dispatcher fired: goto-template" with
+   * a target ID, then nothing rendered.
+   *
+   * This `:id/playback` variant accepts device JWTs and scopes the
+   * lookup by the device's bound screen → tenant. System templates
+   * are visible to every device. Tenant-owned templates only fetch
+   * if the device's screen.tenantId matches the template's tenantId
+   * (or template.isSystem). 404 on mismatch — no existence-leak.
+   *
+   * User JWTs also work (same auth class is decoded by JwtAuthGuard);
+   * for those we fall back to the same tenantId scoping as `GET :id`.
+   * No new `@RequireRoles` here on purpose — RBAC is enforced by the
+   * scope check in the where clause rather than the decorator, since
+   * device JWTs have no role to compare against.
+   */
+  @Get(':id/playback')
+  async getForPlayback(@Request() req: any, @Param('id') id: string) {
+    const u = req.user || {};
+    let scopeTenantId: string | null = null;
+    if (u.kind === 'device') {
+      // Look up the bound screen and resolve its tenant.
+      const screen = await this.prisma.client.screen.findUnique({
+        where: { id: u.sub },
+        select: { tenantId: true, status: true },
+      });
+      if (!screen || screen.status === 'REVOKED') {
+        throw new HttpException('Device invalid', HttpStatus.FORBIDDEN);
+      }
+      scopeTenantId = screen.tenantId ?? null;
+    } else if (u.role === AppRole.SUPER_ADMIN) {
+      // SUPER_ADMIN sees every tenant's templates — leave scope open.
+      scopeTenantId = null;
+    } else {
+      scopeTenantId = u.schoolId || u.tenantId || u.districtId || null;
+      if (!scopeTenantId) {
+        // No tenant context at all → only system templates are
+        // visible. This matches the existing GET :id behavior for
+        // tenant-less users (none today, but defensive).
+        scopeTenantId = '__no_tenant__';
+      }
+    }
+    const template = await this.prisma.client.template.findFirst({
+      where: {
+        id,
+        OR: scopeTenantId
+          ? [{ tenantId: scopeTenantId }, { isSystem: true }]
+          : [{ isSystem: true }, { tenantId: { not: null } as any }],
+      },
+      include: {
+        zones: { orderBy: { sortOrder: 'asc' } },
+        scenes: { orderBy: { sortOrder: 'asc' } } as any,
+      } as any,
+    });
+    if (!template) {
+      // 404 not 403 — same existence-leak avoidance pattern the
+      // manifest endpoint uses for cross-tenant requests.
+      throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+    }
+    return mapTemplate(template);
+  }
+
   // ───────────────────────────────────────────────────────
   // Phase D2 multi-scene CRUD — operators add/rename/reorder/delete
   // scenes inside a template. Every template has at minimum one

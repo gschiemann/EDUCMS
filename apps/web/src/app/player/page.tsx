@@ -3767,10 +3767,33 @@ function PlayerPage() {
                || localStorage.getItem('edu_device_token')
                || '')
             : '';
+          // 2026-05-14 — operator-confirmed: dispatcher fires
+          // "goto-template" but nothing renders. Root cause: the
+          // regular `GET /templates/:id` is RBAC-gated to user roles
+          // (SUPER_ADMIN / DISTRICT_ADMIN / SCHOOL_ADMIN /
+          // CONTRIBUTOR) and a kiosk's device JWT has `kind:
+          // 'device'` with no user role, so every fetch silently
+          // 403'd. New `:id/playback` endpoint accepts device JWTs
+          // and scopes by the bound screen's tenant; user JWTs also
+          // work (same code path). 403 here will surface a console
+          // warn AND a red diagnostic toast.
           const res = await fetch(
-            `${getApiRoot()}/api/v1/templates/${encodeURIComponent(targetTemplateId)}`,
+            `${getApiRoot()}/api/v1/templates/${encodeURIComponent(targetTemplateId)}/playback`,
             { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: 'no-store' },
           );
+          // Always log + emit a visible diag event so the operator
+          // sees fetch failures on-screen without needing DevTools.
+          try {
+            // eslint-disable-next-line no-console
+            console.log('[touch-navigate] fetch result', {
+              templateId: targetTemplateId,
+              status: res.status,
+              ok: res.ok,
+            });
+            window.dispatchEvent(new CustomEvent('edu:touch-fetch-result', {
+              detail: { kind: 'goto-template', targetId: targetTemplateId, status: res.status, ok: res.ok, ts: Date.now() },
+            }));
+          } catch {}
           if (!res.ok) {
             console.warn(`[touch-navigate] template ${targetTemplateId} fetch failed: HTTP ${res.status}`);
             return;
@@ -3778,7 +3801,13 @@ function PlayerPage() {
           const tpl = await res.json();
           setTouchNavigatedTemplate(tpl);
         } catch (err) {
-          console.warn('[touch-navigate] fetch threw:', (err as Error)?.message);
+          const msg = (err as Error)?.message || 'fetch error';
+          console.warn('[touch-navigate] fetch threw:', msg);
+          try {
+            window.dispatchEvent(new CustomEvent('edu:touch-fetch-result', {
+              detail: { kind: 'goto-template', targetId: targetTemplateId, error: msg, ts: Date.now() },
+            }));
+          } catch {}
         }
       })();
     };
@@ -6099,11 +6128,41 @@ function TouchDiagToast() {
         'ok',
       );
     };
+    // 2026-05-14 — render network fetch results from the
+    // dispatcher's async paths (currently goto-template; can extend
+    // to open-url proxy + asset resolution later). The operator's
+    // chip stays "dispatcher fired" forever if a downstream fetch
+    // 403s silently. This event lets the toast turn RED on failure.
+    const onFetchResult = (e: Event) => {
+      const ce = e as CustomEvent<any>;
+      const d = ce.detail || {};
+      if (d.error) {
+        announce(
+          `fetch failed: ${d.kind}`,
+          `${d.error.slice(0, 60)} (id ${String(d.targetId).slice(0, 8)})`,
+          'err',
+        );
+      } else if (d.ok === false) {
+        announce(
+          `fetch ${d.status}: ${d.kind}`,
+          `${d.status === 403 ? 'forbidden — device JWT not allowed' : 'http error'} (id ${String(d.targetId).slice(0, 8)})`,
+          'err',
+        );
+      } else if (d.ok === true) {
+        announce(
+          `${d.kind} fetched ok`,
+          `loading template… (id ${String(d.targetId).slice(0, 8)})`,
+          'ok',
+        );
+      }
+    };
     window.addEventListener('edu:touch-zone-click', onZoneClick as EventListener);
     window.addEventListener('edu:touch-fired', onFired as EventListener);
+    window.addEventListener('edu:touch-fetch-result', onFetchResult as EventListener);
     return () => {
       window.removeEventListener('edu:touch-zone-click', onZoneClick as EventListener);
       window.removeEventListener('edu:touch-fired', onFired as EventListener);
+      window.removeEventListener('edu:touch-fetch-result', onFetchResult as EventListener);
       if (clearT) clearTimeout(clearT);
     };
   }, []);
