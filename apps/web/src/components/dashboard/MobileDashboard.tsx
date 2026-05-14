@@ -29,7 +29,7 @@
  */
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Siren, Plus, UploadCloud, MonitorPlay, ListMusic, CalendarClock,
   CheckCircle2, AlertTriangle, Activity, ArrowRight, ChevronRight,
@@ -45,7 +45,16 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
   const role = user?.role;
   const isContributor = role === 'CONTRIBUTOR';
   const isViewer = role === 'RESTRICTED_VIEWER';
+  // 2026-05-14 — was `new Date().getHours()` during render which
+  // caused a hydration mismatch (React #418). Server "now" hour vs
+  // client "now" hour differ across timezones AND across the
+  // hour-boundary at SSR. Gate behind a post-mount `mounted` flag
+  // so server + client render the same neutral greeting until the
+  // client populates the real one.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   const greeting = (() => {
+    if (!mounted) return 'Hello';
     const h = new Date().getHours();
     if (h < 5) return 'Working late';
     if (h < 12) return 'Good morning';
@@ -72,8 +81,12 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
 
   // Today's running playlists — schedules whose time-of-day window is
   // currently active. Quick filter; same logic the player uses to
-  // pick a manifest.
+  // pick a manifest. Same `mounted` gate as the greeting — pre-mount
+  // we pass `nowMin = -1` so every schedule's time window evaluates
+  // truthy (matches SSR output exactly), then the post-mount value
+  // takes over with the real minute.
   const nowMin = (() => {
+    if (!mounted) return -1;
     const d = new Date();
     return d.getHours() * 60 + d.getMinutes();
   })();

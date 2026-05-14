@@ -67,9 +67,19 @@ export default function DashboardPage() {
   const { data: mySubmissions } = useSubmissions({ mine: true });
 
   // Minute-clock for the header greeting + "live" scheduling match.
-  const [now, setNow] = useState<Date>(() => new Date());
+  // 2026-05-14 — was `useState(() => new Date())` which produced a
+  // hydration mismatch (React error #418): the server's "now" vs
+  // the client's "now" differ, and any tile derived from `today` /
+  // `nowHM` rendered different HTML on each side. Prod smoke had
+  // been failing on all 7 tenant dashboards for 30+ commits because
+  // of this. Fix: start `null` (matches between server + client),
+  // populate in useEffect after hydration, fall back to safe
+  // defaults in the render path until then.
+  const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 60_000);
+    const tick = () => setNow(new Date());
+    tick();
+    const id = setInterval(tick, 60_000);
     return () => clearInterval(id);
   }, []);
 
@@ -151,8 +161,15 @@ export default function DashboardPage() {
   // Today's schedule — filter by DOW, sort by start time. Aggregate
   // count is what scales; we only surface the first few rows as a
   // preview, everything else is on /schedules.
-  const today = now.getDay();
-  const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  // `now === null` during the SSR/hydration phase (before the post-
+  // mount useEffect populates it). Use a neutral default so the
+  // rendered HTML matches between server and client — `today = -1`
+  // means "no day-of-week filter applies" (every active schedule
+  // passes), and `nowHM = ''` makes the empty-string compare to
+  // `>= '00:00'` always true → `liveNowCount` reflects total active
+  // schedules until the client populates `now` ~16ms later.
+  const today = now ? now.getDay() : -1;
+  const nowHM = now ? `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}` : '';
   const todaysSchedules = useMemo(() => {
     return (schedules || [])
       .filter((s: any) => {
@@ -220,6 +237,10 @@ export default function DashboardPage() {
   // avatar pick up the same name.
   const firstName = userFirstName(user);
   const greeting = (() => {
+    // Pre-mount (now === null) we render a neutral "Hello" so the
+    // server-side HTML matches the client's first paint. Real
+    // time-aware greeting kicks in after the post-mount useEffect.
+    if (!now) return 'Hello';
     const h = now.getHours();
     if (h < 5) return 'Working late';
     if (h < 12) return 'Good morning';
@@ -257,12 +278,14 @@ export default function DashboardPage() {
             {greeting}, {firstName}
           </h1>
           <p className="text-sm font-medium text-slate-500 mt-1">
-            {tenantName} · {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+            {tenantName}{now && ` · ${now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}`}
           </p>
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold text-slate-800 tabular-nums">
-            {now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+            {/* Empty string pre-mount so SSR + first paint match.
+                Time appears after the post-mount `setNow` fires. */}
+            {now ? now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}
           </div>
           <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Local time</div>
         </div>
