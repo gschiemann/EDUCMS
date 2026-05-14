@@ -134,86 +134,86 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
           activationConstraint:{distance:8} keeps clicks on the duration
           input, checkbox, and settings button working: they only
           trigger a drag after the pointer has moved 8px. */}
-      {/* 2026-05-14 — mobile-responsive playlist item row.
-          Operator: "the playlist screen is not formatted right for a
-          mobile device when trying to conifugre timing and content".
-          The old row was fixed-horizontal (grip + checkbox + index +
-          thumb + name + w-24 duration + settings + trash) which
-          worked at 1200px+ but on a 390px viewport the duration block
-          overlapped the mime label and the action icons were
-          hover-only (invisible on touch).
-          Fix: two-row layout on mobile —
-            Row 1: grip + checkbox + index + thumb + name (flex-1)
-            Row 2: mime + duration input + settings + trash (always
-                   visible on mobile, no hover-gated icons).
-          Reverts to the single-row desktop layout at md+. */}
+      {/* 2026-05-14 — single-row playlist item, mobile-honest.
+          Operator: "now you just shifted the 10 sec and settings
+          below....fit them into a single row somehow".
+
+          Strategy: drop visual chrome that's redundant on a small
+          screen (drag-grip — drag still works via long-press on the
+          whole row; index number — items render in order anyway;
+          mime-type subtitle; the literal "sec" label — the input is
+          obviously seconds in context). Keeps the actionable bits
+          inline: checkbox, thumbnail, name, duration input, gear,
+          trash. Reverts to the rich desktop chrome at md+. */}
       <div
         {...(isViewer ? {} : attributes)}
         {...(isViewer ? {} : listeners)}
         title={isViewer ? 'Read-only — viewer role' : undefined}
-        className={`playlist-item-card flex flex-col md:flex-row md:items-center gap-2 md:gap-3 p-3 md:p-3.5 ${isViewer ? 'cursor-not-allowed opacity-90' : 'cursor-grab active:cursor-grabbing'}`}
+        className={`playlist-item-card flex items-center gap-1.5 md:gap-3 p-2 md:p-3.5 ${isViewer ? 'cursor-not-allowed opacity-90' : 'cursor-grab active:cursor-grabbing'}`}
       >
-        {/* Row 1 (mobile) / leading section (desktop): identifier + name. */}
-        <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
-          <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-indigo-400 shrink-0" aria-hidden="true" />
-          <input type="checkbox" checked={isSelected} onChange={() => onToggle(item.id)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer shrink-0" />
-          <span className="text-xs font-bold text-slate-400 w-5 text-center shrink-0">{index + 1}</span>
-          <div className="w-14 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
-            {thumb
-              ? <AssetThumb asset={item.asset} className="w-full h-full object-cover" />
-              : mimeIcon(item.asset?.mimeType)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-xs font-medium text-slate-700 truncate" title={name}>{name}</p>
-              {isScheduled && <span title="Time Restricted" className="shrink-0"><Clock className="w-3 h-3 text-indigo-500" /></span>}
-            </div>
-            <p className="text-[10px] text-slate-400 truncate">{item.asset?.mimeType}</p>
-          </div>
+        {/* Drag grip — desktop only. Long-press on the row drives
+            drag-reorder on mobile (dnd-kit's PointerSensor handles
+            both). */}
+        <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-indigo-400 shrink-0 hidden md:block" aria-hidden="true" />
+        <input type="checkbox" checked={isSelected} onChange={() => onToggle(item.id)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer shrink-0" />
+        {/* Index number — desktop only; visually redundant on mobile
+            where rows are obviously sequential. */}
+        <span className="text-xs font-bold text-slate-400 w-5 text-center shrink-0 hidden md:inline-block">{index + 1}</span>
+        <div className="w-10 h-10 md:w-14 md:h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+          {thumb
+            ? <AssetThumb asset={item.asset} className="w-full h-full object-cover" />
+            : mimeIcon(item.asset?.mimeType)}
         </div>
-
-        {/* Row 2 (mobile) / trailing section (desktop): duration +
-            settings + remove. On mobile this sits on its own line
-            below the row above, with everything left-aligned so the
-            duration input + buttons live in the same touch zone the
-            operator's thumb already covered when tapping the row. On
-            desktop these float right next to the name (reverting to
-            the original behavior). */}
-        <div className="flex items-center justify-end gap-1.5 md:gap-1.5 md:w-auto pl-[60px] md:pl-0 md:mr-2 shrink-0">
-          {item.asset?.mimeType?.startsWith('video/') ? (
-            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-md uppercase tracking-wide">Auto</span>
-          ) : (
-            <>
-              <input
-                type="number" min={1} max={300}
-                value={Math.round((item.durationMs || 10000) / 1000)}
-                onChange={(e) => onDurationChange(item.id, parseInt(e.target.value) || 10)}
-                disabled={isViewer}
-                title={isViewer ? 'Read-only — viewer role' : undefined}
-                className="w-16 md:w-14 px-2 py-1.5 md:py-1 text-sm md:text-xs bg-slate-50 border border-slate-200 rounded-md text-center font-medium outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-              <span className="text-[11px] md:text-[10px] text-slate-400 font-medium">sec</span>
-            </>
-          )}
-          {/* Mobile: settings + trash always visible (no hover state
-              on touch). Desktop: hover-reveal preserved. */}
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className={`p-2 md:p-1 transition-all ${showSettings || isScheduled ? 'text-indigo-500 hover:text-indigo-600' : 'text-slate-400 md:text-slate-300 hover:text-indigo-500 md:opacity-0 md:group-hover:opacity-100'}`}
-            aria-label="Slide settings"
-          >
-            <Settings className="w-5 h-5 md:w-4 md:h-4" />
-          </button>
-          <button
-            onClick={() => onRemove(item.id)}
-            disabled={isViewer}
-            title={isViewer ? 'Read-only — viewer role' : undefined}
-            className="p-2 md:p-1 text-slate-400 md:text-slate-300 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            aria-label="Remove slide"
-          >
-            <Trash2 className="w-5 h-5 md:w-4 md:h-4" />
-          </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <p className="text-xs font-medium text-slate-700 truncate" title={name}>{name}</p>
+            {isScheduled && <span title="Time Restricted" className="shrink-0"><Clock className="w-3 h-3 text-indigo-500" /></span>}
+          </div>
+          {/* Mime label is desktop-only — secondary info, eats a
+              line on mobile that we can't afford. Available via
+              the row's title attribute for accessibility. */}
+          <p className="text-[10px] text-slate-400 truncate hidden md:block">{item.asset?.mimeType}</p>
         </div>
+        {/* Duration input + side-controls. data-allow-small-input
+            opts this number field out of the global 16px iOS-zoom
+            floor so it can stay compact in the row — the field
+            doesn't take focus often enough for the zoom-stuck UX
+            issue to bite here, and the larger floor would balloon
+            the row past one line. */}
+        {item.asset?.mimeType?.startsWith('video/') ? (
+          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 md:px-3 py-1 rounded-md uppercase tracking-wide shrink-0">Auto</span>
+        ) : (
+          <>
+            <input
+              type="number" min={1} max={300}
+              value={Math.round((item.durationMs || 10000) / 1000)}
+              onChange={(e) => onDurationChange(item.id, parseInt(e.target.value) || 10)}
+              disabled={isViewer}
+              title={isViewer ? 'Read-only — viewer role' : 'Duration in seconds'}
+              data-allow-small-input
+              className="w-12 md:w-14 px-1.5 py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-center font-medium outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            />
+            {/* "sec" label desktop-only — input context makes it
+                obvious on mobile. */}
+            <span className="text-[10px] text-slate-400 font-medium hidden md:inline">sec</span>
+          </>
+        )}
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className={`p-1 transition-all shrink-0 ${showSettings || isScheduled ? 'text-indigo-500 hover:text-indigo-600' : 'text-slate-400 md:text-slate-300 hover:text-indigo-500 md:opacity-0 md:group-hover:opacity-100'}`}
+          aria-label="Slide settings"
+        >
+          <Settings className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => onRemove(item.id)}
+          disabled={isViewer}
+          title={isViewer ? 'Read-only — viewer role' : 'Remove'}
+          className="p-1 text-slate-400 md:text-slate-300 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          aria-label="Remove slide"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
       </div>
 
       {showSettings && (
