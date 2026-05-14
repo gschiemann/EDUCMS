@@ -800,22 +800,29 @@ export default function TemplatesPage() {
           portraitSibling={portraitSiblingFor(adaptTemplate)}
           onClose={() => setAdaptTemplate(null)}
           onAdapt={async ({ screenWidth, screenHeight, orientation }) => {
-            // 2026-05-14 — auto-route to the portrait sibling when the
-            // operator picks a portrait-aspect canvas. Saves them
-            // toggling the card to Portrait first. Picks based on
-            // smaller aspect-difference, so a square-ish canvas
-            // (e.g. 960×1080 ≈ 0.89) routes through whichever sibling
-            // is closer (landscape 1920×1080 = 1.78 → diff 0.50,
-            // portrait 1080×1920 ≈ 0.56 → diff 0.30 → portrait wins).
+            // 2026-05-14 — auto-route to the portrait sibling whenever
+            // the target canvas is portrait-shaped (height > width)
+            // AND a portrait sibling exists. Removed the "closer
+            // aspect" tie-breaker that could fall through to the
+            // landscape source on extreme aspects (e.g. 320×1080,
+            // operator report: "i updated the canvas but just layed
+            // it out landscape anyway"). Simpler rule = predictable
+            // result: portrait LED → portrait base.
             const sibling = portraitSiblingFor(adaptTemplate);
-            const targetAspect = screenWidth / screenHeight;
+            const targetIsPortrait = screenHeight > screenWidth;
+            const targetIsLandscape = screenWidth > screenHeight;
+            const sourceIsPortrait = (adaptTemplate.screenHeight || 0) > (adaptTemplate.screenWidth || 0);
             let bestSource = adaptTemplate;
-            if (sibling) {
-              const adaptAspect = (adaptTemplate.screenWidth || 1920) / (adaptTemplate.screenHeight || 1080);
-              const siblingAspect = (sibling.screenWidth || 1080) / (sibling.screenHeight || 1920);
-              const adaptDiff = Math.abs(targetAspect - adaptAspect);
-              const siblingDiff = Math.abs(targetAspect - siblingAspect);
-              if (siblingDiff < adaptDiff) bestSource = sibling;
+            if (sibling && targetIsPortrait && !sourceIsPortrait) {
+              // Operator clicked Custom on the LANDSCAPE card but
+              // picked a portrait canvas → switch to portrait base.
+              bestSource = sibling;
+            } else if (sibling && targetIsLandscape && sourceIsPortrait) {
+              // Inverse: clicked on the portrait card but picked
+              // landscape → keep using source (sibling here is also
+              // undefined per portraitSiblingFor's `-portrait` guard
+              // — but defensive in case the convention changes).
+              bestSource = adaptTemplate;
             }
             const result = await duplicateTemplate.mutateAsync({
               id: bestSource.id,
@@ -1135,10 +1142,10 @@ function AdaptForLedModal({
     : { w: customW, h: customH, orientation: customH > customW ? 'PORTRAIT' : 'LANDSCAPE' };
   const previewBase: Template = (() => {
     if (!portraitSibling) return source;
-    const target = previewCanvas.w / previewCanvas.h;
-    const adaptA = (source.screenWidth || 1920) / (source.screenHeight || 1080);
-    const siblingA = (portraitSibling.screenWidth || 1080) / (portraitSibling.screenHeight || 1920);
-    return Math.abs(target - siblingA) < Math.abs(target - adaptA) ? portraitSibling : source;
+    const targetIsPortrait = previewCanvas.h > previewCanvas.w;
+    const sourceIsPortrait = (source.screenHeight || 0) > (source.screenWidth || 0);
+    if (targetIsPortrait && !sourceIsPortrait) return portraitSibling;
+    return source;
   })();
 
   // The LED-poster shortcuts the operator uses in production. Each
