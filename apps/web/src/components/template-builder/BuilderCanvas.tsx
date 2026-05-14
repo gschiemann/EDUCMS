@@ -504,7 +504,19 @@ export function BuilderCanvas() {
           // chrome leaves behind. Same WYSIWYG promise the preview
           // modal uses, just with sidebar-aware bounds. `zoom` becomes
           // a deviation FROM that fit baseline (0.5 = half, 2 = double).
-          width: zoom === 1 ? '100%' : `${100 * zoom}%`,
+          //
+          // 2026-05-14 — Operator hit this with a 320×1080 (aspect
+          // 0.296) duplicate via Custom: setting `width: 100%` forced
+          // the box to parent width, then aspect-ratio computed a
+          // height that overflowed the parent, and the editor showed
+          // a landscape-shaped canvas instead of a tall narrow strip.
+          // Fix: when the design is portrait (aspect < 1), drive
+          // sizing off HEIGHT — `height: 100%` + aspect-ratio yields
+          // the right narrow strip. Landscape designs keep
+          // width-driven sizing as before.
+          ...(aspectRatio < 1
+            ? { height: zoom === 1 ? '100%' : `${100 * zoom}%` }
+            : { width: zoom === 1 ? '100%' : `${100 * zoom}%` }),
           aspectRatio: `${aspectRatio}`,
           maxWidth: '100%',
           maxHeight: '100%',
