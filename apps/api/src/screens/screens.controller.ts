@@ -1963,6 +1963,12 @@ export class ScreensController {
             template: {
               include: {
                 zones: { orderBy: { sortOrder: 'asc' } },
+                // 2026-05-14 — D2 touch-scenes were stored on the
+                // Template but never INCLUDED in the manifest query,
+                // so the player couldn't filter zones by sceneId or
+                // handle goto-template touch actions. Same audit as
+                // the isTouchEnabled / touchAction passthrough fix.
+                scenes: { orderBy: { sortOrder: 'asc' } },
               },
             },
           }
@@ -2027,6 +2033,18 @@ export class ScreensController {
           bgColor: s.playlist.template.bgColor,
           bgGradient: s.playlist.template.bgGradient,
           bgImage: s.playlist.template.bgImage,
+          // 2026-05-14 — operator: "i created a touch template and
+          // everytime i tap the screen this menu pops up, something
+          // is very broken in our touch workflow". Root cause was
+          // here: isTouchEnabled + idleResetMs were stored on the
+          // Template row but NEVER serialized into the manifest
+          // payload, so the player's `playlist.template.isTouchEnabled`
+          // read as undefined → falsy → the canvas onClick fell back
+          // to the operator-info overlay toggle instead of letting
+          // taps reach the touch widgets. Wiring them in here is the
+          // whole fix.
+          isTouchEnabled: !!(s.playlist.template as any).isTouchEnabled,
+          idleResetMs: (s.playlist.template as any).idleResetMs ?? undefined,
           zones: s.playlist.template.zones.map(z => ({
             id: z.id,
             name: z.name,
@@ -2037,8 +2055,21 @@ export class ScreensController {
             height: z.height,
             zIndex: z.zIndex,
             sortOrder: z.sortOrder,
+            // Surface touchAction on each zone too — D1 phase added
+            // per-zone tap dispatchers. Same audit miss as above:
+            // the field existed in the DB + builder but never made
+            // it through the manifest serializer.
+            touchAction: (z as any).touchAction ?? null,
+            // sceneId from D2 touch-scene support. Player groups
+            // zones by sceneId for the active-scene render filter.
+            sceneId: (z as any).sceneId ?? null,
             defaultConfig: z.defaultConfig ? JSON.parse(z.defaultConfig) : null,
           })),
+          // Scene metadata for D2 touch-navigation. Empty array for
+          // non-multi-scene templates.
+          scenes: Array.isArray((s.playlist.template as any).scenes)
+            ? (s.playlist.template as any).scenes
+            : [],
         },
       } : {}),
       items: s.playlist.items.map(pi => ({
