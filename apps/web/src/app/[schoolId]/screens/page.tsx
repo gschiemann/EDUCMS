@@ -6,6 +6,7 @@ import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteS
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
+import { FloorPlansView } from '@/components/screens/FloorPlansView';
 import { apiFetch } from '@/lib/api-client';
 import { useUIStore } from '@/store/ui-store';
 import { useParams, useRouter } from 'next/navigation';
@@ -1115,7 +1116,15 @@ export default function ScreensPage() {
           {/* List / Map / Floor plans — three views of the same fleet.
               Floor plans was its own sidebar entry until 2026-04-27 when
               the operator pointed out "this is just another way to see
-              screens"; the toggle replaces it cleanly. */}
+              screens"; the toggle replaces it cleanly.
+
+              2026-05-14 — Floor plans used to `router.push()` to a
+              separate route, which broke the operator's "stay in the
+              same frame" expectation ("once i open floor plan, i lose
+              the ability to go back to list or map"). Now all three
+              behave identically — flip viewMode, render inline. The
+              floor-plans/[id] pin-placement editor stays a separate
+              route because it's a focused full-screen workflow. */}
           <div className="inline-flex bg-slate-100 rounded-lg p-0.5 border border-slate-200">
             <button onClick={() => setViewMode('list')}
               className={`px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -1126,9 +1135,9 @@ export default function ScreensPage() {
               <MapIcon className="w-3.5 h-3.5" /> Map
             </button>
             <button
-              onClick={() => router.push(`/${schoolId}/floor-plans`)}
-              className="px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 text-slate-500 hover:text-slate-700 hover:bg-white/50 transition-colors"
-              title="Open the floor plans editor (drag screens onto a building map)"
+              onClick={() => setViewMode('floor')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'floor' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              title="View floor plans (drag screens onto a building map)"
             >
               <MapPin className="w-3.5 h-3.5" /> Floor plans
             </button>
@@ -1141,20 +1150,29 @@ export default function ScreensPage() {
               row, which matches the audit-trail pattern used
               elsewhere (one force-update log per device, not a vague
               "sent to everyone"). */}
-          <button onClick={() => { setShowPairModal(true); setPairGroupId(''); setPairCode(''); setPairName(''); setPairError(''); }}
-            disabled={isViewer}
-            title={isViewer ? 'Read-only — viewer role' : undefined}
-            className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: 'var(--brand-accent, var(--brand-primary, #059669))' }}>
-            <Wifi className="w-4 h-4" /> Pair Screen
-          </button>
-          <button onClick={() => setShowCreateGroup(true)}
-            disabled={isViewer}
-            title={isViewer ? 'Read-only — viewer role' : undefined}
-            className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: 'var(--brand-primary, #4f46e5)' }}>
-            <Plus className="w-4 h-4" /> New Group
-          </button>
+          {/* Pair Screen / New Group only apply to the list / map views.
+              On the Floor plans tab the equivalent action is "Upload
+              floor plan", which FloorPlansView renders inline so the
+              operator isn't reading a "Pair Screen" button while
+              looking at building blueprints. */}
+          {viewMode !== 'floor' && (
+            <>
+              <button onClick={() => { setShowPairModal(true); setPairGroupId(''); setPairCode(''); setPairName(''); setPairError(''); }}
+                disabled={isViewer}
+                title={isViewer ? 'Read-only — viewer role' : undefined}
+                className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: 'var(--brand-accent, var(--brand-primary, #059669))' }}>
+                <Wifi className="w-4 h-4" /> Pair Screen
+              </button>
+              <button onClick={() => setShowCreateGroup(true)}
+                disabled={isViewer}
+                title={isViewer ? 'Read-only — viewer role' : undefined}
+                className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: 'var(--brand-primary, #4f46e5)' }}>
+                <Plus className="w-4 h-4" /> New Group
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1195,6 +1213,20 @@ export default function ScreensPage() {
         </div>
       )}
 
+      {/* Floor plans tab body — Sprint 8b grid rendered inline so the
+          operator stays in the Screens tab UI when switching views.
+          Drilling into an individual plan still routes to
+          /floor-plans/[id] where the pin editor lives. */}
+      {viewMode === 'floor' && <FloorPlansView embedded />}
+
+      {/* List + Map tab bodies — banner, group form, groups list.
+          Hidden when the operator's on the Floor plans tab so the page
+          doesn't show two competing fleet views at once. The FleetSummary
+          strip + Map block above ARE still visible on the Map tab
+          (existing additive behavior — operators reading the map often
+          want the list nearby for a status cross-check). */}
+      {viewMode !== 'floor' && (
+      <>
       {/* How it works banner */}
       <div className="bg-gradient-to-br from-emerald-50 to-teal-50/50 rounded-3xl border-transparent p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
         <h3 className="text-sm font-bold text-slate-800 mb-4">How to Connect a Screen</h3>
@@ -1573,6 +1605,8 @@ export default function ScreensPage() {
             </div>
           )}
         </div>
+      )}
+      </>
       )}
 
       {/* ─── Pair Screen Modal ─── */}
