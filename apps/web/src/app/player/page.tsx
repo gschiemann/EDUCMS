@@ -4687,6 +4687,32 @@ function PlayerPage() {
         {connectivityToast}
         {unsignedWsBanner}
         {canvasEditor}
+
+        {/* 2026-05-14 — touch overlays. SAME AUDIT MISS AS
+            otaOverlay above. The TouchOverlay + TouchNavOverlay
+            below this early-return only rendered in the
+            non-template render path, so on the operator's "Sample
+            Touch" template the dispatcher fired, the fetch
+            succeeded (green toast "goto-template fetched ok"),
+            setTouchNavigatedTemplate(tpl) ran — and then NOTHING
+            mounted because the component reading that state was
+            below the early-return. Visitor saw "nothing happened
+            on tap" with no error. Adding both overlays here so
+            template-playlist taps actually trigger their
+            configured action. Same {expr && <Component>} pattern
+            used in the non-template branch — purely additive. */}
+        <TouchOverlay
+          overlay={touchOverlay}
+          muted={touchMuted}
+          onClose={() => setTouchOverlay(null)}
+          onSoundToggle={() => setTouchMuted((m) => !m)}
+        />
+        {touchNavigatedTemplate && (
+          <TouchNavOverlay
+            template={touchNavigatedTemplate}
+            onBack={() => setTouchNavigatedTemplate(null)}
+          />
+        )}
       </div>
     );
   }
