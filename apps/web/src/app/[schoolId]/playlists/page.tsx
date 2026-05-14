@@ -780,6 +780,16 @@ export default function PlaylistsPage() {
   const [schedDays, setSchedDays] = useState<string[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
   const [schedTimeStart, setSchedTimeStart] = useState('08:00');
   const [schedTimeEnd, setSchedTimeEnd] = useState('15:00');
+  // 2026-05-14 — date-range bounds for the schedule itself (separate
+  // from timeStart/timeEnd which are time-of-DAY). Operator: "we
+  // should have the ability to publish on a specific date, so like
+  // from this date to this date and start at this time". When set,
+  // the schedule only runs on calendar days between schedStartDate
+  // and schedEndDate (inclusive); when empty, falls back to current
+  // behavior (starts now, never ends). Format: YYYY-MM-DD from the
+  // native <input type="date"> picker.
+  const [schedStartDate, setSchedStartDate] = useState<string>('');
+  const [schedEndDate, setSchedEndDate] = useState<string>('');
   const [schedMode, setSchedMode] = useState<'always' | 'scheduled'>('always');
   // 2026-05-05 — schedule-level audio override picked at publish time.
   // true  = force every video on this schedule muted
@@ -1100,11 +1110,28 @@ export default function PlaylistsPage() {
     const scheduleParamsFor = (target: string) => {
       const isGroup = target.startsWith('group-');
       const targetId = target.replace(/^(group-|screen-)/, '');
+      // 2026-05-14 — surface the operator-picked date range. If
+      // schedStartDate is unset, default to "now" (current behavior).
+      // If set, combine with the time-of-day start (or 00:00) so the
+      // schedule activates at the exact moment requested. Same for
+      // end: combined with time-of-day end (or 23:59) so the last
+      // day plays through to its time window end.
+      const computeStartTime = (): string => {
+        if (!schedStartDate) return new Date().toISOString();
+        const tod = (schedMode === 'scheduled' && schedTimeStart) || '00:00';
+        return new Date(`${schedStartDate}T${tod}:00`).toISOString();
+      };
+      const computeEndTime = (): string | undefined => {
+        if (!schedEndDate) return undefined;
+        const tod = (schedMode === 'scheduled' && schedTimeEnd) || '23:59';
+        return new Date(`${schedEndDate}T${tod}:59`).toISOString();
+      };
       return {
         playlistId: playlistId!,
         screenGroupId: isGroup ? targetId : undefined,
         screenId: !isGroup ? targetId : undefined,
-        startTime: new Date().toISOString(),
+        startTime: computeStartTime(),
+        endTime: computeEndTime(),
         daysOfWeek: schedMode === 'scheduled' ? schedDays.join(',') : undefined,
         timeStart: schedMode === 'scheduled' ? schedTimeStart : undefined,
         timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
@@ -1395,7 +1422,7 @@ export default function PlaylistsPage() {
                 title={isViewer ? 'Read-only — viewer role' : undefined}
                 className="px-3 py-2 md:py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1 whitespace-nowrap shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <CalendarDays className="w-3.5 h-3.5" /> Schedule to Screen
+                <CalendarDays className="w-3.5 h-3.5" /> Publish
               </button>
             )}
           </div>
@@ -1928,14 +1955,41 @@ export default function PlaylistsPage() {
         )}
 
         {/* ─── Publish / Schedule Modal ─── */}
+        {/* 2026-05-14 — operator: "when i try to schedule to the screen
+            and i open the data and time picker it make the mobile app
+            cut off thw cancel/save/publish buttons....also the top bar
+            is sitting over top of the text on the mobile app".
+            Three coordinated fixes:
+            1. z-[100] (was z-50) — above the sticky top toolbar (z-20)
+               so the toolbar can't paint over the modal header.
+            2. flex items-end md:items-center — bottom-sheet on mobile,
+               centered modal on desktop (same pattern as other modals
+               in the app for consistency).
+            3. Three-row layout: sticky header / scrollable body / sticky
+               footer. Body has `overflow-y-auto`, footer stays glued to
+               the bottom so Cancel / Save / Publish are always visible
+               regardless of how tall the body content gets (date picker
+               on iOS Safari renders a system sheet that pushes the
+               modal taller). Footer also has pb-[env(safe-area-inset-
+               bottom)] so it sits above the iPhone home-indicator. */}
         {showPublishModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Publish to Screens">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-end md:items-center justify-center md:p-4 overflow-hidden" role="dialog" aria-modal="true" aria-label="Publish to Screens">
             <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => setShowPublishModal(false)} />
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col p-6 relative z-10">
-              <h3 className="text-lg font-bold text-slate-800 mb-1">Publish to Screens</h3>
-              <p className="text-sm text-slate-500 mb-5">
-                Schedule <span className="font-bold text-slate-800">{selectedPlaylist?.name}</span> to play on a screen or group.
-              </p>
+            <div className="bg-white rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90dvh] relative z-10 pb-[env(safe-area-inset-bottom)] md:pb-0">
+              {/* Drag handle hint on mobile — signals bottom-sheet */}
+              <div className="md:hidden flex justify-center pt-2 pb-1" aria-hidden>
+                <div className="w-10 h-1 rounded-full bg-slate-300" />
+              </div>
+              {/* Sticky header */}
+              <div className="px-5 md:px-6 pt-4 md:pt-6 pb-3 border-b border-slate-100">
+                <h3 className="text-lg font-bold text-slate-800 mb-1">Publish to Screens</h3>
+                <p className="text-sm text-slate-500">
+                  Schedule <span className="font-bold text-slate-800">{selectedPlaylist?.name}</span> to play on a screen or group.
+                </p>
+              </div>
+
+              {/* Scrollable body */}
+              <div className="flex-1 overflow-y-auto px-5 md:px-6 py-4">
 
               <div className="mb-4">
                 <p className="block text-xs font-semibold text-slate-600 mb-1.5">Publish Targets</p>
@@ -2053,6 +2107,43 @@ export default function PlaylistsPage() {
 
               {schedMode === 'scheduled' && (
                 <div className="space-y-4 mb-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  {/* 2026-05-14 — date range. Empty = "starts now, no
+                      end date" (legacy behavior). Operator can leave
+                      both empty for an always-recurring schedule, or
+                      pick a campaign window (e.g. homecoming week). */}
+                  <div>
+                    <p className="block text-xs font-semibold text-slate-600 mb-2">Date Range <span className="font-normal text-slate-400 italic">(optional)</span></p>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <label htmlFor="sched-date-start" className="sr-only">Start date</label>
+                      <input
+                        id="sched-date-start"
+                        type="date"
+                        value={schedStartDate}
+                        onChange={e => setSchedStartDate(e.target.value)}
+                        min={new Date().toISOString().slice(0, 10)}
+                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <span className="text-xs text-slate-400 font-semibold text-center sm:px-1">to</span>
+                      <label htmlFor="sched-date-end" className="sr-only">End date</label>
+                      <input
+                        id="sched-date-end"
+                        type="date"
+                        value={schedEndDate}
+                        onChange={e => setSchedEndDate(e.target.value)}
+                        min={schedStartDate || new Date().toISOString().slice(0, 10)}
+                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1.5 leading-tight">
+                      {!schedStartDate && !schedEndDate
+                        ? 'Starts immediately and runs until you turn the playlist off.'
+                        : schedStartDate && !schedEndDate
+                          ? `Starts ${new Date(schedStartDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} and runs until you turn it off.`
+                          : !schedStartDate && schedEndDate
+                            ? `Starts immediately and stops on ${new Date(schedEndDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}.`
+                            : `Active ${new Date(schedStartDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} → ${new Date(schedEndDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}.`}
+                    </p>
+                  </div>
                   <div>
                     <p className="block text-xs font-semibold text-slate-600 mb-2">Days of Week</p>
                     <div className="flex gap-1">
@@ -2097,8 +2188,17 @@ export default function PlaylistsPage() {
                 </div>
               )}
 
-              <div className="flex justify-end gap-3 mt-2">
-                <button onClick={() => setShowPublishModal(false)} className="px-4 py-2.5 text-slate-500 hover:text-slate-800 text-sm font-semibold rounded-lg hover:bg-slate-50">
+              </div>{/* /scrollable body */}
+
+              {/* Sticky footer — always visible regardless of body
+                  scroll position. Buttons stretch flex-1 on mobile so
+                  thumb tap targets stay generous; revert to natural
+                  width on desktop. */}
+              <div className="border-t border-slate-100 bg-slate-50/40 px-5 md:px-6 py-3 flex items-center gap-2 md:gap-3">
+                <button
+                  onClick={() => setShowPublishModal(false)}
+                  className="flex-1 md:flex-initial px-4 py-2.5 text-slate-500 hover:text-slate-800 text-sm font-semibold rounded-lg hover:bg-slate-100 active:bg-slate-200"
+                >
                   Cancel
                 </button>
                 {/* Save = persist schedule as DRAFT (isActive:false).
@@ -2110,7 +2210,7 @@ export default function PlaylistsPage() {
                 <button
                   disabled={schedTargets.length === 0 || publishSubmitting || isViewer}
                   onClick={handleSaveDraft}
-                  className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 text-sm font-bold rounded-lg shadow-sm flex items-center gap-2"
+                  className="flex-1 md:flex-initial px-4 md:px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
                   title={isViewer ? 'Read-only — viewer role' : "Save this schedule as a draft — won't go live until you turn the playlist on"}
                 >
                   {publishSubmitting ? (
@@ -2123,7 +2223,7 @@ export default function PlaylistsPage() {
                   disabled={schedTargets.length === 0 || publishSubmitting || isViewer}
                   onClick={handlePublish}
                   title={isViewer ? 'Read-only — viewer role' : undefined}
-                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center gap-2"
+                  className="flex-1 md:flex-initial px-4 md:px-5 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
                 >
                   {publishSubmitting ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> Publishing…</>
