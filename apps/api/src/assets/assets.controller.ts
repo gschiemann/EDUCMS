@@ -768,6 +768,68 @@ export class AssetsController {
     return { id: asset.id, fileUrl: url, folderId: asset.folderId, status: asset.status };
   }
 
+  /**
+   * 2026-05-14 — Player-facing single-asset fetch for `play-video`
+   * and `show-overlay` touch actions. The controller has no
+   * GET /:id endpoint at all (just /list, /pending, /folders) — the
+   * builder + dashboard never needed one because they always work
+   * off cached list data. The PLAYER does need one: the TouchOverlay
+   * resolves play-video / show-overlay targets that are stored as
+   * asset UUIDs in the manifest's touchAction blob, and without an
+   * endpoint to hit, those resolutions 404'd → operator saw
+   * "webpage unavailable" with an Android WebView error page.
+   *
+   * Auth follows the same pattern as /templates/:id/playback:
+   *   - kind:'device' → look up the bound screen, scope by tenant
+   *   - SUPER_ADMIN → cross-tenant by design
+   *   - user JWT → scope by tenantId
+   * No @RequireRoles because device JWTs have no role; auth is
+   * enforced via the where-clause filter on the lookup.
+   *
+   * Returns only the playback-needed fields (id, fileUrl, mimeType,
+   * fileSize) — never the full Asset row. Status must be PUBLISHED;
+   * draft + pending-approval assets never reach a player.
+   */
+  @Get(':id/playback')
+  async getForPlayback(@Request() req: any, @Param('id') id: string) {
+    const u = req.user || {};
+    let scopeTenantId: string | null = null;
+    if (u.kind === 'device') {
+      const screen = await this.prisma.client.screen.findUnique({
+        where: { id: u.sub },
+        select: { tenantId: true, status: true },
+      });
+      if (!screen || screen.status === 'REVOKED') {
+        throw new HttpException('Device invalid', HttpStatus.FORBIDDEN);
+      }
+      scopeTenantId = screen.tenantId ?? null;
+    } else if (u.role === AppRole.SUPER_ADMIN) {
+      scopeTenantId = null;
+    } else {
+      scopeTenantId = u.schoolId || u.tenantId || u.districtId || null;
+      if (!scopeTenantId) {
+        throw new HttpException('Asset not found', HttpStatus.NOT_FOUND);
+      }
+    }
+    const asset = await this.prisma.client.asset.findFirst({
+      where: {
+        id,
+        status: 'PUBLISHED',
+        ...(scopeTenantId ? { tenantId: scopeTenantId } : {}),
+      },
+      select: {
+        id: true,
+        fileUrl: true,
+        mimeType: true,
+        fileSize: true,
+      },
+    });
+    if (!asset) {
+      throw new HttpException('Asset not found', HttpStatus.NOT_FOUND);
+    }
+    return asset;
+  }
+
   // ─── Review queue listing ──────────────────────────────────────
   @Get('pending')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)

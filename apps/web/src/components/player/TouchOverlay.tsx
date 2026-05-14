@@ -47,6 +47,23 @@ export function TouchOverlay({
   const [resolved, setResolved] = useState<ResolvedAsset | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // 2026-05-14 — operator: "touch load a 404 error on the URL".
+  // Root cause: TouchOverlay built proxy/asset URLs as
+  // `${process.env.NEXT_PUBLIC_API_URL}/api/v1/...` — but the env
+  // var on Vercel ALREADY includes `/api/v1`, so the resolved URL
+  // became `…/api/v1/api/v1/proxy/web?...` (double-prefixed) which
+  // Express routed to a 404. The rest of the player uses
+  // `getApiRoot()` in player/page.tsx which strips `/api/v1` from
+  // the env var before appending. Replicate that here so the
+  // touch-overlay paths join cleanly regardless of how the env
+  // var was set.
+  const apiBase = (() => {
+    const raw = (typeof window !== 'undefined' && (window as any).__edu_api_root)
+      || process.env.NEXT_PUBLIC_API_URL
+      || '';
+    return raw.replace(/\/api\/v1\/?$/, '');
+  })();
+
   // Resolve the target whenever the overlay opens or its target changes.
   useEffect(() => {
     if (!overlay) {
@@ -68,10 +85,7 @@ export function TouchOverlay({
         // Route through the proxy with interactive=true (matches
         // playback iframe behavior). The proxy strips X-Frame-Options
         // + CSP frame-ancestors so the page actually renders.
-        const apiRoot =
-          (typeof window !== 'undefined' && (window as any).__edu_api_root) ||
-          (process.env.NEXT_PUBLIC_API_URL || '');
-        const proxied = `${apiRoot}/api/v1/proxy/web?url=${encodeURIComponent(target)}&v=2&interactive=true`;
+        const proxied = `${apiBase}/api/v1/proxy/web?url=${encodeURIComponent(target)}&v=2&interactive=true`;
         setResolved({ url: proxied, mimeType: 'text/html' });
       } else {
         // Direct video/image URL — guess mime by extension. Browser
@@ -85,7 +99,14 @@ export function TouchOverlay({
       return;
     }
 
-    // UUID-ish → fetch /api/v1/assets/:id to resolve.
+    // UUID-ish → fetch /api/v1/assets/:id/playback to resolve.
+    //
+    // 2026-05-14 — was hitting /assets/:id which didn't exist (404
+    // routing failure → operator saw "webpage unavailable" Android
+    // WebView error). Same audit miss as the templates /playback
+    // endpoint; assets controller never had a single-asset GET at
+    // all, only /list and /pending. New /:id/playback accepts
+    // device JWTs and returns the playback-only fields.
     let cancelled = false;
     (async () => {
       try {
@@ -93,9 +114,10 @@ export function TouchOverlay({
           typeof window !== 'undefined'
             ? localStorage.getItem('edu_cms_token') || localStorage.getItem('edu_device_token') || ''
             : '';
-        const apiRoot = process.env.NEXT_PUBLIC_API_URL || '';
+        // Same apiBase normalization as the iframe path (strips
+        // trailing /api/v1 from the env var so we don't double-prefix).
         const res = await fetch(
-          `${apiRoot}/api/v1/assets/${encodeURIComponent(target)}`,
+          `${apiBase}/api/v1/assets/${encodeURIComponent(target)}/playback`,
           { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: 'no-store' },
         );
         if (cancelled) return;
@@ -352,8 +374,25 @@ export function TouchNavOverlay({
 
       {/* Scaling pane. Outer ref provides the measurement viewport;
           inner div is the *fixed-pixel* canvas at the template's
-          natural resolution; transform:scale shrinks it to fit. */}
-      <div ref={containerRef} className="flex-1 relative flex items-center justify-center">
+          natural resolution; transform:scale shrinks it to fit.
+
+          2026-05-14 — operator: "the template one loads the
+          template all small at the bottom of the screen". Root
+          cause: prior version used `flex items-center
+          justify-center` to center the inner div, but the inner
+          div's LAYOUT box is the template's native res (e.g.
+          3840×2160) — way bigger than the kiosk viewport (320×1080
+          for a single-panel LED). Flex centering an oversized
+          child overflows in unpredictable ways on Chromium 83 +
+          various WebView builds; the operator saw the template
+          render shrunk in a corner instead of filling the LED.
+
+          Fix: positioned absolute with top-50% / left-50% +
+          translate(-50%, -50%) AND scale in the same transform.
+          Visual center is guaranteed regardless of how big the
+          native layout box is; the parent only has to measure
+          itself, not align an oversized child. */}
+      <div ref={containerRef} className="flex-1 relative overflow-hidden">
         {zones.length === 0 ? (
           // Hard-empty template fallback. Could happen if a freshly-
           // created template was navigated to without any zones.
@@ -362,18 +401,28 @@ export function TouchNavOverlay({
           // visitor in a lobby, NOT an operator. They have no idea
           // what a "widget" is. "Nothing to show here" + Back is the
           // entire message they need (UX audit G4, 2026-05-12).
-          <div className="text-white text-center px-8">
-            <h2 className="text-3xl font-black mb-3">Nothing to show here</h2>
-            <p className="text-base text-white/60">Tap Back to return.</p>
+          <div className="absolute inset-0 flex items-center justify-center text-white text-center px-8">
+            <div>
+              <h2 className="text-3xl font-black mb-3">Nothing to show here</h2>
+              <p className="text-base text-white/60">Tap Back to return.</p>
+            </div>
           </div>
         ) : (
           <div
             style={{
               width: screenWidth,
               height: screenHeight,
-              transform: `scale(${scale})`,
+              // Center the LAYOUT box at the viewport center, then
+              // translate by -50% of own size to anchor visually at
+              // the same center. Stack `translate(...)` BEFORE
+              // `scale(...)` so the translate compensates the full
+              // native size; scaling then shrinks the visible
+              // result symmetrically around that anchor.
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: `translate(-50%, -50%) scale(${scale})`,
               transformOrigin: 'center center',
-              position: 'relative',
               ...bgStyle,
             }}
           >
