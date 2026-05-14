@@ -148,7 +148,35 @@ function dispatchTouchAction(
   action: any,
   ctx: { screenId: string | null; tenantId: string | null; zoneId?: string | null },
 ): void {
-  if (!action || typeof action !== 'object' || !action.type) return;
+  // 2026-05-14 — temporary diagnostic. Operator reports "the menu
+  // doesnt come up when i tap but the widgets dont do anything at
+  // all when you touch them" on the Sample Touch template (DB
+  // confirmed: 3 TOUCH_POINTs with valid open-url / play-video /
+  // goto-template actions). isTouchEnabled flag IS shipping (menu
+  // no longer pops), so the manifest passthrough fix landed. Need
+  // to know where between "tap → dispatcher → custom event →
+  // listener → overlay" the chain breaks. console.log on every
+  // entry so DevTools / remote debug surfaces the trace. Always
+  // dispatch a `edu:touch-fired` event so the visible debug toast
+  // can show it without depending on dev tools. Remove this block
+  // once the bug is identified.
+  try {
+    // eslint-disable-next-line no-console
+    console.log('[touch] dispatchTouchAction called', {
+      action,
+      zoneId: ctx.zoneId,
+      type: action?.type,
+      target: action?.target,
+    });
+    window.dispatchEvent(new CustomEvent('edu:touch-fired', {
+      detail: { action, zoneId: ctx.zoneId ?? null, ts: Date.now() },
+    }));
+  } catch { /* swallow */ }
+
+  if (!action || typeof action !== 'object' || !action.type) {
+    try { console.warn('[touch] dispatcher rejected — bad shape', action); } catch {}
+    return;
+  }
   const type = action.type as string;
   const target = action.target as string | undefined;
 
@@ -4408,16 +4436,44 @@ function PlayerPage() {
           // (navigate, show, url). Each action also dispatches an
           // edu:touch-action CustomEvent so the idle-reset listener
           // earlier in the file picks it up regardless of type.
+          // 2026-05-14 diagnostic — even when zoneTouchAction is null,
+          // attach a click handler that logs "no action wired" so we
+          // can tell apart "click didn't fire" (no log) from "click
+          // fired but no action attached" (logs but no overlay).
           const onZoneClick = zoneTouchAction
             ? (e: React.MouseEvent) => {
                 e.stopPropagation();
+                try {
+                  // eslint-disable-next-line no-console
+                  console.log('[touch] zone clicked WITH action', {
+                    zoneId: zone.id,
+                    zoneName: zone.name,
+                    widgetType: zone.widgetType,
+                    touchAction: zoneTouchAction,
+                  });
+                  window.dispatchEvent(new CustomEvent('edu:touch-zone-click', {
+                    detail: { zoneId: zone.id, zoneName: zone.name, hasAction: true, ts: Date.now() },
+                  }));
+                } catch {}
                 // Pass zoneId so the analytics ship (Phase D5) can
                 // attribute the tap to the specific widget. Without
                 // this, every tap on every zone would be lumped
                 // together at the template level.
                 dispatchTouchAction(zoneTouchAction, { screenId, tenantId, zoneId: zone.id });
               }
-            : undefined;
+            : (e: React.MouseEvent) => {
+                try {
+                  // eslint-disable-next-line no-console
+                  console.log('[touch] zone clicked NO action', {
+                    zoneId: zone.id,
+                    zoneName: zone.name,
+                    widgetType: zone.widgetType,
+                  });
+                  window.dispatchEvent(new CustomEvent('edu:touch-zone-click', {
+                    detail: { zoneId: zone.id, zoneName: zone.name, hasAction: false, ts: Date.now() },
+                  }));
+                } catch {}
+              };
           // Universal text-style override — same scoped <style> trick
           // BuilderZone uses, mirrored on the player so operator
           // overrides ship to screens. Two-tier:
@@ -4521,6 +4577,15 @@ function PlayerPage() {
             Preview Mode
           </div>
         )}
+
+        {/* 2026-05-14 — touch diagnostic toast. Visible only on
+            isTouchTemplate so it doesn't clutter signage templates.
+            Listens for the temporary edu:touch-zone-click + edu:touch-
+            fired CustomEvents we emit on every tap-action chain step.
+            Shows the operator EXACTLY where the chain stops without
+            needing DevTools on the kiosk. Remove this block once the
+            touch-action bug is identified. */}
+        {isTouchTemplate && <TouchDiagToast />}
 
         {/* Info overlay */}
         {showOverlay && (
@@ -5982,6 +6047,100 @@ function OtaProgressOverlay({
  * crops — black bars appear on whichever axis doesn't fill. The LED
  * canvas's background color shows through those bars.
  */
+
+/**
+ * 2026-05-14 — TouchDiagToast.
+ *
+ * Temporary diagnostic. Operator reports touch widgets don't respond
+ * even though DB confirms the template has isTouchEnabled=true and
+ * each TOUCH_POINT zone has a valid touchAction. The manifest fix
+ * landed (the info-overlay no longer pops up on tap), but per-zone
+ * touch actions still don't fire visibly. Mounting this toast on
+ * touch templates lets us SEE on the kiosk itself whether:
+ *   - The zone click handler fires at all (edu:touch-zone-click)
+ *   - The dispatcher receives the action (edu:touch-fired)
+ *   - The action is being rejected as malformed
+ * No DevTools required — the toast appears in the top-LEFT for 6s
+ * after any tap-related event. Remove the entire block + the three
+ * `try { console.log; window.dispatchEvent }` instrumentation sites
+ * once the bug is identified.
+ */
+function TouchDiagToast() {
+  const [last, setLast] = useState<null | {
+    label: string;
+    detail: string;
+    tone: 'ok' | 'warn' | 'err';
+    ts: number;
+  }>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let clearT: any = null;
+    const announce = (label: string, detail: string, tone: 'ok' | 'warn' | 'err') => {
+      setLast({ label, detail, tone, ts: Date.now() });
+      if (clearT) clearTimeout(clearT);
+      clearT = setTimeout(() => setLast(null), 6000);
+    };
+    const onZoneClick = (e: Event) => {
+      const ce = e as CustomEvent<any>;
+      const d = ce.detail || {};
+      if (d.hasAction) {
+        announce('zone tap →', `${d.zoneName} (id ${String(d.zoneId).slice(0, 8)})`, 'ok');
+      } else {
+        announce('zone tap (NO action)', `${d.zoneName} (id ${String(d.zoneId).slice(0, 8)})`, 'warn');
+      }
+    };
+    const onFired = (e: Event) => {
+      const ce = e as CustomEvent<any>;
+      const d = ce.detail || {};
+      const a = d.action || {};
+      announce(
+        `dispatcher fired: ${a.type || '?'}`,
+        `target=${typeof a.target === 'string' ? a.target.slice(0, 40) : '—'}`,
+        'ok',
+      );
+    };
+    window.addEventListener('edu:touch-zone-click', onZoneClick as EventListener);
+    window.addEventListener('edu:touch-fired', onFired as EventListener);
+    return () => {
+      window.removeEventListener('edu:touch-zone-click', onZoneClick as EventListener);
+      window.removeEventListener('edu:touch-fired', onFired as EventListener);
+      if (clearT) clearTimeout(clearT);
+    };
+  }, []);
+  if (!last) {
+    return (
+      <div
+        className="absolute top-3 left-3 z-[1000] flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded shadow-lg pointer-events-none select-none"
+        style={{
+          background: 'rgba(15, 23, 42, 0.65)',
+          color: '#94a3b8',
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+        }}
+      >
+        TOUCH DIAG · waiting for tap…
+      </div>
+    );
+  }
+  const bg = last.tone === 'ok' ? 'rgba(16, 185, 129, 0.92)'
+    : last.tone === 'warn' ? 'rgba(245, 158, 11, 0.92)'
+    : 'rgba(239, 68, 68, 0.92)';
+  return (
+    <div
+      className="absolute top-3 left-3 z-[1000] flex flex-col gap-0.5 px-3 py-2 text-[11px] font-mono rounded-lg shadow-lg pointer-events-none select-none max-w-xs"
+      style={{
+        background: bg,
+        color: '#ffffff',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
+      }}
+    >
+      <span className="font-bold uppercase tracking-wider">{last.label}</span>
+      <span className="opacity-90 break-all">{last.detail}</span>
+    </div>
+  );
+}
+
 function TemplateScaler({
   designW,
   designH,
