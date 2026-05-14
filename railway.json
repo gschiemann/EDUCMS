@@ -1,6 +1,6 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
-  "//forceRebuild": "2026-05-14T17:45Z — bump to force Railway to skip its Docker layer cache and rebuild from latest master. Previous deploy was stuck on 3d9f074 even after f4103ec landed on apps/api. Touching railway.json itself is the surest cache-buster since the file is at the watchPatterns root.",
+  "//forceRebuild": "2026-05-14T19:10Z — second bump in 90 minutes. CLI uploads (railway up --ci) are returning HTTP 500 from backboard.railway.com, so we can't push via that path. Webhook for the touch-fix commit (2e93e64 — new /templates/:id/playback endpoint that accepts device JWTs) hasn't fired yet. Modifying railway.json forces a watchPattern hit + rebuild. Previous bump was 2026-05-14T17:45Z to land the manifest serializer fix.",
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
