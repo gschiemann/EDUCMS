@@ -256,16 +256,19 @@ export function AppDialogHost() {
         onClick={() => current.kind !== 'alert' && close(current.kind === 'prompt' ? null : false)}
       />
 
-      {/* Modal card */}
-      <div className={`relative bg-white rounded-2xl shadow-2xl ring-1 ${tone.ring} max-w-md w-full overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-2 duration-200`}>
-        {/* Close x */}
+      {/* Modal card. 2026-05-14 — mobile sizing: pb-safe so iOS home
+          indicator doesn't crowd the footer buttons. The card itself
+          stays max-w-md, the parent's p-4 already gives screen-edge
+          margin. */}
+      <div className={`relative bg-white rounded-2xl shadow-2xl ring-1 ${tone.ring} max-w-md w-full overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-2 duration-200 pb-[env(safe-area-inset-bottom)]`}>
+        {/* Close x — bigger tap target on mobile (44×44 iOS guideline) */}
         {current.kind !== 'alert' && (
           <button
             onClick={() => close(current.kind === 'prompt' ? null : false)}
             aria-label="Cancel"
-            className="absolute top-3 right-3 w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="absolute top-2 right-2 md:top-3 md:right-3 w-11 h-11 md:w-8 md:h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400"
           >
-            <X className="w-4 h-4" aria-hidden />
+            <X className="w-5 h-5 md:w-4 md:h-4" aria-hidden />
           </button>
         )}
 
@@ -305,14 +308,18 @@ export function AppDialogHost() {
             extra outline so the highlighted button is obvious from
             across a room — operator on a TV install reported the
             previous 2-px ring was invisible at distance. */}
-        <div className="px-6 pb-5 pt-2 flex items-center justify-end gap-2 bg-slate-50/40">
+        {/* Footer actions. Mobile: stacks reversed-column so the
+            primary confirm button is the bottom one (thumb-reach
+            from the home indicator). Desktop: side-by-side. Confirm
+            is full-width on mobile, auto on desktop. */}
+        <div className="px-4 md:px-6 pb-5 pt-2 flex flex-col-reverse md:flex-row md:items-center md:justify-end gap-2 bg-slate-50/40">
           {current.kind !== 'alert' && (
             <button
               ref={cancelBtnRef}
               type="button"
               tabIndex={0}
               onClick={() => close(current.kind === 'prompt' ? null : false)}
-              className="px-4 py-2 rounded-lg text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-colors outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-offset-2 focus:scale-105 focus:border-indigo-500"
+              className="w-full md:w-auto px-4 py-3 md:py-2 rounded-lg text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 active:bg-slate-100 transition-colors outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-offset-2 focus:scale-105 focus:border-indigo-500"
             >
               {current.cancelLabel || 'Cancel'}
             </button>
@@ -322,7 +329,7 @@ export function AppDialogHost() {
             type="button"
             tabIndex={0}
             onClick={() => close(current.kind === 'prompt' ? promptValue : true)}
-            className={`px-4 py-2 rounded-lg text-sm font-bold text-white transition-colors outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 focus:scale-105 ${tone.confirmBtn}`}
+            className={`w-full md:w-auto px-4 py-3 md:py-2 rounded-lg text-sm font-bold text-white transition-colors outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 focus:scale-105 ${tone.confirmBtn}`}
           >
             {current.confirmLabel || (current.kind === 'alert' ? 'OK' : current.kind === 'prompt' ? 'Submit' : 'Confirm')}
           </button>

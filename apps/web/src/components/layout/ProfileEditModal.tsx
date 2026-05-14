@@ -98,13 +98,18 @@ export function ProfileEditModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-start justify-center p-4 pt-24"
+      // 2026-05-14 — mobile: bottom-sheet (items-end, full width).
+      // Desktop: anchored near top with pt-24 (existing behavior).
+      className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-end md:items-start justify-center md:p-4 md:pt-24"
       role="dialog"
       aria-modal="true"
       aria-label="Edit profile"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden">
+      <div className="bg-white rounded-t-2xl md:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden pb-[env(safe-area-inset-bottom)] md:pb-0 max-h-[90vh] overflow-y-auto">
+        <div className="md:hidden flex justify-center pt-2 pb-1" aria-hidden>
+          <div className="w-10 h-1 rounded-full bg-slate-300" />
+        </div>
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div

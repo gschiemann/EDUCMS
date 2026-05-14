@@ -576,7 +576,7 @@ export default function TemplatesPage() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="ai-gen-title"
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end md:items-center justify-center md:p-4"
           // Guard against drag-select-from-textarea-ends-on-backdrop
           // closing the modal: only close on a click whose target IS
           // the backdrop element itself, not a bubbled selection.
@@ -587,9 +587,12 @@ export default function TemplatesPage() {
           }}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-2xl p-5 md:p-6 space-y-4 max-h-[90vh] overflow-y-auto pb-[env(safe-area-inset-bottom)] md:pb-6"
             onClick={e => e.stopPropagation()}
           >
+            <div className="md:hidden flex justify-center -mt-2 mb-2" aria-hidden>
+              <div className="w-10 h-1 rounded-full bg-slate-300" />
+            </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-md">
@@ -726,13 +729,17 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* Create Modal */}
+      {/* Create Modal — mobile-first bottom-sheet on phones, centered
+          modal on md+. Same pattern as AdaptForLedModal. */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowCreate(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-6 space-y-5" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end md:items-center justify-center md:p-4" onClick={() => setShowCreate(false)}>
+          <div className="bg-white rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-xl p-5 md:p-6 space-y-4 md:space-y-5 max-h-[90vh] overflow-y-auto pb-[env(safe-area-inset-bottom)] md:pb-6" onClick={e => e.stopPropagation()}>
+            <div className="md:hidden flex justify-center -mt-2 mb-2" aria-hidden>
+              <div className="w-10 h-1 rounded-full bg-slate-300" />
+            </div>
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800">Create New Template</h2>
-              <button onClick={() => setShowCreate(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+              <button onClick={() => setShowCreate(false)} className="w-10 h-10 md:w-auto md:h-auto -mr-2 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-100"><X className="w-5 h-5" /></button>
             </div>
 
             <div className="space-y-3">
@@ -1184,21 +1191,28 @@ function AdaptForLedModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      // 2026-05-14 — mobile: slides up as a bottom-sheet (items-end +
+      // no horizontal padding so the sheet fills width). Desktop:
+      // centered modal. Both modes cap at 90vh + scroll inside.
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end md:items-center justify-center md:p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-6 space-y-5"
+        className="bg-white rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-xl p-5 md:p-6 space-y-4 md:space-y-5 max-h-[90vh] overflow-y-auto pb-[env(safe-area-inset-bottom)] md:pb-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between">
-          <div>
+        {/* Drag handle hint on mobile */}
+        <div className="md:hidden flex justify-center -mt-2 mb-2" aria-hidden>
+          <div className="w-10 h-1 rounded-full bg-slate-300" />
+        </div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <h2 className="text-lg font-bold text-slate-800">Adapt for an LED</h2>
             <p className="text-xs text-slate-500 mt-0.5">
               We'll copy <span className="font-semibold">{source.name}</span> to a new canvas size and open the builder so you can fine-tune widget placement.
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <button onClick={onClose} className="shrink-0 -mr-2 -mt-1 w-10 h-10 md:w-auto md:h-auto rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-100">
             <X className="w-5 h-5" />
           </button>
         </div>

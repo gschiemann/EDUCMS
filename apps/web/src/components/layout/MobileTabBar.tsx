@@ -58,10 +58,16 @@ export function MobileTabBar() {
   const base = schoolId ? `/${schoolId}` : '';
   const isViewer = user?.role === 'RESTRICTED_VIEWER';
   type Tab = { key: string; label: string; icon: typeof Home; href: string; badge?: number; danger?: boolean };
+  // 2026-05-14 — terminology aligned with desktop sidebar: "Assets"
+  // (not "Content"), "Playlists" (not "Lists"). Operator: "we say
+  // asset in the dashboard...lets just keep everything consisitent
+  // mobile and desktop app". Tab labels also match the desktop
+  // Sidebar's exact strings so muscle memory transfers between
+  // surfaces.
   const tabs: Tab[] = [
-    { key: 'home',      label: 'Home',     icon: Home,        href: `${base}` || '/', badge: unreadCount },
-    { key: 'content',   label: 'Content',  icon: FolderOpen,  href: `${base}/assets` },
-    { key: 'playlists', label: 'Lists',    icon: ListMusic,   href: `${base}/playlists` },
+    { key: 'home',      label: 'Home',      icon: Home,        href: `${base}` || '/', badge: unreadCount },
+    { key: 'assets',    label: 'Assets',    icon: FolderOpen,  href: `${base}/assets` },
+    { key: 'playlists', label: 'Playlists', icon: ListMusic,   href: `${base}/playlists` },
     { key: 'screens',   label: 'Screens',  icon: MonitorPlay, href: `${base}/screens` },
     // Alerts is the always-available safety surface. Even for viewers
     // we link to /panic — the page itself enforces RBAC; viewers see

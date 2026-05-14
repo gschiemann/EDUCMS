@@ -122,11 +122,16 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
 
       {/* Quick-action chip grid (2x2) */}
       <div className="grid grid-cols-2 gap-3">
+        {/* Terminology aligned with desktop: "Assets" (matches the
+            sidebar nav + /assets route), "Playlists" (matches the
+            sidebar's Playlists entry), "Screens" (matches Screens
+            nav). Operator: "we say asset in the dashboard...lets
+            just keep everything consisitent mobile and desktop app". */}
         {!isViewer && (
           <QuickAction
             href={`/${schoolId}/assets`}
             icon={UploadCloud}
-            label="Add content"
+            label="Upload asset"
             sub="Photos, video, links"
             color="indigo"
           />
@@ -135,15 +140,15 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
           <QuickAction
             href={`/${schoolId}/playlists`}
             icon={ListMusic}
-            label="Make a list"
-            sub="Bundle content"
+            label="New playlist"
+            sub="Bundle assets"
             color="emerald"
           />
         )}
         <QuickAction
           href={`/${schoolId}/screens`}
           icon={MonitorPlay}
-          label="My screens"
+          label="Screens"
           sub={`${onlineScreens} online`}
           color="sky"
         />
@@ -202,7 +207,7 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
           />
         )}
         <StatusRow
-          label="Content in library"
+          label="Assets in library"
           value={`${totalContent}`}
           tone="info"
           icon={FolderOpen}

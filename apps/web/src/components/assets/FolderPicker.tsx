@@ -189,7 +189,9 @@ export function FolderPicker({
             if (!isDisabled) onConfirm(id);
           }}
           className={cn(
-            'flex items-center gap-2 py-1.5 pr-2 rounded-lg cursor-pointer transition-colors',
+            // py-3 on mobile (~48px row, comfortable thumb hit-target)
+            // py-1.5 on desktop where rows can be tighter
+            'flex items-center gap-2 py-3 md:py-1.5 pr-2 rounded-lg cursor-pointer transition-colors active:bg-slate-200',
             isDisabled && 'opacity-40 cursor-not-allowed',
             !isDisabled && isSelected && 'bg-indigo-100 text-indigo-900',
             !isDisabled && !isSelected && 'hover:bg-slate-100',
@@ -199,20 +201,20 @@ export function FolderPicker({
           {hasChildren ? (
             <button
               onClick={(e) => { e.stopPropagation(); toggleExpand(id); }}
-              className="text-slate-500 hover:text-slate-800 text-xs w-4 h-4 flex items-center justify-center rounded hover:bg-slate-200"
+              className="text-slate-500 hover:text-slate-800 text-base md:text-xs w-6 h-6 md:w-4 md:h-4 flex items-center justify-center rounded hover:bg-slate-200"
               aria-label={isExpanded ? 'Collapse' : 'Expand'}
               tabIndex={-1}
             >
               {isExpanded ? '▾' : '▸'}
             </button>
-          ) : <div className="w-4" />}
+          ) : <div className="w-6 md:w-4" />}
           {isExpanded && hasChildren ? (
-            <FolderOpen className="w-4 h-4 text-indigo-500 shrink-0" />
+            <FolderOpen className="w-5 h-5 md:w-4 md:h-4 text-indigo-500 shrink-0" />
           ) : (
-            <Folder className="w-4 h-4 text-indigo-500 shrink-0" />
+            <Folder className="w-5 h-5 md:w-4 md:h-4 text-indigo-500 shrink-0" />
           )}
-          <span className="text-sm truncate flex-1">{f.name}</span>
-          {isDisabled && <span className="text-[10px] text-slate-400">can’t select</span>}
+          <span className="text-base md:text-sm truncate flex-1">{f.name}</span>
+          {isDisabled && <span className="text-[11px] md:text-[10px] text-slate-400">can’t select</span>}
         </div>
         {isExpanded && children.map((c) => renderRow(c.id, depth + 1))}
       </div>
@@ -239,20 +241,32 @@ export function FolderPicker({
         className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm cursor-default"
         tabIndex={-1}
       />
-      <div className="relative h-full w-full flex items-center justify-center pointer-events-none">
+      {/* 2026-05-14 — Mobile-first sizing. On phones the modal slides
+          up from the bottom as a sheet (full-width, rounded only on
+          top, anchored to bottom-safe-area). On md+ it returns to a
+          centered card. Both modes keep max-h-[90vh] so the modal
+          never overflows the viewport. Operator: "the window that
+          pops up to select a folder is not sized properly for a
+          mobile device". */}
+      <div className="relative h-full w-full flex items-end md:items-center justify-center pointer-events-none">
         <div
           role="dialog"
           aria-modal="true"
           aria-label={title}
-          className="pointer-events-auto bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]"
+          className="pointer-events-auto bg-white dark:bg-slate-900 w-full max-w-md flex flex-col max-h-[90vh] rounded-t-2xl md:rounded-2xl shadow-2xl border border-slate-200 pb-[env(safe-area-inset-bottom)] md:pb-0"
         >
+        {/* Drag handle on mobile signals the sheet metaphor. md:hidden
+            so desktop sees a clean modal. */}
+        <div className="md:hidden flex justify-center pt-2 pb-1" aria-hidden>
+          <div className="w-10 h-1 rounded-full bg-slate-300" />
+        </div>
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-bold text-slate-800 truncate">{title}</h2>
-            {subtitle && <p className="text-[11px] text-slate-500 mt-0.5 truncate">{subtitle}</p>}
+            <h2 className="text-base md:text-sm font-bold text-slate-800 truncate">{title}</h2>
+            {subtitle && <p className="text-xs md:text-[11px] text-slate-500 mt-0.5 truncate">{subtitle}</p>}
           </div>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-700 rounded shrink-0" aria-label="Close">
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="p-2 -mr-2 text-slate-400 hover:text-slate-700 rounded shrink-0" aria-label="Close">
+            <X className="w-5 h-5 md:w-4 md:h-4" />
           </button>
         </div>
 
@@ -393,15 +407,19 @@ export function FolderPicker({
             }}
             onDoubleClick={() => onConfirm(null)}
             className={cn(
-              'flex items-center gap-2 py-1.5 px-3 rounded-lg cursor-pointer',
+              // 2026-05-14 — bigger touch targets on mobile (py-3 vs
+              // py-1.5) so thumbs don't have to be surgical. Reverts
+              // to compact spacing on md+ where a mouse pointer is
+              // precise.
+              'flex items-center gap-2 py-3 md:py-1.5 px-3 rounded-lg cursor-pointer active:bg-slate-100',
               selectedId === null
                 ? 'bg-indigo-100 text-indigo-900'
                 : 'hover:bg-slate-100',
             )}
           >
             <div className="w-4" />
-            <Home className="w-4 h-4 text-slate-600 shrink-0" />
-            <span className="text-sm font-medium flex-1">All Files (root)</span>
+            <Home className="w-5 h-5 md:w-4 md:h-4 text-slate-600 shrink-0" />
+            <span className="text-base md:text-sm font-medium flex-1">All Files (root)</span>
           </div>
 
           {rootsSorted.length === 0 ? (
@@ -419,8 +437,10 @@ export function FolderPicker({
           )}
         </div>
 
-        <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-2">
-          <span className="text-[11px] text-slate-500">
+        {/* Footer: stacks vertically on mobile so each button is full-
+            width and easy to tap. Goes back to a single row on md+ */}
+        <div className="px-4 py-3 border-t border-slate-100 flex flex-col-reverse md:flex-row md:items-center md:justify-between gap-2">
+          <span className="text-xs md:text-[11px] text-slate-500 truncate">
             {selectedId === null
               ? 'Selected: All Files (root)'
               : `Selected: ${pathById.get(selectedId) || byId.get(selectedId)?.name || '?'}`}
@@ -428,13 +448,13 @@ export function FolderPicker({
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
+              className="flex-1 md:flex-initial px-4 md:px-3 py-2.5 md:py-1.5 text-sm md:text-xs font-medium text-slate-600 hover:bg-slate-100 active:bg-slate-200 rounded-lg"
             >
               Cancel
             </button>
             <button
               onClick={() => onConfirm(selectedId)}
-              className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg"
+              className="flex-1 md:flex-initial px-4 py-2.5 md:py-1.5 text-sm md:text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-lg"
             >
               Choose folder
             </button>
