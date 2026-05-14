@@ -1246,4 +1246,122 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#f4ede0',
     zones: [{ name: 'Easter Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'easter', gradeLevel: 'hs' } }],
   },
+
+  // ════════════════════════════════════════════════════════════════
+  // SANDBOX / EXPERIMENTAL — multi-zone responsive layout playground
+  // ════════════════════════════════════════════════════════════════
+  // 2026-05-14 — Operator: "create a new template that we can fuck
+  // around with so you dont break our existing templates". This is
+  // a true multi-zone template (6 independent widgets) for testing
+  // the dynamic-layout / drag-to-rearrange experience. Unlike the
+  // themed composite presets (Rainbow Welcome, Storybook Cafeteria,
+  // etc.) where ALL content lives in a single ANIMATED_* widget,
+  // every piece here is its own zone — drag, resize, reorder, swap
+  // widget types freely without touching the others. Use this as
+  // the playground for new responsive-layout features, custom-
+  // canvas adapt flows, and any UX experiments that we don't want
+  // to risk breaking the 80+ shipping templates over.
+  {
+    id: 'preset-sandbox-dynamic',
+    name: '🧪 Sandbox · Dynamic Layout',
+    description: 'Experimental multi-zone layout for testing the builder, custom-canvas adapts, and dynamic-fill features. Six independent zones (welcome banner, clock, weather, announcement, countdown, ticker) that you can drag, resize, swap, or delete freely — none of the rainbow-style atomic composites. Use this as the playground while we iterate on the dynamic-template architecture.',
+    category: 'LOBBY',
+    orientation: 'LANDSCAPE',
+    schoolLevel: 'UNIVERSAL',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#f1f5f9',
+    bgGradient: 'linear-gradient(135deg, #f8fafc 0%, #e0e7ff 50%, #fce7f3 100%)',
+    zones: [
+      // Top banner — welcome text across the full width
+      {
+        name: 'Welcome banner',
+        widgetType: 'TEXT',
+        x: 0, y: 0, width: 100, height: 14,
+        zIndex: 1,
+        sortOrder: 0,
+        defaultConfig: {
+          text: 'Welcome to your school',
+          fontSize: 64,
+          fontFamily: "'Inter', sans-serif",
+          color: '#1e293b',
+          bold: true,
+          textAlign: 'center',
+          verticalAlign: 'center',
+          bgColor: 'transparent',
+        },
+      },
+      // Clock — top-left
+      {
+        name: 'Clock',
+        widgetType: 'CLOCK',
+        x: 2, y: 16, width: 22, height: 28,
+        zIndex: 2,
+        sortOrder: 1,
+        defaultConfig: {
+          format: '12h',
+          showSeconds: false,
+          showDate: true,
+          variant: 'clock-pill',
+        },
+      },
+      // Weather — top-right
+      {
+        name: 'Weather',
+        widgetType: 'WEATHER',
+        x: 76, y: 16, width: 22, height: 28,
+        zIndex: 2,
+        sortOrder: 2,
+        defaultConfig: {
+          location: 'auto',
+          units: 'F',
+          variant: 'weather-card',
+        },
+      },
+      // Announcement — large center
+      {
+        name: 'Announcement',
+        widgetType: 'ANNOUNCEMENT',
+        x: 26, y: 16, width: 48, height: 50,
+        zIndex: 1,
+        sortOrder: 3,
+        defaultConfig: {
+          label: 'Today',
+          message: 'Drop a message here. Each piece on this template is its own zone — drag the corners to resize, drag the middle to move it, click to swap the widget.',
+          fontSize: 36,
+          variant: 'announcement-card',
+        },
+      },
+      // Countdown — middle-left
+      {
+        name: 'Countdown',
+        widgetType: 'COUNTDOWN',
+        x: 2, y: 46, width: 22, height: 28,
+        zIndex: 2,
+        sortOrder: 4,
+        defaultConfig: {
+          targetDate: null,
+          label: 'Field trip in',
+          number: 7,
+          unit: 'days',
+          variant: 'countdown-burst',
+        },
+      },
+      // Ticker — full-width strip across the bottom
+      {
+        name: 'Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 86, width: 100, height: 14,
+        zIndex: 1,
+        sortOrder: 5,
+        defaultConfig: {
+          messages: 'Picture day Friday · Reading challenge: 20 minutes · Bus 12 running late · Welcome back, families!',
+          speed: 'normal',
+          bgColor: '#1e293b',
+          color: '#ffffff',
+          fontSize: 32,
+        },
+      },
+    ],
+  },
 ];

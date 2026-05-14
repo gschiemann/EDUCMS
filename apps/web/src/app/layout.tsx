@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter, Fredoka, Caveat } from 'next/font/google';
 import './globals.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -34,6 +34,35 @@ const caveat = Caveat({
 export const metadata: Metadata = {
   title: 'Digital Signage CMS',
   description: 'Centralized school signage management.',
+  // 2026-05-14 — PWA wiring (Phase 1 of MOBILE_APP_ROADMAP.md). The
+  // manifest opts the dashboard into Add-to-Home-Screen on iOS / Android,
+  // applies the indigo theme color to the status bar, and surfaces a
+  // home-screen shortcut to /panic for one-tap emergency triggers.
+  // Note: the /player route has its OWN manifest at /player/manifest.json
+  // (apps/web/src/app/player/layout.tsx); this one is for the operator
+  // dashboard surface only.
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'EduCMS',
+  },
+};
+
+// Next.js 14+ requires themeColor / viewport-meta options in a
+// separate viewport export (the metadata export only carries SEO + OG
+// fields now). 'black-translucent' Apple status-bar pairs with this
+// indigo so the iOS notch / status bar reads as one continuous brand
+// surface.
+export const viewport: Viewport = {
+  themeColor: '#6366f1',
+  width: 'device-width',
+  initialScale: 1,
+  // Allow user-scale on the dashboard so an admin with vision needs
+  // can pinch-zoom forms. The /player and /panic routes lock zoom in
+  // their own layouts.
+  maximumScale: 5,
+  userScalable: true,
 };
 
 export default function RootLayout({

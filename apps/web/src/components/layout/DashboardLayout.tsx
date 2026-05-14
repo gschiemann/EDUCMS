@@ -5,6 +5,8 @@ import { usePathname } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { Sidebar } from './Sidebar';
+import { MobileTabBar } from './MobileTabBar';
+import { InstallPromptBanner } from './InstallPromptBanner';
 import { TopToolbar } from './TopToolbar';
 import { SuperAdminBanner } from './SuperAdminBanner';
 import { EmergencyOverlay } from './EmergencyOverlay';
@@ -103,7 +105,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           id="main-content"
           tabIndex={-1}
           className={cn(
-            "flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 transition-all duration-300 relative z-10",
+            // pb-24 on mobile reserves room for MobileTabBar's 56px height
+            // + safe-area-inset. md:pb-8 drops the extra padding once the
+            // sidebar takes over and the tab bar is hidden.
+            "flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 pb-24 md:pb-8 transition-all duration-300 relative z-10",
             isEmergencyActive ? "pointer-events-none opacity-50 blur-sm" : ""
           )}
         >
@@ -112,6 +117,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           </div>
         </main>
       </div>
+
+      {/* Mobile-only bottom tabs. Hidden via internal md:hidden class
+          (kept inside the component so we don't have to think about
+          when to render here). */}
+      <MobileTabBar />
+      {/* "Install to Home Screen" prompt — appears once per user, mobile-
+          only, after a 12s warm-up so it doesn't pop on first touch. */}
+      <InstallPromptBanner />
 
       {isEmergencyActive && <EmergencyOverlay />}
       <AppDialogHost />

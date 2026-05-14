@@ -1,0 +1,42 @@
+{
+  "name": "EduCMS — School Signage",
+  "short_name": "EduCMS",
+  "description": "Manage school displays, playlists, and emergency alerts from your phone.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#6366f1",
+  "scope": "/",
+  "lang": "en-US",
+  "icons": [
+    {
+      "src": "/panic-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/panic-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/panic-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Emergency",
+      "short_name": "Panic",
+      "description": "Open the emergency trigger panel",
+      "url": "/panic",
+      "icons": [{ "src": "/panic-icon.png", "sizes": "192x192" }]
+    }
+  ],
+  "categories": ["education", "productivity", "business"]
+}
