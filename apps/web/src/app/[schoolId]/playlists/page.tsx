@@ -5,7 +5,7 @@ import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageI
 import { useUIStore } from '@/store/ui-store';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent
+  DndContext, closestCenter, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, DragEndEvent
 } from '@dnd-kit/core';
 import {
   arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable,
@@ -136,25 +136,60 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
           trigger a drag after the pointer has moved 8px. */}
       {/* 2026-05-14 — single-row playlist item, mobile-honest.
           Operator: "now you just shifted the 10 sec and settings
-          below....fit them into a single row somehow".
+          below....fit them into a single row somehow". Then:
+          "i need something that shows me i can drag and drop the
+          order of the playlist...if i try now it highlights the
+          text and then pulls up an apple menu asking if i want to
+          copy/lookup/trnslate".
 
           Strategy: drop visual chrome that's redundant on a small
-          screen (drag-grip — drag still works via long-press on the
-          whole row; index number — items render in order anyway;
+          screen (index number — items render in order anyway;
           mime-type subtitle; the literal "sec" label — the input is
           obviously seconds in context). Keeps the actionable bits
-          inline: checkbox, thumbnail, name, duration input, gear,
-          trash. Reverts to the rich desktop chrome at md+. */}
+          inline: visible drag grip (now mobile too), checkbox,
+          thumbnail, name, duration input, gear, trash. Reverts to
+          the rich desktop chrome at md+.
+
+          Drag is grip-only now (vs prior "drag-anywhere on the
+          row"). Why: on iOS, pressing anywhere on the row triggers
+          Safari's text-selection + context-menu (copy / lookup /
+          translate) BEFORE dnd-kit can promote the press into a
+          drag. Confining drag to a single dedicated handle lets us
+          apply `touch-action: none` + `-webkit-touch-callout: none`
+          ONLY to that element — the rest of the row keeps normal
+          touch behavior (tap a duration input, tap a button, etc.). */}
       <div
         {...(isViewer ? {} : attributes)}
-        {...(isViewer ? {} : listeners)}
         title={isViewer ? 'Read-only — viewer role' : undefined}
-        className={`playlist-item-card flex items-center gap-1.5 md:gap-3 p-2 md:p-3.5 ${isViewer ? 'cursor-not-allowed opacity-90' : 'cursor-grab active:cursor-grabbing'}`}
+        className={`playlist-item-card flex items-center gap-1.5 md:gap-3 p-2 md:p-3.5 ${isViewer ? 'cursor-not-allowed opacity-90' : ''}`}
+        style={{
+          // Suppress iOS Safari's text selection + long-press
+          // context menu on the row chrome. The duration <input>
+          // and editable buttons inside still get default behavior
+          // since these properties don't inherit through focus.
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
+          WebkitTouchCallout: 'none',
+        }}
       >
-        {/* Drag grip — desktop only. Long-press on the row drives
-            drag-reorder on mobile (dnd-kit's PointerSensor handles
-            both). */}
-        <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-indigo-400 shrink-0 hidden md:block" aria-hidden="true" />
+        {/* Drag grip — VISIBLE ON MOBILE (was md:block-only before).
+            Doubles as both the visual affordance ("this row can
+            reorder") AND the drag activator. dnd-kit listeners are
+            on this <button> only, not the whole row.
+            touch-action:none keeps the browser from interpreting a
+            press here as a scroll/zoom gesture, so the TouchSensor
+            with delay:150ms can win the activation race over iOS's
+            ~500ms long-press menu. */}
+        <button
+          type="button"
+          {...(isViewer ? {} : listeners)}
+          aria-label="Drag to reorder"
+          disabled={isViewer}
+          className={`shrink-0 -ml-0.5 md:-ml-1 px-1 py-2 md:py-1 rounded touch-none ${isViewer ? 'opacity-40 cursor-not-allowed' : 'text-slate-400 md:text-slate-300 hover:text-indigo-500 hover:bg-slate-100 cursor-grab active:cursor-grabbing active:bg-slate-200'}`}
+          style={{ touchAction: 'none' }}
+        >
+          <GripVertical className="w-5 h-5 md:w-4 md:h-4" aria-hidden="true" />
+        </button>
         <input type="checkbox" checked={isSelected} onChange={() => onToggle(item.id)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer shrink-0" />
         {/* Index number — desktop only; visually redundant on mobile
             where rows are obviously sequential. */}
@@ -871,11 +906,25 @@ export default function PlaylistsPage() {
 
   // Activation constraint so clicks on interactive children (duration
   // input, settings button, checkbox) don't accidentally start a drag.
-  // With distance:8 the pointer must travel 8px before a drag kicks in —
-  // any click that stays put still behaves like a click. Without this
-  // the draggable-whole-row change below would hijack every input edit.
+  // 2026-05-14 — split into separate Mouse + Touch sensors. Previously a
+  // single PointerSensor with `distance: 8` handled both, but on iOS that
+  // setup loses the race against Safari's built-in long-press handler:
+  // the user holds the row, iOS fires its text-selection + copy/lookup
+  // /translate context menu, and dnd-kit never gets to start the drag
+  // because the user lifts their finger reacting to the unexpected menu.
+  // The fix:
+  //   - MouseSensor with `distance: 8` — desktop unchanged; a click that
+  //     stays put still behaves like a click, drag starts after 8px of
+  //     pointer movement.
+  //   - TouchSensor with `delay: 150ms` — drag wins against iOS's ~500ms
+  //     long-press timeout. 150ms is long enough that an accidental tap
+  //     on the grip handle doesn't immediately start a drag, but short
+  //     enough that the operator's intentional "press + drag" feels
+  //     responsive. `tolerance: 6` allows tiny finger jitter during the
+  //     150ms hold without canceling the activation.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
