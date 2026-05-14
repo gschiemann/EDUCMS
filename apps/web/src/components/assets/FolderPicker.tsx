@@ -230,7 +230,18 @@ export function FolderPicker({
   );
 
   return (
-    <div className="fixed inset-0 z-[9999] p-4">
+    // 2026-05-14 — outer wrapper. p-4 padding on md+ (centered modal
+    // with breathing room), zero padding on mobile so the bottom-sheet
+    // can stretch edge-to-edge AND respect safe-area-inset-bottom
+    // without compounding margin. Operator screenshot showed the
+    // modal AND the tab bar both clipped on the right ("Choose fo"
+    // and "Ale[rts]" cut off) — root cause: p-4 was adding 16px on
+    // each side but the inner flex container's `w-full` didn't
+    // subtract that out properly when sliding up from items-end, so
+    // the modal computed wider than viewport. overflow-x-hidden on
+    // the outer is a final guard so any drift can't paint past the
+    // right edge.
+    <div className="fixed inset-0 z-[9999] md:p-4 overflow-x-hidden">
       {/* Click-away dismiss as a real <button> so jsx-a11y is happy +
           screen readers skip it. Esc closes via the top-level keyDown
           listener installed in useEffect. */}
@@ -253,7 +264,7 @@ export function FolderPicker({
           role="dialog"
           aria-modal="true"
           aria-label={title}
-          className="pointer-events-auto bg-white dark:bg-slate-900 w-full max-w-md flex flex-col max-h-[90vh] rounded-t-2xl md:rounded-2xl shadow-2xl border border-slate-200 pb-[env(safe-area-inset-bottom)] md:pb-0"
+          className="pointer-events-auto bg-white dark:bg-slate-900 w-full max-w-md flex flex-col max-h-[90vh] rounded-t-2xl md:rounded-2xl shadow-2xl border border-slate-200 pb-[env(safe-area-inset-bottom)] md:pb-0 overflow-hidden"
         >
         {/* Drag handle on mobile signals the sheet metaphor. md:hidden
             so desktop sees a clean modal. */}
@@ -438,23 +449,27 @@ export function FolderPicker({
         </div>
 
         {/* Footer: stacks vertically on mobile so each button is full-
-            width and easy to tap. Goes back to a single row on md+ */}
+            width and easy to tap. Goes back to a single row on md+.
+            Inner button group is `w-full` on mobile so the two
+            buttons share viewport width evenly without overflow risk
+            from a missing min-w-0 ancestor (operator screenshot
+            showed "Choose fo[lder]" clipped). */}
         <div className="px-4 py-3 border-t border-slate-100 flex flex-col-reverse md:flex-row md:items-center md:justify-between gap-2">
-          <span className="text-xs md:text-[11px] text-slate-500 truncate">
+          <span className="text-xs md:text-[11px] text-slate-500 truncate min-w-0">
             {selectedId === null
               ? 'Selected: All Files (root)'
               : `Selected: ${pathById.get(selectedId) || byId.get(selectedId)?.name || '?'}`}
           </span>
-          <div className="flex gap-2">
+          <div className="flex gap-2 w-full md:w-auto">
             <button
               onClick={onClose}
-              className="flex-1 md:flex-initial px-4 md:px-3 py-2.5 md:py-1.5 text-sm md:text-xs font-medium text-slate-600 hover:bg-slate-100 active:bg-slate-200 rounded-lg"
+              className="flex-1 md:flex-initial min-w-0 px-3 py-2.5 md:py-1.5 text-sm md:text-xs font-medium text-slate-600 hover:bg-slate-100 active:bg-slate-200 rounded-lg"
             >
               Cancel
             </button>
             <button
               onClick={() => onConfirm(selectedId)}
-              className="flex-1 md:flex-initial px-4 py-2.5 md:py-1.5 text-sm md:text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-lg"
+              className="flex-1 md:flex-initial min-w-0 px-3 py-2.5 md:py-1.5 text-sm md:text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-lg whitespace-nowrap"
             >
               Choose folder
             </button>
