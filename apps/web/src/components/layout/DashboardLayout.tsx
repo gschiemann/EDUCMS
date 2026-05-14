@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { Sidebar } from './Sidebar';
 import { MobileTabBar } from './MobileTabBar';
 import { InstallPromptBanner } from './InstallPromptBanner';
+import { ServiceWorkerRegistrar } from './ServiceWorkerRegistrar';
 import { TopToolbar } from './TopToolbar';
 import { SuperAdminBanner } from './SuperAdminBanner';
 import { EmergencyOverlay } from './EmergencyOverlay';
@@ -76,6 +77,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           countdown; operator can Reload-now or Later. Pairs with
           the kiosk player's Phase B4 stale-bundle drift check. */}
       <StaleBundleWatcher />
+      {/* Dashboard PWA service worker — Phase 1 of the mobile roadmap.
+          Registers /sw.js in production only; keeps the player's own
+          SW (sw-player.js) untouched. */}
+      <ServiceWorkerRegistrar />
       {/* 2026-05-12 — auto-heal sessionStorage user objects that
           predate the firstName/lastName columns. Fires one GET
           /users/me on dashboard mount when the in-memory user

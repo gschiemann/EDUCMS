@@ -33,12 +33,24 @@ import {
 } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
 import { useUIStore } from '@/store/ui-store';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { firstName as userFirstName } from '@/lib/user-display';
+import { MobileDashboard } from '@/components/dashboard/MobileDashboard';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useParams } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 
 export default function DashboardPage() {
+  const isMobile = useIsMobile();
+  const params = useParams<{ schoolId?: string }>();
+  const schoolId = params?.schoolId || '';
+
+  // All hooks below run on EVERY render regardless of viewport (Rules
+  // of Hooks). MobileDashboard re-uses the same hooks anyway, so the
+  // network cost is identical between the two paths. The mobile path
+  // simply uses its own JSX tree — see the early return at the very
+  // end of this function.
+
   const { data: activity } = useRecentActivity();
   const { data: screens } = useScreens();
   const { data: screenGroups } = useScreenGroups();
@@ -219,6 +231,14 @@ export default function DashboardPage() {
   // Incident count rolls up everything actionable into one number —
   // admin knows at a glance whether today needs attention.
   const incidentCount = fleet.offline + pendingAssets.length;
+
+  // 2026-05-14 — mobile-first early return. All hooks above ran
+  // unconditionally so Rules of Hooks are satisfied. MobileDashboard
+  // reads the same data via its own hook calls (React Query dedupes
+  // requests), so no extra network calls.
+  if (isMobile) {
+    return <MobileDashboard schoolId={schoolId} />;
+  }
 
   return (
     <div className="space-y-6 pb-12">
