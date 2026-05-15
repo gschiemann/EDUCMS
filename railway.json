@@ -1,6 +1,6 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
-  "//forceRebuild": "2026-05-14T19:10Z — second bump in 90 minutes. CLI uploads (railway up --ci) are returning HTTP 500 from backboard.railway.com, so we can't push via that path. Webhook for the touch-fix commit (2e93e64 — new /templates/:id/playback endpoint that accepts device JWTs) hasn't fired yet. Modifying railway.json forces a watchPattern hit + rebuild. Previous bump was 2026-05-14T17:45Z to land the manifest serializer fix.",
+  "//forceRebuild": "2026-05-15T13:00Z — webhook deploy for 3dc654c (new /assets/:id/playback endpoint for play-video touch action) FAILED yesterday with 'activity Heartbeat timeout' (Railpack builder timed out). Subsequent webhooks all skip because Railway thinks no watched files changed since the last successful 256692f7 deploy at 19:57 (which had /templates/:id/playback but NOT the assets endpoint). Bumping railway.json forces a fresh build that picks up apps/api/src/assets/assets.controller.ts.",
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
