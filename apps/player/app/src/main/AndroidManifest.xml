@@ -186,6 +186,54 @@
             </intent-filter>
         </activity>
 
+        <!--
+          v1.0.64 — Kiosk HOME alias. THE fix for "the upgrade never
+          fully works": after an OTA install Android 14 will not let
+          the Player launch its own MainActivity from the background
+          (BAL — Background Activity Launch — is blocked, and the
+          MY_PACKAGE_REPLACED grant is FGS-only). Three versions of
+          receiver/FGS tricks all failed against this OS policy.
+
+          The canonical kiosk pattern (Yodeck / Rise Vision / every
+          Android Enterprise dedicated-device guide): make the player
+          the HOME launcher. When the player IS home, the OS itself
+          returns to it after ANY death — OTA self-update, crash,
+          reboot — as a SYSTEM-initiated launch that BAL never blocks.
+
+          Why an alias, disabled by default, instead of adding
+          category.HOME straight onto MainActivity: see the long
+          comment on MainActivity above. On OEM-CMS signage boxes
+          (Goodview / NovaStar / TCL) an unconditional HOME filter
+          makes Android prompt "pick a launcher" and can displace the
+          vendor's own CMS launcher. We must NOT do that to a box
+          where we're a guest.
+
+          So: this alias ships DISABLED. It is enabled at runtime
+          ONLY when the Player detects that the Manager companion is
+          the device owner (DevicePolicyManager.isDeviceOwnerApp) —
+          i.e. only on a deliberately-provisioned EduCMS kiosk where
+          owning the home screen is the intended behavior. Manager
+          (the device owner) then calls
+          DevicePolicyManager.addPersistentPreferredActivity() to pin
+          this alias as the HOME handler with no chooser dialog.
+
+          exported=true is required — the system launches HOME.
+          singleTask (inherited from targetActivity) is correct for
+          a launcher. See PlayerApp.kt (enable logic) and Manager's
+          ManagerApp.pinPlayerAsHome().
+        -->
+        <activity-alias
+            android:name=".KioskHomeAlias"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"

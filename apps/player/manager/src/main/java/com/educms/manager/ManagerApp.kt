@@ -83,6 +83,11 @@ class ManagerApp : Application() {
         triggerImmediateOtaCheck(this)
         triggerImmediateManagerSelfUpdate(this)
 
+        // v1.0.21 — pin Player as the HOME launcher. THE fix for the
+        // OTA auto-relaunch problem (see pinPlayerAsHome). Idempotent;
+        // safe on every boot. No-op unless Manager is device owner.
+        pinPlayerAsHome(this)
+
         if (!isPlayerInstalled()) {
             // Single-sideload UX (matches Yodeck's pattern): the
             // bootstrap-fire above already kicks the Player install,
@@ -100,6 +105,81 @@ class ManagerApp : Application() {
             } catch (_: Exception) { /* not installed */ }
         }
         return false
+    }
+
+    /**
+     * v1.0.21 — pin Player's KioskHomeAlias as the device's persistent
+     * preferred HOME activity.
+     *
+     * THE fix for "the OTA upgrade never relaunches the player".
+     * Android 14 forbids an app from launching itself into the
+     * foreground from the background; v1.0.61/62 (Player-side receiver
+     * + FGS tricks) and Manager v1.0.20 (watchdog activity launch) all
+     * fought that policy. The canonical kiosk answer is to stop
+     * fighting it: make the Player the HOME launcher. When Player is
+     * home, the OS itself returns to it after ANY death — OTA self-
+     * update, crash, reboot — and a system-initiated HOME launch is
+     * never BAL-blocked.
+     *
+     * Only the device owner can set a persistent preferred activity
+     * without a chooser dialog, which is why this lives in Manager.
+     * The flow:
+     *   - Player ships `.KioskHomeAlias` (a HOME activity-alias)
+     *     disabled; Player enables it at runtime once it sees Manager
+     *     is device owner (PlayerApp.maybeEnableKioskHomeAlias).
+     *   - Manager (here) registers that alias as the persistent
+     *     preferred HOME handler via addPersistentPreferredActivity.
+     *
+     * We clear any prior persistent-preferred HOME entry we set first,
+     * so repeated boots don't stack duplicates and a Player package-id
+     * change (debug <-> release) can't strand a stale mapping.
+     *
+     * No-op when Manager isn't device owner — on an OEM-CMS box we are
+     * a guest and must not touch the launcher.
+     */
+    private fun pinPlayerAsHome(ctx: Context) {
+        try {
+            if (!AdminReceiver.isDeviceOwner(ctx)) {
+                Log.i(TAG, "pinPlayerAsHome skipped — Manager is not device owner")
+                return
+            }
+            val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE)
+                as? android.app.admin.DevicePolicyManager ?: return
+            val admin = android.content.ComponentName(ctx, AdminReceiver::class.java)
+
+            // Resolve whichever Player package is actually installed
+            // (release or .debug).
+            val pm = ctx.packageManager
+            val playerPkg = listOf(
+                BuildConfig.PLAYER_PACKAGE,
+                "${BuildConfig.PLAYER_PACKAGE}.debug",
+            ).firstOrNull { pkg ->
+                try { pm.getPackageInfo(pkg, 0); true } catch (_: Exception) { false }
+            }
+            if (playerPkg == null) {
+                Log.i(TAG, "pinPlayerAsHome — Player not installed yet, will retry next boot")
+                return
+            }
+
+            // Clear any HOME preference we previously set for either
+            // Player package id, then add the fresh one. clearPackage
+            // PersistentPreferredActivities only affects entries this
+            // admin created.
+            dpm.clearPackagePersistentPreferredActivities(admin, playerPkg)
+
+            val homeFilter = android.content.IntentFilter(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addCategory(Intent.CATEGORY_DEFAULT)
+            }
+            val aliasComponent = android.content.ComponentName(
+                playerPkg,
+                "com.educms.player.KioskHomeAlias",
+            )
+            dpm.addPersistentPreferredActivity(admin, homeFilter, aliasComponent)
+            Log.i(TAG, "pinPlayerAsHome — $aliasComponent pinned as persistent preferred HOME")
+        } catch (e: Exception) {
+            Log.w(TAG, "pinPlayerAsHome failed: ${e.message}", e)
+        }
     }
 
     /**

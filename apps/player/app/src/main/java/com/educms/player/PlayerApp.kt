@@ -64,6 +64,7 @@ class PlayerApp : Application() {
         scheduleOtaWorker()
         startManagerHeartbeat()
         installCrashHandler()
+        maybeEnableKioskHomeAlias()
         // v1.0.23 — Manager bootstrap now fires from MainActivity.onCreate
         // (foregrounded) instead of here. Reason: Android 11+ Background
         // Activity Launch (BAL) on Goodview's stripped TaurusOS silently
@@ -80,6 +81,76 @@ class PlayerApp : Application() {
         //
         // See MainActivity.onCreate's "Manager-install gate" block.
         PlayerLogger.i("PlayerApp", "All background services started successfully")
+    }
+
+    /**
+     * v1.0.64 — enable the KioskHomeAlias (declared disabled in the
+     * manifest) so the OS treats this Player as the HOME launcher.
+     *
+     * This is THE fix for "the OTA upgrade never fully works": once
+     * Player is the home app, the OS itself returns to it after any
+     * process death — including its own OTA self-update — as a
+     * system-initiated launch that Android 14 BAL never blocks. No
+     * receiver / FGS / watchdog activity-launch trick is needed (all
+     * three were tried in v1.0.61/62 and all were BAL-blocked).
+     *
+     * GATED on device owner. We enable the HOME alias ONLY when the
+     * Manager companion is the device owner — i.e. only on a
+     * deliberately-provisioned EduCMS kiosk. On an OEM-CMS signage
+     * box (Goodview / NovaStar / TCL) where we're a guest, Manager is
+     * not device owner, the alias stays disabled, and we never
+     * register as a launcher or risk displacing the vendor's CMS.
+     * See the long comment in AndroidManifest.xml.
+     *
+     * Toggling our OWN component is always permitted; no permission
+     * needed. isDeviceOwnerApp() for another package is also
+     * unrestricted. Idempotent — safe to call on every process start.
+     */
+    private fun maybeEnableKioskHomeAlias() {
+        try {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE)
+                as? android.app.admin.DevicePolicyManager ?: return
+            val managerIsDeviceOwner =
+                dpm.isDeviceOwnerApp("com.educms.manager") ||
+                    dpm.isDeviceOwnerApp("com.educms.manager.debug")
+
+            // The alias CLASS name is namespace-relative
+            // (com.educms.player.KioskHomeAlias) — it does NOT pick up
+            // the `.debug` applicationIdSuffix. The PACKAGE, though, is
+            // the runtime applicationId (com.educms.player[.debug]).
+            // Build the ComponentName from those two explicitly.
+            val alias = android.content.ComponentName(
+                packageName,
+                "com.educms.player.KioskHomeAlias",
+            )
+            val pm = packageManager
+            val current = pm.getComponentEnabledSetting(alias)
+
+            if (managerIsDeviceOwner) {
+                if (current != android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                    pm.setComponentEnabledSetting(
+                        alias,
+                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                        android.content.pm.PackageManager.DONT_KILL_APP,
+                    )
+                    PlayerLogger.i("PlayerApp", "KioskHomeAlias ENABLED — Manager is device owner, Player is now a HOME candidate")
+                }
+            } else {
+                // Defensive: if a device was de-provisioned (device
+                // owner removed) we turn the alias back off so we
+                // don't linger as an orphan launcher candidate.
+                if (current == android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                    pm.setComponentEnabledSetting(
+                        alias,
+                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                        android.content.pm.PackageManager.DONT_KILL_APP,
+                    )
+                    PlayerLogger.i("PlayerApp", "KioskHomeAlias disabled — Manager is not device owner")
+                }
+            }
+        } catch (e: Exception) {
+            PlayerLogger.w("PlayerApp", "maybeEnableKioskHomeAlias failed: ${e.message}")
+        }
     }
 
     /**

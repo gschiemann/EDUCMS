@@ -34,25 +34,25 @@ android {
         // ManagerSelfUpdateWorker compares installed versionCode against
         // the API-returned derivedVersionCode; they must share the same scheme.
         //
-        // 2026-05-15 — v1.0.20: post-install Player ACTIVITY relaunch.
+        // 2026-05-15 — v1.0.21: pin Player as the HOME launcher.
         //
-        // Sandbox testing of the full OTA chain found the last gap:
-        // after a successful Player install, the new APK's services
-        // come back (heartbeat goes fresh) but its signage Activity
-        // never foregrounds — Player can't background-launch itself
-        // (BAL-blocked, not the device owner) and the watchdog's
-        // missed-heartbeat path never fires because the heartbeat
-        // SERVICE is alive. WatchdogService now relaunches the Player
-        // activity in its post-install `sawNewBoot` branch — Manager,
-        // as device owner, is BAL-exempt and can do it. See
-        // WatchdogService.kt for the full reasoning.
+        // The OTA auto-relaunch saga: v1.0.61/62 tried Player-side
+        // receiver + FGS tricks to relaunch MainActivity — all
+        // BAL-blocked by Android 14. Manager v1.0.20 added a
+        // watchdog activity-launch — works, but only catches the
+        // case after a delay and only if Manager did the install.
         //
-        // v1.0.19 (last tagged release) verified Manager auto-update
-        // works. v1.0.20 closes the auto-relaunch gap. Earlier
-        // v1.0.16/17/18 source bumps shipped without release tags;
-        // v1.0.19 + v1.0.20 both get proper `manager-v*` tags.
-        versionCode = 10020 // 1*10000 + 0*100 + 20
-        versionName = "1.0.20"
+        // v1.0.21 is the real fix: Manager (device owner) calls
+        // DevicePolicyManager.addPersistentPreferredActivity() to pin
+        // Player's KioskHomeAlias as the persistent preferred HOME
+        // activity. Once Player is HOME, the OS itself returns to it
+        // after ANY death — OTA self-update, crash, reboot — with a
+        // system-initiated launch that BAL never blocks. This is the
+        // canonical Android Enterprise dedicated-device pattern.
+        // v1.0.20's watchdog relaunch stays as a belt-and-suspenders
+        // backstop. See ManagerApp.pinPlayerAsHome().
+        versionCode = 10021 // 1*10000 + 0*100 + 21
+        versionName = "1.0.21"
 
         // Override at build time to point at a non-default API:
         //   -PmanagerApiRoot="https://staging.educms-five.vercel.app"

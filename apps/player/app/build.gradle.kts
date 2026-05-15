@@ -45,10 +45,20 @@ android {
         // ALSO makes the install fully silent (Api31SilentInstall's
         // USER_ACTION_NOT_REQUIRED is honored). v1.0.61/v1.0.62
         // Player-side receivers stay as harmless defense-in-depth.
-        // v1.0.63 verifies the complete hands-free chain end-to-end
-        // with Manager provisioned as device owner.
-        versionCode = 10063
-        versionName = "1.0.63"
+        //
+        // v1.0.64 — THE real auto-relaunch fix: KioskHomeAlias.
+        // Player ships a HOME activity-alias (disabled by default);
+        // PlayerApp enables it at runtime once it detects the Manager
+        // companion is device owner. Manager pins it as the persistent
+        // preferred HOME activity. Once Player is the home launcher,
+        // the OS itself returns to it after every death — INCLUDING
+        // its own OTA self-update — with a system-initiated launch
+        // that Android 14 BAL never blocks. No receiver / FGS /
+        // watchdog activity-launch trick required. Disabled-by-default
+        // keeps non-device-owner installs (OEM-CMS signage boxes)
+        // untouched. See AndroidManifest.xml + PlayerApp.kt.
+        versionCode = 10064
+        versionName = "1.0.64"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
