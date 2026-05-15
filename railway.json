@@ -1,6 +1,6 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
-  "//forceRebuild": "2026-05-15T20:10Z — same story as the 19:50Z bump: env var PLAYER_APK_LATEST_VERSION_CODE just rolled forward to 10061 (paired with player-v1.0.61 release + the BAL-fixed auto-relaunch). Need a fresh deploy so the running API process picks up the new env vars; the two SKIPPED webhook deploys since the var change didn't trigger an actual rebuild.",
+  "//forceRebuild": "2026-05-15T20:36Z — roll OTA target to v1.0.62 (player-v1.0.62: the FGS-trampoline BAL fix that actually relaunches MainActivity after install — v1.0.61's MY_PACKAGE_REPLACED-receiver approach was BAL-blocked for activity starts). Env vars set; bumping this so Railway redeploys and the running API process serves 10062.",
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
