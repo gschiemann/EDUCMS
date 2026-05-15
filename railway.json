@@ -1,6 +1,6 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
-  "//forceRebuild": "2026-05-15T19:50Z — sandbox OTA verify needs the env-var change (PLAYER_APK_LATEST_VERSION_CODE=10060) to actually take effect in the running API process. Setting the env vars via mcp didn't trigger a redeploy — webhook came back SKIPPED because no files in watchPatterns changed. Bumping the comment here so the new commit is in the watch tree and Railway rebuilds with the v1.0.60 OTA target live.",
+  "//forceRebuild": "2026-05-15T20:10Z — same story as the 19:50Z bump: env var PLAYER_APK_LATEST_VERSION_CODE just rolled forward to 10061 (paired with player-v1.0.61 release + the BAL-fixed auto-relaunch). Need a fresh deploy so the running API process picks up the new env vars; the two SKIPPED webhook deploys since the var change didn't trigger an actual rebuild.",
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
