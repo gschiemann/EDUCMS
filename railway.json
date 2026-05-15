@@ -1,6 +1,6 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
-  "//forceRebuild": "2026-05-15T13:00Z — webhook deploy for 3dc654c (new /assets/:id/playback endpoint for play-video touch action) FAILED yesterday with 'activity Heartbeat timeout' (Railpack builder timed out). Subsequent webhooks all skip because Railway thinks no watched files changed since the last successful 256692f7 deploy at 19:57 (which had /templates/:id/playback but NOT the assets endpoint). Bumping railway.json forces a fresh build that picks up apps/api/src/assets/assets.controller.ts.",
+  "//forceRebuild": "2026-05-15T19:50Z — sandbox OTA verify needs the env-var change (PLAYER_APK_LATEST_VERSION_CODE=10060) to actually take effect in the running API process. Setting the env vars via mcp didn't trigger a redeploy — webhook came back SKIPPED because no files in watchPatterns changed. Bumping the comment here so the new commit is in the watch tree and Railway rebuilds with the v1.0.60 OTA target live.",
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
