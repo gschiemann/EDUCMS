@@ -16,11 +16,11 @@ packages/**/.env
 # Temp files
 _tmp_*
 
-# Terraform
-.terraform/
-*.tfstate
-*.tfstate.backup
-.terraform.lock.hcl
+# Runtime upload dirs — operator/tenant content must never be committed
+# (repo is public). Dev writes here via UPLOAD_DIR default ./uploads;
+# production uses /tmp/uploads. Keep the dir via a tracked .gitkeep.
+apps/api/uploads/
+*.tsbuildinfo
 
 # IDEs
 .idea/
