@@ -33,8 +33,19 @@ android {
         //   major*10000 + minor*100 + patch  (e.g. 1.0.9 → 10009)
         // ManagerSelfUpdateWorker compares installed versionCode against
         // the API-returned derivedVersionCode; they must share the same scheme.
-        versionCode = 10018 // 1*10000 + 0*100 + 18
-        versionName = "1.0.18"
+        //
+        // 2026-05-15 — bump to v1.0.19 paired with Player v1.0.61 so the
+        // FULL end-to-end OTA test verifies BOTH chains in one sandbox
+        // session: Player auto-update + Manager auto-update + Player
+        // MainActivity auto-relaunch. Manager v1.0.18 was last tagged
+        // for release as manager-v1.0.15 (commit d1f7dbf, 2026-05-08);
+        // v1.0.16 / v1.0.17 / v1.0.18 source bumps shipped without a
+        // GitHub Release tag, so ManagerSelfUpdateWorker was finding
+        // "nothing newer than what's installed" on every check. v1.0.19
+        // with an actual `manager-v1.0.19` tag pushed = the first
+        // auto-update path Manager has been able to verify in 4 versions.
+        versionCode = 10019 // 1*10000 + 0*100 + 19
+        versionName = "1.0.19"
 
         // Override at build time to point at a non-default API:
         //   -PmanagerApiRoot="https://staging.educms-five.vercel.app"
