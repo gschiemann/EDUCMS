@@ -27,8 +27,8 @@ android {
         // tagging player-v1.0.57 triggers CI to attach the APK to
         // a new GitHub Release, which the OTA endpoint's Path B
         // (auto-resolve from GitHub) will discover within ~5 min.
-        versionCode = 10058
-        versionName = "1.0.58"
+        versionCode = 10059
+        versionName = "1.0.59"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)

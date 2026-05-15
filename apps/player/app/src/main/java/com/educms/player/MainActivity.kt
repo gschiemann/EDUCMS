@@ -791,6 +791,28 @@ class MainActivity : ComponentActivity() {
                         runCatching { PlayerApp.fireOtaCheckNow(applicationContext) }
                     }
                 },
+                // v1.0.58 — Web-side heartbeat handler. Web calls
+                // window.EduCmsNative.heartbeat() every ~60s while
+                // the page is alive. We treat it identically to a
+                // fresh onPageFinishedOk for the watchdog freshness
+                // check (line 87) — that keeps the 10-minute
+                // force-reload from firing on long-running healthy
+                // players. Without this, every kiosk visibly
+                // disconnects + replays from item 0 every 10 minutes
+                // because the watchdog only sees `lastSuccessfulLoadAtMs`
+                // get set ONCE at boot, never refreshes during
+                // continuous playback.
+                onWebHeartbeat = {
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    val first = lastSuccessfulLoadAtMs == 0L
+                    lastSuccessfulLoadAtMs = now
+                    if (first) {
+                        PlayerLogger.i(
+                            "MainActivity",
+                            "Web heartbeat: first tick received — watchdog freshness reset",
+                        )
+                    }
+                },
             ),
             "EduCmsNative"
         )

@@ -26,6 +26,16 @@ class WebAppBridge(
     private val onShowUrlOverlay: (url: String) -> Unit,
     private val onHideUrlOverlay: () -> Unit,
     private val onOpenSettingsForManager: () -> Unit,
+    /**
+     * v1.0.58 — web-side liveness heartbeat. Called every 60 s from
+     * the player page while the JS event loop is healthy. The watchdog
+     * in MainActivity uses this to know "the page is alive even though
+     * onPageFinishedOk hasn't fired since boot." Without this, the
+     * 10-min freshness watchdog force-reloads every healthy player
+     * every 10 min — visible to operators as "the screen disconnected
+     * and started playing from the beginning". See MainActivity.
+     */
+    private val onWebHeartbeat: () -> Unit = {},
 ) {
     /**
      * Escape hatch — exits our kiosk task stack and returns the user to
@@ -40,6 +50,17 @@ class WebAppBridge(
 
     @JavascriptInterface
     fun reload() = onReload()
+
+    /**
+     * v1.0.58 — Web-side liveness heartbeat. The player page calls
+     * this every ~60 s while it's running. Native side records the
+     * timestamp; the watchdog ticker treats a fresh heartbeat exactly
+     * like a fresh onPageFinishedOk for staleness math. No logging
+     * here (would flood the log file at 1/min) — MainActivity logs
+     * the first heartbeat each session for diagnostic confidence.
+     */
+    @JavascriptInterface
+    fun heartbeat() = onWebHeartbeat()
 
     /** Returns device info as JSON: manufacturer, model, sdk, width, height, appVersion. */
     @JavascriptInterface

@@ -1271,6 +1271,46 @@ function PlayerPage() {
   // Bound below in a tiny useEffect that just syncs the ref.
   const phaseRef = useRef<Phase>('registering');
   useEffect(() => { phaseRef.current = phase; }, [phase]);
+
+  // 2026-05-15 — Web→Native liveness heartbeat. Operator (2026-05-15):
+  // "i just saw my player disconnect and then start playing the url
+  // content again". The Android shell has a watchdog timer
+  // (MainActivity.watchdogTicker) that force-reloads the WebView if
+  // `lastSuccessfulLoadAtMs` is more than 10 minutes stale. That
+  // field was ONLY updated by `onPageFinishedOk` — which fires once
+  // at boot and never again during continuous playback. So every
+  // healthy long-running player got force-reloaded every ~10 min:
+  // visible to operators as the page disconnecting + restarting the
+  // playlist from item 0.
+  //
+  // Fix: from the web side, ping `EduCmsNative.heartbeat()` every
+  // 60 s. The native bridge (WebAppBridge.heartbeat → MainActivity's
+  // onWebHeartbeat) updates the same `lastSuccessfulLoadAtMs` field
+  // the watchdog reads, so as long as our JS event loop is alive
+  // the watchdog never trips. If the JS truly hangs (renderer
+  // crash, infinite freeze), heartbeats stop arriving and the
+  // watchdog correctly recovers after the 10-min timeout — the
+  // safety net stays intact.
+  //
+  // Cadence: 60 s is well under the 10-min watchdog window, ~9×
+  // safety margin against burst-network outages or main-thread
+  // hiccups. Zero overhead (just a JS-to-native function call).
+  // Browser-only sessions (no APK) skip silently — the bridge is
+  // undefined.
+  useEffect(() => {
+    const tick = () => {
+      try {
+        const bridge = (window as any).EduCmsNative;
+        if (bridge && typeof bridge.heartbeat === 'function') {
+          bridge.heartbeat();
+        }
+      } catch { /* swallow — bridge unavailable, browser-only */ }
+    };
+    tick(); // immediate so the first heartbeat lands quickly after boot
+    const id = setInterval(tick, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const [storageInfo, setStorageInfo] = useState({ used: '1.2 GB', total: '32 GB', percent: 4 });
 
   // One-shot admin-token handoff for preview mode. The dashboard appends
