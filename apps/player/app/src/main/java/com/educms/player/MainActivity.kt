@@ -420,6 +420,14 @@ class MainActivity : ComponentActivity() {
             // after Manager is installed — at that point the popup
             // can't conflict with the gate-driven install dialog.
             maybePromptForInstallPermission()
+            // v1.0.57 — and the Manager's permission too. Without
+            // this, Manager has REQUEST_INSTALL_PACKAGES in its
+            // manifest but the per-app source toggle is OFF, so its
+            // background OTA installs fail silently. Player is the
+            // only foreground process that can launch Settings on
+            // the operator's behalf; tagging it onto the existing
+            // permission prompt flow gets both grants in one visit.
+            maybePromptForManagerInstallPermission()
             // Player bundles Manager. Re-run bootstrap even when
             // Manager is present so beta Player OTAs can carry Manager
             // upgrades forward on non-device-owner Goodview hardware.
@@ -524,6 +532,89 @@ class MainActivity : ComponentActivity() {
             .show()
 
         prefs.edit().putBoolean("installPromptShown", true).apply()
+    }
+
+    /**
+     * v1.0.57 — Manager install-permission grant flow.
+     *
+     * Operator (2026-05-15): "i want the APK upgrade to fucking work,
+     * it has never worked in 57 fucking versions, the player gets
+     * permissions for unknown but the manager never gets a popup to
+     * set those permissions, and the upgrade never fully works".
+     *
+     * The bug: Manager APK gets sideloaded by Player's ManagerBootstrap
+     * via PackageInstaller. Manager declares REQUEST_INSTALL_PACKAGES
+     * in its manifest, but Android STILL requires the user to toggle
+     * "Allow from this source" per-app in Settings before that
+     * permission is effective. Manager has NO MainActivity (it's a
+     * daemon) so it can't open Settings itself — its existing
+     * `maybePromptForInstallPermission` in ManagerApp.onCreate posts
+     * a notification that kiosk operators on Taurus / LED controllers
+     * almost never see (notification shade is hidden in kiosk mode
+     * or behind hardware bezels).
+     *
+     * Result: Player can install Manager fine (Player has the
+     * permission), but when Manager later tries to install a Player
+     * update it gets blocked with no operator-facing prompt → "upgrade
+     * never fully works".
+     *
+     * THIS FIX: Player is the only foreground-privileged process on
+     * the kiosk. Right after Player's own permission grant flow, AND
+     * once Manager is detected as installed, Player launches Settings
+     * pre-filtered to Manager's per-app source page on behalf of
+     * Manager. The operator who's already standing at the kiosk
+     * granting Player's permission grants Manager's in the same
+     * session. One walk-up, both permissions sorted.
+     *
+     * Tracked in SharedPreferences ("managerInstallPromptShown") so
+     * we nag once per install. Operator can defer via "Later"; the
+     * overlay-side software-info row in the web player offers a
+     * "re-prompt" button for missed cases.
+     */
+    private fun maybePromptForManagerInstallPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        // Skip if Manager isn't installed (bootstrap hasn't completed
+        // yet, or operator opted out via skip-manager.txt). Will run
+        // again on next launch when bootstrap finishes.
+        val managerPkg = listOf("com.educms.manager", "com.educms.manager.debug").firstOrNull { pkg ->
+            try {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(pkg, 0)
+                true
+            } catch (_: Exception) { false }
+        } ?: run {
+            PlayerLogger.i("MainActivity", "Manager not installed yet — deferring permission prompt")
+            return
+        }
+        val prefs = getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("managerInstallPromptShown", false)) return
+
+        AlertDialog.Builder(this)
+            .setTitle("One more setup step")
+            .setMessage(
+                "EduCMS also needs to grant install permission to the companion app " +
+                "(Manager) that delivers Player updates in the background. Tap Allow " +
+                "to open the setting — same one-time flow you just did for Player. " +
+                "Without this, automatic updates won't apply."
+            )
+            .setPositiveButton("Allow") { _, _ ->
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                        .setData(Uri.parse("package:$managerPkg"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent)
+                    PlayerLogger.i("MainActivity", "Opened Settings for Manager install-sources ($managerPkg)")
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "Could not open Manager install-sources settings", e)
+                }
+            }
+            .setNegativeButton("Later") { _, _ ->
+                PlayerLogger.i("MainActivity", "Operator deferred Manager install-perm prompt")
+            }
+            .setCancelable(true)
+            .show()
+
+        prefs.edit().putBoolean("managerInstallPromptShown", true).apply()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
