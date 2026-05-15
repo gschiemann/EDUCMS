@@ -17,18 +17,18 @@ android {
         // WatchdogService compares PackageManager.versionCode against
         // InstallState.pendingVc which the API returns as the derived value.
         // Keeping them in sync prevents a false rollback after a successful install.
-        // 2026-05-15 — operator: "the apk upgrade process still
-        // doesnt work". Root cause: nobody bumped the version after
-        // v1.0.56 shipped on 2026-05-13. 11 commits with touch
-        // fixes / Venue OS rebrand / mobile UX shipped to master
-        // since, all built CI APK artifacts but no release tag was
-        // pushed, so every kiosk polling /update-check correctly
-        // reported uptoDate against v1.0.56. Bumping to v1.0.57 +
-        // tagging player-v1.0.57 triggers CI to attach the APK to
-        // a new GitHub Release, which the OTA endpoint's Path B
-        // (auto-resolve from GitHub) will discover within ~5 min.
-        versionCode = 10059
-        versionName = "1.0.59"
+        // 2026-05-15 — sandbox-verified OTA chain.
+        // After v1.0.59 confirmed in-sandbox: v1.0.58 → v1.0.59
+        // upgrade flowed through OtaUpdateWorker, PackageInstaller
+        // session committed, versionCode bumped on-device with no
+        // operator interaction. v1.0.60 exists ONLY to verify the
+        // upgrade chain end-to-end with the v1.0.59 build now live
+        // in operator hands. Once v1.0.59 → v1.0.60 succeeds in
+        // sandbox AND on The Den, this is the working OTA recipe
+        // and we ship operator updates from the dashboard from now
+        // on instead of sideloading.
+        versionCode = 10060
+        versionName = "1.0.60"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
