@@ -92,11 +92,10 @@ class HeartbeatService : Service() {
         if (!hasAutoLaunchedMain && intent?.getBooleanExtra(EXTRA_LAUNCH_MAIN, false) == true) {
             hasAutoLaunchedMain = true
             try {
-                val launch = Intent(this, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-                }
+                val launch = Intent(this, MainActivity::class.java)
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                launch.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                launch.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
                 startActivity(launch)
                 PlayerLogger.i(TAG, "launched MainActivity from FGS BAL grant (post-MY_PACKAGE_REPLACED)")
             } catch (e: Exception) {
