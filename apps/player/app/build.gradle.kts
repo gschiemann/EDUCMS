@@ -22,29 +22,33 @@ android {
         // v1.0.58 → v1.0.59 install was verified in the Android 14
         // emulator sandbox (OtaUpdateWorker → PackageInstaller.Session
         // committed, on-device versionCode bumped, zero operator taps).
-        // BUT MainActivity did NOT auto-relaunch — Manager's
-        // WatchdogService.launchAllowingBackgroundStart() was getting
-        // BAL-blocked by ActivityTaskManager (result code=102) every
-        // 90 s. v1.0.61 attempted a MY_PACKAGE_REPLACED manifest
-        // receiver to launch MainActivity from the same UID; verified
-        // again in the sandbox (v1.0.59 → v1.0.61) and STILL FAILED —
-        // logs showed the receiver's startActivity blocked while the
-        // companion FGS start was allowed:
+        // BUT MainActivity did NOT auto-relaunch. v1.0.61 (a
+        // MY_PACKAGE_REPLACED receiver) and v1.0.62 (FGS trampoline)
+        // both tried to launch MainActivity from Player's own process
+        // and both were BAL-blocked. The PACKAGE_REPLACED grant logged
+        // on the v1.0.62 install told the whole story:
         //
-        //   ActivityManager: Background started FGS: Allowed
-        //     [intent: HeartbeatService] code:PACKAGE_REPLACED;
-        //     tempAllowListReason:...duration:20000
-        //   ActivityTaskManager: START MainActivity ... (BAL_BLOCK)
-        //     result code=102
+        //   BackgroundStartPrivileges[allowsBackgroundActivityStarts
+        //     =false, allowsBackgroundForegroundServiceStarts=true]
         //
-        // Android 14's MY_PACKAGE_REPLACED BAL grant is FGS-only, not
-        // activity-launch. v1.0.62 routes the launch through the FGS
-        // that DID get the grant: BootReceiver calls
-        // HeartbeatService.ensureRunningAndLaunchMain(), and the
-        // service's onStartCommand does the activity launch — which
-        // is honored because the FGS itself has the BAL exemption.
-        versionCode = 10062
-        versionName = "1.0.62"
+        // The grant permits FGS starts and explicitly FORBIDS activity
+        // starts — Android 14 deliberately stops an app foregrounding
+        // itself right after its own install. No receiver / FGS /
+        // same-UID trick gets past it.
+        //
+        // THE FIX (verified in sandbox 2026-05-15): Manager set as
+        // DEVICE OWNER. Device-owner apps are BAL-exempt, so Manager's
+        // WatchdogService relaunches Player after install — confirmed:
+        // `dpm set-device-owner com.educms.manager/...AdminReceiver`
+        // then `WatchdogService: launched com.educms.player (recovery)`
+        // with NO BAL_BLOCK, MainActivity foregrounded. Device owner
+        // ALSO makes the install fully silent (Api31SilentInstall's
+        // USER_ACTION_NOT_REQUIRED is honored). v1.0.61/v1.0.62
+        // Player-side receivers stay as harmless defense-in-depth.
+        // v1.0.63 verifies the complete hands-free chain end-to-end
+        // with Manager provisioned as device owner.
+        versionCode = 10063
+        versionName = "1.0.63"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
