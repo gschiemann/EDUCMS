@@ -40,6 +40,7 @@
  */
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import type { Browser, Page } from 'puppeteer-core';
+import { assertPublicUrl, validatePublicUrl, SsrfError } from '../branding/safe-fetch';
 
 interface RenderResult {
   html: string;
@@ -109,6 +110,22 @@ export class RendererService implements OnModuleDestroy {
   }
 
   private async renderOnce(url: string): Promise<RenderResult | null> {
+    // SSRF guard. `/proxy/web` takes an operator-supplied URL and this
+    // method drives a real headless browser at it — without this check
+    // `?url=http://169.254.169.254/latest/meta-data/...` would let the
+    // Railway container fetch its own cloud-metadata / internal
+    // services and return the body in the rendered HTML. Resolve the
+    // hostname and reject any private/loopback/link-local address
+    // BEFORE launching the browser. (`safeFetch` does this for the
+    // legacy fallback path; the renderer must do it too — they are two
+    // independent entry points for the same user input.)
+    try {
+      await assertPublicUrl(url);
+    } catch (e: any) {
+      this.logger.warn(`[ssr] SSRF guard rejected url=${url.slice(0, 80)}: ${e?.message}`);
+      return null;
+    }
+
     const browser = await this.getBrowser();
     if (!browser) return null;
 
@@ -133,9 +150,25 @@ export class RendererService implements OnModuleDestroy {
         const t = req.resourceType();
         if (t === 'media' || t === 'websocket' || t === 'eventsource') {
           req.abort().catch(() => { /* request already gone */ });
-        } else {
-          req.continue().catch(() => { /* request already gone */ });
+          return;
         }
+        // SSRF guard for sub-requests: a malicious page (or a redirect
+        // from one) can try to make the browser fetch internal
+        // resources. validatePublicUrl is the synchronous half of the
+        // check — it rejects file://, non-80/443 ports, and private IP
+        // LITERALS without a DNS round-trip (one per sub-request would
+        // be too slow). The top-level URL already passed the full
+        // DNS-resolving assertPublicUrl above.
+        try {
+          validatePublicUrl(req.url());
+        } catch (e) {
+          if (e instanceof SsrfError) {
+            this.logger.warn(`[ssr] blocked sub-request ${req.url().slice(0, 80)}: ${e.message}`);
+            req.abort().catch(() => { /* request already gone */ });
+            return;
+          }
+        }
+        req.continue().catch(() => { /* request already gone */ });
       });
 
       // networkidle2 = ≤2 in-flight requests for 500ms. Beats

@@ -78,6 +78,34 @@ export function validatePublicUrl(raw: string): URL {
   return u;
 }
 
+/**
+ * Full SSRF check for a URL that will be handed to something OTHER
+ * than `safeFetch` — e.g. Puppeteer's `page.goto`. Does everything
+ * `validatePublicUrl` does (scheme / port / IP-literal) AND resolves
+ * the hostname via DNS, rejecting if any returned address is private/
+ * loopback/link-local. `safeFetch` already does this inline; this is
+ * the same logic exported so the headless-browser renderer can guard
+ * `page.goto` instead of fetching internal services unchecked.
+ */
+export async function assertPublicUrl(rawUrl: string): Promise<URL> {
+  const url = validatePublicUrl(rawUrl);
+  if (!isIP(url.hostname)) {
+    try {
+      const results = await lookup(url.hostname, { all: true });
+      if (!results.length) throw new SsrfError(`DNS returned no addresses for ${url.hostname}`);
+      for (const r of results) {
+        if (isPrivateIp(r.address)) {
+          throw new SsrfError(`DNS for ${url.hostname} resolved to private range (${r.address})`);
+        }
+      }
+    } catch (e) {
+      if (e instanceof SsrfError) throw e;
+      throw new SsrfError(`DNS lookup failed for ${url.hostname}`);
+    }
+  }
+  return url;
+}
+
 export interface SafeFetchOptions {
   maxBytes?: number;         // default 5 MB
   timeoutMs?: number;        // default 8000

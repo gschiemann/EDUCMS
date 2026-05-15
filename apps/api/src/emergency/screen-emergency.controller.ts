@@ -335,8 +335,19 @@ export class ScreenEmergencyController {
     };
     const signed = this.signer.signMessage('OVERRIDE', payload);
     try {
-      await this.redis.publish(`device:${screen.id}`, JSON.stringify(signed));
-    } catch { /* publish-failure does not fail the trigger; HTTP polling fallback covers */ }
+      // Pass the signed object directly — RedisService.publish() does
+      // its own JSON.stringify. Wrapping it in another JSON.stringify
+      // here double-encoded the payload: the player received a
+      // JSON-encoded STRING, JSON.parse yielded a string not the
+      // envelope, and the per-screen emergency WebSocket fast-path
+      // silently failed (manifest polling still delivered, masking it).
+      await this.redis.publish(`device:${screen.id}`, signed);
+    } catch (e) {
+      // Publish failure does not fail the trigger — HTTP polling
+      // fallback covers it — but log it so a broken realtime path
+      // isn't invisible.
+      console.warn(`[ScreenEmergency] override redis publish failed for device:${screen.id}: ${e}`);
+    }
 
     return { overrideId, payload };
   }
@@ -433,8 +444,13 @@ export class ScreenEmergencyController {
     const payload = { type: 'ALL_CLEAR', screenId: screen.id };
     const signed = this.signer.signMessage('ALL_CLEAR', payload);
     try {
-      await this.redis.publish(`device:${screen.id}`, JSON.stringify(signed));
-    } catch { /* fallback as above */ }
+      // Pass `signed` directly — RedisService.publish() stringifies.
+      // (See the override handler above for why double-stringify
+      // broke the per-screen WS fast-path.)
+      await this.redis.publish(`device:${screen.id}`, signed);
+    } catch (e) {
+      console.warn(`[ScreenEmergency] all-clear redis publish failed for device:${screen.id}: ${e}`);
+    }
 
     return { success: true, screenId, cleared: true };
   }
