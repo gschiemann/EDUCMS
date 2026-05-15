@@ -305,6 +305,27 @@ interface Template {
 // ═════════════════════════════════════════════════════
 
 export default function TemplatesPage() {
+  // 2026-05-15 — render gate to defer the full gallery until after
+  // client mount. Why: this page renders ScaledTemplateThumbnail
+  // children that mount the full widget catalog (60+ themes, each
+  // with their own clock/weather/animation state). Several of those
+  // widgets call `useState(new Date())` and similar APIs that
+  // produce different output on the server vs client wall clock —
+  // result was React #418 (hydration mismatch) firing on every
+  // tenant render, which Prod Smoke caught. Server still renders
+  // a lightweight loading placeholder (SSR + first hydration both
+  // see the same HTML, no mismatch); useEffect bumps `mounted` true
+  // post-hydration, then the real gallery renders without any
+  // hydration boundary inside it.
+  //
+  // Hooks below this point still run on every render (Rules of
+  // Hooks) — data fetching kicks off during SSR like before, just
+  // the JSX OUTPUT is deferred. Net cost is one extra render tick
+  // (~16 ms on initial mount); operator never sees the placeholder
+  // because hydration is already done by the time React commits.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   const [activeCategory, setActiveCategory] = useState('');
   const [activeLevel, setActiveLevel] = useState('');
   // Sub-filter active only when category=HOLIDAYS. Empty key = all
@@ -520,6 +541,20 @@ export default function TemplatesPage() {
   }
 
   // ── Gallery ──
+  // Render gate (see `mounted` setup at top of function). Skips
+  // the heavy widget-thumbnail tree during SSR + first hydration
+  // tick so React #418 can't fire from clock/weather widget state
+  // differences between server time and client time. The hooks
+  // above this point already kicked off data fetching.
+  if (!mounted) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center text-slate-400 text-sm">
+        <Loader2 className="w-5 h-5 animate-spin mr-2" />
+        Loading templates…
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       {/* Hero Header */}
