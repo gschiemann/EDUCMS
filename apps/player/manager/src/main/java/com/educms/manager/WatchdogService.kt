@@ -127,6 +127,37 @@ class WatchdogService : Service() {
                 Log.i(TAG, "post-install: heartbeat from new vc=$pendingVc detected → promoting to last-known-good")
                 InstallState.promoteToGood(applicationContext, pendingVc)
                 com.educms.manager.rollback.ApkArchive.pruneOld(applicationContext)
+
+                // v1.0.20 — relaunch the Player ACTIVITY after a
+                // successful install.
+                //
+                // The fresh heartbeat proves the new APK's *services*
+                // are alive — but NOT that its signage UI is on screen.
+                // After an OTA install the old process is killed; the
+                // new process comes back via Player's
+                // BootReceiver→HeartbeatService (started by the
+                // MY_PACKAGE_REPLACED broadcast, which Android 14 DOES
+                // permit because it's an FGS start). That restarts the
+                // heartbeat service but CANNOT foreground MainActivity
+                // — Player isn't the device owner, so its own
+                // background activity-launch is BAL-blocked (verified
+                // on emulator: `PostInstallRelaunch ... BAL_BLOCK
+                // result code=102`).
+                //
+                // The regular missed-heartbeat→forceRestart path never
+                // catches this: the service keeps the heartbeat fresh,
+                // so staleStreak never reaches STREAK_LIMIT and the
+                // kiosk sits on the OEM launcher forever showing no
+                // signage. That is exactly the operator's complaint —
+                // "the upgrade never fully works."
+                //
+                // Manager IS the device owner, so it can launch the
+                // activity. Do it here, the moment we confirm the new
+                // version booted. Fires exactly once per install:
+                // promoteToGood() clears pendingVc above, so pendingVc
+                // is 0 on the next tick and this whole block is skipped.
+                Log.i(TAG, "post-install: relaunching Player activity — new version's services are up but UI was not foregrounded")
+                forceRestartPlayer()
             } else if (InstallState.isPendingExpired(applicationContext)) {
                 // Grace window expired with no healthy heartbeat from
                 // the new version — bad install. Roll back.

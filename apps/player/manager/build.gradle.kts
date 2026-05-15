@@ -34,18 +34,25 @@ android {
         // ManagerSelfUpdateWorker compares installed versionCode against
         // the API-returned derivedVersionCode; they must share the same scheme.
         //
-        // 2026-05-15 — bump to v1.0.19 paired with Player v1.0.61 so the
-        // FULL end-to-end OTA test verifies BOTH chains in one sandbox
-        // session: Player auto-update + Manager auto-update + Player
-        // MainActivity auto-relaunch. Manager v1.0.18 was last tagged
-        // for release as manager-v1.0.15 (commit d1f7dbf, 2026-05-08);
-        // v1.0.16 / v1.0.17 / v1.0.18 source bumps shipped without a
-        // GitHub Release tag, so ManagerSelfUpdateWorker was finding
-        // "nothing newer than what's installed" on every check. v1.0.19
-        // with an actual `manager-v1.0.19` tag pushed = the first
-        // auto-update path Manager has been able to verify in 4 versions.
-        versionCode = 10019 // 1*10000 + 0*100 + 19
-        versionName = "1.0.19"
+        // 2026-05-15 — v1.0.20: post-install Player ACTIVITY relaunch.
+        //
+        // Sandbox testing of the full OTA chain found the last gap:
+        // after a successful Player install, the new APK's services
+        // come back (heartbeat goes fresh) but its signage Activity
+        // never foregrounds — Player can't background-launch itself
+        // (BAL-blocked, not the device owner) and the watchdog's
+        // missed-heartbeat path never fires because the heartbeat
+        // SERVICE is alive. WatchdogService now relaunches the Player
+        // activity in its post-install `sawNewBoot` branch — Manager,
+        // as device owner, is BAL-exempt and can do it. See
+        // WatchdogService.kt for the full reasoning.
+        //
+        // v1.0.19 (last tagged release) verified Manager auto-update
+        // works. v1.0.20 closes the auto-relaunch gap. Earlier
+        // v1.0.16/17/18 source bumps shipped without release tags;
+        // v1.0.19 + v1.0.20 both get proper `manager-v*` tags.
+        versionCode = 10020 // 1*10000 + 0*100 + 20
+        versionName = "1.0.20"
 
         // Override at build time to point at a non-default API:
         //   -PmanagerApiRoot="https://staging.educms-five.vercel.app"
