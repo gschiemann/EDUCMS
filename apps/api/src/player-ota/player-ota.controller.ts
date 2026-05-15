@@ -5,24 +5,27 @@
  *
  * 1) POST /api/v1/player/update-check — the Android kiosk APK polls
  *    this every 6h with its current version + fingerprint + ABI. We
- *    consult `PLAYER_APK_LATEST_VERSION_CODE` + `PLAYER_APK_URL`
- *    env vars (set at release time) and reply with a pointer to the
- *    APK if the caller is stale. The actual APK is served from the
- *    GitHub Release asset URL — Railway never hosts the binary.
+ *    auto-resolve the latest `player-v*` GitHub Release and reply
+ *    with a pointer to the APK if the caller is stale. The APK is
+ *    served from the GitHub Release asset URL — Railway never hosts
+ *    the binary. Gated by per-screen / per-tenant auto-update flags,
+ *    a canary cohort, and an optional maintenance window.
  *
  * 2) GET /api/v1/player/apk/latest — dashboard-facing convenience
  *    redirect so the 'Download Player APK' button in settings can
  *    link to a stable path. Issues a 302 to the current release
- *    asset (or `PLAYER_APK_URL`). Zero-auth — the APK itself is
- *    public; sideloading it does nothing without a tenant pairing
- *    code, which IS auth'd.
+ *    asset. Zero-auth — the APK itself is public; sideloading it
+ *    does nothing without a tenant pairing code, which IS auth'd.
  *
- * This endpoint is intentionally minimal. Shipping a new version is:
- *   1. Tag a GitHub release, attach the signed APK + manifest.
- *   2. Update PLAYER_APK_URL + PLAYER_APK_LATEST_VERSION_CODE on
- *      Railway.
- *   3. Every paired device pulls the update within 6h (or on next
- *      boot, whichever comes first).
+ * 2026-05-15 — the old `PLAYER_APK_LATEST_VERSION_CODE` /
+ * `PLAYER_APK_URL` env-var "Path A" was REMOVED. A stale env var
+ * silently pinned the whole fleet to an old build (it happened
+ * twice). Shipping a new version is now ONLY:
+ *   1. `scripts/release-apk.sh player x.y.z` (bumps + commits + tags)
+ *   2. `git push origin master player-vx.y.z`
+ *   CI builds + attaches the APK to the GitHub Release; every paired
+ *   device pulls it within 6h. No Railway env var to touch or to go
+ *   stale. The `apk-version-tag-sync` CI check guards the tag.
  *
  * Nova Taurus deployment: covered in docs/PLAYER_APK_NOVA_TAURUS.md
  * — the short version is "sideload the arm64-v8a APK via ViPlex
@@ -402,30 +405,17 @@ export class PlayerOtaController {
       );
     }
 
-    const latestVc = parseInt(process.env.PLAYER_APK_LATEST_VERSION_CODE || '0', 10);
-    const latestVn = process.env.PLAYER_APK_LATEST_VERSION_NAME || '';
-    const apkUrl = process.env.PLAYER_APK_URL || '';
-    const sha256 = process.env.PLAYER_APK_SHA256 || '';
-    // Optional: flip this when pushing a mandatory security update. Kiosks
-    // that fail the install still get re-tried on the next check.
-    const forced = process.env.PLAYER_APK_FORCED === 'true';
-
-    // ── Path A: explicit env-var pinning (production release train) ──
-    // Ops set these after a deliberate rollout; wins over auto-resolve.
-    if (latestVc && apkUrl) {
-      if (callerVc >= latestVc) {
-        this.logger.log(
-          `[ota] decision=uptoDate-env caller=${callerVn} screen=${lookupScreenId || '-'} ` +
-          `latestVc=${latestVc} reason=current-already-at-or-past-pinned-version`,
-        );
-        return { uptoDate: true, latestVersionCode: latestVc };
-      }
-      this.logger.log(
-        `[ota] decision=install-env caller=${callerVn} screen=${lookupScreenId || '-'} ` +
-        `target=v${latestVn || latestVc} url=${apkUrl.slice(0, 80)}`,
-      );
-      return { latest: { versionCode: latestVc, versionName: latestVn, apkUrl, sha256, forced } };
-    }
+    // 2026-05-15 — Path A (PLAYER_APK_LATEST_VERSION_CODE env-var
+    // pinning) REMOVED. It was a footgun: ops had to hand-edit the
+    // Railway env vars on every release, the running API process only
+    // picked up the change on a redeploy, and a stale env var silently
+    // PINNED the whole fleet to an old build — `callerVc >= latestVc`
+    // returned `uptoDate` with no error anywhere. This happened twice
+    // (fleet stuck at v1.0.55, then again at v1.0.63). Path B below
+    // auto-resolves the latest `player-v*` GitHub Release, so a
+    // release is now exactly "push the tag" — no Railway touch, no
+    // env var to go stale. The PLAYER_APK_* env vars are now inert
+    // and should be deleted from Railway.
 
     // ── Path B: auto-resolve from the latest GitHub Release ──
     // Zero env config required. Mirrors /apk/latest so every tagged
@@ -548,16 +538,9 @@ export class PlayerOtaController {
   )
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async getLatestVersion() {
-    // Env override wins.
-    const envVn = (process.env.PLAYER_APK_LATEST_VERSION_NAME || '').trim();
-    const envVc = parseInt(process.env.PLAYER_APK_LATEST_VERSION_CODE || '0', 10);
-    if (envVn && envVc) {
-      return {
-        versionName: envVn,
-        versionCode: envVc,
-        source: 'env',
-      };
-    }
+    // 2026-05-15 — the PLAYER_APK_* env-var override was removed here
+    // too (see /update-check). The latest version is whatever the
+    // newest player-v* GitHub Release is — single source of truth.
     try {
       const info = await resolveLatestReleaseInfo();
       if (info) {
@@ -596,11 +579,8 @@ export class PlayerOtaController {
   @Get('latest-version-public')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async getLatestVersionPublic() {
-    const envVn = (process.env.PLAYER_APK_LATEST_VERSION_NAME || '').trim();
-    const envVc = parseInt(process.env.PLAYER_APK_LATEST_VERSION_CODE || '0', 10);
-    if (envVn && envVc) {
-      return { versionName: envVn, versionCode: envVc };
-    }
+    // 2026-05-15 — PLAYER_APK_* env-var override removed (see
+    // /update-check). Latest = newest player-v* GitHub Release.
     try {
       const info = await resolveLatestReleaseInfo();
       if (info) {
@@ -949,11 +929,10 @@ async function serveLatestArtifactApk(res: Response): Promise<boolean> {
   }
   if (!artifactCache?.buf) return false;
   // Versioned filename so operators can see which build they got.
-  // Prefers PLAYER_APK_LATEST_VERSION_NAME env if set; otherwise
-  // embeds the GitHub artifact id as a fallback "build number".
-  const versionTag = process.env.PLAYER_APK_LATEST_VERSION_NAME
-    || `build${artifactCache.etag}`;
-  const filename = `edu-cms-player-v${versionTag}.apk`;
+  // Embeds the GitHub artifact id as the build number. (This is the
+  // CI-artifact fallback path — the normal path is a tagged Release
+  // whose filename already carries the version.)
+  const filename = `edu-cms-player-build${artifactCache.etag}.apk`;
   res.setHeader('Content-Type', 'application/vnd.android.package-archive');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Cache-Control', 'public, max-age=600');

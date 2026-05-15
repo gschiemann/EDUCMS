@@ -4652,9 +4652,12 @@ function PlayerPage() {
             Listens for the temporary edu:touch-zone-click + edu:touch-
             fired CustomEvents we emit on every tap-action chain step.
             Shows the operator EXACTLY where the chain stops without
-            needing DevTools on the kiosk. Remove this block once the
-            touch-action bug is identified. */}
-        {isTouchTemplate && <TouchDiagToast />}
+            needing DevTools on the kiosk.
+            2026-05-15 — gated to preview mode. The touch-action chain
+            is verified working; this debug chip must NOT show on live
+            customer kiosks. It still renders in ?preview=1 tabs so the
+            instrumentation is one query-param away if needed again. */}
+        {isTouchTemplate && isPreviewMode() && <TouchDiagToast />}
 
         {/* Info overlay */}
         {showOverlay && (
