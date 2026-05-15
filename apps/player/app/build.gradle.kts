@@ -22,25 +22,29 @@ android {
         // v1.0.58 → v1.0.59 install was verified in the Android 14
         // emulator sandbox (OtaUpdateWorker → PackageInstaller.Session
         // committed, on-device versionCode bumped, zero operator taps).
-        // BUT MainActivity did NOT auto-relaunch — logcat showed
-        // Manager's WatchdogService.launchAllowingBackgroundStart()
-        // getting BAL-blocked by ActivityTaskManager (result code=102)
-        // every 90 s in a retry loop. Kiosk would have sat on the OEM
-        // home screen until a power-cycle.
+        // BUT MainActivity did NOT auto-relaunch — Manager's
+        // WatchdogService.launchAllowingBackgroundStart() was getting
+        // BAL-blocked by ActivityTaskManager (result code=102) every
+        // 90 s. v1.0.61 attempted a MY_PACKAGE_REPLACED manifest
+        // receiver to launch MainActivity from the same UID; verified
+        // again in the sandbox (v1.0.59 → v1.0.61) and STILL FAILED —
+        // logs showed the receiver's startActivity blocked while the
+        // companion FGS start was allowed:
         //
-        // v1.0.61 fixes that by adding a manifest-registered receiver
-        // in PLAYER for ACTION_MY_PACKAGE_REPLACED. That broadcast is
-        // delivered by the OS to the newly-installed package's own
-        // process — same UID — so the receiver's startActivity() call
-        // is BAL-exempt. See BootReceiver.kt and AndroidManifest.xml
-        // for the full explanation.
+        //   ActivityManager: Background started FGS: Allowed
+        //     [intent: HeartbeatService] code:PACKAGE_REPLACED;
+        //     tempAllowListReason:...duration:20000
+        //   ActivityTaskManager: START MainActivity ... (BAL_BLOCK)
+        //     result code=102
         //
-        // v1.0.60 was skipped — same code as v1.0.61 minus the fix,
-        // no reason to ship it. Going straight to v1.0.61 so the FIRST
-        // OTA the operator receives (v1.0.59 → v1.0.61) also tests
-        // the auto-relaunch fix end-to-end.
-        versionCode = 10061
-        versionName = "1.0.61"
+        // Android 14's MY_PACKAGE_REPLACED BAL grant is FGS-only, not
+        // activity-launch. v1.0.62 routes the launch through the FGS
+        // that DID get the grant: BootReceiver calls
+        // HeartbeatService.ensureRunningAndLaunchMain(), and the
+        // service's onStartCommand does the activity launch — which
+        // is honored because the FGS itself has the BAL exemption.
+        versionCode = 10062
+        versionName = "1.0.62"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)

@@ -29,7 +29,25 @@ class BootReceiver : BroadcastReceiver() {
         // Bring up the foreground services BEFORE the activity so the
         // dashboard sees ONLINE the moment the kiosk boots, even if the
         // activity launch is briefly delayed by display init.
-        com.educms.player.heartbeat.HeartbeatService.ensureRunning(context.applicationContext)
+        //
+        // v1.0.62 — for MY_PACKAGE_REPLACED, the receiver CANNOT launch
+        // an activity directly (Android 14 BAL grants the receiver a
+        // 20-second FGS-only exemption, not an activity-launch one). The
+        // FGS we start here DOES inherit the BAL grant, so we tag the
+        // start intent EXTRA_LAUNCH_MAIN=true and let HeartbeatService
+        // do the activity launch from inside its onStartCommand where
+        // the grant is honored. For BOOT_COMPLETED variants the
+        // receiver's own startActivity at the bottom of this method
+        // still works (BOOT_COMPLETED IS on the activity-launch
+        // exemption list), so we only use the trampoline for the
+        // upgrade path.
+        if (action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            com.educms.player.heartbeat.HeartbeatService.ensureRunningAndLaunchMain(
+                context.applicationContext,
+            )
+        } else {
+            com.educms.player.heartbeat.HeartbeatService.ensureRunning(context.applicationContext)
+        }
         com.educms.player.watchdog.Watchdog.arm(context.applicationContext)
         PlayerLogger.i("BootReceiver", "HeartbeatService and Watchdog armed")
 
@@ -49,15 +67,21 @@ class BootReceiver : BroadcastReceiver() {
             PlayerLogger.w("BootReceiver", "fireOtaCheckNow failed on boot", e)
         }
 
-        val launch = Intent(context, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        }
-        runCatching { context.startActivity(launch) }
-            .onFailure {
-                PlayerLogger.w("BootReceiver", "Failed to launch MainActivity on boot", it)
-                Log.w("BootReceiver", "Failed to launch MainActivity on boot", it)
+        // For MY_PACKAGE_REPLACED the activity launch was already routed
+        // through HeartbeatService above (BAL workaround). For real boot
+        // actions this direct startActivity is fine — the receiver gets
+        // the activity-launch BAL exemption from BOOT_COMPLETED.
+        if (action != Intent.ACTION_MY_PACKAGE_REPLACED) {
+            val launch = Intent(context, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
+            runCatching { context.startActivity(launch) }
+                .onFailure {
+                    PlayerLogger.w("BootReceiver", "Failed to launch MainActivity on boot", it)
+                    Log.w("BootReceiver", "Failed to launch MainActivity on boot", it)
+                }
+        }
     }
 
     companion object {

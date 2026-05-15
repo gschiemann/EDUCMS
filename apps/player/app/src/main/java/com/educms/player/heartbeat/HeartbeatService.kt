@@ -69,11 +69,50 @@ class HeartbeatService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // v1.0.62 — post-install activity-launch trampoline.
+        //
+        // When MY_PACKAGE_REPLACED fires after an OTA install, the
+        // system grants BAL EXEMPTION FOR FGS STARTS ONLY, not for
+        // activity starts. BootReceiver therefore can't directly
+        // startActivity(MainActivity) — Android 14 BAL rejects it
+        // with `result code=102` (verified on emulator post-v1.0.61
+        // install: activity start from BootReceiver was blocked 80 ms
+        // after this FGS started successfully).
+        //
+        // BUT: this FGS received the 20-second BAL grant from the
+        // MY_PACKAGE_REPLACED broadcast (logged as `tempAllowListReason:
+        // MY_PACKAGE_REPLACED ... duration:20000`). Activity launches
+        // from a FGS-in-foreground-state inside that window ARE allowed.
+        //
+        // So BootReceiver passes EXTRA_LAUNCH_MAIN=true when starting
+        // this service after MY_PACKAGE_REPLACED. We honor it here on
+        // the very first onStartCommand after process spawn (guarded
+        // with hasAutoLaunchedMain so the regular periodic restarts
+        // don't yank focus from the operator).
+        if (!hasAutoLaunchedMain && intent?.getBooleanExtra(EXTRA_LAUNCH_MAIN, false) == true) {
+            hasAutoLaunchedMain = true
+            try {
+                val launch = Intent(this, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                }
+                startActivity(launch)
+                PlayerLogger.i(TAG, "launched MainActivity from FGS BAL grant (post-MY_PACKAGE_REPLACED)")
+            } catch (e: Exception) {
+                PlayerLogger.w(TAG, "MainActivity launch from FGS failed: ${e.message}")
+            }
+        }
         // START_STICKY — Android restarts us with a null intent if the
         // process gets killed. Combined with PendingIntent rescheduling
         // in onTaskRemoved/onDestroy, this is belt-and-suspenders.
         return START_STICKY
     }
+
+    /** v1.0.62 — track first auto-launch so periodic restarts don't yank
+     *  focus from the operator. Process-scoped; resets on every fresh
+     *  Player process (which is the only time we WANT to auto-launch). */
+    private var hasAutoLaunchedMain = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -224,6 +263,14 @@ class HeartbeatService : Service() {
         private const val FORCE_OTA_MIN_INTERVAL_MS = 60_000L
 
         /**
+         * v1.0.62 — when BootReceiver handled MY_PACKAGE_REPLACED, it
+         * starts this FGS with EXTRA_LAUNCH_MAIN=true so the service
+         * (which inherits the FGS BAL grant) can launch MainActivity
+         * on behalf of the receiver (which can't). See onStartCommand.
+         */
+        const val EXTRA_LAUNCH_MAIN = "edu.educms.player.LAUNCH_MAIN_AFTER_START"
+
+        /**
          * Convenience entrypoint — call from PlayerApp.onCreate and
          * BootReceiver to ensure the service is running. Idempotent.
          */
@@ -233,6 +280,24 @@ class HeartbeatService : Service() {
                 ContextCompat.startForegroundService(ctx, intent)
             } catch (e: Exception) {
                 Log.w(TAG, "ensureRunning failed", e)
+            }
+        }
+
+        /**
+         * Same as ensureRunning but tags the start intent so onStartCommand
+         * also brings the MainActivity to the foreground. Use from
+         * BootReceiver when it handled MY_PACKAGE_REPLACED — the BAL
+         * grant flows from the receiver to the FGS, and the FGS can then
+         * launch the activity that the receiver itself cannot.
+         */
+        fun ensureRunningAndLaunchMain(ctx: Context) {
+            val intent = Intent(ctx, HeartbeatService::class.java).apply {
+                putExtra(EXTRA_LAUNCH_MAIN, true)
+            }
+            try {
+                ContextCompat.startForegroundService(ctx, intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "ensureRunningAndLaunchMain failed", e)
             }
         }
     }
