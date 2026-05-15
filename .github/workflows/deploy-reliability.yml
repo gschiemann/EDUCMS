@@ -24,6 +24,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  apk-version-tag-sync:
+    # The #1 recurring OTA failure: a developer bumps versionCode /
+    # versionName in build.gradle.kts but forgets to push the matching
+    # `player-v*` / `manager-v*` git tag. CI then never builds a GitHub
+    # Release, every kiosk polling /update-check correctly sees the old
+    # tag as "latest", and the whole fleet silently stays on a months-
+    # old build — with zero errors anywhere. This job turns that silent
+    # failure into a red check that prints the exact `git tag` command.
+    name: APK version is tagged
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Player + Manager versionName must have a matching git tag
+        run: |
+          fail=0
+          for entry in "app:player" "manager:manager"; do
+            dir="${entry%%:*}"; prefix="${entry##*:}"
+            gradle="apps/player/$dir/build.gradle.kts"
+            vn=$(grep -oE 'versionName = "[^"]+"' "$gradle" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+            vc=$(grep -oE 'versionCode = [0-9]+'   "$gradle" | head -1 | sed -E 's/.*= //')
+            IFS=. read -r MA MI PA <<< "$vn"
+            want=$(( MA*10000 + MI*100 + PA ))
+            if [ "$vc" != "$want" ]; then
+              echo "::error file=$gradle::$dir versionCode=$vc but versionName=$vn implies $want — the OTA endpoint derives versionCode as major*10000+minor*100+patch, so they MUST agree."
+              fail=1
+            fi
+            tag="${prefix}-v${vn}"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "OK  $dir is v$vn and tag $tag exists"
+            else
+              echo "::error file=$gradle::$dir is at versionName=$vn but git tag '$tag' does NOT exist. CI only ships an OTA release on a $prefix-v* tag. Run:  git tag $tag && git push origin $tag"
+              fail=1
+            fi
+          done
+          exit $fail
+
   lockfile-check:
     name: pnpm lockfile drift
     runs-on: ubuntu-latest
