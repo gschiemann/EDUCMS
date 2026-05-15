@@ -114,7 +114,12 @@ function Hero() {
             {/* 16:9 aspect box. The TemplateEmbed component below
                 handles sizing the iframe to a natural 1920x1080
                 with a CSS transform so fonts read correctly. */}
-            <TemplateEmbed src="/demo/templates/rainbow.html" title="Live preview — Rainbow Elementary" eager />
+            <TemplateEmbed
+              src="/demo/templates/rainbow.html"
+              staticImage="/demo/templates/rainbow.jpg"
+              title="Live preview — Rainbow Elementary"
+              eager
+            />
           </div>
         </div>
       </div>
@@ -152,6 +157,7 @@ function LogoStrip() {
 const GALLERY = [
   {
     src: '/demo/templates/rainbow.html',
+    staticImage: '/demo/templates/rainbow.jpg',
     name: 'Rainbow',
     blurb: 'Friendly, playful — perfect for K-5 lobbies.',
     chip: 'Elementary',
@@ -164,6 +170,7 @@ const GALLERY = [
     // every tenant can already pick from /templates today. Honest
     // marketing — only show templates the buyer can actually use.
     src: '/demo/templates/middle-school.html',
+    staticImage: '/demo/templates/middle-school.jpg',
     name: 'Pep Rally',
     blurb: 'Stadium spotlights + scoreboard clock for middle-school lobbies.',
     chip: 'Middle',
@@ -171,6 +178,7 @@ const GALLERY = [
   },
   {
     src: '/demo/templates/varsity.html',
+    staticImage: '/demo/templates/varsity.jpg',
     name: 'Varsity',
     blurb: 'Athletic scoreboard energy for HS lobbies.',
     chip: 'High',
@@ -196,7 +204,11 @@ function Gallery() {
               key={t.name}
               className="bg-white rounded-2xl overflow-hidden border border-slate-200 hover:border-indigo-300 hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)] transition-all"
             >
-              <TemplateEmbed src={t.src} title={`${t.name} template preview`} />
+              <TemplateEmbed
+                src={t.src}
+                staticImage={t.staticImage}
+                title={`${t.name} template preview`}
+              />
               <div className="px-5 py-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="font-[family-name:var(--font-fredoka)] font-semibold text-slate-900 text-lg">

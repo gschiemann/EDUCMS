@@ -36,10 +36,22 @@ export function TemplateEmbed({
   src,
   title,
   eager = false,
+  staticImage,
 }: {
   src: string;
   title: string;
   eager?: boolean;
+  /**
+   * Optional path to a pre-rendered JPG of the template (e.g.
+   * `/demo/templates/rainbow.jpg`). On mobile we render this as a
+   * plain <img> instead of an iframe — a real static preview without
+   * the GPU / animation cost that crashes Safari. Desktop ignores it
+   * and keeps the live iframe (animations + all). The image is
+   * generated at design time via scripts/snap-templates.cjs which
+   * loads each template HTML in headless Chrome at 1280×720 and
+   * writes a JPG next to the .html.
+   */
+  staticImage?: string;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -147,31 +159,41 @@ export function TemplateEmbed({
         aria-hidden
         className="absolute inset-0 bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500"
       />
-      {/* Subtle radial highlight + label, ONLY rendered when we know
-          we're on mobile (isDesktop === false). On desktop the iframe
-          covers it; during SSR / hydration tick it stays invisible to
-          avoid flashing the label and then replacing it with the iframe. */}
+      {/* Mobile: static JPG snapshot if provided, otherwise the gradient
+          + label fallback. ONLY rendered when we know we're on mobile
+          (isDesktop === false). On desktop the iframe covers it; during
+          SSR / hydration tick it stays invisible. */}
       {isDesktop === false ? (
-        <>
-          <div
-            aria-hidden
-            className="absolute inset-0"
-            style={{
-              background:
-                'radial-gradient(ellipse 60% 80% at 30% 20%, rgba(255,255,255,0.18), transparent 70%)',
-            }}
+        staticImage ? (
+          <img
+            src={staticImage}
+            alt={placeholderLabel}
+            loading="lazy"
+            decoding="async"
+            className="absolute top-0 left-0 w-full h-full object-cover"
           />
-          <div className="absolute inset-0 flex items-end pointer-events-none">
-            <div className="p-4">
-              <div className="text-[10px] font-bold tracking-[0.16em] uppercase text-white/70">
-                Preview
-              </div>
-              <div className="mt-0.5 font-[family-name:var(--font-fredoka)] text-lg font-semibold text-white drop-shadow">
-                {placeholderLabel}
+        ) : (
+          <>
+            <div
+              aria-hidden
+              className="absolute inset-0"
+              style={{
+                background:
+                  'radial-gradient(ellipse 60% 80% at 30% 20%, rgba(255,255,255,0.18), transparent 70%)',
+              }}
+            />
+            <div className="absolute inset-0 flex items-end pointer-events-none">
+              <div className="p-4">
+                <div className="text-[10px] font-bold tracking-[0.16em] uppercase text-white/70">
+                  Preview
+                </div>
+                <div className="mt-0.5 font-[family-name:var(--font-fredoka)] text-lg font-semibold text-white drop-shadow">
+                  {placeholderLabel}
+                </div>
               </div>
             </div>
-          </div>
-        </>
+          </>
+        )
       ) : null}
       {/* Desktop: real iframe, gated on intersection. */}
       {mounted ? (
