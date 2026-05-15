@@ -504,6 +504,15 @@ export function PropertiesPanel() {
   const meta = useBuilderStore((s) => s.meta);
   const nameId = useId();
 
+  // 2026-05-15 — operator: "we dont have a way to resize template
+  // content based on pixels, you just have other measurements".
+  // Zone width/height are STORED as % of canvas (so they scale with
+  // resolution at playback time — non-negotiable). But the operator
+  // wants to TYPE pixel values. UI-only toggle: when 'px', fields
+  // show derived px values; onChange converts back to %. Stored
+  // model is unchanged, render-at-playback math is unchanged.
+  const [posUnit, setPosUnit] = useState<'%' | 'px'>('%');
+
   // Hotspot listener — when the AnimatedWelcomeWidget dispatches an
   // 'aw-edit-section' CustomEvent (user clicked a region in the
   // preview), scroll the matching section header to the top of its
@@ -711,15 +720,77 @@ export function PropertiesPanel() {
           unless they explicitly expand it. */}
       <CollapsibleSection title="Position & size (advanced)" defaultOpen={false}>
         <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <NumField id={xId} label="X (%)" value={zone.x} onChange={(v) => set({ x: v })} min={0} max={100} />
-            <NumField id={yId} label="Y (%)" value={zone.y} onChange={(v) => set({ y: v })} min={0} max={100} />
-            <NumField id={wId} label="Width (%)" value={zone.width} onChange={(v) => set({ width: v })} min={3} max={100} />
-            <NumField id={hId} label="Height (%)" value={zone.height} onChange={(v) => set({ height: v })} min={3} max={100} />
+          <div className="flex justify-end">
+            <div className="inline-flex bg-slate-100 rounded-md p-0.5" role="tablist" aria-label="Position & size unit">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={posUnit === '%'}
+                onClick={() => setPosUnit('%')}
+                className={`px-2.5 py-1 text-[10px] font-bold rounded transition-colors ${posUnit === '%' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                %
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={posUnit === 'px'}
+                onClick={() => setPosUnit('px')}
+                className={`px-2.5 py-1 text-[10px] font-bold rounded transition-colors ${posUnit === 'px' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                px
+              </button>
+            </div>
           </div>
 
+          {posUnit === '%' ? (
+            <div className="grid grid-cols-2 gap-3">
+              <NumField id={xId} label="X (%)" value={zone.x} onChange={(v) => set({ x: v })} min={0} max={100} />
+              <NumField id={yId} label="Y (%)" value={zone.y} onChange={(v) => set({ y: v })} min={0} max={100} />
+              <NumField id={wId} label="Width (%)" value={zone.width} onChange={(v) => set({ width: v })} min={3} max={100} />
+              <NumField id={hId} label="Height (%)" value={zone.height} onChange={(v) => set({ height: v })} min={3} max={100} />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <NumField
+                id={xId}
+                label="X (px)"
+                value={Math.round((zone.x / 100) * meta.screenWidth)}
+                onChange={(v) => set({ x: meta.screenWidth > 0 ? (v / meta.screenWidth) * 100 : zone.x })}
+                min={0}
+                max={meta.screenWidth}
+              />
+              <NumField
+                id={yId}
+                label="Y (px)"
+                value={Math.round((zone.y / 100) * meta.screenHeight)}
+                onChange={(v) => set({ y: meta.screenHeight > 0 ? (v / meta.screenHeight) * 100 : zone.y })}
+                min={0}
+                max={meta.screenHeight}
+              />
+              <NumField
+                id={wId}
+                label="Width (px)"
+                value={Math.round((zone.width / 100) * meta.screenWidth)}
+                onChange={(v) => set({ width: meta.screenWidth > 0 ? (v / meta.screenWidth) * 100 : zone.width })}
+                min={Math.max(1, Math.round((3 / 100) * meta.screenWidth))}
+                max={meta.screenWidth}
+              />
+              <NumField
+                id={hId}
+                label="Height (px)"
+                value={Math.round((zone.height / 100) * meta.screenHeight)}
+                onChange={(v) => set({ height: meta.screenHeight > 0 ? (v / meta.screenHeight) * 100 : zone.height })}
+                min={Math.max(1, Math.round((3 / 100) * meta.screenHeight))}
+                max={meta.screenHeight}
+              />
+            </div>
+          )}
+
           <div className="text-[10px] text-slate-400/80 font-medium text-center bg-white py-1.5 rounded-md border border-slate-100/50">
-            Rendered: ~{pixelW}&times;{pixelH}px at {meta.screenWidth}&times;{meta.screenHeight}
+            {posUnit === '%'
+              ? <>Rendered: ~{pixelW}&times;{pixelH}px at {meta.screenWidth}&times;{meta.screenHeight}</>
+              : <>{(zone.width).toFixed(1)}% &times; {(zone.height).toFixed(1)}% of {meta.screenWidth}&times;{meta.screenHeight} canvas</>}
           </div>
 
           <div className="pt-2 border-t border-slate-200/50 flex justify-center gap-1">
@@ -878,16 +949,47 @@ function NumField({ id, label, value, onChange, min, max, step = 1 }: {
   id: string; label: string; value: number; onChange: (v: number) => void;
   min?: number; max?: number; step?: number;
 }) {
+  // 2026-05-15 — buffered string state so we don't clamp / propagate
+  // mid-typing values. Operator reported "typing custom template
+  // size crashes the window": clearing the Width field momentarily
+  // yields "", parseFloat("") = NaN (guarded), but the next two
+  // keystrokes can be "1" and "9" before "1920" lands. Each lands
+  // as a real value below `min` (200), forcing the canvas to render
+  // at 1px / 9px width while the operator is still typing. Some
+  // browsers crash the tab when aspectRatio churns through extreme
+  // values that way; even when they don't, the canvas flickers.
+  //
+  // Fix: keep a local string while the field is focused, and only
+  // propagate after blur OR after the user explicitly commits with
+  // Enter. On commit we clamp to [min, max] so the canvas never
+  // sees an out-of-range value.
+  const [draft, setDraft] = useState<string | null>(null);
+  const displayed = draft !== null
+    ? draft
+    : (Number.isFinite(value) ? String(Math.round(value * 100) / 100) : '0');
+  const commit = (raw: string) => {
+    setDraft(null);
+    const parsed = parseFloat(raw);
+    if (!Number.isFinite(parsed)) return; // keep existing value
+    let clamped = parsed;
+    if (typeof min === 'number') clamped = Math.max(min, clamped);
+    if (typeof max === 'number') clamped = Math.min(max, clamped);
+    if (clamped !== value) onChange(clamped);
+  };
   return (
     <div>
       <label htmlFor={id} className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
       <input
         id={id}
         type="number"
-        value={Number.isFinite(value) ? Math.round(value * 100) / 100 : 0}
-        onChange={(e) => {
-          const v = parseFloat(e.target.value);
-          if (Number.isFinite(v)) onChange(v);
+        value={displayed}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            commit((e.target as HTMLInputElement).value);
+            (e.target as HTMLInputElement).blur();
+          }
         }}
         min={min}
         max={max}

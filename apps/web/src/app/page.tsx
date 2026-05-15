@@ -113,7 +113,7 @@ function Hero() {
             {/* 16:9 aspect box. The TemplateEmbed component below
                 handles sizing the iframe to a natural 1920x1080
                 with a CSS transform so fonts read correctly. */}
-            <TemplateEmbed src="/demo/templates/rainbow.html" title="Live preview — Rainbow Elementary" />
+            <TemplateEmbed src="/demo/templates/rainbow.html" title="Live preview — Rainbow Elementary" eager />
           </div>
         </div>
       </div>
@@ -126,49 +126,96 @@ function Hero() {
  * the same 1920×1080 natural-size + CSS transform:scale pattern
  * that lets the template's fixed-pixel typography look correct
  * at any container width.
+ *
+ * 2026-05-15 — gated by IntersectionObserver so the iframe DOES
+ * NOT mount until the frame scrolls within ~600px of the viewport.
+ * Why: stacking 4 simultaneously-mounted iframes (Hero + 3-tile
+ * Gallery) — each rendering an animated 1920×1080 template scene
+ * with CSS keyframes — crashes mobile Safari on phones around the
+ * 4 GiB RAM tier (iPhone 12/13/SE 2/3rd gen, baseline iPads). Each
+ * iframe has its own JS context + compositor layers + image
+ * decoders. The Gallery iframes sit well below the fold so they
+ * pay full cost while the user is reading the Hero and never even
+ * see them.
+ *
+ * Behavior:
+ *   - Above the fold (Hero): renders immediately (mounted on first
+ *     client render via the visible-by-default ref).
+ *   - Below the fold (Gallery): waits for the placeholder to enter
+ *     the 600px-margin viewport before swapping in the iframe.
+ *   - Server render: a static placeholder (matches initial client
+ *     render, so no hydration mismatch and the metadata-driven page
+ *     looks identical to screenshots / link previews).
  */
-function TemplateEmbed({ src, title }: { src: string; title: string }) {
+function TemplateEmbed({ src, title, eager = false }: { src: string; title: string; eager?: boolean }) {
   return (
     <div
       className="relative w-full bg-slate-950 overflow-hidden"
       style={{ aspectRatio: '16 / 9' }}
+      data-template-embed-src={src}
+      data-template-embed-eager={eager ? 'true' : 'false'}
     >
-      <iframe
-        src={src}
-        title={title}
-        loading="lazy"
-        className="absolute top-0 left-0 border-0"
-        style={{
-          width: '1920px',
-          height: '1080px',
-          transformOrigin: '0 0',
-          // inline transform set by the tiny SSR-safe script below
-        }}
+      {/* Static gradient placeholder for SSR + pre-mount. Replaced
+          by the iframe in-place after the intersection check fires. */}
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 opacity-90"
       />
-      {/* Tiny resize helper — scales the iframe so its 1920×1080
-          render fits the parent width without cropping. Uses a
-          ResizeObserver so it adapts as the container resizes. */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <span className="text-white/80 text-xs font-medium tracking-wide">
+          {title}
+        </span>
+      </div>
+      {/* IntersectionObserver-gated iframe mounter. Avoids React state
+          to keep this component server-renderable (the page is SSG;
+          using useState here would force "use client" + a hydration
+          tick on every embed). The script swaps the placeholder for
+          a real <iframe> in-place. */}
       <script
         dangerouslySetInnerHTML={{
           __html: `
 (function(){
-  var frames = document.currentScript.parentElement;
-  function fit(){
-    var iframe = frames.querySelector('iframe');
-    if (!iframe) return;
-    var rect = frames.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    var k = Math.min(rect.width / 1920, rect.height / 1080);
-    iframe.style.transform = 'scale(' + k + ')';
+  var frame = document.currentScript.parentElement;
+  var src = frame.getAttribute('data-template-embed-src');
+  var eager = frame.getAttribute('data-template-embed-eager') === 'true';
+  if (!src) return;
+  function mount(){
+    if (frame.querySelector('iframe')) return;
+    var iframe = document.createElement('iframe');
+    iframe.src = src;
+    iframe.title = ${JSON.stringify(title)};
+    iframe.loading = 'lazy';
+    iframe.style.cssText = 'position:absolute;top:0;left:0;width:1920px;height:1080px;transform-origin:0 0;border:0;';
+    frame.appendChild(iframe);
+    function fit(){
+      var rect = frame.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      var k = Math.min(rect.width / 1920, rect.height / 1080);
+      iframe.style.transform = 'scale(' + k + ')';
+    }
+    fit();
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(fit).observe(frame);
+    } else {
+      window.addEventListener('resize', fit);
+    }
+    setTimeout(fit, 60);
+    setTimeout(fit, 400);
   }
-  fit();
-  if (typeof ResizeObserver !== 'undefined') {
-    new ResizeObserver(fit).observe(frames);
-  } else {
-    window.addEventListener('resize', fit);
+  if (eager || typeof IntersectionObserver === 'undefined'){
+    mount();
+    return;
   }
-  setTimeout(fit, 60);
-  setTimeout(fit, 400);
+  var io = new IntersectionObserver(function(entries){
+    for (var i = 0; i < entries.length; i++){
+      if (entries[i].isIntersecting){
+        mount();
+        io.disconnect();
+        return;
+      }
+    }
+  }, { rootMargin: '600px 0px' });
+  io.observe(frame);
 })();
 `,
         }}

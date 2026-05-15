@@ -321,7 +321,17 @@ export function BuilderCanvas() {
   const [activeSnapLines, setActiveSnapLines] = useState<SnapLine[]>([]);
   const [hoverFromDrag, setHoverFromDrag] = useState(false);
 
-  const aspectRatio = meta.screenWidth / meta.screenHeight;
+  // Belt + suspenders for the Width / Height NumField crash:
+  // when the operator clears Height and starts typing a new value,
+  // the buffered string may briefly be empty (handled in NumField)
+  // OR a small intermediate digit (e.g. "1" before "1920"). Either
+  // path, `screenHeight: 0` would yield aspectRatio = Infinity and
+  // some browsers crash the tab when CSS aspect-ratio churns
+  // through Infinity / NaN. Guard here so the canvas always lays
+  // out something sane while the operator is mid-edit.
+  const aspectRatio = meta.screenHeight > 0 && Number.isFinite(meta.screenWidth) && Number.isFinite(meta.screenHeight)
+    ? meta.screenWidth / meta.screenHeight
+    : 16 / 9;
 
   const onZonePointerDown = useCallback((e: React.PointerEvent, zoneId: string) => {
     e.preventDefault();
