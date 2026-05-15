@@ -196,6 +196,44 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
+            <!--
+              v1.0.61 — same receiver also catches ACTION_MY_PACKAGE_REPLACED so
+              the Player auto-relaunches after every OTA install. Operator on
+              v1.0.59 sandbox test (2026-05-15): post-install logcat showed
+              `ActivityTaskManager: Background activity launch blocked
+              [callingPackage: com.educms.manager.debug ...] result code=102`
+              over and over — Manager's WatchdogService retries every 90 s
+              via Api34BalLauncher.launchAllowingBackgroundStart() but
+              Android 14 BAL requires BOTH the PendingIntent sender AND the
+              sending process to have a BAL grant. Manager's FGS doesn't,
+              so every relaunch is silently blocked and the kiosk sits on
+              the OEM home screen until an operator power-cycles.
+
+              Fix: deliver the launch trigger to a receiver that runs IN
+              PLAYER'S OWN PROCESS — same-UID startActivity is exempt from
+              BAL. MY_PACKAGE_REPLACED has all the right properties:
+                - delivered to the newly-installed package (Player itself)
+                - delivered to MANIFEST receivers (not bound to the old
+                  process which the install killed)
+                - on the documented BAL exemption list (Android 14 docs:
+                  ACTION_BOOT_COMPLETED, ACTION_MY_PACKAGE_REPLACED,
+                  ACTION_MY_PACKAGE_SUSPENDED, ACTION_MY_PACKAGE_UNSUSPENDED,
+                  ACTION_PACKAGE_FIRST_LAUNCH)
+
+              BootReceiver already starts the foreground services + fires
+              an OTA check + launches MainActivity. Reusing it means a
+              one-line filter add and zero new code — the behavior we want
+              for "device just booted" is the same behavior we want for
+              "Player just upgraded itself".
+
+              Data-scheme not needed — MY_PACKAGE_REPLACED is sent to your
+              OWN package without one (unlike ACTION_PACKAGE_REPLACED which
+              you use to OBSERVE other packages and which DOES need
+              <data android:scheme="package" />).
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
         </receiver>
 
         <!-- USB sneakernet receiver (Sprint 7B) — fires when a stick is plugged

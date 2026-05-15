@@ -17,18 +17,30 @@ android {
         // WatchdogService compares PackageManager.versionCode against
         // InstallState.pendingVc which the API returns as the derived value.
         // Keeping them in sync prevents a false rollback after a successful install.
-        // 2026-05-15 — sandbox-verified OTA chain.
-        // After v1.0.59 confirmed in-sandbox: v1.0.58 → v1.0.59
-        // upgrade flowed through OtaUpdateWorker, PackageInstaller
-        // session committed, versionCode bumped on-device with no
-        // operator interaction. v1.0.60 exists ONLY to verify the
-        // upgrade chain end-to-end with the v1.0.59 build now live
-        // in operator hands. Once v1.0.59 → v1.0.60 succeeds in
-        // sandbox AND on The Den, this is the working OTA recipe
-        // and we ship operator updates from the dashboard from now
-        // on instead of sideloading.
-        versionCode = 10060
-        versionName = "1.0.60"
+        // 2026-05-15 — sandbox-verified OTA chain + auto-relaunch fix.
+        //
+        // v1.0.58 → v1.0.59 install was verified in the Android 14
+        // emulator sandbox (OtaUpdateWorker → PackageInstaller.Session
+        // committed, on-device versionCode bumped, zero operator taps).
+        // BUT MainActivity did NOT auto-relaunch — logcat showed
+        // Manager's WatchdogService.launchAllowingBackgroundStart()
+        // getting BAL-blocked by ActivityTaskManager (result code=102)
+        // every 90 s in a retry loop. Kiosk would have sat on the OEM
+        // home screen until a power-cycle.
+        //
+        // v1.0.61 fixes that by adding a manifest-registered receiver
+        // in PLAYER for ACTION_MY_PACKAGE_REPLACED. That broadcast is
+        // delivered by the OS to the newly-installed package's own
+        // process — same UID — so the receiver's startActivity() call
+        // is BAL-exempt. See BootReceiver.kt and AndroidManifest.xml
+        // for the full explanation.
+        //
+        // v1.0.60 was skipped — same code as v1.0.61 minus the fix,
+        // no reason to ship it. Going straight to v1.0.61 so the FIRST
+        // OTA the operator receives (v1.0.59 → v1.0.61) also tests
+        // the auto-relaunch fix end-to-end.
+        versionCode = 10061
+        versionName = "1.0.61"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)

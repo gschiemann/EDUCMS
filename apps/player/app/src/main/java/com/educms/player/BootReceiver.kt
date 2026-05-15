@@ -66,6 +66,16 @@ class BootReceiver : BroadcastReceiver() {
             Intent.ACTION_LOCKED_BOOT_COMPLETED,
             "android.intent.action.QUICKBOOT_POWERON",
             "com.htc.intent.action.QUICKBOOT_POWERON",
+            // v1.0.61 — also catch Player upgrades. Manifest filter is in
+            // AndroidManifest.xml; explanation of why this fixes the
+            // "didnt relaunch the app" complaint lives there too. We
+            // intentionally route into the same boot path because
+            // "Player upgraded itself" needs the same wake-up sequence
+            // as "device just booted": foreground services, OTA check,
+            // and MainActivity launch. Treating them identically also
+            // means any future boot-time work (e.g. emergency cache
+            // rehydrate) happens after upgrade automatically.
+            Intent.ACTION_MY_PACKAGE_REPLACED,
         )
     }
 }
