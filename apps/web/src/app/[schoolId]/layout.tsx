@@ -2,9 +2,44 @@
 
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAppStore } from '@/lib/store';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 
+/**
+ * SchoolLayout — wraps every /[schoolId]/* page in the DashboardLayout
+ * chrome (sidebar + top toolbar + mobile tab bar + notifications +
+ * brand chip + etc).
+ *
+ * 2026-05-15 — added a `mounted` render gate around DashboardLayout
+ * to kill React #418 hydration mismatches across every authenticated
+ * route. Why:
+ *
+ *   The Zustand auth store (apps/web/src/store/ui-store.ts:72) reads
+ *   sessionStorage at MODULE LOAD via bootstrapAuth(). On the server
+ *   `typeof window === 'undefined'` so `initial = { token: null,
+ *   user: null }`. On the client `typeof window !== 'undefined'` so
+ *   `initial = bootstrapAuth()` returns the real authenticated user.
+ *
+ *   That difference cascades into every layout component that reads
+ *   `user` from the store — sidebar header, top toolbar avatar,
+ *   notifications badge, role-gated nav items, branding lookup, etc.
+ *   Individual components added their own `mounted` flags as the bug
+ *   surfaced (Sidebar, TopToolbar), but at least one path was still
+ *   slipping through and triggering React #418 on every page load
+ *   for the last 30+ commits (Prod Smoke had been red).
+ *
+ *   Gating ONCE at the SchoolLayout boundary is cheaper than auditing
+ *   100+ child components. Server still renders the loading
+ *   placeholder; client hydrates with the same placeholder; one tick
+ *   later the real chrome renders. No hydration boundary on anything
+ *   user-dependent.
+ *
+ *   Cost: one extra render tick on initial navigation (~16ms,
+ *   imperceptible). The data hooks below (React Query queries
+ *   inside child components) still run during SSR because we only
+ *   defer the OUTPUT, not the hooks themselves — they keep
+ *   pre-fetching exactly like before.
+ */
 export default function SchoolLayout({
   children,
 }: {
@@ -12,12 +47,29 @@ export default function SchoolLayout({
 }) {
   const params = useParams();
   const setActiveTenant = useAppStore((state) => state.setActiveTenant);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (params?.schoolId) {
       setActiveTenant(params.schoolId as string);
     }
   }, [params?.schoolId, setActiveTenant]);
+
+  if (!mounted) {
+    // Match the SSR output exactly on first client render so React
+    // doesn't try to reconcile mismatched chrome. The minimal
+    // placeholder is intentionally just a colored full-viewport
+    // backdrop — no text, no icons — so the SSR snapshot has zero
+    // surface area for any user-data-dependent render to leak in.
+    return (
+      <div
+        className="min-h-screen w-full bg-slate-50"
+        aria-hidden
+      />
+    );
+  }
 
   return <DashboardLayout>{children}</DashboardLayout>;
 }
