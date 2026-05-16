@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * Signup page — the first impression a school administrator has of
- * VenueOS. Previously a small dark form card on a slate gradient
+ * Signup page — the first impression a new operator has of VenueOS.
+ * Industry-neutral by default; reflavors to the vertical they pick.
+ * Previously a small dark form card on a slate gradient
  * that read as an indie side project ("kinda lame", per user).
  *
  * Rebuilt as a split-screen product story:
@@ -202,6 +203,24 @@ const SIGNUP_VERTICALS: Record<Vertical, VerticalSignup> = {
   },
 };
 
+/**
+ * The neutral default — what /signup shows before the visitor picks
+ * an industry (and when no ?vertical= deep-link is present). Universal
+ * VenueOS copy, zero K-12 framing, so the page never reads as a
+ * school-only product on first load.
+ */
+const DEFAULT_SIGNUP: Omit<VerticalSignup, 'picker'> = {
+  nameLabel: 'Organization name',
+  namePlaceholder: 'Your venue or organization',
+  slugPlaceholder: 'your-venue',
+  emailPlaceholder: 'you@yourvenue.com',
+  heroWord: 'whole venue',
+  sceneEmoji: '✨',
+  sceneTitle: 'Welcome',
+  sceneAnnounce: 'On every screen, instantly',
+  secChip: 'Secure & Audited',
+};
+
 export default function SignupPage() {
   const [districtName, setDistrictName] = useState('');
   const [slug, setSlug] = useState('');
@@ -214,12 +233,12 @@ export default function SignupPage() {
   // reflavors the whole page (copy, device preview, chips) and
   // rebrands the workspace from day 1 (templates, terminology,
   // emergency types). All 11 verticals — Sports included — are here.
-  const [vertical, setVertical] = useState<Vertical>('K12');
+  const [vertical, setVertical] = useState<Vertical | ''>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const login = useUIStore((s) => s.login);
   const router = useRouter();
-  const v = SIGNUP_VERTICALS[vertical];
+  const v = vertical ? SIGNUP_VERTICALS[vertical] : DEFAULT_SIGNUP;
 
   // Preselect the vertical from ?vertical= — the landing-page industry
   // showcase deep-links here with it. Read on the client to skip the
@@ -237,6 +256,7 @@ export default function SignupPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!vertical) { setError('Please choose your industry.'); return; }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
     if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
     setLoading(true);
@@ -357,9 +377,12 @@ export default function SignupPage() {
               <select
                 required
                 value={vertical}
-                onChange={(e) => setVertical(e.target.value as Vertical)}
+                onChange={(e) => setVertical(e.target.value as Vertical | '')}
                 className="signup-input cursor-pointer"
               >
+                <option value="" disabled>
+                  Choose your industry…
+                </option>
                 {VERTICALS.map((vk) => (
                   <option key={vk} value={vk}>
                     {SIGNUP_VERTICALS[vk].picker}
@@ -470,7 +493,7 @@ export default function SignupPage() {
 
         {/* ── RIGHT — device preview + orbiting feature chips ── */}
         <aside className="hidden lg:flex relative min-h-[640px] items-center justify-center">
-          <DevicePreview vertical={vertical} />
+          <DevicePreview v={v} />
         </aside>
       </main>
 
@@ -534,8 +557,7 @@ function TrustPill({
  * sees their own kind of venue. Pure CSS "marketing glass" — no real
  * widget code — so it renders identically on every browser.
  */
-function DevicePreview({ vertical }: { vertical: Vertical }) {
-  const v = SIGNUP_VERTICALS[vertical];
+function DevicePreview({ v }: { v: Omit<VerticalSignup, 'picker'> }) {
   return (
     <div className="signup-device-wrap">
       {/* Device "frame" */}
