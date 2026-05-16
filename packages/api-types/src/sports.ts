@@ -9,8 +9,12 @@
  * both data-driven off this — adding a new sport is a new entry
  * here, not new UI code.
  *
- * Shipped flagship set: football, basketball, baseball, softball,
- * soccer, volleyball, wrestling — ~90% of US high-school athletics.
+ * Shipped set (12 sports, every clock model): football, basketball,
+ * baseball, softball, soccer, volleyball, wrestling, hockey, lacrosse,
+ * field hockey, water polo, pickleball — covering the vast majority
+ * of US high-school + rec athletics. Leaderboard meet sports (track,
+ * swimming, gymnastics) land with SportMode 'LEADERBOARD' in a later
+ * wave — the schema already carries the `mode` field for them.
  */
 
 export type ClockType = 'countdown' | 'countup' | 'none';
@@ -191,6 +195,122 @@ const WRESTLING: SportDefinition = {
   ],
 };
 
+// ── Sprint 13 Phase 2 — catalog expansion ──────────────────────
+// Four continuous-clock invasion sports + one rally sport. All pure
+// config: the scoreboard, control surface, and broadcast scorebug
+// are data-driven, so these light up across the whole product with
+// zero new UI code.
+
+const HOCKEY: SportDefinition = {
+  key: 'hockey',
+  name: 'Hockey',
+  emoji: '🏒',
+  mode: 'HEAD_TO_HEAD',
+  clock: { type: 'countdown', segmentMs: 17 * 60_000 },
+  segment: { name: 'Period', count: 3, overtime: true },
+  score: { unit: 'goals', increments: [1] },
+  stats: [
+    { key: 'homeShots', label: 'Home Shots', scope: 'home', type: 'number', min: 0, max: 99 },
+    { key: 'awayShots', label: 'Away Shots', scope: 'away', type: 'number', min: 0, max: 99 },
+    { key: 'homePenalties', label: 'Home Penalties', scope: 'home', type: 'number', min: 0, max: 30 },
+    { key: 'awayPenalties', label: 'Away Penalties', scope: 'away', type: 'number', min: 0, max: 30 },
+  ],
+  celebrations: [
+    { key: 'goal', label: 'GOAL!', emoji: '🚨' },
+    { key: 'powerPlay', label: 'Power Play', emoji: '⚡' },
+    { key: 'penaltyKill', label: 'Penalty Kill', emoji: '🛡️' },
+    { key: 'hatTrick', label: 'Hat Trick', emoji: '🎩' },
+    { key: 'save', label: 'Big Save', emoji: '🥅' },
+  ],
+};
+
+const LACROSSE: SportDefinition = {
+  key: 'lacrosse',
+  name: 'Lacrosse',
+  emoji: '🥍',
+  mode: 'HEAD_TO_HEAD',
+  clock: { type: 'countdown', segmentMs: 12 * 60_000 },
+  segment: { name: 'Quarter', count: 4, overtime: true },
+  score: { unit: 'goals', increments: [1] },
+  stats: [
+    { key: 'homeShots', label: 'Home Shots', scope: 'home', type: 'number', min: 0, max: 99 },
+    { key: 'awayShots', label: 'Away Shots', scope: 'away', type: 'number', min: 0, max: 99 },
+    { key: 'homeGroundBalls', label: 'Home Ground Balls', scope: 'home', type: 'number', min: 0, max: 99 },
+    { key: 'awayGroundBalls', label: 'Away Ground Balls', scope: 'away', type: 'number', min: 0, max: 99 },
+  ],
+  celebrations: [
+    { key: 'goal', label: 'GOAL!', emoji: '🥍' },
+    { key: 'save', label: 'Save', emoji: '🥅' },
+    { key: 'groundBall', label: 'Ground Ball', emoji: '🔄' },
+    { key: 'manUp', label: 'Man Up', emoji: '⚡' },
+  ],
+};
+
+const FIELD_HOCKEY: SportDefinition = {
+  key: 'field_hockey',
+  name: 'Field Hockey',
+  emoji: '🏑',
+  mode: 'HEAD_TO_HEAD',
+  clock: { type: 'countdown', segmentMs: 15 * 60_000 },
+  segment: { name: 'Quarter', count: 4, overtime: true },
+  score: { unit: 'goals', increments: [1] },
+  stats: [
+    { key: 'homeShots', label: 'Home Shots', scope: 'home', type: 'number', min: 0, max: 99 },
+    { key: 'awayShots', label: 'Away Shots', scope: 'away', type: 'number', min: 0, max: 99 },
+    { key: 'homeCorners', label: 'Home Corners', scope: 'home', type: 'number', min: 0, max: 99 },
+    { key: 'awayCorners', label: 'Away Corners', scope: 'away', type: 'number', min: 0, max: 99 },
+  ],
+  celebrations: [
+    { key: 'goal', label: 'GOAL!', emoji: '🏑' },
+    { key: 'save', label: 'Save', emoji: '🥅' },
+    { key: 'penaltyCorner', label: 'Penalty Corner', emoji: '📐' },
+    { key: 'greenCard', label: 'Green Card', emoji: '🟩' },
+  ],
+};
+
+const WATER_POLO: SportDefinition = {
+  key: 'water_polo',
+  name: 'Water Polo',
+  emoji: '🤽',
+  mode: 'HEAD_TO_HEAD',
+  clock: { type: 'countdown', segmentMs: 7 * 60_000 },
+  segment: { name: 'Quarter', count: 4, overtime: true },
+  score: { unit: 'goals', increments: [1] },
+  stats: [
+    { key: 'homeShots', label: 'Home Shots', scope: 'home', type: 'number', min: 0, max: 99 },
+    { key: 'awayShots', label: 'Away Shots', scope: 'away', type: 'number', min: 0, max: 99 },
+    { key: 'homeExclusions', label: 'Home Exclusions', scope: 'home', type: 'number', min: 0, max: 30 },
+    { key: 'awayExclusions', label: 'Away Exclusions', scope: 'away', type: 'number', min: 0, max: 30 },
+  ],
+  celebrations: [
+    { key: 'goal', label: 'GOAL!', emoji: '🤽' },
+    { key: 'save', label: 'Save', emoji: '🥅' },
+    { key: 'exclusion', label: 'Exclusion', emoji: '✋' },
+    { key: 'powerPlay', label: 'Power Play', emoji: '⚡' },
+  ],
+};
+
+const PICKLEBALL: SportDefinition = {
+  key: 'pickleball',
+  name: 'Pickleball',
+  emoji: '🥒',
+  mode: 'HEAD_TO_HEAD',
+  clock: { type: 'none' },
+  segment: { name: 'Game', count: 3, overtime: false },
+  score: { unit: 'points', increments: [1] },
+  stats: [
+    { key: 'homeGames', label: 'Home Games Won', scope: 'home', type: 'number', min: 0, max: 2 },
+    { key: 'awayGames', label: 'Away Games Won', scope: 'away', type: 'number', min: 0, max: 2 },
+    { key: 'serving', label: 'Serving', scope: 'game', type: 'text' },
+  ],
+  celebrations: [
+    { key: 'ace', label: 'Ace', emoji: '🎯' },
+    { key: 'winner', label: 'Winner', emoji: '💥' },
+    { key: 'dink', label: 'Dink Rally', emoji: '🏓' },
+    { key: 'gameWin', label: 'Game Won', emoji: '🏆' },
+  ],
+};
+
 /** All shipped sport definitions, keyed by `key`. */
 export const SPORT_DEFINITIONS: Record<string, SportDefinition> = {
   football: FOOTBALL,
@@ -200,11 +320,17 @@ export const SPORT_DEFINITIONS: Record<string, SportDefinition> = {
   soccer: SOCCER,
   volleyball: VOLLEYBALL,
   wrestling: WRESTLING,
+  hockey: HOCKEY,
+  lacrosse: LACROSSE,
+  field_hockey: FIELD_HOCKEY,
+  water_polo: WATER_POLO,
+  pickleball: PICKLEBALL,
 };
 
 /** Ordered list for pickers. */
 export const SPORTS: SportDefinition[] = [
   FOOTBALL, BASKETBALL, BASEBALL, SOFTBALL, SOCCER, VOLLEYBALL, WRESTLING,
+  HOCKEY, LACROSSE, FIELD_HOCKEY, WATER_POLO, PICKLEBALL,
 ];
 
 /** Look up a sport definition by key; undefined if unknown. */
