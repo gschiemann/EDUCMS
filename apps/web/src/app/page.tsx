@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { PublicShell } from '@/components/marketing/PublicShell';
 import { TemplateEmbed } from '@/components/marketing/TemplateEmbed';
+import { IndustryShowcase } from '@/components/marketing/IndustryShowcase';
 
 /**
  * VenueOS landing page.
@@ -30,7 +31,7 @@ import { TemplateEmbed } from '@/components/marketing/TemplateEmbed';
 export const metadata = {
   title: 'VenueOS — every screen, every venue, in one place',
   description:
-    'One platform for digital signage, interactive kiosks, and emergency alerts — across K-12 schools, restaurants, retail, gyms, healthcare, hotels, and corporate venues.',
+    'One platform for digital signage, interactive kiosks, live sports scoreboards, and emergency alerts — across K-12 schools, sports venues, restaurants, retail, gyms, healthcare, hotels, and corporate venues.',
 };
 
 export default function LandingPage() {
@@ -38,7 +39,7 @@ export default function LandingPage() {
     <PublicShell>
       <Hero />
       <LogoStrip />
-      <Industries />
+      <IndustryShowcase />
       <Gallery />
       <Features />
       <EmergencyCallout />
@@ -64,9 +65,9 @@ function Hero() {
           </span>
         </h1>
         <p className="mt-6 text-lg md:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
-          Digital signage, interactive kiosks, and emergency alerts — for K-12 schools,
-          restaurants, retail, gyms, clinics, hotels, and offices. One dashboard anyone
-          on your team can run.
+          Digital signage, interactive kiosks, live scoreboards, and emergency alerts —
+          for K-12 schools, sports venues, restaurants, retail, gyms, clinics, hotels,
+          and offices. One dashboard anyone on your team can run.
         </p>
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
@@ -129,80 +130,15 @@ function LogoStrip() {
     <section className="py-10">
       <div className="max-w-5xl mx-auto px-6">
         <p className="text-center text-xs font-semibold tracking-wider uppercase text-slate-500 mb-8">
-          Trusted across schools, restaurants, gyms &amp; retail
+          Trusted across schools, venues, restaurants, gyms &amp; retail
         </p>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-6 opacity-70">
-          {['Lincoln USD', 'Northgate Market', 'Iron & Oak Fitness', 'Harbor Health', 'Summit Hotels'].map((d) => (
+          {['Lincoln USD', 'Riverside Arena', 'Northgate Market', 'Iron & Oak Fitness', 'Summit Hotels'].map((d) => (
             <div
               key={d}
               className="flex items-center justify-center text-sm font-[family-name:var(--font-fredoka)] font-semibold text-slate-500 text-center"
             >
               {d}
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/**
- * Industries — the explicit "VenueOS is universal" statement. K-12 is
- * the first, emphasized card (proven pilot, leads the story); the
- * rest follow. Each maps to a real Tenant.vertical the product
- * supports, with its own template pack.
- */
-const INDUSTRIES: Array<{ emoji: string; name: string; blurb: string; lead?: boolean }> = [
-  { emoji: '🎓', name: 'K-12 Schools', blurb: 'Hallway boards, bell schedules, cafeteria menus — and lockdown alerts on every screen.', lead: true },
-  { emoji: '🍔', name: 'Restaurants & QSR', blurb: 'Drive-thru and counter menu boards, LTOs, combos, loyalty.' },
-  { emoji: '🍽️', name: 'Full-Service Dining', blurb: 'Menus, wine lists, prix-fixe, the 86 board — updated live.' },
-  { emoji: '🛍️', name: 'Retail', blurb: 'Promos, pricing, lookbooks, seasonal campaigns across stores.' },
-  { emoji: '👗', name: 'Fashion & Boutique', blurb: 'Editorial lookbooks, runway loops, fitting-room displays.' },
-  { emoji: '🏋️', name: 'Gyms & Fitness', blurb: 'Class schedules, training boards, member promos.' },
-  { emoji: '🏥', name: 'Healthcare', blurb: 'Waiting-room info, wayfinding, patient and visitor comms.' },
-  { emoji: '🏨', name: 'Hotels & Hospitality', blurb: 'Lobby welcome, events, concierge boards, wayfinding.' },
-  { emoji: '🏢', name: 'Corporate', blurb: 'Lobby screens, conference-room signs, internal comms, KPIs.' },
-  { emoji: '🍺', name: 'Bars & Nightlife', blurb: 'Tap lists, cocktail menus, happy hour, game day, trivia.' },
-];
-
-function Industries() {
-  return (
-    <section id="industries" className="py-16 md:py-20">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-12">
-          <p className="text-xs font-bold tracking-[0.12em] uppercase text-indigo-600 mb-2">
-            One platform, every industry
-          </p>
-          <h2 className="font-[family-name:var(--font-fredoka)] text-3xl md:text-5xl font-semibold tracking-tight text-slate-900">
-            Built for your industry.
-          </h2>
-          <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto">
-            Templates, widgets, and workflows tuned to how each kind of venue
-            actually runs — starting with the K-12 districts we were built for.
-          </p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {INDUSTRIES.map((ind) => (
-            <div
-              key={ind.name}
-              className={`rounded-2xl border p-6 transition-all hover:-translate-y-0.5 ${
-                ind.lead
-                  ? 'border-indigo-300 bg-gradient-to-br from-indigo-50 to-violet-50 shadow-md'
-                  : 'border-slate-200 bg-white hover:border-indigo-200 hover:shadow-md'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-3xl leading-none" aria-hidden>{ind.emoji}</span>
-                <h3 className="font-[family-name:var(--font-fredoka)] font-semibold text-slate-900 text-lg">
-                  {ind.name}
-                </h3>
-                {ind.lead && (
-                  <span className="ml-auto shrink-0 text-[10px] font-bold tracking-wider uppercase px-2 py-1 rounded-md bg-indigo-600 text-white">
-                    Flagship
-                  </span>
-                )}
-              </div>
-              <p className="mt-3 text-sm text-slate-600 leading-relaxed">{ind.blurb}</p>
             </div>
           ))}
         </div>
@@ -297,7 +233,7 @@ const FEATURES = [
     icon: Palette,
     title: 'Templates for every industry.',
     desc:
-      'Schools, restaurants, gyms, retail, healthcare, hotels. Pick one, change the text, recolor it to your brand — you’re done.',
+      'Schools, sports venues, restaurants, gyms, retail, healthcare, hotels. Pick one, change the text, recolor it to your brand — you’re done.',
     cls: 'from-indigo-500 to-violet-500',
   },
   {
