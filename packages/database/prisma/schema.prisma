@@ -125,6 +125,7 @@ model Tenant {
   usbIngestKeyRotatedAt           DateTime?        @map("usb_ingest_key_rotated_at")
   usbIngestEvents                 UsbIngestEvent[]
   games                           Game[]
+  sponsors                        Sponsor[]
   // Industry vertical — drives default templates, widget palette, and
   // pricing tier. Tenants are isolated regardless; this is just metadata
   // + UI personalization.
@@ -1429,4 +1430,38 @@ model GameEvent {
 
   @@index([gameId, createdAt])
   @@map("game_events")
+}
+
+// ─────────────────────────────────────────────────────────────
+// VenueOS Sports — Sprint 13 Phase 2. A venue sponsor / advertiser.
+//
+// Sponsorship is the buying trigger for school athletics — a gym
+// scoreboard that sells local ads pays for itself. A Sponsor is one
+// advertiser; active sponsors rotate through the scoreboard's banner
+// slot. `weight` is how many slots per rotation cycle the sponsor
+// gets (a Title sponsor shows more often than a Community one).
+//
+// Proof-of-play is computed, not stored: the report endpoint divides
+// each game's live duration across active sponsors by weight. No
+// per-impression rows, no write path from the public board.
+//
+// Additive — one new table, safe for live pilot tenants.
+// ─────────────────────────────────────────────────────────────
+model Sponsor {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  logoUrl   String?  @map("logo_url")
+  tagline   String?
+  color     String?                                  // brand hex for the banner accent
+  tier      String?                                  // freeform label: Title | Gold | Community …
+  weight    Int      @default(1)                     // rotation slots per cycle
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, active])
+  @@map("sponsors")
 }
