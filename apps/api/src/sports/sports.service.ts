@@ -4,6 +4,7 @@ import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { findSport, SPORTS } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
+import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
 
 /**
  * VenueOS Sports — Sprint 13. The game engine service.
@@ -138,10 +139,19 @@ export class SportsService {
     if (!game) throw new NotFoundException('Game not found');
 
     const since = new Date(Date.now() - CUE_FEED_WINDOW_MS);
-    const cues = await this.prisma.client.gameEvent.findMany({
-      where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
-      orderBy: { createdAt: 'asc' },
-    });
+    const [cues, sponsors] = await Promise.all([
+      this.prisma.client.gameEvent.findMany({
+        where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
+        orderBy: { createdAt: 'asc' },
+      }),
+      // Active sponsors rotate through the board's banner slot. Public
+      // by design — they exist to be shown on the scoreboard.
+      this.prisma.client.sponsor.findMany({
+        where: { tenantId: game.tenantId, active: true },
+        orderBy: [{ weight: 'desc' }, { name: 'asc' }],
+        select: { id: true, name: true, logoUrl: true, tagline: true, color: true, weight: true },
+      }),
+    ]);
 
     return {
       id: game.id,
@@ -163,6 +173,8 @@ export class SportsService {
         ...(c.payload as Record<string, unknown>),
         createdAt: c.createdAt,
       })),
+      sponsors,
+      sponsorSpotSeconds: SPONSOR_SPOT_SECONDS,
       serverTime: Date.now(),
     };
   }
