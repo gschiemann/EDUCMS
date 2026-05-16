@@ -1,0 +1,582 @@
+<!doctype html>
+<!--
+  FLAGSHIP — Hospitality / Hotel Lobby Welcome
+  3840×2160 · 65" 4K · Marriott / Four Seasons / Hyatt grade.
+  Self-contained: opens in any browser by file:// or http://.
+  REBRAND: edit the 12 :root tokens to match property's brand kit.
+  IMAGE SLOTS: 1 wide hero (2400×1100) + 3 amenity tiles (~720×420).
+  FEEDS: PMS (Opera/Mews) for occupancy + arrivals · OpenTable/Resy for dining ·
+         WeatherAPI for outlook · in-house events calendar.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Lobby · Welcome</title>
+<style>
+  /* ════════════════════════════════════════════════════════════════════════
+     REBRAND ZONE — every property tweaks these
+     ════════════════════════════════════════════════════════════════════════ */
+  :root {
+    --brand-canvas:  #f4ede1;     /* warm paper */
+    --brand-ink:     #1c1813;     /* primary text */
+    --brand-fg:      #1c1813;
+    --brand-mute:    #7a7468;     /* secondary text */
+    --brand-paper:   #ffffff;
+    --brand-rule:    rgba(28,24,19,0.12);
+    --brand-primary: #8a6a3b;     /* signature brass */
+    --brand-accent:  #2d4a3a;     /* deep emerald */
+    --brand-dark:    #1c1813;
+    --brand-gold:    #c9a55a;
+    --font-display:  Georgia, "Times New Roman", "Didot", serif;
+    --font-grotesk:  -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --font-condensed:"Arial Narrow", "Helvetica Neue", Impact, sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; height: 100%; width: 100%; }
+  body { font-family: var(--font-grotesk); -webkit-font-smoothing: antialiased; }
+
+  .stage {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 3840px; height: 2160px;
+    background: var(--brand-canvas);
+    color: var(--brand-fg);
+    transform: translate(-50%, -50%) scale(var(--scale, 1));
+    transform-origin: center center;
+    overflow: hidden;
+  }
+
+  .frame {
+    position: absolute; top:0;right:0;bottom:0;left:0;
+    display: grid;
+    grid-template-rows: 180px 980px 500px 180px;
+    row-gap: 40px;
+    padding: 60px 96px;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    border-bottom: 2px solid var(--brand-rule);
+    padding-bottom: 32px;
+  }
+  .crest { display: flex; align-items: center; gap: 36px; }
+  .crest-mark {
+    width: 84px; height: 84px;
+    border: 4px solid var(--brand-primary);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font: 700 48px/1 var(--font-display);
+    color: var(--brand-primary);
+    letter-spacing: -0.02em;
+  }
+  .crest-name {
+    font: 600 80px/0.95 var(--font-display);
+    letter-spacing: -0.02em;
+    color: var(--brand-ink);
+  }
+  .crest-name .sub {
+    display: block;
+    font: 500 26px/1 var(--font-grotesk);
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--brand-mute);
+    margin-top: 10px;
+  }
+
+  .greeting {
+    text-align: center;
+    font: 400 56px/1 var(--font-display);
+    font-style: italic;
+    color: var(--brand-mute);
+    letter-spacing: -0.01em;
+  }
+
+  .meta-strip {
+    display: flex; align-items: center; justify-content: flex-end; gap: 64px;
+  }
+  .meta-cell { text-align: right; }
+  .meta-cell .k {
+    font: 600 28px/1 var(--font-grotesk);
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--brand-mute);
+    margin-bottom: 10px;
+  }
+  .meta-cell .v {
+    font: 600 64px/1 var(--font-display);
+    letter-spacing: -0.02em;
+    color: var(--brand-ink);
+  }
+  .meta-cell .v small {
+    font: 500 30px/1 var(--font-grotesk);
+    color: var(--brand-mute);
+    margin-left: 10px;
+    vertical-align: 0.25em;
+  }
+
+  /* ── HERO ROW ── */
+  .hero {
+    display: grid;
+    grid-template-columns: 2400px 1fr;
+    gap: 60px;
+    min-height: 0;
+  }
+  .hero-photo {
+    position: relative;
+    overflow: hidden;
+    background-color: #d8cfbf;
+    background-size: cover; background-position: center;
+    border: 4px dashed rgba(28,24,19,0.22);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .hero-photo[data-has-image="true"] { border: none; }
+  .hero-photo[data-has-image="true"] .ph-empty { display: none; }
+  .ph-empty {
+    display: flex; flex-direction: column; align-items: center; gap: 24px;
+    color: var(--brand-mute); text-align: center;
+  }
+  .ph-empty svg { width: 200px; height: 200px; opacity: 0.55; }
+  .ph-empty .ph-label {
+    font: 700 56px/1 var(--font-grotesk);
+    letter-spacing: 0.2em; text-transform: uppercase;
+  }
+  .ph-empty .ph-dims {
+    font: 500 36px/1 var(--font-grotesk);
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: rgba(28,24,19,0.4);
+  }
+  .hero-photo .stamp {
+    position: absolute; top: 40px; left: 40px;
+    font: 600 28px/1 var(--font-grotesk);
+    letter-spacing: 0.2em; text-transform: uppercase;
+    background: rgba(255,255,255,0.92);
+    padding: 16px 28px;
+    border-radius: 999px;
+    color: var(--brand-ink);
+  }
+
+  .hero-copy {
+    display: flex; flex-direction: column; padding: 8px 0;
+  }
+  .eyebrow {
+    font: 600 32px/1 var(--font-grotesk);
+    letter-spacing: 0.32em; text-transform: uppercase;
+    color: var(--brand-primary);
+  }
+  .hero h1 {
+    margin: 24px 0 0;
+    font: 400 168px/0.92 var(--font-display);
+    letter-spacing: -0.03em;
+    color: var(--brand-ink);
+  }
+  .hero h1 em { font-style: italic; color: var(--brand-primary); }
+  .hero .lede {
+    margin-top: 28px;
+    font: 400 42px/1.22 var(--font-display);
+    color: var(--brand-mute);
+    font-style: italic;
+  }
+  .hero .actions {
+    margin-top: auto;
+    padding-top: 32px;
+    border-top: 2px solid var(--brand-rule);
+    display: grid; gap: 20px;
+  }
+  .action-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 18px 0;
+  }
+  .action-row + .action-row { border-top: 1px solid var(--brand-rule); }
+  .action-row .lbl {
+    font: 600 30px/1 var(--font-grotesk);
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--brand-mute);
+  }
+  .action-row .val {
+    font: 600 44px/1 var(--font-display);
+    color: var(--brand-ink);
+  }
+
+  /* ── AMENITIES ROW ── */
+  .amenities {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 40px;
+    min-height: 0;
+  }
+  .amenity {
+    background: var(--brand-paper);
+    border: 1px solid var(--brand-rule);
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: 260px 1fr;
+  }
+  .amenity-photo {
+    position: relative;
+    background-color: #e8e0d0;
+    background-size: cover; background-position: center;
+    border-bottom: 2px dashed rgba(28,24,19,0.18);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .amenity-photo[data-has-image="true"] { border-bottom: none; }
+  .amenity-photo[data-has-image="true"] .ph-mini { display: none; }
+  .ph-mini {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    color: var(--brand-mute);
+  }
+  .ph-mini svg { width: 96px; height: 96px; opacity: 0.5; }
+  .ph-mini .ph-mini-label {
+    font: 600 28px/1 var(--font-grotesk);
+    letter-spacing: 0.2em; text-transform: uppercase;
+  }
+  .amenity-photo .badge {
+    position: absolute; top: 24px; left: 24px;
+    background: var(--brand-accent);
+    color: #fff;
+    font: 600 26px/1 var(--font-grotesk);
+    letter-spacing: 0.2em; text-transform: uppercase;
+    padding: 12px 20px;
+    border-radius: 4px;
+  }
+
+  .amenity-cat {
+    font: 600 28px/1 var(--font-grotesk);
+    letter-spacing: 0.32em; text-transform: uppercase;
+    color: var(--brand-primary);
+  }
+  .amenity-name {
+    margin-top: 14px;
+    font: 500 60px/0.95 var(--font-display);
+    letter-spacing: -0.02em;
+    color: var(--brand-ink);
+  }
+  .amenity-info {
+    display: flex; gap: 24px; flex-wrap: wrap;
+    margin-top: 20px;
+    font: 400 30px/1.2 var(--font-grotesk);
+    color: var(--brand-mute);
+  }
+  .amenity-info .pill {
+    color: var(--brand-ink);
+    border: 2px solid var(--brand-rule);
+    padding: 8px 20px;
+    border-radius: 999px;
+  }
+  .amenity-body { padding: 28px 32px 32px; }
+
+  /* ── BOTTOM BAR ── */
+  .bottom {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr 1fr;
+    gap: 32px;
+    border-top: 2px solid var(--brand-rule);
+    padding-top: 32px;
+  }
+  .bb {
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 0 20px;
+  }
+  .bb + .bb { border-left: 1px solid var(--brand-rule); }
+  .bb .k {
+    font: 600 26px/1 var(--font-grotesk);
+    letter-spacing: 0.32em; text-transform: uppercase;
+    color: var(--brand-mute);
+  }
+  .bb .v {
+    margin-top: 12px;
+    font: 500 52px/1 var(--font-display);
+    letter-spacing: -0.02em;
+    color: var(--brand-ink);
+  }
+  .bb .v small {
+    font: 500 28px/1 var(--font-grotesk);
+    color: var(--brand-mute);
+    margin-left: 10px;
+  }
+  .ticker {
+    display: flex; align-items: center; gap: 24px;
+    overflow: hidden;
+  }
+  .ticker .pulse {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--brand-accent);
+    flex: none;
+    animation: pulse 1.6s ease-out infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(45,74,58,0.5); }
+    70%  { box-shadow: 0 0 0 18px rgba(45,74,58,0); }
+    100% { box-shadow: 0 0 0 0 rgba(45,74,58,0); }
+  }
+  .bb.event .v { font-size: 38px; line-height: 1.1; }
+
+  .clock-block { display: flex; flex-direction: column; }
+  .clock-block .v {
+    font: 500 76px/1 var(--font-display);
+    font-variant-numeric: tabular-nums;
+  }
+  .clock-block .v .ampm {
+    font-size: 30px; color: var(--brand-mute); margin-left: 12px; vertical-align: 0.5em;
+  }
+
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="frame">
+
+      <!-- ── TOP BAR ── -->
+      <header class="topbar">
+        <div class="crest" data-widget="logo">
+          <div class="crest-mark" data-field="brand.monogram">M</div>
+          <div class="crest-name">
+            <span data-field="brand.name">The Marlowe</span>
+            <span class="sub" data-field="brand.tagline">Hotel · Charleston · est. 1929</span>
+          </div>
+        </div>
+
+        <div class="greeting" data-widget="greeting" data-field="greeting.text">
+          Welcome home.
+        </div>
+
+        <div class="meta-strip">
+          <div class="meta-cell"
+               data-widget="weather"
+               data-source="weatherapi"
+               data-feed="/weather/current"
+               data-refresh="15m">
+            <div class="k">Charleston</div>
+            <div class="v"><span data-field="weather.temp_f">76</span>°<small data-field="weather.cond">Clear</small></div>
+          </div>
+          <div class="meta-cell clock-block"
+               data-widget="clock"
+               data-source="local-time"
+               data-refresh="60s">
+            <div class="k">Local time</div>
+            <div class="v"><span data-field="clock.hhmm">3:42</span><span class="ampm" data-field="clock.ampm">PM</span></div>
+          </div>
+        </div>
+      </header>
+
+      <!-- ── HERO ── -->
+      <section class="hero">
+
+        <div class="hero-photo"
+             data-widget="image-slot"
+             data-slot="hero"
+             data-aspect="2400x1100"
+             data-field="hero.photo_url">
+          <div class="ph-empty">
+            <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="6" y="12" width="52" height="40" rx="4"/>
+              <circle cx="22" cy="26" r="4"/>
+              <path d="M6 46 L22 32 L34 42 L44 34 L58 46"/>
+            </svg>
+            <div class="ph-label">Drop hero photo</div>
+            <div class="ph-dims">2400 × 1100 · property hero</div>
+          </div>
+          <div class="stamp" data-field="hero.stamp">In residence</div>
+        </div>
+
+        <div class="hero-copy" data-widget="hero-copy" data-source="cms">
+          <div class="eyebrow" data-field="hero.eyebrow">May 9 · Saturday</div>
+          <h1>
+            <span data-field="hero.title_1">Good</span>
+            <em data-field="hero.title_2">afternoon</em>,
+            <br/>
+            <span data-field="hero.title_3">Nakamura</span> family.
+          </h1>
+          <p class="lede" data-field="hero.lede">
+            Your suite on the fourth floor is ready, and Chef has set aside the
+            corner table at Atlas for your seven o'clock.
+          </p>
+          <div class="actions">
+            <div class="action-row">
+              <div class="lbl">Suite</div>
+              <div class="val" data-field="reservation.suite">Magnolia · 412</div>
+            </div>
+            <div class="action-row">
+              <div class="lbl">Check-out</div>
+              <div class="val" data-field="reservation.checkout">Tue · May 13</div>
+            </div>
+            <div class="action-row">
+              <div class="lbl">Concierge</div>
+              <div class="val" data-field="reservation.concierge">Margaux · ext. 4</div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ── AMENITIES ── -->
+      <section class="amenities" data-widget="amenities-feed" data-source="cms" data-feed="/property/today">
+
+        <div class="amenity">
+          <div class="amenity-photo"
+               data-widget="image-slot" data-slot="amenity-1" data-aspect="720x320"
+               data-field="amenities.0.photo_url">
+            <div class="ph-mini">
+              <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="6" y="12" width="52" height="40" rx="4"/>
+                <circle cx="22" cy="26" r="4"/>
+                <path d="M6 46 L22 32 L34 42 L44 34 L58 46"/>
+              </svg>
+              <div class="ph-mini-label">720 × 320</div>
+            </div>
+            <div class="badge" data-field="amenities.0.badge">Tonight</div>
+          </div>
+          <div class="amenity-body">
+            <div class="amenity-cat" data-field="amenities.0.cat">Dining</div>
+            <div class="amenity-name" data-field="amenities.0.name">Atlas Restaurant</div>
+            <div class="amenity-info">
+              <div class="pill" data-field="amenities.0.hours">5:30 — 10:30 PM</div>
+              <div class="pill" data-field="amenities.0.detail">Tasting menu · $145</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="amenity">
+          <div class="amenity-photo"
+               data-widget="image-slot" data-slot="amenity-2" data-aspect="720x320"
+               data-field="amenities.1.photo_url">
+            <div class="ph-mini">
+              <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="6" y="12" width="52" height="40" rx="4"/>
+                <circle cx="22" cy="26" r="4"/>
+                <path d="M6 46 L22 32 L34 42 L44 34 L58 46"/>
+              </svg>
+              <div class="ph-mini-label">720 × 320</div>
+            </div>
+            <div class="badge" data-field="amenities.1.badge">Open now</div>
+          </div>
+          <div class="amenity-body">
+            <div class="amenity-cat" data-field="amenities.1.cat">Wellness</div>
+            <div class="amenity-name" data-field="amenities.1.name">Cypress Spa</div>
+            <div class="amenity-info">
+              <div class="pill" data-field="amenities.1.hours">9 AM — 9 PM</div>
+              <div class="pill" data-field="amenities.1.detail">Hot stone · 80 min</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="amenity">
+          <div class="amenity-photo"
+               data-widget="image-slot" data-slot="amenity-3" data-aspect="720x320"
+               data-field="amenities.2.photo_url">
+            <div class="ph-mini">
+              <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="6" y="12" width="52" height="40" rx="4"/>
+                <circle cx="22" cy="26" r="4"/>
+                <path d="M6 46 L22 32 L34 42 L44 34 L58 46"/>
+              </svg>
+              <div class="ph-mini-label">720 × 320</div>
+            </div>
+            <div class="badge" data-field="amenities.2.badge">8 PM</div>
+          </div>
+          <div class="amenity-body">
+            <div class="amenity-cat" data-field="amenities.2.cat">Live music</div>
+            <div class="amenity-name" data-field="amenities.2.name">Magnolia Lounge</div>
+            <div class="amenity-info">
+              <div class="pill" data-field="amenities.2.hours">8 — 11 PM</div>
+              <div class="pill" data-field="amenities.2.detail">Quartet · jazz standards</div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ── BOTTOM BAR ── -->
+      <footer class="bottom">
+
+        <div class="bb event"
+             data-widget="event-feed"
+             data-source="opera-pms"
+             data-feed="/events/now-next"
+             data-refresh="2m">
+          <div class="ticker">
+            <div class="pulse"></div>
+            <div class="k">Now in the ballroom</div>
+          </div>
+          <div class="v" data-field="event.now">Hartwell &amp; Reyes Wedding · Grand Ballroom · 6:30 PM</div>
+        </div>
+
+        <div class="bb"
+             data-widget="occupancy"
+             data-source="opera-pms"
+             data-feed="/property/occupancy"
+             data-refresh="10m">
+          <div class="k">Occupancy</div>
+          <div class="v"><span data-field="occupancy.percent">94</span>%</div>
+        </div>
+
+        <div class="bb"
+             data-widget="arrivals"
+             data-source="opera-pms"
+             data-feed="/arrivals/today"
+             data-refresh="5m">
+          <div class="k">Arrivals today</div>
+          <div class="v"><span data-field="arrivals.count">38</span><small>of 42</small></div>
+        </div>
+
+        <div class="bb"
+             data-widget="sun-times"
+             data-source="sunrise-sunset.org"
+             data-feed="/api/sunset"
+             data-refresh="6h">
+          <div class="k">Sunset on the harbor</div>
+          <div class="v" data-field="sun.sunset">7:54 PM</div>
+        </div>
+
+      </footer>
+
+    </div>
+  </div>
+
+  <script type="application/json" id="signage-feed-defaults">
+  {
+    "brand":   { "monogram": "M", "name": "The Marlowe", "tagline": "Hotel · Charleston · est. 1929" },
+    "greeting": { "text": "Welcome home." },
+    "weather": { "temp_f": "76", "cond": "Clear" },
+    "clock":   { "hhmm": "3:42", "ampm": "PM" },
+    "hero": {
+      "stamp": "In residence", "eyebrow": "May 9 · Saturday",
+      "title_1": "Good", "title_2": "afternoon", "title_3": "Nakamura",
+      "lede": "Your suite on the fourth floor is ready, and Chef has set aside the corner table at Atlas for your seven o'clock.",
+      "photo_url": ""
+    },
+    "reservation": {
+      "suite": "Magnolia · 412",
+      "checkout": "Tue · May 13",
+      "concierge": "Margaux · ext. 4"
+    },
+    "amenities": [
+      { "cat": "Dining", "name": "Atlas Restaurant", "hours": "5:30 — 10:30 PM", "detail": "Tasting menu · $145", "badge": "Tonight" },
+      { "cat": "Wellness", "name": "Cypress Spa", "hours": "9 AM — 9 PM", "detail": "Hot stone · 80 min", "badge": "Open now" },
+      { "cat": "Live music", "name": "Magnolia Lounge", "hours": "8 — 11 PM", "detail": "Quartet · jazz standards", "badge": "8 PM" }
+    ],
+    "event":     { "now": "Hartwell & Reyes Wedding · Grand Ballroom · 6:30 PM" },
+    "occupancy": { "percent": "94" },
+    "arrivals":  { "count": "38" },
+    "sun":       { "sunset": "7:54 PM" }
+  }
+  </script>
+
+  <script>
+    (function () {
+      var stage = document.getElementById('stage');
+      function fit() {
+        var k = Math.min(window.innerWidth / 3840, window.innerHeight / 2160);
+        stage.style.setProperty('--scale', k);
+      }
+      window.addEventListener('resize', fit);
+      window.addEventListener('orientationchange', fit);
+      fit();
+    })();
+  </script>
+</body>
+</html>

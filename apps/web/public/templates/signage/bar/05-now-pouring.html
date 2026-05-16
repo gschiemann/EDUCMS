@@ -1,0 +1,43 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Now Pouring</title><style>
+:root{--bg:#0c0807;--ink:#f1e3c8;--mute:#8a7a64;--paper:#181210;--rule:rgba(241,227,200,.14);--primary:#c2733a;--accent:#d8b35c;--ready:#3e8c5a;--font-display:"Didot",Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:160px 1fr 180px;row-gap:36px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:20px}
+.logo{font:600 80px/1 var(--font-display);font-style:italic}
+.tag{margin-left:32px;font:500 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.title{font:400 76px/.95 var(--font-display);font-style:italic;color:var(--accent)}
+.clock{font:500 76px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.foot{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.ft{padding:0 16px}.ft+.ft{border-left:1px solid var(--rule)}
+.ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.ft .v{margin-top:14px;font:500 44px/1 var(--font-display)}
+.ft .v.acc{color:var(--accent)}.ft .v.r{color:var(--ready)}
+
+.hero{position:absolute;inset:80px;background-color:#1a0e0a;background-image:radial-gradient(ellipse at top,rgba(194,115,58,.16),transparent 70%);background-size:cover;display:flex;flex-direction:column;justify-content:flex-end;padding:120px;border:4px dashed rgba(241,227,200,.2)}
+.hero[data-has-image="true"]{border:none}
+.hero[data-has-image="true"] .ph{display:none}
+.ph{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:18px;color:var(--mute)}
+.ph svg{width:160px;height:160px;opacity:.5}
+.ph .lbl{font:600 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase}
+.eye{font:700 40px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--accent);margin-bottom:48px}
+h1{margin:0;font:400 360px/.85 var(--font-display);font-style:italic;letter-spacing:-.03em;color:var(--ink)}
+h1 em{color:var(--accent)}
+.lede{margin-top:48px;font:400 56px/1.2 var(--font-display);font-style:italic;color:var(--mute);max-width:2200px}
+.stats{margin-top:64px;display:grid;grid-template-columns:repeat(4,auto);gap:64px}
+.stat .k{font:600 28px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.stat .v{margin-top:10px;font:600 72px/1 var(--font-display)}
+.stat .v.acc{color:var(--accent)}
+.stat .v.r{color:var(--primary)}
+</style></head><body><div class="stage" id="stage"><div class="frame"><div class="hero" data-widget="image-slot" data-slot="now-pouring" data-aspect="3680x2000" data-field="hero.photo_url">
+<div class="ph"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="lbl">3680 × 2000 · cask portrait</div></div>
+<div class="eye" data-field="hero.eye">Now pouring · cask 4</div>
+<h1><span data-field="hero.t1">Eagle Rare </span><em data-field="hero.t2">10-year.</em></h1>
+<p class="lede" data-field="hero.lede">Buffalo Trace's quietest masterpiece — caramel, oak, a long warm finish. One pour, neat or with a single cube.</p>
+<div class="stats">
+<div class="stat"><div class="k">Proof</div><div class="v" data-field="s.0">90</div></div>
+<div class="stat"><div class="k">Pour size</div><div class="v" data-field="s.1">2 oz</div></div>
+<div class="stat"><div class="k">Price</div><div class="v acc" data-field="s.2">$14</div></div>
+<div class="stat"><div class="k">Pairs with</div><div class="v r" data-field="s.3">Smoked beet salad</div></div>
+</div>
+</div></div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

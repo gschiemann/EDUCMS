@@ -1,0 +1,36 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Editorial</title><style>
+:root{--bg:#f5f1ec;--fg:#1a1714;--mute:#7a7368;--paper:#fff;--rule:rgba(26,23,20,.12);--primary:#1a1714;--accent:#a07a4a;--gold:#c79335;--blush:#d4a8a0;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk);letter-spacing:.02em}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;padding:80px;row-gap:40px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--fg);padding-bottom:24px}
+.logo{font:400 88px/.95 var(--font-display);font-style:italic;letter-spacing:0}
+.tag{font:500 32px/1 var(--font-grotesk);letter-spacing:.4em;text-transform:uppercase;color:var(--mute);margin-left:32px}
+.clock{font:400 72px/1 var(--font-display);font-style:italic;font-variant-numeric:tabular-nums}
+.foot{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:32px;border-top:1px solid var(--fg);padding-top:24px}
+.fc{padding:24px 44px;display:flex;flex-direction:column;gap:10px}
+.fc+.fc{border-left:1px solid var(--rule)}
+.fc .l{font:600 28px/1 var(--font-grotesk);letter-spacing:.4em;text-transform:uppercase;color:var(--mute)}
+.fc .v{font:400 56px/1 var(--font-display);font-style:italic}
+.fc.dark{background:var(--fg);color:#fff;border-radius:24px;border:none}
+.fc.dark .l{color:rgba(255,255,255,.7)}
+.ph{position:relative;background:#e6e0d6;background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;border:2px dashed rgba(26,23,20,.22)}
+.ph-i{display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--mute)}
+.ph-i svg{width:120px;height:120px;opacity:.5}
+.ph-i .l{font:600 32px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase}
+.ph-i .d{font:500 26px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:rgba(26,23,20,.4)}
+</style></head><body><div class="stage" id="stage"><div class="frame" style="async function readFile(path) {
+    return rpc({ op: 'readFile', path: String(path) });
+  }"><header class="top"><div><span class="logo" data-field="brand.name">MAISON ÉTERNEL</span><span class="tag" data-field="brand.tag">The Quarterly</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">11:42</span></div></header>
+<main style="display:grid;grid-template-columns:1fr 1fr;gap:48px;min-height:0">
+<div class="ph" data-widget="image-slot" data-slot="ed-hero" data-aspect="1820x1640" data-field="ed.photo_url"><div class="ph-i"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="l">Editorial · cover</div><div class="d">1820 × 1640</div></div></div>
+<div style="display:flex;flex-direction:column;justify-content:center;padding:0 48px">
+<div style="font:500 32px/1 var(--font-grotesk);letter-spacing:.4em;text-transform:uppercase;color:var(--accent)" data-field="ed.iss">Issue 17 · Spring 2026</div>
+<h1 style="margin:36px 0 0;font:400 280px/.86 var(--font-display);font-style:italic;letter-spacing:-.03em" data-field="ed.t">After dark.</h1>
+<p style="margin:48px 0 0;font:400 44px/1.4 var(--font-display);font-style:italic;color:var(--mute);max-width:1400px" data-field="ed.lede">The silhouettes of evening. A film by Léa Pérez, lensed in Marrakech for our seventeenth quarterly.</p>
+<div style="margin-top:auto;padding-top:48px;border-top:1px solid var(--rule);display:flex;justify-content:space-between">
+<div><div style="font:600 28px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)">Photography</div><div style="margin-top:14px;font:400 52px/1 var(--font-display);font-style:italic" data-field="ed.ph">Léa Pérez</div></div>
+<div><div style="font:600 28px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)">Styling</div><div style="margin-top:14px;font:400 52px/1 var(--font-display);font-style:italic" data-field="ed.sty">Aria Bell</div></div>
+</div></div></main>
+<footer class="foot"><div class="fc"><div class="l">Take a copy</div><div class="v" data-field="cp">At the front desk</div></div><div class="fc"><div class="l">Digital edition</div><div class="v" data-field="dg">eternel.com</div></div><div class="fc dark"><div class="l">Next issue</div><div class="v" data-field="ne">September 2026</div></div></footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

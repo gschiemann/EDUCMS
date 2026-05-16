@@ -1,0 +1,160 @@
+<!doctype html>
+<!--
+  QSR · Counter Order Menu — 3×3 item grid, daypart-aware, POS-driven.
+  3840×2160 self-contained. Rebrand via :root tokens. Drop photos in via .item-photo.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Counter Menu</title>
+<style>
+  :root {
+    --brand-canvas:  #0e0d0b;
+    --brand-paper:   #f1e8d6;
+    --brand-ink:     #1a1715;
+    --brand-fg:      #f1e8d6;
+    --brand-mute:    #8c8473;
+    --brand-primary: #e85a1c;
+    --brand-accent:  #f0c34a;
+    --brand-danger:  #e3343a;
+    --font-display:  Georgia, "Times New Roman", serif;
+    --font-grotesk:  -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-condensed: "Arial Narrow", "Helvetica Neue", Impact, sans-serif;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background:#000; overflow:hidden; height:100%; width:100%; }
+  body { font-family: var(--font-grotesk); -webkit-font-smoothing: antialiased; }
+  .stage {
+    position:absolute; left:50%; top:50%;
+    width:3840px; height:2160px;
+    background:var(--brand-canvas); color:var(--brand-fg);
+    transform:translate(-50%,-50%) scale(var(--scale,1));
+    transform-origin:center center; overflow:hidden;
+  }
+  .frame {
+    position:absolute; top:0;right:0;bottom:0;left:0; display:grid;
+    grid-template-rows: 140px 1fr 200px;
+    row-gap: 32px; padding: 80px;
+  }
+  /* Top */
+  .topbar { display:flex; align-items:center; justify-content:space-between; }
+  .brand-mark { display:flex; align-items:baseline; gap:32px; }
+  .logo { font:900 110px/1 var(--font-condensed); letter-spacing:-0.02em; color:var(--brand-primary); text-transform:uppercase; }
+  .tag { font:500 44px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-mute); }
+  .topbar-right { display:flex; align-items:center; gap:56px; }
+  .daypart { font:600 52px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; padding:22px 44px; border:4px solid var(--brand-fg); border-radius:999px; }
+  .clock { font:600 110px/1 var(--font-grotesk); font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
+  .clock .ampm { font-size:44px; color:var(--brand-mute); margin-left:14px; vertical-align:0.6em; }
+
+  /* Main grid 3x3 */
+  .menu { display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:32px; min-height:0; }
+  .item {
+    position:relative;
+    background:rgba(241,232,214,0.04);
+    border:3px solid rgba(241,232,214,0.12);
+    border-radius:36px; overflow:hidden;
+    display:grid; grid-template-rows:240px 1fr;
+  }
+  .item-photo {
+    position:relative; background-color:#1a1815; background-size:cover; background-position:center;
+    border-bottom:3px dashed rgba(241,232,214,0.18);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .item-photo[data-has-image="true"] .ph-mini { display:none; }
+  .item-photo[data-has-image="true"] { border-bottom:none; }
+  .ph-mini { display:flex; flex-direction:column; align-items:center; gap:14px; color:var(--brand-mute); text-align:center; }
+  .ph-mini svg { width:104px; height:104px; opacity:0.5; }
+  .ph-mini-label { font:600 32px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:rgba(241,232,214,0.55); }
+
+  .item-body { padding:28px 36px; display:flex; flex-direction:column; justify-content:space-between; }
+  .item-head { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; }
+  .item-name { font:600 72px/0.95 var(--font-display); letter-spacing:-0.02em; color:var(--brand-fg); }
+  .item-cat { font:600 32px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-mute); margin-top:12px; }
+  .item-desc { margin-top:16px; font:400 38px/1.18 var(--font-grotesk); color:rgba(241,232,214,0.72); }
+  .item-foot { display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-top:8px; }
+  .item-price { font:700 108px/0.9 var(--font-condensed); letter-spacing:-0.02em; color:var(--brand-accent); white-space:nowrap; }
+  .item-price .dollar { font-size:0.42em; vertical-align:0.42em; margin-right:6px; }
+  .item-price .cents { font-size:0.42em; vertical-align:0.42em; margin-left:8px; }
+  .item-stock { font:600 28px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-mute); }
+  .item-stock.low { color:var(--brand-accent); }
+  .item-stock.out { color:var(--brand-danger); }
+  .item[data-stock="0"] .item-photo { filter:grayscale(0.85) brightness(0.55); }
+  .item[data-stock="0"] .item-price { color:var(--brand-mute); text-decoration:line-through; }
+  .item[data-stock="0"]::after { content:"86'd"; position:absolute; top:24px; right:28px; font:800 48px/1 var(--font-condensed); color:#fff; background:var(--brand-danger); padding:10px 20px; border-radius:10px; letter-spacing:0.04em; }
+  .badge-new { position:absolute; top:24px; left:24px; font:800 28px/1 var(--font-condensed); letter-spacing:0.18em; text-transform:uppercase; color:#0e0d0b; background:var(--brand-accent); padding:10px 18px; border-radius:8px; }
+
+  /* Bottom */
+  .bottom { display:grid; grid-template-columns: 1.4fr 1fr 1fr; gap:32px; }
+  .bottom > div { border:3px solid rgba(241,232,214,0.12); border-radius:36px; padding:28px 44px; display:flex; flex-direction:column; justify-content:center; gap:10px; }
+  .label { font:600 40px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-mute); }
+  .value { font:700 120px/0.92 var(--font-condensed); letter-spacing:-0.02em; color:var(--brand-fg); }
+  .now-serving { background:linear-gradient(135deg,var(--brand-primary) 0%,#b73c0c 100%); border:none; flex-direction:row; align-items:center; justify-content:space-between; gap:32px; }
+  .now-serving .label { color:rgba(255,255,255,0.82); }
+  .now-serving .value { color:#fff; font-size:140px; }
+  .live { display:inline-flex; align-items:center; gap:14px; margin-top:10px; font:600 32px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:rgba(255,255,255,0.92); }
+  .live::before { content:""; width:22px; height:22px; border-radius:50%; background:#fff; animation:livepulse 1.6s ease-out infinite; }
+  @keyframes livepulse { 0%{ box-shadow:0 0 0 0 rgba(255,255,255,0.7);} 70%{ box-shadow:0 0 0 22px rgba(255,255,255,0);} 100%{ box-shadow:0 0 0 0 rgba(255,255,255,0);} }
+  .wait .value sub { font:500 56px/1 var(--font-grotesk); color:var(--brand-mute); margin-left:12px; vertical-align:baseline; }
+  .promo .value { font:800 72px/0.95 var(--font-condensed); color:var(--brand-accent); }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="frame">
+
+      <header class="topbar">
+        <div class="brand-mark" data-widget="logo">
+          <div class="logo" data-field="brand.name">EMBER &amp; OAK</div>
+          <div class="tag" data-field="brand.tagline">Counter · order ahead at kiosk</div>
+        </div>
+        <div class="topbar-right">
+          <div class="daypart" data-widget="daypart" data-source="local-time"><span data-field="daypart.label">LUNCH</span></div>
+          <div class="clock" data-widget="clock" data-source="local-time" data-refresh="60s">
+            <span data-field="clock.hhmm">12:34</span><span class="ampm" data-field="clock.ampm">PM</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="menu" data-widget="menu-grid" data-source="toast" data-feed="/menu/full" data-refresh="60s">
+        <!-- 9 items -->
+        <div class="item" data-stock="20"><div class="item-photo" data-slot="i1"><div class="ph-mini"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="ph-mini-label">1190 × 240</div></div></div><div class="item-body"><div class="item-head"><div><div class="item-name" data-field="i.0.name">Brisket Stack</div><div class="item-cat">Sandwiches</div></div></div><div class="item-desc" data-field="i.0.desc">Oak-smoked brisket, aged cheddar, onion jam, fries.</div><div class="item-foot"><div class="item-price"><span class="dollar">$</span>16<span class="cents">99</span></div><div class="item-stock low">LOW</div></div></div></div>
+
+        <div class="item" data-stock="40"><div class="item-photo" data-slot="i2"><div class="ph-mini"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="ph-mini-label">1190 × 240</div></div><div class="badge-new">NEW</div></div><div class="item-body"><div class="item-head"><div><div class="item-name" data-field="i.1.name">Smash Single</div><div class="item-cat">Burgers</div></div></div><div class="item-desc" data-field="i.1.desc">Smashed beef, American, secret sauce, brioche.</div><div class="item-foot"><div class="item-price"><span class="dollar">$</span>8<span class="cents">99</span></div><div class="item-stock">IN STOCK</div></div></div></div>
+
+        <div class="item" data-stock="15"><div class="item-photo" data-slot="i3"><div class="ph-mini"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="ph-mini-label">1190 × 240</div></div></div><div class="item-body"><div class="item-head"><div><div class="item-name" data-field="i.2.name">Crispy Chicken</div><div class="item-cat">Sandwiches</div></div></div><div class="item-desc" data-field="i.2.desc">Buttermilk-fried, hot honey, pickle slaw.</div><div class="item-foot"><div class="item-price"><span class="dollar">$</span>11<span class="cents">49</span></div><div class="item-stock">IN STOCK</div></div></div></div>
+
+        <div class="item" data-stock="0"><div class="item-photo" data-slot="i4"><div class="ph-mini"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="ph-mini-label">1190 × 240</div></div></div><div class="item-body"><div class="item-head"><div><div class="item-name" data-field="i.3.name">Hatch Chile</div><div class="item-cat">Burgers</div></div></div><div class="item-desc" data-field="i.3.desc">Roasted hatch, pepper jack, charred onion.</div><div class="item-foot"><div class="item-price"><span class="dollar">$</span>12<span class="cents">49</span></div><div class="item-stock out">SOLD OUT</div></div></div></div>
+
+        <div class="item" data-stock="60"><div class="item-photo" data-slot="i5"><div class="ph-mini"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="ph-mini-label">1190 × 240</div></div></div><div class="item-body"><div class="item-head"><div><div class="item-name" data-field="i.4.name">Garden Smash</div><div class="item-cat">Plant-based</div></div></div><div class="item-desc" data-field="i.4.desc">Black-bean patty, avocado, sprouts, tahini.</div><div class="item-foot"><div class="item-price"><span class="dollar">$</span>10<span class="cents">99</span></div><div class="item-stock">IN STOCK</div></div></div></div>
+
+        <div class="item" data-stock="30"><div class="item-photo" data-slot="i6"><div class="ph-mini"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="ph-mini-label">1190 × 240</div></div></div><div class="item-body"><div class="item-head"><div><div class="item-name" data-field="i.5.name">Hand-Cut Fries</div><div class="item-cat">Sides</div></div></div><div class="item-desc" data-field="i.5.desc">Twice-cooked, sea salt, rosemary aioli.</div><div class="item-foot"><div class="item-price"><span class="dollar">$</span>5<span class="cents">49</span></div><div class="item-stock">IN STOCK</div></div></div></div>
+
+        <div class="item" data-stock="50"><div class="item-photo" data-slot="i7"><div class="ph-mini"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="ph-mini-label">1190 × 240</div></div></div><div class="item-body"><div class="item-head"><div><div class="item-name" data-field="i.6.name">Wedge Salad</div><div class="item-cat">Salads</div></div></div><div class="item-desc" data-field="i.6.desc">Iceberg, blue cheese, bacon, buttermilk ranch.</div><div class="item-foot"><div class="item-price"><span class="dollar">$</span>9<span class="cents">99</span></div><div class="item-stock">IN STOCK</div></div></div></div>
+
+        <div class="item" data-stock="80"><div class="item-photo" data-slot="i8"><div class="ph-mini"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="ph-mini-label">1190 × 240</div></div></div><div class="item-body"><div class="item-head"><div><div class="item-name" data-field="i.7.name">House Lemonade</div><div class="item-cat">Drinks</div></div></div><div class="item-desc" data-field="i.7.desc">Fresh-squeezed, mint, blackberry option.</div><div class="item-foot"><div class="item-price"><span class="dollar">$</span>4<span class="cents">49</span></div><div class="item-stock">IN STOCK</div></div></div></div>
+
+        <div class="item" data-stock="25"><div class="item-photo" data-slot="i9"><div class="ph-mini"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="ph-mini-label">1190 × 240</div></div><div class="badge-new">CHEF'S PICK</div></div><div class="item-body"><div class="item-head"><div><div class="item-name" data-field="i.8.name">Bourbon Brownie</div><div class="item-cat">Sweets</div></div></div><div class="item-desc" data-field="i.8.desc">Warm, dark chocolate, smoked salt, vanilla cream.</div><div class="item-foot"><div class="item-price"><span class="dollar">$</span>6<span class="cents">99</span></div><div class="item-stock">IN STOCK</div></div></div></div>
+      </main>
+
+      <footer class="bottom">
+        <div class="now-serving" data-widget="now-serving" data-source="kiosk-api" data-feed="/queue/current" data-refresh="3s">
+          <div><div class="label">Now serving</div><div class="live">Live · synced w/ kitchen</div></div>
+          <div class="value" data-field="queue.current">B-118</div>
+        </div>
+        <div class="wait" data-widget="wait-time" data-source="kiosk-api" data-feed="/queue/avg-wait" data-refresh="30s">
+          <div class="label">Counter wait</div>
+          <div class="value"><span data-field="wait.minutes">3</span><sub>min</sub></div>
+        </div>
+        <div class="promo" data-widget="promo">
+          <div class="label">Order ahead</div>
+          <div class="value">App · 5% off</div>
+        </div>
+      </footer>
+    </div>
+  </div>
+  <script>
+    (function(){var s=document.getElementById('stage');function fit(){var k=Math.min(innerWidth/3840,innerHeight/2160);s.style.setProperty('--scale',k);}addEventListener('resize',fit);fit();})();
+  </script>
+</body>
+</html>

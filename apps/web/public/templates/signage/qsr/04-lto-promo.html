@@ -1,0 +1,185 @@
+<!doctype html>
+<!--
+  QSR · Limited-Time Offer Promo Board
+  Full-bleed photo + overlay copy + live countdown to offer end.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>LTO Promo</title>
+<style>
+  :root {
+    --brand-canvas:  #0e0d0b;
+    --brand-fg:      #f1e8d6;
+    --brand-mute:    #8c8473;
+    --brand-primary: #e85a1c;
+    --brand-accent:  #f0c34a;
+    --font-display:  Georgia, "Times New Roman", serif;
+    --font-grotesk:  -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-condensed:"Arial Narrow", "Helvetica Neue", Impact, sans-serif;
+  }
+  *,*::before,*::after { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:#000; overflow:hidden; height:100%; width:100%; font-family:var(--font-grotesk); }
+  .stage {
+    position:absolute; left:50%; top:50%;
+    width:3840px; height:2160px;
+    background:var(--brand-canvas); color:var(--brand-fg);
+    transform:translate(-50%,-50%) scale(var(--scale,1));
+    transform-origin:center center; overflow:hidden;
+  }
+
+  /* Photo backdrop — replace with: background-image: url('...') */
+  .photo-bg {
+    position:absolute; top:0;right:0;bottom:0;left:0;
+    background-color:#1a1815;
+    background-size:cover; background-position:center;
+    border:6px dashed rgba(241,232,214,0.18);
+  }
+  .photo-bg::after {
+    content:""; position:absolute; top:0;right:0;bottom:0;left:0;
+    background:
+      linear-gradient(90deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.55) 35%, rgba(0,0,0,0.0) 70%),
+      linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.0) 30%, rgba(0,0,0,0.55) 100%);
+  }
+  .ph-empty { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; gap:24px; color:var(--brand-mute); }
+  .ph-empty svg { width:240px; height:240px; opacity:0.45; }
+  .ph-empty .lbl { font:700 64px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; }
+  .ph-empty .dim { font:500 40px/1 var(--font-grotesk); letter-spacing:0.16em; text-transform:uppercase; color:rgba(241,232,214,0.45); }
+  .photo-bg[data-has-image="true"] .ph-empty { display:none; }
+  .photo-bg[data-has-image="true"] { border:none; }
+
+  .frame { position:absolute; top:0;right:0;bottom:0;left:0; padding:120px 144px; display:grid; grid-template-rows: auto 1fr auto; }
+
+  .top-row { display:flex; align-items:center; justify-content:space-between; }
+  .brand { display:flex; align-items:baseline; gap:32px; }
+  .logo { font:900 110px/1 var(--font-condensed); letter-spacing:-0.02em; color:var(--brand-primary); text-transform:uppercase; }
+  .clock { font:600 88px/1 var(--font-grotesk); font-variant-numeric:tabular-nums; color:rgba(241,232,214,0.85); }
+
+  .copy { align-self:end; max-width: 2400px; }
+  .lto-tag {
+    display:inline-flex; align-items:center; gap:18px;
+    font:800 56px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase;
+    color:#fff; background:var(--brand-primary);
+    padding:24px 44px; border-radius:999px;
+  }
+  .lto-tag::before { content:""; width:24px; height:24px; background:var(--brand-accent); border-radius:50%; }
+  h1 {
+    margin:48px 0 0;
+    font:600 360px/0.86 var(--font-display);
+    letter-spacing:-0.04em;
+    color:var(--brand-fg);
+    text-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  }
+  h1 .l2 { display:block; color:var(--brand-accent); font-style:italic; }
+  .desc {
+    margin:48px 0 0;
+    font:400 64px/1.18 var(--font-grotesk);
+    color:rgba(241,232,214,0.88);
+    max-width: 2200px;
+  }
+
+  .bottom-row {
+    display:grid; grid-template-columns: auto 1fr auto; gap:64px; align-items:end;
+    margin-top:72px;
+  }
+
+  .price-block {
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .price-label { font:600 44px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-accent); }
+  .price {
+    font:800 360px/0.86 var(--font-condensed);
+    letter-spacing:-0.04em;
+    color:var(--brand-primary);
+    text-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  }
+  .price .dollar { font-size:0.42em; vertical-align:0.42em; margin-right:12px; }
+  .price .cents { font-size:0.42em; vertical-align:0.42em; margin-left:16px; }
+  .strike { font:600 80px/1 var(--font-condensed); color:rgba(241,232,214,0.55); text-decoration:line-through; margin-top:12px; }
+
+  .countdown { justify-self:end; text-align:right; }
+  .cd-label { font:600 44px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:rgba(241,232,214,0.7); }
+  .cd-clock { display:flex; gap:32px; margin-top:20px; }
+  .cd-cell { background:rgba(0,0,0,0.55); border:3px solid rgba(241,232,214,0.25); border-radius:24px; padding:28px 36px; min-width:200px; text-align:center; backdrop-filter: blur(20px); }
+  .cd-num { font:800 144px/0.9 var(--font-condensed); letter-spacing:-0.02em; color:var(--brand-fg); font-variant-numeric:tabular-nums; }
+  .cd-unit { font:600 32px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-mute); margin-top:8px; }
+
+  .promo-meta {
+    grid-column: 1 / -1;
+    margin-top: 56px;
+    display:flex; gap:48px; flex-wrap:wrap;
+    border-top: 4px solid rgba(241,232,214,0.18);
+    padding-top: 36px;
+  }
+  .meta-item { display:flex; align-items:baseline; gap:18px; }
+  .meta-k { font:600 36px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-mute); }
+  .meta-v { font:600 44px/1 var(--font-grotesk); color:var(--brand-fg); }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+
+    <div class="photo-bg" data-widget="image-slot" data-slot="hero" data-aspect="3840x2160" data-field="lto.photo_url">
+      <div class="ph-empty">
+        <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg>
+        <div class="lbl">Drop full-bleed photo</div>
+        <div class="dim">3840 × 2160 · 16:9</div>
+      </div>
+    </div>
+
+    <div class="frame">
+
+      <header class="top-row">
+        <div class="brand" data-widget="logo">
+          <div class="logo" data-field="brand.name">EMBER &amp; OAK</div>
+        </div>
+        <div class="clock" data-widget="clock" data-source="local-time"><span data-field="clock.full">Thu · 6:42 PM</span></div>
+      </header>
+
+      <section class="copy" data-widget="lto-promo" data-source="cms" data-feed="/promos/active" data-refresh="60s">
+        <div class="lto-tag" data-field="lto.flag">LIMITED TIME · 5 DAYS LEFT</div>
+        <h1>
+          <span data-field="lto.name_1">Smoked Brisket</span>
+          <span class="l2" data-field="lto.name_2">Double Stack</span>
+        </h1>
+        <p class="desc" data-field="lto.desc">
+          18-hour oak-smoked brisket, aged cheddar, charred onion jam,
+          house pickles on a buttered potato bun. Through Sunday.
+        </p>
+      </section>
+
+      <section class="bottom-row">
+
+        <div class="price-block">
+          <div class="price-label">Combo price</div>
+          <div class="price" data-field="lto.price"><span class="dollar">$</span>16<span class="cents">99</span></div>
+          <div class="strike" data-field="lto.was_price">was $19.99</div>
+        </div>
+
+        <div></div>
+
+        <div class="countdown" data-widget="countdown" data-source="cms" data-feed="/promos/active" data-field-path="lto.ends_at">
+          <div class="cd-label">Ends in</div>
+          <div class="cd-clock">
+            <div class="cd-cell"><div class="cd-num" data-field="cd.days">04</div><div class="cd-unit">Days</div></div>
+            <div class="cd-cell"><div class="cd-num" data-field="cd.hours">17</div><div class="cd-unit">Hours</div></div>
+            <div class="cd-cell"><div class="cd-num" data-field="cd.mins">22</div><div class="cd-unit">Mins</div></div>
+          </div>
+        </div>
+
+        <div class="promo-meta">
+          <div class="meta-item"><span class="meta-k">Available</span><span class="meta-v" data-field="lto.dayparts">All day</span></div>
+          <div class="meta-item"><span class="meta-k">Calories</span><span class="meta-v" data-field="lto.kcal">1,140</span></div>
+          <div class="meta-item"><span class="meta-k">Order</span><span class="meta-v" data-field="lto.channels">Drive-thru · Counter · App</span></div>
+          <div class="meta-item"><span class="meta-k">Members</span><span class="meta-v">2× points</span></div>
+        </div>
+
+      </section>
+
+    </div>
+  </div>
+  <script>
+    (function(){var s=document.getElementById('stage');function fit(){var k=Math.min(innerWidth/3840,innerHeight/2160);s.style.setProperty('--scale',k);}addEventListener('resize',fit);fit();})();
+  </script>
+</body>
+</html>

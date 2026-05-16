@@ -1,0 +1,50 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>New Hires</title><style>
+:root{--bg:#0c0e12;--fg:#eef2f8;--mute:#7a8595;--paper:#141823;--rule:rgba(238,242,248,.12);--primary:#3b82f6;--accent:#10b981;--gold:#f59e0b;--danger:#ef4444;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif;--font-mono:"SF Mono",Menlo,Consolas,monospace}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;padding:80px;row-gap:40px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:24px}
+.logo{font:700 88px/.95 var(--font-display);letter-spacing:-.02em}
+.tag{font:500 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute);margin-left:32px}
+.live{display:inline-flex;align-items:center;gap:16px;font:700 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-left:24px}
+.live::before{content:"";width:18px;height:18px;border-radius:50%;background:var(--accent);animation:p 1.6s infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(16,185,129,.7)}70%{box-shadow:0 0 0 18px rgba(16,185,129,0)}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}
+.clock{font:600 88px/1 var(--font-grotesk);font-variant-numeric:tabular-nums}
+.foot{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.fc{border:3px solid var(--rule);border-radius:32px;padding:24px 44px;display:flex;flex-direction:column;gap:8px}
+.fc.accent{background:linear-gradient(135deg,var(--primary) 0%,#1d4ed8 100%);border:none}
+.fc.accent .l{color:rgba(255,255,255,.85)}.fc.accent .v{color:#fff}
+.fc .l{font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.fc .v{font:700 72px/.92 var(--font-condensed);letter-spacing:-.02em}
+</style></head><body><div class="stage" id="stage"><div class="frame" style="async function readFile(path) {
+    return rpc({ op: 'readFile', path: String(path) });
+  }"><header class="top"><div><span class="logo" data-field="brand.name">NORTH STAR</span><span class="tag" data-field="brand.tag">New this week</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">9:42 AM</span></div></header>
+<main style="display:grid;grid-template-columns:repeat(4,1fr);gap:32px;min-height:0;align-content:center">
+
+<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:64px 48px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:32px">
+<div style="width:280px;height:280px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#1d4ed8);color:#fff;display:flex;align-items:center;justify-content:center;font:900 144px/1 var(--font-condensed);letter-spacing:-.02em">MR</div>
+<div data-field="h.0.name" style="font:600 64px/1 var(--font-display);letter-spacing:-.02em">Maya Reyes</div>
+<div data-field="h.0.role" style="font:500 36px/1.2 var(--font-grotesk);color:var(--mute);min-height:88px">Senior PM · Platform</div>
+<div data-field="h.0.when" style="font:700 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);padding:14px 24px;background:rgba(16,185,129,.16);border-radius:999px">Joins Mon</div>
+</article>
+<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:64px 48px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:32px">
+<div style="width:280px;height:280px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#1d4ed8);color:#fff;display:flex;align-items:center;justify-content:center;font:900 144px/1 var(--font-condensed);letter-spacing:-.02em">JK</div>
+<div data-field="h.1.name" style="font:600 64px/1 var(--font-display);letter-spacing:-.02em">Jordan Kim</div>
+<div data-field="h.1.role" style="font:500 36px/1.2 var(--font-grotesk);color:var(--mute);min-height:88px">Staff Engineer · ML</div>
+<div data-field="h.1.when" style="font:700 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);padding:14px 24px;background:rgba(16,185,129,.16);border-radius:999px">Joins Mon</div>
+</article>
+<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:64px 48px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:32px">
+<div style="width:280px;height:280px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#1d4ed8);color:#fff;display:flex;align-items:center;justify-content:center;font:900 144px/1 var(--font-condensed);letter-spacing:-.02em">PA</div>
+<div data-field="h.2.name" style="font:600 64px/1 var(--font-display);letter-spacing:-.02em">Priya Anand</div>
+<div data-field="h.2.role" style="font:500 36px/1.2 var(--font-grotesk);color:var(--mute);min-height:88px">Director · CS</div>
+<div data-field="h.2.when" style="font:700 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);padding:14px 24px;background:rgba(16,185,129,.16);border-radius:999px">Joins Tue</div>
+</article>
+<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:64px 48px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:32px">
+<div style="width:280px;height:280px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#1d4ed8);color:#fff;display:flex;align-items:center;justify-content:center;font:900 144px/1 var(--font-condensed);letter-spacing:-.02em">DC</div>
+<div data-field="h.3.name" style="font:600 64px/1 var(--font-display);letter-spacing:-.02em">David Castellanos</div>
+<div data-field="h.3.role" style="font:500 36px/1.2 var(--font-grotesk);color:var(--mute);min-height:88px">VP · Sales</div>
+<div data-field="h.3.when" style="font:700 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);padding:14px 24px;background:rgba(16,185,129,.16);border-radius:999px">Joins Wed</div>
+</article>
+</main>
+<footer class="foot"><div class="fc accent"><div class="l">New hires · Q2</div><div class="v">38 of 50</div></div><div class="fc"><div class="l">Welcome event</div><div class="v" data-field="evt">Fri · 4 PM rooftop</div></div><div class="fc"><div class="l">Refer a friend</div><div class="v" style="font-size:52px">careers@northstar.co</div></div></footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

@@ -1,0 +1,46 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Hours</title><style>
+:root{--bg:#0c0807;--ink:#f1e3c8;--mute:#8a7a64;--paper:#181210;--rule:rgba(241,227,200,.14);--primary:#c2733a;--accent:#d8b35c;--ready:#3e8c5a;--font-display:"Didot",Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:160px 1fr 180px;row-gap:36px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:20px}
+.logo{font:600 80px/1 var(--font-display);font-style:italic}
+.tag{margin-left:32px;font:500 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.title{font:400 76px/.95 var(--font-display);font-style:italic;color:var(--accent)}
+.clock{font:500 76px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.foot{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.ft{padding:0 16px}.ft+.ft{border-left:1px solid var(--rule)}
+.ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.ft .v{margin-top:14px;font:500 44px/1 var(--font-display)}
+.ft .v.acc{color:var(--accent)}.ft .v.r{color:var(--ready)}
+
+.body{display:grid;grid-template-columns:1.2fr 1fr;gap:64px;min-height:0}
+.hours{padding:48px 56px;background:var(--paper);border-radius:32px;display:flex;flex-direction:column}
+.hours h2{margin:0 0 24px;font:700 60px/1 var(--font-grotesk);letter-spacing:.22em;text-transform:uppercase;color:var(--accent)}
+.hr{display:grid;grid-template-columns:1fr auto;align-items:center;padding:24px 0;border-bottom:2px dashed var(--rule);font:600 52px/1 var(--font-display)}
+.hr:last-child{border:none}
+.hr.today{padding-left:32px;padding-right:32px;background:rgba(216,179,92,.1);border-radius:12px;border:none}
+.hr.today .d{color:var(--accent)}
+.hr .v{font:500 44px/1 var(--font-grotesk);color:var(--mute);font-variant-numeric:tabular-nums}
+.hr.today .v{color:var(--ready)}
+.right{display:flex;flex-direction:column;gap:32px}
+.right .panel{padding:48px 56px;background:var(--paper);border-radius:32px;display:flex;flex-direction:column;gap:16px}
+.right .panel.accent{background:linear-gradient(135deg,var(--primary),#7a3a18);color:#fff}
+.right .panel .l{font:600 32px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.right .panel.accent .l{color:rgba(255,255,255,.78)}
+.right .panel .v{font:700 88px/.95 var(--font-condensed);letter-spacing:-.02em}
+.right .panel .a{font:500 36px/1.2 var(--font-display);font-style:italic;color:var(--mute)}
+.right .panel.accent .a{color:rgba(255,255,255,.85)}
+</style></head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Charleston · since 2014</span></div><div class="title" data-field="board.title">Open · until late.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="body">
+<section class="hours" data-widget="hours" data-source="cms"><h2>Hours</h2>
+<div class="hr today"><span class="d" data-field="h.0.d">Tonight · Friday</span><span class="v" data-field="h.0.v">5 PM – 2 AM</span></div>
+<div class="hr"><span class="d" data-field="h.1.d">Sat</span><span class="v" data-field="h.1.v">3 PM – 2 AM</span></div>
+<div class="hr"><span class="d" data-field="h.2.d">Sun</span><span class="v" data-field="h.2.v">12 – 11 PM</span></div>
+<div class="hr"><span class="d" data-field="h.3.d">Mon</span><span class="v" data-field="h.3.v">Closed</span></div>
+<div class="hr"><span class="d" data-field="h.4.d">Tue – Thu</span><span class="v" data-field="h.4.v">5 PM – 12 AM</span></div>
+<div class="hr"><span class="d" data-field="h.5.d">Happy hour</span><span class="v" data-field="h.5.v">5 – 7 PM daily</span></div>
+</section>
+<aside class="right">
+<div class="panel accent" data-widget="address" data-source="cms"><div class="l">Where</div><div class="v" data-field="addr.name">Pier 47 · Bar</div><div class="a" data-field="addr.line">142 Queen St, Charleston</div></div>
+<div class="panel" data-widget="contact"><div class="l">Phone</div><div class="v" data-field="contact.phone">(843) 555-0142</div><div class="l" style="margin-top:18px">Reservations</div><div class="v" style="font-size:56px;color:var(--accent)" data-field="contact.web">OpenTable</div></div>
+</aside></main><footer class="foot"><div class="ft"><div class="k">ID</div><div class="v acc" data-field="foot.id">21+ after 9 PM</div></div><div class="ft"><div class="k">Dress</div><div class="v " data-field="foot.dress">Smart casual</div></div><div class="ft"><div class="k">Last call</div><div class="v " data-field="foot.lastcall">1:30 AM</div></div><div class="ft"><div class="k">Parking</div><div class="v " data-field="foot.parking">Valet · Queen St</div></div></footer></div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

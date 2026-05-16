@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><title>Outlook</title><style>
+:root{--bg:#1a2a35;--ink:#f4ede1;--mute:#8ca6b3;--paper:#22343f;--rule:rgba(244,237,225,.12);--primary:#f0c34a;--accent:#6fa6c0;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:radial-gradient(ellipse at top,#2c4a5e,var(--bg) 70%);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:160px 1fr 200px;row-gap:36px;padding:60px 96px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:20px}
+.crest .name{font:600 76px/.95 var(--font-display)}
+.crest .sub{margin-top:10px;display:block;font:500 26px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.right{text-align:right;font:500 52px/1 var(--font-display);font-style:italic;color:var(--mute)}
+.body{display:grid;grid-template-columns:1.2fr 1fr;gap:64px;min-height:0;align-items:center}
+.now{display:flex;flex-direction:column}
+.now .eye{font:600 32px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--primary);margin-bottom:32px}
+.now .temp{font:600 560px/.85 var(--font-display);letter-spacing:-.05em;color:var(--ink)}
+.now .temp small{font-size:120px;color:var(--mute);vertical-align:.5em}
+.now .cond{margin-top:20px;font:400 88px/.95 var(--font-display);font-style:italic;color:var(--accent)}
+.now .city{margin-top:32px;font:500 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.fc{display:flex;flex-direction:column;gap:24px}
+.fcrow{display:grid;grid-template-columns:auto 1fr auto auto;gap:32px;align-items:center;padding:24px 28px;background:var(--paper);border:1px solid var(--rule);border-radius:12px}
+.fcrow .d{font:600 40px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute);width:160px}
+.fcrow.today .d{color:var(--primary)}
+.fcrow .ic{font:600 60px/1 var(--font-display);color:var(--accent)}
+.fcrow .hi{font:700 64px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.fcrow .lo{font:500 44px/1 var(--font-display);color:var(--mute);font-variant-numeric:tabular-nums}
+.foot{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.ft{padding:0 16px}
+.ft+.ft{border-left:1px solid var(--rule)}
+.ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.ft .v{margin-top:14px;font:500 52px/1 var(--font-display);letter-spacing:-.02em}
+</style></head><body><div class="stage" id="stage"><div class="frame">
+<header class="top"><div class="crest"><div class="name" data-field="brand.name">The Marlowe</div><div class="sub" data-field="brand.tagline">Outlook · Charleston Harbor</div></div><div class="right" data-field="header.date">Saturday · May 9</div></header>
+<main class="body">
+<section class="now" data-widget="weather-now" data-source="weatherapi" data-feed="/weather/now" data-refresh="10m"><div class="eye" data-field="now.eye">Right now</div><div class="temp"><span data-field="now.temp">76</span><small>°F</small></div><div class="cond" data-field="now.cond">Clear &amp; calm</div><div class="city" data-field="now.city">Charleston · harbor breeze 6 mph SW</div></section>
+<aside class="fc" data-widget="forecast" data-source="weatherapi" data-feed="/weather/forecast/5d">
+<div class="fcrow today"><div class="d" data-field="fc.0.d">Today</div><div class="ic" data-field="fc.0.ic">☀</div><div class="hi" data-field="fc.0.hi">78°</div><div class="lo" data-field="fc.0.lo">68°</div></div>
+<div class="fcrow"><div class="d" data-field="fc.1.d">Sun</div><div class="ic" data-field="fc.1.ic">⛅</div><div class="hi" data-field="fc.1.hi">76°</div><div class="lo" data-field="fc.1.lo">66°</div></div>
+<div class="fcrow"><div class="d" data-field="fc.2.d">Mon</div><div class="ic" data-field="fc.2.ic">🌦</div><div class="hi" data-field="fc.2.hi">72°</div><div class="lo" data-field="fc.2.lo">64°</div></div>
+<div class="fcrow"><div class="d" data-field="fc.3.d">Tue</div><div class="ic" data-field="fc.3.ic">⛅</div><div class="hi" data-field="fc.3.hi">75°</div><div class="lo" data-field="fc.3.lo">63°</div></div>
+<div class="fcrow"><div class="d" data-field="fc.4.d">Wed</div><div class="ic" data-field="fc.4.ic">☀</div><div class="hi" data-field="fc.4.hi">80°</div><div class="lo" data-field="fc.4.lo">67°</div></div>
+</aside>
+</main>
+<footer class="foot"><div class="ft"><div class="k">Sunrise</div><div class="v" data-field="foot.sr">6:18 AM</div></div><div class="ft"><div class="k">Sunset</div><div class="v" data-field="foot.ss">7:54 PM</div></div><div class="ft"><div class="k">High tide</div><div class="v" data-field="foot.ht">4:32 PM</div></div><div class="ft"><div class="k">UV index</div><div class="v" data-field="foot.uv">7 · high</div></div></footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

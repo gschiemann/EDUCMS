@@ -1,0 +1,36 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Daily Specials</title><style>
+:root{--bg:#1a1714;--fg:#f4ede1;--mute:#9a9388;--paper:#221d18;--rule:rgba(244,237,225,.12);--primary:#c9a55a;--accent:#b85042;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:160px 1fr 180px;row-gap:40px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:24px}
+.logo{font:900 110px/1 var(--font-condensed);color:var(--primary);text-transform:uppercase;letter-spacing:-.02em}
+.tag{font:500 44px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute);margin-left:32px}
+.clock{font:600 88px/1 var(--font-grotesk);font-variant-numeric:tabular-nums}
+.hero{display:grid;grid-template-columns:2200px 1fr;gap:48px;min-height:0}
+.photo{position:relative;background:var(--paper);background-size:cover;background-position:center;border:4px dashed rgba(244,237,225,.22);border-radius:48px;display:flex;align-items:center;justify-content:center}
+.photo .e{display:flex;flex-direction:column;align-items:center;gap:20px;color:var(--mute);text-align:center}
+.photo .e svg{width:180px;height:180px;opacity:.5}.photo .e .l{font:700 48px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase}.photo .e .d{font:500 32px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;color:rgba(244,237,225,.45)}
+.ribbon{position:absolute;top:48px;right:0;background:var(--accent);color:#fff;font:800 64px/1 var(--font-condensed);text-transform:uppercase;letter-spacing:.02em;padding:24px 56px;border-radius:16px 0 0 16px}
+.copy{display:flex;flex-direction:column}
+.eye{font:700 40px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--primary)}
+h1{margin:36px 0 0;font:600 200px/.88 var(--font-display);letter-spacing:-.03em}
+h1 em{font-style:italic;color:var(--accent)}
+.desc{margin-top:36px;font:400 44px/1.22 var(--font-grotesk);color:var(--mute);font-style:italic}
+.rows{margin-top:auto;padding-top:32px;border-top:4px solid var(--rule);display:grid;gap:14px}
+.row{display:flex;justify-content:space-between;align-items:baseline;padding:18px 0;border-top:1px solid var(--rule)}
+.row .k{font:600 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.row .v{font:600 60px/1 var(--font-display)}
+.foot{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.fc{border:3px solid var(--rule);border-radius:32px;padding:24px 44px;display:flex;flex-direction:column;justify-content:center;gap:8px}
+.fc .l{font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.fc .v{font:600 76px/.92 var(--font-display)}
+</style></head><body><div class="stage" id="stage"><div class="frame">
+<header class="top"><div><span class="logo" data-field="brand.name">THE BRASS RAIL</span><span class="tag" data-field="brand.tag">Tonight's specials</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">5:42 PM</span></div></header>
+<main class="hero" data-widget="special" data-source="toast" data-feed="/menu/special-tonight" data-refresh="60s">
+<div class="photo" data-widget="image-slot" data-slot="special" data-aspect="2200x1000" data-field="special.photo_url"><div class="e"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="l">Drop photo</div><div class="d">2200 × 1000</div></div><div class="ribbon" data-field="special.ribbon">TONIGHT ONLY</div></div>
+<div class="copy"><div class="eye" data-field="special.eye">Saturday · 8 plates only</div><h1><span data-field="special.t1">Whole salt-baked </span><em data-field="special.t2">branzino</em></h1><p class="desc" data-field="special.desc">Whole Mediterranean branzino, sea salt crust, fennel, Sicilian olive oil, tableside presentation.</p>
+<div class="rows"><div class="row"><span class="k">Price</span><span class="v" data-field="special.price">$84 · serves 2</span></div><div class="row"><span class="k">Plates remaining</span><span class="v" data-field="special.stock" style="color:var(--accent)">5 of 8</span></div><div class="row"><span class="k">Pairing</span><span class="v" data-field="special.pair">'21 Vermentino</span></div></div>
+</div></main>
+<footer class="foot"><div class="fc"><div class="l">Avg cover</div><div class="v" data-field="kpi.cover">$118</div></div><div class="fc"><div class="l">Reservations</div><div class="v" data-field="kpi.res">22 tonight</div></div><div class="fc"><div class="l">Ask your server</div><div class="v">Daily specials</div></div></footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

@@ -1,0 +1,177 @@
+<!doctype html>
+<!--
+  QSR · Order Ready / Pickup Display
+  Split: PREPARING (left, muted) vs READY (right, bright). Each tile pulses on state change.
+  3840×2160 · self-contained · POS-driven via /queue/preparing & /queue/ready feeds.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Order Ready</title>
+<style>
+  :root {
+    --brand-canvas:  #0e0d0b;
+    --brand-fg:      #f1e8d6;
+    --brand-mute:    #6c665a;
+    --brand-primary: #e85a1c;
+    --brand-accent:  #f0c34a;
+    --brand-ready:   #1cb47b;
+    --font-display:  Georgia, "Times New Roman", serif;
+    --font-grotesk:  -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-condensed:"Arial Narrow", "Helvetica Neue", Impact, sans-serif;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background:#000; overflow:hidden; height:100%; width:100%; }
+  body { font-family: var(--font-grotesk); -webkit-font-smoothing:antialiased; }
+  .stage {
+    position:absolute; left:50%; top:50%;
+    width:3840px; height:2160px;
+    background:var(--brand-canvas); color:var(--brand-fg);
+    transform:translate(-50%,-50%) scale(var(--scale,1));
+    transform-origin:center center; overflow:hidden;
+  }
+  .frame { position:absolute; top:0;right:0;bottom:0;left:0; display:grid; grid-template-rows: 160px 1fr 160px; row-gap:32px; padding:80px; }
+
+  .topbar { display:flex; align-items:center; justify-content:space-between; }
+  .brand { display:flex; align-items:baseline; gap:32px; }
+  .logo { font:900 120px/1 var(--font-condensed); letter-spacing:-0.02em; color:var(--brand-primary); text-transform:uppercase; }
+  .tag { font:500 48px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-mute); }
+  .clock { font:600 120px/1 var(--font-grotesk); font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
+  .clock .ampm { font-size:48px; color:var(--brand-mute); margin-left:14px; vertical-align:0.6em; }
+
+  .board { display:grid; grid-template-columns: 1fr 1.4fr; gap:48px; min-height:0; }
+  .col { display:flex; flex-direction:column; gap:32px; min-height:0; }
+  .col-head {
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 28px 56px;
+    border-radius:36px;
+  }
+  .col-prep .col-head { background:rgba(241,232,214,0.06); border:3px solid rgba(241,232,214,0.14); }
+  .col-ready .col-head { background:linear-gradient(135deg, var(--brand-ready) 0%, #0e7d54 100%); }
+  .col-head .head-label { font:800 80px/1 var(--font-condensed); letter-spacing:0.08em; text-transform:uppercase; }
+  .col-prep .head-label { color:var(--brand-fg); }
+  .col-ready .head-label { color:#fff; }
+  .head-count { font:700 80px/1 var(--font-condensed); }
+  .col-prep .head-count { color:var(--brand-mute); }
+  .col-ready .head-count { color:rgba(255,255,255,0.78); }
+
+  .live { display:inline-flex; align-items:center; gap:14px; font:600 36px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:rgba(255,255,255,0.92); }
+  .live::before { content:""; width:22px; height:22px; border-radius:50%; background:#fff; animation:pulse 1.6s ease-out infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(255,255,255,0.7);} 70%{box-shadow:0 0 0 22px rgba(255,255,255,0);} 100%{box-shadow:0 0 0 0 rgba(255,255,255,0);} }
+
+  .tiles { display:grid; gap:24px; min-height:0; flex:1; }
+  .col-prep .tiles { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 1fr; }
+  .col-ready .tiles { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 1fr; }
+
+  .tile { position:relative; border-radius:32px; padding:36px 48px; display:flex; flex-direction:column; justify-content:space-between; min-height:0; overflow:hidden; }
+  .tile .order-num { font:700 220px/0.85 var(--font-condensed); letter-spacing:-0.04em; }
+  .tile .order-name { font:600 56px/1.05 var(--font-display); letter-spacing:-0.01em; }
+  .tile .order-meta { font:600 36px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; }
+
+  .col-prep .tile { background:rgba(241,232,214,0.04); border:3px solid rgba(241,232,214,0.12); color:rgba(241,232,214,0.82); }
+  .col-prep .tile .order-num { color:rgba(241,232,214,0.92); }
+  .col-prep .tile .order-meta { color:var(--brand-mute); }
+
+  .col-ready .tile { background:linear-gradient(135deg, var(--brand-ready) 0%, #0e7d54 100%); color:#fff; animation:flashReady 2s ease-out; }
+  .col-ready .tile.fresh { animation:flashReady 2s ease-out; }
+  @keyframes flashReady { 0%{ box-shadow:0 0 0 0 rgba(28,180,123,0.85);} 60%{ box-shadow:0 0 80px 8px rgba(28,180,123,0.65);} 100%{ box-shadow:0 0 0 0 rgba(28,180,123,0);} }
+  .col-ready .tile .order-num { color:#fff; }
+  .col-ready .tile .order-meta { color:rgba(255,255,255,0.88); }
+
+  .footbar { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:32px; }
+  .footbar > div { border:3px solid rgba(241,232,214,0.12); border-radius:32px; padding:24px 44px; display:flex; flex-direction:column; justify-content:center; gap:8px; }
+  .foot-label { font:600 36px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-mute); }
+  .foot-value { font:700 92px/0.92 var(--font-condensed); letter-spacing:-0.02em; color:var(--brand-fg); }
+  .foot-value sub { font:500 48px/1 var(--font-grotesk); color:var(--brand-mute); margin-left:12px; vertical-align:baseline; }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="frame">
+
+      <header class="topbar">
+        <div class="brand" data-widget="logo">
+          <div class="logo" data-field="brand.name">EMBER &amp; OAK</div>
+          <div class="tag">Pick up at the counter</div>
+        </div>
+        <div class="clock" data-widget="clock" data-source="local-time" data-refresh="60s">
+          <span data-field="clock.hhmm">12:34</span><span class="ampm">PM</span>
+        </div>
+      </header>
+
+      <main class="board">
+
+        <!-- PREPARING -->
+        <section class="col col-prep" data-widget="queue" data-source="kiosk-api" data-feed="/queue/preparing" data-refresh="2s">
+          <div class="col-head">
+            <div class="head-label">Preparing</div>
+            <div class="head-count" data-field="prep.count">06</div>
+          </div>
+          <div class="tiles">
+            <div class="tile"><div class="order-num" data-field="prep.0">B-129</div><div class="order-meta" data-field="prep.0.eta">~3 min</div></div>
+            <div class="tile"><div class="order-num" data-field="prep.1">B-130</div><div class="order-meta" data-field="prep.1.eta">~4 min</div></div>
+            <div class="tile"><div class="order-num" data-field="prep.2">B-131</div><div class="order-meta" data-field="prep.2.eta">~5 min</div></div>
+            <div class="tile"><div class="order-num" data-field="prep.3">B-132</div><div class="order-meta" data-field="prep.3.eta">~6 min</div></div>
+            <div class="tile"><div class="order-num" data-field="prep.4">B-133</div><div class="order-meta" data-field="prep.4.eta">~7 min</div></div>
+            <div class="tile"><div class="order-num" data-field="prep.5">B-134</div><div class="order-meta" data-field="prep.5.eta">~8 min</div></div>
+          </div>
+        </section>
+
+        <!-- READY -->
+        <section class="col col-ready" data-widget="queue" data-source="kiosk-api" data-feed="/queue/ready" data-refresh="2s">
+          <div class="col-head">
+            <div class="head-label">Ready · pick up</div>
+            <div class="live">Live</div>
+          </div>
+          <div class="tiles">
+            <div class="tile fresh">
+              <div class="order-num" data-field="ready.0.num">B-118</div>
+              <div><div class="order-name" data-field="ready.0.name">Sara M.</div><div class="order-meta" data-field="ready.0.items">2 items · counter 1</div></div>
+            </div>
+            <div class="tile">
+              <div class="order-num" data-field="ready.1.num">B-119</div>
+              <div><div class="order-name" data-field="ready.1.name">James K.</div><div class="order-meta" data-field="ready.1.items">3 items · counter 2</div></div>
+            </div>
+            <div class="tile">
+              <div class="order-num" data-field="ready.2.num">B-122</div>
+              <div><div class="order-name" data-field="ready.2.name">Priya R.</div><div class="order-meta" data-field="ready.2.items">1 item · counter 1</div></div>
+            </div>
+            <div class="tile">
+              <div class="order-num" data-field="ready.3.num">B-124</div>
+              <div><div class="order-name" data-field="ready.3.name">Marcus T.</div><div class="order-meta" data-field="ready.3.items">4 items · counter 3</div></div>
+            </div>
+            <div class="tile">
+              <div class="order-num" data-field="ready.4.num">B-125</div>
+              <div><div class="order-name" data-field="ready.4.name">Liu W.</div><div class="order-meta" data-field="ready.4.items">2 items · counter 2</div></div>
+            </div>
+            <div class="tile">
+              <div class="order-num" data-field="ready.5.num">B-127</div>
+              <div><div class="order-name" data-field="ready.5.name">Devon A.</div><div class="order-meta" data-field="ready.5.items">5 items · counter 1</div></div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+
+      <footer class="footbar">
+        <div data-widget="kpi-orders-served">
+          <div class="foot-label">Orders served · today</div>
+          <div class="foot-value" data-field="kpi.served">428</div>
+        </div>
+        <div data-widget="kpi-avg-wait" data-source="kiosk-api" data-feed="/queue/avg-wait">
+          <div class="foot-label">Avg wait</div>
+          <div class="foot-value"><span data-field="wait.minutes">5</span><sub>min</sub></div>
+        </div>
+        <div data-widget="kpi-rating" data-source="reviews">
+          <div class="foot-label">Today's rating</div>
+          <div class="foot-value">4.8<sub>/5 · 142 reviews</sub></div>
+        </div>
+      </footer>
+
+    </div>
+  </div>
+  <script>
+    (function(){var s=document.getElementById('stage');function fit(){var k=Math.min(innerWidth/3840,innerHeight/2160);s.style.setProperty('--scale',k);}addEventListener('resize',fit);fit();})();
+  </script>
+</body>
+</html>

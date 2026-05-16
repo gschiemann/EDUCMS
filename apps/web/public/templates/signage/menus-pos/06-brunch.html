@@ -1,0 +1,39 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Brunch Menu</title><style>
+:root{--bg:#faf5ec;--fg:#1a1714;--mute:#7a7468;--paper:#fff;--rule:rgba(26,23,20,.12);--primary:#b85042;--accent:#c9a55a;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:200px 1fr 160px;row-gap:40px;padding:80px}
+.h{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;border-bottom:2px solid var(--rule);padding-bottom:24px}
+.crest .n{font:600 80px/.95 var(--font-display);letter-spacing:-.02em}
+.crest .s{display:block;margin-top:10px;font:500 28px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.c{text-align:center}.c .e{font:600 30px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--primary)}.c .t{margin-top:14px;font:400 96px/.95 var(--font-display);font-style:italic}
+.r{text-align:right}.r .k{font:600 26px/1 var(--font-grotesk);letter-spacing:.3em;text-transform:uppercase;color:var(--mute);margin-bottom:8px}.r .v{font:500 64px/1 var(--font-display)}
+.body{display:grid;grid-template-columns:1fr 1fr;gap:48px;min-height:0}
+.col{display:flex;flex-direction:column;gap:24px}
+.col h2{margin:0;font:400 64px/1 var(--font-display);font-style:italic;color:var(--primary);border-bottom:3px solid var(--rule);padding-bottom:18px}
+.dish{display:grid;grid-template-columns:1fr auto;gap:24px;padding:24px 0;border-bottom:1px dashed var(--rule)}
+.dish:last-child{border:none}
+.dish .nm{font:600 60px/1 var(--font-display);letter-spacing:-.02em}
+.dish .ing{margin-top:10px;font:500 32px/1.3 var(--font-grotesk);color:var(--mute);max-width:1200px}
+.dish .pr{font:700 64px/.9 var(--font-condensed);color:var(--primary);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.foot{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.fc{padding:0 24px}.fc+.fc{border-left:1px solid var(--rule)}
+.fc .l{font:600 28px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.fc .v{margin-top:12px;font:500 56px/1 var(--font-display)}
+</style></head><body><div class="stage" id="stage"><div class="frame">
+<header class="h"><div class="crest"><div class="n" data-field="brand.name">The Brass Rail</div><div class="s" data-field="brand.tag">Weekend brunch</div></div><div class="c"><div class="e" data-field="board.eye">Saturday &amp; Sunday · 10 to 3</div><div class="t" data-field="board.t">Brunch.</div></div><div class="r"><div class="k">Now serving</div><div class="v" data-source="local-time"><span data-field="clock.hhmm">11:24 AM</span></div></div></header>
+<main class="body" data-widget="brunch" data-source="toast" data-feed="/menu/brunch">
+<section class="col"><h2>Sweet</h2>
+<div class="dish"><div><div class="nm" data-field="sweet.0.nm">Brioche french toast</div><div class="ing" data-field="sweet.0.ing">Vanilla custard, vermont maple, candied pecans</div></div><div class="pr" data-field="sweet.0.pr">$22</div></div>
+<div class="dish"><div><div class="nm" data-field="sweet.1.nm">Lemon ricotta pancakes</div><div class="ing" data-field="sweet.1.ing">Blueberry compote, crème fraîche</div></div><div class="pr" data-field="sweet.1.pr">$19</div></div>
+<div class="dish"><div><div class="nm" data-field="sweet.2.nm">Cinnamon roll</div><div class="ing" data-field="sweet.2.ing">Cream cheese frosting, warmed</div></div><div class="pr" data-field="sweet.2.pr">$12</div></div>
+</section>
+<section class="col"><h2>Savory</h2>
+<div class="dish"><div><div class="nm" data-field="sav.0.nm">Lobster benedict</div><div class="ing" data-field="sav.0.ing">Maine lobster, hollandaise, capers, brioche</div></div><div class="pr" data-field="sav.0.pr">$32</div></div>
+<div class="dish"><div><div class="nm" data-field="sav.1.nm">Steak &amp; eggs</div><div class="ing" data-field="sav.1.ing">8-oz ribeye, fried eggs, home fries, chimichurri</div></div><div class="pr" data-field="sav.1.pr">$28</div></div>
+<div class="dish"><div><div class="nm" data-field="sav.2.nm">Smoked salmon plate</div><div class="ing" data-field="sav.2.ing">House-cured, capers, red onion, bagel, schmear</div></div><div class="pr" data-field="sav.2.pr">$24</div></div>
+<div class="dish"><div><div class="nm" data-field="sav.3.nm">Avocado toast</div><div class="ing" data-field="sav.3.ing">Sourdough, soft egg, chili crisp, microgreens</div></div><div class="pr" data-field="sav.3.pr">$18</div></div>
+</section>
+</main>
+<footer class="foot"><div class="fc"><div class="l">Bottomless</div><div class="v" data-field="kpi.btml">Mimosas · $28 · 90 min</div></div><div class="fc"><div class="l">Service</div><div class="v" data-field="kpi.svc">10 AM — 3 PM</div></div><div class="fc"><div class="l">Reservations</div><div class="v">OpenTable</div></div></footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

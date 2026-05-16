@@ -1,0 +1,612 @@
+<!doctype html>
+<!--
+  FLAGSHIP — QSR Drive-Thru Menu Board (v3)
+  3840×2160 · 65" 4K · viewed 8–15 ft.
+  Self-contained: opens in any browser by file:// or http://.
+  Image slots: 1 hero (2150×1000) + 4 item tiles (~896×240) — drop real photos in by setting
+  background-image: url(...); on the .photo-hero / .item-photo nodes (or via the data-feed).
+  Rebrand: 12 :root tokens. Feed-ready: every field has data-source / data-feed / data-field-path.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Drive-Thru · Menu Board</title>
+<style>
+  /* ════════════════════════════════════════════════════════════════════════
+     REBRAND ZONE — change these to fit any QSR brand
+     ════════════════════════════════════════════════════════════════════════ */
+  :root {
+    --brand-canvas:  #0e0d0b;
+    --brand-paper:   #f1e8d6;
+    --brand-ink:     #1a1715;
+    --brand-fg:      #f1e8d6;
+    --brand-mute:    #8c8473;
+    --brand-primary: #e85a1c;
+    --brand-accent:  #f0c34a;
+    --brand-danger:  #e3343a;
+    --font-display:  Georgia, "Times New Roman", serif;
+    --font-grotesk:  -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-condensed:"Arial Narrow", "Helvetica Neue", Impact, sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background:#000; overflow:hidden; height:100%; width:100%; }
+  body { font-family: var(--font-grotesk); -webkit-font-smoothing: antialiased; }
+
+  .stage {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 3840px; height: 2160px;
+    background: var(--brand-canvas);
+    color: var(--brand-fg);
+    transform: translate(-50%, -50%) scale(var(--scale, 1));
+    transform-origin: center center;
+    overflow: hidden;
+  }
+
+  .frame {
+    position: absolute; top:0;right:0;bottom:0;left:0;
+    display: grid;
+    grid-template-rows: 140px 1000px 480px 240px;
+    row-gap: 32px;
+    padding: 80px;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar { display: flex; align-items: center; justify-content: space-between; }
+  .brand-mark { display: flex; align-items: baseline; gap: 32px; }
+  .logo {
+    font: 900 110px/1 var(--font-condensed);
+    letter-spacing: -0.02em;
+    color: var(--brand-primary);
+    text-transform: uppercase;
+  }
+  .tag {
+    font: 500 44px/1 var(--font-grotesk);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--brand-mute);
+  }
+  .topbar-right { display: flex; align-items: center; gap: 56px; }
+  .daypart {
+    font: 600 52px/1 var(--font-grotesk);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 22px 44px;
+    border: 4px solid var(--brand-fg);
+    border-radius: 999px;
+  }
+  .clock {
+    font: 600 110px/1 var(--font-grotesk);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .clock .ampm {
+    font-size: 44px; color: var(--brand-mute); margin-left: 14px; vertical-align: 0.6em;
+  }
+
+  /* ── HERO ROW ── */
+  .hero {
+    display: grid;
+    grid-template-columns: 2150px 1fr;
+    gap: 60px;
+    min-height: 0;
+  }
+
+  /* HERO IMAGE SLOT — placeholder shown until you set background-image on .photo-hero */
+  .photo-hero {
+    position: relative;
+    border-radius: 56px;
+    overflow: hidden;
+    background-color: #1a1815;
+    background-size: cover;
+    background-position: center;
+    border: 4px dashed rgba(241,232,214,0.22);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .photo-hero[data-has-image="true"] .ph-empty { display: none; }
+  .photo-hero[data-has-image="true"] { border: none; }
+  .ph-empty {
+    display: flex; flex-direction: column; align-items: center; gap: 24px;
+    color: var(--brand-mute);
+    text-align: center;
+  }
+  .ph-empty svg { width: 200px; height: 200px; opacity: 0.55; }
+  .ph-empty .ph-label {
+    font: 700 56px/1 var(--font-grotesk);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .ph-empty .ph-dims {
+    font: 500 36px/1 var(--font-grotesk);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(241,232,214,0.45);
+  }
+  .photo-hero .ph-ribbon {
+    position: absolute; top: 40px; right: 0;
+    background: var(--brand-accent);
+    color: var(--brand-ink);
+    font: 800 64px/1 var(--font-condensed);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    padding: 24px 48px;
+    border-radius: 12px 0 0 12px;
+  }
+
+  .copy-hero {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    min-width: 0;
+  }
+  .lto-tag {
+    align-self: flex-start;
+    display: inline-flex; align-items: center; gap: 18px;
+    font: 700 40px/1 var(--font-grotesk);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #fff;
+    background: var(--brand-primary);
+    padding: 20px 32px;
+    border-radius: 999px;
+  }
+  .lto-tag::before {
+    content: "";
+    width: 18px; height: 18px;
+    background: var(--brand-accent);
+    border-radius: 50%;
+  }
+  .hero h1 {
+    margin: 32px 0 0;
+    font: 600 180px/0.9 var(--font-display);
+    letter-spacing: -0.03em;
+    color: var(--brand-fg);
+  }
+  .hero h1 .l2 {
+    display: block;
+    color: var(--brand-accent);
+    font-style: italic;
+  }
+  .hero .desc {
+    margin-top: 32px;
+    font: 400 46px/1.18 var(--font-grotesk);
+    color: rgba(241,232,214,0.78);
+  }
+  .hero .pricerow {
+    margin-top: auto;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    padding-top: 32px;
+    border-top: 4px solid rgba(241,232,214,0.18);
+  }
+  .price {
+    font: 700 220px/0.9 var(--font-condensed);
+    letter-spacing: -0.04em;
+    color: var(--brand-primary);
+  }
+  .price .dollar { font-size: 0.42em; vertical-align: 0.42em; margin-right: 8px; }
+  .price .cents  { font-size: 0.42em; vertical-align: 0.42em; margin-left: 12px; }
+  .meta-stack { text-align: right; display: grid; gap: 10px; }
+  .pair {
+    display: flex; gap: 24px; justify-content: flex-end; align-items: baseline;
+    font: 500 52px/1 var(--font-grotesk);
+  }
+  .pair .k {
+    font: 600 36px/1 var(--font-grotesk);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--brand-mute);
+  }
+
+  /* ── ITEMS ROW ── */
+  .items {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 32px;
+    min-height: 0;
+  }
+  .item {
+    position: relative;
+    background: rgba(241,232,214,0.04);
+    border: 3px solid rgba(241,232,214,0.12);
+    border-radius: 36px;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: 240px 1fr;
+  }
+  .item-photo {
+    position: relative;
+    background-color: #1a1815;
+    background-size: cover;
+    background-position: center;
+    border-bottom: 3px dashed rgba(241,232,214,0.18);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .item-photo[data-has-image="true"] .ph-mini { display: none; }
+  .item-photo[data-has-image="true"] { border-bottom: none; }
+  .ph-mini {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    color: var(--brand-mute);
+    text-align: center;
+  }
+  .ph-mini svg { width: 88px; height: 88px; opacity: 0.5; }
+  .ph-mini .ph-mini-label {
+    font: 600 28px/1 var(--font-grotesk);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(241,232,214,0.55);
+  }
+
+  .item-body {
+    padding: 24px 28px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .item-name {
+    font: 600 60px/0.96 var(--font-display);
+    letter-spacing: -0.02em;
+    color: var(--brand-fg);
+  }
+  .item-desc {
+    margin-top: 8px;
+    font: 400 32px/1.15 var(--font-grotesk);
+    color: var(--brand-mute);
+  }
+  .item-foot {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  }
+  .item-price {
+    font: 700 96px/0.9 var(--font-condensed);
+    letter-spacing: -0.02em;
+    color: var(--brand-accent);
+    white-space: nowrap;
+  }
+  .item-price .dollar { font-size: 0.42em; vertical-align: 0.42em; margin-right: 6px; }
+  .item-price .cents  { font-size: 0.42em; vertical-align: 0.42em; margin-left: 8px; }
+  .item-stock {
+    font: 600 28px/1 var(--font-grotesk);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--brand-mute);
+  }
+  .item-stock.low { color: var(--brand-accent); }
+  .item-stock.out { color: var(--brand-danger); }
+
+  .item[data-stock="0"] .item-photo { filter: grayscale(0.85) brightness(0.55); }
+  .item[data-stock="0"] .item-price { color: var(--brand-mute); text-decoration: line-through; }
+  .item[data-stock="0"]::after {
+    content: "86'd";
+    position: absolute;
+    top: 24px; right: 28px;
+    font: 800 48px/1 var(--font-condensed);
+    color: #fff;
+    background: var(--brand-danger);
+    padding: 10px 20px;
+    border-radius: 10px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── BOTTOM BAR ── */
+  .bottom {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1fr;
+    gap: 32px;
+  }
+  .bottom > div {
+    border: 3px solid rgba(241,232,214,0.12);
+    border-radius: 36px;
+    padding: 28px 44px;
+    display: flex; flex-direction: column; justify-content: center; gap: 10px;
+  }
+  .label {
+    font: 600 40px/1 var(--font-grotesk);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--brand-mute);
+  }
+  .value {
+    font: 700 120px/0.92 var(--font-condensed);
+    letter-spacing: -0.02em;
+    color: var(--brand-fg);
+  }
+
+  .now-serving {
+    background: linear-gradient(135deg, var(--brand-primary) 0%, #b73c0c 100%);
+    border: none;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 32px;
+  }
+  .now-serving .label { color: rgba(255,255,255,0.82); }
+  .now-serving .value { color: #fff; font-size: 140px; }
+  .live {
+    display: inline-flex; align-items: center; gap: 14px;
+    margin-top: 10px;
+    font: 600 32px/1 var(--font-grotesk);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.92);
+  }
+  .live::before {
+    content: "";
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 0 rgba(255,255,255,0.7);
+    animation: livepulse 1.6s ease-out infinite;
+  }
+  @keyframes livepulse {
+    0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.7); }
+    70%  { box-shadow: 0 0 0 22px rgba(255,255,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+  }
+
+  .wait .value sub {
+    font: 500 56px/1 var(--font-grotesk);
+    color: var(--brand-mute);
+    margin-left: 12px;
+    vertical-align: baseline;
+  }
+
+  .rewards .value {
+    font: 800 88px/0.95 var(--font-condensed);
+    color: var(--brand-accent);
+  }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="frame">
+
+      <!-- ── TOP BAR ── -->
+      <header class="topbar">
+        <div class="brand-mark" data-widget="logo">
+          <div class="logo" data-field="brand.name">EMBER &amp; OAK</div>
+          <div class="tag" data-field="brand.tagline">Fire-cooked · since 2018</div>
+        </div>
+        <div class="topbar-right">
+          <div class="daypart"
+               data-widget="daypart"
+               data-source="local-time"
+               data-field-path="daypart.label">
+            <span data-field="daypart.label">DINNER MENU</span>
+          </div>
+          <div class="clock"
+               data-widget="clock"
+               data-source="local-time"
+               data-refresh="60s">
+            <span data-field="clock.hhmm">6:42</span><span class="ampm" data-field="clock.ampm">PM</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- ── HERO ROW ── -->
+      <section class="hero"
+               data-widget="featured-combo"
+               data-source="toast"
+               data-feed="/menu/featured"
+               data-refresh="60s">
+
+        <div class="photo-hero"
+             data-widget="image-slot"
+             data-slot="hero"
+             data-aspect="2150x1000"
+             data-field="featured.photo_url">
+          <div class="ph-empty">
+            <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="6" y="12" width="52" height="40" rx="4"/>
+              <circle cx="22" cy="26" r="4"/>
+              <path d="M6 46 L22 32 L34 42 L44 34 L58 46"/>
+            </svg>
+            <div class="ph-label">Drop hero photo</div>
+            <div class="ph-dims">2150 × 1000 · 16:7.5</div>
+          </div>
+          <div class="ph-ribbon" data-field="featured.ribbon">CHEF'S PICK</div>
+        </div>
+
+        <div class="copy-hero">
+          <div class="lto-tag" data-field="featured.lto">LIMITED — TODAY ONLY</div>
+          <h1>
+            <span data-field="featured.name_1">Smoked Brisket</span>
+            <span class="l2" data-field="featured.name_2">Double Stack</span>
+          </h1>
+          <p class="desc" data-field="featured.desc">
+            18-hour oak-smoked brisket, aged cheddar, charred onion jam,
+            house pickles on a buttered potato bun.
+          </p>
+          <div class="pricerow">
+            <div class="price" data-field="featured.price">
+              <span class="dollar">$</span>16<span class="cents">99</span>
+            </div>
+            <div class="meta-stack">
+              <div class="pair"><span class="k">Combo&nbsp;+</span><span data-field="featured.combo_upcharge">$3.50</span></div>
+              <div class="pair"><span class="k">Ready</span><span data-field="featured.eta">~6 min</span></div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ── ITEMS ROW ── -->
+      <section class="items"
+               data-widget="menu-list"
+               data-source="toast"
+               data-feed="/menu/featured-rail">
+
+        <div class="item item-1" data-stock="12">
+          <div class="item-photo"
+               data-widget="image-slot" data-slot="item-1" data-aspect="896x240"
+               data-field="items.0.photo_url">
+            <div class="ph-mini">
+              <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="6" y="12" width="52" height="40" rx="4"/>
+                <circle cx="22" cy="26" r="4"/>
+                <path d="M6 46 L22 32 L34 42 L44 34 L58 46"/>
+              </svg>
+              <div class="ph-mini-label">896 × 240</div>
+            </div>
+          </div>
+          <div class="item-body">
+            <div>
+              <div class="item-name" data-field="items.0.name">Buttermilk Crispy</div>
+              <div class="item-desc" data-field="items.0.desc">Hot honey · pickle slaw</div>
+            </div>
+            <div class="item-foot">
+              <div class="item-price" data-field="items.0.price"><span class="dollar">$</span>11<span class="cents">49</span></div>
+              <div class="item-stock low" data-field="items.0.stock_label">LOW · 12 LEFT</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="item item-2" data-stock="40">
+          <div class="item-photo"
+               data-widget="image-slot" data-slot="item-2" data-aspect="896x240"
+               data-field="items.1.photo_url">
+            <div class="ph-mini">
+              <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="6" y="12" width="52" height="40" rx="4"/>
+                <circle cx="22" cy="26" r="4"/>
+                <path d="M6 46 L22 32 L34 42 L44 34 L58 46"/>
+              </svg>
+              <div class="ph-mini-label">896 × 240</div>
+            </div>
+          </div>
+          <div class="item-body">
+            <div>
+              <div class="item-name" data-field="items.1.name">Smash Single</div>
+              <div class="item-desc" data-field="items.1.desc">American · onion · sauce</div>
+            </div>
+            <div class="item-foot">
+              <div class="item-price" data-field="items.1.price"><span class="dollar">$</span>8<span class="cents">99</span></div>
+              <div class="item-stock" data-field="items.1.stock_label">IN STOCK</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="item item-3" data-stock="0">
+          <div class="item-photo"
+               data-widget="image-slot" data-slot="item-3" data-aspect="896x240"
+               data-field="items.2.photo_url">
+            <div class="ph-mini">
+              <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="6" y="12" width="52" height="40" rx="4"/>
+                <circle cx="22" cy="26" r="4"/>
+                <path d="M6 46 L22 32 L34 42 L44 34 L58 46"/>
+              </svg>
+              <div class="ph-mini-label">896 × 240</div>
+            </div>
+          </div>
+          <div class="item-body">
+            <div>
+              <div class="item-name" data-field="items.2.name">Hatch Green Chile</div>
+              <div class="item-desc" data-field="items.2.desc">Roasted hatch · pepper jack</div>
+            </div>
+            <div class="item-foot">
+              <div class="item-price" data-field="items.2.price"><span class="dollar">$</span>12<span class="cents">49</span></div>
+              <div class="item-stock out" data-field="items.2.stock_label">SOLD OUT</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="item item-4" data-stock="20">
+          <div class="item-photo"
+               data-widget="image-slot" data-slot="item-4" data-aspect="896x240"
+               data-field="items.3.photo_url">
+            <div class="ph-mini">
+              <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="6" y="12" width="52" height="40" rx="4"/>
+                <circle cx="22" cy="26" r="4"/>
+                <path d="M6 46 L22 32 L34 42 L44 34 L58 46"/>
+              </svg>
+              <div class="ph-mini-label">896 × 240</div>
+            </div>
+          </div>
+          <div class="item-body">
+            <div>
+              <div class="item-name" data-field="items.3.name">Garden Smash</div>
+              <div class="item-desc" data-field="items.3.desc">Black-bean · avocado · sprouts</div>
+            </div>
+            <div class="item-foot">
+              <div class="item-price" data-field="items.3.price"><span class="dollar">$</span>10<span class="cents">99</span></div>
+              <div class="item-stock" data-field="items.3.stock_label">PLANT-BASED</div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ── BOTTOM BAR ── -->
+      <footer class="bottom">
+
+        <div class="now-serving"
+             data-widget="now-serving"
+             data-source="kiosk-api"
+             data-feed="/queue/current"
+             data-refresh="3s">
+          <div>
+            <div class="label">Now serving</div>
+            <div class="live">Live · synced w/ kitchen</div>
+          </div>
+          <div class="value" data-field="queue.current">A-247</div>
+        </div>
+
+        <div class="wait"
+             data-widget="wait-time"
+             data-source="kiosk-api"
+             data-feed="/queue/avg-wait"
+             data-refresh="30s">
+          <div class="label">Drive-thru wait</div>
+          <div class="value"><span data-field="wait.minutes">4</span><sub>min avg</sub></div>
+        </div>
+
+        <div class="rewards" data-widget="rewards" data-source="loyalty">
+          <div class="label">Rewards · 5–7pm</div>
+          <div class="value">2× POINTS</div>
+        </div>
+
+      </footer>
+
+    </div>
+  </div>
+
+  <script type="application/json" id="signage-feed-defaults">
+  {
+    "brand":   { "name": "EMBER & OAK", "tagline": "Fire-cooked · since 2018" },
+    "daypart": { "label": "DINNER MENU" },
+    "clock":   { "hhmm": "6:42", "ampm": "PM" },
+    "featured": {
+      "ribbon": "CHEF'S PICK", "lto": "LIMITED — TODAY ONLY",
+      "name_1": "Smoked Brisket", "name_2": "Double Stack",
+      "price":  "$16.99",
+      "combo_upcharge": "$3.50", "eta": "~6 min",
+      "photo_url": ""
+    },
+    "items": [
+      { "name": "Buttermilk Crispy", "price": "$11.49", "stock": 12, "stock_label": "LOW · 12 LEFT" },
+      { "name": "Smash Single",      "price": "$8.99",  "stock": 40, "stock_label": "IN STOCK" },
+      { "name": "Hatch Green Chile", "price": "$12.49", "stock": 0,  "stock_label": "SOLD OUT" },
+      { "name": "Garden Smash",      "price": "$10.99", "stock": 20, "stock_label": "PLANT-BASED" }
+    ],
+    "queue": { "current": "A-247" },
+    "wait":  { "minutes": 4 }
+  }
+  </script>
+
+  <script>
+    (function () {
+      var stage = document.getElementById('stage');
+      function fit() {
+        var k = Math.min(window.innerWidth / 3840, window.innerHeight / 2160);
+        stage.style.setProperty('--scale', k);
+      }
+      window.addEventListener('resize', fit);
+      window.addEventListener('orientationchange', fit);
+      fit();
+    })();
+  </script>
+</body>
+</html>

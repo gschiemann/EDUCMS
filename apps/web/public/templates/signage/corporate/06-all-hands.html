@@ -1,0 +1,35 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>All Hands</title><style>
+:root{--bg:#0c0e12;--fg:#eef2f8;--mute:#7a8595;--paper:#141823;--rule:rgba(238,242,248,.12);--primary:#3b82f6;--accent:#10b981;--gold:#f59e0b;--danger:#ef4444;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif;--font-mono:"SF Mono",Menlo,Consolas,monospace}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;padding:80px;row-gap:40px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:24px}
+.logo{font:700 88px/.95 var(--font-display);letter-spacing:-.02em}
+.tag{font:500 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute);margin-left:32px}
+.live{display:inline-flex;align-items:center;gap:16px;font:700 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-left:24px}
+.live::before{content:"";width:18px;height:18px;border-radius:50%;background:var(--accent);animation:p 1.6s infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(16,185,129,.7)}70%{box-shadow:0 0 0 18px rgba(16,185,129,0)}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}
+.clock{font:600 88px/1 var(--font-grotesk);font-variant-numeric:tabular-nums}
+.foot{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.fc{border:3px solid var(--rule);border-radius:32px;padding:24px 44px;display:flex;flex-direction:column;gap:8px}
+.fc.accent{background:linear-gradient(135deg,var(--primary) 0%,#1d4ed8 100%);border:none}
+.fc.accent .l{color:rgba(255,255,255,.85)}.fc.accent .v{color:#fff}
+.fc .l{font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.fc .v{font:700 72px/.92 var(--font-condensed);letter-spacing:-.02em}
+</style></head><body><div class="stage" id="stage"><div class="frame" style="async function readFile(path) {
+    return rpc({ op: 'readFile', path: String(path) });
+  }"><header class="top"><div><span class="logo" data-field="brand.name">NORTH STAR</span><span class="tag" data-field="brand.tag">Q2 all hands · starting soon</span><span class="live">Live</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">9:42 AM</span></div></header>
+<main style="display:grid;grid-template-rows:1fr auto;gap:40px;min-height:0">
+<section style="background:linear-gradient(135deg,var(--primary),#1d4ed8);border-radius:48px;padding:96px 120px;display:flex;flex-direction:column;justify-content:center;color:#fff">
+<div style="font:700 48px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.85)" data-field="ah.eye">Q2 all hands</div>
+<h1 style="margin:36px 0 0;font:700 320px/.85 var(--font-condensed);letter-spacing:-.04em" data-field="ah.cd">12 minutes.</h1>
+<p style="margin:48px 0 0;font:500 56px/1.2 var(--font-grotesk)" data-field="ah.where">Main Theater · Floor 2 · live-streamed to all offices</p>
+</section>
+<section style="display:grid;grid-template-columns:repeat(3,1fr);gap:32px">
+<div class="fc"><div class="l">Speaker</div><div class="v" style="font-size:52px" data-field="ah.spk">Sasha Vega · CEO</div></div>
+<div class="fc"><div class="l">Q&amp;A</div><div class="v" style="font-size:52px" data-field="ah.qa">Slido · code 4242</div></div>
+<div class="fc"><div class="l">Recording</div><div class="v" style="font-size:52px" data-field="ah.rec">Posted Monday</div></div>
+</section>
+</main>
+<footer class="foot"><div class="fc accent"><div class="l">Doors open</div><div class="v">Main Theater · 9:45 AM</div></div><div class="fc"><div class="l">Stream</div><div class="v" style="font-size:52px" data-field="ah.stream">Zoom · check email</div></div><div class="fc"><div class="l">Lunch after</div><div class="v" data-field="ah.lunch" style="font-size:52px">Cafeteria · floor 2</div></div></footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

@@ -1,0 +1,41 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Tasting Progress</title><style>
+:root{--bg:#1a1714;--fg:#f4ede1;--mute:#9a9388;--paper:#221d18;--rule:rgba(244,237,225,.12);--primary:#c9a55a;--accent:#b85042;--ready:#1cb47b;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:140px 200px 1fr 160px;row-gap:36px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between}
+.logo{font:600 72px/.95 var(--font-display);letter-spacing:-.02em}
+.tag{font:500 40px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute);margin-left:32px}
+.live{display:inline-flex;align-items:center;gap:16px;font:700 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--ready);margin-left:24px}
+.live::before{content:"";width:20px;height:20px;border-radius:50%;background:var(--ready);animation:p 1.6s ease-out infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(28,180,123,.7)}70%{box-shadow:0 0 0 20px rgba(28,180,123,0)}100%{box-shadow:0 0 0 0 rgba(28,180,123,0)}}
+.clock{font:600 88px/1 var(--font-grotesk);font-variant-numeric:tabular-nums}
+.hero{text-align:center;display:flex;flex-direction:column;justify-content:center}
+.hero .eye{font:600 44px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--primary)}
+.hero h1{margin:14px 0 0;font:400 144px/.95 var(--font-display);font-style:italic;letter-spacing:-.02em}
+.steps{display:grid;grid-template-columns:repeat(7,1fr);gap:24px;min-height:0}
+.s{display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:32px;padding:48px 24px;background:var(--paper);border:3px solid var(--rule);color:rgba(244,237,225,.55);text-align:center;gap:20px}
+.s.done{background:rgba(28,180,123,.16);border-color:var(--ready);color:var(--ready)}
+.s.now{background:var(--accent);border-color:var(--accent);color:#fff;transform:scale(1.04);box-shadow:0 24px 48px rgba(184,80,66,.35)}
+.s .num{font:900 88px/.9 var(--font-condensed);letter-spacing:-.02em}
+.s.now .num{color:#fff}
+.s .nm{font:600 36px/1.05 var(--font-display);font-style:italic}
+.s .status{font:600 24px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;opacity:.78}
+.foot{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.fc{padding:0 24px}.fc+.fc{border-left:1px solid var(--rule)}
+.fc .l{font:600 28px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.fc .v{margin-top:12px;font:500 56px/1 var(--font-display)}
+</style></head><body><div class="stage" id="stage"><div class="frame">
+<header class="top"><div><span class="logo" data-field="brand.name">The Brass Rail</span><span class="tag" data-field="brand.tag">Table 7 · 4 guests</span><span class="live">Kitchen sync</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">8:14 PM</span></div></header>
+<div class="hero"><div class="eye" data-field="hero.eye">Tasting menu · seven courses</div><h1 data-field="hero.t">Course IV — now firing.</h1></div>
+<main class="steps" data-widget="tasting" data-source="kds" data-feed="/tasting/table-7" data-refresh="5s">
+<div class="s done"><div class="num">I</div><div class="nm" data-field="t.0.nm">Amuse</div><div class="status">served · 7:42</div></div>
+<div class="s done"><div class="num">II</div><div class="nm" data-field="t.1.nm">Crudo</div><div class="status">served · 7:54</div></div>
+<div class="s done"><div class="num">III</div><div class="nm" data-field="t.2.nm">Pasta</div><div class="status">served · 8:06</div></div>
+<div class="s now"><div class="num">IV</div><div class="nm" data-field="t.3.nm">Fish</div><div class="status">firing now</div></div>
+<div class="s"><div class="num">V</div><div class="nm" data-field="t.4.nm">Meat</div><div class="status">next · ~10 min</div></div>
+<div class="s"><div class="num">VI</div><div class="nm" data-field="t.5.nm">Cheese</div><div class="status">queued</div></div>
+<div class="s"><div class="num">VII</div><div class="nm" data-field="t.6.nm">Sweet</div><div class="status">queued</div></div>
+</main>
+<footer class="foot"><div class="fc"><div class="l">Pace</div><div class="v" data-field="kpi.pace">12 min / course</div></div><div class="fc"><div class="l">Sommelier</div><div class="v" data-field="kpi.somm">Lior · pouring</div></div><div class="fc"><div class="l">Allergens noted</div><div class="v">Treenut · no eggs</div></div></footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

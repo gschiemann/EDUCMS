@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><title>Mobile Pickup</title><style>
+:root{--bg:#0e0d0b;--fg:#f1e8d6;--mute:#8c8473;--primary:#e85a1c;--accent:#f0c34a;--ready:#1cb47b;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif;}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:160px 1fr 200px;row-gap:36px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between}
+.logo{font:900 110px/1 var(--font-condensed);letter-spacing:-.02em;color:var(--primary);text-transform:uppercase}
+.sub{font:500 44px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute);margin-left:32px}
+.clock{font:600 110px/1 var(--font-grotesk);font-variant-numeric:tabular-nums}
+.clock .am{font-size:44px;color:var(--mute);margin-left:14px;vertical-align:.6em}
+.board{display:grid;grid-template-columns:1.6fr 1fr;gap:48px;min-height:0}
+.col{display:flex;flex-direction:column;gap:32px}
+.colhead{padding:32px 56px;border-radius:36px;display:flex;justify-content:space-between;align-items:center}
+.ready .colhead{background:linear-gradient(135deg,var(--ready) 0%,#0e7d54 100%)}
+.prep .colhead{background:rgba(241,232,214,.06);border:3px solid rgba(241,232,214,.14)}
+.colhead .h{font:800 88px/1 var(--font-condensed);text-transform:uppercase;letter-spacing:.06em}
+.ready .colhead .h{color:#fff}
+.colhead .ct{font:700 88px/1 var(--font-condensed)}
+.ready .colhead .ct{color:rgba(255,255,255,.78)}
+.prep .colhead .ct{color:var(--mute)}
+.live{display:inline-flex;align-items:center;gap:18px;font:700 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:#fff}
+.live::before{content:"";width:22px;height:22px;border-radius:50%;background:#fff;animation:p 1.6s ease-out infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(255,255,255,.7)}70%{box-shadow:0 0 0 22px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
+.tiles{flex:1;display:grid;gap:24px;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr}
+.tile{border-radius:32px;padding:36px 48px;display:flex;flex-direction:column;justify-content:space-between;min-height:0}
+.ready .tile{background:linear-gradient(135deg,var(--ready) 0%,#0e7d54 100%);color:#fff}
+.prep .tile{background:rgba(241,232,214,.04);border:3px solid rgba(241,232,214,.12);color:rgba(241,232,214,.82)}
+.num{font:800 200px/.85 var(--font-condensed);letter-spacing:-.04em}
+.nm{font:600 50px/1.05 var(--font-display);letter-spacing:-.01em}
+.meta{font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase}
+.ready .meta{color:rgba(255,255,255,.88)}
+.prep .meta{color:var(--mute)}
+.foot{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:32px}
+.fc{border:3px solid rgba(241,232,214,.12);border-radius:36px;padding:28px 44px;display:flex;flex-direction:column;justify-content:center;gap:10px}
+.fc .l{font:600 40px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.fc .v{font:700 96px/.92 var(--font-condensed);letter-spacing:-.02em}
+.fc.accent{background:linear-gradient(135deg,var(--primary) 0%,#b73c0c 100%);border:none}.fc.accent .l{color:rgba(255,255,255,.82)}.fc.accent .v{color:#fff}
+</style></head><body><div class="stage" id="stage"><div class="frame">
+<header class="top"><div><span class="logo" data-field="brand.name">EMBER &amp; OAK</span><span class="sub" data-field="brand.tagline">Mobile order pickup</span></div><div class="clock" data-source="local-time" data-refresh="60s"><span data-field="clock.hhmm">12:34</span><span class="am" data-field="clock.ampm">PM</span></div></header>
+<main class="board">
+<section class="col ready" data-widget="ready-queue" data-source="kiosk-api" data-feed="/queue/mobile-ready" data-refresh="2s"><div class="colhead"><div class="h">Ready · Shelf A</div><div class="live">Live</div></div>
+<div class="tiles">
+<div class="tile"><div class="num" data-field="ready.0.num">M-118</div><div><div class="nm" data-field="ready.0.name">Maya R.</div><div class="meta" data-field="ready.0.items">2 items · shelf A</div></div></div>
+<div class="tile"><div class="num" data-field="ready.1.num">M-119</div><div><div class="nm" data-field="ready.1.name">James K.</div><div class="meta" data-field="ready.1.items">3 items · shelf A</div></div></div>
+<div class="tile"><div class="num" data-field="ready.2.num">M-122</div><div><div class="nm" data-field="ready.2.name">Priya N.</div><div class="meta" data-field="ready.2.items">1 item · shelf B</div></div></div>
+<div class="tile"><div class="num" data-field="ready.3.num">M-124</div><div><div class="nm" data-field="ready.3.name">Marcus T.</div><div class="meta" data-field="ready.3.items">4 items · shelf B</div></div></div>
+</div></section>
+<section class="col prep" data-widget="prep-queue" data-source="kiosk-api" data-feed="/queue/mobile-preparing" data-refresh="2s"><div class="colhead"><div class="h">Preparing</div><div class="ct" data-field="prep.count">06</div></div>
+<div class="tiles">
+<div class="tile"><div class="num" data-field="prep.0.num">M-129</div><div class="meta" data-field="prep.0.eta">~3 min</div></div>
+<div class="tile"><div class="num" data-field="prep.1.num">M-130</div><div class="meta" data-field="prep.1.eta">~4 min</div></div>
+<div class="tile"><div class="num" data-field="prep.2.num">M-131</div><div class="meta" data-field="prep.2.eta">~5 min</div></div>
+<div class="tile"><div class="num" data-field="prep.3.num">M-132</div><div class="meta" data-field="prep.3.eta">~6 min</div></div>
+</div></section>
+</main>
+<footer class="foot">
+<div class="fc accent"><div class="l">App pickup</div><div class="v">Skip the line</div></div>
+<div class="fc"><div class="l">Avg pickup wait</div><div class="v"><span data-field="wait.minutes">3</span> <sub style="font:500 56px/1 var(--font-grotesk);color:var(--mute);margin-left:12px;vertical-align:baseline">min</sub></div></div>
+<div class="fc"><div class="l">Orders today</div><div class="v" data-field="kpi.served">412</div></div>
+</footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

@@ -1,0 +1,30 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Prix Fixe</title><style>
+:root{--bg:#1a1714;--fg:#f4ede1;--mute:#9a9388;--paper:#221d18;--rule:rgba(244,237,225,.12);--primary:#c9a55a;--accent:#b85042;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:200px 1fr 160px;row-gap:40px;padding:80px}
+.h{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid var(--rule);padding-bottom:24px}
+.brand{display:flex;align-items:baseline;gap:32px}
+.logo{font:600 88px/.95 var(--font-display);letter-spacing:-.02em}
+.tag{font:500 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.r{text-align:right}.r .e{font:600 30px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--primary)}.r .pr{margin-top:14px;font:600 96px/1 var(--font-display);font-style:italic;color:var(--accent)}
+.courses{display:grid;grid-template-rows:repeat(4,1fr);gap:24px;min-height:0}
+.row{display:grid;grid-template-columns:140px 1fr auto;align-items:center;gap:48px;padding:36px 56px;background:var(--paper);border:3px solid var(--rule);border-radius:36px}
+.row .num{font:700 144px/.9 var(--font-display);font-style:italic;color:var(--accent);letter-spacing:-.02em}
+.row .c{font:500 76px/1.05 var(--font-display);letter-spacing:-.02em}
+.row .c small{display:block;font:500 36px/1.2 var(--font-grotesk);color:var(--mute);margin-top:14px}
+.row .pair{font:600 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--primary);text-align:right}
+.foot{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.fc{padding:0 24px}.fc+.fc{border-left:1px solid var(--rule)}
+.fc .l{font:600 30px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.fc .v{margin-top:12px;font:500 56px/1 var(--font-display)}
+</style></head><body><div class="stage" id="stage"><div class="frame">
+<header class="h"><div class="brand"><span class="logo" data-field="brand.name">The Brass Rail</span><span class="tag" data-field="brand.tag">Prix fixe · 4 courses</span></div><div class="r"><div class="e" data-field="pf.eye">Tonight · Saturday</div><div class="pr" data-field="pf.price">$98 / guest</div></div></header>
+<main class="courses" data-widget="prix-fixe" data-source="toast" data-feed="/menu/prix-fixe">
+<div class="row"><span class="num" data-field="pf.0.num">I</span><span class="c"><span data-field="pf.0.t">Heirloom tomato carpaccio</span><small data-field="pf.0.sub">Basil oil, burrata, sourdough crumb</small></span><span class="pair" data-field="pf.0.pair">'22 Sancerre</span></div>
+<div class="row"><span class="num" data-field="pf.1.num">II</span><span class="c"><span data-field="pf.1.t">Spring pea agnolotti</span><small data-field="pf.1.sub">Brown butter, mint, parmigiano</small></span><span class="pair" data-field="pf.1.pair">'21 Trimbach Riesling</span></div>
+<div class="row"><span class="num" data-field="pf.2.num">III</span><span class="c"><span data-field="pf.2.t">Long Island duck breast</span><small data-field="pf.2.sub">Charred orange, Madeira jus, pommes Anna</small></span><span class="pair" data-field="pf.2.pair">'18 Tempier Bandol</span></div>
+<div class="row"><span class="num" data-field="pf.3.num">IV</span><span class="c"><span data-field="pf.3.t">Crème brûlée</span><small data-field="pf.3.sub">Vanilla bean, candied citrus, salted shortbread</small></span><span class="pair" data-field="pf.3.pair">Tokaji 5 Puttonyos</span></div>
+</main>
+<footer class="foot"><div class="fc"><div class="l">Wine pairing</div><div class="v" data-field="kpi.pair">+$58 · 4 pours</div></div><div class="fc"><div class="l">Vegetarian</div><div class="v" data-field="kpi.veg">Available · ask server</div></div><div class="fc"><div class="l">Tonight only</div><div class="v">5:30 — 10 PM</div></div></footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

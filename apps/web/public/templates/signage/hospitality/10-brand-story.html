@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><title>Brand Story</title><style>
+:root{--bg:#f3eee2;--ink:#1c1813;--mute:#7c7468;--paper:#fff;--rule:rgba(28,24,19,.14);--primary:#8a6a3b;--accent:#2d4a3a;--font-display:Georgia,"Didot",serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:140px 1fr 160px;row-gap:36px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:18px}
+.logo{font:600 72px/1 var(--font-display)}
+.eye{font:600 30px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--primary)}
+.hero{display:grid;grid-template-columns:1.4fr 1fr;gap:80px;align-items:center;min-height:0}
+.copy h1{margin:0;font:400 280px/.86 var(--font-display);font-style:italic;letter-spacing:-.03em}
+.copy h1 em{color:var(--primary);font-style:italic}
+.copy .lede{margin-top:48px;font:400 52px/1.3 var(--font-display);font-style:italic;color:var(--mute);max-width:2200px}
+.pillars{margin-top:48px;display:grid;grid-template-columns:repeat(3,1fr);gap:32px}
+.pill{padding:32px 36px;background:var(--paper);border-left:6px solid var(--primary)}
+.pill:nth-child(2){border-left-color:var(--accent)}
+.pill .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.pill .v{margin-top:14px;font:500 44px/1.1 var(--font-display);letter-spacing:-.02em}
+.img{position:relative;background-color:#d8cfbf;background-size:cover;background-position:center;border:4px dashed rgba(28,24,19,.22);display:flex;align-items:center;justify-content:center;height:1320px}
+.img[data-has-image="true"]{border:none}
+.img[data-has-image="true"] .ph{display:none}
+.ph{display:flex;flex-direction:column;align-items:center;gap:18px;color:var(--mute)}
+.ph svg{width:180px;height:180px;opacity:.5}
+.ph .lbl{font:700 44px/1 var(--font-grotesk);letter-spacing:.2em;text-transform:uppercase}
+.ph .dim{font:500 28px/1 var(--font-grotesk);letter-spacing:.18em;color:rgba(28,24,19,.4)}
+.foot{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.ft{padding:0 16px}
+.ft+.ft{border-left:1px solid var(--rule)}
+.ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.ft .v{margin-top:14px;font:500 48px/1 var(--font-display);letter-spacing:-.02em}
+</style></head><body><div class="stage" id="stage"><div class="frame">
+<header class="top"><div class="logo" data-field="brand.name">The Marlowe</div><div class="eye" data-field="story.eye">Our story · since 1929</div></header>
+<main class="hero">
+<div class="copy" data-widget="story"><h1><span data-field="story.t1">A house with a </span><em data-field="story.t2">history.</em></h1><p class="lede" data-field="story.lede">For nearly a century, the Marlowe has welcomed travelers, locals and the occasional poet to its corner of Queen Street. We keep the brass polished and the kitchen honest.</p>
+<div class="pillars">
+<div class="pill"><div class="k" data-field="story.p0.k">Built</div><div class="v" data-field="story.p0.v">1929 · the original lobby is still here, doors and all</div></div>
+<div class="pill"><div class="k" data-field="story.p1.k">Kitchen</div><div class="v" data-field="story.p1.v">James-Beard finalist Chef Okafor · sources within 60 miles</div></div>
+<div class="pill"><div class="k" data-field="story.p2.k">Care</div><div class="v" data-field="story.p2.v">128 humans on staff · most have been here longer than the new wing</div></div>
+</div></div>
+<div class="img" data-widget="image-slot" data-slot="story-hero" data-aspect="1400x1320" data-field="story.photo_url"><div class="ph"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="lbl">Heritage photo</div><div class="dim">1400 × 1320 · grayscale ideal</div></div></div>
+</main>
+<footer class="foot"><div class="ft"><div class="k">Awards</div><div class="v" data-field="foot.aw">AAA Five-Diamond · 12 years</div></div><div class="ft"><div class="k">Press</div><div class="v" data-field="foot.pr">Travel + Leisure Top 50</div></div><div class="ft"><div class="k">Owner</div><div class="v" data-field="foot.ow">Marlowe Family Hospitality</div></div><div class="ft"><div class="k">Visit</div><div class="v" data-field="foot.vt">marlowehotel.com</div></div></footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

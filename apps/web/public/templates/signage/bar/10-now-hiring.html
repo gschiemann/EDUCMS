@@ -1,0 +1,45 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Hiring</title><style>
+:root{--bg:#0c0807;--ink:#f1e3c8;--mute:#8a7a64;--paper:#181210;--rule:rgba(241,227,200,.14);--primary:#c2733a;--accent:#d8b35c;--ready:#3e8c5a;--font-display:"Didot",Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:160px 1fr 180px;row-gap:36px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:20px}
+.logo{font:600 80px/1 var(--font-display);font-style:italic}
+.tag{margin-left:32px;font:500 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.title{font:400 76px/.95 var(--font-display);font-style:italic;color:var(--accent)}
+.clock{font:500 76px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.foot{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.ft{padding:0 16px}.ft+.ft{border-left:1px solid var(--rule)}
+.ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.ft .v{margin-top:14px;font:500 44px/1 var(--font-display)}
+.ft .v.acc{color:var(--accent)}.ft .v.r{color:var(--ready)}
+
+.hero{display:grid;grid-template-columns:1.5fr 1fr;gap:64px;align-items:center;min-height:0}
+.copy .eye{font:700 48px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--accent);margin-bottom:36px;display:flex;align-items:center;gap:18px}
+.copy .eye::before{content:"";width:22px;height:22px;border-radius:50%;background:var(--ready);animation:p 1.6s ease-out infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(62,140,90,.7)}70%{box-shadow:0 0 0 22px rgba(62,140,90,0)}100%{box-shadow:0 0 0 0 rgba(62,140,90,0)}}
+.copy h1{margin:0;font:400 320px/.86 var(--font-display);font-style:italic;letter-spacing:-.03em}
+.copy h1 em{color:var(--primary)}
+.copy .lede{margin-top:40px;font:400 52px/1.22 var(--font-display);font-style:italic;color:var(--mute);max-width:2000px}
+.qr{background:#fff;border-radius:48px;padding:64px;display:flex;flex-direction:column;align-items:center;gap:36px}
+.qr-img{width:560px;height:560px;background:repeating-conic-gradient(#000 0 25%,#fff 0 50%);background-size:40px 40px;border:24px solid #fff;box-shadow:inset 0 0 0 12px #000}
+.qr .lbl{font:800 60px/1 var(--font-condensed);text-transform:uppercase;color:#0c0807}
+.qr .sub{font:500 32px/1.2 var(--font-grotesk);color:#555;text-align:center;max-width:540px}
+.jobs{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+.job{padding:30px 36px;border-radius:32px;background:var(--paper);border-left:6px solid var(--primary);display:flex;flex-direction:column;gap:14px}
+.job.feat{background:linear-gradient(135deg,var(--primary),#7a3a18);border:none;color:#fff}
+.job .r{font:700 44px/.95 var(--font-condensed);text-transform:uppercase}
+.job .p{font:600 64px/.95 var(--font-condensed);color:var(--accent)}
+.job.feat .p{color:#fff}
+.job .m{font:500 26px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.job.feat .m{color:rgba(255,255,255,.78)}
+</style></head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Now hiring · all shifts</span></div><div class="title" data-field="board.title">Join the crew.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="hero">
+<div class="copy"><div class="eye"><span data-field="hire.eye">Open positions · tips + wages</span></div><h1><span data-field="hire.t1">Pour with </span><em data-field="hire.t2">us.</em></h1><p class="lede" data-field="hire.lede">Hourly + tips that compete with anyone in town. Health benefits at full-time. Free shift meal. Real growth.</p></div>
+<div class="qr"><div class="qr-img"></div><div class="lbl" data-field="qr.cta">Apply in 5 min</div><div class="sub" data-field="qr.sub">Scan or ask the bartender — we hire on the spot most weeks.</div></div>
+</main>
+<footer class="jobs" data-widget="open-roles" data-source="ats" data-feed="/roles/open">
+<div class="job feat"><div class="r" data-field="j.0.r">Lead bartender</div><div class="p" data-field="j.0.p">$30–40/hr</div><div class="m" data-field="j.0.m">Full-time · weekend</div></div>
+<div class="job"><div class="r" data-field="j.1.r">Server · floor</div><div class="p" data-field="j.1.p">$28–38/hr</div><div class="m" data-field="j.1.m">PT or FT</div></div>
+<div class="job"><div class="r" data-field="j.2.r">Barback</div><div class="p" data-field="j.2.p">$18–22/hr</div><div class="m" data-field="j.2.m">Tips share</div></div>
+<div class="job"><div class="r" data-field="j.3.r">Door · security</div><div class="p" data-field="j.3.p">$22–26/hr</div><div class="m" data-field="j.3.m">Wed–Sat</div></div>
+</footer></div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

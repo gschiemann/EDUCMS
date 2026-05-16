@@ -1,0 +1,219 @@
+<!doctype html>
+<!--
+  QSR · Combos & Deals — 4-up combo board with bundled-savings callouts.
+  3840×2160 · POS-driven · self-contained.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Combos &amp; Deals</title>
+<style>
+  :root {
+    --brand-canvas:#0e0d0b; --brand-fg:#f1e8d6; --brand-mute:#8c8473;
+    --brand-primary:#e85a1c; --brand-accent:#f0c34a; --brand-success:#1cb47b; --brand-danger:#e3343a;
+    --font-display:Georgia,"Times New Roman",serif;
+    --font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif;
+  }
+  *,*::before,*::after { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:#000; overflow:hidden; height:100%; width:100%; font-family:var(--font-grotesk); }
+  .stage { position:absolute; left:50%; top:50%; width:3840px; height:2160px; background:var(--brand-canvas); color:var(--brand-fg); transform:translate(-50%,-50%) scale(var(--scale,1)); transform-origin:center center; overflow:hidden; }
+  .frame { position:absolute; top:0;right:0;bottom:0;left:0; display:grid; grid-template-rows: 140px 1fr 200px; row-gap:32px; padding:80px; }
+
+  .topbar { display:flex; align-items:center; justify-content:space-between; }
+  .brand { display:flex; align-items:baseline; gap:32px; }
+  .logo { font:900 110px/1 var(--font-condensed); letter-spacing:-0.02em; color:var(--brand-primary); text-transform:uppercase; }
+  .tag { font:500 44px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-mute); }
+  .hdr-title { font:600 80px/1 var(--font-display); letter-spacing:-0.02em; color:var(--brand-fg); }
+  .clock { font:600 110px/1 var(--font-grotesk); font-variant-numeric:tabular-nums; }
+  .clock .ampm { font-size:44px; color:var(--brand-mute); margin-left:14px; vertical-align:0.6em; }
+
+  /* 2×2 combos */
+  .combos { display:grid; grid-template-columns:repeat(2,1fr); grid-template-rows:repeat(2,1fr); gap:32px; min-height:0; }
+  .combo {
+    position:relative; display:grid; grid-template-columns: 700px 1fr;
+    background:rgba(241,232,214,0.04);
+    border:3px solid rgba(241,232,214,0.12);
+    border-radius:40px; overflow:hidden;
+  }
+  .combo-photo {
+    position:relative; background-color:#1a1815; background-size:cover; background-position:center;
+    border-right:3px dashed rgba(241,232,214,0.18);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .combo-photo[data-has-image="true"] { border-right:none; }
+  .combo-photo[data-has-image="true"] .ph { display:none; }
+  .ph { display:flex; flex-direction:column; align-items:center; gap:16px; color:var(--brand-mute); text-align:center; }
+  .ph svg { width:120px; height:120px; opacity:0.5; }
+  .ph-lbl { font:600 32px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:rgba(241,232,214,0.55); }
+  .combo-num { position:absolute; top:32px; left:36px; font:800 88px/1 var(--font-condensed); letter-spacing:-0.02em; color:rgba(255,255,255,0.95); text-shadow:0 4px 16px rgba(0,0,0,0.5); }
+  .save-badge {
+    position:absolute; top:32px; right:32px;
+    background:var(--brand-success); color:#fff;
+    font:800 40px/1 var(--font-condensed); letter-spacing:0.04em;
+    padding:18px 28px; border-radius:12px;
+    text-transform:uppercase;
+  }
+
+  .combo-body { padding:48px 56px; display:flex; flex-direction:column; justify-content:space-between; min-width:0; }
+  .combo-name { font:600 88px/0.95 var(--font-display); letter-spacing:-0.02em; color:var(--brand-fg); }
+  .combo-items { margin-top:28px; display:flex; flex-direction:column; gap:18px; }
+  .combo-row { display:flex; align-items:baseline; gap:20px; font:400 44px/1.15 var(--font-grotesk); color:rgba(241,232,214,0.85); }
+  .combo-row::before { content:""; flex:none; width:14px; height:14px; border-radius:50%; background:var(--brand-accent); margin-right:8px; transform:translateY(-6px); }
+  .combo-foot { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-top:32px; padding-top:32px; border-top:4px solid rgba(241,232,214,0.18); }
+  .price-stack { display:flex; flex-direction:column; }
+  .price-was { font:600 48px/1 var(--font-condensed); color:var(--brand-mute); text-decoration:line-through; }
+  .price-now { font:800 168px/0.9 var(--font-condensed); letter-spacing:-0.04em; color:var(--brand-primary); margin-top:6px; }
+  .price-now .dollar { font-size:0.42em; vertical-align:0.42em; margin-right:6px; }
+  .price-now .cents { font-size:0.42em; vertical-align:0.42em; margin-left:8px; }
+  .combo-cta { font:700 36px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-accent); align-self:flex-end; padding-bottom:18px; }
+
+  /* Bottom bar */
+  .bottom { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:32px; }
+  .bottom > div { border:3px solid rgba(241,232,214,0.12); border-radius:36px; padding:28px 44px; display:flex; flex-direction:column; justify-content:center; gap:10px; }
+  .lbl { font:600 40px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-mute); }
+  .val { font:700 96px/0.92 var(--font-condensed); letter-spacing:-0.02em; color:var(--brand-fg); }
+  .accent .val { color:var(--brand-accent); }
+  .success { background:linear-gradient(135deg,var(--brand-success) 0%,#0e7d54 100%); border:none; }
+  .success .lbl { color:rgba(255,255,255,0.85); }
+  .success .val { color:#fff; }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="frame">
+
+      <header class="topbar">
+        <div class="brand" data-widget="logo">
+          <div class="logo" data-field="brand.name">EMBER &amp; OAK</div>
+          <div class="hdr-title">Combos &amp; Deals</div>
+        </div>
+        <div class="clock" data-widget="clock" data-source="local-time" data-refresh="60s">
+          <span data-field="clock.hhmm">12:34</span><span class="ampm">PM</span>
+        </div>
+      </header>
+
+      <main class="combos" data-widget="combos" data-source="toast" data-feed="/menu/combos" data-refresh="60s">
+
+        <article class="combo">
+          <div class="combo-photo" data-slot="combo-1" data-aspect="700x782" data-field="combos.0.photo_url">
+            <div class="combo-num">01</div>
+            <div class="save-badge">Save $4.50</div>
+            <div class="ph"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="ph-lbl">700 × 782</div></div>
+          </div>
+          <div class="combo-body">
+            <div>
+              <div class="combo-name" data-field="combos.0.name">Brisket Stack Combo</div>
+              <div class="combo-items">
+                <div class="combo-row">Smoked Brisket Double Stack</div>
+                <div class="combo-row">Hand-cut fries with chipotle aioli</div>
+                <div class="combo-row">Choice of fountain drink</div>
+              </div>
+            </div>
+            <div class="combo-foot">
+              <div class="price-stack">
+                <div class="price-was" data-field="combos.0.was">$21.49 sep.</div>
+                <div class="price-now" data-field="combos.0.price"><span class="dollar">$</span>16<span class="cents">99</span></div>
+              </div>
+              <div class="combo-cta">Order at counter</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="combo">
+          <div class="combo-photo" data-slot="combo-2" data-aspect="700x782" data-field="combos.1.photo_url">
+            <div class="combo-num">02</div>
+            <div class="save-badge">Save $3.00</div>
+            <div class="ph"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="ph-lbl">700 × 782</div></div>
+          </div>
+          <div class="combo-body">
+            <div>
+              <div class="combo-name" data-field="combos.1.name">Smash Pack</div>
+              <div class="combo-items">
+                <div class="combo-row">Smash Single with secret sauce</div>
+                <div class="combo-row">Hand-cut fries</div>
+                <div class="combo-row">Lemonade (fresh-squeezed)</div>
+              </div>
+            </div>
+            <div class="combo-foot">
+              <div class="price-stack">
+                <div class="price-was" data-field="combos.1.was">$13.49 sep.</div>
+                <div class="price-now" data-field="combos.1.price"><span class="dollar">$</span>10<span class="cents">49</span></div>
+              </div>
+              <div class="combo-cta">Order at counter</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="combo">
+          <div class="combo-photo" data-slot="combo-3" data-aspect="700x782" data-field="combos.2.photo_url">
+            <div class="combo-num">03</div>
+            <div class="save-badge">Save $4.00</div>
+            <div class="ph"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="ph-lbl">700 × 782</div></div>
+          </div>
+          <div class="combo-body">
+            <div>
+              <div class="combo-name" data-field="combos.2.name">Crispy + Wedge</div>
+              <div class="combo-items">
+                <div class="combo-row">Buttermilk Crispy with hot honey</div>
+                <div class="combo-row">Wedge salad with blue cheese</div>
+                <div class="combo-row">Iced tea or lemonade</div>
+              </div>
+            </div>
+            <div class="combo-foot">
+              <div class="price-stack">
+                <div class="price-was" data-field="combos.2.was">$17.49 sep.</div>
+                <div class="price-now" data-field="combos.2.price"><span class="dollar">$</span>13<span class="cents">49</span></div>
+              </div>
+              <div class="combo-cta">Order at counter</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="combo">
+          <div class="combo-photo" data-slot="combo-4" data-aspect="700x782" data-field="combos.3.photo_url">
+            <div class="combo-num">04</div>
+            <div class="save-badge">Save $5.00</div>
+            <div class="ph"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="ph-lbl">700 × 782</div></div>
+          </div>
+          <div class="combo-body">
+            <div>
+              <div class="combo-name" data-field="combos.3.name">Family Bundle · 4</div>
+              <div class="combo-items">
+                <div class="combo-row">2 Smash Singles + 2 Crispy Sandwiches</div>
+                <div class="combo-row">Family fries (large) + house pickles</div>
+                <div class="combo-row">4 fountain drinks</div>
+              </div>
+            </div>
+            <div class="combo-foot">
+              <div class="price-stack">
+                <div class="price-was" data-field="combos.3.was">$36.99 sep.</div>
+                <div class="price-now" data-field="combos.3.price"><span class="dollar">$</span>31<span class="cents">99</span></div>
+              </div>
+              <div class="combo-cta">Order at counter</div>
+            </div>
+          </div>
+        </article>
+
+      </main>
+
+      <footer class="bottom">
+        <div class="success" data-widget="rewards">
+          <div class="lbl">Members save extra</div>
+          <div class="val">+10% off combos</div>
+        </div>
+        <div data-widget="now-serving" data-source="kiosk-api" data-feed="/queue/current" data-refresh="3s">
+          <div class="lbl">Now serving</div>
+          <div class="val" data-field="queue.current">B-118</div>
+        </div>
+        <div class="accent" data-widget="cta">
+          <div class="lbl">Add a side</div>
+          <div class="val">Cookie · $2</div>
+        </div>
+      </footer>
+
+    </div>
+  </div>
+  <script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script>
+</body>
+</html>

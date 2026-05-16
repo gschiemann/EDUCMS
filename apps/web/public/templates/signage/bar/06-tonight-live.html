@@ -1,0 +1,38 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Tonight</title><style>
+:root{--bg:#0c0807;--ink:#f1e3c8;--mute:#8a7a64;--paper:#181210;--rule:rgba(241,227,200,.14);--primary:#c2733a;--accent:#d8b35c;--ready:#3e8c5a;--font-display:"Didot",Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:160px 1fr 180px;row-gap:36px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:20px}
+.logo{font:600 80px/1 var(--font-display);font-style:italic}
+.tag{margin-left:32px;font:500 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.title{font:400 76px/.95 var(--font-display);font-style:italic;color:var(--accent)}
+.clock{font:500 76px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.foot{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.ft{padding:0 16px}.ft+.ft{border-left:1px solid var(--rule)}
+.ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.ft .v{margin-top:14px;font:500 44px/1 var(--font-display)}
+.ft .v.acc{color:var(--accent)}.ft .v.r{color:var(--ready)}
+
+.cols{display:grid;grid-template-columns:1.4fr 1fr;gap:48px;min-height:0}
+.feat{padding:48px 64px;background:var(--paper);border-radius:32px;display:flex;flex-direction:column;justify-content:center}
+.feat .eye{font:700 40px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--accent);margin-bottom:36px}
+.feat h1{margin:0;font:400 240px/.88 var(--font-display);font-style:italic;letter-spacing:-.03em}
+.feat h1 em{color:var(--primary)}
+.feat .meta{margin-top:40px;font:500 44px/1.2 var(--font-grotesk);color:var(--mute)}
+.feat .time{margin-top:48px;font:700 120px/1 var(--font-condensed);color:var(--accent)}
+.sched{display:flex;flex-direction:column;gap:18px}
+.ev{padding:28px 36px;background:var(--paper);border-left:6px solid var(--primary);display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:baseline}
+.ev.acc{border-left-color:var(--accent)}
+.ev .t{font:700 44px/1 var(--font-grotesk);color:var(--primary);font-variant-numeric:tabular-nums;width:150px}
+.ev .nm{font:600 40px/1.1 var(--font-display)}
+.ev .nm small{display:block;margin-top:6px;font:400 26px/1.15 var(--font-grotesk);color:var(--mute)}
+</style></head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Live · trivia · weekly</span></div><div class="title" data-field="board.title">Tonight at the bar.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols">
+<section class="feat" data-widget="featured-event" data-source="cms" data-feed="/events/tonight"><div class="eye" data-field="feat.eye">Headliner · live music</div><h1><span data-field="feat.t1">Ona &amp; the </span><em data-field="feat.t2">Last Train</em></h1><div class="meta" data-field="feat.meta">Charleston four-piece · acoustic blues · soulful with bite</div><div class="time" data-field="feat.time">9:30 PM</div></section>
+<section class="sched" data-widget="schedule" data-source="cms" data-feed="/events/week">
+<div class="ev acc"><div class="t" data-field="e.0.t">7:00</div><div class="nm" data-field="e.0.n">Doors open · happy hour ends<small>Bar food · drink specials</small></div></div>
+<div class="ev"><div class="t" data-field="e.1.t">7:30</div><div class="nm" data-field="e.1.n">Tuesday trivia · 5 rounds<small>Teams of 4 · prize: $50 bar tab</small></div></div>
+<div class="ev acc"><div class="t" data-field="e.2.t">9:30</div><div class="nm" data-field="e.2.n">Ona &amp; the Last Train · live<small>No cover · tip the band</small></div></div>
+<div class="ev"><div class="t" data-field="e.3.t">11:00</div><div class="nm" data-field="e.3.n">DJ Maria · late set<small>Soul · funk · until close</small></div></div>
+<div class="ev acc"><div class="t" data-field="e.4.t">1:30</div><div class="nm" data-field="e.4.n">Last call<small>Doors close 2 AM</small></div></div>
+</section></main><footer class="foot"><div class="ft"><div class="k">Cover</div><div class="v r" data-field="foot.cover">None tonight</div></div><div class="ft"><div class="k">Trivia tip</div><div class="v " data-field="foot.triviatip">Sign up at the bar</div></div><div class="ft"><div class="k">Tomorrow</div><div class="v acc" data-field="foot.tomorrow">Open mic · 8 PM</div></div><div class="ft"><div class="k">Bar manager</div><div class="v " data-field="foot.barmanager">Aria Sun</div></div></footer></div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

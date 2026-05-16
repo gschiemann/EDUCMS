@@ -1,0 +1,49 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Bottle Service</title><style>
+:root{--bg:#0c0807;--ink:#f1e3c8;--mute:#8a7a64;--paper:#181210;--rule:rgba(241,227,200,.14);--primary:#c2733a;--accent:#d8b35c;--ready:#3e8c5a;--font-display:"Didot",Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:160px 1fr 180px;row-gap:36px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:20px}
+.logo{font:600 80px/1 var(--font-display);font-style:italic}
+.tag{margin-left:32px;font:500 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.title{font:400 76px/.95 var(--font-display);font-style:italic;color:var(--accent)}
+.clock{font:500 76px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.foot{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.ft{padding:0 16px}.ft+.ft{border-left:1px solid var(--rule)}
+.ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.ft .v{margin-top:14px;font:500 44px/1 var(--font-display)}
+.ft .v.acc{color:var(--accent)}.ft .v.r{color:var(--ready)}
+
+.cols{display:grid;grid-template-columns:1.3fr 1fr;gap:48px;min-height:0}
+.col h2{margin:0 0 24px;font:700 52px/1 var(--font-grotesk);letter-spacing:.22em;text-transform:uppercase;color:var(--accent);border-bottom:3px solid var(--accent);padding-bottom:14px}
+.b{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:baseline;padding:24px 0;border-bottom:1px dashed var(--rule)}
+.b:last-child{border:none}
+.b .nm{font:600 48px/1.05 var(--font-display)}
+.b .nm small{display:block;margin-top:6px;font:400 28px/1.2 var(--font-display);font-style:italic;color:var(--mute)}
+.b .pr{font:600 48px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.table-list{display:flex;flex-direction:column;gap:18px}
+.t-row{padding:28px 36px;background:var(--paper);border-left:6px solid var(--ready);display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center}
+.t-row.open{border-left-color:var(--accent)}
+.t-row.next{border-left-color:var(--primary)}
+.t-row .who{font:600 44px/1.1 var(--font-display)}
+.t-row .who small{display:block;margin-top:6px;font:500 24px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.t-row .at{font:700 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.t-row.open .at{color:var(--accent)}
+.t-row.next .at{color:var(--primary)}
+</style></head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Tables &amp; bottle service</span></div><div class="title" data-field="board.title">Bottle list &amp; tables.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols">
+<section class="col" data-widget="bottles" data-source="toast" data-feed="/menu/bottles"><h2 data-field="col.0.h">Bottles</h2>
+<div class="b"><div class="nm" data-field="b.0.n">Veuve Clicquot <small>NV · Brut Yellow Label</small></div><div class="pr">$220</div></div>
+<div class="b"><div class="nm" data-field="b.1.n">Don Julio 1942 <small>Tequila · añejo · 750ml</small></div><div class="pr">$640</div></div>
+<div class="b"><div class="nm" data-field="b.2.n">Belvedere Vodka <small>Single Estate · 1L</small></div><div class="pr">$420</div></div>
+<div class="b"><div class="nm" data-field="b.3.n">Hennessy Paradis <small>Cognac · 750ml</small></div><div class="pr">$1,800</div></div>
+<div class="b"><div class="nm" data-field="b.4.n">Patrón Silver <small>Tequila · blanco · 1L</small></div><div class="pr">$360</div></div>
+<div class="b"><div class="nm" data-field="b.5.n">Macallan 18 <small>Sherry Oak · 750ml</small></div><div class="pr">$980</div></div>
+</section>
+<section class="col" data-widget="tables" data-source="opentable" data-feed="/reservations/tonight"><h2 data-field="col.1.h">Tables tonight</h2>
+<div class="table-list">
+<div class="t-row"><div class="who" data-field="t.0.who">Vance party<small data-field="t.0.size">6 · 9:00 PM</small></div><div class="at" data-field="t.0.at">Booth 4 · arrived</div></div>
+<div class="t-row next"><div class="who" data-field="t.1.who">Hartwell + Reyes<small data-field="t.1.size">8 · 9:30 PM</small></div><div class="at" data-field="t.1.at">Lounge · arriving</div></div>
+<div class="t-row open"><div class="who" data-field="t.2.who">Open table<small data-field="t.2.size">Walk-ins · 4 seats</small></div><div class="at" data-field="t.2.at">Bar · available</div></div>
+<div class="t-row"><div class="who" data-field="t.3.who">Davies birthday<small data-field="t.3.size">10 · 10:00 PM</small></div><div class="at" data-field="t.3.at">VIP · seated</div></div>
+<div class="t-row open"><div class="who" data-field="t.4.who">Open booth<small data-field="t.4.size">2 · 10:30 PM hold</small></div><div class="at" data-field="t.4.at">Booth 6</div></div>
+</div></section></main><footer class="foot"><div class="ft"><div class="k">Reservations</div><div class="v acc" data-field="foot.reservations">OpenTable · ext. 4</div></div><div class="ft"><div class="k">Cover</div><div class="v " data-field="foot.cover">None</div></div><div class="ft"><div class="k">Min spend</div><div class="v " data-field="foot.minspend">$120 / table</div></div><div class="ft"><div class="k">Server</div><div class="v " data-field="foot.server">Lior · tonight</div></div></footer></div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

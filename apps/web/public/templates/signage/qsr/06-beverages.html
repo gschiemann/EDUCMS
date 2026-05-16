@@ -1,0 +1,262 @@
+<!doctype html>
+<!--
+  QSR · Beverages — featured drink hero + 5-drink list with size/price matrix.
+  3840×2160 · POS-driven · self-contained.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Beverages</title>
+<style>
+  :root {
+    --brand-canvas:#0e0d0b; --brand-fg:#f1e8d6; --brand-mute:#8c8473;
+    --brand-primary:#e85a1c; --brand-accent:#f0c34a; --brand-success:#1cb47b;
+    --font-display:Georgia,"Times New Roman",serif;
+    --font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif;
+  }
+  *,*::before,*::after { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:#000; overflow:hidden; height:100%; width:100%; font-family:var(--font-grotesk); }
+  .stage { position:absolute; left:50%; top:50%; width:3840px; height:2160px; background:var(--brand-canvas); color:var(--brand-fg); transform:translate(-50%,-50%) scale(var(--scale,1)); transform-origin:center center; overflow:hidden; }
+  .frame { position:absolute; top:0;right:0;bottom:0;left:0; display:grid; grid-template-rows: 140px 1fr 200px; row-gap:32px; padding:80px; }
+
+  /* Topbar */
+  .topbar { display:flex; align-items:center; justify-content:space-between; }
+  .brand { display:flex; align-items:baseline; gap:32px; }
+  .logo { font:900 110px/1 var(--font-condensed); letter-spacing:-0.02em; color:var(--brand-primary); text-transform:uppercase; }
+  .hdr-title { font:600 80px/1 var(--font-display); letter-spacing:-0.02em; color:var(--brand-fg); }
+  .clock { font:600 110px/1 var(--font-grotesk); font-variant-numeric:tabular-nums; }
+  .clock .ampm { font-size:44px; color:var(--brand-mute); margin-left:14px; vertical-align:0.6em; }
+
+  /* Main */
+  .main { display:grid; grid-template-columns: 1700px 1fr; gap:32px; min-height:0; }
+
+  /* Hero featured drink */
+  .hero {
+    position:relative; border-radius:40px; overflow:hidden;
+    background-color:#1a1815; background-size:cover; background-position:center;
+    border:3px solid rgba(241,232,214,0.12);
+  }
+  .hero[data-has-image="true"] .hero-ph { display:none; }
+  .hero-ph { position:absolute; top:0;right:0;bottom:0;left:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; color:var(--brand-mute); }
+  .hero-ph svg { width:160px; height:160px; opacity:0.5; }
+  .hero-ph-lbl { font:600 36px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:rgba(241,232,214,0.55); }
+
+  .hero-tag {
+    position:absolute; top:48px; left:48px;
+    display:inline-flex; align-items:center; gap:18px;
+    padding:18px 28px; border-radius:14px;
+    background:var(--brand-accent); color:#0e0d0b;
+    font:800 40px/1 var(--font-condensed); letter-spacing:0.18em; text-transform:uppercase;
+  }
+  .hero-tag::before { content:""; width:14px; height:14px; border-radius:50%; background:#0e0d0b; }
+
+  .hero-overlay {
+    position:absolute; left:0; right:0; bottom:0;
+    padding:64px 64px 56px;
+    background:linear-gradient(180deg, rgba(14,13,11,0) 0%, rgba(14,13,11,0.92) 50%, rgba(14,13,11,0.98) 100%);
+  }
+  .hero-name { font:600 168px/0.92 var(--font-display); letter-spacing:-0.02em; color:#fff; }
+  .hero-desc { margin-top:24px; font:400 44px/1.25 var(--font-grotesk); color:rgba(255,255,255,0.78); max-width:1500px; }
+  .hero-foot { margin-top:36px; display:flex; align-items:flex-end; justify-content:space-between; gap:24px; }
+  .hero-sizes { display:flex; gap:36px; }
+  .hero-size { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
+  .hero-size-lbl { font:700 36px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-accent); }
+  .hero-size-price { font:800 96px/0.9 var(--font-condensed); letter-spacing:-0.02em; color:#fff; }
+  .hero-cta { font:700 36px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-accent); padding-bottom:18px; }
+
+  /* List column */
+  .list { display:flex; flex-direction:column; }
+  .list-head { display:flex; align-items:baseline; justify-content:space-between; padding:0 16px 18px; border-bottom:4px solid rgba(241,232,214,0.18); }
+  .list-title { font:700 56px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-fg); }
+  .list-sizes { display:flex; gap:64px; padding-right:24px; }
+  .col-lbl { font:700 32px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-mute); width:130px; text-align:center; }
+
+  .drinks { margin-top:24px; display:flex; flex-direction:column; gap:24px; flex:1; }
+  .drink {
+    display:grid; grid-template-columns: 220px 1fr auto; gap:32px; align-items:center;
+    padding:24px 24px;
+    background:rgba(241,232,214,0.04);
+    border:3px solid rgba(241,232,214,0.10);
+    border-radius:28px;
+  }
+  .drink.feat { border-color:var(--brand-accent); background:rgba(240,195,74,0.08); }
+  .drink-icon {
+    width:220px; height:220px; border-radius:20px;
+    background-color:#1a1815; background-size:cover; background-position:center;
+    border:2px dashed rgba(241,232,214,0.18);
+    display:flex; align-items:center; justify-content:center;
+    color:var(--brand-mute);
+  }
+  .drink-icon[data-has-image="true"] { border:none; }
+  .drink-icon svg { width:60px; height:60px; opacity:0.45; }
+  .drink-body { min-width:0; }
+  .drink-name { font:600 64px/1.0 var(--font-display); letter-spacing:-0.01em; color:var(--brand-fg); }
+  .drink-desc { margin-top:10px; font:400 32px/1.2 var(--font-grotesk); color:var(--brand-mute); }
+  .drink-prices { display:flex; gap:64px; padding-right:24px; }
+  .drink-price { width:130px; text-align:center; font:800 56px/1 var(--font-condensed); letter-spacing:-0.02em; color:var(--brand-fg); }
+  .drink-price.na { color:rgba(241,232,214,0.18); }
+
+  /* Bottom bar */
+  .bottom { display:grid; grid-template-columns: 1.4fr 1fr 1fr; gap:32px; }
+  .bottom > div { border:3px solid rgba(241,232,214,0.12); border-radius:36px; padding:28px 44px; display:flex; flex-direction:column; justify-content:center; gap:10px; }
+  .lbl { font:600 40px/1 var(--font-grotesk); letter-spacing:0.18em; text-transform:uppercase; color:var(--brand-mute); }
+  .val { font:700 96px/0.92 var(--font-condensed); letter-spacing:-0.02em; color:var(--brand-fg); }
+  .accent { background:var(--brand-accent); border:none; }
+  .accent .lbl { color:rgba(14,13,11,0.7); }
+  .accent .val { color:#0e0d0b; }
+  .success { background:linear-gradient(135deg,var(--brand-success) 0%,#0e7d54 100%); border:none; }
+  .success .lbl { color:rgba(255,255,255,0.85); }
+  .success .val { color:#fff; }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="frame">
+
+      <header class="topbar">
+        <div class="brand" data-widget="logo">
+          <div class="logo" data-field="brand.name">EMBER &amp; OAK</div>
+          <div class="hdr-title">Beverages</div>
+        </div>
+        <div class="clock" data-widget="clock" data-source="local-time" data-refresh="60s">
+          <span data-field="clock.hhmm">12:34</span><span class="ampm">PM</span>
+        </div>
+      </header>
+
+      <main class="main">
+
+        <!-- Hero featured -->
+        <section class="hero" data-widget="featured-drink" data-source="toast" data-feed="/menu/featured-beverage" data-slot="featured-drink" data-aspect="1700x1556" data-field="featured.photo_url">
+          <div class="hero-ph">
+            <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg>
+            <div class="hero-ph-lbl">1700 × 1556</div>
+          </div>
+          <div class="hero-tag">Featured · Today</div>
+          <div class="hero-overlay">
+            <div class="hero-name" data-field="featured.name">Brown Sugar Oat Cold Brew</div>
+            <div class="hero-desc" data-field="featured.description">Slow-steeped 18hr cold brew, brown-sugar syrup, and toasted oat milk over pebble ice. Smooth, slightly sweet, no bitter edge.</div>
+            <div class="hero-foot">
+              <div class="hero-sizes" data-widget="size-prices" data-field="featured.sizes">
+                <div class="hero-size"><div class="hero-size-lbl">12 oz</div><div class="hero-size-price">$5</div></div>
+                <div class="hero-size"><div class="hero-size-lbl">16 oz</div><div class="hero-size-price">$6</div></div>
+                <div class="hero-size"><div class="hero-size-lbl">24 oz</div><div class="hero-size-price">$7</div></div>
+              </div>
+              <div class="hero-cta">Order at counter</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Drinks list -->
+        <section class="list" data-widget="drinks" data-source="toast" data-feed="/menu/beverages" data-refresh="60s">
+          <div class="list-head">
+            <div class="list-title">Cold &amp; Iced</div>
+            <div class="list-sizes">
+              <div class="col-lbl">Sm</div>
+              <div class="col-lbl">Md</div>
+              <div class="col-lbl">Lg</div>
+            </div>
+          </div>
+
+          <div class="drinks">
+
+            <article class="drink">
+              <div class="drink-icon" data-slot="drink-1" data-aspect="220x220" data-field="drinks.0.photo_url">
+                <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="20" y="10" width="24" height="44" rx="4"/><path d="M20 22 L44 22"/></svg>
+              </div>
+              <div class="drink-body">
+                <div class="drink-name" data-field="drinks.0.name">Iced Vanilla Latte</div>
+                <div class="drink-desc" data-field="drinks.0.desc">Double shot, vanilla bean syrup, oat milk over ice.</div>
+              </div>
+              <div class="drink-prices" data-field="drinks.0.prices">
+                <div class="drink-price">$4</div>
+                <div class="drink-price">$5</div>
+                <div class="drink-price">$6</div>
+              </div>
+            </article>
+
+            <article class="drink">
+              <div class="drink-icon" data-slot="drink-2" data-aspect="220x220" data-field="drinks.1.photo_url">
+                <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="20" y="10" width="24" height="44" rx="4"/><path d="M20 22 L44 22"/></svg>
+              </div>
+              <div class="drink-body">
+                <div class="drink-name" data-field="drinks.1.name">House Lemonade</div>
+                <div class="drink-desc" data-field="drinks.1.desc">Fresh-squeezed daily, cane sugar, sparkling option.</div>
+              </div>
+              <div class="drink-prices" data-field="drinks.1.prices">
+                <div class="drink-price">$3</div>
+                <div class="drink-price">$4</div>
+                <div class="drink-price">$5</div>
+              </div>
+            </article>
+
+            <article class="drink feat">
+              <div class="drink-icon" data-slot="drink-3" data-aspect="220x220" data-field="drinks.2.photo_url">
+                <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="20" y="10" width="24" height="44" rx="4"/><path d="M20 22 L44 22"/></svg>
+              </div>
+              <div class="drink-body">
+                <div class="drink-name" data-field="drinks.2.name">Strawberry Refresher</div>
+                <div class="drink-desc" data-field="drinks.2.desc">Real strawberry purée, basil, sparkling water.</div>
+              </div>
+              <div class="drink-prices" data-field="drinks.2.prices">
+                <div class="drink-price na">—</div>
+                <div class="drink-price">$5</div>
+                <div class="drink-price">$6</div>
+              </div>
+            </article>
+
+            <article class="drink">
+              <div class="drink-icon" data-slot="drink-4" data-aspect="220x220" data-field="drinks.3.photo_url">
+                <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="20" y="10" width="24" height="44" rx="4"/><path d="M20 22 L44 22"/></svg>
+              </div>
+              <div class="drink-body">
+                <div class="drink-name" data-field="drinks.3.name">Iced Tea · Peach</div>
+                <div class="drink-desc" data-field="drinks.3.desc">House-brewed black tea with white peach.</div>
+              </div>
+              <div class="drink-prices" data-field="drinks.3.prices">
+                <div class="drink-price">$3</div>
+                <div class="drink-price">$4</div>
+                <div class="drink-price">$5</div>
+              </div>
+            </article>
+
+            <article class="drink">
+              <div class="drink-icon" data-slot="drink-5" data-aspect="220x220" data-field="drinks.4.photo_url">
+                <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="20" y="10" width="24" height="44" rx="4"/><path d="M20 22 L44 22"/></svg>
+              </div>
+              <div class="drink-body">
+                <div class="drink-name" data-field="drinks.4.name">Fountain Soda</div>
+                <div class="drink-desc" data-field="drinks.4.desc">Free refills · Coke products.</div>
+              </div>
+              <div class="drink-prices" data-field="drinks.4.prices">
+                <div class="drink-price">$2</div>
+                <div class="drink-price">$3</div>
+                <div class="drink-price">$4</div>
+              </div>
+            </article>
+
+          </div>
+        </section>
+
+      </main>
+
+      <footer class="bottom">
+        <div class="success" data-widget="rewards">
+          <div class="lbl">Members</div>
+          <div class="val">Free refills on app</div>
+        </div>
+        <div data-widget="now-serving" data-source="kiosk-api" data-feed="/queue/current" data-refresh="3s">
+          <div class="lbl">Now serving</div>
+          <div class="val" data-field="queue.current">B-118</div>
+        </div>
+        <div class="accent" data-widget="cta">
+          <div class="lbl">Try it</div>
+          <div class="val">Add a shot · $1</div>
+        </div>
+      </footer>
+
+    </div>
+  </div>
+  <script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script>
+</body>
+</html>

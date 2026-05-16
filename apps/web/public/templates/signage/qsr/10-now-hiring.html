@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><title>Now Hiring</title><style>
+:root{--bg:#0e0d0b;--fg:#f1e8d6;--mute:#8c8473;--primary:#e85a1c;--accent:#f0c34a;--ready:#1cb47b;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif;}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:140px 1fr 220px;row-gap:40px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between}
+.logo{font:900 110px/1 var(--font-condensed);color:var(--primary);text-transform:uppercase;letter-spacing:-.02em}
+.tag{font:500 44px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute);margin-left:32px}
+.tag .live{display:inline-flex;align-items:center;gap:18px;color:var(--ready)}
+.tag .live::before{content:"";width:18px;height:18px;border-radius:50%;background:var(--ready);animation:p 1.6s ease-out infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(28,180,123,.7)}70%{box-shadow:0 0 0 18px rgba(28,180,123,0)}100%{box-shadow:0 0 0 0 rgba(28,180,123,0)}}
+.hero{display:grid;grid-template-columns:1.5fr 1fr;gap:64px;min-height:0;align-items:center}
+.copy .eye{font:700 56px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--accent);margin-bottom:36px}
+.copy h1{margin:0;font:700 380px/.86 var(--font-condensed);letter-spacing:-.05em}
+.copy h1 em{font-style:normal;color:var(--primary)}
+.copy .lede{margin-top:40px;font:400 52px/1.22 var(--font-display);font-style:italic;color:var(--mute);max-width:2000px}
+.qr{background:#fff;border-radius:48px;padding:64px;display:flex;flex-direction:column;align-items:center;gap:36px}
+.qr-img{width:720px;height:720px;background:repeating-conic-gradient(#000 0 25%,#fff 0 50%);background-size:48px 48px;border:24px solid #fff;box-shadow:inset 0 0 0 12px #000}
+.qr .lbl{font:800 64px/1 var(--font-condensed);text-transform:uppercase;color:#0e0d0b}
+.qr .sub{font:500 38px/1.2 var(--font-grotesk);color:#555;text-align:center;max-width:600px}
+.jobs{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+.job{padding:30px 36px;border-radius:36px;border:3px solid rgba(241,232,214,.12);background:rgba(241,232,214,.04);display:flex;flex-direction:column;gap:14px}
+.job.feat{background:linear-gradient(135deg,var(--primary) 0%,#b73c0c 100%);border:none;color:#fff}
+.job .role{font:700 52px/.95 var(--font-condensed);text-transform:uppercase;letter-spacing:.02em}
+.job .pay{font:600 80px/.95 var(--font-condensed);color:var(--accent)}
+.job.feat .pay{color:#fff}
+.job .meta{font:500 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.job.feat .meta{color:rgba(255,255,255,.78)}
+</style></head><body><div class="stage" id="stage"><div class="frame">
+<header class="top"><div><span class="logo" data-field="brand.name">EMBER &amp; OAK</span><span class="tag" data-field="hire.eye"><span class="live">Now hiring</span></span></div><div class="tag" data-field="hire.location">Pier 47 · all shifts</div></header>
+<main class="hero">
+<div class="copy" data-widget="hero"><div class="eye" data-field="hero.eye">Real wages · real growth · real food</div><h1><span data-field="hero.t1">Join the </span><em data-field="hero.t2">crew.</em></h1><p class="lede" data-field="hero.lede">Hourly + tips + benefits. Free shift meal. Pay raises every six months you stick around.</p></div>
+<div class="qr" data-widget="qr-apply"><div class="qr-img"></div><div class="lbl" data-field="qr.cta">Apply in 5 min</div><div class="sub" data-field="qr.sub">Scan to apply on your phone or talk to a manager inside.</div></div>
+</main>
+<footer class="jobs" data-widget="job-list" data-source="ats" data-feed="/jobs/open">
+<div class="job feat"><div class="role" data-field="jobs.0.role">Line cook</div><div class="pay" data-field="jobs.0.pay">$22–26/hr</div><div class="meta" data-field="jobs.0.meta">Full-time · evenings</div></div>
+<div class="job"><div class="role" data-field="jobs.1.role">Drive-thru lead</div><div class="pay" data-field="jobs.1.pay">$20–24/hr</div><div class="meta" data-field="jobs.1.meta">Part- or full-time</div></div>
+<div class="job"><div class="role" data-field="jobs.2.role">Cashier · counter</div><div class="pay" data-field="jobs.2.pay">$19–22/hr</div><div class="meta" data-field="jobs.2.meta">Weekends · tips</div></div>
+<div class="job"><div class="role" data-field="jobs.3.role">Asst. shift manager</div><div class="pay" data-field="jobs.3.pay">$28–34/hr</div><div class="meta" data-field="jobs.3.meta">Salary + bonus path</div></div>
+</footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

@@ -1,0 +1,52 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Reservations</title><style>
+:root{--bg:#0e0d0b;--fg:#f1e8d6;--mute:#8c8473;--paper:#1a1815;--rule:rgba(241,232,214,.12);--primary:#e85a1c;--accent:#f0c34a;--ready:#1cb47b;--danger:#e3343a;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:140px 1fr 180px;row-gap:36px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:24px}
+.logo{font:600 80px/.95 var(--font-display);letter-spacing:-.02em}
+.tag{font:500 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute);margin-left:32px}
+.live{display:inline-flex;align-items:center;gap:16px;font:700 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-left:24px}
+.live::before{content:"";width:20px;height:20px;border-radius:50%;background:var(--accent);animation:p 1.6s ease-out infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(240,195,74,.7)}70%{box-shadow:0 0 0 20px rgba(240,195,74,0)}100%{box-shadow:0 0 0 0 rgba(240,195,74,0)}}
+.clock{font:600 88px/1 var(--font-grotesk);font-variant-numeric:tabular-nums}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:48px;min-height:0}
+.col{background:var(--paper);border:3px solid var(--rule);border-radius:36px;padding:48px 56px;display:flex;flex-direction:column}
+.col h2{margin:0 0 32px;font:700 72px/1 var(--font-condensed);text-transform:uppercase;color:var(--accent);letter-spacing:.02em}
+.col h2 .ct{font-size:52px;color:var(--mute);margin-left:24px}
+.list{display:flex;flex-direction:column;gap:14px;flex:1}
+.r{display:grid;grid-template-columns:140px 1fr auto auto;gap:32px;align-items:baseline;padding:24px 0;border-bottom:1px solid var(--rule)}
+.r:last-child{border:none}
+.r .t{font:700 56px/1 var(--font-condensed);color:var(--primary);font-variant-numeric:tabular-nums}
+.r .nm{font:600 44px/1.1 var(--font-display);letter-spacing:-.02em}
+.r .nm small{display:block;font:500 28px/1 var(--font-grotesk);color:var(--mute);margin-top:6px;letter-spacing:.18em;text-transform:uppercase}
+.r .pax{font:700 48px/1 var(--font-condensed);color:var(--fg);font-variant-numeric:tabular-nums}
+.r .status{font:700 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;padding:10px 16px;border-radius:8px}
+.r .status.seated{background:rgba(28,180,123,.16);color:var(--ready)}
+.r .status.confirmed{background:rgba(240,195,74,.16);color:var(--accent)}
+.r .status.late{background:rgba(227,52,58,.16);color:var(--danger)}
+.r .status.walk{background:rgba(241,232,214,.08);color:var(--mute)}
+.foot{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;border-top:2px solid var(--rule);padding-top:24px}
+.fc{border:3px solid var(--rule);border-radius:32px;padding:20px 36px;display:flex;flex-direction:column;gap:8px}
+.fc .l{font:600 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.fc .v{font:700 72px/.92 var(--font-condensed);letter-spacing:-.02em}
+</style></head><body><div class="stage" id="stage"><div class="frame">
+<header class="top"><div><span class="logo" data-field="brand.name">The Brass Rail</span><span class="tag" data-field="brand.tag">Host stand · reservations</span><span class="live">OpenTable · live</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">5:42 PM</span></div></header>
+<main class="cols">
+<section class="col" data-widget="reservations" data-source="opentable" data-feed="/reservations/today" data-refresh="60s"><h2>Tonight's book<span class="ct" data-field="res.count">42 covers</span></h2>
+<div class="list">
+<div class="r"><span class="t" data-field="r.0.t">5:30</span><span class="nm" data-field="r.0.nm">Castellanos · 2<small>booth 4 · anniversary</small></span><span class="pax" data-field="r.0.pax">2</span><span class="status seated" data-field="r.0.s">SEATED</span></div>
+<div class="r"><span class="t" data-field="r.1.t">5:45</span><span class="nm" data-field="r.1.nm">Reyes party<small>private dining · 12 top</small></span><span class="pax" data-field="r.1.pax">12</span><span class="status confirmed" data-field="r.1.s">CONFIRMED</span></div>
+<div class="r"><span class="t" data-field="r.2.t">6:00</span><span class="nm" data-field="r.2.nm">Liu · 4<small>window · vegetarian</small></span><span class="pax" data-field="r.2.pax">4</span><span class="status late" data-field="r.2.s">8 MIN LATE</span></div>
+<div class="r"><span class="t" data-field="r.3.t">6:15</span><span class="nm" data-field="r.3.nm">Park · 2<small>chef counter</small></span><span class="pax" data-field="r.3.pax">2</span><span class="status confirmed" data-field="r.3.s">CONFIRMED</span></div>
+<div class="r"><span class="t" data-field="r.4.t">6:30</span><span class="nm" data-field="r.4.nm">Hartwell rehearsal<small>private room · 18 top</small></span><span class="pax" data-field="r.4.pax">18</span><span class="status confirmed" data-field="r.4.s">CONFIRMED</span></div>
+</div></section>
+<section class="col" data-widget="waitlist" data-source="opentable" data-feed="/waitlist" data-refresh="60s"><h2>Waitlist<span class="ct" data-field="wl.count">3 parties</span></h2>
+<div class="list">
+<div class="r"><span class="t" data-field="w.0.t">~15</span><span class="nm" data-field="w.0.nm">Yamamoto · 2<small>arrived 5:32 · bar</small></span><span class="pax" data-field="w.0.pax">2</span><span class="status walk" data-field="w.0.s">QUOTED</span></div>
+<div class="r"><span class="t" data-field="w.1.t">~25</span><span class="nm" data-field="w.1.nm">Smith · 4<small>arrived 5:38 · outside</small></span><span class="pax" data-field="w.1.pax">4</span><span class="status walk" data-field="w.1.s">QUOTED</span></div>
+<div class="r"><span class="t" data-field="w.2.t">~30</span><span class="nm" data-field="w.2.nm">Davies · 6<small>arrived 5:41 · large party</small></span><span class="pax" data-field="w.2.pax">6</span><span class="status walk" data-field="w.2.s">QUOTED</span></div>
+</div></section>
+</main>
+<footer class="foot"><div class="fc"><div class="l">Covers tonight</div><div class="v" data-field="kpi.covers">142</div></div><div class="fc"><div class="l">Avg cover</div><div class="v" data-field="kpi.avg">$118</div></div><div class="fc"><div class="l">No-shows</div><div class="v" data-field="kpi.ns">3</div></div><div class="fc"><div class="l">Open tables</div><div class="v" style="color:var(--ready)" data-field="kpi.open">5 of 24</div></div></footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

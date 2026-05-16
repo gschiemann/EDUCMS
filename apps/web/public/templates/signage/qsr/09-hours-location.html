@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><title>Hours</title><style>
+:root{--bg:#0e0d0b;--fg:#f1e8d6;--mute:#8c8473;--primary:#e85a1c;--accent:#f0c34a;--ready:#1cb47b;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif;}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:160px 1fr 160px;row-gap:40px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between}
+.logo{font:900 110px/1 var(--font-condensed);letter-spacing:-.02em;color:var(--primary);text-transform:uppercase}
+.tag{font:500 44px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute);margin-left:32px}
+.clock{font:600 110px/1 var(--font-grotesk);font-variant-numeric:tabular-nums}
+.body{display:grid;grid-template-columns:1.2fr 1fr;gap:64px;min-height:0}
+.hours{padding:48px 56px;border-radius:40px;border:3px solid rgba(241,232,214,.12);background:rgba(241,232,214,.04);display:flex;flex-direction:column}
+.hours h2{margin:0 0 32px;font:700 80px/1 var(--font-condensed);text-transform:uppercase;color:var(--accent)}
+.hrow{display:grid;grid-template-columns:1fr auto;align-items:center;padding:28px 0;border-bottom:2px dashed rgba(241,232,214,.14);font:600 56px/1 var(--font-display)}
+.hrow:last-child{border:none}
+.hrow.today{background:rgba(240,195,74,.08);padding-left:32px;padding-right:32px;border-radius:16px;border:none}
+.hrow.today .d{color:var(--accent)}
+.hrow .d{color:var(--fg)}
+.hrow .v{font-family:var(--font-grotesk);font-weight:600;color:var(--mute);font-variant-numeric:tabular-nums}
+.hrow.today .v{color:var(--ready)}
+.right{display:flex;flex-direction:column;gap:32px}
+.info{padding:48px 56px;border-radius:40px;background:linear-gradient(135deg,var(--primary) 0%,#b73c0c 100%);color:#fff;display:flex;flex-direction:column;gap:20px}
+.info .l{font:600 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.82)}
+.info .v{font:700 88px/.95 var(--font-condensed);letter-spacing:-.02em}
+.info .a{font:500 44px/1.2 var(--font-display);font-style:italic;color:rgba(255,255,255,.92)}
+.contact{padding:48px 56px;border-radius:40px;border:3px solid rgba(241,232,214,.12);background:rgba(241,232,214,.04);display:flex;flex-direction:column;gap:20px}
+.contact .l{font:600 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.contact .v{font:700 80px/.95 var(--font-condensed)}
+.foot{display:grid;grid-template-columns:repeat(3,1fr);gap:32px}
+.fc{padding:24px 44px;border:3px solid rgba(241,232,214,.12);border-radius:36px;display:flex;flex-direction:column;justify-content:center;gap:10px}
+.fc .l{font:600 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.fc .v{font:700 72px/.92 var(--font-condensed)}
+</style></head><body><div class="stage" id="stage"><div class="frame">
+<header class="top"><div><span class="logo" data-field="brand.name">EMBER &amp; OAK</span><span class="tag" data-field="brand.tagline">Pier 47 location</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">12:34 PM</span></div></header>
+<main class="body">
+<section class="hours" data-widget="hours" data-source="cms" data-feed="/locations/hours"><h2>Hours</h2>
+<div class="hrow today"><span class="d" data-field="hours.0.day">Today · Saturday</span><span class="v" data-field="hours.0.v">10 AM – 11 PM</span></div>
+<div class="hrow"><span class="d" data-field="hours.1.day">Sunday</span><span class="v" data-field="hours.1.v">10 AM – 10 PM</span></div>
+<div class="hrow"><span class="d" data-field="hours.2.day">Mon – Thu</span><span class="v" data-field="hours.2.v">10 AM – 11 PM</span></div>
+<div class="hrow"><span class="d" data-field="hours.3.day">Fri</span><span class="v" data-field="hours.3.v">10 AM – 12 AM</span></div>
+<div class="hrow"><span class="d" data-field="hours.4.day">Drive-thru late night</span><span class="v" data-field="hours.4.v">until 1 AM Fri/Sat</span></div>
+</section>
+<aside class="right">
+<div class="info" data-widget="address" data-source="cms"><div class="l">Where</div><div class="v" data-field="addr.name">Pier 47 · Drive-thru</div><div class="a" data-field="addr.line">2418 Embarcadero, San Francisco</div></div>
+<div class="contact" data-widget="contact"><div class="l">Call us</div><div class="v" data-field="contact.phone">(415) 555-0142</div><div class="l" style="margin-top:18px">Order online</div><div class="v" style="font-size:56px;color:var(--accent)" data-field="contact.web">emberandoak.com</div></div>
+</aside>
+</main>
+<footer class="foot"><div class="fc"><div class="l">Drive-thru</div><div class="v" style="color:var(--ready)" data-field="status.drive">Open</div></div><div class="fc"><div class="l">Dine-in</div><div class="v" style="color:var(--ready)" data-field="status.dine">Open</div></div><div class="fc"><div class="l">Delivery</div><div class="v" style="color:var(--accent)" data-field="status.delivery">DoorDash · Uber · GH</div></div></footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

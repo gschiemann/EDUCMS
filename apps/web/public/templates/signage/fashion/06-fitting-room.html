@@ -1,0 +1,53 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Fitting</title><style>
+:root{--bg:#f5f1ec;--fg:#1a1714;--mute:#7a7368;--paper:#fff;--rule:rgba(26,23,20,.12);--primary:#1a1714;--accent:#a07a4a;--gold:#c79335;--blush:#d4a8a0;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk);letter-spacing:.02em}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;padding:80px;row-gap:40px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--fg);padding-bottom:24px}
+.logo{font:400 88px/.95 var(--font-display);font-style:italic;letter-spacing:0}
+.tag{font:500 32px/1 var(--font-grotesk);letter-spacing:.4em;text-transform:uppercase;color:var(--mute);margin-left:32px}
+.clock{font:400 72px/1 var(--font-display);font-style:italic;font-variant-numeric:tabular-nums}
+.foot{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:32px;border-top:1px solid var(--fg);padding-top:24px}
+.fc{padding:24px 44px;display:flex;flex-direction:column;gap:10px}
+.fc+.fc{border-left:1px solid var(--rule)}
+.fc .l{font:600 28px/1 var(--font-grotesk);letter-spacing:.4em;text-transform:uppercase;color:var(--mute)}
+.fc .v{font:400 56px/1 var(--font-display);font-style:italic}
+.fc.dark{background:var(--fg);color:#fff;border-radius:24px;border:none}
+.fc.dark .l{color:rgba(255,255,255,.7)}
+.ph{position:relative;background:#e6e0d6;background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;border:2px dashed rgba(26,23,20,.22)}
+.ph-i{display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--mute)}
+.ph-i svg{width:120px;height:120px;opacity:.5}
+.ph-i .l{font:600 32px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase}
+.ph-i .d{font:500 26px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:rgba(26,23,20,.4)}
+</style></head><body><div class="stage" id="stage"><div class="frame" style="async function readFile(path) {
+    return rpc({ op: 'readFile', path: String(path) });
+  }"><header class="top"><div><span class="logo" data-field="brand.name">MAISON ÉTERNEL</span><span class="tag" data-field="brand.tag">Fitting rooms</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">11:42</span></div></header>
+<main style="display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(3,1fr);gap:24px;min-height:0">
+
+<article style="background:var(--paper);border-radius:24px;padding:48px 64px;display:flex;align-items:center;justify-content:space-between">
+<div data-field="r.0.n" style="font:400 200px/.9 var(--font-display);font-style:italic;letter-spacing:-.04em">Room 1</div>
+<div data-field="r.0.s" style="font:600 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--accent)">Available</div>
+</article>
+<article style="background:var(--paper);border-radius:24px;padding:48px 64px;display:flex;align-items:center;justify-content:space-between">
+<div data-field="r.1.n" style="font:400 200px/.9 var(--font-display);font-style:italic;letter-spacing:-.04em">Room 2</div>
+<div data-field="r.1.s" style="font:600 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--accent)">Available</div>
+</article>
+<article style="background:#e9e3d8;border-radius:24px;padding:48px 64px;display:flex;align-items:center;justify-content:space-between">
+<div data-field="r.2.n" style="font:400 200px/.9 var(--font-display);font-style:italic;letter-spacing:-.04em">Room 3</div>
+<div data-field="r.2.s" style="font:600 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)">In use</div>
+</article>
+<article style="background:#e9e3d8;border-radius:24px;padding:48px 64px;display:flex;align-items:center;justify-content:space-between">
+<div data-field="r.3.n" style="font:400 200px/.9 var(--font-display);font-style:italic;letter-spacing:-.04em">Room 4</div>
+<div data-field="r.3.s" style="font:600 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)">In use</div>
+</article>
+<article style="background:var(--paper);border-radius:24px;padding:48px 64px;display:flex;align-items:center;justify-content:space-between">
+<div data-field="r.4.n" style="font:400 200px/.9 var(--font-display);font-style:italic;letter-spacing:-.04em">Room 5</div>
+<div data-field="r.4.s" style="font:600 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--accent)">Available</div>
+</article>
+<article style="background:var(--blush);border-radius:24px;padding:48px 64px;display:flex;align-items:center;justify-content:space-between">
+<div data-field="r.5.n" style="font:400 200px/.9 var(--font-display);font-style:italic;letter-spacing:-.04em">Room 6</div>
+<div data-field="r.5.s" style="font:600 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:#7a3a32">Stylist appt · Park</div>
+</article>
+</main>
+<footer class="foot"><div class="fc dark"><div class="l">Need a stylist?</div><div class="v" style="font-size:48px" data-field="ss">Pull the cord · we'll come to you</div></div><div class="fc"><div class="l">Avg fitting</div><div class="v" data-field="af">22 min</div></div><div class="fc"><div class="l">Hold a piece</div><div class="v" style="font-size:48px">7 days · ask any stylist</div></div></footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

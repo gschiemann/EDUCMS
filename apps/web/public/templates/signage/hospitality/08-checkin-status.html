@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><title>Check-in</title><style>
+:root{--bg:#f7f2e8;--ink:#1c1813;--mute:#7c7468;--paper:#fff;--rule:rgba(28,24,19,.14);--primary:#8a6a3b;--ready:#3e7a4a;--accent:#b85042;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:180px 1fr 160px;row-gap:32px;padding:60px 96px}
+.top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;border-bottom:2px solid var(--rule);padding-bottom:24px}
+.crest .name{font:600 76px/.95 var(--font-display)}
+.crest .sub{margin-top:10px;display:block;font:500 26px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.title{text-align:center;font:400 96px/.95 var(--font-display);font-style:italic}
+.clock{text-align:right;font:500 76px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.clock small{font-size:30px;color:var(--mute);margin-left:12px;vertical-align:.5em}
+.board{display:grid;grid-template-columns:1.2fr 1fr;gap:36px;min-height:0}
+.col h2{margin:0 0 20px;font:700 56px/1 var(--font-grotesk);letter-spacing:.2em;text-transform:uppercase}
+.col h2 .live{display:inline-flex;align-items:center;gap:14px;margin-left:18px;font:600 32px/1 var(--font-grotesk);color:var(--ready)}
+.col h2 .live::before{content:"";width:18px;height:18px;border-radius:50%;background:var(--ready);animation:p 1.6s ease-out infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(62,122,74,.7)}70%{box-shadow:0 0 0 18px rgba(62,122,74,0)}100%{box-shadow:0 0 0 0 rgba(62,122,74,0)}}
+.row{display:grid;grid-template-columns:240px 1fr 240px;align-items:center;gap:24px;padding:24px 32px;background:var(--paper);border-left:6px solid var(--primary);margin-bottom:14px}
+.row.ready{border-left-color:var(--ready)}
+.row.prep{border-left-color:var(--accent)}
+.row .nm{font:600 48px/1.05 var(--font-display)}
+.row .nm small{display:block;margin-top:6px;font:500 26px/1 var(--font-grotesk);letter-spacing:.2em;text-transform:uppercase;color:var(--mute)}
+.row .ts{font:600 44px/1 var(--font-display);color:var(--primary);font-variant-numeric:tabular-nums}
+.row .st{text-align:right;font:700 28px/1 var(--font-grotesk);letter-spacing:.2em;text-transform:uppercase}
+.row.ready .st{color:var(--ready)}
+.row.prep .st{color:var(--accent)}
+.foot{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.ft{padding:0 16px}
+.ft+.ft{border-left:1px solid var(--rule)}
+.ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.ft .v{margin-top:14px;font:500 52px/1 var(--font-display);letter-spacing:-.02em}
+</style></head><body><div class="stage" id="stage"><div class="frame">
+<header class="top"><div class="crest"><div class="name" data-field="brand.name">The Marlowe</div><div class="sub" data-field="brand.tagline">Front Desk</div></div><div class="title" data-field="board.title">Check-in &amp; out.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">3:42</span><small data-field="clock.ampm">PM</small></div></header>
+<main class="board">
+<section class="col" data-widget="ready-rooms" data-source="opera-pms" data-feed="/rooms/ready" data-refresh="2m"><h2>Ready for arrivals <span class="live">Live</span></h2>
+<div class="row ready"><div class="ts" data-field="ready.0.guest">Nakamura family</div><div class="nm" data-field="ready.0.room">Magnolia · 412 <small>King suite · pool view</small></div><div class="st" data-field="ready.0.st">Ready · key cut</div></div>
+<div class="row ready"><div class="ts" data-field="ready.1.guest">Park · 2 nights</div><div class="nm" data-field="ready.1.room">Cypress · 308 <small>Double queen</small></div><div class="st" data-field="ready.1.st">Ready</div></div>
+<div class="row ready"><div class="ts" data-field="ready.2.guest">Vargas · honeymoon</div><div class="nm" data-field="ready.2.room">Cypress · 610 <small>Premier suite · balcony</small></div><div class="st" data-field="ready.2.st">Ready · welcome amenity</div></div>
+<div class="row prep"><div class="ts" data-field="prep.0.guest">Olusegun · 4 nights</div><div class="nm" data-field="prep.0.room">Magnolia · 405 <small>King · garden</small></div><div class="st" data-field="prep.0.st">Cleaning · ~15 min</div></div>
+<div class="row prep"><div class="ts" data-field="prep.1.guest">Hartwell party · 18</div><div class="nm" data-field="prep.1.room">Ballroom block <small>Suites 511–528</small></div><div class="st" data-field="prep.1.st">Turning over</div></div>
+</section>
+<section class="col" data-widget="departures" data-source="opera-pms" data-feed="/property/departures-today"><h2>Departures today</h2>
+<div class="row"><div class="ts" data-field="dep.0.guest">Brennan · 312</div><div class="nm" data-field="dep.0.room">Express checkout <small>Bill emailed</small></div><div class="st" data-field="dep.0.st">11 AM</div></div>
+<div class="row"><div class="ts" data-field="dep.1.guest">Liu · 419</div><div class="nm" data-field="dep.1.room">Luggage hold · 4 PM <small>Sundown flight</small></div><div class="st" data-field="dep.1.st">Held</div></div>
+<div class="row"><div class="ts" data-field="dep.2.guest">Conroy · 605</div><div class="nm" data-field="dep.2.room">Late check-out 1 PM <small>Comp</small></div><div class="st" data-field="dep.2.st">Approved</div></div>
+<div class="row"><div class="ts" data-field="dep.3.guest">Park · 308</div><div class="nm" data-field="dep.3.room">Standard 11 AM</div><div class="st" data-field="dep.3.st">Pending</div></div>
+</section>
+</main>
+<footer class="foot"><div class="ft"><div class="k">Arrivals today</div><div class="v"><span data-field="kpi.arrivals">38</span></div></div><div class="ft"><div class="k">Departures</div><div class="v"><span data-field="kpi.departures">24</span></div></div><div class="ft"><div class="k">Occupancy tonight</div><div class="v"><span data-field="kpi.occupancy">94</span>%</div></div><div class="ft"><div class="k">Front desk</div><div class="v" data-field="foot.fd">24 hr · ext. 0</div></div></footer>
+</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

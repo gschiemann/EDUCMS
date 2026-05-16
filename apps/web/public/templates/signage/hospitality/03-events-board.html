@@ -1,0 +1,197 @@
+<!doctype html>
+<!--
+  HOSPITALITY 03 — Events Board (group / wedding / conference)
+  3840×2160 · 65" 4K · airport-board energy for property events today.
+  REBRAND: :root tokens. FEEDS: Opera/Mews group blocks, Cvent for corp,
+  in-house BEO sheets.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Today's Events</title>
+<style>
+  :root {
+    --brand-canvas:  #0d1117;
+    --brand-ink:     #f7f3ea;
+    --brand-mute:    #9aa3b2;
+    --brand-paper:   #161c25;
+    --brand-rule:    rgba(247,243,234,0.12);
+    --brand-primary: #d4a24c;     /* warm amber */
+    --brand-accent:  #46a08a;     /* muted teal */
+    --brand-live:    #e26a4f;     /* live red */
+    --font-display:  Georgia, "Times New Roman", serif;
+    --font-grotesk:  -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --font-mono:     "SF Mono", Menlo, Consolas, monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden}
+  body{font-family:var(--font-grotesk);-webkit-font-smoothing:antialiased}
+  .stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--brand-canvas);color:var(--brand-ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+  .frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows: 200px 1fr 180px;row-gap:32px;padding:60px 96px}
+
+  /* HEADER */
+  .header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;border-bottom:2px solid var(--brand-rule);padding-bottom:24px}
+  .crest .name{font:600 80px/0.95 var(--font-display);letter-spacing:-0.02em}
+  .crest .sub{font:500 26px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--brand-mute);margin-top:10px;display:block}
+  .title-block{text-align:center}
+  .title-block .eye{font:600 28px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--brand-primary)}
+  .title-block .title{margin-top:14px;font:400 80px/0.95 var(--font-display);font-style:italic}
+  .clock{text-align:right}
+  .clock .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.3em;text-transform:uppercase;color:var(--brand-mute);margin-bottom:8px}
+  .clock .v{font:500 76px/1 var(--font-display);letter-spacing:-0.02em;font-variant-numeric:tabular-nums}
+  .clock .v small{font:500 30px/1 var(--font-grotesk);color:var(--brand-mute);margin-left:10px;vertical-align:0.4em}
+
+  /* BOARD */
+  .board{display:grid;grid-template-rows: auto 1fr;gap:18px;min-height:0}
+  .colhead{display:grid;grid-template-columns: 240px 1.7fr 1fr 1fr 0.8fr 240px;gap:32px;padding:16px 24px;border-bottom:1px solid var(--brand-rule)}
+  .colhead div{font:700 26px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--brand-mute)}
+  .rows{display:grid;grid-template-rows:repeat(6,1fr);gap:14px;min-height:0}
+  .row{display:grid;grid-template-columns: 240px 1.7fr 1fr 1fr 0.8fr 240px;gap:32px;align-items:center;padding:24px;background:var(--brand-paper);border-left:6px solid transparent}
+  .row.live   { border-left-color: var(--brand-live); }
+  .row.next   { border-left-color: var(--brand-primary); }
+  .row.upcoming{ border-left-color: var(--brand-accent); }
+  .time{font:600 56px/1 var(--font-mono);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+  .event .name{font:600 56px/1 var(--font-display);letter-spacing:-.02em}
+  .event .org {margin-top:8px;font:400 28px/1.1 var(--font-grotesk);color:var(--brand-mute)}
+  .room{font:600 44px/1 var(--font-display)}
+  .head{font:600 28px/1.15 var(--font-grotesk);color:var(--brand-mute)}
+  .pax{font:600 48px/1 var(--font-display);font-variant-numeric:tabular-nums}
+  .status-cell{display:flex;justify-content:flex-end}
+  .status{display:inline-flex;align-items:center;gap:14px;padding:14px 24px;border-radius:6px;font:700 24px/1 var(--font-grotesk);letter-spacing:.28em;text-transform:uppercase}
+  .status.live{background:var(--brand-live);color:#fff}
+  .status.live .dot{width:14px;height:14px;border-radius:50%;background:#fff;animation:blink 1.2s infinite}
+  @keyframes blink{50%{opacity:.3}}
+  .status.next{background:transparent;border:2px solid var(--brand-primary);color:var(--brand-primary)}
+  .status.upcoming{background:transparent;border:2px solid var(--brand-mute);color:var(--brand-mute)}
+
+  /* FOOTER */
+  .footer{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:28px;border-top:2px solid var(--brand-rule);padding-top:24px}
+  .ft{padding:0 16px}
+  .ft + .ft{border-left:1px solid var(--brand-rule)}
+  .ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--brand-mute)}
+  .ft .v{margin-top:14px;font:500 48px/1 var(--font-display);letter-spacing:-.02em}
+  .ft.note .v{font-size:32px;font-style:italic;line-height:1.15;color:var(--brand-mute)}
+</style>
+</head>
+<body>
+<div class="stage" id="stage"><div class="frame">
+
+  <header class="header">
+    <div class="crest" data-widget="logo">
+      <div class="name" data-field="brand.name">The Marlowe</div>
+      <div class="sub"  data-field="brand.tagline">Events &amp; Catering · Charleston</div>
+    </div>
+    <div class="title-block">
+      <div class="eye" data-field="board.eye">Saturday · May 9</div>
+      <div class="title" data-field="board.title">Today's events.</div>
+    </div>
+    <div class="clock" data-widget="clock" data-source="local-time" data-refresh="60s">
+      <div class="k">Now</div>
+      <div class="v"><span data-field="clock.hhmm">3:42</span><small data-field="clock.ampm">PM</small></div>
+    </div>
+  </header>
+
+  <section class="board" data-widget="event-feed" data-source="opera-pms" data-feed="/events/today" data-refresh="2m">
+    <div class="colhead">
+      <div>Time</div><div>Event</div><div>Room</div><div>Host</div><div>Pax</div><div></div>
+    </div>
+    <div class="rows">
+      <article class="row live">
+        <div class="time" data-field="events.0.time">3:00 PM</div>
+        <div class="event"><div class="name" data-field="events.0.name">Carolina Tech Summit · Day 2</div><div class="org" data-field="events.0.org">Carolina Tech Council</div></div>
+        <div class="room" data-field="events.0.room">Grand Ballroom</div>
+        <div class="head" data-field="events.0.host">Margaux Bell · BEO</div>
+        <div class="pax"  data-field="events.0.pax">420</div>
+        <div class="status-cell"><div class="status live"><span class="dot"></span>Live</div></div>
+      </article>
+
+      <article class="row next">
+        <div class="time" data-field="events.1.time">5:30 PM</div>
+        <div class="event"><div class="name" data-field="events.1.name">Hartwell &amp; Reyes · Cocktails</div><div class="org" data-field="events.1.org">Private wedding party</div></div>
+        <div class="room" data-field="events.1.room">Magnolia Garden</div>
+        <div class="head" data-field="events.1.host">David Liu</div>
+        <div class="pax"  data-field="events.1.pax">180</div>
+        <div class="status-cell"><div class="status next">Next · 1h 48m</div></div>
+      </article>
+
+      <article class="row upcoming">
+        <div class="time" data-field="events.2.time">6:30 PM</div>
+        <div class="event"><div class="name" data-field="events.2.name">Hartwell &amp; Reyes · Reception</div><div class="org" data-field="events.2.org">Private wedding party</div></div>
+        <div class="room" data-field="events.2.room">Grand Ballroom</div>
+        <div class="head" data-field="events.2.host">David Liu</div>
+        <div class="pax"  data-field="events.2.pax">180</div>
+        <div class="status-cell"><div class="status upcoming">6:30 PM</div></div>
+      </article>
+
+      <article class="row upcoming">
+        <div class="time" data-field="events.3.time">7:00 PM</div>
+        <div class="event"><div class="name" data-field="events.3.name">Yamamoto Foundation Dinner</div><div class="org" data-field="events.3.org">Charleston Symphony Gala</div></div>
+        <div class="room" data-field="events.3.room">Atlas Private Room</div>
+        <div class="head" data-field="events.3.host">Chef Okafor</div>
+        <div class="pax"  data-field="events.3.pax">42</div>
+        <div class="status-cell"><div class="status upcoming">7:00 PM</div></div>
+      </article>
+
+      <article class="row upcoming">
+        <div class="time" data-field="events.4.time">8:00 PM</div>
+        <div class="event"><div class="name" data-field="events.4.name">Magnolia Quartet · Live Jazz</div><div class="org" data-field="events.4.org">Open to all guests</div></div>
+        <div class="room" data-field="events.4.room">Magnolia Lounge</div>
+        <div class="head" data-field="events.4.host">F&amp;B</div>
+        <div class="pax"  data-field="events.4.pax">85</div>
+        <div class="status-cell"><div class="status upcoming">8:00 PM</div></div>
+      </article>
+
+      <article class="row upcoming">
+        <div class="time" data-field="events.5.time">9:00 PM</div>
+        <div class="event"><div class="name" data-field="events.5.name">Sundown Yoga · Rooftop</div><div class="org" data-field="events.5.org">Cypress Spa programming</div></div>
+        <div class="room" data-field="events.5.room">Rooftop Terrace</div>
+        <div class="head" data-field="events.5.host">Aria Patel</div>
+        <div class="pax"  data-field="events.5.pax">24</div>
+        <div class="status-cell"><div class="status upcoming">9:00 PM</div></div>
+      </article>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="ft note" data-widget="rich-text" data-source="cms">
+      <div class="k">For our guests</div>
+      <div class="v" data-field="note.text">Quiet hours after 11 PM. Wedding overflow parking via the Queen St lot.</div>
+    </div>
+    <div class="ft" data-widget="occupancy" data-source="opera-pms" data-feed="/property/occupancy">
+      <div class="k">Occupancy</div>
+      <div class="v"><span data-field="occupancy.percent">94</span>%</div>
+    </div>
+    <div class="ft" data-widget="weather" data-source="weatherapi" data-feed="/weather/now">
+      <div class="k">Outside</div>
+      <div class="v"><span data-field="weather.temp_f">76</span>° &amp; <span data-field="weather.cond">clear</span></div>
+    </div>
+    <div class="ft" data-widget="contact">
+      <div class="k">Banquet captain</div>
+      <div class="v" data-field="contact.line">ext. 7 · Margaux</div>
+    </div>
+  </footer>
+
+</div></div>
+
+<script type="application/json" id="signage-feed-defaults">
+{
+  "brand":{"name":"The Marlowe","tagline":"Events & Catering · Charleston"},
+  "board":{"eye":"Saturday · May 9","title":"Today's events."},
+  "clock":{"hhmm":"3:42","ampm":"PM"},
+  "events":[
+    {"time":"3:00 PM","name":"Carolina Tech Summit · Day 2","org":"Carolina Tech Council","room":"Grand Ballroom","host":"Margaux Bell · BEO","pax":"420"},
+    {"time":"5:30 PM","name":"Hartwell & Reyes · Cocktails","org":"Private wedding party","room":"Magnolia Garden","host":"David Liu","pax":"180"},
+    {"time":"6:30 PM","name":"Hartwell & Reyes · Reception","org":"Private wedding party","room":"Grand Ballroom","host":"David Liu","pax":"180"},
+    {"time":"7:00 PM","name":"Yamamoto Foundation Dinner","org":"Charleston Symphony Gala","room":"Atlas Private Room","host":"Chef Okafor","pax":"42"},
+    {"time":"8:00 PM","name":"Magnolia Quartet · Live Jazz","org":"Open to all guests","room":"Magnolia Lounge","host":"F&B","pax":"85"},
+    {"time":"9:00 PM","name":"Sundown Yoga · Rooftop","org":"Cypress Spa programming","room":"Rooftop Terrace","host":"Aria Patel","pax":"24"}
+  ],
+  "note":{"text":"Quiet hours after 11 PM. Wedding overflow parking via the Queen St lot."},
+  "occupancy":{"percent":"94"},
+  "weather":{"temp_f":"76","cond":"clear"},
+  "contact":{"line":"ext. 7 · Margaux"}
+}
+</script>
+<script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script>
+</body>
+</html>

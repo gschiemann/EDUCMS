@@ -1,0 +1,50 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Tap List</title><style>
+:root{--bg:#0c0807;--ink:#f1e3c8;--mute:#8a7a64;--paper:#181210;--rule:rgba(241,227,200,.14);--primary:#c2733a;--accent:#d8b35c;--ready:#3e8c5a;--font-display:"Didot",Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:160px 1fr 180px;row-gap:36px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:20px}
+.logo{font:600 80px/1 var(--font-display);font-style:italic}
+.tag{margin-left:32px;font:500 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.title{font:400 76px/.95 var(--font-display);font-style:italic;color:var(--accent)}
+.clock{font:500 76px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.foot{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.ft{padding:0 16px}.ft+.ft{border-left:1px solid var(--rule)}
+.ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.ft .v{margin-top:14px;font:500 44px/1 var(--font-display)}
+.ft .v.acc{color:var(--accent)}.ft .v.r{color:var(--ready)}
+
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:48px;min-height:0}
+.col h2{margin:0 0 24px;font:700 56px/1 var(--font-grotesk);letter-spacing:.22em;text-transform:uppercase;color:var(--accent);border-bottom:3px solid var(--accent);padding-bottom:14px}
+.beer{display:grid;grid-template-columns:80px 1fr auto;gap:24px;align-items:baseline;padding:24px 0;border-bottom:1px dashed var(--rule)}
+.beer:last-child{border:none}
+.beer .n{font:700 44px/1 var(--font-grotesk);color:var(--primary);font-variant-numeric:tabular-nums}
+.beer .nm{font:600 48px/1.05 var(--font-display)}
+.beer .nm small{display:block;margin-top:6px;font:400 28px/1.2 var(--font-display);font-style:italic;color:var(--mute)}
+.beer .nm .tags{display:inline-block;margin-left:14px;font:700 22px/1 var(--font-grotesk);letter-spacing:.18em;padding:6px 14px;background:var(--paper);color:var(--accent);border:1px solid var(--rule);border-radius:4px}
+.beer .stats{display:flex;flex-direction:column;align-items:flex-end;gap:6px;text-align:right}
+.beer .stats .pr{font:600 44px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.beer .stats .meta{font:500 22px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.beer[data-stock="0"] .pr{color:var(--mute);text-decoration:line-through}
+.beer[data-stock="0"]::after{content:"KICKED";position:absolute}
+</style></head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Tap</span><span class="tag" data-field="brand.tagline">Charleston · since 2014</span></div><div class="title" data-field="board.title">Tonight on tap.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols" data-widget="tap-list" data-source="untappd" data-feed="/taps" data-refresh="5m">
+<section class="col"><h2 data-field="col.0.h">Drafts · 1–8</h2>
+<div class="beer" data-stock="80"><div class="n">1</div><div class="nm" data-field="t.0.n">Lantern Pilsner <span class="tags">PILS</span><small data-field="t.0.r">Lantern brew · crisp · 5.0%</small></div><div class="stats"><div class="pr" data-field="t.0.p">$7</div><div class="meta" data-field="t.0.m">5.0% · 24 IBU · 16oz</div></div></div>
+<div class="beer" data-stock="60"><div class="n">2</div><div class="nm" data-field="t.1.n">Magnolia IPA <span class="tags">IPA</span><small data-field="t.1.r">Citra · Mosaic · piney</small></div><div class="stats"><div class="pr" data-field="t.1.p">$8</div><div class="meta" data-field="t.1.m">6.8% · 65 IBU · 16oz</div></div></div>
+<div class="beer" data-stock="0"><div class="n">3</div><div class="nm" data-field="t.2.n">Cypress Stout <span class="tags">STOUT</span><small data-field="t.2.r">Coffee · vanilla · roasty</small></div><div class="stats"><div class="pr" data-field="t.2.p">$8</div><div class="meta" data-field="t.2.m">7.2% · 38 IBU · 12oz</div></div></div>
+<div class="beer" data-stock="20"><div class="n">4</div><div class="nm" data-field="t.3.n">Harbor Hazy <span class="tags">HAZY</span><small data-field="t.3.r">Galaxy · juicy · soft</small></div><div class="stats"><div class="pr" data-field="t.3.p">$9</div><div class="meta" data-field="t.3.m">7.0% · 42 IBU · 16oz</div></div></div>
+<div class="beer" data-stock="50"><div class="n">5</div><div class="nm" data-field="t.4.n">Banks Sour <span class="tags">SOUR</span><small data-field="t.4.r">Peach · sea salt</small></div><div class="stats"><div class="pr" data-field="t.4.p">$8</div><div class="meta" data-field="t.4.m">4.4% · 8 IBU · 12oz</div></div></div>
+<div class="beer" data-stock="40"><div class="n">6</div><div class="nm" data-field="t.5.n">Cellar Lager <span class="tags">DARK</span><small data-field="t.5.r">German Schwarz · clean</small></div><div class="stats"><div class="pr" data-field="t.5.p">$7</div><div class="meta" data-field="t.5.m">5.2% · 24 IBU · 16oz</div></div></div>
+<div class="beer" data-stock="60"><div class="n">7</div><div class="nm" data-field="t.6.n">Lowcountry Saison <span class="tags">FARM</span><small data-field="t.6.r">Brett · spice · dry</small></div><div class="stats"><div class="pr" data-field="t.6.p">$9</div><div class="meta" data-field="t.6.m">6.2% · 28 IBU · 12oz</div></div></div>
+<div class="beer" data-stock="80"><div class="n">8</div><div class="nm" data-field="t.7.n">Daydream Pale Ale <span class="tags">APA</span><small data-field="t.7.r">Centennial · pine</small></div><div class="stats"><div class="pr" data-field="t.7.p">$7</div><div class="meta" data-field="t.7.m">5.5% · 38 IBU · 16oz</div></div></div>
+</section>
+<section class="col"><h2 data-field="col.1.h">Drafts · 9–16</h2>
+<div class="beer" data-stock="50"><div class="n">9</div><div class="nm" data-field="t.8.n">Tradesman Wit <span class="tags">WIT</span><small data-field="t.8.r">Coriander · orange · light</small></div><div class="stats"><div class="pr" data-field="t.8.p">$7</div><div class="meta" data-field="t.8.m">4.8% · 14 IBU</div></div></div>
+<div class="beer" data-stock="30"><div class="n">10</div><div class="nm" data-field="t.9.n">Smokehouse Porter <span class="tags">DARK</span><small data-field="t.9.r">Beech-smoke · cocoa</small></div><div class="stats"><div class="pr" data-field="t.9.p">$8</div><div class="meta" data-field="t.9.m">6.0% · 32 IBU</div></div></div>
+<div class="beer" data-stock="40"><div class="n">11</div><div class="nm" data-field="t.10.n">Pier 47 Pale <span class="tags">APA</span><small data-field="t.10.r">Cascade · grapefruit</small></div><div class="stats"><div class="pr" data-field="t.10.p">$7</div><div class="meta" data-field="t.10.m">5.4% · 42 IBU</div></div></div>
+<div class="beer" data-stock="0"><div class="n">12</div><div class="nm" data-field="t.11.n">Sweetgrass Mead <span class="tags">MEAD</span><small data-field="t.11.r">Tupelo honey · sourwood</small></div><div class="stats"><div class="pr" data-field="t.11.p">$11</div><div class="meta" data-field="t.11.m">10% · 4oz</div></div></div>
+<div class="beer" data-stock="60"><div class="n">13</div><div class="nm" data-field="t.12.n">Ice Cold Lager <span class="tags">LAGER</span><small data-field="t.12.r">Easy · clean · cold</small></div><div class="stats"><div class="pr" data-field="t.12.p">$5</div><div class="meta" data-field="t.12.m">4.6% · 18 IBU</div></div></div>
+<div class="beer" data-stock="20"><div class="n">14</div><div class="nm" data-field="t.13.n">Reserve Tripel <span class="tags">BEL</span><small data-field="t.13.r">Belgian · pear · spice</small></div><div class="stats"><div class="pr" data-field="t.13.p">$12</div><div class="meta" data-field="t.13.m">9.0% · 28 IBU · 8oz</div></div></div>
+<div class="beer" data-stock="80"><div class="n">15</div><div class="nm" data-field="t.14.n">Local Cider <span class="tags">CIDER</span><small data-field="t.14.r">Heirloom apple · dry</small></div><div class="stats"><div class="pr" data-field="t.14.p">$8</div><div class="meta" data-field="t.14.m">6.5% · GF</div></div></div>
+<div class="beer" data-stock="100"><div class="n">16</div><div class="nm" data-field="t.15.n">N/A Hop Water <span class="tags">N/A</span><small data-field="t.15.r">Citra · dry-hopped · 0.0%</small></div><div class="stats"><div class="pr" data-field="t.15.p">$5</div><div class="meta" data-field="t.15.m">0.0% · 16oz</div></div></div>
+</section></main><footer class="foot"><div class="ft"><div class="k">Flight</div><div class="v acc" data-field="foot.flight">4 × 6oz · $14</div></div><div class="ft"><div class="k">Growler</div><div class="v " data-field="foot.growler">64oz fill · $24</div></div><div class="ft"><div class="k">Happy hour</div><div class="v r" data-field="foot.happyhour">4–6 PM · $2 off</div></div><div class="ft"><div class="k">Kicked</div><div class="v " data-field="foot.kicked">3 lines · refreshed Mon</div></div></footer></div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

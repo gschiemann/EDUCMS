@@ -1,0 +1,40 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Cocktails</title><style>
+:root{--bg:#0c0807;--ink:#f1e3c8;--mute:#8a7a64;--paper:#181210;--rule:rgba(241,227,200,.14);--primary:#c2733a;--accent:#d8b35c;--ready:#3e8c5a;--font-display:"Didot",Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:160px 1fr 180px;row-gap:36px;padding:80px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:20px}
+.logo{font:600 80px/1 var(--font-display);font-style:italic}
+.tag{margin-left:32px;font:500 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.title{font:400 76px/.95 var(--font-display);font-style:italic;color:var(--accent)}
+.clock{font:500 76px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.foot{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;border-top:2px solid var(--rule);padding-top:24px}
+.ft{padding:0 16px}.ft+.ft{border-left:1px solid var(--rule)}
+.ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
+.ft .v{margin-top:14px;font:500 44px/1 var(--font-display)}
+.ft .v.acc{color:var(--accent)}.ft .v.r{color:var(--ready)}
+
+.cols{display:grid;grid-template-columns:1.4fr 1fr;gap:64px;min-height:0}
+.feat{padding:48px 56px;background:linear-gradient(135deg,#1a0e0a,#2d1810);border-radius:32px;display:flex;flex-direction:column;justify-content:center}
+.feat .eye{font:700 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--accent);margin-bottom:36px}
+.feat h1{margin:0;font:400 280px/.86 var(--font-display);font-style:italic}
+.feat h1 em{color:var(--accent)}
+.feat .lede{margin-top:40px;font:400 44px/1.3 var(--font-display);font-style:italic;color:var(--mute);max-width:1800px}
+.feat .pr{margin-top:48px;font:700 120px/1 var(--font-condensed);color:var(--primary)}
+.list{display:flex;flex-direction:column;gap:18px}
+.cock{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:baseline;padding:24px 32px;background:var(--paper);border-left:6px solid var(--primary)}
+.cock.gin{border-left-color:var(--accent)}
+.cock .nm{font:600 48px/1.05 var(--font-display)}
+.cock .nm small{display:block;margin-top:6px;font:400 28px/1.2 var(--font-display);font-style:italic;color:var(--mute)}
+.cock .pr{font:600 48px/1 var(--font-display)}
+</style></head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">House cocktail program</span></div><div class="title" data-field="board.title">Tonight's pours.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols">
+<section class="feat" data-widget="featured-cocktail" data-source="cms"><div class="eye" data-field="feat.eye">Bartender's pick</div><h1><span data-field="feat.t1">Smoked Old </span><em data-field="feat.t2">Fashioned</em></h1><p class="lede" data-field="feat.lede">Eagle Rare 10yr, maple, applewood smoke, orange oil. Served over a single hand-cut cube.</p><div class="pr" data-field="feat.pr">$18</div></section>
+<section class="list" data-widget="cocktails" data-source="toast" data-feed="/menu/cocktails">
+<div class="cock"><div class="nm" data-field="c.0.n">Garden Negroni <small data-field="c.0.r">Gin · Campari · sweet vermouth · rosemary</small></div><div class="pr" data-field="c.0.p">$16</div></div>
+<div class="cock gin"><div class="nm" data-field="c.1.n">French 75 <small data-field="c.1.r">Sipsmith · lemon · sugar · Champagne</small></div><div class="pr" data-field="c.1.p">$17</div></div>
+<div class="cock"><div class="nm" data-field="c.2.n">Spicy Paloma <small data-field="c.2.r">Mezcal · grapefruit · chile · lime</small></div><div class="pr" data-field="c.2.p">$15</div></div>
+<div class="cock gin"><div class="nm" data-field="c.3.n">Lantern Manhattan <small data-field="c.3.r">Rye · Antica · two cherries · stirred</small></div><div class="pr" data-field="c.3.p">$17</div></div>
+<div class="cock"><div class="nm" data-field="c.4.n">Sazerac <small data-field="c.4.r">Rye · Peychaud's · absinthe rinse</small></div><div class="pr" data-field="c.4.p">$16</div></div>
+<div class="cock gin"><div class="nm" data-field="c.5.n">Naked &amp; Famous <small data-field="c.5.r">Mezcal · Aperol · Chartreuse · lime</small></div><div class="pr" data-field="c.5.p">$17</div></div>
+<div class="cock"><div class="nm" data-field="c.6.n">Espresso Martini <small data-field="c.6.r">Vodka · espresso · Mr. Black</small></div><div class="pr" data-field="c.6.p">$16</div></div>
+</section></main><footer class="foot"><div class="ft"><div class="k">Happy hour</div><div class="v r" data-field="foot.happyhour">5–7 PM · $4 off</div></div><div class="ft"><div class="k">Bar program</div><div class="v acc" data-field="foot.barprogram">Aria Sun</div></div><div class="ft"><div class="k">Reservation</div><div class="v " data-field="foot.reservation">OpenTable</div></div><div class="ft"><div class="k">Last call</div><div class="v " data-field="foot.lastcall">1:30 AM</div></div></footer></div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>

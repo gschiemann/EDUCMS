@@ -1,0 +1,212 @@
+<!doctype html>
+<!--
+  HOSPITALITY 05 — Dining Tonight (multi-restaurant on property)
+  3840×2160 · 65" 4K · F&B portfolio board.
+  REBRAND: :root tokens. FEEDS: OpenTable/Resy availability, Toast/Square menu.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Dining Tonight</title>
+<style>
+  :root {
+    --brand-canvas:  #1a1714;
+    --brand-ink:     #f4ede1;
+    --brand-mute:    #9a9388;
+    --brand-paper:   #221d18;
+    --brand-rule:    rgba(244,237,225,0.12);
+    --brand-primary: #c9a55a;     /* gold */
+    --brand-accent:  #b85042;     /* rouge */
+    --brand-green:   #6a8a5e;
+    --font-display:  Georgia, "Times New Roman", "Didot", serif;
+    --font-grotesk:  -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden}
+  body{font-family:var(--font-grotesk);-webkit-font-smoothing:antialiased}
+  .stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--brand-canvas);color:var(--brand-ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
+  .frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:200px 1fr 180px;row-gap:36px;padding:60px 96px}
+
+  .header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;border-bottom:2px solid var(--brand-rule);padding-bottom:24px}
+  .crest .name{font:600 80px/0.95 var(--font-display);letter-spacing:-.02em}
+  .crest .sub{display:block;margin-top:10px;font:500 26px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--brand-mute)}
+  .center{text-align:center}
+  .center .eye{font:600 28px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--brand-primary)}
+  .center .title{margin-top:14px;font:400 96px/0.95 var(--font-display);font-style:italic}
+  .right{text-align:right}
+  .right .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.3em;text-transform:uppercase;color:var(--brand-mute);margin-bottom:8px}
+  .right .v{font:500 64px/1 var(--font-display)}
+
+  .body{display:grid;grid-template-columns:1.7fr 1fr 1fr;gap:36px;min-height:0}
+
+  /* HERO restaurant */
+  .hero-r{background:var(--brand-paper);border:1px solid var(--brand-rule);display:grid;grid-template-rows:760px 1fr;overflow:hidden}
+  .hero-photo{position:relative;background-color:#3a322b;background-size:cover;background-position:center;border-bottom:2px dashed rgba(244,237,225,.18);display:flex;align-items:center;justify-content:center}
+  .hero-photo[data-has-image="true"]{border-bottom:none}
+  .hero-photo[data-has-image="true"] .ph{display:none}
+  .ph{display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--brand-mute)}
+  .ph svg{width:140px;height:140px;opacity:.5}
+  .ph .lbl{font:600 28px/1 var(--font-grotesk);letter-spacing:.2em;text-transform:uppercase}
+  .badge{position:absolute;top:24px;left:24px;background:var(--brand-accent);color:#fff;font:700 28px/1 var(--font-grotesk);letter-spacing:.28em;text-transform:uppercase;padding:14px 24px;border-radius:4px}
+  .stars{position:absolute;bottom:24px;right:24px;background:rgba(0,0,0,.7);color:#fff;padding:14px 24px;border-radius:999px;font:600 32px/1 var(--font-grotesk);display:flex;gap:10px;align-items:center}
+  .stars .s{color:var(--brand-primary)}
+  .hero-body{padding:40px 44px;display:flex;flex-direction:column}
+  .hero-body .cat{font:600 30px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--brand-primary)}
+  .hero-body .name{margin-top:14px;font:500 108px/.92 var(--font-display);letter-spacing:-.02em}
+  .hero-body .pitch{margin-top:18px;font:400 38px/1.25 var(--font-display);font-style:italic;color:var(--brand-mute)}
+  .hero-rows{margin-top:auto;padding-top:28px;border-top:1px solid var(--brand-rule);display:grid;grid-template-columns:1fr 1fr 1fr;gap:32px}
+  .hero-rows .cell .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.28em;text-transform:uppercase;color:var(--brand-mute)}
+  .hero-rows .cell .v{margin-top:10px;font:600 40px/1.05 var(--font-display)}
+  .hero-rows .cell .v.avail{color:var(--brand-green)}
+  .hero-rows .cell .v.full{color:var(--brand-accent)}
+
+  /* Restaurant card */
+  .r{background:var(--brand-paper);border:1px solid var(--brand-rule);display:grid;grid-template-rows:380px 1fr;overflow:hidden}
+  .r-photo{position:relative;background-color:#352d27;background-size:cover;background-position:center;border-bottom:2px dashed rgba(244,237,225,.18);display:flex;align-items:center;justify-content:center}
+  .r-photo[data-has-image="true"]{border-bottom:none}
+  .r-photo[data-has-image="true"] .ph{display:none}
+  .r-photo svg{width:96px;height:96px}
+  .r-photo .lbl{font-size:22px}
+  .r-body{padding:32px 36px;display:flex;flex-direction:column}
+  .r .cat{font:600 24px/1 var(--font-grotesk);letter-spacing:.3em;text-transform:uppercase;color:var(--brand-primary)}
+  .r .name{margin-top:10px;font:500 64px/.95 var(--font-display);letter-spacing:-.02em}
+  .r .pitch{margin-top:14px;font:400 28px/1.3 var(--font-display);font-style:italic;color:var(--brand-mute)}
+  .r-rows{margin-top:auto;padding-top:18px;border-top:1px solid var(--brand-rule);display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .r-rows .cell .k{font:600 20px/1 var(--font-grotesk);letter-spacing:.26em;text-transform:uppercase;color:var(--brand-mute)}
+  .r-rows .cell .v{margin-top:6px;font:600 30px/1 var(--font-display)}
+  .r-rows .cell .v.avail{color:var(--brand-green)}
+  .r-rows .cell .v.full{color:var(--brand-accent)}
+
+  .footer{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:28px;border-top:2px solid var(--brand-rule);padding-top:24px}
+  .ft{padding:0 16px}
+  .ft+.ft{border-left:1px solid var(--brand-rule)}
+  .ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--brand-mute)}
+  .ft .v{margin-top:14px;font:500 48px/1 var(--font-display);letter-spacing:-.02em}
+  .ft.tip .v{font-size:32px;font-style:italic;line-height:1.15;color:var(--brand-mute)}
+</style>
+</head>
+<body>
+<div class="stage" id="stage"><div class="frame">
+
+  <header class="header">
+    <div class="crest" data-widget="logo"><div class="name" data-field="brand.name">The Marlowe</div><div class="sub" data-field="brand.tagline">Restaurants &amp; Bars</div></div>
+    <div class="center"><div class="eye" data-field="board.eye">Saturday · May 9 · Dinner</div><div class="title" data-field="board.title">Tonight, on property.</div></div>
+    <div class="right" data-widget="clock" data-source="local-time"><div class="k">Now</div><div class="v"><span data-field="clock.hhmm">5:42</span> <small>PM</small></div></div>
+  </header>
+
+  <section class="body" data-widget="dining-feed" data-source="opentable" data-feed="/property/restaurants" data-refresh="5m">
+
+    <article class="hero-r">
+      <div class="hero-photo" data-widget="image-slot" data-slot="hero" data-aspect="2080x760" data-field="hero.photo_url">
+        <div class="ph"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="lbl">2080 × 760 · signature dish</div></div>
+        <div class="badge" data-field="hero.badge">Chef's tasting</div>
+        <div class="stars"><span class="s">★</span><span data-field="hero.rating">4.9</span> · <span data-field="hero.reviews">412 reviews</span></div>
+      </div>
+      <div class="hero-body">
+        <div class="cat" data-field="hero.cat">Lowcountry · Tasting Menu</div>
+        <div class="name" data-field="hero.name">Atlas</div>
+        <div class="pitch" data-field="hero.pitch">Chef Okafor's seven-course tasting — heirloom grits, Carolina shrimp, sourwood honey, slow-fired duck.</div>
+        <div class="hero-rows">
+          <div class="cell"><div class="k">Tonight</div><div class="v" data-field="hero.times">5:30 — 10:30 PM</div></div>
+          <div class="cell"><div class="k">Tasting</div><div class="v" data-field="hero.price">$145 · pairings $95</div></div>
+          <div class="cell"><div class="k">Reservations</div><div class="v avail" data-field="hero.avail">2 tables at 9:15</div></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="r">
+      <div class="r-photo" data-widget="image-slot" data-slot="r-1" data-aspect="900x380" data-field="r.0.photo_url">
+        <div class="ph"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="lbl">900 × 380</div></div>
+        <div class="badge" data-field="r.0.badge">Walk-ins</div>
+      </div>
+      <div class="r-body">
+        <div class="cat" data-field="r.0.cat">Cocktails &amp; raw bar</div>
+        <div class="name" data-field="r.0.name">Magnolia Lounge</div>
+        <div class="pitch" data-field="r.0.pitch">Live quartet at 8 PM. Oysters and old fashioneds.</div>
+        <div class="r-rows">
+          <div class="cell"><div class="k">Open</div><div class="v" data-field="r.0.hours">4 PM — 1 AM</div></div>
+          <div class="cell"><div class="k">Walk-ins</div><div class="v avail" data-field="r.0.walk">Open seating</div></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="r">
+      <div class="r-photo" data-widget="image-slot" data-slot="r-2" data-aspect="900x380" data-field="r.1.photo_url">
+        <div class="ph"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="lbl">900 × 380</div></div>
+        <div class="badge" data-field="r.1.badge">Open late</div>
+      </div>
+      <div class="r-body">
+        <div class="cat" data-field="r.1.cat">Wood-fired</div>
+        <div class="name" data-field="r.1.name">Cypress Grill</div>
+        <div class="pitch" data-field="r.1.pitch">Steaks over hickory, Sunday brunch, garden patio.</div>
+        <div class="r-rows">
+          <div class="cell"><div class="k">Open</div><div class="v" data-field="r.1.hours">5 — 11 PM</div></div>
+          <div class="cell"><div class="k">Reservations</div><div class="v full" data-field="r.1.avail">Booked till 10</div></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="r">
+      <div class="r-photo" data-widget="image-slot" data-slot="r-3" data-aspect="900x380" data-field="r.2.photo_url">
+        <div class="ph"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="lbl">900 × 380</div></div>
+        <div class="badge" data-field="r.2.badge">All day</div>
+      </div>
+      <div class="r-body">
+        <div class="cat" data-field="r.2.cat">Café · pâtisserie</div>
+        <div class="name" data-field="r.2.name">Queen Street Coffee</div>
+        <div class="pitch" data-field="r.2.pitch">Lobby café — espresso, kouign-amann, grain bowls.</div>
+        <div class="r-rows">
+          <div class="cell"><div class="k">Open</div><div class="v" data-field="r.2.hours">6 AM — 8 PM</div></div>
+          <div class="cell"><div class="k">Walk-ins</div><div class="v avail" data-field="r.2.walk">No wait</div></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="r">
+      <div class="r-photo" data-widget="image-slot" data-slot="r-4" data-aspect="900x380" data-field="r.3.photo_url">
+        <div class="ph"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="lbl">900 × 380</div></div>
+        <div class="badge" data-field="r.3.badge">Pool deck</div>
+      </div>
+      <div class="r-body">
+        <div class="cat" data-field="r.3.cat">Rooftop</div>
+        <div class="name" data-field="r.3.name">Sundown Bar</div>
+        <div class="pitch" data-field="r.3.pitch">Frozen palomas, ceviche, sunset at 7:54.</div>
+        <div class="r-rows">
+          <div class="cell"><div class="k">Open</div><div class="v" data-field="r.3.hours">2 — 10 PM</div></div>
+          <div class="cell"><div class="k">Walk-ins</div><div class="v avail" data-field="r.3.walk">Open seating</div></div>
+        </div>
+      </div>
+    </article>
+
+  </section>
+
+  <footer class="footer">
+    <div class="ft tip" data-widget="rich-text" data-source="cms"><div class="k">Sommelier's pour</div><div class="v" data-field="tip.text">"Atlas added a 2018 Domaine Tempier Bandol — pairs with the duck course like it was made for it."</div></div>
+    <div class="ft" data-widget="weather" data-source="weatherapi" data-feed="/weather/sunset"><div class="k">Sunset</div><div class="v" data-field="sun.sunset">7:54 PM</div></div>
+    <div class="ft" data-widget="dress-code"><div class="k">Atlas dress</div><div class="v" data-field="dress.atlas">Smart casual</div></div>
+    <div class="ft" data-widget="contact"><div class="k">Reservations</div><div class="v" data-field="contact.line">ext. 4 · Margaux</div></div>
+  </footer>
+
+</div></div>
+
+<script type="application/json" id="signage-feed-defaults">
+{
+  "brand":{"name":"The Marlowe","tagline":"Restaurants & Bars"},
+  "board":{"eye":"Saturday · May 9 · Dinner","title":"Tonight, on property."},
+  "clock":{"hhmm":"5:42"},
+  "hero":{"cat":"Lowcountry · Tasting Menu","name":"Atlas","pitch":"Chef Okafor's seven-course tasting — heirloom grits, Carolina shrimp, sourwood honey, slow-fired duck.","times":"5:30 — 10:30 PM","price":"$145 · pairings $95","avail":"2 tables at 9:15","badge":"Chef's tasting","rating":"4.9","reviews":"412 reviews"},
+  "r":[
+    {"cat":"Cocktails & raw bar","name":"Magnolia Lounge","pitch":"Live quartet at 8 PM. Oysters and old fashioneds.","hours":"4 PM — 1 AM","walk":"Open seating","badge":"Walk-ins"},
+    {"cat":"Wood-fired","name":"Cypress Grill","pitch":"Steaks over hickory, Sunday brunch, garden patio.","hours":"5 — 11 PM","avail":"Booked till 10","badge":"Open late"},
+    {"cat":"Café · pâtisserie","name":"Queen Street Coffee","pitch":"Lobby café — espresso, kouign-amann, grain bowls.","hours":"6 AM — 8 PM","walk":"No wait","badge":"All day"},
+    {"cat":"Rooftop","name":"Sundown Bar","pitch":"Frozen palomas, ceviche, sunset at 7:54.","hours":"2 — 10 PM","walk":"Open seating","badge":"Pool deck"}
+  ],
+  "tip":{"text":"\"Atlas added a 2018 Domaine Tempier Bandol — pairs with the duck course like it was made for it.\""},
+  "sun":{"sunset":"7:54 PM"},
+  "dress":{"atlas":"Smart casual"},
+  "contact":{"line":"ext. 4 · Margaux"}
+}
+</script>
+<script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script>
+</body>
+</html>
