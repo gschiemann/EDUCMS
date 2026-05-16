@@ -893,6 +893,33 @@ export default function TemplatesPage() {
             className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
           />
         </div>
+        {/* School-level filter — Elementary / Middle / High. Only
+            meaningful for K-12 tenants; hidden for other verticals.
+            The filter logic (activeLevel) has always been live in the
+            `filtered` pass below — this chip row is the UI for it. */}
+        {(!tenantCopy.vertical || tenantCopy.vertical === 'K12') && (
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by school level">
+            {SCHOOL_LEVEL_CHIPS.map((chip) => {
+              const active = activeLevel === chip.key;
+              return (
+                <button
+                  key={chip.key || 'all'}
+                  type="button"
+                  onClick={() => setActiveLevel(chip.key)}
+                  aria-pressed={active}
+                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition ${
+                    active
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
+                  }`}
+                >
+                  <span aria-hidden>{chip.emoji}</span>
+                  {chip.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {isLoading ? (
