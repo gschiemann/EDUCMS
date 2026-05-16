@@ -52,6 +52,14 @@ export const VERTICALS = [
   'HEALTHCARE',
   'HOSPITALITY',
   'RESTAURANT',
+  // 2026-05-16 — SPORTS is its own vertical for the VenueOS Sports
+  // system (Sprint 13): stadiums, arenas, gyms, athletic programs.
+  // Kept SEPARATE from K12 — a school's athletic department runs the
+  // sports stack, but a standalone arena or pro venue is a sports
+  // tenant with no K-12 context. Sports templates (scoreboards,
+  // ribbon boards, celebrations) are tagged SPORTS so they never
+  // bleed into other verticals' galleries.
+  'SPORTS',
 ] as const;
 
 export type Vertical = (typeof VERTICALS)[number];
@@ -122,6 +130,12 @@ export const VERTICAL_LABELS: Record<Vertical, { singular: string; plural: strin
     emoji: '🍽️',
     tagline: 'Full-service restaurants, menus, wine lists, specials',
   },
+  SPORTS: {
+    singular: 'Venue',
+    plural: 'Venues',
+    emoji: '🏟️',
+    tagline: 'Stadiums, arenas, gyms — scoreboards, ribbon boards, game day',
+  },
 };
 
 /**
@@ -140,6 +154,7 @@ export const VERTICAL_GROUP_NOUN: Record<Vertical, { singular: string; plural: s
   HEALTHCARE:  { singular: 'Network',  plural: 'Networks' },
   HOSPITALITY: { singular: 'Group',    plural: 'Groups' },
   RESTAURANT:  { singular: 'Group',    plural: 'Groups' },
+  SPORTS:      { singular: 'League',   plural: 'Leagues' },
 };
 
 /**
@@ -160,6 +175,9 @@ export const VERTICAL_EMERGENCY_TYPES: Record<Vertical, ReadonlyArray<'lockdown'
   HEALTHCARE:  ['evacuate', 'lockdown', 'weather', 'medical'],
   HOSPITALITY: ['evacuate', 'weather', 'medical'],
   RESTAURANT:  ['evacuate', 'weather', 'medical'],
+  // Sports venues are mass-gathering — severe weather (lightning) is
+  // the load-bearing alert for outdoor games; full evac for stadiums.
+  SPORTS:      ['evacuate', 'weather', 'medical', 'lockdown'],
 };
 
 export function isVertical(v: unknown): v is Vertical {
@@ -246,6 +264,13 @@ export const VERTICAL_ROLE_LABELS: Record<Vertical, Record<string, string>> = {
     CONTRIBUTOR:        'Manager',
     RESTRICTED_VIEWER:  'Viewer',
   },
+  SPORTS: {
+    SUPER_ADMIN:        'Super Admin',
+    DISTRICT_ADMIN:     'League Admin',
+    SCHOOL_ADMIN:       'Venue Admin',
+    CONTRIBUTOR:        'Game-Day Operator',
+    RESTRICTED_VIEWER:  'Viewer',
+  },
 };
 
 export function getRoleLabel(role: string, vertical: Vertical = DEFAULT_VERTICAL): string {
@@ -273,6 +298,7 @@ export const VERTICAL_DEFAULT_BRAND: Record<Vertical, string> = {
   HEALTHCARE:  'VenueOS',
   HOSPITALITY: 'VenueOS',
   RESTAURANT:  'VenueOS',
+  SPORTS:      'VenueOS',
 };
 
 /**
@@ -347,5 +373,13 @@ export const VERTICAL_TEMPLATE_CATEGORIES: Record<Vertical, ReadonlyArray<{ key:
     { key: 'MENU',    label: 'Menus' },
     { key: 'SPECIALS', label: 'Specials' },
     { key: 'WINE',    label: 'Wine & bar' },
+  ],
+  SPORTS: [
+    { key: '',             label: 'All' },
+    { key: 'SCOREBOARD',   label: 'Scoreboards' },
+    { key: 'RIBBON',       label: 'Ribbon boards' },
+    { key: 'CELEBRATION',  label: 'Celebrations' },
+    { key: 'SPONSOR',      label: 'Sponsors' },
+    { key: 'GAMEDAY',      label: 'Game day' },
   ],
 };
