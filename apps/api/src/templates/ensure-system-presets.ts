@@ -49,6 +49,30 @@ BAR_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'BAR'));
 // packs so each vertical can ship templates without crosstalk.
 RETAIL_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'RETAIL'));
 
+// 2026-05-16 — the 70-template industry signage pack (preset-sig-*)
+// lives INSIDE SYSTEM_TEMPLATE_PRESETS so it shares the seeder, which
+// means the K12 default above tagged every one of them 'K12'. They
+// are NOT K12. Re-tag each by the industry encoded in its id
+// (`preset-sig-<industry>-NN`) so a school never sees a drive-thru
+// menu board and a bar never sees a bell schedule. The 8 preset-hs-*
+// templates ARE high-school and correctly keep the K12 tag.
+const SIG_INDUSTRY_VERTICAL: Record<string, string> = {
+  bar: 'BAR',
+  corporate: 'CORPORATE',
+  fashion: 'FASHION',
+  healthcare: 'HEALTHCARE',
+  hospitality: 'HOSPITALITY',
+  'menus-pos': 'RESTAURANT',
+  qsr: 'QSR',
+};
+SYSTEM_TEMPLATE_PRESETS.forEach((p) => {
+  const m = p.id.match(/^preset-sig-(.+)-\d+$/);
+  const industry = m?.[1];
+  if (industry && SIG_INDUSTRY_VERTICAL[industry]) {
+    PRESET_VERTICAL.set(p.id, SIG_INDUSTRY_VERTICAL[industry]);
+  }
+});
+
 /**
  * Idempotent system-preset seeder. Runs once on API startup.
  *
@@ -236,6 +260,7 @@ export async function ensureSystemPresets(prisma: PrismaService) {
     // the intended behavior.
     try {
       let zoneSyncCount = 0;
+      let configSyncCount = 0;
       for (const src of ALL_PRESETS) {
         // Only touch single-zone presets — multi-zone compositions are
         // out of scope for this auto-sync (those would need per-zone
@@ -254,12 +279,39 @@ export async function ensureSystemPresets(prisma: PrismaService) {
           zoneSyncCount += updated.count;
           logger.log(`  ↳ ${src.id}: zone widgetType → ${sourceWidgetType}`);
         }
+
+        // 2026-05-16 — ALSO sync defaultConfig. Bug: the 8 HS presets
+        // were repointed from HS_* widgets to EXTERNAL_HTML, but this
+        // sync only updated widgetType — the existing zone's
+        // defaultConfig stayed `{}` (the old HS presets shipped empty
+        // config), so EXTERNAL_HTML rendered with no `url` → blank
+        // preview. For single-zone system presets the source IS the
+        // truth, so force the zone's defaultConfig to match. We
+        // read-then-write only on a diff to stay idempotent + quiet.
+        const wantConfig = (src.zones as any)[0]?.defaultConfig
+          ? JSON.stringify((src.zones as any)[0].defaultConfig)
+          : null;
+        const zone = await prisma.client.templateZone.findFirst({
+          where: { templateId: src.id },
+          select: { id: true, defaultConfig: true },
+        });
+        if (zone && (zone.defaultConfig ?? null) !== wantConfig) {
+          await prisma.client.templateZone.update({
+            where: { id: zone.id },
+            data: { defaultConfig: wantConfig },
+          });
+          configSyncCount += 1;
+          logger.log(`  ↳ ${src.id}: zone defaultConfig synced`);
+        }
       }
       if (zoneSyncCount > 0) {
         logger.log(`Synced widgetType on ${zoneSyncCount} system-preset zone(s).`);
       }
+      if (configSyncCount > 0) {
+        logger.log(`Synced defaultConfig on ${configSyncCount} system-preset zone(s).`);
+      }
     } catch (e) {
-      logger.warn(`Zone widgetType sync failed: ${(e as Error).message}`);
+      logger.warn(`Zone widgetType/config sync failed: ${(e as Error).message}`);
     }
 
     // ─── Archive presets that were deleted from system-presets.ts or fitness-presets.ts ───

@@ -45,6 +45,13 @@ export const VERTICALS = [
   'QSR',
   'FASHION',
   'BAR',
+  // 2026-05-16 — added with the 70-template industry signage pack so
+  // each pack is tied to a real, selectable vertical (a healthcare
+  // tenant sees only healthcare templates, etc.). RESTAURANT is the
+  // full-service counterpart to QSR (wine lists, prix-fixe, 86 board).
+  'HEALTHCARE',
+  'HOSPITALITY',
+  'RESTAURANT',
 ] as const;
 
 export type Vertical = (typeof VERTICALS)[number];
@@ -97,6 +104,24 @@ export const VERTICAL_LABELS: Record<Vertical, { singular: string; plural: strin
     emoji: '🍺',
     tagline: 'Bars, taprooms, nightclubs, sports pubs',
   },
+  HEALTHCARE: {
+    singular: 'Practice',
+    plural: 'Practices',
+    emoji: '🏥',
+    tagline: 'Clinics, hospitals, waiting rooms, patient comms',
+  },
+  HOSPITALITY: {
+    singular: 'Property',
+    plural: 'Properties',
+    emoji: '🏨',
+    tagline: 'Hotels, resorts, lobbies, concierge, wayfinding',
+  },
+  RESTAURANT: {
+    singular: 'Restaurant',
+    plural: 'Restaurants',
+    emoji: '🍽️',
+    tagline: 'Full-service restaurants, menus, wine lists, specials',
+  },
 };
 
 /**
@@ -112,6 +137,9 @@ export const VERTICAL_GROUP_NOUN: Record<Vertical, { singular: string; plural: s
   QSR:       { singular: 'Brand',        plural: 'Brands' },
   FASHION:   { singular: 'Brand',        plural: 'Brands' },
   BAR:       { singular: 'Group',        plural: 'Groups' },
+  HEALTHCARE:  { singular: 'Network',  plural: 'Networks' },
+  HOSPITALITY: { singular: 'Group',    plural: 'Groups' },
+  RESTAURANT:  { singular: 'Group',    plural: 'Groups' },
 };
 
 /**
@@ -129,6 +157,9 @@ export const VERTICAL_EMERGENCY_TYPES: Record<Vertical, ReadonlyArray<'lockdown'
   QSR:       ['evacuate', 'weather', 'medical'],
   FASHION:   ['evacuate', 'weather', 'medical'],
   BAR:       ['evacuate', 'weather', 'medical'],
+  HEALTHCARE:  ['evacuate', 'lockdown', 'weather', 'medical'],
+  HOSPITALITY: ['evacuate', 'weather', 'medical'],
+  RESTAURANT:  ['evacuate', 'weather', 'medical'],
 };
 
 export function isVertical(v: unknown): v is Vertical {
@@ -194,6 +225,27 @@ export const VERTICAL_ROLE_LABELS: Record<Vertical, Record<string, string>> = {
     CONTRIBUTOR:        'Manager',
     RESTRICTED_VIEWER:  'Viewer',
   },
+  HEALTHCARE: {
+    SUPER_ADMIN:        'Super Admin',
+    DISTRICT_ADMIN:     'Network Admin',
+    SCHOOL_ADMIN:       'Practice Admin',
+    CONTRIBUTOR:        'Coordinator',
+    RESTRICTED_VIEWER:  'Viewer',
+  },
+  HOSPITALITY: {
+    SUPER_ADMIN:        'Super Admin',
+    DISTRICT_ADMIN:     'Group Admin',
+    SCHOOL_ADMIN:       'Property Admin',
+    CONTRIBUTOR:        'Manager',
+    RESTRICTED_VIEWER:  'Viewer',
+  },
+  RESTAURANT: {
+    SUPER_ADMIN:        'Super Admin',
+    DISTRICT_ADMIN:     'Group Admin',
+    SCHOOL_ADMIN:       'Restaurant Admin',
+    CONTRIBUTOR:        'Manager',
+    RESTRICTED_VIEWER:  'Viewer',
+  },
 };
 
 export function getRoleLabel(role: string, vertical: Vertical = DEFAULT_VERTICAL): string {
@@ -218,6 +270,9 @@ export const VERTICAL_DEFAULT_BRAND: Record<Vertical, string> = {
   QSR:       'VenueOS',
   FASHION:   'VenueOS',
   BAR:       'VenueOS',
+  HEALTHCARE:  'VenueOS',
+  HOSPITALITY: 'VenueOS',
+  RESTAURANT:  'VenueOS',
 };
 
 /**
@@ -273,5 +328,24 @@ export const VERTICAL_TEMPLATE_CATEGORIES: Record<Vertical, ReadonlyArray<{ key:
     { key: 'PROMO',  label: 'Drink specials' },
     { key: 'EVENTS', label: 'Events' },
     { key: 'SPORTS', label: 'Sports' },
+  ],
+  HEALTHCARE: [
+    { key: '',          label: 'All' },
+    { key: 'WAITING',   label: 'Waiting room' },
+    { key: 'DIRECTORY', label: 'Directory' },
+    { key: 'PATIENT',   label: 'Patient info' },
+  ],
+  HOSPITALITY: [
+    { key: '',          label: 'All' },
+    { key: 'LOBBY',     label: 'Lobby' },
+    { key: 'EVENTS',    label: 'Events' },
+    { key: 'WAYFINDING', label: 'Wayfinding' },
+    { key: 'AMENITIES', label: 'Amenities' },
+  ],
+  RESTAURANT: [
+    { key: '',        label: 'All' },
+    { key: 'MENU',    label: 'Menus' },
+    { key: 'SPECIALS', label: 'Specials' },
+    { key: 'WINE',    label: 'Wine & bar' },
   ],
 };
