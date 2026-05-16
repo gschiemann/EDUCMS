@@ -70,8 +70,11 @@ export const BRANDS: Record<BrandKey, BrandConfig> = {
     key: 'venueos',
     name: 'VenueOS',
     productName: 'VenueOS',
-    tagline: 'Run any screen, anywhere — one platform for every venue.',
-    pitch: 'Digital signage, kiosks, and emergency systems for gyms, retail, restaurants, corporate lobbies, and more. One CMS, every industry.',
+    tagline: 'Every screen, every venue — one platform.',
+    // K-12 leads the pitch: it's the proven pilot and the strongest
+    // emergency-alert story. The other verticals follow so the
+    // platform reads as a universal CMS, not a school-only tool.
+    pitch: 'Digital signage, kiosks, and emergency alerts for K-12 schools, restaurants, gyms, retail, healthcare, hotels, and corporate lobbies. One CMS, every industry.',
     colors: {
       primary: '#0ea5e9',      // sky-500 — distinct from EDU's indigo
       primaryHover: '#0284c7', // sky-600

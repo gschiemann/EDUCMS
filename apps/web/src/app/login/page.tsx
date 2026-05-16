@@ -62,7 +62,7 @@ function LoginContent() {
     e.preventDefault();
     setError('');
     if (!ssoSlug.trim()) {
-      setError('Enter your district or school slug to continue.');
+      setError('Enter your organization slug to continue.');
       return;
     }
     setSsoChecking(true);
@@ -190,7 +190,7 @@ function LoginContent() {
                 required
                 autoFocus
                 autoComplete="email"
-                placeholder="you@school.edu"
+                placeholder="you@company.com"
                 className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
@@ -296,13 +296,13 @@ function LoginContent() {
             ) : (
               <form onSubmit={handleSsoStart} className="space-y-3">
                 <label htmlFor="sso-slug" className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                  District or school slug
+                  Organization slug
                 </label>
                 <input
                   id="sso-slug"
                   type="text"
                   autoComplete="organization"
-                  placeholder="acme-district"
+                  placeholder="acme-co"
                   value={ssoSlug}
                   onChange={(e) => setSsoSlug(e.target.value)}
                   className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 shadow-sm"
