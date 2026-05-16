@@ -2659,8 +2659,17 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
   // scoreboard at /board/<id>) must load straight in the iframe: the
   // proxy is an SSRF-guarded server-side renderer for EXTERNAL sites
   // and would serve a dead static snapshot, not a live scoreboard.
-  // Set by the manifest endpoint when a screen has a board pushed to it.
-  const directMode = config.direct === true;
+  //
+  // SECURITY: `direct` is honored ONLY for our own root-relative
+  // /board/ route. The flag lives in zone config, which a template
+  // author can hand-edit (JSON editor) — so we must NOT trust it to
+  // load an arbitrary URL unproxied + unsandboxed. An external URL
+  // with direct:true just falls through to the proxy path below.
+  const directMode =
+    config.direct === true &&
+    typeof rawUrl === 'string' &&
+    rawUrl.startsWith('/board/') &&
+    !rawUrl.includes('..');
   const url = rawUrl && !directMode && !rawUrl.startsWith('http://') && !rawUrl.startsWith('https://') && !rawUrl.startsWith('//')
     ? `https://${rawUrl}`
     : rawUrl;
