@@ -2655,7 +2655,13 @@ function ExternalHtmlWidget({ config }: { config: any }) {
 function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
   // Auto-prefix bare domains with https://
   const rawUrl = config.url || '';
-  const url = rawUrl && !rawUrl.startsWith('http://') && !rawUrl.startsWith('https://') && !rawUrl.startsWith('//')
+  // VenueOS Sports — direct mode. A same-origin page (the live
+  // scoreboard at /board/<id>) must load straight in the iframe: the
+  // proxy is an SSRF-guarded server-side renderer for EXTERNAL sites
+  // and would serve a dead static snapshot, not a live scoreboard.
+  // Set by the manifest endpoint when a screen has a board pushed to it.
+  const directMode = config.direct === true;
+  const url = rawUrl && !directMode && !rawUrl.startsWith('http://') && !rawUrl.startsWith('https://') && !rawUrl.startsWith('//')
     ? `https://${rawUrl}`
     : rawUrl;
   const refreshInterval = config.refreshIntervalMs || 0;
@@ -2710,6 +2716,27 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
   // gyroscope so touch-driven sites that read device orientation /
   // copy URLs work without surfacing a permission prompt to the
   // operator (signage doesn't have a way to grant it).
+  // Direct mode — render the same-origin URL straight in the iframe,
+  // no proxy. Used by the VenueOS Sports scoreboard push: /board/<id>
+  // is our own live, client-side page and must run unproxied. Same
+  // origin means no SSRF surface and no X-Frame-Options concern.
+  // Long-hand insets (not the `inset` shorthand) for Chromium-83 LED
+  // controllers — see CLAUDE.md rule #10.
+  if (directMode && rawUrl) {
+    return (
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' }}>
+        <iframe
+          ref={iframeRef}
+          src={rawUrl}
+          style={{ width: '100%', height: '100%', border: 0 }}
+          allow="autoplay; encrypted-media; fullscreen"
+          loading="eager"
+          title="Scoreboard"
+        />
+      </div>
+    );
+  }
+
   if (live && proxyUrl) {
     return (
       <div className="absolute inset-0 overflow-hidden">
