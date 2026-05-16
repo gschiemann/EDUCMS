@@ -284,20 +284,35 @@ export class SportsService {
     id: string,
     dto: { team?: string; delta?: number },
   ) {
-    const game = await this.owned(tenantId, id);
+    await this.owned(tenantId, id);
     const team = dto.team === 'away' ? 'away' : 'home';
     const delta = Number(dto.delta);
     if (!Number.isFinite(delta) || !Number.isInteger(delta)) {
       throw new BadRequestException('delta must be an integer');
     }
-    const homeScore = team === 'home' ? Math.max(0, game.homeScore + delta) : game.homeScore;
-    const awayScore = team === 'away' ? Math.max(0, game.awayScore + delta) : game.awayScore;
-
-    const updated = await this.prisma.client.game.update({
+    // Atomic increment — two operators tapping a score button in the
+    // same instant can't lose a point (a read-modify-write would).
+    let updated = await this.prisma.client.game.update({
       where: { id },
-      data: { homeScore, awayScore },
+      data:
+        team === 'home'
+          ? { homeScore: { increment: delta } }
+          : { awayScore: { increment: delta } },
     });
-    await this.record(id, 'SCORE', { team, delta, homeScore, awayScore });
+    // A score never goes below zero (e.g. a −1 correction at 0).
+    const value = team === 'home' ? updated.homeScore : updated.awayScore;
+    if (value < 0) {
+      updated = await this.prisma.client.game.update({
+        where: { id },
+        data: team === 'home' ? { homeScore: 0 } : { awayScore: 0 },
+      });
+    }
+    await this.record(id, 'SCORE', {
+      team,
+      delta,
+      homeScore: updated.homeScore,
+      awayScore: updated.awayScore,
+    });
     return updated;
   }
 
@@ -397,9 +412,13 @@ export class SportsService {
     const max = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
     segment = Math.min(max, Math.max(1, segment));
 
-    // Advancing the segment resets a countdown clock to a fresh segment.
+    // Advancing the segment resets the clock to the segment start and
+    // stops it — for countdown AND countup. Count-up halves restart
+    // from 0; without re-anchoring here, a running soccer clock would
+    // jump forward by the entire halftime gap. 'none' clocks (baseball,
+    // volleyball) have no clock to reset.
     const data: Record<string, unknown> = { segment };
-    if (def.clock.type === 'countdown') {
+    if (def.clock.type !== 'none') {
       data.clockMs = this.segmentStartMs(def);
       data.clockRunning = false;
       data.clockUpdatedAt = new Date();
@@ -425,7 +444,12 @@ export class SportsService {
     const current = (game.stats as Record<string, unknown>) || {};
     const next: Record<string, unknown> = { ...current };
     for (const [key, value] of Object.entries(dto.stats)) {
-      if (allowed.has(key)) next[key] = value;
+      if (!allowed.has(key)) continue;
+      // Bound the value: strings capped at 200 chars, numbers/booleans
+      // pass, anything else (object/array) dropped — so a stat edit
+      // can't bloat the game's stats JSON column.
+      if (typeof value === 'string') next[key] = value.slice(0, 200);
+      else if (typeof value === 'number' || typeof value === 'boolean') next[key] = value;
     }
 
     const updated = await this.prisma.client.game.update({

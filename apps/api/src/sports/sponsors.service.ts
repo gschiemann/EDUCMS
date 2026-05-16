@@ -119,7 +119,7 @@ export class SponsorsService {
       }),
       this.prisma.client.game.findMany({
         where: { tenantId, startedAt: { not: null } },
-        select: { startedAt: true, endedAt: true, status: true },
+        select: { startedAt: true, endedAt: true, status: true, updatedAt: true },
       }),
     ]);
 
@@ -129,11 +129,13 @@ export class SponsorsService {
       if (!g.startedAt) continue;
       const start = new Date(g.startedAt).getTime();
       // Finished games use endedAt; a game still in progress counts up
-      // to now; a FINAL game missing endedAt (shouldn't happen) is 0.
+      // to now; a FINAL game that somehow lacks endedAt falls back to
+      // updatedAt (its last mutation ≈ when it went final) so the
+      // sponsor exposure isn't silently dropped to zero.
       const end = g.endedAt
         ? new Date(g.endedAt).getTime()
         : g.status === 'FINAL'
-          ? start
+          ? new Date(g.updatedAt).getTime()
           : now;
       totalLiveMs += Math.max(0, end - start);
     }
