@@ -222,8 +222,60 @@ export class SportsService {
 
   async deleteGame(tenantId: string, id: string) {
     await this.owned(tenantId, id);
+    // Release any screens pushing this game's scoreboard so they fall
+    // back to their scheduled content (the pointer has no FK).
+    await this.prisma.client.screen.updateMany({
+      where: { tenantId, activeBoardGameId: id },
+      data: { activeBoardGameId: null },
+    });
     await this.prisma.client.game.delete({ where: { id } }); // cascades events
     return { deleted: true };
+  }
+
+  // ── scoreboard-to-screen push ────────────────────────────────
+
+  /** Tenant's screens + whether each currently shows this game's board. */
+  async listGameScreens(tenantId: string, gameId: string) {
+    await this.owned(tenantId, gameId);
+    const screens = await this.prisma.client.screen.findMany({
+      where: { tenantId },
+      select: { id: true, name: true, status: true, activeBoardGameId: true },
+      orderBy: { name: 'asc' },
+    });
+    return screens.map((s) => ({
+      id: s.id,
+      name: s.name,
+      status: s.status,
+      showing: s.activeBoardGameId === gameId,
+      showingOther: !!s.activeBoardGameId && s.activeBoardGameId !== gameId,
+    }));
+  }
+
+  /** Push this game's live scoreboard to the given screens. */
+  async showOnScreens(tenantId: string, gameId: string, screenIds: unknown) {
+    await this.owned(tenantId, gameId);
+    const ids = Array.isArray(screenIds)
+      ? screenIds.filter((x): x is string => typeof x === 'string' && x.length > 0)
+      : [];
+    if (ids.length === 0) throw new BadRequestException('screenIds is required');
+    await this.prisma.client.screen.updateMany({
+      where: { id: { in: ids }, tenantId },
+      data: { activeBoardGameId: gameId },
+    });
+    return this.listGameScreens(tenantId, gameId);
+  }
+
+  /** Stop showing this game — on a given subset, or every screen. */
+  async hideFromScreens(tenantId: string, gameId: string, screenIds?: unknown) {
+    await this.owned(tenantId, gameId);
+    const where: Record<string, unknown> = { tenantId, activeBoardGameId: gameId };
+    if (Array.isArray(screenIds) && screenIds.length > 0) {
+      where.id = {
+        in: screenIds.filter((x): x is string => typeof x === 'string' && x.length > 0),
+      };
+    }
+    await this.prisma.client.screen.updateMany({ where, data: { activeBoardGameId: null } });
+    return this.listGameScreens(tenantId, gameId);
   }
 
   /** Adjust a score by a signed delta (the quick +1/+2/+3/… buttons). */

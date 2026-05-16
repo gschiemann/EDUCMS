@@ -196,4 +196,51 @@ export class SportsController {
   ) {
     return this.sports.fireCue(req.user.tenantId, id, body);
   }
+
+  // ── scoreboard-to-screen push ────────────────────────────────
+
+  /** Tenant's screens + whether each is currently showing this game. */
+  @Get('games/:id/screens')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+    AppRole.RESTRICTED_VIEWER,
+  )
+  gameScreens(@Request() req: any, @Param('id') id: string) {
+    return this.sports.listGameScreens(req.user.tenantId, id);
+  }
+
+  /** Push this game's live scoreboard to the selected screens. */
+  @Post('games/:id/show')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  showOnScreens(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { screenIds?: string[] },
+  ) {
+    return this.sports.showOnScreens(req.user.tenantId, id, body?.screenIds);
+  }
+
+  /** Stop showing this game — on the given screens, or all of them. */
+  @Post('games/:id/hide')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  hideFromScreens(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { screenIds?: string[] },
+  ) {
+    return this.sports.hideFromScreens(req.user.tenantId, id, body?.screenIds);
+  }
 }
