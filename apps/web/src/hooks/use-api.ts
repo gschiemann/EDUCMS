@@ -2002,3 +2002,99 @@ export function useBulkTriggerScreenEmergency() {
     },
   });
 }
+
+// ─── VenueOS Sports — Sprint 13 ─────────────────────────────────
+// The Sport Engine's React Query layer. Game-list + create/delete +
+// the live-control mutations (score / clock / segment / status /
+// stats / celebration cue). The PUBLIC board page does NOT use these
+// hooks — it polls the un-authed /sports/board/:id endpoint directly.
+
+export function useGames() {
+  return useQuery({
+    queryKey: ['sports-games'],
+    queryFn: () => apiFetch('/sports/games'),
+    refetchInterval: 15_000,
+  });
+}
+
+export function useGame(id: string | undefined) {
+  return useQuery({
+    queryKey: ['sports-game', id],
+    queryFn: () => apiFetch(`/sports/games/${id}`),
+    enabled: !!id,
+    // The operator control surface mirrors live state — poll briskly
+    // so a co-operator's edit shows up, but optimistic mutation
+    // results below keep the local console instant.
+    refetchInterval: 4_000,
+    staleTime: 0,
+  });
+}
+
+export function useCreateGame() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      sport: string;
+      homeTeam: string;
+      awayTeam: string;
+      homeColor?: string;
+      awayColor?: string;
+      screenGroupId?: string;
+    }) => apiFetch('/sports/games', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-games'] }),
+  });
+}
+
+export function useDeleteGame() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/sports/games/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-games'] }),
+  });
+}
+
+/**
+ * One hook for every live-control action on a game. Each call PATCHes
+ * (or POSTs, for a cue) the matching endpoint and writes the updated
+ * game straight into the React Query cache so the operator console
+ * reacts with zero latency — the 4s poll in useGame() is just a
+ * reconcile safety net behind it.
+ */
+export function useGameControl(gameId: string) {
+  const qc = useQueryClient();
+  const writeBack = (game: any) => {
+    if (game && game.id) qc.setQueryData(['sports-game', gameId], game);
+  };
+
+  const score = useMutation({
+    mutationFn: (body: { team?: string; delta?: number; homeScore?: number; awayScore?: number }) =>
+      apiFetch(`/sports/games/${gameId}/score`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: writeBack,
+  });
+  const clock = useMutation({
+    mutationFn: (body: { action: string; ms?: number }) =>
+      apiFetch(`/sports/games/${gameId}/clock`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: writeBack,
+  });
+  const segment = useMutation({
+    mutationFn: (body: { segment?: number; delta?: number }) =>
+      apiFetch(`/sports/games/${gameId}/segment`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: writeBack,
+  });
+  const stats = useMutation({
+    mutationFn: (body: { stats: Record<string, unknown> }) =>
+      apiFetch(`/sports/games/${gameId}/stats`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: writeBack,
+  });
+  const status = useMutation({
+    mutationFn: (body: { status: string }) =>
+      apiFetch(`/sports/games/${gameId}/status`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: writeBack,
+  });
+  const cue = useMutation({
+    mutationFn: (body: { key: string }) =>
+      apiFetch(`/sports/games/${gameId}/cue`, { method: 'POST', body: JSON.stringify(body) }),
+  });
+
+  return { score, clock, segment, stats, status, cue };
+}

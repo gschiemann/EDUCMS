@@ -290,6 +290,8 @@ export type PasswordResetComplete = z.infer<typeof PasswordResetCompleteSchema>;
 // VenueOS — multi-industry vertical taxonomy (2026-05-02).
 // Drives Tenant.vertical, Template.vertical, terminology, defaults.
 export * from './verticals';
+// VenueOS Sports — Sprint 13. Sport Engine: SportDefinition + flagship sports.
+export * from './sports';
 export * from './streaming';
 export * from './streaming-presets';
 export * from './billing';

@@ -35,6 +35,8 @@ import { UsbExportModule } from './usb-export/usb-export.module';
 import { PlayerOtaModule } from './player-ota/player-ota.module';
 import { PlayerLogsModule } from './player-logs/player-logs.module';
 import { FitnessModule } from './fitness/fitness.module';
+// 2026-05-16 — Sprint 13 VenueOS Sports: the Sport Engine.
+import { SportsModule } from './sports/sports.module';
 // 2026-05-03 — Sprint 8c streaming integrations.
 import { StreamingModule } from './streaming/streaming.module';
 // 2026-05-03 — Sprint 8c billing (Stripe Checkout scaffolding).
@@ -83,6 +85,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     PlayerOtaModule,
     PlayerLogsModule,
     FitnessModule,
+    SportsModule,
     StreamingModule,
     BillingModule,
     PosModule,

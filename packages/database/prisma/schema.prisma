@@ -124,6 +124,7 @@ model Tenant {
   usbIngestKey                    String?          @map("usb_ingest_key") // 64-char hex (HMAC-SHA256 secret)
   usbIngestKeyRotatedAt           DateTime?        @map("usb_ingest_key_rotated_at")
   usbIngestEvents                 UsbIngestEvent[]
+  games                           Game[]
   // Industry vertical — drives default templates, widget palette, and
   // pricing tier. Tenants are isolated regardless; this is just metadata
   // + UI personalization.
@@ -1367,4 +1368,65 @@ model AdRevenueDaily {
   @@unique([connectionId, date])
   @@index([tenantId, date])
   @@map("ad_revenue_daily")
+}
+
+// ─────────────────────────────────────────────────────────────
+// VenueOS Sports — Sprint 13. A live game + its event log.
+//
+// A Game is one contest. The scoreboard board page renders from it;
+// the operator control page mutates it. The clock is stored as an
+// ANCHOR, not a ticking value: `clockMs` is the clock reading at
+// `clockUpdatedAt`, and `clockRunning` says whether it's advancing.
+// The board page computes the live displayed clock from those three
+// — so the server never has to tick. Pausing/resuming just recomputes
+// and re-anchors clockMs.
+//
+// `stats` is sport-specific JSON keyed by SportDefinition.stats[].key
+// (down/distance, balls/strikes, fouls, sets won, …). Additive —
+// new tables only, safe for live pilot tenants.
+// ─────────────────────────────────────────────────────────────
+model Game {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  sport          String                                  // SportDefinition key
+  homeTeam       String    @map("home_team")
+  awayTeam       String    @map("away_team")
+  homeScore      Int       @default(0) @map("home_score")
+  awayScore      Int       @default(0) @map("away_score")
+  segment        Int       @default(1)                   // current quarter/inning/set/period
+  clockMs        Int       @default(0) @map("clock_ms")   // clock reading at clockUpdatedAt
+  clockRunning   Boolean   @default(false) @map("clock_running")
+  clockUpdatedAt DateTime  @default(now()) @map("clock_updated_at")
+  stats          Json      @default("{}")                 // sport-specific stat values
+  status         String    @default("SCHEDULED")          // SCHEDULED|PRE_GAME|LIVE|HALFTIME|FINAL
+  screenGroupId  String?   @map("screen_group_id")        // surfaces showing this game
+  homeColor      String?   @map("home_color")
+  awayColor      String?   @map("away_color")
+  startedAt      DateTime? @map("started_at")
+  endedAt        DateTime? @map("ended_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  events GameEvent[]
+
+  @@index([tenantId, status])
+  @@map("games")
+}
+
+// Append-only event log for a Game — every score change, clock
+// action, segment advance, stat edit, and celebration CUE. Drives
+// the celebration playback on the board page (it polls for fresh
+// CUE events) and is the forensic record of the game.
+model GameEvent {
+  id        String   @id @default(uuid())
+  gameId    String   @map("game_id")
+  type      String                                       // SCORE|CLOCK|SEGMENT|STAT|CUE|STATUS
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, createdAt])
+  @@map("game_events")
 }
