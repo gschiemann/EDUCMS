@@ -30,6 +30,14 @@ interface Cue {
   emoji?: string;
   createdAt?: string;
 }
+interface Sponsor {
+  id: string;
+  name: string;
+  logoUrl?: string | null;
+  tagline?: string | null;
+  color?: string | null;
+  weight?: number;
+}
 interface BoardData {
   id: string;
   sport: string;
@@ -46,6 +54,8 @@ interface BoardData {
   clockUpdatedAt: string;
   stats: Record<string, unknown>;
   cues: Cue[];
+  sponsors?: Sponsor[];
+  sponsorSpotSeconds?: number;
   serverTime: number;
 }
 
@@ -197,6 +207,35 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
     .map((s) => ({ ...s, value: (data.stats || {})[s.key] }))
     .filter((s) => s.value !== undefined && s.value !== null && s.value !== '');
 
+  // Footer rotation — cycle through one stats slot + one slot per
+  // unit of each sponsor's weight, holding each for spotSeconds. With
+  // no sponsors the footer just shows stats (no rotation).
+  const sponsors = data.sponsors || [];
+  const spotSeconds = data.sponsorSpotSeconds || 8;
+  const sponsorKey = JSON.stringify(sponsors);
+  const slots = useMemo(() => {
+    const s: ({ kind: 'stats' } | { kind: 'sponsor'; sponsor: Sponsor })[] = [{ kind: 'stats' }];
+    for (const sp of sponsors) {
+      const w = Math.max(1, Math.min(10, sp.weight || 1));
+      for (let i = 0; i < w; i++) s.push({ kind: 'sponsor', sponsor: sp });
+    }
+    return s;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sponsorKey]);
+  const [slotIdx, setSlotIdx] = useState(0);
+  useEffect(() => {
+    if (slots.length <= 1) {
+      setSlotIdx(0);
+      return;
+    }
+    const t = setInterval(
+      () => setSlotIdx((i) => (i + 1) % slots.length),
+      Math.max(3, spotSeconds) * 1000,
+    );
+    return () => clearInterval(t);
+  }, [slots.length, spotSeconds]);
+  const activeSlot = slots[slotIdx % slots.length] || slots[0];
+
   return (
     <div
       style={{
@@ -328,47 +367,159 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
         />
       </div>
 
-      {/* footer strip — sport-specific stats */}
+      {/* footer strip — rotates between sport stats and sponsor banners */}
       <div
         style={{
           height: 132,
           background: '#05070d',
           borderTop: '2px solid #1e2638',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '0 44px',
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
-        {statChips.length === 0 ? (
-          <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: 4, color: '#334155' }}>
-            {data.homeTeam.toUpperCase()} vs {data.awayTeam.toUpperCase()}
-          </div>
-        ) : (
-          statChips.map((s) => (
-            <div
-              key={s.key}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                background: '#0e1424',
-                border: '2px solid #1e2638',
-                borderRadius: 16,
-                padding: '16px 30px',
-                margin: '0 12px',
-                minWidth: 130,
-              }}
-            >
-              <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: 2, color: '#64748b' }}>
-                {s.label.toUpperCase()}
-              </div>
-              <div style={{ fontSize: 46, fontWeight: 900, color: '#fff', marginTop: 4 }}>
-                {String(s.value)}
-              </div>
+        <div
+          key={slotIdx}
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0 44px',
+            animation: 'venueFooterFade 0.6s ease-out',
+          }}
+        >
+          {activeSlot && activeSlot.kind === 'sponsor' ? (
+            <SponsorBanner sponsor={activeSlot.sponsor} />
+          ) : statChips.length === 0 ? (
+            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: 4, color: '#334155' }}>
+              {data.homeTeam.toUpperCase()} vs {data.awayTeam.toUpperCase()}
             </div>
-          ))
+          ) : (
+            statChips.map((s) => (
+              <div
+                key={s.key}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  background: '#0e1424',
+                  border: '2px solid #1e2638',
+                  borderRadius: 16,
+                  padding: '16px 30px',
+                  margin: '0 12px',
+                  minWidth: 130,
+                }}
+              >
+                <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: 2, color: '#64748b' }}>
+                  {s.label.toUpperCase()}
+                </div>
+                <div style={{ fontSize: 46, fontWeight: 900, color: '#fff', marginTop: 4 }}>
+                  {String(s.value)}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── sponsor banner (rotates in the board footer) ───────────────
+
+function SponsorBanner({ sponsor }: { sponsor: Sponsor }) {
+  const color = sponsor.color || '#4f46e5';
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        width: '100%',
+        height: '100%',
+        background: `linear-gradient(90deg, ${color}3a, transparent 60%)`,
+      }}
+    >
+      {/* logo or color monogram */}
+      {sponsor.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={sponsor.logoUrl}
+          alt=""
+          style={{
+            height: 92,
+            width: 92,
+            objectFit: 'contain',
+            background: '#fff',
+            borderRadius: 14,
+            marginRight: 26,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            height: 92,
+            width: 92,
+            borderRadius: 14,
+            background: color,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 52,
+            fontWeight: 900,
+            color: '#fff',
+            marginRight: 26,
+          }}
+        >
+          {sponsor.name.charAt(0).toUpperCase()}
+        </div>
+      )}
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 48,
+            fontWeight: 900,
+            color: '#fff',
+            lineHeight: 1.05,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {sponsor.name}
+        </div>
+        {sponsor.tagline && (
+          <div
+            style={{
+              fontSize: 24,
+              fontWeight: 600,
+              color: '#94a3b8',
+              marginTop: 2,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {sponsor.tagline}
+          </div>
         )}
+      </div>
+
+      <div
+        style={{
+          fontSize: 18,
+          fontWeight: 800,
+          letterSpacing: 4,
+          color,
+          marginLeft: 20,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        PROUD SPONSOR
       </div>
     </div>
   );
@@ -511,6 +662,7 @@ export default function ScoreboardPage() {
   const keyframes = (
     <style>{`
       @keyframes venuePulse { 0%,100%{opacity:1} 50%{opacity:0.55} }
+      @keyframes venueFooterFade { 0%{opacity:0} 100%{opacity:1} }
       @keyframes venueCueFade { 0%{opacity:0} 8%{opacity:1} 82%{opacity:1} 100%{opacity:0} }
       @keyframes venueCueGlow { 0%{opacity:0;transform:scale(0.4)} 20%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(1.2)} }
       @keyframes venueCuePop {
