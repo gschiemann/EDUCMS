@@ -1,0 +1,221 @@
+<!doctype html>
+<!-- HS CAF 04 — MARKET HALL. Food-hall directory: 5 stations, each with featured dish, price, allergens. Weekly outlook. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Cafeteria · Market Hall — HS Lobby 4K</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800;900&family=Archivo+Narrow:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+    --bg:#fbf6ee; --bg2:#f2eadc; --ink:#181613; --ink2:#5a544a; --rule:#d8cdb6;
+    /* station colors */
+    --s1:#e84a3a; --s1d:#a82414;  /* grill */
+    --s2:#2f8c4f; --s2d:#1a5c33;  /* garden */
+    --s3:#f0a830; --f3d:#a36b15;  /* bowl */
+    --s4:#3a6dc7; --s4d:#1f4a99;  /* deli */
+    --s5:#7c4ec7; --s5d:#4a2d80;  /* sweets */
+    --gold:#caa14a;
+  }
+  html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#0d0b08;color:var(--ink);font-family:'Archivo',sans-serif}
+  .viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+  .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+  .stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--bg);box-shadow:0 80px 200px rgba(0,0,0,.65)}
+  .stage::before{content:'';position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;
+    background:
+      radial-gradient(1400px 800px at 50% -10%, rgba(232,74,58,.08), transparent 60%),
+      repeating-linear-gradient(0deg, rgba(0,0,0,.018) 0 1px, transparent 1px 3px);
+  }
+  @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.3}}
+  @keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+  /* MASTHEAD */
+  .mast{position:absolute;top:60px;left:80px;right:80px;height:240px;display:grid;grid-template-columns:auto 1fr auto;gap:48px;align-items:center;border-bottom:6px solid var(--ink);padding-bottom:0;z-index:4}
+  .mast .seal{width:200px;height:200px;background:var(--ink);color:var(--bg);display:grid;place-items:center;text-align:center;line-height:1;font-family:'Archivo',sans-serif;font-weight:900;font-size:74px;letter-spacing:-.02em}
+  .mast .seal .est{display:block;font-family:'DM Mono',monospace;font-weight:500;font-size:18px;color:var(--gold);letter-spacing:.22em;margin-top:10px}
+  .mast .title{display:flex;flex-direction:column;line-height:.9}
+  .mast .title .sup{font-family:'DM Mono',monospace;font-weight:500;font-size:30px;letter-spacing:.34em;color:var(--ink2);text-transform:uppercase;margin-bottom:14px}
+  .mast .title .name{font-family:'Archivo',sans-serif;font-weight:900;font-size:200px;letter-spacing:-.04em;color:var(--ink);text-transform:uppercase}
+  .mast .title .name .acc{color:var(--s1)}
+  .mast .right{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+  .mast .right .day{font-family:'Archivo',sans-serif;font-weight:900;font-size:80px;line-height:.9;color:var(--ink);letter-spacing:-.02em}
+  .mast .right .date{font-family:'DM Mono',monospace;font-weight:500;font-size:28px;letter-spacing:.22em;color:var(--ink2);text-transform:uppercase}
+  .mast .right .open{margin-top:6px;padding:12px 22px;background:var(--s2);color:#fff;font-family:'DM Mono',monospace;font-weight:700;font-size:24px;letter-spacing:.22em;text-transform:uppercase;display:inline-flex;align-items:center;gap:14px}
+  .mast .right .open::before{content:'';width:14px;height:14px;border-radius:50%;background:#fff;animation:blink 1.4s steps(2) infinite}
+
+  /* CHIPS */
+  .chips{position:absolute;top:340px;left:80px;right:80px;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;z-index:3}
+  .chip{background:#fff;border:4px solid var(--ink);padding:22px 28px;display:flex;justify-content:space-between;align-items:center;gap:18px}
+  .chip .k{font-family:'DM Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.22em;color:var(--ink2);text-transform:uppercase;line-height:1}
+  .chip .v{font-family:'Archivo',sans-serif;font-weight:900;font-size:84px;line-height:1;color:var(--ink);letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .chip.ink{background:var(--ink)}.chip.ink .k{color:var(--gold)}.chip.ink .v{color:var(--bg)}
+  .chip.s1{background:var(--s1);border-color:var(--s1d)}.chip.s1 .k,.chip.s1 .v{color:#fff}.chip.s1 .k{color:rgba(255,255,255,.78)}
+  .chip.s2{background:var(--s2);border-color:var(--s2d)}.chip.s2 .k,.chip.s2 .v{color:#fff}.chip.s2 .k{color:rgba(255,255,255,.78)}
+  .chip .v.dot::after{content:'';display:inline-block;width:14px;height:14px;background:#fff;border-radius:50%;margin-left:12px;vertical-align:middle;animation:blink 1.4s steps(2) infinite}
+
+  /* STATIONS GRID */
+  .grid{position:absolute;top:540px;left:80px;right:80px;height:1240px;display:grid;grid-template-columns:repeat(5,1fr);gap:24px;z-index:3}
+  .stn{position:relative;display:flex;flex-direction:column;background:#fff;border:4px solid var(--ink);overflow:hidden}
+  .stn .top{height:120px;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 28px;font-family:'Archivo',sans-serif;font-weight:900;font-size:54px;letter-spacing:-.02em;text-transform:uppercase}
+  .stn .top .num{font-family:'DM Mono',monospace;font-weight:500;font-size:24px;letter-spacing:.22em;opacity:.7;text-transform:uppercase}
+  .stn .photo{height:520px;position:relative;overflow:hidden;display:grid;place-items:center;border-bottom:4px solid var(--ink)}
+  .stn .photo::before{content:'';position:absolute;top:0;right:0;bottom:0;left:0;background:repeating-linear-gradient(45deg,transparent 0 60px,rgba(0,0,0,.06) 60px 62px)}
+  .stn .photo .ic{font-size:340px;line-height:1;filter:drop-shadow(0 16px 32px rgba(0,0,0,.4));z-index:1}
+  .stn .photo .pricetag{position:absolute;top:24px;right:24px;background:#fff;color:var(--ink);padding:14px 22px;font-family:'Archivo',sans-serif;font-weight:900;font-size:60px;line-height:1;letter-spacing:-.03em;border:4px solid var(--ink);font-variant-numeric:tabular-nums}
+  .stn .photo .stamp{position:absolute;bottom:24px;left:24px;background:rgba(0,0,0,.55);color:#fff;padding:10px 18px;font-family:'DM Mono',monospace;font-weight:700;font-size:20px;letter-spacing:.22em;text-transform:uppercase;backdrop-filter:blur(4px)}
+  .stn .body{padding:24px 28px 22px;display:flex;flex-direction:column;flex:1}
+  .stn .eyebrow{font-family:'DM Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.24em;text-transform:uppercase;line-height:1}
+  .stn h2{margin:8px 0 6px;font-family:'Archivo',sans-serif;font-weight:900;font-size:52px;line-height:.95;letter-spacing:-.02em;color:var(--ink);text-wrap:balance}
+  .stn .desc{margin:0;font-family:'Archivo Narrow',sans-serif;font-weight:500;font-size:24px;line-height:1.3;color:var(--ink2);text-wrap:pretty;flex:1}
+  .stn .tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;border-top:2px solid var(--rule);padding-top:14px}
+  .stn .tags .t{font-family:'DM Mono',monospace;font-weight:700;font-size:18px;letter-spacing:.18em;text-transform:uppercase;background:var(--bg2);color:var(--ink);padding:6px 12px;line-height:1}
+  .stn .tags .t.warn{background:#ffe2dc;color:var(--s1d)}
+  .stn .tags .t.ok{background:#dcefe1;color:var(--s2d)}
+  .stn .meta{display:flex;justify-content:space-between;align-items:center;border-top:2px solid var(--rule);margin-top:14px;padding-top:12px}
+  .stn .meta .open{font-family:'DM Mono',monospace;font-weight:700;font-size:20px;letter-spacing:.22em;text-transform:uppercase;color:var(--s2d);display:flex;align-items:center;gap:10px}
+  .stn .meta .open::before{content:'';width:10px;height:10px;border-radius:50%;background:var(--s2);animation:blink 1.4s steps(2) infinite}
+  .stn .meta .open.shut{color:var(--ink2)} .stn .meta .open.shut::before{background:var(--ink2);animation:none}
+  .stn .meta .line{font-family:'Archivo',sans-serif;font-weight:900;font-size:30px;color:var(--ink);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+
+  .stn.s1 .top{background:var(--s1)} .stn.s1 .eyebrow{color:var(--s1d)}.stn.s1 .photo{background:linear-gradient(135deg,#5a1a10,#a8311a)}
+  .stn.s2 .top{background:var(--s2)} .stn.s2 .eyebrow{color:var(--s2d)}.stn.s2 .photo{background:linear-gradient(135deg,#1a4626,#3aa15a)}
+  .stn.s3 .top{background:var(--s3)} .stn.s3 .eyebrow{color:var(--f3d)}.stn.s3 .photo{background:linear-gradient(135deg,#5a3a10,#d8a040)}
+  .stn.s4 .top{background:var(--s4)} .stn.s4 .eyebrow{color:var(--s4d)}.stn.s4 .photo{background:linear-gradient(135deg,#142a5a,#3a6dc7)}
+  .stn.s5 .top{background:var(--s5)} .stn.s5 .eyebrow{color:var(--s5d)}.stn.s5 .photo{background:linear-gradient(135deg,#3a1a5a,#7c4ec7)}
+
+  /* WEEK + INFO STRIP */
+  .strip{position:absolute;left:80px;right:80px;bottom:160px;height:200px;display:grid;grid-template-columns:1fr 1.2fr;gap:24px;z-index:3}
+  .week{background:var(--ink);color:var(--bg);padding:20px 28px;display:flex;flex-direction:column;gap:8px}
+  .week .hdr{display:flex;justify-content:space-between;align-items:baseline}
+  .week .hdr h3{margin:0;font-family:'Archivo',sans-serif;font-weight:900;font-size:36px;color:#fff;letter-spacing:-.01em;text-transform:uppercase}
+  .week .hdr .meta{font-family:'DM Mono',monospace;font-weight:500;font-size:20px;color:var(--gold);letter-spacing:.22em;text-transform:uppercase}
+  .week ul{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(5,1fr);gap:12px;flex:1}
+  .week li{padding:10px 12px;border:2px solid rgba(255,255,255,.18);display:flex;flex-direction:column;justify-content:space-between}
+  .week li.today{background:var(--s1);border-color:var(--s1d)}
+  .week li .d{font-family:'DM Mono',monospace;font-weight:700;font-size:20px;letter-spacing:.22em;color:var(--gold);text-transform:uppercase;line-height:1}
+  .week li.today .d{color:#fff}
+  .week li .nm{font-family:'Archivo',sans-serif;font-weight:900;font-size:30px;line-height:1.05;color:#fff;letter-spacing:-.01em;margin-top:8px}
+  .info{background:#fff;border:4px solid var(--ink);padding:20px 28px;display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:24px;align-items:center}
+  .info .it{display:flex;flex-direction:column}
+  .info .it .k{font-family:'DM Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink2);line-height:1}
+  .info .it .v{font-family:'Archivo',sans-serif;font-weight:900;font-size:54px;line-height:1.05;color:var(--ink);letter-spacing:-.02em;margin-top:6px}
+  .info .it .sub{font-family:'Archivo Narrow',sans-serif;font-weight:500;font-size:22px;color:var(--ink2);margin-top:4px}
+  .info .it .v.s2{color:var(--s2d)} .info .it .v.s1{color:var(--s1d)}
+
+  /* TICKER */
+  .ticker{position:absolute;left:0;right:0;bottom:0;height:96px;background:var(--ink);color:var(--bg);display:flex;align-items:center;overflow:hidden;z-index:5;border-top:6px solid var(--s1)}
+  .ticker .tag{flex:0 0 auto;background:var(--s1);color:#fff;font-family:'Archivo',sans-serif;font-weight:900;font-size:36px;padding:0 36px;height:100%;display:flex;align-items:center;letter-spacing:-.01em;text-transform:uppercase;gap:16px}
+  .ticker .tag::before{content:'';width:18px;height:18px;background:#fff;border-radius:50%;animation:blink 1.4s steps(2) infinite}
+  .ticker .msg{font-family:'Archivo',sans-serif;font-weight:700;font-size:32px;padding-left:36px;white-space:nowrap;letter-spacing:.04em;text-transform:uppercase;animation:sc 90s linear infinite}
+  .ticker .msg .star{color:var(--s1);margin:0 22px}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-hs-caf-market-v1" }/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+<header class="mast">
+  <div class="seal" data-widget="school"><div><span data-field="school.initials">WHS</span><span class="est" data-field="school.est">EST. 1956</span></div></div>
+  <div class="title" data-widget="brand">
+    <div class="sup" data-field="brand.sup">Westridge Cafeteria · 5 stations · 1 ID swipe</div>
+    <div class="name"><span data-field="brand.t1">The Market</span><span class="acc" data-field="brand.t2">.</span></div>
+  </div>
+  <div class="right" data-widget="day">
+    <div class="day" data-field="day.name">Tuesday</div>
+    <div class="date" data-field="day.date">Oct 14 · Wk 7 · A-day</div>
+    <div class="open" data-field="day.status">All stations open</div>
+  </div>
+</header>
+
+<section class="chips">
+  <div class="chip ink" data-widget="clock"><div class="k" data-field="clock.label">Now</div><div class="v dot" data-field="clock.time">11:24</div></div>
+  <div class="chip s1" data-widget="block"><div class="k" data-field="block.label">Lunch block</div><div class="v" data-field="block.value">B</div></div>
+  <div class="chip" data-widget="meals"><div class="k" data-field="meals.label">Trays out</div><div class="v" data-field="meals.value">412</div></div>
+  <div class="chip s2" data-widget="local"><div class="k" data-field="local.label">Local sourced</div><div class="v" data-field="local.value">84%</div></div>
+</section>
+
+<section class="grid">
+
+  <article class="stn s1" data-widget="stn0">
+    <div class="top"><span data-field="stn0.label">Grill</span><span class="num" data-field="stn0.num">No. 01</span></div>
+    <div class="photo"><div class="pricetag" data-field="stn0.price">$4.50</div><div class="ic" data-field="stn0.ic">🍔</div><div class="stamp" data-field="stn0.stamp">Hot · 8 min wait</div></div>
+    <div class="body">
+      <div class="eyebrow" data-field="stn0.eyebrow">Featured · today</div>
+      <h2 data-field="stn0.name">Smash double · house sauce</h2>
+      <p class="desc" data-field="stn0.desc">Two thin patties, American, dill, brioche. Veggie-smash on Beyond available — sub $0 with student ID.</p>
+      <div class="tags"><span class="t warn" data-field="stn0.t1">Beef</span><span class="t warn" data-field="stn0.t2">Wheat</span><span class="t warn" data-field="stn0.t3">Dairy</span><span class="t ok" data-field="stn0.t4">Halal</span></div>
+      <div class="meta"><div class="open" data-field="stn0.status">Open · grill is hot</div><div class="line" data-field="stn0.line">Line 8</div></div>
+    </div>
+  </article>
+
+  <article class="stn s2" data-widget="stn1">
+    <div class="top"><span data-field="stn1.label">Garden</span><span class="num" data-field="stn1.num">No. 02</span></div>
+    <div class="photo"><div class="pricetag" data-field="stn1.price">$4.00</div><div class="ic" data-field="stn1.ic">🥗</div><div class="stamp" data-field="stn1.stamp">Build · pay by weight</div></div>
+    <div class="body">
+      <div class="eyebrow" data-field="stn1.eyebrow">Build your own</div>
+      <h2 data-field="stn1.name">Salad bar · 8 toppings</h2>
+      <p class="desc" data-field="stn1.desc">Romaine, kale, spring mix, four dressings made in-house. Add chickpea, tofu or grilled chicken at the counter.</p>
+      <div class="tags"><span class="t ok" data-field="stn1.t1">Vegan-able</span><span class="t ok" data-field="stn1.t2">GF</span><span class="t ok" data-field="stn1.t3">Nut-free</span><span class="t ok" data-field="stn1.t4">Halal</span></div>
+      <div class="meta"><div class="open" data-field="stn1.status">Open · grab &amp; go</div><div class="line" data-field="stn1.line">Line 2</div></div>
+    </div>
+  </article>
+
+  <article class="stn s3" data-widget="stn2">
+    <div class="top"><span data-field="stn2.label">Bowl</span><span class="num" data-field="stn2.num">No. 03</span></div>
+    <div class="photo"><div class="pricetag" data-field="stn2.price">$4.75</div><div class="ic" data-field="stn2.ic">🍜</div><div class="stamp" data-field="stn2.stamp">Hot · made to order</div></div>
+    <div class="body">
+      <div class="eyebrow" data-field="stn2.eyebrow">Today's wok</div>
+      <h2 data-field="stn2.name">Teriyaki rice bowl</h2>
+      <p class="desc" data-field="stn2.desc">Brown rice, charred broccoli, sesame slaw, choice of teriyaki tofu, chicken, or beef short rib. Brothy ramen on Friday.</p>
+      <div class="tags"><span class="t warn" data-field="stn2.t1">Soy</span><span class="t warn" data-field="stn2.t2">Sesame</span><span class="t ok" data-field="stn2.t3">GF rice opt</span><span class="t ok" data-field="stn2.t4">Vegan opt</span></div>
+      <div class="meta"><div class="open" data-field="stn2.status">Open · 10 min wait</div><div class="line" data-field="stn2.line">Line 14</div></div>
+    </div>
+  </article>
+
+  <article class="stn s4" data-widget="stn3">
+    <div class="top"><span data-field="stn3.label">Deli</span><span class="num" data-field="stn3.num">No. 04</span></div>
+    <div class="photo"><div class="pricetag" data-field="stn3.price">$3.75</div><div class="ic" data-field="stn3.ic">🥪</div><div class="stamp" data-field="stn3.stamp">Made fresh · hourly</div></div>
+    <div class="body">
+      <div class="eyebrow" data-field="stn3.eyebrow">Sandwich counter</div>
+      <h2 data-field="stn3.name">Italian hero · pickled onion</h2>
+      <p class="desc" data-field="stn3.desc">Soppressata, capicola, sharp provolone, oil &amp; vinegar on a sub roll. Six breads, four proteins, two pickles.</p>
+      <div class="tags"><span class="t warn" data-field="stn3.t1">Pork</span><span class="t warn" data-field="stn3.t2">Wheat</span><span class="t warn" data-field="stn3.t3">Dairy</span><span class="t ok" data-field="stn3.t4">Halal opt</span></div>
+      <div class="meta"><div class="open" data-field="stn3.status">Open · short wait</div><div class="line" data-field="stn3.line">Line 4</div></div>
+    </div>
+  </article>
+
+  <article class="stn s5" data-widget="stn4">
+    <div class="top"><span data-field="stn4.label">Sweets &amp; sip</span><span class="num" data-field="stn4.num">No. 05</span></div>
+    <div class="photo"><div class="pricetag" data-field="stn4.price">$2.50</div><div class="ic" data-field="stn4.ic">🍪</div><div class="stamp" data-field="stn4.stamp">Bake at 11 &amp; 12:15</div></div>
+    <div class="body">
+      <div class="eyebrow" data-field="stn4.eyebrow">From the bake-off</div>
+      <h2 data-field="stn4.name">Brown-butter cookie</h2>
+      <p class="desc" data-field="stn4.desc">Pulled hot every 75 minutes. Strawberry-banana smoothies on the side. Oat-milk by request — no upcharge.</p>
+      <div class="tags"><span class="t warn" data-field="stn4.t1">Wheat</span><span class="t warn" data-field="stn4.t2">Dairy</span><span class="t warn" data-field="stn4.t3">Egg</span><span class="t ok" data-field="stn4.t4">Nut-free</span></div>
+      <div class="meta"><div class="open" data-field="stn4.status">Open · cookies hot</div><div class="line" data-field="stn4.line">Line 1</div></div>
+    </div>
+  </article>
+
+</section>
+
+<section class="strip">
+  <div class="week" data-widget="week">
+    <div class="hdr"><h3 data-field="week.title">This week's grill drop</h3><div class="meta" data-field="week.meta">Station 01 · Mon–Fri</div></div>
+    <ul>
+      <li data-widget="week.0"><div class="d" data-field="week.0.d">Mon</div><div class="nm" data-field="week.0.nm">Crispy chicken sando</div></li>
+      <li class="today" data-widget="week.1"><div class="d" data-field="week.1.d">Tue · today</div><div class="nm" data-field="week.1.nm">Smash double</div></li>
+      <li data-widget="week.2"><div class="d" data-field="week.2.d">Wed</div><div class="nm" data-field="week.2.nm">BBQ pulled pork</div></li>
+      <li data-widget="week.3"><div class="d" data-field="week.3.d">Thu</div><div class="nm" data-field="week.3.nm">Buffalo chicken wrap</div></li>
+      <li data-widget="week.4"><div class="d" data-field="week.4.d">Fri</div><div class="nm" data-field="week.4.nm">Fish &amp; chips</div></li>
+    </ul>
+  </div>
+  <div class="info" data-widget="info">
+    <div class="it"><div class="k" data-field="info.0k">Free &amp; reduced</div><div class="v s2" data-field="info.0v">All set</div><div class="sub" data-field="info.0s">Apply at the office or online any time</div></div>
+    <div class="it"><div class="k" data-field="info.1k">Boost balance</div><div class="v" data-field="info.1v">$24.50</div><div class="sub" data-field="info.1s">Check the kiosk by the doors</div></div>
+    <div class="it"><div class="k" data-field="info.2k">Harvest</div><div class="v s1" data-field="info.2v">Apple</div><div class="sub" data-field="info.2s">Banner farm · 12 miles · Galas this week</div></div>
+  </div>
+</section>
+
+<div class="ticker" data-widget="ticker">
+  <div class="tag" data-field="ticker.tag">Today at the market</div>
+  <div class="msg"><span data-field="ticker.message">All five stations open all three lunch blocks · Bring your tray to the dish window — leave the trash · Free seconds on Banner-farm apples while they last · Smoothie bar Wednesday, ramen pop-up Friday · Vegan, GF, halal: ask any chef and we'll plate it · Lunch B and C still have seats around the courtyard if you want sun</span><span>&nbsp;<span class="star">◆</span>&nbsp;</span><span data-field="ticker.message2">All five stations open all three lunch blocks · Bring your tray to the dish window — leave the trash · Free seconds on Banner-farm apples while they last · Smoothie bar Wednesday, ramen pop-up Friday · Vegan, GF, halal: ask any chef and we'll plate it · Lunch B and C still have seats around the courtyard if you want sun</span></div>
+</div>
+
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+</body></html>

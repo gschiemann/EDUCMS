@@ -1,0 +1,241 @@
+<!doctype html>
+<!-- HS CLASS 01 — NOW/NEXT. In-classroom display: current activity hero, agenda, do-now/exit ticket, learning target. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Classroom · Now / Next — HS Lobby 4K</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&family=Caveat:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+    --bg:#fafafa; --bg2:#f0f0ee; --ink:#0e0f12; --ink2:#54585f; --ink3:#8e93a0; --rule:#dcdde2;
+    --brand:#1a4ed8; --brand2:#0f2f8a; --brand-soft:#e6ecff;
+    --warm:#f1853a; --green:#1f8a5a; --rose:#d1456b;
+    --highlighter:#fff48a; --pencil:#3a3530;
+  }
+  html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#0a0a0c;color:var(--ink);font-family:'Inter',sans-serif}
+  .viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+  .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+  .stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--bg);box-shadow:0 80px 200px rgba(0,0,0,.6)}
+  .stage::before{content:'';position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;
+    background:
+      radial-gradient(1600px 1000px at 100% 0%, rgba(26,78,216,.04), transparent 60%),
+      linear-gradient(rgba(0,0,0,.02) 1px, transparent 1px) 0 0/180px 180px,
+      linear-gradient(90deg, rgba(0,0,0,.02) 1px, transparent 1px) 0 0/180px 180px;
+  }
+  @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.3}}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(26,78,216,.45)}50%{box-shadow:0 0 0 28px rgba(26,78,216,0)}}
+  @keyframes fill{from{width:0}to{width:var(--w,42%)}}
+
+  /* HEADER */
+  .head{position:absolute;top:0;left:0;right:0;height:200px;padding:0 80px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--rule);background:#fff;z-index:5}
+  .head .left{display:flex;align-items:center;gap:32px}
+  .head .room{padding:14px 22px;background:var(--ink);color:#fff;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:32px;letter-spacing:.22em;text-transform:uppercase;line-height:1}
+  .head .who{display:flex;flex-direction:column;line-height:1.05}
+  .head .who .name{font-family:'Inter',sans-serif;font-weight:900;font-size:64px;letter-spacing:-.02em;color:var(--ink)}
+  .head .who .sub{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:24px;color:var(--ink2);letter-spacing:.18em;margin-top:6px;text-transform:uppercase}
+  .head .right{display:flex;align-items:center;gap:24px}
+  .head .stat{display:flex;flex-direction:column;align-items:flex-end;line-height:1}
+  .head .stat .k{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px;letter-spacing:.24em;color:var(--ink2);text-transform:uppercase}
+  .head .stat .v{font-family:'Inter',sans-serif;font-weight:900;font-size:64px;color:var(--ink);letter-spacing:-.02em;margin-top:4px;font-variant-numeric:tabular-nums}
+  .head .stat .v::after{content:'';display:inline-block;width:10px;height:10px;background:var(--brand);border-radius:50%;margin-left:8px;vertical-align:middle;animation:blink 1.4s steps(2) infinite}
+  .head .badge{padding:14px 22px;background:var(--brand-soft);color:var(--brand);font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;letter-spacing:.22em;text-transform:uppercase;display:inline-flex;align-items:center;gap:14px;border:2px solid rgba(26,78,216,.25);border-radius:8px}
+  .head .badge::before{content:'';width:14px;height:14px;border-radius:50%;background:var(--brand);animation:pulse 1.8s ease-in-out infinite}
+
+  /* PERIOD STRIP — small bell-line of just this period progressing */
+  .progress{position:absolute;top:200px;left:0;right:0;height:80px;background:var(--brand-soft);display:flex;align-items:center;padding:0 80px;gap:32px;z-index:4;border-bottom:1px solid rgba(26,78,216,.25)}
+  .progress .lbl{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;color:var(--brand);letter-spacing:.22em;text-transform:uppercase;white-space:nowrap}
+  .progress .bar{flex:1;height:18px;background:rgba(26,78,216,.18);border-radius:999px;overflow:hidden;position:relative}
+  .progress .bar::before{content:'';position:absolute;left:0;top:0;bottom:0;width:42%;background:var(--brand);border-radius:999px}
+  .progress .bar::after{content:'';position:absolute;left:42%;top:50%;transform:translate(-50%,-50%);width:32px;height:32px;border-radius:50%;background:var(--brand);box-shadow:0 0 0 8px rgba(26,78,216,.18)}
+  .progress .pct{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;color:var(--brand);letter-spacing:.18em;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .progress .end{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;color:var(--ink);letter-spacing:.18em;text-transform:uppercase;white-space:nowrap}
+
+  /* HERO — what we're doing right now */
+  .now{position:absolute;top:340px;left:80px;width:2400px;height:1240px;background:#fff;border:3px solid var(--ink);display:flex;flex-direction:column;z-index:3}
+  .now .stripe{height:24px;background:var(--brand)}
+  .now .body{flex:1;padding:56px 64px 48px;display:flex;flex-direction:column;gap:18px}
+  .now .eyebrow{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:28px;letter-spacing:.32em;text-transform:uppercase;color:var(--brand);display:flex;align-items:center;gap:18px}
+  .now .eyebrow::before{content:'';height:4px;width:60px;background:var(--brand)}
+  .now h1{margin:0;font-family:'Inter',sans-serif;font-weight:900;font-size:240px;line-height:.9;letter-spacing:-.04em;color:var(--ink);text-wrap:balance}
+  .now h1 .hl{background:linear-gradient(180deg,transparent 60%,var(--highlighter) 60%);padding:0 .04em}
+  .now .lede{margin:0;font-family:'Inter',sans-serif;font-weight:500;font-size:48px;line-height:1.25;color:var(--ink2);max-width:2150px;text-wrap:pretty}
+  .now .target{margin-top:18px;padding:28px 36px;background:var(--brand-soft);border-left:8px solid var(--brand);display:flex;flex-direction:column;gap:8px}
+  .now .target .k{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;letter-spacing:.28em;text-transform:uppercase;color:var(--brand)}
+  .now .target .v{font-family:'Inter',sans-serif;font-weight:700;font-size:60px;line-height:1.1;color:var(--ink);letter-spacing:-.01em;text-wrap:balance}
+  .now .meta{margin-top:auto;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;border-top:3px solid var(--ink);padding-top:28px}
+  .now .meta .it{display:flex;flex-direction:column;line-height:1}
+  .now .meta .it .k{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink2)}
+  .now .meta .it .v{font-family:'Inter',sans-serif;font-weight:900;font-size:54px;color:var(--ink);letter-spacing:-.02em;margin-top:8px;font-variant-numeric:tabular-nums}
+  .now .meta .it .v.brand{color:var(--brand)} .now .meta .it .v.warm{color:var(--warm)}
+
+  /* RIGHT COLUMN */
+  .col{position:absolute;top:340px;right:80px;width:1220px;height:1240px;display:flex;flex-direction:column;gap:24px;z-index:3}
+
+  /* AGENDA */
+  .agenda{flex:1;background:#fff;border:3px solid var(--ink);padding:28px 32px;display:flex;flex-direction:column;overflow:hidden}
+  .agenda h3{margin:0;font-family:'Inter',sans-serif;font-weight:900;font-size:54px;line-height:1;letter-spacing:-.02em;color:var(--ink);border-bottom:3px solid var(--ink);padding-bottom:14px;display:flex;justify-content:space-between;align-items:baseline}
+  .agenda h3 .meta{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.22em;color:var(--ink2);text-transform:uppercase}
+  .agenda ul{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;flex:1;justify-content:space-around}
+  .agenda li{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:18px;padding:14px 0;border-bottom:1px dashed var(--rule);position:relative}
+  .agenda li:last-child{border-bottom:0}
+  .agenda li .step{width:64px;height:64px;border-radius:50%;border:3px solid var(--rule);display:grid;place-items:center;font-family:'Inter',sans-serif;font-weight:900;font-size:30px;color:var(--ink2);background:#fff;flex-shrink:0;font-variant-numeric:tabular-nums}
+  .agenda li.done .step{background:var(--ink);border-color:var(--ink);color:#fff}
+  .agenda li.done .step::after{content:'✓';font-size:36px}
+  .agenda li.done .step span{display:none}
+  .agenda li.now .step{background:var(--brand);border-color:var(--brand2);color:#fff;box-shadow:0 0 0 6px rgba(26,78,216,.2);animation:pulse 2s ease-in-out infinite}
+  .agenda li .nm{font-family:'Inter',sans-serif;font-weight:800;font-size:36px;line-height:1.1;color:var(--ink);letter-spacing:-.01em}
+  .agenda li.done .nm{color:var(--ink2);text-decoration:line-through;text-decoration-color:rgba(0,0,0,.4)}
+  .agenda li.now .nm{color:var(--brand)}
+  .agenda li .nm .sub{display:block;font-family:'Inter',sans-serif;font-weight:500;font-size:22px;color:var(--ink2);margin-top:2px;letter-spacing:0;text-decoration:none}
+  .agenda li .t{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.18em;color:var(--ink);text-transform:uppercase;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .agenda li.now .t{color:var(--brand)}
+
+  /* DO-NOW + EXIT */
+  .pair{display:grid;grid-template-rows:1fr 1fr;gap:24px;flex:0 0 auto;height:520px}
+  .card{background:#fff;border:3px solid var(--ink);padding:24px 28px;display:flex;flex-direction:column;position:relative}
+  .card .tag{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.28em;text-transform:uppercase;color:var(--warm);display:inline-flex;align-items:center;gap:14px}
+  .card .tag::before{content:'';width:24px;height:6px;background:currentColor}
+  .card.exit .tag{color:var(--rose)}
+  .card h4{margin:6px 0 8px;font-family:'Inter',sans-serif;font-weight:900;font-size:46px;line-height:1.05;color:var(--ink);letter-spacing:-.02em;text-wrap:balance}
+  .card p{margin:0;font-family:'Caveat',cursive;font-weight:500;font-size:36px;line-height:1.25;color:var(--pencil);max-width:1200px}
+  .card .when{margin-top:auto;padding-top:14px;border-top:2px dashed var(--rule);display:flex;justify-content:space-between;align-items:baseline;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.18em;color:var(--ink2);text-transform:uppercase}
+  .card .when .k{color:var(--ink)}
+
+  /* HOMEWORK / ANNOUNCEMENT BAND */
+  .band{position:absolute;left:80px;right:80px;bottom:96px;height:440px;display:grid;grid-template-columns:1fr 1.1fr 1fr;gap:24px;z-index:3}
+  .b{background:#fff;border:3px solid var(--ink);padding:28px 32px;display:flex;flex-direction:column;gap:8px}
+  .b .tag{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;letter-spacing:.28em;text-transform:uppercase;color:var(--brand);display:inline-flex;align-items:center;gap:14px;line-height:1}
+  .b .tag::before{content:'';width:28px;height:6px;background:currentColor}
+  .b h4{margin:6px 0 0;font-family:'Inter',sans-serif;font-weight:900;font-size:60px;line-height:1;color:var(--ink);letter-spacing:-.02em;text-wrap:balance}
+  .b .meta{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink2);margin-top:4px}
+  .b ul{margin:14px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px}
+  .b li{display:grid;grid-template-columns:auto 1fr auto;align-items:baseline;gap:14px;font-family:'Inter',sans-serif;font-weight:600;font-size:30px;color:var(--ink);line-height:1.2}
+  .b li .due{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.18em;color:var(--rose);text-transform:uppercase;white-space:nowrap}
+  .b li .ic{width:28px;height:28px;border-radius:50%;background:var(--bg2);display:grid;place-items:center;font-size:18px;font-family:'JetBrains Mono';font-weight:700;color:var(--ink2)}
+  .b li.urgent .due{color:var(--warm)}
+  .b.dark{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .b.dark .tag{color:var(--highlighter)} .b.dark h4{color:#fff} .b.dark .meta{color:rgba(255,255,255,.65)}
+  .b.dark p{margin:14px 0 0;font-family:'Inter',sans-serif;font-weight:500;font-size:28px;color:rgba(255,255,255,.78);line-height:1.3}
+  .b.dark .when{margin-top:auto;display:flex;justify-content:space-between;align-items:baseline;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.22em;color:var(--highlighter);text-transform:uppercase;border-top:2px dashed rgba(255,255,255,.18);padding-top:14px}
+  .b.dark .when .where{color:rgba(255,255,255,.65)}
+  .b.green{background:var(--green);color:#fff;border-color:#155f3d}
+  .b.green .tag{color:#dff6e7} .b.green h4{color:#fff} .b.green .meta{color:rgba(255,255,255,.7)}
+  .b.green p{margin:14px 0 0;font-family:'Inter',sans-serif;font-weight:500;font-size:28px;color:rgba(255,255,255,.85);line-height:1.3}
+
+  /* FOOTER */
+  .foot{position:absolute;left:0;right:0;bottom:0;height:96px;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 80px;z-index:5}
+  .foot .left{display:flex;align-items:center;gap:36px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;letter-spacing:.22em;text-transform:uppercase}
+  .foot .left .k{color:var(--highlighter)}
+  .foot .right{display:flex;align-items:center;gap:24px;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:22px;color:rgba(255,255,255,.7);letter-spacing:.18em;text-transform:uppercase}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-hs-class-now-v1" }/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+<header class="head">
+  <div class="left">
+    <div class="room" data-widget="room"><span data-field="room.code">ROOM 218 · B-WING</span></div>
+    <div class="who" data-widget="course">
+      <div class="name" data-field="course.name">AP English Literature · Period 3</div>
+      <div class="sub" data-field="course.teacher">Ms. Han · whan@westridge.org · office hrs Tue/Thu 3–4</div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="stat" data-widget="clock"><div class="k" data-field="clock.label">Now</div><div class="v" data-field="clock.time">10:24</div></div>
+    <div class="badge" data-widget="status"><span data-field="status.label">Class in session</span></div>
+  </div>
+</header>
+
+<section class="progress" data-widget="progress">
+  <div class="lbl" data-field="progress.lbl">Period 3 · 51 min block</div>
+  <div class="bar"></div>
+  <div class="pct" data-field="progress.pct">42% · 22 min in</div>
+  <div class="end" data-field="progress.end">Bell at 10:46</div>
+</section>
+
+<article class="now" data-widget="now">
+  <div class="stripe"></div>
+  <div class="body">
+    <div class="eyebrow"><span data-field="now.eyebrow">Right now · do this</span></div>
+    <h1><span data-field="now.t1">Annotate Beloved </span><span class="hl" data-field="now.t2">pp. 84–112</span><span data-field="now.t3"> with a partner.</span></h1>
+    <p class="lede" data-field="now.lede">Mark anywhere Sethe's memory interrupts the present tense. Three colors: pencil for the interruption, blue for the trigger, pink for whose voice is speaking. We'll share at 10:38.</p>
+    <div class="target">
+      <div class="k" data-field="now.targetK">Today's learning target · I can…</div>
+      <div class="v" data-field="now.targetV">trace how Morrison uses non-linear narration to reveal trauma the characters cannot speak about directly, and explain it with two pieces of textual evidence.</div>
+    </div>
+    <div class="meta">
+      <div class="it"><div class="k">Working in</div><div class="v" data-field="now.work">Pairs</div></div>
+      <div class="it"><div class="k">Time left</div><div class="v brand" data-field="now.left">14 min</div></div>
+      <div class="it"><div class="k">Materials</div><div class="v" data-field="now.mat">Book + 3 pens</div></div>
+      <div class="it"><div class="k">Standard</div><div class="v warm" data-field="now.std">RL.11–12.3</div></div>
+    </div>
+  </div>
+</article>
+
+<aside class="col">
+  <div class="agenda" data-widget="agenda">
+    <h3 data-field="agenda.title">Today's flow<span class="meta" data-field="agenda.meta">5 moves · 51 min</span></h3>
+    <ul>
+      <li class="done" data-widget="agenda.0"><div class="step"><span data-field="agenda.0.n">1</span></div><div class="nm"><span data-field="agenda.0.nm">Do-now: free write</span><span class="sub" data-field="agenda.0.sub">In your journal · what comes back?</span></div><div class="t" data-field="agenda.0.t">5 min</div></li>
+      <li class="done" data-widget="agenda.1"><div class="step"><span data-field="agenda.1.n">2</span></div><div class="nm"><span data-field="agenda.1.nm">Mini-lesson · narrative time</span><span class="sub" data-field="agenda.1.sub">Slide 12 · the rememory frame</span></div><div class="t" data-field="agenda.1.t">10 min</div></li>
+      <li class="now" data-widget="agenda.2"><div class="step"><span data-field="agenda.2.n">3</span></div><div class="nm"><span data-field="agenda.2.nm">Pair annotation · pp. 84–112</span><span class="sub" data-field="agenda.2.sub">Pencil · blue · pink — three colors</span></div><div class="t" data-field="agenda.2.t">20 min</div></li>
+      <li data-widget="agenda.3"><div class="step"><span data-field="agenda.3.n">4</span></div><div class="nm"><span data-field="agenda.3.nm">Whip-around share</span><span class="sub" data-field="agenda.3.sub">One quote each · 30 seconds</span></div><div class="t" data-field="agenda.3.t">10 min</div></li>
+      <li data-widget="agenda.4"><div class="step"><span data-field="agenda.4.n">5</span></div><div class="nm"><span data-field="agenda.4.nm">Exit ticket</span><span class="sub" data-field="agenda.4.sub">Index card · I can statement</span></div><div class="t" data-field="agenda.4.t">6 min</div></li>
+    </ul>
+  </div>
+
+  <div class="pair">
+    <div class="card" data-widget="donow">
+      <div class="tag" data-field="donow.tag">Do now · started 10:00</div>
+      <h4 data-field="donow.q">What's a memory that comes back uninvited?</h4>
+      <p data-field="donow.note">Free-write 4 minutes. No editing, no judging. We're not sharing this — it's yours. Keep your pen moving.</p>
+      <div class="when"><span class="k" data-field="donow.k">Closed at 10:05</span><span data-field="donow.where">In your journal · p. 38</span></div>
+    </div>
+    <div class="card exit" data-widget="exit">
+      <div class="tag" data-field="exit.tag">Exit ticket · before the bell</div>
+      <h4 data-field="exit.q">In one sentence — how does rememory differ from remembering?</h4>
+      <p data-field="exit.note">Index card on my desk on the way out. Name in the corner. We'll open class with three of these tomorrow.</p>
+      <div class="when"><span class="k" data-field="exit.k">Due 10:46</span><span data-field="exit.where">Drop on Ms. Han's desk</span></div>
+    </div>
+  </div>
+</aside>
+
+<section class="band">
+  <div class="b" data-widget="hw">
+    <div class="tag" data-field="hw.tag">Homework · this week</div>
+    <h4 data-field="hw.title">Read &amp; annotate</h4>
+    <div class="meta" data-field="hw.meta">3 things due · check Schoology</div>
+    <ul>
+      <li class="urgent" data-widget="hw.0"><div class="ic" data-field="hw.0.ic">📖</div><div data-field="hw.0.nm">Beloved pp. 113–148 · annotate motifs</div><div class="due" data-field="hw.0.due">Wed</div></li>
+      <li data-widget="hw.1"><div class="ic" data-field="hw.1.ic">✏</div><div data-field="hw.1.nm">Lit-circle prep questions · 2 per chapter</div><div class="due" data-field="hw.1.due">Thu</div></li>
+      <li data-widget="hw.2"><div class="ic" data-field="hw.2.ic">📤</div><div data-field="hw.2.nm">First draft · close-read paragraph</div><div class="due" data-field="hw.2.due">Fri 11:59p</div></li>
+      <li data-widget="hw.3"><div class="ic" data-field="hw.3.ic">📚</div><div data-field="hw.3.nm">Optional · Morrison Nobel speech audio</div><div class="due" data-field="hw.3.due">Anytime</div></li>
+    </ul>
+  </div>
+
+  <div class="b dark" data-widget="ann">
+    <div class="tag" data-field="ann.tag">Class announcement</div>
+    <h4 data-field="ann.title">Lit-circles start Thursday — bring your annotated text.</h4>
+    <p data-field="ann.body">Groups of four. You picked them last week — list is on the board. We'll spend the whole period in circles; bring your book, your annotations, and the discussion question I gave you.</p>
+    <div class="when"><span data-field="ann.when">Thursday · Period 3</span><span class="where" data-field="ann.where">Right here · Rm 218</span></div>
+  </div>
+
+  <div class="b green" data-widget="celebrate">
+    <div class="tag" data-field="celebrate.tag">Quiet shoutout</div>
+    <h4 data-field="celebrate.title">Sam &amp; Priya — your annotations are gorgeous.</h4>
+    <p data-field="celebrate.body">Sam's marginalia on the river scene found something I missed — bring that lens to today's pair work. Priya, your color-coding is the new standard. Show one neighbor.</p>
+    <ul style="margin-top:auto"><li style="grid-template-columns:auto 1fr;color:rgba(255,255,255,.85);font-size:24px;font-weight:600"><div class="ic" style="background:rgba(255,255,255,.15);color:#fff" data-field="celebrate.ic">★</div><span data-field="celebrate.cap">Period 3 · week of Oct 14</span></li></ul>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="left" data-widget="foot">
+    <span><span class="k" data-field="foot.k1">Up next:</span> <span data-field="foot.v1">P4 Advisory · Rm 218 · 10:50</span></span>
+    <span><span class="k" data-field="foot.k2">Then:</span> <span data-field="foot.v2">Lunch B · 11:42</span></span>
+  </div>
+  <div class="right" data-widget="foot2">
+    <span data-field="foot2.day">Wednesday · A-day · regular bell</span>
+    <span data-field="foot2.cycle">Cycle 7 · day 3 of 8</span>
+  </div>
+</footer>
+
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+</body></html>

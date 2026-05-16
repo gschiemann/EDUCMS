@@ -98,24 +98,18 @@ const SCHOOL_LEVEL_CHIPS = [
 // the Set in place so we can hide a preset without ripping out the
 // filtering logic if we add a new letterboxed variant later.
 //
-// 2026-05-07 — added the 8 HS District Pack presets here. The presets
-// were seeded into the DB last night (system-presets.ts on Railway is
-// at 63cf751) but the corresponding *Widget components were reverted
-// out of apps/web during the Vercel SSR-500 emergency. Hiding them
-// from the gallery so they don't render as blank cards. Re-shipping
-// these requires re-adding the widget component files (and their
-// dispatch cases in WidgetRenderer) — once that's done, delete the
-// matching id from this Set.
-const LETTERBOXED_PORTRAIT_PRESETS: ReadonlySet<string> = new Set([
-  'preset-hs-ath-gameday',
-  'preset-hs-ath-standings',
-  'preset-hs-caf-counter',
-  'preset-hs-caf-market',
-  'preset-hs-class-nownext',
-  'preset-hs-class-subday',
-  'preset-hs-hall-bulletin',
-  'preset-hs-hall-wayfinder',
-]);
+// 2026-05-16 — the 8 HS District Pack presets are OFF this denylist.
+// They were hidden because their HS_* widget types had no renderer
+// (the *Widget components were reverted during the Vercel SSR-500
+// emergency) — a preset whose widgetType has no dispatch case is the
+// exact thing that blanked/crashed the gallery. They are now
+// re-pointed at the single `EXTERNAL_HTML` widget (a sandboxed
+// iframe of the self-contained HTML template under
+// /public/templates/hs/), which always has a renderer and can't
+// take down the dashboard. Denylist is intentionally kept (empty)
+// so a future letterboxed variant can be hidden without re-adding
+// the filter logic.
+const LETTERBOXED_PORTRAIT_PRESETS: ReadonlySet<string> = new Set<string>([]);
 
 const RESOLUTION_PRESETS = [
   { label: '4K UHD', sub: 'Landscape', w: 3840, h: 2160 },

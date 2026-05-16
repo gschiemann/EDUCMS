@@ -1,0 +1,245 @@
+<!doctype html>
+<!-- HS CLASS 02 — SUBSTITUTE DAY. Self-running plan: sub intro, big plan, rules, who-to-ask. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Classroom · Substitute Day — HS Lobby 4K</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+    --bg:#fff8e9; --bg2:#f4ead0; --paper:#fffbf0; --ink:#1a1408; --ink2:#5e4f33; --ink3:#8e7a52; --rule:#d8c896;
+    --warm:#d97a2c; --warmd:#9a4f12; --teal:#1f7a78; --teald:#0f5957; --rose:#c84a64; --green:#1f7a4a;
+  }
+  html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#0a0805;color:var(--ink);font-family:'Inter',sans-serif}
+  .viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+  .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+  .stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--bg);box-shadow:0 80px 200px rgba(0,0,0,.6)}
+  .stage::before{content:'';position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;
+    background:
+      radial-gradient(1400px 900px at 0% 100%, rgba(217,122,44,.10), transparent 60%),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><filter id='n'><feTurbulence baseFrequency='0.85' numOctaves='2'/><feColorMatrix values='0 0 0 0 0.4 0 0 0 0 0.3 0 0 0 0 0.1 0 0 0 0.04 0'/></filter><rect width='400' height='400' filter='url(%23n)'/></svg>");
+    background-size:auto, 400px 400px;
+  }
+  @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.3}}
+  @keyframes wave{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(8deg)}}
+
+  /* MASTHEAD */
+  .mast{position:absolute;top:0;left:0;right:0;height:240px;background:var(--ink);color:var(--bg);display:grid;grid-template-columns:auto 1fr auto;align-items:center;padding:0 80px;gap:48px;z-index:5;border-bottom:8px solid var(--warm)}
+  .mast .room{display:flex;flex-direction:column;line-height:1}
+  .mast .room .code{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:30px;letter-spacing:.28em;color:var(--warm);text-transform:uppercase}
+  .mast .room .name{font-family:'Fraunces',serif;font-weight:900;font-size:96px;letter-spacing:-.02em;color:#fff;margin-top:8px}
+  .mast .center{text-align:center}
+  .mast .center .kicker{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;letter-spacing:.32em;color:var(--bg2);text-transform:uppercase;display:inline-flex;align-items:center;gap:18px;line-height:1}
+  .mast .center .kicker::before,.mast .center .kicker::after{content:'';width:60px;height:3px;background:var(--warm)}
+  .mast .center h1{margin:10px 0 0;font-family:'Fraunces',serif;font-weight:900;font-size:120px;letter-spacing:-.04em;color:#fff;line-height:.9}
+  .mast .center h1 .acc{color:var(--warm);font-style:italic}
+  .mast .right{display:flex;flex-direction:column;align-items:flex-end;line-height:1;gap:6px}
+  .mast .right .day{font-family:'Fraunces',serif;font-weight:900;font-size:64px;color:#fff;letter-spacing:-.02em}
+  .mast .right .date{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:24px;color:var(--warm);letter-spacing:.22em;text-transform:uppercase}
+  .mast .right .clock{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:36px;color:#fff;letter-spacing:.18em;margin-top:6px;font-variant-numeric:tabular-nums}
+  .mast .right .clock::after{content:'';display:inline-block;width:10px;height:10px;background:var(--warm);border-radius:50%;margin-left:10px;animation:blink 1.4s steps(2) infinite;vertical-align:middle}
+
+  /* SUB INTRO STRIP */
+  .sub{position:absolute;top:240px;left:0;right:0;height:280px;display:grid;grid-template-columns:480px 1fr auto;align-items:center;padding:0 80px;gap:48px;background:var(--paper);border-bottom:3px solid var(--rule);z-index:4}
+  .sub .avatar{width:280px;height:280px;margin:-40px 0;background:var(--warm);border:6px solid var(--ink);border-radius:50%;display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:900;font-size:140px;color:#fff;letter-spacing:-.04em;position:relative;box-shadow:0 16px 0 var(--warmd)}
+  .sub .avatar::after{content:'👋';position:absolute;bottom:-10px;right:-10px;width:96px;height:96px;background:#fff;border:5px solid var(--ink);border-radius:50%;display:grid;place-items:center;font-size:54px;animation:wave 2s ease-in-out infinite;transform-origin:60% 80%}
+  .sub .text{display:flex;flex-direction:column;line-height:1.05}
+  .sub .text .hi{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:26px;letter-spacing:.28em;text-transform:uppercase;color:var(--warmd)}
+  .sub .text .name{font-family:'Fraunces',serif;font-weight:900;font-size:108px;color:var(--ink);letter-spacing:-.03em;margin-top:6px}
+  .sub .text .name .pron{font-family:'Inter',sans-serif;font-weight:600;font-size:36px;color:var(--ink2);letter-spacing:0;font-style:normal;margin-left:14px;vertical-align:middle}
+  .sub .text .blurb{margin-top:14px;font-family:'Inter',sans-serif;font-weight:500;font-size:30px;color:var(--ink2);letter-spacing:0;text-wrap:pretty;max-width:1900px;line-height:1.3}
+  .sub .right{display:flex;flex-direction:column;gap:12px;align-items:stretch}
+  .sub .right .pill{padding:18px 28px;background:var(--ink);color:#fff;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;letter-spacing:.22em;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between;gap:24px;min-width:520px}
+  .sub .right .pill .v{color:var(--warm);font-size:30px}
+  .sub .right .pill.warm{background:var(--warm);color:#fff} .sub .right .pill.warm .v{color:#fff}
+
+  /* PLAN CARD */
+  .plan{position:absolute;top:560px;left:80px;width:2380px;height:1340px;background:var(--paper);border:4px solid var(--ink);box-shadow:24px 24px 0 var(--ink);display:flex;flex-direction:column;z-index:3}
+  .plan .head{padding:32px 48px 22px;border-bottom:3px solid var(--ink);display:flex;justify-content:space-between;align-items:flex-end;background:var(--warm);color:#fff}
+  .plan .head h2{margin:0;font-family:'Fraunces',serif;font-weight:900;font-size:96px;letter-spacing:-.03em;line-height:1;color:#fff}
+  .plan .head h2 .scribble{display:inline-block;background:#fff;color:var(--warm);padding:0 .12em;transform:rotate(-1deg)}
+  .plan .head .meta{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:26px;letter-spacing:.22em;text-transform:uppercase;color:#fff;text-align:right;line-height:1.3}
+  .plan .head .meta .big{display:block;font-family:'Fraunces',serif;font-weight:900;font-size:60px;letter-spacing:-.02em;color:#fff;margin-top:4px}
+
+  .plan .steps{flex:1;padding:36px 48px;display:flex;flex-direction:column;gap:20px;counter-reset:step}
+  .plan .step{display:grid;grid-template-columns:120px 1fr 280px;gap:32px;align-items:flex-start;padding:22px 28px 22px 28px;background:#fff;border:3px solid var(--ink);box-shadow:8px 8px 0 var(--rule);position:relative}
+  .plan .step.now{box-shadow:8px 8px 0 var(--warm);background:#fffaef}
+  .plan .step .n{font-family:'Fraunces',serif;font-weight:900;font-size:120px;line-height:.9;color:var(--ink);letter-spacing:-.06em}
+  .plan .step.done .n{color:var(--ink3);text-decoration:line-through;text-decoration-thickness:8px;text-decoration-color:var(--warm)}
+  .plan .step.now .n{color:var(--warm)}
+  .plan .step .body{display:flex;flex-direction:column;gap:6px;padding-top:14px}
+  .plan .step .body .t{font-family:'Fraunces',serif;font-weight:900;font-size:54px;line-height:1.05;color:var(--ink);letter-spacing:-.02em;text-wrap:balance}
+  .plan .step.done .body .t{color:var(--ink2)} .plan .step.now .body .t{color:var(--warmd)}
+  .plan .step .body .d{font-family:'Inter',sans-serif;font-weight:500;font-size:28px;line-height:1.3;color:var(--ink2);text-wrap:pretty}
+  .plan .step .body .tags{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .plan .step .body .tags span{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;letter-spacing:.2em;text-transform:uppercase;background:var(--bg2);color:var(--warmd);padding:6px 12px;line-height:1}
+  .plan .step .body .tags .ic{background:var(--ink);color:var(--bg)}
+  .plan .step .right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;padding-top:10px}
+  .plan .step .right .when{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:26px;letter-spacing:.18em;color:var(--ink);text-transform:uppercase;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .plan .step .right .badge{padding:8px 16px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;letter-spacing:.2em;text-transform:uppercase;background:var(--bg2);color:var(--ink2);line-height:1}
+  .plan .step.done .right .badge{background:var(--green);color:#fff}
+  .plan .step.now .right .badge{background:var(--warm);color:#fff;animation:blink 1.6s steps(2) infinite}
+
+  /* RIGHT COLUMN */
+  .col{position:absolute;top:560px;right:80px;width:1240px;height:1340px;display:flex;flex-direction:column;gap:24px;z-index:3}
+  .panel{background:var(--paper);border:4px solid var(--ink);box-shadow:16px 16px 0 var(--ink);padding:28px 32px;display:flex;flex-direction:column}
+  .panel.dark{background:var(--ink);color:var(--bg);box-shadow:16px 16px 0 var(--warm)}
+  .panel.teal{background:var(--teal);color:#fff;box-shadow:16px 16px 0 var(--ink)}
+  .panel h3{margin:0 0 14px;font-family:'Fraunces',serif;font-weight:900;font-size:60px;line-height:.95;letter-spacing:-.02em;color:var(--ink);border-bottom:3px solid var(--ink);padding-bottom:12px;display:flex;justify-content:space-between;align-items:baseline}
+  .panel h3 .meta{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px;letter-spacing:.22em;color:var(--ink2);text-transform:uppercase}
+  .panel.dark h3{color:#fff;border-color:var(--warm)} .panel.dark h3 .meta{color:var(--warm)}
+  .panel.teal h3{color:#fff;border-color:#fff} .panel.teal h3 .meta{color:rgba(255,255,255,.8)}
+
+  .rules{flex:1;display:flex;flex-direction:column;gap:14px}
+  .rules .r{display:grid;grid-template-columns:auto 1fr auto;gap:20px;align-items:center;padding:14px 0;border-bottom:2px dashed var(--rule)}
+  .rules .r:last-child{border-bottom:0}
+  .rules .r .ic{width:64px;height:64px;border-radius:50%;background:var(--bg2);display:grid;place-items:center;font-size:36px;flex-shrink:0}
+  .rules .r .nm{font-family:'Inter',sans-serif;font-weight:800;font-size:32px;color:var(--ink);letter-spacing:-.01em;line-height:1.2}
+  .rules .r .nm small{display:block;font-family:'Inter',sans-serif;font-weight:500;font-size:22px;color:var(--ink2);margin-top:2px;letter-spacing:0}
+  .rules .r .v{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--green);letter-spacing:.2em;text-transform:uppercase;text-align:right;white-space:nowrap}
+  .rules .r .v.no{color:var(--rose)}
+  .rules .r .v.maybe{color:var(--warmd)}
+
+  .ask{display:flex;flex-direction:column;gap:14px}
+  .ask .who{display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;padding:14px 0;border-bottom:2px dashed rgba(255,255,255,.18)}
+  .ask .who:last-child{border-bottom:0}
+  .ask .who .av{width:80px;height:80px;border-radius:50%;background:var(--warm);color:#fff;display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:900;font-size:36px;border:3px solid #fff;flex-shrink:0;letter-spacing:-.02em}
+  .ask .who .av.t{background:var(--teal)} .ask .who .av.r{background:var(--rose)} .ask .who .av.g{background:var(--green)}
+  .ask .who .nm{font-family:'Inter',sans-serif;font-weight:800;font-size:30px;color:#fff;letter-spacing:-.01em;line-height:1.1}
+  .ask .who .nm small{display:block;font-family:'Inter',sans-serif;font-weight:500;font-size:22px;color:rgba(255,255,255,.7);margin-top:2px}
+  .ask .who .v{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--warm);letter-spacing:.18em;text-transform:uppercase;text-align:right;white-space:nowrap}
+
+  .note{flex:1;display:flex;flex-direction:column;justify-content:center}
+  .note .quote{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:42px;line-height:1.25;color:#fff;text-wrap:pretty}
+  .note .quote::before{content:'"';font-size:120px;line-height:.6;color:var(--warm);font-family:'Fraunces';margin-right:8px;vertical-align:-0.4em}
+  .note .sig{margin-top:18px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.22em;color:var(--warm);text-transform:uppercase}
+
+  /* FOOTER STRIP */
+  .foot{position:absolute;left:0;right:0;bottom:0;height:160px;background:var(--ink);color:var(--bg);display:grid;grid-template-columns:repeat(4,1fr);align-items:center;padding:0 80px;gap:48px;z-index:5;border-top:8px solid var(--warm)}
+  .foot .cell{display:flex;flex-direction:column;gap:6px;line-height:1.05}
+  .foot .cell .k{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.24em;color:var(--warm);text-transform:uppercase}
+  .foot .cell .v{font-family:'Fraunces',serif;font-weight:900;font-size:48px;color:#fff;letter-spacing:-.01em;text-wrap:balance}
+  .foot .cell .v small{display:block;font-family:'Inter',sans-serif;font-weight:500;font-size:22px;color:rgba(255,255,255,.65);margin-top:2px;letter-spacing:0}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-hs-class-sub-v1" }/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+<header class="mast">
+  <div class="room" data-widget="room"><div class="code" data-field="room.code">ROOM 218 · B-WING · WHS</div><div class="name" data-field="room.course">Algebra II · Period 3</div></div>
+  <div class="center" data-widget="title"><div class="kicker" data-field="title.kicker">Today · Ms. Reyes is out</div><h1><span data-field="title.t1">We've got a </span><span class="acc" data-field="title.t2">sub day.</span></h1></div>
+  <div class="right" data-widget="day"><div class="day" data-field="day.name">Wednesday</div><div class="date" data-field="day.date">Oct 15 · A-day · regular bell</div><div class="clock" data-field="day.clock">10:24</div></div>
+</header>
+
+<section class="sub" data-widget="subprofile">
+  <div class="avatar" data-field="sub.initial">M</div>
+  <div class="text">
+    <div class="hi" data-field="sub.hi">Hi everyone — I'm</div>
+    <div class="name"><span data-field="sub.name">Mr. Marcus Whitfield</span><span class="pron" data-field="sub.pron">he · him</span></div>
+    <div class="blurb" data-field="sub.blurb">I sub at Westridge two days a week and I taught math for 22 years before that. Ms. Reyes left a great plan for today — let's get through it together. I'll be at her desk; raise a hand if you need me.</div>
+  </div>
+  <div class="right">
+    <div class="pill warm" data-widget="pill1"><span data-field="pill1.k">Period 3 · 51 min</span><span class="v" data-field="pill1.v">Bell 10:46</span></div>
+    <div class="pill" data-widget="pill2"><span data-field="pill2.k">Sub call code</span><span class="v" data-field="pill2.v">AESOP #84112</span></div>
+    <div class="pill" data-widget="pill3"><span data-field="pill3.k">Ms. Reyes back</span><span class="v" data-field="pill3.v">Thursday</span></div>
+  </div>
+</section>
+
+<article class="plan">
+  <div class="head"><h2><span data-field="plan.t1">Today's </span><span class="scribble" data-field="plan.t2">plan</span><span data-field="plan.t3"> · 5 steps</span></h2><div class="meta"><span data-field="plan.meta1">Self-running</span><span class="big" data-field="plan.meta2">Unit 4 · Day 3</span></div></div>
+  <div class="steps">
+
+    <div class="step done" data-widget="step0">
+      <div class="n"><span data-field="step0.n">1</span></div>
+      <div class="body">
+        <div class="t" data-field="step0.t">Warm-up · 5 problems on the board</div>
+        <div class="d" data-field="step0.d">Solve quietly in your notebook. Answers in the back of the room when you're done — go check yourself.</div>
+        <div class="tags"><span class="ic" data-field="step0.tag1">Solo</span><span data-field="step0.tag2">Notebook</span><span data-field="step0.tag3">5 problems</span></div>
+      </div>
+      <div class="right"><div class="when" data-field="step0.when">10:00–10:08</div><div class="badge" data-field="step0.badge">✓ Done</div></div>
+    </div>
+
+    <div class="step done" data-widget="step1">
+      <div class="n"><span data-field="step1.n">2</span></div>
+      <div class="body">
+        <div class="t" data-field="step1.t">Watch · Khan Academy on factoring quadratics</div>
+        <div class="d" data-field="step1.d">12-minute video on the projector. Take 3 notes per minute — one example, one rule, one question. Notes get stamped at the door.</div>
+        <div class="tags"><span class="ic" data-field="step1.tag1">Whole class</span><span data-field="step1.tag2">12 min video</span><span data-field="step1.tag3">3-per-min notes</span></div>
+      </div>
+      <div class="right"><div class="when" data-field="step1.when">10:08–10:20</div><div class="badge" data-field="step1.badge">✓ Done</div></div>
+    </div>
+
+    <div class="step now" data-widget="step2">
+      <div class="n"><span data-field="step2.n">3</span></div>
+      <div class="body">
+        <div class="t" data-field="step2.t">Practice · packet pp. 41–43, problems 1–18</div>
+        <div class="d" data-field="step2.d">Work with your shoulder partner. Skip nothing — circle anything you can't get past. We'll come back to the hard ones together. Calculators are fine.</div>
+        <div class="tags"><span class="ic" data-field="step2.tag1">Pairs</span><span data-field="step2.tag2">Packet</span><span data-field="step2.tag3">Calculators OK</span><span data-field="step2.tag4">Show work</span></div>
+      </div>
+      <div class="right"><div class="when" data-field="step2.when">10:20–10:38</div><div class="badge" data-field="step2.badge">● Right now</div></div>
+    </div>
+
+    <div class="step" data-widget="step3">
+      <div class="n"><span data-field="step3.n">4</span></div>
+      <div class="body">
+        <div class="t" data-field="step3.t">Share-out · 3 problems on the board</div>
+        <div class="d" data-field="step3.d">Volunteers put up #5, #11, and #17. Whole class checks the work, asks one question each. I'll moderate; Ms. Reyes wants real talk, not just "looks good."</div>
+        <div class="tags"><span class="ic" data-field="step3.tag1">Whole class</span><span data-field="step3.tag2">Whiteboard</span><span data-field="step3.tag3">3 students</span></div>
+      </div>
+      <div class="right"><div class="when" data-field="step3.when">10:38–10:44</div><div class="badge" data-field="step3.badge">Up next</div></div>
+    </div>
+
+    <div class="step" data-widget="step4">
+      <div class="n"><span data-field="step4.n">5</span></div>
+      <div class="body">
+        <div class="t" data-field="step4.t">Exit slip · drop on the way out</div>
+        <div class="d" data-field="step4.d">Half-sheet on the front desk. One question on factoring, one feeling-check, your name on top. Hand it to me as you leave — quietly, please.</div>
+        <div class="tags"><span class="ic" data-field="step4.tag1">Solo</span><span data-field="step4.tag2">Half-sheet</span><span data-field="step4.tag3">2 min</span></div>
+      </div>
+      <div class="right"><div class="when" data-field="step4.when">10:44–10:46</div><div class="badge" data-field="step4.badge">Last step</div></div>
+    </div>
+
+  </div>
+</article>
+
+<aside class="col">
+
+  <div class="panel" data-widget="rules">
+    <h3 data-field="rules.title">Today's ground rules<span class="meta" data-field="rules.meta">Sub-day basics</span></h3>
+    <div class="rules">
+      <div class="r" data-widget="rules.0"><div class="ic" data-field="rules.0.ic">🚻</div><div class="nm"><span data-field="rules.0.nm">Restroom</span><small data-field="rules.0.sub">Sign the clipboard · one at a time</small></div><div class="v" data-field="rules.0.v">OK · 1 at a time</div></div>
+      <div class="r" data-widget="rules.1"><div class="ic" data-field="rules.1.ic">📱</div><div class="nm"><span data-field="rules.1.nm">Phones</span><small data-field="rules.1.sub">Caddy by the door · pick up at bell</small></div><div class="v no" data-field="rules.1.v">Caddy · away</div></div>
+      <div class="r" data-widget="rules.2"><div class="ic" data-field="rules.2.ic">💻</div><div class="nm"><span data-field="rules.2.nm">Chromebooks</span><small data-field="rules.2.sub">Only for Khan video step</small></div><div class="v maybe" data-field="rules.2.v">Step 2 only</div></div>
+      <div class="r" data-widget="rules.3"><div class="ic" data-field="rules.3.ic">🎧</div><div class="nm"><span data-field="rules.3.nm">Headphones</span><small data-field="rules.3.sub">Solo work only · one ear</small></div><div class="v maybe" data-field="rules.3.v">One ear OK</div></div>
+      <div class="r" data-widget="rules.4"><div class="ic" data-field="rules.4.ic">🍿</div><div class="nm"><span data-field="rules.4.nm">Snacks</span><small data-field="rules.4.sub">Water yes · food no</small></div><div class="v no" data-field="rules.4.v">Water only</div></div>
+      <div class="r" data-widget="rules.5"><div class="ic" data-field="rules.5.ic">🤝</div><div class="nm"><span data-field="rules.5.nm">Talking</span><small data-field="rules.5.sub">Shoulder partner volume</small></div><div class="v" data-field="rules.5.v">Pairs OK</div></div>
+    </div>
+  </div>
+
+  <div class="panel teal" data-widget="ask">
+    <h3 data-field="ask.title">Stuck? ask in this order<span class="meta" data-field="ask.meta">Then me · then office</span></h3>
+    <div class="ask">
+      <div class="who" data-widget="ask.0"><div class="av" data-field="ask.0.in">PR</div><div class="nm"><span data-field="ask.0.nm">Priya R. · row 1</span><small data-field="ask.0.role">Math captain · ask first</small></div><div class="v" data-field="ask.0.v">Row 1</div></div>
+      <div class="who" data-widget="ask.1"><div class="av t" data-field="ask.1.in">JC</div><div class="nm"><span data-field="ask.1.nm">Jordan C. · row 3</span><small data-field="ask.1.role">Knows the packet cold</small></div><div class="v" data-field="ask.1.v">Row 3</div></div>
+      <div class="who" data-widget="ask.2"><div class="av g" data-field="ask.2.in">MW</div><div class="nm"><span data-field="ask.2.nm">Me · Mr. Whitfield</span><small data-field="ask.2.role">At the teacher desk · raise a hand</small></div><div class="v" data-field="ask.2.v">Front desk</div></div>
+      <div class="who" data-widget="ask.3"><div class="av r" data-field="ask.3.in">LK</div><div class="nm"><span data-field="ask.3.nm">Mr. Liang next door · 220</span><small data-field="ask.3.role">If I'm with someone — knock</small></div><div class="v" data-field="ask.3.v">Rm 220</div></div>
+    </div>
+  </div>
+
+  <div class="panel dark" data-widget="note">
+    <h3 data-field="note.title">From Ms. Reyes<span class="meta" data-field="note.meta">She emailed me at 6am</span></h3>
+    <div class="note">
+      <div class="quote" data-field="note.quote">Tell them I trust them. Period 3 is my favorite — they know the routines and they help each other. If anyone finishes early, p. 44 is challenge problems. See everyone Thursday.</div>
+      <div class="sig" data-field="note.sig">— Ms. R · sent 6:14 am</div>
+    </div>
+  </div>
+
+</aside>
+
+<footer class="foot">
+  <div class="cell" data-widget="foot.0"><div class="k" data-field="foot.0.k">Up next</div><div class="v" data-field="foot.0.v">Period 4 · Advisory<small data-field="foot.0.s">Same room · 10:50</small></div></div>
+  <div class="cell" data-widget="foot.1"><div class="k" data-field="foot.1.k">Lunch</div><div class="v" data-field="foot.1.v">Block B · 11:42<small data-field="foot.1.s">Cafeteria · grill is hot today</small></div></div>
+  <div class="cell" data-widget="foot.2"><div class="k" data-field="foot.2.k">After school</div><div class="v" data-field="foot.2.v">Math help · Rm 218<small data-field="foot.2.s">Mr. Liang covers · 3–4pm</small></div></div>
+  <div class="cell" data-widget="foot.3"><div class="k" data-field="foot.3.k">Tomorrow</div><div class="v" data-field="foot.3.v">Ms. Reyes back<small data-field="foot.3.s">Quiz Friday · be ready</small></div></div>
+</footer>
+
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+</body></html>

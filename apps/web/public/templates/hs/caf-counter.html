@@ -1,0 +1,211 @@
+<!doctype html>
+<!-- HS CAF 03 — CHEF'S COUNTER. Restaurant-grade refined caf board: hero dish, sides, allergens, line status. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Cafeteria · Chef's Counter — HS Lobby 4K</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,400;9..144,700;9..144,900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+    --paper:#f3ece0; --paper2:#e9dfca; --ink:#1c1814; --ink2:#5b5347; --rule:#cdbfa3;
+    --green:#2a4f3a; --green2:#1a3326; --gold:#caa14a; --tomato:#b8331f; --olive:#7a7a3d;
+  }
+  html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#0d0b08;color:var(--ink);font-family:'Inter',sans-serif}
+  .viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+  .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+  .stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--paper);box-shadow:0 80px 200px rgba(0,0,0,.65)}
+  .stage::before{content:'';position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;
+    background:
+      radial-gradient(1400px 900px at 80% 10%, rgba(202,161,74,.08), transparent 60%),
+      radial-gradient(1400px 900px at 10% 100%, rgba(42,79,58,.07), transparent 60%),
+      repeating-linear-gradient(0deg, rgba(0,0,0,.018) 0 1px, transparent 1px 3px);
+  }
+  @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.3}}
+  @keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(42,79,58,.5)}50%{box-shadow:0 0 0 22px rgba(42,79,58,0)}}
+
+  /* MASTHEAD */
+  .mast{position:absolute;top:60px;left:80px;right:80px;height:240px;display:flex;align-items:flex-end;justify-content:space-between;border-bottom:5px solid var(--ink);padding-bottom:24px;z-index:4}
+  .mast .left{display:flex;align-items:flex-end;gap:36px}
+  .mast .seal{width:160px;height:160px;background:var(--green);color:var(--paper);display:grid;place-items:center;text-align:center;line-height:1;font-family:'Fraunces',serif;font-weight:900;font-size:60px;letter-spacing:-.01em;font-style:italic;border:4px solid var(--green2)}
+  .mast .seal .est{display:block;font-family:'JetBrains Mono',monospace;font-style:normal;font-weight:500;font-size:14px;color:var(--gold);letter-spacing:.22em;margin-top:8px}
+  .mast .title{font-family:'Fraunces',serif;font-weight:900;font-size:200px;line-height:.85;letter-spacing:-.025em;color:var(--ink)}
+  .mast .title .amp{color:var(--tomato);font-style:italic;font-weight:400}
+  .mast .title .sub{display:block;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:30px;color:var(--green);letter-spacing:.32em;text-transform:uppercase;margin-top:16px}
+  .mast .right{display:flex;flex-direction:column;align-items:flex-end;gap:12px}
+  .mast .right .day{font-family:'Fraunces',serif;font-style:italic;font-weight:700;font-size:80px;color:var(--ink);line-height:.9;letter-spacing:-.01em}
+  .mast .right .date{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:30px;letter-spacing:.22em;color:var(--ink2);text-transform:uppercase}
+  .mast .right .open{padding:12px 22px;background:var(--green);color:#fff;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;letter-spacing:.22em;text-transform:uppercase;display:inline-flex;align-items:center;gap:14px;margin-top:10px}
+  .mast .right .open::before{content:'';width:14px;height:14px;border-radius:50%;background:var(--gold);animation:pulse 1.8s ease-in-out infinite}
+
+  /* CHIPS */
+  .chips{position:absolute;top:340px;left:80px;right:80px;display:grid;grid-template-columns:repeat(5,1fr);gap:24px;z-index:3}
+  .chip{background:#fff;border:3px solid var(--ink);padding:22px 28px}
+  .chip .k{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.22em;color:var(--ink2);text-transform:uppercase;line-height:1}
+  .chip .v{font-family:'Fraunces',serif;font-weight:900;font-size:80px;line-height:1;color:var(--ink);letter-spacing:-.02em;margin-top:6px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .chip.lit{background:var(--ink);border-color:var(--ink)}.chip.lit .k{color:var(--gold)}.chip.lit .v{color:var(--paper)}
+  .chip.green{background:var(--green);border-color:var(--green2)}.chip.green .k{color:rgba(255,255,255,.7)}.chip.green .v{color:#fff}
+  .chip.tomato{background:var(--tomato);border-color:#7a1f12}.chip.tomato .k{color:rgba(255,255,255,.75)}.chip.tomato .v{color:#fff}
+  .chip .v.dot::after{content:'';display:inline-block;width:14px;height:14px;background:var(--gold);border-radius:50%;margin-left:12px;vertical-align:middle;animation:blink 1.4s steps(2) infinite}
+
+  /* HERO PLATE — left big card */
+  .hero{position:absolute;top:540px;left:80px;width:2280px;height:1300px;background:#fff;border:3px solid var(--ink);display:flex;flex-direction:column;z-index:3}
+  .hero .photo{flex:1;background:radial-gradient(circle at 50% 55%, #c97a3a 0%, #8a4a1e 35%, #3d1f0e 80%);position:relative;overflow:hidden;border-bottom:3px solid var(--ink);display:grid;place-items:center}
+  .hero .photo::before{content:'';position:absolute;top:0;right:0;bottom:0;left:0;background:repeating-linear-gradient(45deg,transparent 0 80px,rgba(255,255,255,.04) 80px 82px)}
+  .hero .photo::after{content:'';position:absolute;top:0;right:0;bottom:0;left:0;background:radial-gradient(ellipse 1500px 900px at 50% 0%,rgba(255,236,196,.16),transparent 60%)}
+  .hero .photo .ic{font-size:600px;line-height:1;filter:drop-shadow(0 32px 60px rgba(0,0,0,.6));z-index:1}
+  .hero .photo .pricetag{position:absolute;top:48px;right:48px;width:280px;height:280px;border-radius:50%;background:var(--gold);color:var(--ink);display:grid;place-items:center;text-align:center;line-height:1;transform:rotate(-8deg);box-shadow:0 24px 50px rgba(0,0,0,.4);border:6px solid var(--paper)}
+  .hero .photo .pricetag .k{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.22em;text-transform:uppercase;color:var(--green)}
+  .hero .photo .pricetag .v{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:140px;line-height:.95;letter-spacing:-.04em;color:var(--ink);margin:6px 0}
+  .hero .photo .pricetag .sub{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:18px;letter-spacing:.18em;color:var(--ink2);text-transform:uppercase}
+  .hero .photo .corner{position:absolute;top:48px;left:48px;background:rgba(0,0,0,.55);color:#fff;backdrop-filter:blur(4px);padding:16px 28px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:30px;letter-spacing:.22em;text-transform:uppercase;display:flex;align-items:center;gap:14px}
+  .hero .photo .corner::before{content:'';width:18px;height:18px;background:var(--gold);border-radius:50%;animation:blink 1.4s steps(2) infinite}
+
+  .hero .body{padding:48px 64px 56px;display:flex;flex-direction:column;gap:14px}
+  .hero .eyebrow{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:30px;letter-spacing:.34em;text-transform:uppercase;color:var(--tomato);display:flex;align-items:center;gap:18px}
+  .hero .eyebrow::before{content:'';height:4px;width:64px;background:var(--tomato)}
+  .hero h1{margin:0;font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:200px;line-height:.85;letter-spacing:-.03em;color:var(--ink);text-wrap:balance}
+  .hero h1 .acc{color:var(--tomato);font-style:italic}
+  .hero .desc{margin:8px 0 0;font-family:'Fraunces',serif;font-weight:400;font-size:42px;line-height:1.3;color:var(--ink2);max-width:2000px;text-wrap:pretty;font-style:italic}
+  .hero .meta{margin-top:14px;border-top:3px solid var(--ink);padding-top:24px;display:flex;justify-content:space-between;gap:32px}
+  .hero .meta .it{display:flex;flex-direction:column;gap:4px}
+  .hero .meta .it .k{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink2)}
+  .hero .meta .it .v{font-family:'Fraunces',serif;font-weight:900;font-size:48px;line-height:1;color:var(--ink);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+  .hero .meta .it .v.green{color:var(--green)}
+  .hero .meta .it .v.tomato{color:var(--tomato)}
+
+  /* RIGHT COLUMN */
+  .col{position:absolute;top:540px;right:80px;width:1340px;height:1300px;display:flex;flex-direction:column;gap:24px;z-index:3}
+
+  .lines{background:var(--green);color:#fff;border:3px solid var(--green2);padding:28px 32px}
+  .lines h3{margin:0 0 14px;font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:54px;line-height:1;letter-spacing:-.02em;color:#fff;display:flex;justify-content:space-between;align-items:baseline}
+  .lines h3 .meta{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.22em;color:var(--gold);text-transform:uppercase;font-style:normal}
+  .lines ul{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px}
+  .lines li{display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:18px;padding:14px 0;border-bottom:1px dashed rgba(255,255,255,.18)}
+  .lines li:last-child{border-bottom:0}
+  .lines li .dot{width:18px;height:18px;border-radius:50%;background:var(--gold)}
+  .lines li.busy .dot{background:#ff7a4a}
+  .lines li.closed .dot{background:rgba(255,255,255,.3)}
+  .lines li .nm{font-family:'Fraunces',serif;font-weight:900;font-size:42px;line-height:1.05;color:#fff;letter-spacing:-.01em;font-style:italic}
+  .lines li .nm .sub{display:block;font-family:'Inter',sans-serif;font-weight:500;font-size:22px;color:rgba(255,255,255,.7);letter-spacing:0;font-style:normal;margin-top:2px}
+  .lines li .st{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);text-align:right;white-space:nowrap}
+  .lines li.busy .st{color:#ffb18a}
+  .lines li.closed .st{color:rgba(255,255,255,.5)}
+  .lines li.closed .nm{color:rgba(255,255,255,.6)}
+
+  .sides{flex:1;background:#fff;border:3px solid var(--ink);padding:28px 32px;display:flex;flex-direction:column}
+  .sides h3{margin:0 0 14px;font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:54px;line-height:1;letter-spacing:-.02em;color:var(--ink);border-bottom:3px solid var(--ink);padding-bottom:14px;display:flex;justify-content:space-between;align-items:baseline}
+  .sides h3 .meta{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.22em;color:var(--ink2);text-transform:uppercase;font-style:normal}
+  .sides ul{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;flex:1}
+  .sides li{display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:24px;padding:13px 0;border-bottom:1px dashed var(--rule)}
+  .sides li:last-child{border-bottom:0}
+  .sides li .nm{font-family:'Fraunces',serif;font-weight:900;font-size:38px;line-height:1.05;color:var(--ink);letter-spacing:-.01em}
+  .sides li .nm .sub{display:block;font-family:'Inter',sans-serif;font-weight:500;font-size:22px;color:var(--ink2);letter-spacing:0;margin-top:2px}
+  .sides li .pr{font-family:'Fraunces',serif;font-weight:900;font-size:48px;line-height:1;color:var(--tomato);letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  /* ALLERGEN STRIP */
+  .allergens{position:absolute;left:80px;right:80px;bottom:160px;height:200px;display:grid;grid-template-columns:auto repeat(6,1fr) auto;gap:16px;z-index:3}
+  .allergens .lbl{background:var(--ink);color:var(--paper);padding:0 28px;display:flex;flex-direction:column;justify-content:center;border:3px solid var(--ink);min-width:280px}
+  .allergens .lbl .k{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;letter-spacing:.22em;color:var(--gold);text-transform:uppercase}
+  .allergens .lbl .v{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:54px;color:#fff;line-height:.95;letter-spacing:-.02em;margin-top:6px}
+  .allergens .a{background:#fff;border:3px solid var(--ink);padding:14px 18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center}
+  .allergens .a.bad{background:var(--paper2)}
+  .allergens .a .mark{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:60px;line-height:1;color:var(--green)}
+  .allergens .a.bad .mark{color:var(--tomato)}
+  .allergens .a .nm{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;letter-spacing:.18em;color:var(--ink);text-transform:uppercase;line-height:1}
+  .allergens .a .sub{font-family:'Inter',sans-serif;font-weight:500;font-size:18px;color:var(--ink2);line-height:1.1}
+  .allergens .ask{background:var(--green);color:#fff;border:3px solid var(--green2);padding:14px 24px;display:flex;flex-direction:column;justify-content:center;min-width:300px}
+  .allergens .ask .k{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px;letter-spacing:.22em;color:var(--gold);text-transform:uppercase;line-height:1}
+  .allergens .ask .v{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:34px;line-height:1.05;color:#fff;margin-top:6px;letter-spacing:-.01em}
+  .allergens .ask .nm{font-family:'Inter',sans-serif;font-weight:600;font-size:22px;color:rgba(255,255,255,.85);margin-top:6px}
+
+  /* TICKER */
+  .ticker{position:absolute;left:0;right:0;bottom:0;height:96px;background:var(--green);color:var(--paper);display:flex;align-items:center;overflow:hidden;z-index:5;border-top:6px solid var(--gold)}
+  .ticker .tag{flex:0 0 auto;background:var(--gold);color:var(--green);font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:40px;padding:0 36px;height:100%;display:flex;align-items:center;letter-spacing:-.02em;gap:16px}
+  .ticker .msg{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:30px;padding-left:36px;white-space:nowrap;letter-spacing:.18em;text-transform:uppercase;color:#fff;animation:sc 90s linear infinite}
+  .ticker .msg .star{color:var(--gold);margin:0 22px}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-hs-caf-counter-v1" }/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+<header class="mast">
+  <div class="left">
+    <div class="seal" data-widget="school"><div><span data-field="school.initials">WHS</span><span class="est" data-field="school.est">EST. 1956</span></div></div>
+    <h1 class="title" data-widget="brand"><span data-field="brand.t1">Counter </span><span class="amp">&amp;</span><span data-field="brand.t2"> Co.</span><span class="sub" data-field="brand.sub">Westridge Cafeteria · Chef's table</span></h1>
+  </div>
+  <div class="right" data-widget="day">
+    <div class="day" data-field="day.name">Tuesday lunch</div>
+    <div class="date" data-field="day.date">Oct 14 · Service 10:58–1:18</div>
+    <div class="open" data-field="day.status">Open · the grill is hot</div>
+  </div>
+</header>
+
+<section class="chips">
+  <div class="chip lit" data-widget="clock"><div class="k" data-field="clock.label">Right now</div><div class="v dot" data-field="clock.time">11:24</div></div>
+  <div class="chip" data-widget="block"><div class="k" data-field="block.label">Lunch block</div><div class="v" data-field="block.value">B</div></div>
+  <div class="chip green" data-widget="harvest"><div class="k" data-field="harvest.label">Harvest of the month</div><div class="v" data-field="harvest.value">Apple</div></div>
+  <div class="chip" data-widget="meals"><div class="k" data-field="meals.label">Meals served today</div><div class="v" data-field="meals.value">412</div></div>
+  <div class="chip tomato" data-widget="tomorrow"><div class="k" data-field="tomorrow.label">Tomorrow</div><div class="v" data-field="tomorrow.value">Tacos</div></div>
+</section>
+
+<article class="hero" data-widget="plate">
+  <div class="photo">
+    <div class="corner" data-field="plate.corner">Today's plate · served hot</div>
+    <div class="ic" data-field="plate.ic">🍝</div>
+    <div class="pricetag"><div><div class="k" data-field="plate.priceK">Full tray</div><div class="v" data-field="plate.priceV">$4.50</div><div class="sub" data-field="plate.priceSub">Cash · card · Boost</div></div></div>
+  </div>
+  <div class="body">
+    <div class="eyebrow"><span data-field="plate.eyebrow">Special of the day</span></div>
+    <h1><span data-field="plate.t1">Sunday-gravy </span><span class="acc" data-field="plate.t2">rigatoni.</span></h1>
+    <p class="desc" data-field="plate.desc">Slow-braised pork shoulder &amp; beef chuck, hand-crushed San Marzano, basil from the Banner farm hoop-house, broken ricotta on top. Served with a slab of garlic focaccia.</p>
+    <div class="meta">
+      <div class="it"><div class="k">Calories</div><div class="v" data-field="plate.cal">680</div></div>
+      <div class="it"><div class="k">Protein</div><div class="v" data-field="plate.pro">38g</div></div>
+      <div class="it"><div class="k">Served</div><div class="v" data-field="plate.served">11–1</div></div>
+      <div class="it"><div class="k">Sourced</div><div class="v green" data-field="plate.source">Local 84%</div></div>
+      <div class="it"><div class="k">Chef</div><div class="v tomato" data-field="plate.chef">M. Russo</div></div>
+    </div>
+  </div>
+</article>
+
+<aside class="col">
+  <div class="lines" data-widget="lines">
+    <h3 data-field="lines.title">Lines · live status<span class="meta" data-field="lines.meta">5 stations · seat 380</span></h3>
+    <ul>
+      <li data-widget="lines.0"><div class="dot"></div><div class="nm"><span data-field="lines.0.nm">Line A · Hot Plate</span><span class="sub" data-field="lines.0.sub">Today's special &amp; sides</span></div><div class="st" data-field="lines.0.st">Open · short wait</div></li>
+      <li class="busy" data-widget="lines.1"><div class="dot"></div><div class="nm"><span data-field="lines.1.nm">Line B · Grill</span><span class="sub" data-field="lines.1.sub">Smash burgers &amp; chicken sandwich</span></div><div class="st" data-field="lines.1.st">Busy · 6 min</div></li>
+      <li data-widget="lines.2"><div class="dot"></div><div class="nm"><span data-field="lines.2.nm">Line C · Garden</span><span class="sub" data-field="lines.2.sub">Salad bar · 8 toppings · 4 dressings</span></div><div class="st" data-field="lines.2.st">Open · grab &amp; go</div></li>
+      <li data-widget="lines.3"><div class="dot"></div><div class="nm"><span data-field="lines.3.nm">Line D · Deli</span><span class="sub" data-field="lines.3.sub">Build a sandwich · 6 breads · 4 proteins</span></div><div class="st" data-field="lines.3.st">Open · short wait</div></li>
+      <li class="closed" data-widget="lines.4"><div class="dot"></div><div class="nm"><span data-field="lines.4.nm">Line E · Wok</span><span class="sub" data-field="lines.4.sub">Stir fry · Wed &amp; Fri only</span></div><div class="st" data-field="lines.4.st">Closed · back Wed</div></li>
+    </ul>
+  </div>
+
+  <div class="sides" data-widget="sides">
+    <h3 data-field="sides.title">On the counter<span class="meta" data-field="sides.meta">All include free fountain</span></h3>
+    <ul>
+      <li data-widget="sides.0"><div class="nm"><span data-field="sides.0.nm">Caesar wedge</span><span class="sub" data-field="sides.0.sub">Romaine heart · grana padano · sourdough crouton</span></div><div class="pr" data-field="sides.0.pr">$3.25</div></li>
+      <li data-widget="sides.1"><div class="nm"><span data-field="sides.1.nm">Roasted root medley</span><span class="sub" data-field="sides.1.sub">Carrot · parsnip · beet · thyme · GF · vegan</span></div><div class="pr" data-field="sides.1.pr">$2.75</div></li>
+      <li data-widget="sides.2"><div class="nm"><span data-field="sides.2.nm">Garlic focaccia</span><span class="sub" data-field="sides.2.sub">Pulled fresh from the oven at 11 &amp; 12:15</span></div><div class="pr" data-field="sides.2.pr">$1.50</div></li>
+      <li data-widget="sides.3"><div class="nm"><span data-field="sides.3.nm">Tomato-basil bisque</span><span class="sub" data-field="sides.3.sub">Cup or bowl · grilled-cheese add-on $1.25</span></div><div class="pr" data-field="sides.3.pr">$2.75</div></li>
+      <li data-widget="sides.4"><div class="nm"><span data-field="sides.4.nm">Gala apple · Banner farm</span><span class="sub" data-field="sides.4.sub">Picked this morning · eat me first</span></div><div class="pr" data-field="sides.4.pr">$0.75</div></li>
+    </ul>
+  </div>
+</aside>
+
+<section class="allergens" data-widget="allergens">
+  <div class="lbl"><div class="k" data-field="allergens.label">In today's hero</div><div class="v" data-field="allergens.title">Allergen card</div></div>
+  <div class="a bad" data-widget="allergens.0"><div class="mark" data-field="allergens.0.mark">⚠</div><div class="nm" data-field="allergens.0.nm">Wheat</div><div class="sub" data-field="allergens.0.sub">Pasta · focaccia</div></div>
+  <div class="a bad" data-widget="allergens.1"><div class="mark" data-field="allergens.1.mark">⚠</div><div class="nm" data-field="allergens.1.nm">Dairy</div><div class="sub" data-field="allergens.1.sub">Ricotta · butter</div></div>
+  <div class="a" data-widget="allergens.2"><div class="mark" data-field="allergens.2.mark">✓</div><div class="nm" data-field="allergens.2.nm">Egg-free</div><div class="sub" data-field="allergens.2.sub">No eggs in sauce</div></div>
+  <div class="a" data-widget="allergens.3"><div class="mark" data-field="allergens.3.mark">✓</div><div class="nm" data-field="allergens.3.nm">Nut-free</div><div class="sub" data-field="allergens.3.sub">Whole kitchen</div></div>
+  <div class="a" data-widget="allergens.4"><div class="mark" data-field="allergens.4.mark">✓</div><div class="nm" data-field="allergens.4.nm">Soy-free</div><div class="sub" data-field="allergens.4.sub">Today only</div></div>
+  <div class="a bad" data-widget="allergens.5"><div class="mark" data-field="allergens.5.mark">⚠</div><div class="nm" data-field="allergens.5.nm">Pork</div><div class="sub" data-field="allergens.5.sub">In gravy · sub avail.</div></div>
+  <div class="ask"><div class="k" data-field="allergens.askK">Need something different?</div><div class="v" data-field="allergens.askV">Ask a chef.</div><div class="nm" data-field="allergens.askNm">Daily GF · vegan plates ready by request — 10 min</div></div>
+</section>
+
+<div class="ticker" data-widget="ticker">
+  <div class="tag" data-field="ticker.tag">From the kitchen</div>
+  <div class="msg"><span data-field="ticker.message">All produce delivered fresh from Banner Farm and Westridge Greenhouse — within 12 miles · Free seconds on apples while they last · Bring your tray back · the dishwasher misses you · Smoothie bar Wednesday — strawberry-banana &amp; mango · Senior &amp; staff free coffee 7–8 every morning · Allergy or diet question? Ask Chef Russo at the counter</span><span>&nbsp;<span class="star">◆</span>&nbsp;</span><span data-field="ticker.message2">All produce delivered fresh from Banner Farm and Westridge Greenhouse — within 12 miles · Free seconds on apples while they last · Bring your tray back · the dishwasher misses you · Smoothie bar Wednesday — strawberry-banana &amp; mango · Senior &amp; staff free coffee 7–8 every morning · Allergy or diet question? Ask Chef Russo at the counter</span></div>
+</div>
+
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+</body></html>

@@ -533,7 +533,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Stadium board for game day: matchup helmets + records, kickoff countdown, all-team contests, fan info (tickets/theme/gates/concessions/stream), PA-system ticker. Bebas Neue + Oswald + Archivo. 4K landscape.',
     category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0e1a',
-    zones: [{ name: 'Scene', widgetType: 'HS_ATH_GAMEDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/ath-gameday.html' } }],
   },
   {
     id: 'preset-hs-ath-standings',
@@ -541,7 +541,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Always-on athletics board: league table, athlete-of-the-week spotlight, school records ladder. Bold numerals, sportsbook-style typography. 4K landscape.',
     category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0e1a',
-    zones: [{ name: 'Scene', widgetType: 'HS_ATH_STANDINGS', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/ath-standings.html' } }],
   },
   {
     id: 'preset-hs-caf-counter',
@@ -549,7 +549,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Single-line cafeteria counter: today\'s plate hero photo card, 5-day rotation strip, allergen badges. Restaurant-menu polish. 4K landscape.',
     category: 'CAFETERIA_MENU', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#fef9f2',
-    zones: [{ name: 'Scene', widgetType: 'HS_CAF_COUNTER', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/caf-counter.html' } }],
   },
   {
     id: 'preset-hs-caf-market',
@@ -557,7 +557,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: '5-station food-hall directory: per-station chef + plate + price + allergen badges, week outlook strip, allergen ticker. Modern food-hall aesthetic. 4K landscape.',
     category: 'CAFETERIA_MENU', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#faf6f0',
-    zones: [{ name: 'Scene', widgetType: 'HS_CAF_MARKET', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/caf-market.html' } }],
   },
   {
     id: 'preset-hs-class-nownext',
@@ -565,7 +565,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'In-room display for HS classrooms: current activity hero, period agenda timeline, do-now/exit-ticket cards. Editorial classroom aesthetic. 4K landscape.',
     category: 'CLASSROOM', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#fafaf7',
-    zones: [{ name: 'Scene', widgetType: 'HS_CLASS_NOWNEXT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/class-nownext.html' } }],
   },
   {
     id: 'preset-hs-class-subday',
@@ -573,7 +573,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Substitute teacher self-running display: sub intro + photo, 5-step timed plan, 6 classroom rules, 4 ask-the-class prompts. Reads like a worksheet. 4K landscape.',
     category: 'CLASSROOM', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#fffaf0',
-    zones: [{ name: 'Scene', widgetType: 'HS_CLASS_SUBDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/class-subday.html' } }],
   },
   {
     id: 'preset-hs-hall-bulletin',
@@ -581,7 +581,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Hallway feature wall: 4 pinned flyers (sports, theatre, club, college rep) with cork-board texture, spotlight panel with editable meta rows, "right now" period chip. 4K landscape.',
     category: 'HALLWAY_DISPLAY', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#f3ead8',
-    zones: [{ name: 'Scene', widgetType: 'HS_HALL_BULLETIN', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/hall-bulletin.html' } }],
   },
   {
     id: 'preset-hs-hall-wayfinder',
@@ -589,7 +589,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Airport-style departure directory for transition periods: origin → destination rows, "now boarding" status pills, terminal/gate codes for room numbers. 4K landscape.',
     category: 'HALLWAY_DISPLAY', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0c1220',
-    zones: [{ name: 'Scene', widgetType: 'HS_HALL_WAYFINDER', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/hall-wayfinder.html' } }],
   },
   // ─── MS Pack — Arcade + Atlas (more in pipeline) ───────────────
   // Approved 2026-04-25 — matches scratch/design/arcade-ms-v2.html.

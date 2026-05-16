@@ -428,6 +428,16 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'STREAMING':    return <StreamingWidget config={cfg} live={live} />;
     case 'LOGO':         return <LogoWidget config={cfg} />;
     case 'WEBPAGE':      return <WebpageWidget config={cfg} live={live} />;
+    // 2026-05-16 — EXTERNAL_HTML: a self-contained HTML template
+    // (3840×2160 signage / HS-district pack) served from our own
+    // /public/templates/ tree. ONE widget type backs ALL ~78 of
+    // those templates — each preset just points cfg.url at a
+    // different file. The iframe is sandboxed, so a malformed
+    // template can only break its own frame, never the dashboard
+    // (this is the exact crash class that took the template
+    // dashboard down before — a preset whose widgetType had no
+    // renderer / a component that threw at import time).
+    case 'EXTERNAL_HTML': return <ExternalHtmlWidget config={cfg} />;
     case 'RSS_FEED':     return <RSSWidget config={cfg} compact={compact} />;
     case 'SOCIAL_FEED':  return <SocialWidget config={cfg} />;
     case 'PLAYLIST':     return <PlaylistWidget config={cfg} />;
@@ -2569,6 +2579,48 @@ function QrCodeVariant({ config, bgColor, color }: { config: any; bgColor: strin
 // ═══════════════════════════════════════════════════════
 // WEB / CONTENT WIDGETS
 // ═══════════════════════════════════════════════════════
+
+/**
+ * EXTERNAL_HTML — renders a self-contained HTML signage template
+ * (the industry signage pack + HS district pack) in a sandboxed
+ * iframe. The HTML files live under apps/web/public/templates/ and
+ * are served same-path; each is a complete 3840×2160 document that
+ * scales itself to the iframe via its own inline auto-fit JS.
+ *
+ * `sandbox="allow-scripts"` (NO allow-same-origin): the template's
+ * own JS runs (needed for auto-fit + ticker scroll), but the frame
+ * gets a null origin and cannot touch the parent document, cookies,
+ * or storage. A broken template — parse error, runaway JS, bad CSS —
+ * is fully contained to its own frame. That containment is the
+ * whole point: it makes adding 78 templates a zero-risk operation
+ * for the dashboard.
+ */
+function ExternalHtmlWidget({ config }: { config: any }) {
+  const url = typeof config?.url === 'string' ? config.url.trim() : '';
+  if (!url) {
+    return (
+      <div
+        style={{
+          width: '100%', height: '100%', display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          background: '#0f172a', color: '#94a3b8',
+          fontSize: 13, fontFamily: 'system-ui, sans-serif',
+        }}
+      >
+        No template URL
+      </div>
+    );
+  }
+  return (
+    <iframe
+      src={url}
+      title="Signage template"
+      loading="lazy"
+      sandbox="allow-scripts"
+      style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
+    />
+  );
+}
 
 function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
   // Auto-prefix bare domains with https://
