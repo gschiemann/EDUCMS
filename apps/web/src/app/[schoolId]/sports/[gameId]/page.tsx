@@ -25,11 +25,18 @@ import {
   Plus,
   Tv,
   Check,
+  MonitorPlay,
 } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useGame, useGameControl } from '@/hooks/use-api';
+import {
+  useGame,
+  useGameControl,
+  useGameScreens,
+  useShowGameOnScreens,
+  useHideGameFromScreens,
+} from '@/hooks/use-api';
 import { findSport } from '@cms/api-types';
 import type { SportDefinition, SportStatField } from '@cms/api-types';
 
@@ -222,6 +229,11 @@ function GameControl() {
         </div>
       </Section>
 
+      {/* push the scoreboard to the venue's screens */}
+      <Section title="Show on screens">
+        <ScreenPushPanel gameId={gameId} />
+      </Section>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* score */}
         <Section title="Score">
@@ -335,6 +347,85 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div className="mt-4 rounded-2xl bg-white ring-1 ring-slate-200 p-5">
       <h2 className="text-sm font-bold text-slate-900 mb-3">{title}</h2>
       {children}
+    </div>
+  );
+}
+
+function ScreenPushPanel({ gameId }: { gameId: string }) {
+  const { data: screens, isLoading } = useGameScreens(gameId);
+  const show = useShowGameOnScreens(gameId);
+  const hide = useHideGameFromScreens(gameId);
+
+  const list: any[] = Array.isArray(screens) ? screens : [];
+  const showingCount = list.filter((s) => s.showing).length;
+  const busy = show.isPending || hide.isPending;
+
+  if (isLoading) {
+    return <p className="text-sm text-slate-400">Loading screens…</p>;
+  }
+  if (list.length === 0) {
+    return <p className="text-sm text-slate-400">No paired screens in this venue yet.</p>;
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <p className="text-xs text-slate-400">
+          Push this scoreboard to a display. An emergency alert always overrides it.
+        </p>
+        {showingCount > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => hide.mutate(undefined)}
+            className="shrink-0"
+          >
+            Stop all ({showingCount})
+          </Button>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {list.map((s) => (
+          <div
+            key={s.id}
+            className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2"
+          >
+            <span
+              className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                s.status === 'ONLINE' ? 'bg-green-500' : 'bg-slate-300'
+              }`}
+            />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-slate-800 truncate">{s.name}</div>
+              {s.showingOther && !s.showing && (
+                <div className="text-[11px] text-amber-600">showing another game</div>
+              )}
+            </div>
+            {s.showing ? (
+              <Button
+                size="sm"
+                disabled={busy}
+                className="bg-green-600 text-white gap-1.5 shrink-0"
+                onClick={() => hide.mutate([s.id])}
+              >
+                <MonitorPlay className="h-3.5 w-3.5" />
+                On air
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                className="shrink-0"
+                onClick={() => show.mutate([s.id])}
+              >
+                Show
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -2162,3 +2162,43 @@ export function useDeleteSponsor() {
     },
   });
 }
+
+// ─── VenueOS Sports — Sprint 13 Phase 3: scoreboard-to-screen ───
+// Push a game's live scoreboard onto the venue's paired screens.
+
+export function useGameScreens(gameId: string | undefined) {
+  return useQuery({
+    queryKey: ['sports-game-screens', gameId],
+    queryFn: () => apiFetch(`/sports/games/${gameId}/screens`),
+    enabled: !!gameId,
+    refetchInterval: 10_000,
+  });
+}
+
+export function useShowGameOnScreens(gameId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (screenIds: string[]) =>
+      apiFetch(`/sports/games/${gameId}/show`, {
+        method: 'POST',
+        body: JSON.stringify({ screenIds }),
+      }),
+    onSuccess: (data) => {
+      if (data) qc.setQueryData(['sports-game-screens', gameId], data);
+    },
+  });
+}
+
+export function useHideGameFromScreens(gameId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (screenIds?: string[]) =>
+      apiFetch(`/sports/games/${gameId}/hide`, {
+        method: 'POST',
+        body: JSON.stringify({ screenIds: screenIds ?? null }),
+      }),
+    onSuccess: (data) => {
+      if (data) qc.setQueryData(['sports-game-screens', gameId], data);
+    },
+  });
+}
