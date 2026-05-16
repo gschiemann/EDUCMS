@@ -1323,6 +1323,239 @@ Proof + replay (B-2). Controlled AI assistance (B-3).
 
 No commercial vendors until we have funding. All free/open-source or self-hosted.
 
+---
+
+**Sprint 13 — VenueOS Sports (the all-in-one live-event venue system)**
+
+Strategic frame: VenueOS becomes the premiere all-in-one sports-venue
+system — real-time scoreboards, perimeter ribbon/fascia banners,
+celebration animation triggers, and game-day show control — scaling
+from a K-12 gym to a pro stadium. Ambition: #1 in the industry from
+K-12 sports → college → every major professional sport.
+
+This is NOT a new product built from scratch. It is a sports-mode
+layer pointed at an already-built real-time signage engine. The hard,
+expensive parts of a sports system are things VenueOS already ships
+(see "what we already have" below). Phases 1-2 are mostly assembly.
+
+Research basis (2026-05-16, two deep web-research passes — market +
+technical architecture). Key sources, recorded so the research is
+durable: Daktronics (Show Control / All Sport), ANC LiveSync,
+ScoreVision (HS-focused, software-first, sponsorship-subsidized),
+Nevco / Electro-Mech, Ross XPression Tessera (virtual-canvas LED),
+DELTAcast DELTA-stadium, Sportzcast / Scorebird (console tap-off),
+GameChanger, Genius Sports / Sportradar (league push feeds, 20-30s
+lag), NovaStar / Brompton / Megapixel (LED processors).
+
+Market reality: the industry is bifurcated. Pro/college is locked-up
+six-to-eight-figure capex (Daktronics, ANC) — a *later* play, not the
+beachhead. The **high-school + rec segment is the opening**, and
+ScoreVision has validated the software-first, sponsorship-subsidized
+playbook there — but ScoreVision still chains its software to its own
+hardware. VenueOS's structural edge over every incumbent: a
+hardware-agnostic Android player + template builder + signed
+real-time pub/sub it ALREADY ships.
+
+### What we already have (the unfair advantage)
+
+- **Signed WebSocket pub/sub** (built for emergency alerts) — instant
+  fleet-wide content takeover with HTTP-polling fallback and
+  per-screen scoping (Sprint 8b). A celebration cue IS an emergency
+  trigger; the fan-out engine already exists.
+- **Runs on NovaStar Taurus** — the player can BE the LED controller,
+  skipping the separate six-figure processor on smaller installs.
+- **Mobile hold-to-trigger panic page** — the exact control-surface
+  pattern for phone-driven game control ("Touchdown" vs "Lockdown").
+- **Template builder + brand shim** — scoreboard layouts and
+  celebration animations are templates; the brand shim auto-recolors
+  every animation to the school's colors.
+- **Immutable AuditLog** — becomes sponsor proof-of-play reporting
+  for free.
+- **Custom resolutions + EXTERNAL_HTML widget** — already in place.
+
+### 1. Hardware topology
+
+Two deployment modes, both supported:
+  - **Taurus-native** — player runs ON the NovaStar Taurus LED
+    controller; player → LED, no separate processor. The cost-killer
+    for HS gyms.
+  - **Source mode** — player outputs HDMI/SDI at the wall's EXACT
+    pixel resolution into a third-party processor (NovaStar /
+    Brompton / Megapixel) for big college/pro walls.
+A venue is a set of **surfaces**, each a screen or screen-group with
+a role: `VIDEO_BOARD`, `RIBBON`, `AUX` (end-zone/corner), `CONCOURSE`,
+`LOCKER_ROOM`, `STREAM` (broadcast overlay). Cues target roles, not
+devices.
+
+### 2. The Sport Engine — the abstraction that handles EVERY sport
+
+Never hardcode football vs basketball. A declarative `SportDefinition`
+drives the whole scoreboard + cue system:
+  - `clock`: countdown | countup | none
+  - `segments`: { name (Quarter/Period/Inning/Set/Half), count,
+    overtimeRule }
+  - `score`: { unit (points/runs/goals), increments[] }
+  - `statFields[]`: sport-specific (football down/distance/ball-on;
+    baseball balls/strikes/outs/baserunners; basketball team
+    fouls/bonus/possession arrow; volleyball sets/serve; …)
+  - `celebrations[]`: trigger events (TD, field goal, 3-pointer,
+    home run, goal, pin, ace, record, …)
+  - `mode`: HEAD_TO_HEAD | LEADERBOARD (meet sports are leaderboards,
+    not head-to-head — the one paradigm shift)
+
+Sports coverage, grouped by clock model:
+  - **Continuous-clock invasion** — football, basketball, soccer,
+    hockey, lacrosse, water polo, field hockey, rugby, futsal,
+    team handball.
+  - **Inning/turn** — baseball, softball, cricket.
+  - **Set/rally** — volleyball, tennis, badminton, pickleball,
+    table tennis.
+  - **Bout/match** — wrestling, boxing, MMA, fencing.
+  - **Meet/leaderboard** — track & field, swimming/diving, cross
+    country, gymnastics, cheer, golf, rowing.
+  - **E-sports** — maps/rounds (growing fast in HS).
+
+Ship ~6 flagship sports first (football, basketball, baseball/
+softball, soccer, volleyball, wrestling — ~90% of HS athletics);
+the schema makes the rest mostly config.
+
+### 3. Scoreboard builder
+
+The template builder gains a scoreboard widget set bound to the
+active `SportDefinition`: `ClockWidget`, `ScoreWidget`,
+`SegmentWidget`, sport-bound `StatWidget`s. Operator picks a sport →
+correct scoreboard template → recolors to school colors via the
+brand shim. Custom resolution = the actual board size.
+
+### 4. The Cue & Celebration engine
+
+A `CueDeck` per sport — a launchpad of cues:
+`Cue { name, animation, audio, targetSurfaces[], durationMs,
+autoRevert, sponsorSlot? }`. Trigger sources, all fanned out through
+the signed pub/sub:
+  - **Phone** — panic-page pattern: score ±, clock, celebration
+    buttons; hold-to-trigger on the big ones.
+  - **Launchpad UI** — a tablet grid.
+  - **Elgato Stream Deck** — support it as the physical cue panel.
+    $150 hardware vs a $3K Daktronics console.
+  - **AUTO** — a score feed reporting 14→21 fires the touchdown cue
+    itself.
+  - **Keyboard hotkeys** for the laptop operator.
+Fan-out is per-surface (full animation on the video board,
+score-flash on the ribbon, corner banner on concourse), auto-reverts
+after N seconds. Content-level sync lands every surface within
+~150ms — plenty for HS; hardware genlock stays a pro-tier add-on.
+Celebration animations are `EXTERNAL_HTML` templates → auto-rebrand
+via the shim. Pre-cache them like emergency assets so game
+presentation survives stadium WiFi failure.
+
+### 5. Surfaces — ribbon / video board / concourse
+
+A `RIBBON` surface uses a **virtual-canvas + pixel-map**: the operator
+describes the physical panel chain ("60 panels, 192×192, straight/
+curved run") → VenueOS computes the off-spec canvas (e.g.
+11520×192) and slices content across panels so a scroll wraps the
+bowl seamlessly. Reuses custom-resolution support; the pixel-map is
+the one net-new piece. Ribbon-native widgets: infinite-scroll
+sponsor banner, score-follow, rotation.
+
+### 6. Score-data ingestion — the "two clocks" rule
+
+Three tiers, shipped in order:
+  1. **Manual phone entry** (MVP — enough for most HS).
+  2. **Console tap-off** — a small box (Sportzcast/Scorebird-style,
+     or our own serial reader) reads the existing Daktronics All
+     Sport console and publishes to our cloud. THE LIVE GAME CLOCK
+     MUST COME FROM HERE — local and fast.
+  3. **League feeds** — Genius Sports / Sportradar for stats overlays
+     + college. These lag 20-30s. RULE: clock from local console,
+     stats from feed — never mix them.
+A `ScoreSource` abstraction makes all three interchangeable.
+
+### 7. Sponsorship — a first-class revenue system
+
+Sponsorship is the BUYING TRIGGER, not a feature (ScoreVision schools
+clear $50-130K/yr; that revenue is why they buy). Build it in from
+day one:
+  - **Ad inventory units**: ribbon rotations, full-board between-play,
+    co-branded celebration ("this touchdown brought to you by …"),
+    persistent scorebug bug, concourse loops.
+  - **Scheduling**: dayparting, frequency caps, flight dates,
+    makegoods.
+  - **Proof-of-play**: auto-generated from the immutable AuditLog —
+    "your logo: 14 touchdowns, ~47K impressions, 92% delivered."
+  - **Model**: school sells local ads + keeps the money; VenueOS
+    charges SaaS + optional rev-share. Later: a cross-district
+    sponsor marketplace.
+
+### 8. Game-day operations
+
+A `Game` object with a state machine (`SCHEDULED → PRE_GAME → LIVE →
+HALFTIME → FINAL`). A **rundown / game script** — a timeline of
+sponsor reads, hype videos, promos tied to stoppages. Operator
+tablet shows three panes: scoreboard control + cue launchpad +
+rundown. Two-person mode (scorekeeper + show caller) or
+solo-volunteer mode.
+
+### 9. Go-to-market — K-12 → college → pro
+
+  - **Beachhead: K-12 athletics.** Every school VenueOS already sells
+    has a gym and a field; the athletic director is down the hall
+    from the principal who already signed. A warm upsell, not a cold
+    sale — the structural advantage over ScoreVision.
+  - **The wedge / the pitch:** "You're not buying a scoreboard.
+    You're buying a screen that runs announcements, lunch menus, and
+    booster ads five days a week — and becomes a full
+    game-presentation system on Friday night." A gym scoreboard is
+    dark 95% of the time; no incumbent uses it as everyday signage.
+    That rewrites the capex math.
+  - **College:** same software, larger surfaces, real ribbon boards,
+    console tap-off + league feeds. Incumbents have capex lock-in —
+    enter via mid-major and Olympic-sport venues first.
+  - **Pro:** the architecture scales (source mode into pro
+    processors, multi-surface cue fan-out, genlock add-on). Pro is a
+    deliberate later play — it requires displacing entrenched
+    Daktronics/ANC relationships and a pro-grade support burden.
+    Sequence it; don't lead with it.
+
+### 10. God-tier (stretch)
+
+  - **Streaming overlay** — the scorebug renders as a transparent
+    browser-source overlay for NFHS Network / Hudl livestreams. One
+    scorebug, board + broadcast.
+  - **Instant replay** — pair a camera; replay to the board.
+  - **Fan engagement** — QR on the ribbon → phone polls, "make some
+    noise" meter, fan-cam, kiss-cam, t-shirt-toss prompts.
+  - **District command** — a district runs every school's boards
+    from one dashboard + a live "scores around the district" ticker.
+  - **Severe-weather safety** — a stadium is a mass-gathering venue;
+    the existing emergency system = lightning/evac alerts that
+    override the game. A genuine safety differentiator no scoreboard
+    company has.
+  - **Auto-celebration via ML** — detect the goal from crowd-audio.
+  - Walk-up music, record boards, senior night, rivalry mode.
+
+### 11. Data model (Prisma — additive)
+
+`SportDefinition` (seeded constant) · `Game` · `GameEvent` (score +
+cue log) · `Surface` · `CueDeck` / `Cue` · `Sponsor` ·
+`SponsorPlacement`. Proof-of-play reuses `AuditLog`. All additive —
+new tables + nullable pointers, safe to ship to live pilot tenants.
+
+### 12. Phasing
+
+  - **Phase 1 — MVP:** Game Mode toggle, phone control, manual
+    scoring, 6 flagship sports, scoreboard templates, celebration
+    pack, single surface. Mostly assembly of existing parts.
+  - **Phase 2 — Monetize:** sponsorship system + proof-of-play,
+    Stream Deck support, remaining sports.
+  - **Phase 3 — Multi-surface:** ribbon boards, pixel-map,
+    per-surface cue fan-out.
+  - **Phase 4 — Live data:** console tap-off, league feeds,
+    streaming overlay.
+  - **Phase 5 — God-tier:** auto-celebration, fan engagement,
+    district ops, replay.
+
 ## For AI Assistants
 
 1. **Model tier:** Default to Haiku for boilerplate, syntax fixes, test stubs. Use Sonnet for feature work. Use Opus for emergency system, security issues, template builder design, or ambiguous architecture calls.
@@ -1435,4 +1668,4 @@ No commercial vendors until we have funding. All free/open-source or self-hosted
 
 ---
 
-**Last Updated:** 2026-05-13
+**Last Updated:** 2026-05-16
