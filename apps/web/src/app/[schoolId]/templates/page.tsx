@@ -881,40 +881,111 @@ export default function TemplatesPage() {
           per-card Landscape/Portrait toggle picked up a third
           "Custom" chip that opens the Adapt-for-LED resolution modal
           for that specific template. */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search templates..."
-            aria-label="Search templates"
-            className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
-          />
+      {/* Two-tier template filter — restored 2026-05-16. Commit
+          8872643 (2026-05-13) removed the grade-level chips, the
+          category sub-filter, and the holiday sub-filter while
+          swapping in a canvas-mode pill; the operator only asked to
+          declutter the preset pill, so the grade/category/holiday
+          filters should not have gone. activeLevel / activeCategory /
+          activeHoliday + the `filtered` predicate were left wired all
+          along — this is purely the UI that drives them.
+          Tier 1: search + school level.  Tier 2: category.
+          Tier 3 (conditional): holiday sub-filter. */}
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search templates..."
+              aria-label="Search templates"
+              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+            />
+          </div>
+          {/* School-level filter — Elementary / Middle / High. Only
+              meaningful for K-12 tenants; hidden for other verticals. */}
+          {(!tenantCopy.vertical || tenantCopy.vertical === 'K12') && (
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by school level">
+              {SCHOOL_LEVEL_CHIPS.map((chip) => {
+                const active = activeLevel === chip.key;
+                return (
+                  <button
+                    key={chip.key || 'all'}
+                    type="button"
+                    onClick={() => setActiveLevel(chip.key)}
+                    aria-pressed={active}
+                    className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition ${
+                      active
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <span aria-hidden>{chip.emoji}</span>
+                    {chip.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
-        {/* School-level filter — Elementary / Middle / High. Only
-            meaningful for K-12 tenants; hidden for other verticals.
-            The filter logic (activeLevel) has always been live in the
-            `filtered` pass below — this chip row is the UI for it. */}
-        {(!tenantCopy.vertical || tenantCopy.vertical === 'K12') && (
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by school level">
-            {SCHOOL_LEVEL_CHIPS.map((chip) => {
-              const active = activeLevel === chip.key;
+
+        {/* Category sub-filter. Vertical-aware: K-12 gets Welcome /
+            Hallway / Cafeteria / Athletics / Holidays; other verticals
+            get their own set from tenantCopy.templateCategories. */}
+        {(() => {
+          const cats = (tenantCopy.templateCategories && tenantCopy.templateCategories.length > 0)
+            ? tenantCopy.templateCategories
+            : CATEGORY_TABS;
+          return (
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by category">
+              {cats.map((cat) => {
+                const active = activeCategory === cat.key;
+                return (
+                  <button
+                    key={cat.key || 'all'}
+                    type="button"
+                    onClick={() => {
+                      setActiveCategory(cat.key);
+                      // leaving the Holidays category clears its sub-filter
+                      if (cat.key !== 'HOLIDAYS') setActiveHoliday('');
+                    }}
+                    aria-pressed={active}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                      active
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {/* Holiday sub-filter — only when the Holidays category is
+            active, matching the original two-tier behavior. */}
+        {activeCategory === 'HOLIDAYS' && (
+          <div className="flex flex-wrap gap-1.5 pl-1" role="group" aria-label="Filter by holiday">
+            {HOLIDAY_SUB_FILTERS.map((h) => {
+              const active = activeHoliday === h.key;
               return (
                 <button
-                  key={chip.key || 'all'}
+                  key={h.key || 'all'}
                   type="button"
-                  onClick={() => setActiveLevel(chip.key)}
+                  onClick={() => setActiveHoliday(h.key)}
                   aria-pressed={active}
-                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${
                     active
-                      ? 'bg-indigo-600 text-white shadow-sm'
+                      ? 'bg-fuchsia-600 text-white'
                       : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
                   }`}
                 >
-                  <span aria-hidden>{chip.emoji}</span>
-                  {chip.label}
+                  <span aria-hidden>{h.emoji}</span>
+                  {h.label}
                 </button>
               );
             })}
