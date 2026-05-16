@@ -448,6 +448,14 @@ class MainActivity : ComponentActivity() {
             // is already granted, fire bootstrap immediately.
             proceedWithBootstrapOrRequestPermission()
         }
+
+        // v1.0.65 — offer to make Player the device's HOME app. This
+        // is the non-Device-Owner path to OTA auto-relaunch: when
+        // Player is HOME, the OS itself brings it back after an
+        // update install. Fires once per install, gated inside the
+        // method (skipped under Device Owner — which pins HOME for us
+        // — and skipped if Player is already HOME).
+        maybePromptForHomeAppSetup()
     }
 
     /**
@@ -615,6 +623,127 @@ class MainActivity : ComponentActivity() {
             .show()
 
         prefs.edit().putBoolean("managerInstallPromptShown", true).apply()
+    }
+
+    /**
+     * v1.0.65 — Home-app setup prompt (the non-Device-Owner path to
+     * OTA auto-relaunch).
+     *
+     * After an OTA install the Player process is killed; for it to
+     * come back ON SCREEN by itself, the OS has to relaunch it — and
+     * the only thing Android will auto-relaunch is the HOME app.
+     * Under Device Owner, Manager pins Player as HOME via
+     * DevicePolicyManager and this prompt is unnecessary. WITHOUT
+     * Device Owner there is no API to pin it — the operator has to
+     * pick Player as the Home app once, in Settings. This prompt
+     * walks them through that on the first launch after a sideload.
+     *
+     * Skipped when:
+     *   - Manager is Device Owner (HOME is pinned for us already)
+     *   - Player is already the Home app
+     *   - the prompt has been shown once before (operator can
+     *     re-trigger from the web overlay's software-info row)
+     *
+     * On "Set as home" we (1) flip on the kioskHomeOptIn pref so
+     * PlayerApp keeps the KioskHomeAlias enabled, (2) enable that
+     * alias now so Player is a selectable Home candidate, and (3)
+     * deep-link to the Home-app settings screen. The alias ships
+     * DISABLED precisely so we never register as a launcher on an
+     * OEM-CMS box unless the operator deliberately opts in here.
+     */
+    private fun maybePromptForHomeAppSetup() {
+        val prefs = getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("homeSetupPromptShown", false)) return
+
+        // Device Owner already pins HOME for us — no operator step.
+        if (managerIsDeviceOwner()) {
+            prefs.edit().putBoolean("homeSetupPromptShown", true).apply()
+            return
+        }
+        // Already the Home app — nothing to do.
+        if (isPlayerTheHomeApp()) {
+            prefs.edit().putBoolean("homeSetupPromptShown", true).apply()
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Finish update setup")
+            .setMessage(
+                "Set Venue OS Player as this screen's Home app so it " +
+                "comes back automatically after an update installs — " +
+                "no walking up to the screen. Tap \"Set as home\", then " +
+                "choose Venue OS Player from the list. One-time setup.",
+            )
+            .setPositiveButton("Set as home") { _, _ ->
+                prefs.edit().putBoolean("kioskHomeOptIn", true).apply()
+                enableKioskHomeAlias()
+                openHomeSettings()
+                PlayerLogger.i("MainActivity", "Operator opted into kiosk Home-app setup")
+            }
+            .setNegativeButton("Not now") { _, _ ->
+                PlayerLogger.i("MainActivity", "Operator deferred Home-app setup")
+            }
+            .setCancelable(true)
+            .show()
+
+        prefs.edit().putBoolean("homeSetupPromptShown", true).apply()
+    }
+
+    private fun managerIsDeviceOwner(): Boolean = try {
+        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE)
+            as? android.app.admin.DevicePolicyManager
+        dpm != null && (
+            dpm.isDeviceOwnerApp("com.educms.manager") ||
+                dpm.isDeviceOwnerApp("com.educms.manager.debug")
+        )
+    } catch (_: Exception) { false }
+
+    private fun isPlayerTheHomeApp(): Boolean = try {
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val res = packageManager.resolveActivity(
+            intent,
+            android.content.pm.PackageManager.MATCH_DEFAULT_ONLY,
+        )
+        res?.activityInfo?.packageName == packageName
+    } catch (_: Exception) { false }
+
+    /** Enable our own KioskHomeAlias so Player shows up as a Home-app
+     *  candidate. Toggling our own component needs no permission. */
+    private fun enableKioskHomeAlias() {
+        try {
+            val alias = android.content.ComponentName(
+                packageName,
+                "com.educms.player.KioskHomeAlias",
+            )
+            packageManager.setComponentEnabledSetting(
+                alias,
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                android.content.pm.PackageManager.DONT_KILL_APP,
+            )
+            PlayerLogger.i("MainActivity", "KioskHomeAlias enabled (operator opt-in)")
+        } catch (e: Exception) {
+            PlayerLogger.w("MainActivity", "enableKioskHomeAlias failed: ${e.message}")
+        }
+    }
+
+    /** Deep-link to the Home-app picker. ACTION_HOME_SETTINGS isn't on
+     *  every OEM ROM, so fall back to the top-level Settings app. */
+    private fun openHomeSettings() {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_HOME_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        } catch (_: Exception) {
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_SETTINGS)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            } catch (e: Exception) {
+                PlayerLogger.w("MainActivity", "openHomeSettings failed: ${e.message}")
+            }
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")

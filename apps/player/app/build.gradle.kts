@@ -48,17 +48,23 @@ android {
         //
         // v1.0.64 — THE real auto-relaunch fix: KioskHomeAlias.
         // Player ships a HOME activity-alias (disabled by default);
-        // PlayerApp enables it at runtime once it detects the Manager
-        // companion is device owner. Manager pins it as the persistent
-        // preferred HOME activity. Once Player is the home launcher,
-        // the OS itself returns to it after every death — INCLUDING
-        // its own OTA self-update — with a system-initiated launch
-        // that Android 14 BAL never blocks. No receiver / FGS /
-        // watchdog activity-launch trick required. Disabled-by-default
-        // keeps non-device-owner installs (OEM-CMS signage boxes)
-        // untouched. See AndroidManifest.xml + PlayerApp.kt.
-        versionCode = 10064
-        versionName = "1.0.64"
+        // once Player is the home launcher the OS itself returns to
+        // it after every death — including its own OTA self-update —
+        // with a system-initiated launch that Android 14 BAL never
+        // blocks. v1.0.64 enabled that alias ONLY under Device Owner.
+        //
+        // v1.0.65 — non-Device-Owner Home-app path. Operators who
+        // can't provision Device Owner (no factory reset) get a
+        // first-run prompt (MainActivity.maybePromptForHomeAppSetup)
+        // that enables the alias + deep-links to the Home-app picker.
+        // Once they pick Venue OS Player as Home, the OS auto-relaunch
+        // works identically to the Device-Owner path — the operator
+        // just taps "Install" on each update instead of zero taps.
+        // The `kioskHomeOptIn` pref keeps the alias enabled across
+        // restarts. Alias still ships disabled so OEM-CMS boxes are
+        // untouched unless the operator opts in.
+        versionCode = 10065
+        versionName = "1.0.65"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)

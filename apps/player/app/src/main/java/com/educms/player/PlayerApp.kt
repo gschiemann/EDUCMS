@@ -94,13 +94,17 @@ class PlayerApp : Application() {
      * receiver / FGS / watchdog activity-launch trick is needed (all
      * three were tried in v1.0.61/62 and all were BAL-blocked).
      *
-     * GATED on device owner. We enable the HOME alias ONLY when the
-     * Manager companion is the device owner — i.e. only on a
-     * deliberately-provisioned EduCMS kiosk. On an OEM-CMS signage
-     * box (Goodview / NovaStar / TCL) where we're a guest, Manager is
-     * not device owner, the alias stays disabled, and we never
-     * register as a launcher or risk displacing the vendor's CMS.
-     * See the long comment in AndroidManifest.xml.
+     * Enabled when EITHER:
+     *   - the Manager companion is the device owner (auto — a
+     *     deliberately-provisioned EduCMS kiosk), OR
+     *   - the operator opted in via the v1.0.65 Home-app prompt in
+     *     MainActivity, which sets the `kioskHomeOptIn` pref.
+     *
+     * Otherwise the alias stays DISABLED. On an OEM-CMS signage box
+     * (Goodview / NovaStar / TCL) where we're a guest and neither
+     * condition holds, we never register as a launcher candidate or
+     * risk displacing the vendor's CMS. See the long comment in
+     * AndroidManifest.xml.
      *
      * Toggling our OWN component is always permitted; no permission
      * needed. isDeviceOwnerApp() for another package is also
@@ -109,10 +113,14 @@ class PlayerApp : Application() {
     private fun maybeEnableKioskHomeAlias() {
         try {
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE)
-                as? android.app.admin.DevicePolicyManager ?: return
-            val managerIsDeviceOwner =
+                as? android.app.admin.DevicePolicyManager
+            val managerIsDeviceOwner = dpm != null && (
                 dpm.isDeviceOwnerApp("com.educms.manager") ||
                     dpm.isDeviceOwnerApp("com.educms.manager.debug")
+            )
+            val operatorOptedIn = getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+                .getBoolean("kioskHomeOptIn", false)
+            val shouldBeHome = managerIsDeviceOwner || operatorOptedIn
 
             // The alias CLASS name is namespace-relative
             // (com.educms.player.KioskHomeAlias) — it does NOT pick up
@@ -126,26 +134,31 @@ class PlayerApp : Application() {
             val pm = packageManager
             val current = pm.getComponentEnabledSetting(alias)
 
-            if (managerIsDeviceOwner) {
+            if (shouldBeHome) {
                 if (current != android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
                     pm.setComponentEnabledSetting(
                         alias,
                         android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
                         android.content.pm.PackageManager.DONT_KILL_APP,
                     )
-                    PlayerLogger.i("PlayerApp", "KioskHomeAlias ENABLED — Manager is device owner, Player is now a HOME candidate")
+                    PlayerLogger.i(
+                        "PlayerApp",
+                        "KioskHomeAlias ENABLED — Player is now a HOME candidate " +
+                            "(deviceOwner=$managerIsDeviceOwner optedIn=$operatorOptedIn)",
+                    )
                 }
             } else {
                 // Defensive: if a device was de-provisioned (device
-                // owner removed) we turn the alias back off so we
-                // don't linger as an orphan launcher candidate.
+                // owner removed AND no operator opt-in) we turn the
+                // alias back off so we don't linger as an orphan
+                // launcher candidate.
                 if (current == android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
                     pm.setComponentEnabledSetting(
                         alias,
                         android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                         android.content.pm.PackageManager.DONT_KILL_APP,
                     )
-                    PlayerLogger.i("PlayerApp", "KioskHomeAlias disabled — Manager is not device owner")
+                    PlayerLogger.i("PlayerApp", "KioskHomeAlias disabled — not device owner, no operator opt-in")
                 }
             }
         } catch (e: Exception) {
