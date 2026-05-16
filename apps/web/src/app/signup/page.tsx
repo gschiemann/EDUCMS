@@ -24,7 +24,7 @@
  * identity. No --brand-primary reads here.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -42,10 +42,165 @@ import {
 } from 'lucide-react';
 import { API_URL } from '@/lib/api-url';
 import { useUIStore } from '@/store/ui-store';
+import { VERTICALS, isVertical, type Vertical } from '@cms/api-types';
 
 function slugify(v: string) {
   return v.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
 }
+
+/**
+ * Per-vertical signup copy. VenueOS serves every venue — the form,
+ * hero word, device-preview scene, and feature chips all reflavor to
+ * the industry the operator picks (or arrives with via ?vertical=).
+ * Sports is a first-class option here, same as the K-12 pilot.
+ */
+interface VerticalSignup {
+  picker: string;
+  nameLabel: string;
+  namePlaceholder: string;
+  slugPlaceholder: string;
+  emailPlaceholder: string;
+  heroWord: string;
+  sceneEmoji: string;
+  sceneTitle: string;
+  sceneAnnounce: string;
+  secChip: string;
+}
+
+const SIGNUP_VERTICALS: Record<Vertical, VerticalSignup> = {
+  K12: {
+    picker: '🎓 K-12 school or district',
+    nameLabel: 'District or school name',
+    namePlaceholder: 'Springfield Unified School District',
+    slugPlaceholder: 'springfield',
+    emailPlaceholder: 'you@school.edu',
+    heroWord: 'whole district',
+    sceneEmoji: '🍎',
+    sceneTitle: 'Welcome, Friends!',
+    sceneAnnounce: 'Book Fair Monday!',
+    secChip: 'FERPA-Ready',
+  },
+  GYM: {
+    picker: '🏋️ Gym, fitness club, or athletic facility',
+    nameLabel: 'Gym or club name',
+    namePlaceholder: 'Iron Peak Fitness',
+    slugPlaceholder: 'iron-peak',
+    emailPlaceholder: 'you@yourgym.com',
+    heroWord: 'whole gym',
+    sceneEmoji: '💪',
+    sceneTitle: 'Welcome In!',
+    sceneAnnounce: 'New HIIT class added',
+    secChip: 'Secure & Audited',
+  },
+  RETAIL: {
+    picker: '🛍️ Retail store or chain',
+    nameLabel: 'Store or chain name',
+    namePlaceholder: 'Northside Outfitters',
+    slugPlaceholder: 'northside',
+    emailPlaceholder: 'you@yourstore.com',
+    heroWord: 'whole store',
+    sceneEmoji: '🛍️',
+    sceneTitle: 'Now Open',
+    sceneAnnounce: 'Fall sale — 30% off',
+    secChip: 'Secure & Audited',
+  },
+  CORPORATE: {
+    picker: '🏢 Corporate office or enterprise',
+    nameLabel: 'Company name',
+    namePlaceholder: 'Acme Corp',
+    slugPlaceholder: 'acme',
+    emailPlaceholder: 'you@company.com',
+    heroWord: 'whole office',
+    sceneEmoji: '🏢',
+    sceneTitle: 'Good Morning',
+    sceneAnnounce: 'All-hands at 3 PM',
+    secChip: 'Secure & Audited',
+  },
+  QSR: {
+    picker: '🍔 Quick-service restaurant',
+    nameLabel: 'Restaurant or brand name',
+    namePlaceholder: 'Burger Junction',
+    slugPlaceholder: 'burger-junction',
+    emailPlaceholder: 'you@yourbrand.com',
+    heroWord: 'whole brand',
+    sceneEmoji: '🍔',
+    sceneTitle: 'Order Up!',
+    sceneAnnounce: 'New combo — $7.99',
+    secChip: 'Secure & Audited',
+  },
+  FASHION: {
+    picker: '👗 Fashion boutique or apparel',
+    nameLabel: 'Boutique or brand name',
+    namePlaceholder: 'Studio 5 Boutique',
+    slugPlaceholder: 'studio-5',
+    emailPlaceholder: 'you@yourbrand.com',
+    heroWord: 'whole boutique',
+    sceneEmoji: '👗',
+    sceneTitle: 'Step Inside',
+    sceneAnnounce: 'New arrivals just dropped',
+    secChip: 'Secure & Audited',
+  },
+  BAR: {
+    picker: '🍺 Bar, taproom, or nightclub',
+    nameLabel: 'Bar or venue name',
+    namePlaceholder: 'The Tap Room',
+    slugPlaceholder: 'tap-room',
+    emailPlaceholder: 'you@yourbar.com',
+    heroWord: 'whole bar',
+    sceneEmoji: '🍺',
+    sceneTitle: 'Welcome In',
+    sceneAnnounce: 'Happy hour till 7',
+    secChip: 'Secure & Audited',
+  },
+  HEALTHCARE: {
+    picker: '🏥 Clinic, practice, or hospital',
+    nameLabel: 'Practice or network name',
+    namePlaceholder: 'Harbor Health',
+    slugPlaceholder: 'harbor-health',
+    emailPlaceholder: 'you@yourpractice.com',
+    heroWord: 'whole practice',
+    sceneEmoji: '🏥',
+    sceneTitle: 'Welcome',
+    sceneAnnounce: 'Flu shots available',
+    secChip: 'Secure & Audited',
+  },
+  HOSPITALITY: {
+    picker: '🏨 Hotel, resort, or property',
+    nameLabel: 'Property or group name',
+    namePlaceholder: 'Summit Hotels',
+    slugPlaceholder: 'summit-hotels',
+    emailPlaceholder: 'you@yourproperty.com',
+    heroWord: 'whole property',
+    sceneEmoji: '🏨',
+    sceneTitle: 'Welcome',
+    sceneAnnounce: 'Rooftop event tonight',
+    secChip: 'Secure & Audited',
+  },
+  RESTAURANT: {
+    picker: '🍽️ Full-service restaurant',
+    nameLabel: 'Restaurant or group name',
+    namePlaceholder: 'The Copper Table',
+    slugPlaceholder: 'copper-table',
+    emailPlaceholder: 'you@yourrestaurant.com',
+    heroWord: 'whole restaurant',
+    sceneEmoji: '🍽️',
+    sceneTitle: 'Welcome',
+    sceneAnnounce: "Tonight's special: salmon",
+    secChip: 'Secure & Audited',
+  },
+  SPORTS: {
+    picker: '🏟️ Sports venue, stadium, or athletic program',
+    nameLabel: 'Venue, team, or league name',
+    namePlaceholder: 'Riverside Arena',
+    slugPlaceholder: 'riverside-arena',
+    emailPlaceholder: 'you@yourvenue.com',
+    heroWord: 'whole venue',
+    sceneEmoji: '🏟️',
+    sceneTitle: 'Game Day!',
+    sceneAnnounce: 'Tip-off at 7 PM',
+    secChip: 'Crowd-Safe',
+  },
+};
 
 export default function SignupPage() {
   const [districtName, setDistrictName] = useState('');
@@ -54,15 +209,25 @@ export default function SignupPage() {
   const [adminEmail, setAdminEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  // 2026-05-03 — VenueOS multi-vertical signup. K12 default keeps
-  // current EDU CMS pilot copy/template behavior; switching this
-  // dropdown rebrands the workspace from day 1 (gym templates,
-  // gym terminology, gym emergency types).
-  const [vertical, setVertical] = useState<'K12' | 'GYM' | 'RETAIL' | 'CORPORATE' | 'QSR' | 'FASHION'>('K12');
+  // 2026-05-03 — VenueOS multi-vertical signup. K12 default keeps the
+  // current pilot copy/template behavior; switching this dropdown
+  // reflavors the whole page (copy, device preview, chips) and
+  // rebrands the workspace from day 1 (templates, terminology,
+  // emergency types). All 11 verticals — Sports included — are here.
+  const [vertical, setVertical] = useState<Vertical>('K12');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const login = useUIStore((s) => s.login);
   const router = useRouter();
+  const v = SIGNUP_VERTICALS[vertical];
+
+  // Preselect the vertical from ?vertical= — the landing-page industry
+  // showcase deep-links here with it. Read on the client to skip the
+  // useSearchParams Suspense-boundary ceremony.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('vertical');
+    if (q && isVertical(q.toUpperCase())) setVertical(q.toUpperCase() as Vertical);
+  }, []);
 
   const handleDistrictChange = (v: string) => {
     setDistrictName(v);
@@ -141,14 +306,14 @@ export default function SignupPage() {
             <h1 className="font-[family-name:var(--font-fredoka)] text-4xl md:text-5xl font-semibold tracking-tight text-slate-900 leading-[1.08]">
               Digital signage your{' '}
               <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-500 bg-clip-text text-transparent">
-                whole district
+                {v.heroWord}
               </span>{' '}
               can actually run.
             </h1>
             <p className="mt-5 text-base md:text-lg text-slate-600 leading-relaxed max-w-xl">
               Set up your workspace in under three minutes. Schedule content on every
-              hallway, lobby, and classroom TV — and push a lockdown alert to every
-              screen in seconds when it matters.
+              screen you run — and push an emergency alert to all of them in seconds
+              when it matters.
             </p>
           </div>
 
@@ -160,7 +325,11 @@ export default function SignupPage() {
               Emergency alerts in <strong>&lt;2s</strong>
             </TrustPill>
             <TrustPill icon={ShieldCheck} iconClass="text-emerald-500">
-              <strong>FERPA</strong> &amp; <strong>COPPA</strong> ready
+              {vertical === 'K12' ? (
+                <><strong>FERPA</strong> &amp; <strong>COPPA</strong> ready</>
+              ) : (
+                <><strong>Audit log</strong> &amp; RBAC built in</>
+              )}
             </TrustPill>
             <TrustPill icon={CheckCircle2} iconClass="text-indigo-500">
               Works on <strong>any</strong> TV or Android box
@@ -188,42 +357,23 @@ export default function SignupPage() {
               <select
                 required
                 value={vertical}
-                onChange={(e) => setVertical(e.target.value as typeof vertical)}
+                onChange={(e) => setVertical(e.target.value as Vertical)}
                 className="signup-input cursor-pointer"
               >
-                <option value="K12">🎓 K-12 school or district</option>
-                <option value="GYM">🏋️ Gym, fitness club, or athletic facility</option>
-                <option value="RETAIL">🛍️ Retail store or chain</option>
-                <option value="CORPORATE">🏢 Corporate office or enterprise</option>
-                <option value="QSR">🍔 Quick-service restaurant</option>
-                <option value="FASHION">👗 Fashion boutique or apparel</option>
+                {VERTICALS.map((vk) => (
+                  <option key={vk} value={vk}>
+                    {SIGNUP_VERTICALS[vk].picker}
+                  </option>
+                ))}
               </select>
             </FieldLabel>
 
-            <FieldLabel
-              label={
-                vertical === 'K12'      ? 'District or school name' :
-                vertical === 'GYM'      ? 'Gym or club name' :
-                vertical === 'RETAIL'   ? 'Store or chain name' :
-                vertical === 'CORPORATE' ? 'Company name' :
-                vertical === 'QSR'      ? 'Restaurant or brand name' :
-                vertical === 'FASHION'  ? 'Boutique or brand name' :
-                                          'Organization name'
-              }
-            >
+            <FieldLabel label={v.nameLabel}>
               <input
                 required
                 value={districtName}
                 onChange={(e) => handleDistrictChange(e.target.value)}
-                placeholder={
-                  vertical === 'K12'      ? 'Springfield Unified School District' :
-                  vertical === 'GYM'      ? 'Iron Peak Fitness' :
-                  vertical === 'RETAIL'   ? 'Northside Outfitters' :
-                  vertical === 'CORPORATE' ? 'Acme Corp' :
-                  vertical === 'QSR'      ? 'Burger Junction' :
-                  vertical === 'FASHION'  ? 'Studio 5 Boutique' :
-                                            'Your organization'
-                }
+                placeholder={v.namePlaceholder}
                 className="signup-input"
               />
             </FieldLabel>
@@ -238,15 +388,7 @@ export default function SignupPage() {
                   required
                   value={slug}
                   onChange={(e) => { setSlug(slugify(e.target.value)); setSlugTouched(true); }}
-                  placeholder={
-                    vertical === 'K12'      ? 'springfield' :
-                    vertical === 'GYM'      ? 'iron-peak' :
-                    vertical === 'RETAIL'   ? 'northside' :
-                    vertical === 'CORPORATE' ? 'acme' :
-                    vertical === 'QSR'      ? 'burger-junction' :
-                    vertical === 'FASHION'  ? 'studio-5' :
-                                              'your-workspace'
-                  }
+                  placeholder={v.slugPlaceholder}
                   className="flex-1 px-3 py-3 bg-transparent text-sm font-mono text-slate-900 placeholder:text-slate-400 outline-none"
                 />
               </div>
@@ -259,15 +401,7 @@ export default function SignupPage() {
                 autoComplete="email"
                 value={adminEmail}
                 onChange={(e) => setAdminEmail(e.target.value)}
-                placeholder={
-                  vertical === 'K12'      ? 'you@school.edu' :
-                  vertical === 'GYM'      ? 'you@yourgym.com' :
-                  vertical === 'RETAIL'   ? 'you@yourstore.com' :
-                  vertical === 'CORPORATE' ? 'you@company.com' :
-                  vertical === 'QSR'      ? 'you@yourbrand.com' :
-                  vertical === 'FASHION'  ? 'you@yourbrand.com' :
-                                            'you@example.com'
-                }
+                placeholder={v.emailPlaceholder}
                 className="signup-input"
               />
             </FieldLabel>
@@ -318,23 +452,31 @@ export default function SignupPage() {
 
             <p className="text-[11px] text-slate-500 leading-relaxed">
               By creating a workspace you agree to our{' '}
-              <Link href="/terms" className="text-indigo-600 hover:underline">terms</Link>,{' '}
-              <Link href="/privacy" className="text-indigo-600 hover:underline">privacy policy</Link>,{' '}
-              and our <Link href="/ferpa" className="text-indigo-600 hover:underline">FERPA</Link> /{' '}
-              <Link href="/coppa" className="text-indigo-600 hover:underline">COPPA</Link> data commitments.
+              <Link href="/terms" className="text-indigo-600 hover:underline">terms</Link>{' '}
+              and{' '}
+              <Link href="/privacy" className="text-indigo-600 hover:underline">privacy policy</Link>
+              {vertical === 'K12' ? (
+                <>
+                  , including our{' '}
+                  <Link href="/ferpa" className="text-indigo-600 hover:underline">FERPA</Link> /{' '}
+                  <Link href="/coppa" className="text-indigo-600 hover:underline">COPPA</Link>{' '}
+                  data commitments
+                </>
+              ) : null}
+              .
             </p>
           </form>
         </section>
 
         {/* ── RIGHT — device preview + orbiting feature chips ── */}
         <aside className="hidden lg:flex relative min-h-[640px] items-center justify-center">
-          <DevicePreview />
+          <DevicePreview vertical={vertical} />
         </aside>
       </main>
 
       {/* Tiny footer — keeps pre-auth weight on the signup CTA. */}
       <footer className="relative z-10 max-w-7xl mx-auto px-6 pb-8 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-        <div>&copy; {new Date().getFullYear()} VenueOS. Built for K-12.</div>
+        <div>&copy; {new Date().getFullYear()} VenueOS &middot; One platform for every venue.</div>
         <div className="flex items-center gap-4">
           <Link href="/terms" className="hover:text-slate-700">Terms</Link>
           <Link href="/privacy" className="hover:text-slate-700">Privacy</Link>
@@ -386,12 +528,14 @@ function TrustPill({
 }
 
 /**
- * DevicePreview — stylized 16:9 kiosk rendering a miniature
- * Rainbow-welcome scene, with four feature chips orbiting. No real
- * widget code; this is pure SVG/CSS "marketing glass" so the file
- * stays portable and the render is identical on every browser.
+ * DevicePreview — stylized 16:9 kiosk rendering a miniature signage
+ * scene, with four feature chips orbiting. The scene text + the
+ * security chip reflavor to the selected vertical so the operator
+ * sees their own kind of venue. Pure CSS "marketing glass" — no real
+ * widget code — so it renders identically on every browser.
  */
-function DevicePreview() {
+function DevicePreview({ vertical }: { vertical: Vertical }) {
+  const v = SIGNUP_VERTICALS[vertical];
   return (
     <div className="signup-device-wrap">
       {/* Device "frame" */}
@@ -403,8 +547,8 @@ function DevicePreview() {
             <div className="signup-scene-rainbow" />
             <div className="signup-scene-sun" />
             <div className="signup-scene-header">
-              <div className="signup-scene-logo">🍎</div>
-              <div className="signup-scene-title">Welcome, Friends!</div>
+              <div className="signup-scene-logo">{v.sceneEmoji}</div>
+              <div className="signup-scene-title">{v.sceneTitle}</div>
             </div>
             <div className="signup-scene-grid">
               <div className="signup-scene-card signup-scene-weather">
@@ -413,7 +557,7 @@ function DevicePreview() {
               </div>
               <div className="signup-scene-card signup-scene-announce">
                 <div className="signup-scene-announce-label">Big News</div>
-                <div className="signup-scene-announce-msg">Book Fair Monday!</div>
+                <div className="signup-scene-announce-msg">{v.sceneAnnounce}</div>
               </div>
               <div className="signup-scene-card signup-scene-countdown">
                 <div className="signup-scene-cd-num">3</div>
@@ -442,22 +586,22 @@ function DevicePreview() {
         icon={Calendar}
         iconClass="bg-indigo-100 text-indigo-600"
         title="Smart Scheduling"
-        sub="Day, bell period, one-off events"
+        sub="By day, time block, or one-off event"
         animDelay="1.5s"
       />
       <FeatureChip
         style={{ bottom: '18%', left: '-10%' }}
         icon={Palette}
         iconClass="bg-violet-100 text-violet-600"
-        title="17 K-12 Templates"
-        sub="Menu boards, hallway, cafeteria…"
+        title="170+ Templates"
+        sub="Every screen, every industry"
         animDelay="3s"
       />
       <FeatureChip
         style={{ bottom: '4%', right: '-12%' }}
         icon={ShieldCheck}
         iconClass="bg-emerald-100 text-emerald-600"
-        title="FERPA-Ready"
+        title={v.secChip}
         sub="Audit log, RBAC, signed events"
         animDelay="4.5s"
       />
