@@ -23,6 +23,9 @@ export type WidgetType =
   | 'ANNOUNCEMENT' | 'TICKER' | 'BELL_SCHEDULE' | 'LUNCH_MENU' | 'CALENDAR'
   | 'STAFF_SPOTLIGHT' | 'IMAGE' | 'IMAGE_CAROUSEL' | 'VIDEO' | 'VIDEO_CAROUSEL' | 'LOGO'
   | 'WEBPAGE' | 'RSS_FEED' | 'SOCIAL_FEED' | 'PLAYLIST'
+  // 2026-05-16 — self-contained HTML signage / HS templates, rendered
+  // in a sandboxed iframe by ExternalHtmlWidget (cfg.url + cfg.brand).
+  | 'EXTERNAL_HTML'
   // Touch (Sprint 4 placeholders)
   | 'TOUCH_BUTTON' | 'TOUCH_MENU' | 'ROOM_FINDER' | 'ON_SCREEN_KEYBOARD'
   | 'WAYFINDING_MAP' | 'QUICK_POLL'

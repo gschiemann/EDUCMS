@@ -12,6 +12,7 @@ import {
   WebpageTile,
   ImageBasicTile,
   ImageCarouselBasicTile,
+  ExternalHtmlTile,
 } from './variant-tiles/basic-content-tiles';
 import {
   BackToSchoolClock, BackToSchoolText, BackToSchoolAnnouncement,
@@ -82,6 +83,21 @@ registerVariant({
   description: 'Embed any URL. Set the URL + auto-refresh in Properties.',
   category: 'MODERN',
   render: WebpageTile,
+  previewOnly: true,
+});
+// 2026-05-16 — one tile for all 78 industry-signage / HS templates.
+// Same pattern as Image / Video / Web Page: a single picker tile;
+// the operator chooses WHICH of the 78 templates — and rebrands its
+// colors + fonts — in the Properties panel after dropping. (78
+// separate tiles would drown the picker; the EXTERNAL_HTML widget
+// just takes a different cfg.url per template.)
+registerVariant({
+  id: 'external-html-basic',
+  widgetType: 'EXTERNAL_HTML',
+  name: 'Signage Template',
+  description: 'Drop a ready-made industry template (QSR, retail, healthcare, hospitality, HS…). Pick which one + recolor it in Properties.',
+  category: 'MODERN',
+  render: ExternalHtmlTile,
   previewOnly: true,
 });
 import {

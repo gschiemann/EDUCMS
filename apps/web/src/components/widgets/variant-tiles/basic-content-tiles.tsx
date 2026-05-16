@@ -12,7 +12,7 @@
  * the JSX into a `.tsx` keeps the registration file lint-clean while
  * giving us readable preview components.
  */
-import { Play as PlayIcon, Image as ImageIcon, Globe as GlobeIcon } from 'lucide-react';
+import { Play as PlayIcon, Image as ImageIcon, Globe as GlobeIcon, LayoutTemplate as LayoutTemplateIcon } from 'lucide-react';
 
 export function VideoBasicTile() {
   return (
@@ -65,6 +65,28 @@ export function WebpageTile() {
       <div style={{ width: '85%', height: '0.25em', borderRadius: 2, background: '#cbd5e1' }} />
       <GlobeIcon style={{ width: '0.9em', height: '0.9em', color: '#6366f1', marginTop: '0.15em' }} />
       <div style={{ fontSize: '0.4em', color: '#475569', fontWeight: 600 }}>Web Page</div>
+    </div>
+  );
+}
+
+export function ExternalHtmlTile() {
+  return (
+    <div
+      className="absolute inset-0 flex flex-col items-center justify-center gap-1.5"
+      style={{ background: 'linear-gradient(135deg, #1e1b4b, #312e81)' }}
+    >
+      <div
+        style={{
+          width: '2.2em', height: '2.2em', borderRadius: 8,
+          background: 'rgba(165,180,252,0.20)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <LayoutTemplateIcon style={{ width: '1em', height: '1em', color: '#a5b4fc' }} />
+      </div>
+      <div style={{ fontSize: '0.4em', color: '#c7d2fe', fontWeight: 600, textAlign: 'center' }}>
+        Signage Template
+      </div>
     </div>
   );
 }

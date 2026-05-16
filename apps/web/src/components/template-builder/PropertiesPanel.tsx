@@ -107,6 +107,7 @@ import { DEFAULTS as HS_ZINE_DEFAULTS } from '@/components/widgets/hs/HsZineWidg
 // Replaces the plain text 'Time' / 'Date' inputs in HS landscape
 // editors so operators get a dropdown instead of a free-text field.
 import { US_TIMEZONE_OPTIONS } from '@/components/widgets/hs/useHsLiveClock';
+import { SIGNAGE_TEMPLATES } from '@/components/widgets/signage-templates';
 // 2026-05-07 — Holiday lobby pack static field schema. Each variant +
 // grade combo (18 total) has a hand-extracted [data-field] schema so
 // PropertiesPanel can render editable TextFields synchronously when an
@@ -1521,6 +1522,29 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
           </select>
         </div>
       );
+      // Template picker — which of the 78 signage / HS templates this
+      // EXTERNAL_HTML zone shows. Grouped by industry. Sets cfg.url.
+      fields.push(SH('ext-template', 'Template'));
+      fields.push(
+        <div key="ext-url" className="space-y-1">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Industry template</label>
+          <select
+            value={cfg.url || ''}
+            onChange={(e) => setField({ url: e.target.value })}
+            className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+          >
+            <option value="">— pick a template —</option>
+            {Array.from(new Set(SIGNAGE_TEMPLATES.map((t) => t.group))).map((group) => (
+              <optgroup key={group} label={group}>
+                {SIGNAGE_TEMPLATES.filter((t) => t.group === group).map((t) => (
+                  <option key={t.id} value={t.url}>{t.name}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>,
+      );
+
       fields.push(SH('brand-colors', 'Brand colors'));
       fields.push(
         <div key="brand-note" className="text-[11px] text-slate-500 px-1 leading-relaxed">
