@@ -1475,6 +1475,70 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
   const fields: React.ReactNode[] = [];
 
   switch (zone.widgetType) {
+    // 2026-05-16 — EXTERNAL_HTML rebrand editor. The signage / HS
+    // templates are self-contained HTML; cfg.brand is a flat map of
+    // semantic style controls the EXTERNAL_HTML widget passes into
+    // the iframe (?brand=) where the per-template shim applies them
+    // to the template's CSS custom properties. Any swatch left unset
+    // falls through to the template's own default. Fonts are limited
+    // to web-safe stacks — the templates load no external fonts.
+    case 'EXTERNAL_HTML': {
+      const brand: Record<string, string> =
+        (cfg.brand && typeof cfg.brand === 'object') ? cfg.brand : {};
+      const setBrand = (patch: Record<string, string>) =>
+        setField({ brand: { ...brand, ...patch } });
+      const SH = (key: string, label: string) => (
+        <div
+          key={`sh-${key}`}
+          className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200"
+        >
+          {label}
+        </div>
+      );
+      const FONT_STACKS: Array<{ label: string; value: string }> = [
+        { label: 'Template default', value: '' },
+        { label: 'Georgia (serif)', value: 'Georgia, "Times New Roman", serif' },
+        { label: 'Times (serif)', value: '"Times New Roman", Times, serif' },
+        { label: 'Didot (elegant serif)', value: 'Didot, Georgia, "Times New Roman", serif' },
+        { label: 'System sans', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif' },
+        { label: 'Helvetica (sans)', value: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
+        { label: 'Verdana (sans)', value: 'Verdana, Geneva, sans-serif' },
+        { label: 'Arial Narrow (condensed)', value: '"Arial Narrow", "Helvetica Neue Condensed", sans-serif' },
+        { label: 'Impact (heavy condensed)', value: 'Impact, "Arial Narrow", sans-serif' },
+        { label: 'Courier (mono)', value: '"Courier New", Courier, monospace' },
+      ];
+      const fontField = (k: string, label: string) => (
+        <div key={`font-${k}`} className="space-y-1">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</label>
+          <select
+            value={brand[k] || ''}
+            onChange={(e) => setBrand({ [k]: e.target.value })}
+            className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+          >
+            {FONT_STACKS.map((f) => (
+              <option key={f.label} value={f.value}>{f.label}</option>
+            ))}
+          </select>
+        </div>
+      );
+      fields.push(SH('brand-colors', 'Brand colors'));
+      fields.push(
+        <div key="brand-note" className="text-[11px] text-slate-500 px-1 leading-relaxed">
+          Recolor this template to match any customer. Leave a swatch
+          unset to keep the template&apos;s own default.
+        </div>,
+      );
+      fields.push(<ColorPickerField key="b-bg" label="Background" value={brand.background || ''} onChange={(v) => setBrand({ background: v })} />);
+      fields.push(<ColorPickerField key="b-surface" label="Cards / panels" value={brand.surface || ''} onChange={(v) => setBrand({ surface: v })} />);
+      fields.push(<ColorPickerField key="b-text" label="Text" value={brand.text || ''} onChange={(v) => setBrand({ text: v })} />);
+      fields.push(<ColorPickerField key="b-primary" label="Primary / signature" value={brand.primary || ''} onChange={(v) => setBrand({ primary: v })} />);
+      fields.push(<ColorPickerField key="b-accent" label="Accent / highlight" value={brand.accent || ''} onChange={(v) => setBrand({ accent: v })} />);
+      fields.push(SH('brand-fonts', 'Fonts'));
+      fields.push(fontField('fontDisplay', 'Headlines'));
+      fields.push(fontField('fontBody', 'Body text'));
+      fields.push(fontField('fontCondensed', 'Condensed / numbers'));
+      break;
+    }
     case 'TEXT':
     case 'RICH_TEXT':
       // 2026-05-04 — surface the AI sparkle directly on TEXT widgets.

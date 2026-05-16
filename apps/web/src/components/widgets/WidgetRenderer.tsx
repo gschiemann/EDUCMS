@@ -2597,6 +2597,34 @@ function QrCodeVariant({ config, bgColor, color }: { config: any; bgColor: strin
  */
 function ExternalHtmlWidget({ config }: { config: any }) {
   const url = typeof config?.url === 'string' ? config.url.trim() : '';
+
+  // Rebrand passthrough. config.brand is a flat map of semantic
+  // controls (background / surface / text / muted / primary / accent
+  // / fontDisplay / fontBody / fontCondensed). We base64url-encode it
+  // onto the iframe URL as `?brand=`; the per-template brand shim
+  // (apps/web/scripts/inject-brand-shim.cjs) reads it on load and
+  // overrides the template's CSS custom properties. Only non-empty
+  // keys are sent so a template's own defaults show through for
+  // anything the operator hasn't customized.
+  const srcWithBrand = useMemo(() => {
+    if (!url) return '';
+    const brand = config?.brand;
+    if (!brand || typeof brand !== 'object') return url;
+    const clean: Record<string, string> = {};
+    for (const k of Object.keys(brand)) {
+      const v = brand[k];
+      if (typeof v === 'string' && v.trim()) clean[k] = v.trim();
+    }
+    if (Object.keys(clean).length === 0) return url;
+    try {
+      const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(clean))))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      return `${url}${url.includes('?') ? '&' : '?'}brand=${b64}`;
+    } catch {
+      return url;
+    }
+  }, [url, config?.brand]);
+
   if (!url) {
     return (
       <div
@@ -2613,7 +2641,9 @@ function ExternalHtmlWidget({ config }: { config: any }) {
   }
   return (
     <iframe
-      src={url}
+      // key on the branded src so a brand change reloads the frame
+      key={srcWithBrand}
+      src={srcWithBrand}
       title="Signage template"
       loading="lazy"
       sandbox="allow-scripts"

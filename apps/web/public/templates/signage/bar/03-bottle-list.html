@@ -21,7 +21,17 @@
 .s .nm{font:500 40px/1.05 var(--font-display)}
 .s .nm small{display:block;margin-top:6px;font:400 24px/1.2 var(--font-display);font-style:italic;color:var(--mute)}
 .s .pr{font:600 38px/1 var(--font-display);font-variant-numeric:tabular-nums}
-</style></head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Whisky · wine · spirits</span></div><div class="title" data-field="board.title">Bottle list.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Whisky · wine · spirits</span></div><div class="title" data-field="board.title">Bottle list.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols">
 <section class="col"><h2 data-field="col.0.h">Whisky · neat</h2>
 <div class="s"><div class="nm" data-field="w.0.n">Macallan 12 <small>Sherry oak · Speyside</small></div><div class="pr">$18</div></div>
 <div class="s"><div class="nm" data-field="w.1.n">Lagavulin 16 <small>Peat · Islay</small></div><div class="pr">$22</div></div>

@@ -31,7 +31,17 @@
 .right .panel .v{font:700 88px/.95 var(--font-condensed);letter-spacing:-.02em}
 .right .panel .a{font:500 36px/1.2 var(--font-display);font-style:italic;color:var(--mute)}
 .right .panel.accent .a{color:rgba(255,255,255,.85)}
-</style></head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Charleston · since 2014</span></div><div class="title" data-field="board.title">Open · until late.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="body">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Charleston · since 2014</span></div><div class="title" data-field="board.title">Open · until late.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="body">
 <section class="hours" data-widget="hours" data-source="cms"><h2>Hours</h2>
 <div class="hr today"><span class="d" data-field="h.0.d">Tonight · Friday</span><span class="v" data-field="h.0.v">5 PM – 2 AM</span></div>
 <div class="hr"><span class="d" data-field="h.1.d">Sat</span><span class="v" data-field="h.1.v">3 PM – 2 AM</span></div>

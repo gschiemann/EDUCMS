@@ -125,7 +125,17 @@
   .foot .left{display:flex;align-items:center;gap:36px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px;letter-spacing:.22em;text-transform:uppercase}
   .foot .left .k{color:var(--highlighter)}
   .foot .right{display:flex;align-items:center;gap:24px;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:22px;color:rgba(255,255,255,.7);letter-spacing:.18em;text-transform:uppercase}
-</style></head><body>
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body>
 <script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-hs-class-now-v1" }/*EDITMODE-END*/;</script>
 <div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
 

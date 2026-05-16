@@ -27,7 +27,17 @@
 .beer .stats .meta{font:500 22px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
 .beer[data-stock="0"] .pr{color:var(--mute);text-decoration:line-through}
 .beer[data-stock="0"]::after{content:"KICKED";position:absolute}
-</style></head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Tap</span><span class="tag" data-field="brand.tagline">Charleston · since 2014</span></div><div class="title" data-field="board.title">Tonight on tap.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols" data-widget="tap-list" data-source="untappd" data-feed="/taps" data-refresh="5m">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Tap</span><span class="tag" data-field="brand.tagline">Charleston · since 2014</span></div><div class="title" data-field="board.title">Tonight on tap.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols" data-widget="tap-list" data-source="untappd" data-feed="/taps" data-refresh="5m">
 <section class="col"><h2 data-field="col.0.h">Drafts · 1–8</h2>
 <div class="beer" data-stock="80"><div class="n">1</div><div class="nm" data-field="t.0.n">Lantern Pilsner <span class="tags">PILS</span><small data-field="t.0.r">Lantern brew · crisp · 5.0%</small></div><div class="stats"><div class="pr" data-field="t.0.p">$7</div><div class="meta" data-field="t.0.m">5.0% · 24 IBU · 16oz</div></div></div>
 <div class="beer" data-stock="60"><div class="n">2</div><div class="nm" data-field="t.1.n">Magnolia IPA <span class="tags">IPA</span><small data-field="t.1.r">Citra · Mosaic · piney</small></div><div class="stats"><div class="pr" data-field="t.1.p">$8</div><div class="meta" data-field="t.1.m">6.8% · 65 IBU · 16oz</div></div></div>

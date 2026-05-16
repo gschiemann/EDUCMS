@@ -20,7 +20,17 @@
 .fc{border:3px solid var(--rule);border-radius:32px;padding:24px 44px;display:flex;flex-direction:column;gap:8px}
 .fc .l{font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
 .fc .v{font:600 64px/.92 var(--font-display)}
-</style></head><body><div class="stage" id="stage"><div class="frame">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame">
 <header class="top"><div><span class="logo" data-field="brand.name">THE BRASS RAIL</span><span class="tag" data-field="brand.tag">Cocktail program · Lior &amp; Mei</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">5:42 PM</span></div></header>
 <main class="grid" data-widget="cocktails" data-source="toast" data-feed="/menu/cocktails">
 <div class="c"><div class="badge" data-field="c.0.badge">SIGNATURE</div><div class="nm"><span data-field="c.0.t1">Smoked </span><em data-field="c.0.t2">old fashioned</em></div><div class="ing" data-field="c.0.ing">Buffalo Trace · maple syrup · house bitters · applewood smoke</div><div class="foot"><span class="pr" data-field="c.0.pr">$18</span><span class="abv" data-field="c.0.abv">38% ABV · 8 oz</span></div></div>

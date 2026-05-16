@@ -25,7 +25,17 @@
 .ft{padding:0 16px}.ft+.ft{border-left:1px solid var(--rule)}
 .ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
 .ft .v{margin-top:14px;font:500 44px/1 var(--font-display)}
-</style></head><body><div class="stage" id="stage"><div class="frame">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame">
 <header class="top"><div class="crest"><div class="name" data-field="brand.name">Atlas Restaurant</div><div class="sub" data-field="brand.tagline">Lowcountry · Tasting · Charleston</div></div><div class="title" data-field="board.title">Dinner menu.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">5:42 PM</span></div></header>
 <main class="cols" data-widget="full-menu" data-source="toast" data-feed="/menu/dinner" data-refresh="60s">
 <section class="col"><h2 data-field="col.0.h">Starters</h2>

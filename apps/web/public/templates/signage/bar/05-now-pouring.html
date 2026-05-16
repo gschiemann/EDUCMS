@@ -29,7 +29,17 @@ h1 em{color:var(--accent)}
 .stat .v{margin-top:10px;font:600 72px/1 var(--font-display)}
 .stat .v.acc{color:var(--accent)}
 .stat .v.r{color:var(--primary)}
-</style></head><body><div class="stage" id="stage"><div class="frame"><div class="hero" data-widget="image-slot" data-slot="now-pouring" data-aspect="3680x2000" data-field="hero.photo_url">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame"><div class="hero" data-widget="image-slot" data-slot="now-pouring" data-aspect="3680x2000" data-field="hero.photo_url">
 <div class="ph"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="lbl">3680 × 2000 · cask portrait</div></div>
 <div class="eye" data-field="hero.eye">Now pouring · cask 4</div>
 <h1><span data-field="hero.t1">Eagle Rare </span><em data-field="hero.t2">10-year.</em></h1>

@@ -27,7 +27,17 @@
 .ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
 .ft .v{margin-top:14px;font:500 52px/1 var(--font-display);letter-spacing:-.02em}
 .ft .v.acc{color:var(--primary)}
-</style></head><body><div class="stage" id="stage"><div class="frame">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame">
 <header class="top"><div class="crest"><div class="name" data-field="brand.name">The Marlowe</div><div class="sub" data-field="brand.tagline">Group Hospitality · Charleston</div></div><div class="right" data-field="header.date">Sat &amp; Sun · May 9–10</div></header>
 <main class="hero">
 <div class="copy" data-widget="group-greeting"><div class="eye" data-field="hero.eye">In residence this weekend</div><h1><span data-field="hero.t1">Welcome, </span><em data-field="hero.t2">Carolina Tech.</em></h1><p class="lede" data-field="hero.lede">Your private breakouts run in the Magnolia rooms. Atlas is holding the chef's table for tonight, and the rooftop is yours after 9 PM Saturday.</p><div class="sig" data-field="hero.sig">— Margaux Bell, Director of Events</div></div>

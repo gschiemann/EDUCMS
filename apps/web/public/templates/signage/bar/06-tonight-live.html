@@ -27,7 +27,17 @@
 .ev .t{font:700 44px/1 var(--font-grotesk);color:var(--primary);font-variant-numeric:tabular-nums;width:150px}
 .ev .nm{font:600 40px/1.1 var(--font-display)}
 .ev .nm small{display:block;margin-top:6px;font:400 26px/1.15 var(--font-grotesk);color:var(--mute)}
-</style></head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Live · trivia · weekly</span></div><div class="title" data-field="board.title">Tonight at the bar.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Live · trivia · weekly</span></div><div class="title" data-field="board.title">Tonight at the bar.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols">
 <section class="feat" data-widget="featured-event" data-source="cms" data-feed="/events/tonight"><div class="eye" data-field="feat.eye">Headliner · live music</div><h1><span data-field="feat.t1">Ona &amp; the </span><em data-field="feat.t2">Last Train</em></h1><div class="meta" data-field="feat.meta">Charleston four-piece · acoustic blues · soulful with bite</div><div class="time" data-field="feat.time">9:30 PM</div></section>
 <section class="sched" data-widget="schedule" data-source="cms" data-feed="/events/week">
 <div class="ev acc"><div class="t" data-field="e.0.t">7:00</div><div class="nm" data-field="e.0.n">Doors open · happy hour ends<small>Bar food · drink specials</small></div></div>

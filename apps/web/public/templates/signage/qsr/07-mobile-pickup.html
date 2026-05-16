@@ -36,7 +36,17 @@
 .fc .l{font:600 40px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
 .fc .v{font:700 96px/.92 var(--font-condensed);letter-spacing:-.02em}
 .fc.accent{background:linear-gradient(135deg,var(--primary) 0%,#b73c0c 100%);border:none}.fc.accent .l{color:rgba(255,255,255,.82)}.fc.accent .v{color:#fff}
-</style></head><body><div class="stage" id="stage"><div class="frame">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame">
 <header class="top"><div><span class="logo" data-field="brand.name">EMBER &amp; OAK</span><span class="sub" data-field="brand.tagline">Mobile order pickup</span></div><div class="clock" data-source="local-time" data-refresh="60s"><span data-field="clock.hhmm">12:34</span><span class="am" data-field="clock.ampm">PM</span></div></header>
 <main class="board">
 <section class="col ready" data-widget="ready-queue" data-source="kiosk-api" data-feed="/queue/mobile-ready" data-refresh="2s"><div class="colhead"><div class="h">Ready · Shelf A</div><div class="live">Live</div></div>

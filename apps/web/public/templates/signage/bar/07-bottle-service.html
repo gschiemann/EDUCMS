@@ -30,7 +30,17 @@
 .t-row .at{font:700 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
 .t-row.open .at{color:var(--accent)}
 .t-row.next .at{color:var(--primary)}
-</style></head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Tables &amp; bottle service</span></div><div class="title" data-field="board.title">Bottle list &amp; tables.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Tables &amp; bottle service</span></div><div class="title" data-field="board.title">Bottle list &amp; tables.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols">
 <section class="col" data-widget="bottles" data-source="toast" data-feed="/menu/bottles"><h2 data-field="col.0.h">Bottles</h2>
 <div class="b"><div class="nm" data-field="b.0.n">Veuve Clicquot <small>NV · Brut Yellow Label</small></div><div class="pr">$220</div></div>
 <div class="b"><div class="nm" data-field="b.1.n">Don Julio 1942 <small>Tequila · añejo · 750ml</small></div><div class="pr">$640</div></div>

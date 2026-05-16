@@ -27,7 +27,17 @@
 .off .nm{font:600 56px/1 var(--font-display)}
 .off .price{font:500 36px/1.1 var(--font-display);color:var(--accent);margin-top:6px}
 .off .price del{color:var(--mute);font-size:28px;margin-right:18px}
-</style></head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Charleston · since 2014</span></div><div class="title" data-field="board.title">Happy hour.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="hero">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Charleston · since 2014</span></div><div class="title" data-field="board.title">Happy hour.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="hero">
 <div class="copy"><div class="eye"><span data-field="hh.eye">Now serving · 5 to 7 PM</span></div><h1><span data-field="hh.t1">$2 </span><em data-field="hh.t2">everything.</em></h1><p class="lede" data-field="hh.lede">Off draft beer. Off house wine. Off our signature pours. Until seven o'clock — then we're back to full price, sorry.</p></div>
 <div class="offers" data-widget="hh-offers" data-source="toast" data-feed="/promo/happy-hour">
 <div class="off"><div class="nm" data-field="o.0.n">Draft beer · all 16 taps</div><div class="price"><del>$7–9</del> $5 · $7</div></div>

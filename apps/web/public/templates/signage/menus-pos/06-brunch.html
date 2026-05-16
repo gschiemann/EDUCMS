@@ -20,7 +20,17 @@
 .fc{padding:0 24px}.fc+.fc{border-left:1px solid var(--rule)}
 .fc .l{font:600 28px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
 .fc .v{margin-top:12px;font:500 56px/1 var(--font-display)}
-</style></head><body><div class="stage" id="stage"><div class="frame">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame">
 <header class="h"><div class="crest"><div class="n" data-field="brand.name">The Brass Rail</div><div class="s" data-field="brand.tag">Weekend brunch</div></div><div class="c"><div class="e" data-field="board.eye">Saturday &amp; Sunday · 10 to 3</div><div class="t" data-field="board.t">Brunch.</div></div><div class="r"><div class="k">Now serving</div><div class="v" data-source="local-time"><span data-field="clock.hhmm">11:24 AM</span></div></div></header>
 <main class="body" data-widget="brunch" data-source="toast" data-feed="/menu/brunch">
 <section class="col"><h2>Sweet</h2>

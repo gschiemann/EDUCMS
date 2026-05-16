@@ -27,7 +27,17 @@
 .cock .nm{font:600 48px/1.05 var(--font-display)}
 .cock .nm small{display:block;margin-top:6px;font:400 28px/1.2 var(--font-display);font-style:italic;color:var(--mute)}
 .cock .pr{font:600 48px/1 var(--font-display)}
-</style></head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">House cocktail program</span></div><div class="title" data-field="board.title">Tonight's pours.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">House cocktail program</span></div><div class="title" data-field="board.title">Tonight's pours.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols">
 <section class="feat" data-widget="featured-cocktail" data-source="cms"><div class="eye" data-field="feat.eye">Bartender's pick</div><h1><span data-field="feat.t1">Smoked Old </span><em data-field="feat.t2">Fashioned</em></h1><p class="lede" data-field="feat.lede">Eagle Rare 10yr, maple, applewood smoke, orange oil. Served over a single hand-cut cube.</p><div class="pr" data-field="feat.pr">$18</div></section>
 <section class="list" data-widget="cocktails" data-source="toast" data-feed="/menu/cocktails">
 <div class="cock"><div class="nm" data-field="c.0.n">Garden Negroni <small data-field="c.0.r">Gin · Campari · sweet vermouth · rosemary</small></div><div class="pr" data-field="c.0.p">$16</div></div>

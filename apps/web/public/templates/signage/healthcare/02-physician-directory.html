@@ -16,7 +16,17 @@
 .fc.accent .l{color:rgba(255,255,255,.85)}.fc.accent .v{color:#fff}
 .fc .l{font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
 .fc .v{font:700 72px/.92 var(--font-condensed);letter-spacing:-.02em}
-</style></head><body><div class="stage" id="stage"><div class="frame" style="async function readFile(path) {
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame" style="async function readFile(path) {
     return rpc({ op: 'readFile', path: String(path) });
   }"><header class="top"><div><span class="logo" data-field="brand.name">NORTHSIDE HEALTH</span><span class="tag" data-field="brand.tag">Physicians on duty</span><span class="live">Live</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">9:42 AM</span></div></header>
 <main style="display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:32px;min-height:0">

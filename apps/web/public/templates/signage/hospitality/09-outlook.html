@@ -27,7 +27,17 @@
 .ft+.ft{border-left:1px solid var(--rule)}
 .ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
 .ft .v{margin-top:14px;font:500 52px/1 var(--font-display);letter-spacing:-.02em}
-</style></head><body><div class="stage" id="stage"><div class="frame">
+</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
+var p=new URLSearchParams(location.search).get('brand');if(!p)return;
+var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
+var b=JSON.parse(json),r=document.documentElement.style;
+var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
+text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
+primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
+fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
+Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+}catch(e){}})();</script>
+</head><body><div class="stage" id="stage"><div class="frame">
 <header class="top"><div class="crest"><div class="name" data-field="brand.name">The Marlowe</div><div class="sub" data-field="brand.tagline">Outlook · Charleston Harbor</div></div><div class="right" data-field="header.date">Saturday · May 9</div></header>
 <main class="body">
 <section class="now" data-widget="weather-now" data-source="weatherapi" data-feed="/weather/now" data-refresh="10m"><div class="eye" data-field="now.eye">Right now</div><div class="temp"><span data-field="now.temp">76</span><small>°F</small></div><div class="cond" data-field="now.cond">Clear &amp; calm</div><div class="city" data-field="now.city">Charleston · harbor breeze 6 mph SW</div></section>
