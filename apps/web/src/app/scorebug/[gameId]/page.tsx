@@ -152,6 +152,7 @@ export default function ScorebugPage() {
   const cueQueue = useRef<Cue[]>([]);
   const firstLoad = useRef(true);
   const playing = useRef(false);
+  const cueTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pumpCues = () => {
     if (playing.current) return;
@@ -159,12 +160,17 @@ export default function ScorebugPage() {
     if (!next) return;
     playing.current = true;
     setActiveCue(next);
-    setTimeout(() => {
+    cueTimer.current = setTimeout(() => {
       setActiveCue(null);
       playing.current = false;
       pumpCues();
     }, 3600);
   };
+
+  // Cancel a pending cue timer on unmount.
+  useEffect(() => () => {
+    if (cueTimer.current) clearTimeout(cueTimer.current);
+  }, []);
 
   useEffect(() => {
     if (!gameId) return;
