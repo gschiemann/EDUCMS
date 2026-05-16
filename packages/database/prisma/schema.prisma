@@ -531,6 +531,13 @@ model Screen {
   emergencyHoldPortraitAssetUrl       String?      @map("emergency_hold_portrait_asset_url")
   emergencySecurePortraitAssetUrl     String?      @map("emergency_secure_portrait_asset_url")
   emergencyMedicalPortraitAssetUrl    String?      @map("emergency_medical_portrait_asset_url")
+  // VenueOS Sports — Sprint 13 Phase 3. When set, this screen shows
+  // the live scoreboard for that Game instead of its scheduled
+  // playlist. Plain nullable column (no FK) — the manifest endpoint
+  // ignores a stale id gracefully and deleteGame() clears it. The
+  // emergency takeover always wins: the manifest's emergency branch
+  // runs and returns BEFORE the scoreboard branch is ever reached.
+  activeBoardGameId                   String?      @map("active_board_game_id")
   schedules                           Schedule[]
   screenGroup                         ScreenGroup? @relation(fields: [screenGroupId], references: [id])
   tenant                              Tenant?      @relation(fields: [tenantId], references: [id])
