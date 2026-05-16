@@ -23,6 +23,8 @@ import {
   RotateCcw,
   Minus,
   Plus,
+  Tv,
+  Check,
 } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
@@ -105,6 +107,23 @@ function GameControl() {
   const def = useMemo(() => (game ? findSport((game as any).sport) : undefined), [game]);
   const liveMs = useLiveClock(game, def);
 
+  // "Stream overlay" copies the public scorebug URL to the clipboard
+  // so the operator can paste it straight into an OBS / vMix browser
+  // source. Falls back to opening the URL if the clipboard is blocked.
+  const [copied, setCopied] = useState(false);
+  const copyOverlayUrl = () => {
+    const url = `${window.location.origin}/scorebug/${gameId}`;
+    const done = () => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(done).catch(() => window.open(url, '_blank'));
+    } else {
+      window.open(url, '_blank');
+    }
+  };
+
   if (isLoading) {
     return <div className="text-center py-24 text-sm text-slate-400">Loading game…</div>;
   }
@@ -143,14 +162,25 @@ function GameControl() {
           <ArrowLeft className="h-4 w-4" />
           Game Day
         </button>
-        <Button
-          variant="outline"
-          className="gap-1.5"
-          onClick={() => window.open(`/board/${gameId}`, '_blank')}
-        >
-          <ExternalLink className="h-4 w-4" />
-          Open scoreboard
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="gap-1.5"
+            onClick={copyOverlayUrl}
+            title="Copy the broadcast scorebug URL for an OBS / vMix browser source"
+          >
+            {copied ? <Check className="h-4 w-4 text-green-600" /> : <Tv className="h-4 w-4" />}
+            {copied ? 'Overlay URL copied' : 'Stream overlay'}
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => window.open(`/board/${gameId}`, '_blank')}
+          >
+            <ExternalLink className="h-4 w-4" />
+            Open scoreboard
+          </Button>
+        </div>
       </div>
 
       {/* live preview bar */}
