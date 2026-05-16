@@ -1477,6 +1477,14 @@ function PlayerPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
+  // 2026-05-16 — operator-confirmed OTA. When the dashboard pushes an
+  // update (CHECK_FOR_UPDATES), instead of installing immediately we
+  // raise this flag and show a full-screen "Update now?" prompt. The
+  // operator (or the client on a support call) clicks "Update now",
+  // which calls bridge.checkForUpdates() to actually start the OTA.
+  // Lets the operator say "click yes" and have the rest run itself.
+  const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
+  const [otaStarting, setOtaStarting] = useState(false);
   // 2026-05-13 — Canvas-size editor. NovaStar / other LED controllers
   // force a minimum frame buffer (e.g. Taurus = 1920×1080) even when
   // the LED itself is narrower (single 960×1080 poster or 320×1080
@@ -3046,10 +3054,16 @@ function PlayerPage() {
       handle('OVERRIDE', () => fetchContent());
       handle('ALL_CLEAR', () => fetchContent());
       handle('CHECK_FOR_UPDATES', () => {
+        // 2026-05-16 — don't install on arrival. Show the operator-
+        // confirmed "Update now?" prompt; the actual OTA only starts
+        // when they click "Update now" (see the overlay render +
+        // bridge.checkForUpdates() call there). If the native bridge
+        // isn't present (browser preview / unpaired) there's nothing
+        // to update — skip the prompt.
         try {
           const bridge = (window as any).EduCmsNative;
           if (bridge && typeof bridge.checkForUpdates === 'function') {
-            bridge.checkForUpdates();
+            setShowUpdatePrompt(true);
           }
         } catch { /* swallow */ }
       });
@@ -4658,6 +4672,63 @@ function PlayerPage() {
             customer kiosks. It still renders in ?preview=1 tabs so the
             instrumentation is one query-param away if needed again. */}
         {isTouchTemplate && isPreviewMode() && <TouchDiagToast />}
+
+        {/* 2026-05-16 — operator-confirmed OTA prompt. Raised when the
+            dashboard pushes CHECK_FOR_UPDATES. The operator clicks
+            "Update now" and the rest runs itself (silent install +
+            auto-relaunch under Device Owner). top/right/bottom/left
+            longhand, not `inset-0` — Chromium-83 Taurus, CLAUDE.md #10. */}
+        {showUpdatePrompt && (
+          <div
+            className="absolute bg-black/85 flex items-center justify-center z-[1000]"
+            style={{ top: 0, right: 0, bottom: 0, left: 0 }}
+          >
+            <div className="bg-slate-900 rounded-2xl p-10 max-w-lg w-full mx-6 border border-slate-700 text-center space-y-6">
+              {otaStarting ? (
+                <>
+                  <div className="text-3xl font-bold text-white">Updating…</div>
+                  <div className="text-slate-300 text-lg leading-relaxed">
+                    The screen is installing the update and will restart
+                    on its own in about a minute. Please don&apos;t power
+                    it off.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-3xl font-bold text-white">Software update ready</div>
+                  <div className="text-slate-300 text-lg leading-relaxed">
+                    A new version of the player is ready. The screen will
+                    update and restart automatically — about a minute.
+                  </div>
+                  <div className="flex gap-4 justify-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowUpdatePrompt(false)}
+                      className="px-7 py-4 rounded-xl text-lg font-semibold text-slate-300 bg-slate-800 border border-slate-700 hover:bg-slate-700"
+                    >
+                      Not now
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          const bridge = (window as any).EduCmsNative;
+                          if (bridge && typeof bridge.checkForUpdates === 'function') {
+                            bridge.checkForUpdates();
+                          }
+                        } catch { /* swallow */ }
+                        setOtaStarting(true);
+                      }}
+                      className="px-7 py-4 rounded-xl text-lg font-bold text-white bg-indigo-600 hover:bg-indigo-500"
+                    >
+                      Update now
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Info overlay */}
         {showOverlay && (
