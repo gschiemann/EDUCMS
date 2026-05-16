@@ -1537,6 +1537,59 @@ export class ScreensController {
     return { deleted: true };
   }
 
+  // ─── VenueOS Sports — synthetic scoreboard manifest ───
+  // Builds a normal-shaped manifest playlist array with ONE full-screen
+  // WEBPAGE zone pointing at the live scoreboard page (direct mode, so
+  // the player iframes it un-proxied). The player renders this through
+  // the existing template pipeline — zero player-code change.
+  private buildScoreboardManifest(screen: any, game: any): any[] {
+    // Match the synthetic template to the panel's resolution so the
+    // WEBPAGE zone gets a correctly-shaped box; the board page scales
+    // its own scene to fit either way. Default to 1080p landscape.
+    let w = 1920;
+    let h = 1080;
+    const m = String(screen.resolution || '').trim().match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+    if (m) {
+      w = parseInt(m[1], 10);
+      h = parseInt(m[2], 10);
+    }
+    return [{
+      id: `board-${game.id}`,
+      name: 'Live Scoreboard',
+      schedule: { daysOfWeek: null, timeStart: null, timeEnd: null, mutedOverride: null },
+      totalBytes: 0,
+      template: {
+        // Stable per game so the player's template signature doesn't
+        // churn; changes when a different game is pushed.
+        id: `board-tpl-${game.id}`,
+        name: 'Live Scoreboard',
+        screenWidth: w,
+        screenHeight: h,
+        bgColor: '#000000',
+        bgGradient: null,
+        bgImage: null,
+        isTouchEnabled: false,
+        idleResetMs: undefined,
+        zones: [{
+          id: `board-zone-${game.id}`,
+          name: 'Scoreboard',
+          widgetType: 'WEBPAGE',
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 100,
+          zIndex: 0,
+          sortOrder: 0,
+          touchAction: null,
+          sceneId: null,
+          defaultConfig: { url: `/board/${game.id}`, direct: true },
+        }],
+        scenes: [],
+      },
+      items: [],
+    }];
+  }
+
   // ─── Player manifest (what the screen device fetches) ───
   @UseGuards(JwtAuthGuard)
   @Get(':id/manifest')
@@ -1926,6 +1979,39 @@ export class ScreensController {
           orientation: isPortrait ? 'portrait' : 'landscape',
           playlists
         });
+      }
+    }
+
+    // ─── VenueOS Sports — scoreboard push (PRECEDED by emergency) ───
+    // If an operator pushed a live game to this screen, serve the
+    // synthetic scoreboard manifest instead of the scheduled playlist.
+    // This is reached ONLY when no emergency is active — the emergency
+    // branch above already returned if one was — so an alert always
+    // wins. A stale / cross-tenant game id is ignored and we fall
+    // through to the normal scheduled-content path below.
+    if (screen.tenantId && (screen as any).activeBoardGameId) {
+      const boardGame = await this.prisma.client.game.findFirst({
+        where: { id: (screen as any).activeBoardGameId, tenantId: screen.tenantId },
+        select: { id: true },
+      });
+      if (boardGame) {
+        const boardPayload: Record<string, any> = {
+          version: '1.0',
+          screenId: id,
+          tenantId: screen.tenantId,
+          generatedAt: new Date().toISOString(),
+          playlists: this.buildScoreboardManifest(screen, boardGame),
+        };
+        const boardHash = crypto
+          .createHash('sha256')
+          .update(JSON.stringify(boardPayload.playlists) + id)
+          .digest('hex');
+        res.setHeader('ETag', boardHash);
+        if (activeDeviceHash === boardHash) {
+          return res.status(304).send();
+        }
+        boardPayload['hash'] = boardHash;
+        return res.status(200).json(boardPayload);
       }
     }
 
