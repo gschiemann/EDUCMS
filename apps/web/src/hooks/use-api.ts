@@ -2098,3 +2098,67 @@ export function useGameControl(gameId: string) {
 
   return { score, clock, segment, stats, status, cue };
 }
+
+// ─── VenueOS Sports — Sprint 13 Phase 2: Sponsorship ────────────
+// Sponsor CRUD + the proof-of-play report. Sponsors rotate through
+// the scoreboard banner; the report estimates spots + exposure.
+
+export function useSponsors() {
+  return useQuery({
+    queryKey: ['sports-sponsors'],
+    queryFn: () => apiFetch('/sports/sponsors'),
+  });
+}
+
+export function useSponsorReport() {
+  return useQuery({
+    queryKey: ['sports-sponsor-report'],
+    queryFn: () => apiFetch('/sports/sponsors/report'),
+    refetchInterval: 30_000,
+  });
+}
+
+type SponsorInput = {
+  name?: string;
+  logoUrl?: string | null;
+  tagline?: string | null;
+  color?: string | null;
+  tier?: string | null;
+  weight?: number;
+  active?: boolean;
+};
+
+export function useCreateSponsor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: SponsorInput) =>
+      apiFetch('/sports/sponsors', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sports-sponsors'] });
+      qc.invalidateQueries({ queryKey: ['sports-sponsor-report'] });
+    },
+  });
+}
+
+export function useUpdateSponsor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: SponsorInput }) =>
+      apiFetch(`/sports/sponsors/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sports-sponsors'] });
+      qc.invalidateQueries({ queryKey: ['sports-sponsor-report'] });
+    },
+  });
+}
+
+export function useDeleteSponsor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/sports/sponsors/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sports-sponsors'] });
+      qc.invalidateQueries({ queryKey: ['sports-sponsor-report'] });
+    },
+  });
+}

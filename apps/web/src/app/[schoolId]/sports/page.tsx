@@ -10,7 +10,7 @@
 
 import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Trophy, Plus, Radio, ExternalLink, Trash2, X } from 'lucide-react';
+import { Trophy, Plus, Radio, ExternalLink, Trash2, X, BadgeDollarSign } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -78,10 +78,20 @@ function SportsHub() {
             </p>
           </div>
         </div>
-        <Button onClick={() => setCreating(true)} className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          New game
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => router.push(`/${schoolId}/sports/sponsors`)}
+          >
+            <BadgeDollarSign className="h-4 w-4" />
+            Sponsors
+          </Button>
+          <Button onClick={() => setCreating(true)} className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            New game
+          </Button>
+        </div>
       </div>
 
       {/* game grid */}
