@@ -1507,3 +1507,23 @@ model Sponsor {
   @@index([tenantId, active])
   @@map("sponsors")
 }
+
+// VenueOS Sports — the cue deck. A CustomCue is an operator-defined
+// trigger: a named button with uploaded content (a graphic) that, on
+// click, fires a full-screen takeover on the scoreboard. Per-tenant
+// and reusable across every game — the operator builds the deck once.
+// Additive — one new table, no FK; safe for live pilot tenants.
+model CustomCue {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  name       String                                  // trigger button label
+  mediaUrl   String?  @map("media_url")               // uploaded takeover graphic
+  color      String?                                  // accent / background color
+  durationMs Int      @default(6000) @map("duration_ms")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([tenantId, sortOrder])
+  @@map("custom_cues")
+}

@@ -84,11 +84,12 @@ function setup() {
   const screen = makeTable();
   const sponsor = makeTable();
   const rosterPlayer = makeTable();
-  const prisma = { client: { game, gameEvent, screen, sponsor, rosterPlayer } };
+  const customCue = makeTable();
+  const prisma = { client: { game, gameEvent, screen, sponsor, rosterPlayer, customCue } };
   const redis = { publish: jest.fn().mockResolvedValue(undefined) };
   const signer = { signMessage: jest.fn(() => ({ eventId: 'e', signature: 's' })) };
   const service = new SportsService(prisma as any, redis as any, signer as any);
-  return { service, game, gameEvent, screen, sponsor, rosterPlayer, redis, signer };
+  return { service, game, gameEvent, screen, sponsor, rosterPlayer, customCue, redis, signer };
 }
 
 async function newGame(service: SportsService, sport = 'football') {
@@ -604,5 +605,59 @@ describe('SportsService — football & set-sport rules', () => {
     expect(r.homeScore).toBe(0);
     expect(r.stats).toMatchObject({ homeGames: 1 });
     expect(r.segment).toBe(2);
+  });
+});
+
+describe('SportsService — cue deck', () => {
+  it('creates and lists custom cues', async () => {
+    const { service } = setup();
+    await service.createCue(TENANT, { name: 'T-Shirt Toss', mediaUrl: 'https://x/toss.png' });
+    await service.createCue(TENANT, { name: 'Make Some Noise' });
+    const cues = await service.listCues(TENANT);
+    expect(cues).toHaveLength(2);
+    expect(cues[0].name).toBe('T-Shirt Toss');
+  });
+
+  it('rejects a cue with no name', async () => {
+    const { service } = setup();
+    await expect(service.createCue(TENANT, { name: '  ' })).rejects.toThrow(BadRequestException);
+  });
+
+  it('fires a custom cue as a takeover CUE event', async () => {
+    const { service, gameEvent } = setup();
+    const g = await newGame(service);
+    const cue = await service.createCue(TENANT, {
+      name: 'Sponsor Takeover',
+      mediaUrl: 'https://x/sponsor.png',
+    });
+    await service.fireCue(TENANT, g.id, { cueId: cue.id });
+    const ev: any = gameEvent.rows.find((e: any) => e.type === 'CUE');
+    expect(ev).toBeTruthy();
+    expect(ev.payload).toMatchObject({
+      label: 'Sponsor Takeover',
+      mediaUrl: 'https://x/sponsor.png',
+      custom: true,
+    });
+  });
+
+  it('rejects firing an unknown custom cue', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    await expect(
+      service.fireCue(TENANT, g.id, { cueId: 'nope' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('updates and deletes a cue', async () => {
+    const { service } = setup();
+    const cue = await service.createCue(TENANT, { name: 'Old Name' });
+    const updated: any = await service.updateCue(TENANT, cue.id, {
+      name: 'New Name',
+      durationMs: 9000,
+    });
+    expect(updated.name).toBe('New Name');
+    expect(updated.durationMs).toBe(9000);
+    await service.deleteCue(TENANT, cue.id);
+    expect(await service.listCues(TENANT)).toHaveLength(0);
   });
 });

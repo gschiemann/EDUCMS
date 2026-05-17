@@ -974,18 +974,36 @@ export class SportsService {
   }
 
   /**
-   * Fire a celebration cue. The operator taps "Touchdown" / "GOAL!" /
-   * "Home Run" and every surface playing this game fires the animation.
-   * The cue key must be one the sport defines.
+   * Fire a cue. Either a built-in sport celebration (`key` — "Touchdown",
+   * "GOAL!", validated against the sport) OR an operator-built custom
+   * cue (`cueId` — a named trigger with uploaded takeover content).
+   * Both land as a CUE GameEvent that every surface playing the game
+   * polls and plays.
    */
-  async fireCue(tenantId: string, id: string, dto: { key?: string }) {
+  async fireCue(tenantId: string, id: string, dto: { key?: string; cueId?: string }) {
     const game = await this.owned(tenantId, id);
+
+    // Custom cue — operator-defined trigger from the cue deck.
+    if (dto.cueId) {
+      const cc = await this.prisma.client.customCue.findFirst({
+        where: { id: dto.cueId, tenantId },
+      });
+      if (!cc) throw new BadRequestException('Custom cue not found');
+      const event = await this.record(id, 'CUE', {
+        key: `custom:${cc.id}`,
+        label: cc.name,
+        mediaUrl: cc.mediaUrl || null,
+        color: cc.color || null,
+        durationMs: cc.durationMs,
+        custom: true,
+      });
+      return { fired: true, cueId: cc.id, eventId: event.id };
+    }
+
     const def = this.sportOf(game.sport);
     const cue = def.celebrations.find((c) => c.key === dto.key);
     if (!cue) {
-      throw new BadRequestException(
-        `Unknown cue "${dto.key}" for ${def.name}`,
-      );
+      throw new BadRequestException(`Unknown cue "${dto.key}" for ${def.name}`);
     }
     const event = await this.record(id, 'CUE', {
       key: cue.key,
@@ -993,5 +1011,75 @@ export class SportsService {
       emoji: cue.emoji,
     });
     return { fired: true, cue, eventId: event.id };
+  }
+
+  // ── cue deck (custom triggers) ───────────────────────────────
+
+  /** Bound a cue duration to a sane 2–20s window. */
+  private cleanDuration(v: unknown): number {
+    const n = Number(v);
+    if (!isFinite(n)) return 6000;
+    return Math.min(20000, Math.max(2000, Math.round(n)));
+  }
+
+  /** The tenant's reusable cue deck, in display order. */
+  async listCues(tenantId: string) {
+    return this.prisma.client.customCue.findMany({
+      where: { tenantId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  /** Create a custom cue (a trigger button + its takeover content). */
+  async createCue(
+    tenantId: string,
+    dto: { name?: string; mediaUrl?: string; color?: string; durationMs?: number },
+  ) {
+    const name = this.cleanText(dto.name, 60);
+    if (!name) throw new BadRequestException('Cue name is required.');
+    const sortOrder = await this.prisma.client.customCue.count({ where: { tenantId } });
+    return this.prisma.client.customCue.create({
+      data: {
+        tenantId,
+        name,
+        mediaUrl: this.cleanText(dto.mediaUrl, 2048),
+        color: this.cleanText(dto.color, 32),
+        durationMs: this.cleanDuration(dto.durationMs),
+        sortOrder,
+      },
+    });
+  }
+
+  /** Resolve a tenant-owned cue, or 404. */
+  private async ownedCue(tenantId: string, id: string) {
+    const cc = await this.prisma.client.customCue.findFirst({ where: { id, tenantId } });
+    if (!cc) throw new NotFoundException('Cue not found');
+    return cc;
+  }
+
+  /** Edit a custom cue — only the keys present in the dto. */
+  async updateCue(
+    tenantId: string,
+    id: string,
+    dto: { name?: string; mediaUrl?: string; color?: string; durationMs?: number },
+  ) {
+    await this.ownedCue(tenantId, id);
+    const data: Record<string, unknown> = {};
+    if (dto.name !== undefined) {
+      const n = this.cleanText(dto.name, 60);
+      if (!n) throw new BadRequestException('Cue name cannot be empty.');
+      data.name = n;
+    }
+    if (dto.mediaUrl !== undefined) data.mediaUrl = this.cleanText(dto.mediaUrl, 2048);
+    if (dto.color !== undefined) data.color = this.cleanText(dto.color, 32);
+    if (dto.durationMs !== undefined) data.durationMs = this.cleanDuration(dto.durationMs);
+    return this.prisma.client.customCue.update({ where: { id }, data });
+  }
+
+  /** Remove a custom cue from the deck. */
+  async deleteCue(tenantId: string, id: string) {
+    await this.ownedCue(tenantId, id);
+    await this.prisma.client.customCue.delete({ where: { id } });
+    return { deleted: true };
   }
 }

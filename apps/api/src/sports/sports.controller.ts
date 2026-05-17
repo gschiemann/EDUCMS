@@ -242,7 +242,8 @@ export class SportsController {
     return this.sports.setStatus(req.user.tenantId, id, body);
   }
 
-  /** Fire a celebration cue — every surface playing this game animates. */
+  /** Fire a cue — a sport celebration (`key`) or a custom cue
+   *  (`cueId`). Every surface playing this game plays it. */
   @Post('games/:id/cue')
   @RequireRoles(
     AppRole.SUPER_ADMIN,
@@ -253,9 +254,52 @@ export class SportsController {
   cue(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { key?: string },
+    @Body() body: { key?: string; cueId?: string },
   ) {
     return this.sports.fireCue(req.user.tenantId, id, body);
+  }
+
+  // ── cue deck (custom triggers) ───────────────────────────────
+
+  /** The tenant's reusable cue deck. */
+  @Get('cues')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+    AppRole.RESTRICTED_VIEWER,
+  )
+  listCues(@Request() req: any) {
+    return this.sports.listCues(req.user.tenantId);
+  }
+
+  /** Create a custom cue (a named trigger + its takeover content). */
+  @Post('cues')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  createCue(
+    @Request() req: any,
+    @Body() body: { name?: string; mediaUrl?: string; color?: string; durationMs?: number },
+  ) {
+    return this.sports.createCue(req.user.tenantId, body || {});
+  }
+
+  /** Edit a custom cue. */
+  @Patch('cues/:cueId')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  updateCue(
+    @Request() req: any,
+    @Param('cueId') cueId: string,
+    @Body() body: { name?: string; mediaUrl?: string; color?: string; durationMs?: number },
+  ) {
+    return this.sports.updateCue(req.user.tenantId, cueId, body || {});
+  }
+
+  /** Remove a custom cue from the deck. */
+  @Delete('cues/:cueId')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  deleteCue(@Request() req: any, @Param('cueId') cueId: string) {
+    return this.sports.deleteCue(req.user.tenantId, cueId);
   }
 
   // ── scoreboard-to-screen push ────────────────────────────────

@@ -2094,7 +2094,8 @@ export function useGameControl(gameId: string) {
     onSuccess: writeBack,
   });
   const cue = useMutation({
-    mutationFn: (body: { key: string }) =>
+    // key → a built-in sport celebration; cueId → an operator cue-deck cue.
+    mutationFn: (body: { key?: string; cueId?: string }) =>
       apiFetch(`/sports/games/${gameId}/cue`, { method: 'POST', body: JSON.stringify(body) }),
   });
   const spotlight = useMutation({
@@ -2279,4 +2280,41 @@ export function useRosterMutations(gameId: string) {
     },
   });
   return { add, update, remove, importCsv };
+}
+
+// ── sports cue deck ────────────────────────────────────────────
+
+export interface CustomCue {
+  id: string;
+  name: string;
+  mediaUrl: string | null;
+  color: string | null;
+  durationMs: number;
+}
+
+export function useCues() {
+  return useQuery({
+    queryKey: ['sports-cues'],
+    queryFn: () => apiFetch('/sports/cues'),
+  });
+}
+
+export function useCueMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['sports-cues'] });
+  const create = useMutation({
+    mutationFn: (body: Partial<CustomCue>) =>
+      apiFetch('/sports/cues', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: invalidate,
+  });
+  const update = useMutation({
+    mutationFn: ({ id, ...body }: Partial<CustomCue> & { id: string }) =>
+      apiFetch(`/sports/cues/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => apiFetch(`/sports/cues/${id}`, { method: 'DELETE' }),
+    onSuccess: invalidate,
+  });
+  return { create, update, remove };
 }

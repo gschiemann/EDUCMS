@@ -29,6 +29,11 @@ interface Cue {
   label?: string;
   emoji?: string;
   createdAt?: string;
+  // Custom cue-deck fields — a full-screen takeover of uploaded content.
+  custom?: boolean;
+  mediaUrl?: string | null;
+  color?: string | null;
+  durationMs?: number;
 }
 interface Sponsor {
   id: string;
@@ -708,6 +713,33 @@ function SpotlightBand({ spot }: { spot: Spotlight }) {
 // ── celebration overlay ────────────────────────────────────────
 
 function CueOverlay({ cue }: { cue: Cue }) {
+  // Custom cue — a full-screen takeover of the operator's uploaded
+  // content (a sponsor graphic, a promo, a hype card).
+  if (cue.mediaUrl) {
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: cue.color || '#05070d',
+          zIndex: 50,
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={cue.mediaUrl}
+          alt=""
+          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+        />
+      </div>
+    );
+  }
   return (
     <div
       style={{
@@ -806,11 +838,15 @@ export default function ScoreboardPage() {
     if (!next) return;
     playing.current = true;
     setActiveCue(next);
+    // A custom cue holds for its own duration; a sport celebration
+    // matches the 3.8s celebration animation.
+    const holdMs =
+      next.mediaUrl && next.durationMs && next.durationMs > 0 ? next.durationMs : 3900;
     cueTimer.current = setTimeout(() => {
       setActiveCue(null);
       playing.current = false;
       pumpCues();
-    }, 3900);
+    }, holdMs);
   };
 
   // Cancel a pending cue timer on unmount (kiosk route reloads).

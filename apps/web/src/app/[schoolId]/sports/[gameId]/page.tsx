@@ -42,6 +42,7 @@ import {
 import { findSport } from '@cms/api-types';
 import type { SportDefinition, SportStatField } from '@cms/api-types';
 import { RosterPanel } from './RosterPanel';
+import { CueDeckPanel } from './CueDeckPanel';
 
 const GAME_STATUSES: { key: string; label: string }[] = [
   { key: 'SCHEDULED', label: 'Scheduled' },
@@ -316,6 +317,11 @@ function GameControl() {
             <CueButton key={c.key} cue={c} onFire={() => ctl.cue.mutate({ key: c.key })} />
           ))}
         </div>
+      </Section>
+
+      {/* cue deck — operator-built triggers with uploaded takeover content */}
+      <Section title="Cue deck">
+        <CueDeckPanel gameId={gameId} />
       </Section>
 
       {/* stats — baseball/softball get a real count engine; every
