@@ -15,6 +15,17 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SportsService } from './sports.service';
 
+/** Editable fields for one roster player. The service sanitizes every
+ *  value — the photo URL is produced by the existing /assets/upload. */
+type RosterPlayerBody = {
+  team?: string;
+  name?: string;
+  number?: string;
+  position?: string;
+  photoUrl?: string;
+  stats?: Record<string, string>;
+};
+
 /**
  * VenueOS Sports — Sprint 13. The operator + admin API surface.
  *
@@ -298,5 +309,85 @@ export class SportsController {
     @Body() body: { screenIds?: string[] },
   ) {
     return this.sports.hideFromScreens(req.user.tenantId, id, body?.screenIds);
+  }
+
+  // ── roster ───────────────────────────────────────────────────
+
+  /** Every player on a game's roster (home + away). */
+  @Get('games/:id/roster')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+    AppRole.RESTRICTED_VIEWER,
+  )
+  listRoster(@Request() req: any, @Param('id') id: string) {
+    return this.sports.listRoster(req.user.tenantId, id);
+  }
+
+  /** Add a player to a game's roster. */
+  @Post('games/:id/roster')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  addPlayer(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: RosterPlayerBody,
+  ) {
+    return this.sports.addPlayer(req.user.tenantId, id, body || {});
+  }
+
+  /** Bulk-import a roster from CSV text (a header row + player rows). */
+  @Post('games/:id/roster/import')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  importRoster(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { csv?: string },
+  ) {
+    return this.sports.importRosterCsv(req.user.tenantId, id, body?.csv || '');
+  }
+
+  /** Edit one roster player. */
+  @Patch('games/:id/roster/:playerId')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  updatePlayer(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('playerId') playerId: string,
+    @Body() body: RosterPlayerBody,
+  ) {
+    return this.sports.updatePlayer(req.user.tenantId, id, playerId, body || {});
+  }
+
+  /** Remove a player from the roster. */
+  @Delete('games/:id/roster/:playerId')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  deletePlayer(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('playerId') playerId: string,
+  ) {
+    return this.sports.deletePlayer(req.user.tenantId, id, playerId);
   }
 }

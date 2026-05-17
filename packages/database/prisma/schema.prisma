@@ -1423,11 +1423,38 @@ model Game {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
 
-  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   events GameEvent[]
+  roster RosterPlayer[]
 
   @@index([tenantId, status])
   @@map("games")
+}
+
+// Sports roster — a player on a Game's home or away side. Carries the
+// headshot URL + a flexible stat map so a scoreboard / ribbon can
+// surface player-of-the-game, stat leaders, and starting-lineup
+// content. Per-game (the Game model holds teams as plain strings — no
+// Team entity yet); a future Team model can lift these up without a
+// breaking change.
+model RosterPlayer {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  gameId    String   @map("game_id")
+  team      String                                   // 'home' | 'away'
+  name      String
+  number    String?                                  // jersey number — string ("00", "G")
+  position  String?
+  photoUrl  String?  @map("photo_url")
+  stats     Json     @default("{}")                  // flexible { AVG: ".312", HR: "19", … }
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, team, sortOrder])
+  @@map("roster_players")
 }
 
 // Append-only event log for a Game — every score change, clock

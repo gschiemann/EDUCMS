@@ -41,6 +41,7 @@ import {
 } from '@/hooks/use-api';
 import { findSport } from '@cms/api-types';
 import type { SportDefinition, SportStatField } from '@cms/api-types';
+import { RosterPanel } from './RosterPanel';
 
 const GAME_STATUSES: { key: string; label: string }[] = [
   { key: 'SCHEDULED', label: 'Scheduled' },
@@ -332,6 +333,11 @@ function GameControl() {
           </div>
         </Section>
       )}
+
+      {/* team rosters — players, headshots, stats */}
+      <Section title="Team rosters">
+        <RosterPanel gameId={gameId} homeTeam={g.homeTeam} awayTeam={g.awayTeam} />
+      </Section>
 
       {/* broadcast spotlight */}
       <Section title="Scoreboard spotlight">

@@ -2221,3 +2221,62 @@ export function useHideGameFromScreens(gameId: string) {
     },
   });
 }
+
+// ── sports roster ──────────────────────────────────────────────
+
+export interface RosterPlayer {
+  id: string;
+  team: string;
+  name: string;
+  number: string | null;
+  position: string | null;
+  photoUrl: string | null;
+  stats: Record<string, string>;
+}
+
+export function useGameRoster(gameId: string | undefined) {
+  return useQuery({
+    queryKey: ['sports-roster', gameId],
+    queryFn: () => apiFetch(`/sports/games/${gameId}/roster`),
+    enabled: !!gameId,
+  });
+}
+
+export function useRosterMutations(gameId: string) {
+  const qc = useQueryClient();
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ['sports-roster', gameId] });
+
+  const add = useMutation({
+    mutationFn: (body: Partial<RosterPlayer>) =>
+      apiFetch(`/sports/games/${gameId}/roster`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: invalidate,
+  });
+  const update = useMutation({
+    mutationFn: ({ playerId, ...body }: Partial<RosterPlayer> & { playerId: string }) =>
+      apiFetch(`/sports/games/${gameId}/roster/${playerId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: (playerId: string) =>
+      apiFetch(`/sports/games/${gameId}/roster/${playerId}`, { method: 'DELETE' }),
+    onSuccess: invalidate,
+  });
+  const importCsv = useMutation({
+    mutationFn: (csv: string) =>
+      apiFetch(`/sports/games/${gameId}/roster/import`, {
+        method: 'POST',
+        body: JSON.stringify({ csv }),
+      }),
+    onSuccess: (data) => {
+      if (data) qc.setQueryData(['sports-roster', gameId], data);
+    },
+  });
+  return { add, update, remove, importCsv };
+}

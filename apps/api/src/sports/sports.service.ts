@@ -139,7 +139,7 @@ export class SportsService {
     if (!game) throw new NotFoundException('Game not found');
 
     const since = new Date(Date.now() - CUE_FEED_WINDOW_MS);
-    const [cues, sponsors] = await Promise.all([
+    const [cues, sponsors, roster] = await Promise.all([
       this.prisma.client.gameEvent.findMany({
         where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
         orderBy: { createdAt: 'asc' },
@@ -150,6 +150,15 @@ export class SportsService {
         where: { tenantId: game.tenantId, active: true },
         orderBy: [{ weight: 'desc' }, { name: 'asc' }],
         select: { id: true, name: true, logoUrl: true, tagline: true, color: true, weight: true },
+      }),
+      // The roster — drives player cards on the ribbon + scoreboard.
+      this.prisma.client.rosterPlayer.findMany({
+        where: { gameId: id },
+        orderBy: [{ team: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          id: true, team: true, name: true, number: true,
+          position: true, photoUrl: true, stats: true,
+        },
       }),
     ]);
 
@@ -177,6 +186,7 @@ export class SportsService {
         createdAt: c.createdAt,
       })),
       sponsors,
+      roster,
       sponsorSpotSeconds: SPONSOR_SPOT_SECONDS,
       serverTime: Date.now(),
     };
@@ -410,6 +420,217 @@ export class SportsService {
       data: { activeBoardGameId: null, activeBoardSurface: null },
     });
     return this.listGameScreens(tenantId, gameId);
+  }
+
+  // ── roster ───────────────────────────────────────────────────
+
+  private cleanTeam(team: unknown): 'home' | 'away' {
+    return String(team || '').toLowerCase() === 'away' ? 'away' : 'home';
+  }
+
+  /** Bound a free-text roster field — trim, cap length, null empties. */
+  private cleanText(value: unknown, max: number): string | null {
+    const s = String(value ?? '').trim().slice(0, max);
+    return s || null;
+  }
+
+  /**
+   * Normalize an untrusted stat map: string keys → string values,
+   * trimmed and length-capped, max 24 entries. Keeps the scoreboard
+   * safe from a pasted CSV with hundreds of junk columns.
+   */
+  private cleanStats(input: unknown): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (input && typeof input === 'object') {
+      for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+        const key = String(k).trim().slice(0, 24);
+        if (!key) continue;
+        const val = String(v ?? '').trim().slice(0, 40);
+        if (!val) continue;
+        out[key] = val;
+        if (Object.keys(out).length >= 24) break;
+      }
+    }
+    return out;
+  }
+
+  /** Every player on a game, home + away, in display order. */
+  async listRoster(tenantId: string, gameId: string) {
+    await this.owned(tenantId, gameId);
+    return this.prisma.client.rosterPlayer.findMany({
+      where: { gameId },
+      orderBy: [{ team: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  /** Add one player to a game's roster. */
+  async addPlayer(
+    tenantId: string,
+    gameId: string,
+    dto: {
+      team?: string; name?: string; number?: string;
+      position?: string; photoUrl?: string; stats?: unknown;
+    },
+  ) {
+    await this.owned(tenantId, gameId);
+    const name = this.cleanText(dto.name, 80);
+    if (!name) throw new BadRequestException('Player name is required.');
+    const team = this.cleanTeam(dto.team);
+    const sortOrder = await this.prisma.client.rosterPlayer.count({
+      where: { gameId, team },
+    });
+    return this.prisma.client.rosterPlayer.create({
+      data: {
+        tenantId,
+        gameId,
+        team,
+        name,
+        number: this.cleanText(dto.number, 8),
+        position: this.cleanText(dto.position, 24),
+        photoUrl: this.cleanText(dto.photoUrl, 2048),
+        stats: this.cleanStats(dto.stats),
+        sortOrder,
+      },
+    });
+  }
+
+  /** Resolve a player within a tenant-owned game, or 404. */
+  private async ownedPlayer(tenantId: string, gameId: string, playerId: string) {
+    await this.owned(tenantId, gameId);
+    const player = await this.prisma.client.rosterPlayer.findFirst({
+      where: { id: playerId, gameId },
+    });
+    if (!player) throw new NotFoundException('Player not found');
+    return player;
+  }
+
+  /** Edit a player — only the keys present in the dto are touched. */
+  async updatePlayer(
+    tenantId: string,
+    gameId: string,
+    playerId: string,
+    dto: {
+      team?: string; name?: string; number?: string;
+      position?: string; photoUrl?: string; stats?: unknown;
+    },
+  ) {
+    await this.ownedPlayer(tenantId, gameId, playerId);
+    const data: Record<string, unknown> = {};
+    if (dto.team !== undefined) data.team = this.cleanTeam(dto.team);
+    if (dto.name !== undefined) {
+      const n = this.cleanText(dto.name, 80);
+      if (!n) throw new BadRequestException('Player name cannot be empty.');
+      data.name = n;
+    }
+    if (dto.number !== undefined) data.number = this.cleanText(dto.number, 8);
+    if (dto.position !== undefined) data.position = this.cleanText(dto.position, 24);
+    if (dto.photoUrl !== undefined) data.photoUrl = this.cleanText(dto.photoUrl, 2048);
+    if (dto.stats !== undefined) data.stats = this.cleanStats(dto.stats);
+    return this.prisma.client.rosterPlayer.update({ where: { id: playerId }, data });
+  }
+
+  /** Remove a player from the roster. */
+  async deletePlayer(tenantId: string, gameId: string, playerId: string) {
+    await this.ownedPlayer(tenantId, gameId, playerId);
+    await this.prisma.client.rosterPlayer.delete({ where: { id: playerId } });
+    return { deleted: true };
+  }
+
+  /**
+   * Parse one CSV line into cells — handles double-quoted fields with
+   * embedded commas and "" escapes. Good enough for roster CSVs an
+   * operator exports from a spreadsheet.
+   */
+  private parseCsvLine(line: string): string[] {
+    const cells: string[] = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (line[i + 1] === '"') { cur += '"'; i++; }
+          else inQuotes = false;
+        } else { cur += ch; }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        cells.push(cur); cur = '';
+      } else { cur += ch; }
+    }
+    cells.push(cur);
+    return cells.map((c) => c.trim());
+  }
+
+  /**
+   * Bulk-import a roster from CSV text. The header row names the
+   * columns: `team`, `name`/`player`, `number`/`no`/`#`,
+   * `position`/`pos`, and `photo`/`photourl` are recognized — EVERY
+   * other column becomes a stat keyed by its (upper-cased) header.
+   * Imported players are appended; existing roster is kept.
+   */
+  async importRosterCsv(tenantId: string, gameId: string, csvText: string) {
+    await this.owned(tenantId, gameId);
+    const lines = String(csvText || '')
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    if (lines.length < 2) {
+      throw new BadRequestException('CSV needs a header row and at least one player row.');
+    }
+    if (lines.length - 1 > 200) {
+      throw new BadRequestException('CSV is limited to 200 players per import.');
+    }
+    const header = this.parseCsvLine(lines[0]).map((h) => h.toLowerCase());
+    const idxOf = (...keys: string[]) => header.findIndex((h) => keys.includes(h));
+    const nameIdx = idxOf('name', 'player');
+    if (nameIdx < 0) {
+      throw new BadRequestException('CSV must have a "name" column.');
+    }
+    const teamIdx = idxOf('team');
+    const numberIdx = idxOf('number', 'no', '#');
+    const posIdx = idxOf('position', 'pos');
+    const photoIdx = idxOf('photo', 'photourl', 'photo_url');
+    const FIELD = new Set([
+      'team', 'name', 'player', 'number', 'no', '#',
+      'position', 'pos', 'photo', 'photourl', 'photo_url',
+    ]);
+
+    const [homeCount, awayCount] = await Promise.all([
+      this.prisma.client.rosterPlayer.count({ where: { gameId, team: 'home' } }),
+      this.prisma.client.rosterPlayer.count({ where: { gameId, team: 'away' } }),
+    ]);
+    const nextOrder: Record<string, number> = { home: homeCount, away: awayCount };
+
+    const rows: any[] = [];
+    for (let r = 1; r < lines.length; r++) {
+      const cells = this.parseCsvLine(lines[r]);
+      const name = this.cleanText(cells[nameIdx], 80);
+      if (!name) continue;
+      const team = this.cleanTeam(teamIdx >= 0 ? cells[teamIdx] : 'home');
+      const stats: Record<string, string> = {};
+      header.forEach((h, i) => {
+        if (!h || FIELD.has(h)) return;
+        const val = String(cells[i] ?? '').trim();
+        if (val) stats[h.toUpperCase()] = val;
+      });
+      rows.push({
+        tenantId,
+        gameId,
+        team,
+        name,
+        number: numberIdx >= 0 ? this.cleanText(cells[numberIdx], 8) : null,
+        position: posIdx >= 0 ? this.cleanText(cells[posIdx], 24) : null,
+        photoUrl: photoIdx >= 0 ? this.cleanText(cells[photoIdx], 2048) : null,
+        stats: this.cleanStats(stats),
+        sortOrder: nextOrder[team]++,
+      });
+    }
+    if (rows.length === 0) {
+      throw new BadRequestException('No valid player rows found in the CSV.');
+    }
+    await this.prisma.client.rosterPlayer.createMany({ data: rows });
+    return this.listRoster(tenantId, gameId);
   }
 
   /** Adjust a score by a signed delta (the quick +1/+2/+3/… buttons). */

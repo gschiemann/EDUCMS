@@ -43,10 +43,18 @@ function makeTable(defaults: Record<string, any> = {}) {
     findFirst: async ({ where }: any = {}) => rows.find((r) => matches(r, where)) ?? null,
     findUnique: async ({ where }: any = {}) => rows.find((r) => matches(r, where)) ?? null,
     findMany: async ({ where }: any = {}) => rows.filter((r) => matches(r, where || {})),
+    count: async ({ where }: any = {}) => rows.filter((r) => matches(r, where || {})).length,
     create: async ({ data }: any) => {
       const row = { id: `id-${++seq}`, createdAt: new Date(), updatedAt: new Date(), ...defaults, ...data };
       rows.push(row);
       return row;
+    },
+    createMany: async ({ data }: any) => {
+      const arr = Array.isArray(data) ? data : [data];
+      arr.forEach((d) =>
+        rows.push({ id: `id-${++seq}`, createdAt: new Date(), updatedAt: new Date(), ...defaults, ...d }),
+      );
+      return { count: arr.length };
     },
     update: async ({ where, data }: any) => {
       const row = rows.find((r) => matches(r, where));
@@ -75,11 +83,12 @@ function setup() {
   const gameEvent = makeTable();
   const screen = makeTable();
   const sponsor = makeTable();
-  const prisma = { client: { game, gameEvent, screen, sponsor } };
+  const rosterPlayer = makeTable();
+  const prisma = { client: { game, gameEvent, screen, sponsor, rosterPlayer } };
   const redis = { publish: jest.fn().mockResolvedValue(undefined) };
   const signer = { signMessage: jest.fn(() => ({ eventId: 'e', signature: 's' })) };
   const service = new SportsService(prisma as any, redis as any, signer as any);
-  return { service, game, gameEvent, screen, sponsor, redis, signer };
+  return { service, game, gameEvent, screen, sponsor, rosterPlayer, redis, signer };
 }
 
 async function newGame(service: SportsService, sport = 'football') {
@@ -432,5 +441,68 @@ describe('SportsService — public board view', () => {
   it('404s an unknown game id', async () => {
     const { service } = setup();
     await expect(service.getBoard('nope')).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('SportsService — roster', () => {
+  it('adds players to home/away and lists them', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    await service.addPlayer(TENANT, g.id, { team: 'home', name: 'Mookie Betts', number: '50', position: 'RF' });
+    await service.addPlayer(TENANT, g.id, { team: 'away', name: 'Aaron Judge', number: '99' });
+    const roster = await service.listRoster(TENANT, g.id);
+    expect(roster).toHaveLength(2);
+    expect(roster.find((p: any) => p.team === 'home').name).toBe('Mookie Betts');
+    expect(roster.find((p: any) => p.team === 'away').name).toBe('Aaron Judge');
+  });
+
+  it('rejects a player with no name', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    await expect(
+      service.addPlayer(TENANT, g.id, { team: 'home', name: '  ' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('imports a roster from CSV with arbitrary stat columns', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    const csv = [
+      'team,name,number,position,AVG,HR',
+      'home,Mookie Betts,50,RF,.312,19',
+      'away,Aaron Judge,99,RF,.297,37',
+    ].join('\n');
+    const roster = await service.importRosterCsv(TENANT, g.id, csv);
+    expect(roster).toHaveLength(2);
+    const mookie: any = roster.find((p: any) => p.name === 'Mookie Betts');
+    expect(mookie.team).toBe('home');
+    expect(mookie.stats).toEqual({ AVG: '.312', HR: '19' });
+  });
+
+  it('rejects a CSV with no name column', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    await expect(
+      service.importRosterCsv(TENANT, g.id, 'team,number\nhome,50'),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('updates and deletes a player', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    const p = await service.addPlayer(TENANT, g.id, { team: 'home', name: 'Player One' });
+    const updated = await service.updatePlayer(TENANT, g.id, p.id, { number: '7' });
+    expect(updated.number).toBe('7');
+    await service.deletePlayer(TENANT, g.id, p.id);
+    expect(await service.listRoster(TENANT, g.id)).toHaveLength(0);
+  });
+
+  it("getBoard includes the game's roster", async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    await service.addPlayer(TENANT, g.id, { team: 'home', name: 'Mookie Betts' });
+    const board = await service.getBoard(g.id);
+    expect(Array.isArray(board.roster)).toBe(true);
+    expect(board.roster).toHaveLength(1);
   });
 });
