@@ -32,6 +32,15 @@ interface Sponsor {
   tagline?: string | null;
   color?: string | null;
 }
+interface Player {
+  id: string;
+  team: string;
+  name: string;
+  number: string | null;
+  position: string | null;
+  photoUrl: string | null;
+  stats: Record<string, string>;
+}
 interface BoardData {
   id: string;
   sport: string;
@@ -50,6 +59,7 @@ interface BoardData {
   clockUpdatedAt: string;
   stats: Record<string, unknown>;
   sponsors?: Sponsor[];
+  roster?: Player[];
   serverTime: number;
 }
 
@@ -97,7 +107,8 @@ type Cell =
   | { kind: 'score' }
   | { kind: 'status'; text: string; live: boolean }
   | { kind: 'prompt'; text: string }
-  | { kind: 'sponsor'; sponsor: Sponsor };
+  | { kind: 'sponsor'; sponsor: Sponsor }
+  | { kind: 'player'; player: Player };
 
 function buildCells(data: BoardData, def: SportDefinition): Cell[] {
   const homeCode = teamCode(data.homeTeam);
@@ -111,10 +122,16 @@ function buildCells(data: BoardData, def: SportDefinition): Cell[] {
   ];
   const prompts = ['LET’S GO!', `GO ${homeCode}!`, 'MAKE SOME NOISE', 'DEFENSE!', `${homeCode} PRIDE`];
   const sponsors = data.sponsors || [];
+  const players = data.roster || [];
   let pi = 0;
   let si = 0;
-  while (pi < prompts.length || si < sponsors.length) {
+  let pl = 0;
+  // Interleave roster players (weighted — two per pass), sponsors, and
+  // crowd prompts so the loop is a rich mix, never a wall of one kind.
+  while (pi < prompts.length || si < sponsors.length || pl < players.length) {
+    if (pl < players.length) cells.push({ kind: 'player', player: players[pl++] });
     if (si < sponsors.length) cells.push({ kind: 'sponsor', sponsor: sponsors[si++] });
+    if (pl < players.length) cells.push({ kind: 'player', player: players[pl++] });
     if (pi < prompts.length) cells.push({ kind: 'prompt', text: prompts[pi++] });
   }
   // Re-insert the score mid-reel so it comes around twice per loop.
@@ -357,6 +374,84 @@ function RibbonCell({
         >
           {cell.text}
         </span>
+      </div>
+    );
+  }
+
+  if (cell.kind === 'player') {
+    const p = cell.player;
+    const color = p.team === 'away' ? awayColor : homeColor;
+    const statKeys = Object.keys(p.stats || {});
+    const topStat = statKeys[0] ? `${statKeys[0]} ${p.stats[statKeys[0]]}` : null;
+    const initials = p.name
+      .trim()
+      .split(/\s+/)
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+    const eyebrow =
+      [p.number ? `#${p.number}` : null, p.position].filter(Boolean).join(' · ').toUpperCase() ||
+      'PLAYER';
+    return (
+      <div style={wrap}>
+        {p.photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={p.photoUrl}
+            alt=""
+            style={{
+              height: h * 0.74,
+              width: h * 0.74,
+              borderRadius: 999,
+              objectFit: 'cover',
+              border: `${Math.max(2, Math.round(h * 0.03))}px solid ${color}`,
+              marginRight: h * 0.22,
+            }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              height: h * 0.74,
+              width: h * 0.74,
+              borderRadius: 999,
+              background: color,
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: h * 0.3,
+              fontWeight: 900,
+              marginRight: h * 0.22,
+            }}
+          >
+            {initials || '—'}
+          </div>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <span style={{ fontSize: h * 0.15, fontWeight: 800, letterSpacing: 3, color }}>
+            {eyebrow}
+          </span>
+          <span style={{ fontSize: h * 0.32, fontWeight: 900, color: '#fff', whiteSpace: 'nowrap' }}>
+            {p.name}
+          </span>
+          {topStat ? (
+            <span
+              style={{
+                fontSize: h * 0.18,
+                fontWeight: 700,
+                color: '#94a3b8',
+                whiteSpace: 'nowrap',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {topStat}
+            </span>
+          ) : null}
+        </div>
       </div>
     );
   }
