@@ -252,8 +252,34 @@ export function IndustryShowcase() {
           </p>
         </div>
 
-        {/* clickable industry cards */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {/* mobile — a compact horizontal chip strip. The 11-card grid
+            scrolled forever and pushed the preview off-screen; a one-row
+            strip keeps the picker tiny so the live preview below updates
+            in place the instant you tap an industry. */}
+        <div className="md:hidden flex gap-2 overflow-x-auto pb-2 -mx-6 px-6">
+          {INDUSTRIES.map((ind) => {
+            const isSelected = ind.vertical === selected;
+            return (
+              <button
+                key={ind.vertical}
+                type="button"
+                onClick={() => setSelected(ind.vertical)}
+                aria-pressed={isSelected}
+                className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-semibold transition-colors ${
+                  isSelected
+                    ? 'border-indigo-600 bg-indigo-600 text-white'
+                    : 'border-slate-200 bg-white text-slate-600'
+                }`}
+              >
+                <span aria-hidden>{ind.emoji}</span>
+                {ind.name}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* desktop — the full card grid */}
+        <div className="hidden md:grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {INDUSTRIES.map((ind) => {
             const isSelected = ind.vertical === selected;
             return (
@@ -342,8 +368,9 @@ export function IndustryShowcase() {
               </Link>
             </div>
 
-            {/* right — a live template preview for this industry */}
-            <div className="p-5 md:p-7 bg-[#fafbfc] border-t md:border-t-0 md:border-l border-slate-200 flex flex-col">
+            {/* preview — first on mobile so tapping a chip shows the
+                template change right away; right column on desktop */}
+            <div className="order-first md:order-none p-5 md:p-7 bg-[#fafbfc] border-b md:border-b-0 md:border-l border-slate-200 flex flex-col">
               <p className="text-xs font-semibold tracking-[0.14em] uppercase text-indigo-600 mb-3">
                 A ready-made {active.name} template
               </p>
