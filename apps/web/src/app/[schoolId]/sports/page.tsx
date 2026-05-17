@@ -8,11 +8,11 @@
  * operator control surface and the public scoreboard board page.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   Trophy, Plus, Radio, ExternalLink, Trash2, X, BadgeDollarSign,
-  Upload, Loader2, ImageIcon, Globe,
+  Loader2, ImageIcon, Globe,
 } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
@@ -20,8 +20,7 @@ import { Input } from '@/components/ui/input';
 import { useGames, useCreateGame, useDeleteGame, useScrapeBranding } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { SPORTS, findSport } from '@cms/api-types';
-import { useUIStore } from '@/store/ui-store';
-import { API_URL } from '@/lib/api-url';
+import { AssetPicker } from '@/components/assets/AssetPicker';
 
 const STATUS_BADGE: Record<string, string> = {
   SCHEDULED: 'bg-slate-100 text-slate-600',
@@ -191,6 +190,29 @@ function SportsHub() {
   );
 }
 
+/**
+ * The home team is almost always the operator's own school — they
+ * shouldn't retype its name / color / logo for every game. We remember
+ * the last home team per tenant in localStorage, pre-fill it on the
+ * next New Game, and let the operator edit it (a new value is saved
+ * next time) or clear it entirely.
+ */
+const HOME_TEAM_KEY = (schoolId: string) => `venueos:lastHomeTeam:${schoolId}`;
+interface SavedHomeTeam {
+  name?: string;
+  color?: string;
+  logoUrl?: string;
+}
+function readSavedHomeTeam(schoolId: string): SavedHomeTeam | null {
+  if (typeof window === 'undefined' || !schoolId) return null;
+  try {
+    const raw = localStorage.getItem(HOME_TEAM_KEY(schoolId));
+    return raw ? (JSON.parse(raw) as SavedHomeTeam) : null;
+  } catch {
+    return null;
+  }
+}
+
 function CreateGameModal({ onClose }: { onClose: () => void }) {
   const params = useParams();
   const router = useRouter();
@@ -198,13 +220,28 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
   const createGame = useCreateGame();
 
   const [sport, setSport] = useState(SPORTS[0]?.key || 'football');
-  const [homeTeam, setHomeTeam] = useState('');
+  // Home team — lazy-initialized from the remembered last home team.
+  const [homeTeam, setHomeTeam] = useState(() => readSavedHomeTeam(schoolId)?.name || '');
   const [awayTeam, setAwayTeam] = useState('');
-  const [homeColor, setHomeColor] = useState(TEAM_COLORS[0]);
+  const [homeColor, setHomeColor] = useState(() => readSavedHomeTeam(schoolId)?.color || TEAM_COLORS[0]);
   const [awayColor, setAwayColor] = useState(TEAM_COLORS[1]);
-  const [homeLogoUrl, setHomeLogoUrl] = useState('');
+  const [homeLogoUrl, setHomeLogoUrl] = useState(() => readSavedHomeTeam(schoolId)?.logoUrl || '');
   const [awayLogoUrl, setAwayLogoUrl] = useState('');
+  const [homeRemembered, setHomeRemembered] = useState(() => !!readSavedHomeTeam(schoolId)?.name);
   const [err, setErr] = useState('');
+
+  /** Forget the saved home team and reset the home fields to blank. */
+  const clearHomeTeam = () => {
+    setHomeTeam('');
+    setHomeColor(TEAM_COLORS[0]);
+    setHomeLogoUrl('');
+    setHomeRemembered(false);
+    try {
+      localStorage.removeItem(HOME_TEAM_KEY(schoolId));
+    } catch {
+      /* ignore */
+    }
+  };
 
   const def = useMemo(() => findSport(sport), [sport]);
 
@@ -223,6 +260,19 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
         homeLogoUrl: homeLogoUrl.trim() || undefined,
         awayLogoUrl: awayLogoUrl.trim() || undefined,
       });
+      // Remember this home team so the next New Game pre-fills it.
+      try {
+        localStorage.setItem(
+          HOME_TEAM_KEY(schoolId),
+          JSON.stringify({
+            name: homeTeam.trim(),
+            color: homeColor,
+            logoUrl: homeLogoUrl.trim(),
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
       onClose();
       if (game?.id) router.push(`/${schoolId}/sports/${game.id}`);
     } catch (e) {
@@ -271,13 +321,28 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
         {/* teams */}
         <div className="mt-5 grid grid-cols-2 gap-4">
           <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              Home team
-            </label>
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                Home team
+              </label>
+              {homeRemembered && (
+                <button
+                  type="button"
+                  onClick={clearHomeTeam}
+                  className="text-[11px] font-semibold text-emerald-600 hover:text-rose-600 cursor-pointer"
+                  title="Forget the saved home team and start fresh"
+                >
+                  ✓ remembered · clear
+                </button>
+              )}
+            </div>
             <Input
               className="mt-1.5"
               value={homeTeam}
-              onChange={(e) => setHomeTeam(e.target.value)}
+              onChange={(e) => {
+                setHomeTeam(e.target.value);
+                setHomeRemembered(false);
+              }}
               placeholder="Home"
               maxLength={80}
             />
@@ -365,31 +430,11 @@ function ColorRow({
   );
 }
 
-/** Upload one image file (a team logo) and return its hosted URL. */
-async function uploadLogoFile(file: File): Promise<string> {
-  const fd = new FormData();
-  fd.append('file', file);
-  const token = useUIStore.getState().token;
-  const res = await fetch(`${API_URL}/assets/upload`, {
-    method: 'POST',
-    body: fd,
-    credentials: 'include',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-  if (!res.ok) {
-    const t = await res.text().catch(() => '');
-    throw new Error(`Upload failed (${res.status}) ${t}`.trim());
-  }
-  const data = await res.json().catch(() => ({}) as any);
-  const url = data.fileUrl || data.url || data?.asset?.fileUrl || '';
-  if (!url) throw new Error('Upload succeeded but no URL came back.');
-  return url;
-}
-
 /**
- * Team branding for the new-game form. Three ways to set a team's
+ * Team branding for the new-game form. Four ways to set a team's
  * logo + color: pull both from the team's website (the branding
- * scraper), upload a logo file, or paste a URL / pick a color.
+ * scraper), pick / upload a logo via the Assets library, or paste a
+ * URL / pick a color.
  */
 function TeamBrand({
   color,
@@ -404,9 +449,8 @@ function TeamBrand({
 }) {
   const scrape = useScrapeBranding();
   const [site, setSite] = useState('');
-  const [uploading, setUploading] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [msg, setMsg] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const pull = async () => {
     if (!site.trim() || scrape.isPending) return;
@@ -424,20 +468,6 @@ function TeamBrand({
       );
     } catch (e: any) {
       setMsg(e?.message || "Couldn't read that site.");
-    }
-  };
-
-  const upload = async (file?: File) => {
-    if (!file) return;
-    setUploading(true);
-    setMsg('');
-    try {
-      onLogo(await uploadLogoFile(file));
-    } catch (e: any) {
-      setMsg(e?.message || 'Upload failed.');
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
     }
   };
 
@@ -483,26 +513,14 @@ function TeamBrand({
             <ImageIcon className="h-4 w-4 text-slate-300" />
           </div>
         )}
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => upload(e.target.files?.[0])}
-        />
         <Button
           type="button"
           size="sm"
           variant="outline"
           className="shrink-0 gap-1.5"
-          disabled={uploading}
-          onClick={() => fileRef.current?.click()}
+          onClick={() => setPickerOpen(true)}
         >
-          {uploading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Upload className="h-4 w-4" />
-          )}
+          <ImageIcon className="h-4 w-4" />
           Logo
         </Button>
         <Input
@@ -514,6 +532,17 @@ function TeamBrand({
       </div>
       <ColorRow label="Color" value={color} onChange={onColor} />
       {msg && <p className="text-[11px] text-slate-500">{msg}</p>}
+      {pickerOpen && (
+        <AssetPicker
+          kind="image"
+          title="Choose team logo"
+          onPick={(url) => {
+            onLogo(url);
+            setPickerOpen(false);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }
