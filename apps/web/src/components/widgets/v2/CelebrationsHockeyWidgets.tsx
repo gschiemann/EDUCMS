@@ -130,9 +130,11 @@ export function CelHockeyHatTrickWidget({ config, live = true, height = 480 }: W
 
       {wide ? (
         <>
-          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celHkHtBurst ${burst} ease-out both` : undefined }}>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.12em' }}>3 GOALS · ONE NIGHT</div>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.62), lineHeight: 0.9, textShadow: `0 0 80px ${r.accent.highlight}`, marginTop: '2%' }}>HAT TRICK</div>
+          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
+            <div style={{ animation: animOn ? `celHkHtBurst ${burst} ease-out both` : undefined }}>
+              <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.12em' }}>3 GOALS · ONE NIGHT</div>
+              <div style={{ color: r.accent.primary, fontSize: px(height, 0.62), lineHeight: 0.9, textShadow: `0 0 80px ${r.accent.highlight}`, marginTop: '2%' }}>HAT TRICK</div>
+            </div>
           </div>
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
@@ -194,9 +196,11 @@ export function CelHockeyPowerPlayWidget({ config, live = true, height = 480 }: 
             <div style={{ color: r.accent.primary, fontSize: px(height, 0.5), lineHeight: 0.9, textShadow: `0 0 60px ${r.accent.highlight}`, marginTop: '2%' }}>GOAL!</div>
           </div>
 
-          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', background: '#000', border: `4px solid ${r.accent.primary}`, borderRadius: 14, padding: '3% 5%', textAlign: 'center', boxShadow: `0 0 30px ${r.accent.highlight}`, animation: animOn ? `celHkPpPulse 1.5s ease-in-out infinite` : undefined }}>
-            <div style={{ color: r.accent.primary, fontWeight: 800, fontSize: px(height, 0.07), letterSpacing: '0.1em' }}>STRENGTH</div>
-            <div style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontWeight: 800, fontSize: px(height, 0.25), lineHeight: 0.9 }}>{strength}</div>
+          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
+            <div style={{ background: '#000', border: `4px solid ${r.accent.primary}`, borderRadius: 14, padding: '3% 5%', textAlign: 'center', boxShadow: `0 0 30px ${r.accent.highlight}`, animation: animOn ? `celHkPpPulse 1.5s ease-in-out infinite` : undefined }}>
+              <div style={{ color: r.accent.primary, fontWeight: 800, fontSize: px(height, 0.07), letterSpacing: '0.1em' }}>STRENGTH</div>
+              <div style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontWeight: 800, fontSize: px(height, 0.25), lineHeight: 0.9 }}>{strength}</div>
+            </div>
           </div>
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
@@ -310,11 +314,13 @@ export function CelHockeyBigSaveWidget({ config, live = true, height = 480 }: Wi
             <div style={{ fontSize: px(height, 0.58), lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: `0 0 50px ${r.accent.highlight}`, marginTop: '2%' }}>BIG SAVE</div>
           </div>
 
-          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', animation: animOn ? `celHkSaveBurst ${burst} ease-out both` : undefined }}>
-            <svg width={px(height, 0.58)} height={px(height, 0.58)} viewBox="0 0 60 60">
-              <path d="M30 5 L52 18 L52 38 Q30 58 8 38 L8 18 Z" fill={r.accent.primary} stroke="#fff" strokeWidth="2"/>
-              <text x="30" y="38" textAnchor="middle" fontFamily="Plus Jakarta Sans" fontWeight="800" fontSize="22" fill="#fff">SAVE</text>
-            </svg>
+          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
+            <div style={{ animation: animOn ? `celHkSaveBurst ${burst} ease-out both` : undefined }}>
+              <svg width={px(height, 0.58)} height={px(height, 0.58)} viewBox="0 0 60 60">
+                <path d="M30 5 L52 18 L52 38 Q30 58 8 38 L8 18 Z" fill={r.accent.primary} stroke="#fff" strokeWidth="2"/>
+                <text x="30" y="38" textAnchor="middle" fontFamily="Plus Jakarta Sans" fontWeight="800" fontSize="22" fill="#fff">SAVE</text>
+              </svg>
+            </div>
           </div>
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>

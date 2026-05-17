@@ -187,9 +187,11 @@ export function CelBasketballDunkWidget({ config, live = true, height = 480 }: W
         {rim('100%', '80%')}
       </div>
 
-      <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celBkDunkBurst ${burst} ease-out both` : undefined }}>
-        <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.14em' }}>{kind}!</div>
-        <div style={{ fontSize: px(height, 0.62), lineHeight: 0.9, letterSpacing: '-0.04em', textShadow: `0 0 60px ${r.accent.highlight}`, marginTop: '2%' }}>SLAM</div>
+      <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
+        <div style={{ animation: animOn ? `celBkDunkBurst ${burst} ease-out both` : undefined }}>
+          <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.14em' }}>{kind}!</div>
+          <div style={{ fontSize: px(height, 0.62), lineHeight: 0.9, letterSpacing: '-0.04em', textShadow: `0 0 60px ${r.accent.highlight}`, marginTop: '2%' }}>SLAM</div>
+        </div>
       </div>
 
       <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
@@ -256,10 +258,12 @@ export function CelBasketballBuzzerWidget({ config, live = true, height = 480 }:
 
       <Sparkles on={animOn} count={150} color={r.accent.highlight} kf="celBkBuzzerSpark" dur={sparkDur} />
 
-      <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'center', animation: animOn ? `celBkBuzzerThump ${thump} ease-in-out infinite` : undefined }}>
-        <div style={{ color: r.accent.primary, fontSize: px(height, 0.1), letterSpacing: '0.14em' }}>AT THE BUZZER</div>
-        <div style={{ color: r.accent.primary, fontSize: px(height, 0.75), fontFamily: '"JetBrains Mono", ui-monospace, monospace', textShadow: `0 0 80px ${r.accent.highlight}`, lineHeight: 0.9 }}>{clock}</div>
-        <div style={{ color: r.accent.primary, fontSize: px(height, 0.096) }}>SECONDS</div>
+      <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'center' }}>
+        <div style={{ animation: animOn ? `celBkBuzzerThump ${thump} ease-in-out infinite` : undefined }}>
+          <div style={{ color: r.accent.primary, fontSize: px(height, 0.1), letterSpacing: '0.14em' }}>AT THE BUZZER</div>
+          <div style={{ color: r.accent.primary, fontSize: px(height, 0.75), fontFamily: '"JetBrains Mono", ui-monospace, monospace', textShadow: `0 0 80px ${r.accent.highlight}`, lineHeight: 0.9 }}>{clock}</div>
+          <div style={{ color: r.accent.primary, fontSize: px(height, 0.096) }}>SECONDS</div>
+        </div>
       </div>
 
       <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
@@ -308,8 +312,10 @@ export function CelBasketballBlockWidget({ config, live = true, height = 480 }: 
     return (
       <div ref={ref} style={frameStyle(r)}>
         {keyframes}
-        <div style={{ position: 'absolute', top: '8%', left: '50%', transform: 'translateX(-50%)', animation: animOn ? `celBkBlockPulse ${pulse} ease-in-out infinite` : undefined, opacity: 0.85 }}>
-          {rejection(Math.round(hero * 0.46), Math.round(hero * 0.58))}
+        <div style={{ position: 'absolute', top: '8%', left: '50%', transform: 'translateX(-50%)' }}>
+          <div style={{ animation: animOn ? `celBkBlockPulse ${pulse} ease-in-out infinite` : undefined, opacity: 0.85 }}>
+            {rejection(Math.round(hero * 0.46), Math.round(hero * 0.58))}
+          </div>
         </div>
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', animation: animOn ? `celBkBlockBurst ${burst} ease-out both` : undefined }}>
           <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.06), letterSpacing: '0.14em', marginTop: hero * 0.4 }}>GET THAT OUT!</div>
@@ -325,13 +331,17 @@ export function CelBasketballBlockWidget({ config, live = true, height = 480 }: 
     <div ref={ref} style={frameStyle(r)}>
       {keyframes}
 
-      <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celBkBlockBurst ${burst} ease-out both` : undefined }}>
-        <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.14em' }}>GET THAT OUT!</div>
-        <div style={{ fontSize: px(height, 0.62), lineHeight: 0.9, letterSpacing: '-0.04em', textShadow: `0 0 60px ${r.accent.highlight}`, marginTop: '2%' }}>BLOCK!</div>
+      <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
+        <div style={{ animation: animOn ? `celBkBlockBurst ${burst} ease-out both` : undefined }}>
+          <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.14em' }}>GET THAT OUT!</div>
+          <div style={{ fontSize: px(height, 0.62), lineHeight: 0.9, letterSpacing: '-0.04em', textShadow: `0 0 60px ${r.accent.highlight}`, marginTop: '2%' }}>BLOCK!</div>
+        </div>
       </div>
 
-      <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', animation: animOn ? `celBkBlockPulse ${pulse} ease-in-out infinite` : undefined }}>
-        {rejection(height * 0.46, height * 0.58)}
+      <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
+        <div style={{ animation: animOn ? `celBkBlockPulse ${pulse} ease-in-out infinite` : undefined }}>
+          {rejection(height * 0.46, height * 0.58)}
+        </div>
       </div>
 
       <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
@@ -471,9 +481,11 @@ export function CelBasketballAlleyOopWidget({ config, live = true, height = 480 
         <div style={{ fontSize: px(height, 0.38), lineHeight: 1, marginTop: '2%' }}>{passer}</div>
       </div>
 
-      <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', animation: animOn ? `celBkOopPulse ${pulse} ease-in-out infinite` : undefined }}>
-        <div style={{ color: r.accent.primary, fontSize: px(height, 0.58), lineHeight: 0.95, textShadow: `0 0 60px ${r.accent.primary}` }}>ALLEY</div>
-        <div style={{ color: r.accent.highlight, fontSize: px(height, 0.58), lineHeight: 0.95, textShadow: `0 0 60px ${r.accent.highlight}` }}>OOP!</div>
+      <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+        <div style={{ animation: animOn ? `celBkOopPulse ${pulse} ease-in-out infinite` : undefined }}>
+          <div style={{ color: r.accent.primary, fontSize: px(height, 0.58), lineHeight: 0.95, textShadow: `0 0 60px ${r.accent.primary}` }}>ALLEY</div>
+          <div style={{ color: r.accent.highlight, fontSize: px(height, 0.58), lineHeight: 0.95, textShadow: `0 0 60px ${r.accent.highlight}` }}>OOP!</div>
+        </div>
       </div>
 
       <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)' }}>
@@ -530,11 +542,15 @@ export function CelBasketballAndOneWidget({ config, live = true, height = 480 }:
     <div ref={ref} style={frameStyle(r)}>
       {keyframes}
 
-      <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celBkA1Thump ${thump} ease-in-out infinite` : undefined }}>
-        <div style={{ color: r.accent.primary, fontSize: px(height, 0.5), lineHeight: 1, letterSpacing: '-0.04em' }}>AND</div>
+      <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
+        <div style={{ animation: animOn ? `celBkA1Thump ${thump} ease-in-out infinite` : undefined }}>
+          <div style={{ color: r.accent.primary, fontSize: px(height, 0.5), lineHeight: 1, letterSpacing: '-0.04em' }}>AND</div>
+        </div>
       </div>
 
-      <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', color: r.accent.highlight, fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: px(height, 0.8), textShadow: `0 0 80px ${r.accent.highlight}`, animation: animOn ? `celBkA1Pulse ${pulse} ease-in-out infinite` : undefined }}>1</div>
+      <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
+        <div style={{ color: r.accent.highlight, fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: px(height, 0.8), textShadow: `0 0 80px ${r.accent.highlight}`, animation: animOn ? `celBkA1Pulse ${pulse} ease-in-out infinite` : undefined }}>1</div>
+      </div>
 
       <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
         <div style={{ color: r.accent.primary, fontSize: px(height, 0.1), letterSpacing: '0.1em' }}>FOUL ON THE PLAY</div>
@@ -610,10 +626,12 @@ export function CelBasketballTripleDoubleWidget({ config, live = true, height = 
 
       <Sparkles on={animOn} count={120} color={r.accent.highlight} kf="celBkTdSpark" dur={sparkDur} />
 
-      <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celBkTdSlide ${slide} ease-out` : undefined }}>
-        <div style={{ color: '#a78bfa', fontSize: px(height, 0.1), letterSpacing: '0.14em' }}>TRIPLE-DOUBLE</div>
-        <div style={{ fontSize: px(height, 0.46), lineHeight: 1, marginTop: '2%' }}>{player}</div>
-        <div style={{ color: '#a78bfa', fontSize: px(height, 0.096), marginTop: '2%' }}>career #{count}</div>
+      <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
+        <div style={{ animation: animOn ? `celBkTdSlide ${slide} ease-out` : undefined }}>
+          <div style={{ color: '#a78bfa', fontSize: px(height, 0.1), letterSpacing: '0.14em' }}>TRIPLE-DOUBLE</div>
+          <div style={{ fontSize: px(height, 0.46), lineHeight: 1, marginTop: '2%' }}>{player}</div>
+          <div style={{ color: '#a78bfa', fontSize: px(height, 0.096), marginTop: '2%' }}>career #{count}</div>
+        </div>
       </div>
 
       <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>

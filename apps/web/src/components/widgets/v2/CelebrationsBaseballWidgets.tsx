@@ -88,11 +88,13 @@ export function CelBaseballStrikeoutWidget({ config, live = true, height = 480 }
       {wide ? (
         <>
           {r.show('ball', true) && (
-            <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', width: height * 0.65, height: height * 0.65, borderRadius: '50%', background: '#fff', boxShadow: 'inset 0 0 0 2px #d4d3cd', animation: animOn ? `celBbSoSpin ${spin} linear infinite` : undefined, willChange: animOn ? 'transform' : undefined }}>
-              <svg viewBox="0 0 100 100" width="100%" height="100%">
-                <path d="M14 28 Q35 50 14 72" stroke={r.accent.primary} strokeWidth="3" fill="none"/>
-                <path d="M86 28 Q65 50 86 72" stroke={r.accent.primary} strokeWidth="3" fill="none"/>
-              </svg>
+            <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', width: height * 0.65, height: height * 0.65, borderRadius: '50%', background: '#fff', boxShadow: 'inset 0 0 0 2px #d4d3cd' }}>
+              <div style={{ width: '100%', height: '100%', animation: animOn ? `celBbSoSpin ${spin} linear infinite` : undefined, willChange: animOn ? 'transform' : undefined }}>
+                <svg viewBox="0 0 100 100" width="100%" height="100%">
+                  <path d="M14 28 Q35 50 14 72" stroke={r.accent.primary} strokeWidth="3" fill="none"/>
+                  <path d="M86 28 Q65 50 86 72" stroke={r.accent.primary} strokeWidth="3" fill="none"/>
+                </svg>
+              </div>
             </div>
           )}
 
@@ -118,11 +120,13 @@ export function CelBaseballStrikeoutWidget({ config, live = true, height = 480 }
       ) : (
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           {r.show('ball', true) && (
-            <div aria-hidden style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: heroSize(width, height) * 2.6, height: heroSize(width, height) * 2.6, borderRadius: '50%', background: '#fff', opacity: 0.08, animation: animOn ? `celBbSoSpin ${spin} linear infinite` : undefined, willChange: animOn ? 'transform' : undefined }}>
-              <svg viewBox="0 0 100 100" width="100%" height="100%">
-                <path d="M14 28 Q35 50 14 72" stroke={r.accent.primary} strokeWidth="3" fill="none"/>
-                <path d="M86 28 Q65 50 86 72" stroke={r.accent.primary} strokeWidth="3" fill="none"/>
-              </svg>
+            <div aria-hidden style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: heroSize(width, height) * 2.6, height: heroSize(width, height) * 2.6, borderRadius: '50%', background: '#fff', opacity: 0.08 }}>
+              <div style={{ width: '100%', height: '100%', animation: animOn ? `celBbSoSpin ${spin} linear infinite` : undefined, willChange: animOn ? 'transform' : undefined }}>
+                <svg viewBox="0 0 100 100" width="100%" height="100%">
+                  <path d="M14 28 Q35 50 14 72" stroke={r.accent.primary} strokeWidth="3" fill="none"/>
+                  <path d="M86 28 Q65 50 86 72" stroke={r.accent.primary} strokeWidth="3" fill="none"/>
+                </svg>
+              </div>
             </div>
           )}
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -198,14 +202,18 @@ export function CelBaseballHomeRunWidget({ config, live = true, height = 480 }: 
             <circle cx="6800" cy="380" r="40" fill="#fff" />
           </svg>
 
-          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celBbHrSlideL ${slide} ease-out both` : undefined }}>
-            <div style={{ color: r.accent.primary, fontWeight: r.font.weight, fontSize: px(height, 0.1), letterSpacing: '0.16em', textShadow: `0 0 30px ${r.accent.highlight}` }}>HOME RUN!</div>
-            <div style={{ fontSize: px(height, 0.46), lineHeight: 1, letterSpacing: '-0.04em', textShadow: '0 6px 30px #000', marginTop: '2%' }}>{player}</div>
+          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
+            <div style={{ animation: animOn ? `celBbHrSlideL ${slide} ease-out both` : undefined }}>
+              <div style={{ color: r.accent.primary, fontWeight: r.font.weight, fontSize: px(height, 0.1), letterSpacing: '0.16em', textShadow: `0 0 30px ${r.accent.highlight}` }}>HOME RUN!</div>
+              <div style={{ fontSize: px(height, 0.46), lineHeight: 1, letterSpacing: '-0.04em', textShadow: '0 6px 30px #000', marginTop: '2%' }}>{player}</div>
+            </div>
           </div>
 
-          <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right', animation: animOn ? `celBbHrSlideR ${slide} ease-out both` : undefined }}>
-            <div style={{ color: r.accent.primary, fontWeight: r.font.weight, fontSize: px(height, 0.5), fontFamily: '"JetBrains Mono", ui-monospace, monospace', lineHeight: 1, textShadow: `0 0 50px ${r.accent.highlight}` }}>{distance}</div>
-            <div style={{ fontWeight: 700, fontSize: px(height, 0.08), marginTop: '2%' }}>{velo}</div>
+          <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
+            <div style={{ animation: animOn ? `celBbHrSlideR ${slide} ease-out both` : undefined }}>
+              <div style={{ color: r.accent.primary, fontWeight: r.font.weight, fontSize: px(height, 0.5), fontFamily: '"JetBrains Mono", ui-monospace, monospace', lineHeight: 1, textShadow: `0 0 50px ${r.accent.highlight}` }}>{distance}</div>
+              <div style={{ fontWeight: 700, fontSize: px(height, 0.08), marginTop: '2%' }}>{velo}</div>
+            </div>
           </div>
         </>
       ) : (
@@ -286,9 +294,11 @@ export function CelBaseballGrandSlamWidget({ config, live = true, height = 480 }
             ))}
           </div>
 
-          <div style={{ position: 'absolute', left: '34%', right: '20%', top: '50%', transform: 'translateY(-50%)', textAlign: 'center', animation: animOn ? `celBbGsPunch ${punch} ease-out both` : undefined }}>
-            <div style={{ fontSize: px(height, 0.6), lineHeight: 0.9, color: r.accent.primary, textShadow: `0 0 80px ${r.accent.highlight}, 0 0 160px ${r.accent.highlight}55`, letterSpacing: '-0.04em' }}>GRAND</div>
-            <div style={{ fontSize: px(height, 0.6), lineHeight: 0.9, color: r.accent.primary, textShadow: `0 0 80px ${r.accent.highlight}, 0 0 160px ${r.accent.highlight}55`, letterSpacing: '-0.04em' }}>SLAM</div>
+          <div style={{ position: 'absolute', left: '34%', right: '20%', top: '50%', transform: 'translateY(-50%)', textAlign: 'center' }}>
+            <div style={{ animation: animOn ? `celBbGsPunch ${punch} ease-out both` : undefined }}>
+              <div style={{ fontSize: px(height, 0.6), lineHeight: 0.9, color: r.accent.primary, textShadow: `0 0 80px ${r.accent.highlight}, 0 0 160px ${r.accent.highlight}55`, letterSpacing: '-0.04em' }}>GRAND</div>
+              <div style={{ fontSize: px(height, 0.6), lineHeight: 0.9, color: r.accent.primary, textShadow: `0 0 80px ${r.accent.highlight}, 0 0 160px ${r.accent.highlight}55`, letterSpacing: '-0.04em' }}>SLAM</div>
+            </div>
           </div>
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
@@ -348,9 +358,11 @@ export function CelBaseballNoHitterWidget({ config, live = true, height = 480 }:
 
       {wide ? (
         <>
-          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celBbNhSlide ${slide} ease-out both` : undefined }}>
-            <div style={{ color: '#9aa3b2', fontSize: px(height, 0.1), letterSpacing: '0.18em' }}>HISTORY IN PROGRESS</div>
-            <div style={{ fontSize: px(height, 0.42), lineHeight: 1, letterSpacing: '-0.04em', textShadow: `0 0 50px ${r.accent.highlight}`, marginTop: '2%' }}>NO HITTER</div>
+          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
+            <div style={{ animation: animOn ? `celBbNhSlide ${slide} ease-out both` : undefined }}>
+              <div style={{ color: '#9aa3b2', fontSize: px(height, 0.1), letterSpacing: '0.18em' }}>HISTORY IN PROGRESS</div>
+              <div style={{ fontSize: px(height, 0.42), lineHeight: 1, letterSpacing: '-0.04em', textShadow: `0 0 50px ${r.accent.highlight}`, marginTop: '2%' }}>NO HITTER</div>
+            </div>
           </div>
 
           <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', animation: animOn ? `celBbNhGlow ${glow} ease-in-out infinite` : undefined }}>
@@ -563,9 +575,11 @@ export function CelBaseballTriplePlayWidget({ config, live = true, height = 480 
             ))}
           </div>
 
-          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', animation: animOn ? `celBbTpPunch ${punch} ease-out 0.5s both` : undefined }}>
-            <div style={{ fontSize: px(height, 0.75), lineHeight: 0.85, letterSpacing: '-0.04em', textShadow: `0 0 80px ${r.font.color}` }}>TRIPLE</div>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.75), lineHeight: 0.85, letterSpacing: '-0.04em', textShadow: `0 0 80px ${r.accent.highlight}` }}>PLAY</div>
+          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+            <div style={{ animation: animOn ? `celBbTpPunch ${punch} ease-out 0.5s both` : undefined }}>
+              <div style={{ fontSize: px(height, 0.75), lineHeight: 0.85, letterSpacing: '-0.04em', textShadow: `0 0 80px ${r.font.color}` }}>TRIPLE</div>
+              <div style={{ color: r.accent.primary, fontSize: px(height, 0.75), lineHeight: 0.85, letterSpacing: '-0.04em', textShadow: `0 0 80px ${r.accent.highlight}` }}>PLAY</div>
+            </div>
           </div>
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', color: r.accent.primary, fontSize: px(height, 0.09), maxWidth: '20%', lineHeight: 1.1, textAlign: 'right', textShadow: `0 0 30px ${r.accent.highlight}` }}>{caption}</div>
@@ -631,15 +645,19 @@ export function CelBaseballWalkOffWidget({ config, live = true, height = 480 }: 
 
       {wide ? (
         <>
-          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celBbWoSlideL ${slide} ease-out` : undefined }}>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.14em' }}>WALK-OFF WIN</div>
-            <div style={{ fontSize: px(height, 0.46), lineHeight: 0.95, textShadow: '0 6px 30px #000', marginTop: '2%' }}>{teamName}</div>
-            <div style={{ fontWeight: 700, fontSize: px(height, 0.1), marginTop: '2%' }}>{innings} INNINGS · {score}</div>
+          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
+            <div style={{ animation: animOn ? `celBbWoSlideL ${slide} ease-out` : undefined }}>
+              <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.14em' }}>WALK-OFF WIN</div>
+              <div style={{ fontSize: px(height, 0.46), lineHeight: 0.95, textShadow: '0 6px 30px #000', marginTop: '2%' }}>{teamName}</div>
+              <div style={{ fontWeight: 700, fontSize: px(height, 0.1), marginTop: '2%' }}>{innings} INNINGS · {score}</div>
+            </div>
           </div>
 
-          <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right', animation: animOn ? `celBbWoSlideR ${slide} ease-out` : undefined }}>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.13) }}>HERO</div>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.58), lineHeight: 0.9, textShadow: `0 0 50px ${r.accent.highlight}` }}>{hero}</div>
+          <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
+            <div style={{ animation: animOn ? `celBbWoSlideR ${slide} ease-out` : undefined }}>
+              <div style={{ color: r.accent.primary, fontSize: px(height, 0.13) }}>HERO</div>
+              <div style={{ color: r.accent.primary, fontSize: px(height, 0.58), lineHeight: 0.9, textShadow: `0 0 50px ${r.accent.highlight}` }}>{hero}</div>
+            </div>
           </div>
         </>
       ) : (

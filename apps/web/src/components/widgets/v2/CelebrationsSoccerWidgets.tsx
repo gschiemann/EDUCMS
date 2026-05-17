@@ -221,11 +221,15 @@ export function CelSoccerGolazoWidget({ config, live = true, height = 480 }: Wid
 
       {wide ? (
         <>
-          <div aria-hidden style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: px(h, 2.9), height: px(h, 2.9), background: `radial-gradient(circle, ${r.accent.highlight}66 0%, transparent 60%)`, animation: animOn ? `celScGlPulse ${pulse} ease-in-out infinite` : undefined }} />
+          <div aria-hidden style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
+            <div style={{ width: px(h, 2.9), height: px(h, 2.9), background: `radial-gradient(circle, ${r.accent.highlight}66 0%, transparent 60%)`, animation: animOn ? `celScGlPulse ${pulse} ease-in-out infinite` : undefined }} />
+          </div>
 
-          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celScGlPunch ${punch} ease-out both` : undefined }}>
-            <div style={{ color: r.accent.secondary, fontSize: px(h, 0.125), letterSpacing: '0.14em' }}>{kind}</div>
-            <div style={{ color: r.accent.primary, fontStyle: 'italic', fontSize: px(h, 0.71), lineHeight: 0.85, textShadow: `0 0 100px ${r.accent.highlight}, 0 0 200px ${r.accent.highlight}44`, letterSpacing: '-0.04em' }}>GOLAZO!</div>
+          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
+            <div style={{ animation: animOn ? `celScGlPunch ${punch} ease-out both` : undefined }}>
+              <div style={{ color: r.accent.secondary, fontSize: px(h, 0.125), letterSpacing: '0.14em' }}>{kind}</div>
+              <div style={{ color: r.accent.primary, fontStyle: 'italic', fontSize: px(h, 0.71), lineHeight: 0.85, textShadow: `0 0 100px ${r.accent.highlight}, 0 0 200px ${r.accent.highlight}44`, letterSpacing: '-0.04em' }}>GOLAZO!</div>
+            </div>
           </div>
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
@@ -235,7 +239,9 @@ export function CelSoccerGolazoWidget({ config, live = true, height = 480 }: Wid
         </>
       ) : (
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '0 6%', boxSizing: 'border-box' }}>
-          <div aria-hidden style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: Math.min(h * 1.5, width * 0.7), height: Math.min(h * 1.5, width * 0.7), background: `radial-gradient(circle, ${r.accent.highlight}66 0%, transparent 60%)`, animation: animOn ? `celScGlPulse ${pulse} ease-in-out infinite` : undefined, pointerEvents: 'none' }} />
+          <div aria-hidden style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none' }}>
+            <div style={{ width: Math.min(h * 1.5, width * 0.7), height: Math.min(h * 1.5, width * 0.7), background: `radial-gradient(circle, ${r.accent.highlight}66 0%, transparent 60%)`, animation: animOn ? `celScGlPulse ${pulse} ease-in-out infinite` : undefined }} />
+          </div>
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', animation: animOn ? `celScGlPunch ${punch} ease-out both` : undefined }}>
             <div style={{ color: r.accent.secondary, fontWeight: 700, fontSize: sceneText(width, h, 0.08, 13), letterSpacing: '0.14em', marginBottom: '2%' }}>{kind}</div>
             <div style={{ color: r.accent.primary, fontStyle: 'italic', fontSize: sceneHero(width, h, 0.34, 0.13), lineHeight: 0.9, textShadow: `0 0 100px ${r.accent.highlight}, 0 0 200px ${r.accent.highlight}44`, letterSpacing: '-0.04em' }}>GOLAZO!</div>
@@ -333,9 +339,11 @@ export function CelSoccerPenaltySaveWidget({ config, live = true, height = 480 }
 
       {wide ? (
         <>
-          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celScPsBurst ${burst} ease-out both` : undefined }}>
-            <div style={{ color: r.accent.primary, fontSize: px(h, 0.125), letterSpacing: '0.14em' }}>DENIED!</div>
-            <div style={{ color: r.accent.primary, fontSize: px(h, 0.62), lineHeight: 0.9, textShadow: `0 0 80px ${r.accent.highlight}`, marginTop: '2%' }}>SAVE!</div>
+          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
+            <div style={{ animation: animOn ? `celScPsBurst ${burst} ease-out both` : undefined }}>
+              <div style={{ color: r.accent.primary, fontSize: px(h, 0.125), letterSpacing: '0.14em' }}>DENIED!</div>
+              <div style={{ color: r.accent.primary, fontSize: px(h, 0.62), lineHeight: 0.9, textShadow: `0 0 80px ${r.accent.highlight}`, marginTop: '2%' }}>SAVE!</div>
+            </div>
           </div>
 
           <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', animation: animOn ? `celScPsBlink ${blink} infinite` : undefined }}>

@@ -104,9 +104,11 @@ export function CelFootballTouchdownWidget({ config, live = true, height = 480 }
 
       {wide ? (
         <>
-          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celFbTdShake ${shakeDur} ease-in-out 1` : undefined }}>
-            <div style={{ fontSize: px(height, 0.46), lineHeight: 0.85, letterSpacing: '-0.04em', textShadow: `0 0 80px ${r.accent.highlight}, 0 8px 30px #000` }}>TOUCH</div>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.46), lineHeight: 0.85, letterSpacing: '-0.04em', textShadow: `0 0 80px ${r.accent.highlight}, 0 8px 30px #000`, marginTop: '2%' }}>DOWN!</div>
+          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
+            <div style={{ animation: animOn ? `celFbTdShake ${shakeDur} ease-in-out 1` : undefined }}>
+              <div style={{ fontSize: px(height, 0.46), lineHeight: 0.85, letterSpacing: '-0.04em', textShadow: `0 0 80px ${r.accent.highlight}, 0 8px 30px #000` }}>TOUCH</div>
+              <div style={{ color: r.accent.primary, fontSize: px(height, 0.46), lineHeight: 0.85, letterSpacing: '-0.04em', textShadow: `0 0 80px ${r.accent.highlight}, 0 8px 30px #000`, marginTop: '2%' }}>DOWN!</div>
+            </div>
           </div>
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
@@ -163,9 +165,11 @@ export function CelFootballPickSixWidget({ config, live = true, height = 480 }: 
 
       {wide ? (
         <>
-          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celFbP6SlideL ${slide} ease-out both` : undefined }}>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.1), letterSpacing: '0.14em' }}>DEFENSIVE TD</div>
-            <div style={{ fontSize: px(height, 0.58), lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: `0 0 40px ${r.accent.highlight}`, marginTop: '2%' }}>PICK SIX</div>
+          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
+            <div style={{ animation: animOn ? `celFbP6SlideL ${slide} ease-out both` : undefined }}>
+              <div style={{ color: r.accent.primary, fontSize: px(height, 0.1), letterSpacing: '0.14em' }}>DEFENSIVE TD</div>
+              <div style={{ fontSize: px(height, 0.58), lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: `0 0 40px ${r.accent.highlight}`, marginTop: '2%' }}>PICK SIX</div>
+            </div>
           </div>
 
           <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', color: r.accent.primary, fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: px(height, 0.62), textShadow: `0 0 60px ${r.accent.highlight}` }}>6</div>
@@ -286,15 +290,19 @@ export function CelFootballSackWidget({ config, live = true, height = 480 }: Wid
 
       {wide ? (
         <>
-          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celFbSackShake ${shake} ease-in-out 1` : undefined }}>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.16em' }}>SACK!</div>
-            <div style={{ fontSize: px(height, 0.5), lineHeight: 1, textShadow: `0 0 30px ${r.accent.highlight}`, marginTop: '2%' }}>QB DOWN</div>
+          <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
+            <div style={{ animation: animOn ? `celFbSackShake ${shake} ease-in-out 1` : undefined }}>
+              <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.16em' }}>SACK!</div>
+              <div style={{ fontSize: px(height, 0.5), lineHeight: 1, textShadow: `0 0 30px ${r.accent.highlight}`, marginTop: '2%' }}>QB DOWN</div>
+            </div>
           </div>
 
-          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', animation: animOn ? `celFbSackPulse ${pulse} ease-in-out infinite` : undefined }}>
-            <svg width={height * 0.5} height={height * 0.5} viewBox="0 0 100 100">
-              <polygon points="50,5 65,40 100,40 70,60 80,95 50,75 20,95 30,60 0,40 35,40" fill={r.accent.primary} stroke="#fff" strokeWidth="2"/>
-            </svg>
+          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
+            <div style={{ animation: animOn ? `celFbSackPulse ${pulse} ease-in-out infinite` : undefined }}>
+              <svg width={height * 0.5} height={height * 0.5} viewBox="0 0 100 100">
+                <polygon points="50,5 65,40 100,40 70,60 80,95 50,75 20,95 30,60 0,40 35,40" fill={r.accent.primary} stroke="#fff" strokeWidth="2"/>
+              </svg>
+            </div>
           </div>
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
