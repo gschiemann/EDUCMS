@@ -15,6 +15,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Check } from 'lucide-react';
 import { VERTICAL_TEMPLATE_CATEGORIES, type Vertical } from '@cms/api-types';
+import { TemplateEmbed } from './TemplateEmbed';
 
 interface Industry {
   vertical: Vertical;
@@ -23,6 +24,8 @@ interface Industry {
   tagline: string;
   pitch: string;
   benefits: string[];
+  /** A flagship template to preview for this industry. */
+  template: { src: string; staticImage?: string; label: string };
   badge?: { label: string; cls: string };
 }
 
@@ -45,6 +48,11 @@ const INDUSTRIES: Industry[] = [
       'One-tap lockdown, evacuate, and weather alerts on every screen',
       'Clever rostering + SSO — staff sign in with what they already use',
     ],
+    template: {
+      src: '/demo/templates/rainbow.html',
+      staticImage: '/demo/templates/rainbow.jpg',
+      label: 'Animated Rainbow — Elementary Welcome',
+    },
     badge: FLAGSHIP,
   },
   {
@@ -59,6 +67,10 @@ const INDUSTRIES: Industry[] = [
       'Sell sponsor banners with proof-of-play reporting built in',
       'One scorebug drives the in-venue board and your livestream overlay',
     ],
+    template: {
+      src: '/templates/hs/ath-gameday.html',
+      label: 'Game Day Hub',
+    },
     badge: STAR,
   },
   {
@@ -72,6 +84,11 @@ const INDUSTRIES: Industry[] = [
       'Push an LTO or combo to every store at once',
       'Runs on the screens you already own',
     ],
+    template: {
+      src: '/templates/signage/qsr/01-drive-thru-flagship.html',
+      staticImage: '/demo/templates/qsr-drive-thru.jpg',
+      label: 'Drive-Thru Menu Board',
+    },
   },
   {
     vertical: 'RESTAURANT',
@@ -84,6 +101,10 @@ const INDUSTRIES: Industry[] = [
       'Prix-fixe, wine, and cocktail layouts ready to go',
       'Schedule brunch, dinner, and late-night menus by time',
     ],
+    template: {
+      src: '/templates/signage/menus-pos/01-fullservice-menu.html',
+      label: 'Full-Service Menu',
+    },
   },
   {
     vertical: 'RETAIL',
@@ -96,6 +117,10 @@ const INDUSTRIES: Industry[] = [
       'Lookbooks and pricing boards that stay on-brand',
       'Schedule campaigns to start and end on their own',
     ],
+    template: {
+      src: '/templates/signage/fashion/02-editorial.html',
+      label: 'Promo & Campaign Board',
+    },
   },
   {
     vertical: 'FASHION',
@@ -108,6 +133,11 @@ const INDUSTRIES: Industry[] = [
       'Runway and lookbook layouts, recolored to your brand',
       'Fitting-room and window displays from one dashboard',
     ],
+    template: {
+      src: '/templates/signage/fashion/01-lookbook-flagship.html',
+      staticImage: '/demo/templates/fashion-lookbook.jpg',
+      label: 'Boutique Lookbook',
+    },
   },
   {
     vertical: 'GYM',
@@ -120,6 +150,11 @@ const INDUSTRIES: Industry[] = [
       'Promote challenges and personal training automatically',
       'Evacuate and weather alerts for the whole facility',
     ],
+    template: {
+      src: '/demo/templates/varsity.html',
+      staticImage: '/demo/templates/varsity.jpg',
+      label: 'Athletics & Fitness Board',
+    },
   },
   {
     vertical: 'HEALTHCARE',
@@ -132,6 +167,10 @@ const INDUSTRIES: Industry[] = [
       'Patient-education loops by department',
       'Evacuate and lockdown alerts across the practice',
     ],
+    template: {
+      src: '/templates/signage/healthcare/01-waiting-room-flagship.html',
+      label: 'Waiting-Room Board',
+    },
   },
   {
     vertical: 'HOSPITALITY',
@@ -144,6 +183,10 @@ const INDUSTRIES: Industry[] = [
       'Concierge and amenity boards, updated on the fly',
       'One dashboard across every property in the group',
     ],
+    template: {
+      src: '/templates/signage/hospitality/01-lobby-welcome-flagship.html',
+      label: 'Lobby Welcome Board',
+    },
   },
   {
     vertical: 'CORPORATE',
@@ -156,6 +199,10 @@ const INDUSTRIES: Industry[] = [
       'Conference-room signage synced to your calendar',
       'Push company news to every floor at once',
     ],
+    template: {
+      src: '/templates/signage/corporate/01-lobby-welcome-flagship.html',
+      label: 'Lobby & Comms Board',
+    },
   },
   {
     vertical: 'BAR',
@@ -168,6 +215,10 @@ const INDUSTRIES: Industry[] = [
       'Happy-hour and event boards on a schedule',
       'Game-day mode turns every screen into the big game',
     ],
+    template: {
+      src: '/templates/signage/bar/01-tap-list-flagship.html',
+      label: 'Tap List',
+    },
   },
 ];
 
@@ -233,8 +284,8 @@ export function IndustryShowcase() {
 
         {/* detail panel for the selected industry */}
         <div className="mt-6 rounded-3xl border border-slate-200 bg-white shadow-[0_12px_40px_rgba(15,23,42,0.07)] overflow-hidden">
-          <div className="grid md:grid-cols-[1.4fr_1fr]">
-            {/* left — pitch + benefits */}
+          <div className="grid md:grid-cols-[1fr_1.05fr]">
+            {/* left — pitch, benefits, CTA */}
             <div className="p-7 md:p-9">
               <div className="flex items-center gap-3">
                 <span className="text-4xl leading-none" aria-hidden>
@@ -265,27 +316,16 @@ export function IndustryShowcase() {
                   </li>
                 ))}
               </ul>
-            </div>
-
-            {/* right — template packs + CTA */}
-            <div className="p-7 md:p-9 bg-gradient-to-br from-slate-50 to-indigo-50/60 border-t md:border-t-0 md:border-l border-slate-200">
-              <p className="text-xs font-bold tracking-[0.12em] uppercase text-indigo-600">
-                Templates for {active.name}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-5 flex flex-wrap gap-1.5">
                 {templates.map((t) => (
                   <span
                     key={t}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 shadow-sm"
+                    className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-slate-100 text-slate-600"
                   >
                     {t}
                   </span>
                 ))}
               </div>
-              <p className="mt-4 text-xs text-slate-500 leading-relaxed">
-                Every pack is fully editable — change the text, recolor it to your
-                brand, drop it on a screen.
-              </p>
               <Link
                 href={`/signup?vertical=${active.vertical}`}
                 className="group mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 shadow-lg shadow-indigo-500/25 transition"
@@ -293,6 +333,27 @@ export function IndustryShowcase() {
                 Start your free {active.name} trial
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </Link>
+            </div>
+
+            {/* right — a live template preview for this industry */}
+            <div className="p-5 md:p-7 bg-gradient-to-br from-slate-50 to-indigo-50/60 border-t md:border-t-0 md:border-l border-slate-200 flex flex-col">
+              <p className="text-xs font-bold tracking-[0.12em] uppercase text-indigo-600 mb-3">
+                A ready-made {active.name} template
+              </p>
+              <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-slate-950">
+                <TemplateEmbed
+                  key={active.template.src}
+                  src={active.template.src}
+                  staticImage={active.template.staticImage}
+                  title={`${active.template.label} template preview`}
+                  eager
+                />
+              </div>
+              <p className="mt-3 text-sm font-semibold text-slate-700">{active.template.label}</p>
+              <p className="mt-0.5 text-xs text-slate-500 leading-relaxed">
+                One of 170+ templates — fully editable: change the text, recolor it to
+                your brand, drop it on a screen.
+              </p>
             </div>
           </div>
         </div>
