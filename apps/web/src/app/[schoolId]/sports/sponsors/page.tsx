@@ -9,13 +9,17 @@
  * proof-of-play numbers that justify the ad sale.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Pencil, Trash2, X, BadgeDollarSign } from 'lucide-react';
+import {
+  ArrowLeft, Plus, Pencil, Trash2, X, BadgeDollarSign, Upload, Loader2, ImageIcon,
+} from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { useUIStore } from '@/store/ui-store';
+import { API_URL } from '@/lib/api-url';
 import {
   useSponsors,
   useSponsorReport,
@@ -257,6 +261,28 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Upload one image file (a sponsor logo) and return its hosted URL.
+ *  Reuses the hardened /assets/upload chain. */
+async function uploadLogo(file: File): Promise<string> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const token = useUIStore.getState().token;
+  const res = await fetch(`${API_URL}/assets/upload`, {
+    method: 'POST',
+    body: fd,
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`Logo upload failed (${res.status}) ${t}`.trim());
+  }
+  const data = await res.json().catch(() => ({}) as any);
+  const url = data.fileUrl || data.url || data?.asset?.fileUrl || '';
+  if (!url) throw new Error('Upload succeeded but no URL came back.');
+  return url;
+}
+
 function SponsorModal({ sponsor, onClose }: { sponsor: Sponsor | null; onClose: () => void }) {
   const createSponsor = useCreateSponsor();
   const updateSponsor = useUpdateSponsor();
@@ -265,6 +291,8 @@ function SponsorModal({ sponsor, onClose }: { sponsor: Sponsor | null; onClose: 
   const [name, setName] = useState(sponsor?.name || '');
   const [tagline, setTagline] = useState(sponsor?.tagline || '');
   const [logoUrl, setLogoUrl] = useState(sponsor?.logoUrl || '');
+  const [logoBusy, setLogoBusy] = useState(false);
+  const logoFileRef = useRef<HTMLInputElement>(null);
   const [tier, setTier] = useState(sponsor?.tier || '');
   const [color, setColor] = useState(sponsor?.color || SPONSOR_COLORS[0]);
   const [weight, setWeight] = useState(sponsor?.weight || 1);
@@ -272,6 +300,20 @@ function SponsorModal({ sponsor, onClose }: { sponsor: Sponsor | null; onClose: 
   const [err, setErr] = useState('');
 
   const pending = createSponsor.isPending || updateSponsor.isPending;
+
+  const pickLogo = async (file: File | undefined) => {
+    if (!file) return;
+    setLogoBusy(true);
+    setErr('');
+    try {
+      setLogoUrl(await uploadLogo(file));
+    } catch (e) {
+      setErr((e as Error).message || 'Logo upload failed.');
+    } finally {
+      setLogoBusy(false);
+      if (logoFileRef.current) logoFileRef.current.value = '';
+    }
+  };
 
   const submit = async () => {
     if (!name.trim()) {
@@ -320,11 +362,53 @@ function SponsorModal({ sponsor, onClose }: { sponsor: Sponsor | null; onClose: 
             maxLength={160}
           />
         </Field>
-        <Field label="Logo URL (optional)">
+        <Field label="Logo">
+          <div className="flex items-center gap-3">
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoUrl}
+                alt=""
+                className="h-12 w-12 rounded-md object-contain bg-slate-100 ring-1 ring-slate-200 shrink-0"
+              />
+            ) : (
+              <div className="h-12 w-12 rounded-md bg-slate-100 flex items-center justify-center shrink-0">
+                <ImageIcon className="h-4 w-4 text-slate-300" />
+              </div>
+            )}
+            <input
+              ref={logoFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => pickLogo(e.target.files?.[0])}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              disabled={logoBusy}
+              onClick={() => logoFileRef.current?.click()}
+            >
+              {logoBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {logoUrl ? 'Replace logo' : 'Upload logo'}
+            </Button>
+            {logoUrl && (
+              <button
+                type="button"
+                onClick={() => setLogoUrl('')}
+                className="text-xs text-slate-400 hover:text-red-600"
+              >
+                Remove
+              </button>
+            )}
+          </div>
           <Input
+            className="mt-2"
             value={logoUrl}
             onChange={(e) => setLogoUrl(e.target.value)}
-            placeholder="https://…/logo.png"
+            placeholder="…or paste a logo URL"
             maxLength={2048}
           />
         </Field>
