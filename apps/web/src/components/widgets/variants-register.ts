@@ -754,12 +754,20 @@ const V2_CATEGORY_TO_CANONICAL: Record<string, WidgetType> = {
   'Images':         'IMAGE',
   'Lunch Menus':    'LUNCH_MENU',
   'Bell Schedules': 'BELL_SCHEDULE',
-  // VenueOS Sports — celebration ribbons (EDU CMS-10 batch). All three
-  // sport categories register under the one CELEBRATION canonical type
+  // VenueOS Sports — celebration ribbons (EDU CMS-10/12 batches). Every
+  // sport category registers under the one CELEBRATION canonical type
   // so the picker shows a single "Celebration" chip.
   'Celebrations · Baseball':   'CELEBRATION',
   'Celebrations · Football':   'CELEBRATION',
   'Celebrations · Basketball': 'CELEBRATION',
+  'Celebrations · Hockey':     'CELEBRATION',
+  'Celebrations · Soccer':     'CELEBRATION',
+  // VenueOS multi-industry widget packs (EDU CMS-11/12).
+  'Healthcare':   'HEALTHCARE',
+  'Corporate':    'CORPORATE',
+  'Hospitality':  'HOSPITALITY',
+  'Worship':      'WORSHIP',
+  'Charts':       'CHART',
 };
 
 for (const w of ALL_V2_WIDGETS) {
@@ -788,6 +796,10 @@ for (const w of ALL_V2_WIDGETS) {
     render: w.Component as ComponentType<ThemeWidgetProps>,
     // Seed defaults so a freshly-dropped zone renders immediately.
     defaultConfig: w.defaults || {},
+    // Business-line scope — VariantPicker hides a vertical-scoped widget
+    // from every other vertical's palette (a healthcare widget never
+    // shows in a gym, a celebration never lands in a restaurant).
+    vertical: w.vertical,
   });
 }
 

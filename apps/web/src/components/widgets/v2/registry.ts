@@ -22,11 +22,17 @@ import {
   Clock, Megaphone, Newspaper, CalendarDays, Users, Timer, Shield,
   ArrowRight, Cloud, Camera, FileText, Image as ImageIcon,
   UtensilsCrossed, Bell,
-  // Celebration widgets (EDU CMS-10 batch). `RefreshCw` — the shipped
+  // Celebration widgets (EDU CMS-10/12). `RefreshCw` — the shipped
   // registry imported `Refresh`, which does not exist in lucide-react.
   Zap, TrendingUp, Crown, Star, Repeat2, CircleEqual, Flag, Trophy,
   Hand, Goal, Hammer, AlertOctagon, RefreshCw, Target,
-  MousePointerClick, Award,
+  MousePointerClick, Award, Music, Sparkles, Crosshair,
+  // Industry widget packs (EDU CMS-11/12) — healthcare, corporate,
+  // hospitality, worship, charts.
+  Hash, UserCog, BookOpen, CalendarClock, ShieldCheck, CalendarRange,
+  UserCheck, DoorOpen, PartyPopper, BarChart3, PieChart, LineChart,
+  ListChecks, Calculator, BedDouble, Calendar, MapPin, Clock4, Key,
+  Cross, HandCoins, HeartHandshake,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -66,6 +72,39 @@ import {
 } from './CelebrationsBasketballWidgets';
 import { withMeasuredHeight } from './_shared/measured';
 
+// EDU CMS-12 batch — hockey + soccer celebrations and four industry
+// packs (healthcare, corporate, hospitality, worship) + universal charts.
+import {
+  CelHockeyGoalWidget, CelHockeyHatTrickWidget, CelHockeyPowerPlayWidget,
+  CelHockeyShortyWidget, CelHockeyBigSaveWidget, CelHockeyEmptyNetWidget,
+} from './CelebrationsHockeyWidgets';
+import {
+  CelSoccerGoalWidget, CelSoccerHatTrickWidget, CelSoccerGolazoWidget,
+  CelSoccerRedCardWidget, CelSoccerPenaltySaveWidget, CelSoccerFreeKickWidget,
+} from './CelebrationsSoccerWidgets';
+import {
+  NowServingWidget, WaitTimesBoardWidget, ProviderSpotlightWidget,
+  VisitorHoursWidget, CodeBannerWidget, PatientEducationWidget,
+  InsuranceAcceptedWidget,
+} from './HealthcareWidgets';
+import {
+  RoomScheduleWidget, VisitorWelcomeWidget, KpiTileWidget,
+  SalesLeaderboardWidget, DoorSignWidget, OkrTrackerWidget,
+  TeamAnniversariesWidget,
+} from './CorporateWidgets';
+import {
+  HotelWelcomeWidget, DailyEventsBoardWidget, AmenityHoursWidget,
+  CheckInOutTimesWidget, LocalAttractionsWidget,
+} from './HospitalityWidgets';
+import {
+  ServiceTimesWidget, SermonTitleCardWidget, HymnBoardWidget,
+  GivingThermometerWidget, ScriptureVerseWidget, PrayerRequestQrWidget,
+} from './WorshipWidgets';
+import {
+  BarChartWidget, DonutGaugeWidget, LineChartWidget,
+  ProgressListWidget, CountUpStatsWidget,
+} from './ChartsWidgets';
+
 import type { WidgetMeta, SchoolLevel } from './_shared/types';
 
 export interface RegisteredWidget extends WidgetMeta {
@@ -78,6 +117,12 @@ const W = (
   level: SchoolLevel, icon: LucideIcon, Component: ComponentType<any>,
   defaults: Record<string, unknown> = {}
 ): RegisteredWidget => ({ type, category, label, desc, level, icon, Component, defaults });
+
+/** Stamp a business-line vertical onto a batch of widgets. Applied at
+ *  the ALL_V2_WIDGETS assembly point so the per-pack arrays stay clean
+ *  and a widget appears only in its own vertical's builder palette. */
+const withVertical = (vertical: string, widgets: RegisteredWidget[]): RegisteredWidget[] =>
+  widgets.map((w) => ({ ...w, vertical }));
 
 // 2026-05-02 integration note — the original drop's registry imported
 // component names that didn't match the exports in the widget files
@@ -256,13 +301,100 @@ export const CEL_BASKETBALL_WIDGETS: RegisteredWidget[] = [
   W('CEL_BASKETBALL_TRIPLEDOUBLE', CAT_CEL_BASKETBALL, 'Triple-Double', 'Stat-line achievement — 10/10/10 locked',      'universal', Award,             withMeasuredHeight(CelBasketballTripleDoubleWidget), { player: 'JOKIC', line: '24 PTS · 12 REB · 13 AST', careerCount: 18 }),
 ];
 
+/* ─── CELEBRATIONS — Hockey + Soccer (EDU CMS-12 batch) ─────────────── */
+const CAT_CEL_HOCKEY  = 'Celebrations · Hockey';
+const CAT_CEL_SOCCER  = 'Celebrations · Soccer';
+
+export const CEL_HOCKEY_WIDGETS: RegisteredWidget[] = [
+  W('CEL_HOCKEY_GOAL',        CAT_CEL_HOCKEY, 'Goal',            'Red-lamp pulse + GOAL banner + assists', 'universal', Goal,        withMeasuredHeight(CelHockeyGoalWidget),      { scorer: 'MCDAVID', assists: ['DRAISAITL', 'NUGENT-HOPKINS'], score: '3-1' }),
+  W('CEL_HOCKEY_HATTRICK',    CAT_CEL_HOCKEY, 'Hat Trick',       '3 goals — flying-hats sparkle',          'universal', PartyPopper, withMeasuredHeight(CelHockeyHatTrickWidget),  { player: 'OVECHKIN' }),
+  W('CEL_HOCKEY_POWERPLAY',   CAT_CEL_HOCKEY, 'Power Play Goal', '5-on-4 cashed in — strength badge',      'universal', Zap,         withMeasuredHeight(CelHockeyPowerPlayWidget), { scorer: 'MATTHEWS', strength: '5-on-4', score: '2-1' }),
+  W('CEL_HOCKEY_SHORTHANDED', CAT_CEL_HOCKEY, 'Shorthanded',     'Down a man and still scored',            'universal', Shield,      withMeasuredHeight(CelHockeyShortyWidget),    { scorer: 'POINT', strength: '4-on-5' }),
+  W('CEL_HOCKEY_BIGSAVE',     CAT_CEL_HOCKEY, 'Big Save',        'Goaltender denial + save count',         'universal', Shield,      withMeasuredHeight(CelHockeyBigSaveWidget),   { goalie: 'SHESTERKIN', saves: 28 }),
+  W('CEL_HOCKEY_EMPTYNET',    CAT_CEL_HOCKEY, 'Empty Net Goal',  'Game-sealing goal into the empty net',   'universal', Flag,        withMeasuredHeight(CelHockeyEmptyNetWidget),  { scorer: 'BARKOV', finalScore: '4-2' }),
+];
+
+export const CEL_SOCCER_WIDGETS: RegisteredWidget[] = [
+  W('CEL_SOCCER_GOAL',     CAT_CEL_SOCCER, 'GOOOOAL',        'Classic GOOOOAL with a flag-wave backdrop', 'universal', Goal,         withMeasuredHeight(CelSoccerGoalWidget),        { scorer: 'MESSI', minute: "63'", score: '2-1' }),
+  W('CEL_SOCCER_HATTRICK', CAT_CEL_SOCCER, 'Hat Trick',      '3 goals — three goal-minute chips',         'universal', Award,        withMeasuredHeight(CelSoccerHatTrickWidget),    { player: 'HAALAND', goals: ["12'", "38'", "81'"] }),
+  W('CEL_SOCCER_GOLAZO',   CAT_CEL_SOCCER, 'Golazo',         'Highlight-reel strike — italic GOLAZO',     'universal', Sparkles,     withMeasuredHeight(CelSoccerGolazoWidget),      { player: 'BELLINGHAM', kind: 'BICYCLE KICK' }),
+  W('CEL_SOCCER_REDCARD',  CAT_CEL_SOCCER, 'Red Card',       'Sending-off — flashing red card',           'universal', AlertOctagon, withMeasuredHeight(CelSoccerRedCardWidget),     { player: 'RAMOS', number: '4', reason: '2nd yellow' }),
+  W('CEL_SOCCER_PENSAVE',  CAT_CEL_SOCCER, 'Penalty Save',   'Goalkeeper saves a penalty',                'universal', Shield,       withMeasuredHeight(CelSoccerPenaltySaveWidget), { goalie: 'COURTOIS' }),
+  W('CEL_SOCCER_FREEKICK', CAT_CEL_SOCCER, 'Free Kick Goal', 'Wall-bending strike + spot diagram',        'universal', Crosshair,    withMeasuredHeight(CelSoccerFreeKickWidget),    { player: 'BECKHAM', distance: '28 YD' }),
+];
+
+/* ─── INDUSTRY PACKS (EDU CMS-11/12) ─────────────────────────────────── */
+const CAT_HEALTHCARE  = 'Healthcare';
+const CAT_CORPORATE   = 'Corporate';
+const CAT_HOSPITALITY = 'Hospitality';
+const CAT_WORSHIP     = 'Worship';
+const CAT_CHARTS      = 'Charts';
+
+export const HEALTHCARE_WIDGETS: RegisteredWidget[] = [
+  W('NOW_SERVING',        CAT_HEALTHCARE, 'Now Serving',        'Big-number queue indicator + up-next list',    'universal', Hash,          withMeasuredHeight(NowServingWidget),        { station: 'Reception · Counter 3', current: 'A 47', upcoming: ['A 48', 'A 49', 'A 50', 'A 51'] }),
+  W('WAIT_TIMES_BOARD',   CAT_HEALTHCARE, 'Wait Times Board',   'Per-department wait estimates, traffic-light', 'universal', Clock,         withMeasuredHeight(WaitTimesBoardWidget),    {}),
+  W('PROVIDER_SPOTLIGHT', CAT_HEALTHCARE, 'Provider Spotlight', 'Doctor / staff hero card with bio',            'universal', UserCog,       withMeasuredHeight(ProviderSpotlightWidget), { name: 'Dr. Aisha Pereira', title: 'Cardiothoracic Surgeon · MD, FACS' }),
+  W('PATIENT_EDUCATION',  CAT_HEALTHCARE, 'Patient Education',  'Waiting-room education with QR-to-phone',      'universal', BookOpen,      withMeasuredHeight(PatientEducationWidget),  { title: 'Managing high blood pressure' }),
+  W('VISITOR_HOURS',      CAT_HEALTHCARE, 'Visitor Hours',      'Multi-unit visitor hours table',               'universal', CalendarClock, withMeasuredHeight(VisitorHoursWidget),      {}),
+  W('CODE_BANNER',        CAT_HEALTHCARE, 'Code Banner',        'Flashing overlay for hospital codes',          'universal', AlertOctagon,  withMeasuredHeight(CodeBannerWidget),        { code: 'CODE BLUE', location: '4-WEST · ROOM 412' }),
+  W('INSURANCE_ACCEPTED', CAT_HEALTHCARE, 'Insurance Accepted', 'Tile board of accepted insurance carriers',    'universal', ShieldCheck,   withMeasuredHeight(InsuranceAcceptedWidget), {}),
+];
+
+export const CORPORATE_WIDGETS: RegisteredWidget[] = [
+  W('ROOM_SCHEDULE',      CAT_CORPORATE, 'Meeting Room Schedule',  'Door-sign room status + up-next list',  'universal', CalendarRange, withMeasuredHeight(RoomScheduleWidget),      { room: 'Pacific · 12-A', status: 'AVAILABLE' }),
+  W('VISITOR_WELCOME',    CAT_CORPORATE, 'Visitor Welcome Board',  'Lobby greeter, personalized name',      'universal', UserCheck,     withMeasuredHeight(VisitorWelcomeWidget),    { host: 'Northwind HQ', visitor: 'Alex Morgan', company: 'Acme Robotics' }),
+  W('KPI_TILE',           CAT_CORPORATE, 'KPI Tile',               'One-metric tile + sparkline + delta',   'universal', TrendingUp,    withMeasuredHeight(KpiTileWidget),           { label: 'Revenue · MRR', value: '1.42M', prefix: '$', delta: 12, target: '1.5M' }),
+  W('SALES_LEADERBOARD',  CAT_CORPORATE, 'Sales Leaderboard',      'Rep ranking with quota %',              'universal', Trophy,        withMeasuredHeight(SalesLeaderboardWidget),  { title: 'Sales · September', goal: '$2.5M', percent: 78 }),
+  W('DOOR_SIGN',          CAT_CORPORATE, 'Office Door Sign',       'Portrait office sign — availability',   'universal', DoorOpen,      withMeasuredHeight(DoorSignWidget),          { occupant: 'Dana Stevens', title: 'VP Engineering', status: 'AVAILABLE' }),
+  W('OKR_TRACKER',        CAT_CORPORATE, 'OKR Tracker',            'Objective + key-result progress bars',  'universal', Target,        withMeasuredHeight(OkrTrackerWidget),        { quarter: 'Q3' }),
+  W('TEAM_ANNIVERSARIES', CAT_CORPORATE, 'Anniversaries & B-days', 'Work anniversaries + birthdays',        'universal', PartyPopper,   withMeasuredHeight(TeamAnniversariesWidget), { company: 'Northwind' }),
+];
+
+export const HOSPITALITY_WIDGETS: RegisteredWidget[] = [
+  W('HOTEL_WELCOME',      CAT_HOSPITALITY, 'Hotel Guest Welcome', 'Editorial welcome card, personalized', 'universal', BedDouble, withMeasuredHeight(HotelWelcomeWidget),     { hotel: 'THE COPPERLEAF', guest: 'The Park family' }),
+  W('DAILY_EVENTS_BOARD', CAT_HOSPITALITY, 'Daily Events Board',  "Today's activity + dining schedule",   'universal', Calendar,  withMeasuredHeight(DailyEventsBoardWidget), { property: 'THE COPPERLEAF' }),
+  W('AMENITY_HOURS',      CAT_HOSPITALITY, 'Amenity Hours Board', 'Pool / gym / spa open-closed status',  'universal', Clock4,    withMeasuredHeight(AmenityHoursWidget),     {}),
+  W('CHECK_IN_OUT_TIMES', CAT_HOSPITALITY, 'Check-in/out Times',  'Check-in / check-out windows',         'universal', Key,       withMeasuredHeight(CheckInOutTimesWidget),  {}),
+  W('LOCAL_ATTRACTIONS',  CAT_HOSPITALITY, 'Local Attractions',   'Curated nearby dining + activities',   'universal', MapPin,    withMeasuredHeight(LocalAttractionsWidget), { property: 'THE COPPERLEAF' }),
+];
+
+export const WORSHIP_WIDGETS: RegisteredWidget[] = [
+  W('SERVICE_TIMES',      CAT_WORSHIP, 'Service Times',      'Weekly service schedule',                'universal', CalendarDays,   withMeasuredHeight(ServiceTimesWidget),      { label: 'Weekly Gatherings' }),
+  W('SERMON_TITLE_CARD',  CAT_WORSHIP, 'Sermon Title Card',  'Editorial sermon hero — series + title', 'universal', Cross,          withMeasuredHeight(SermonTitleCardWidget),   { series: 'The Sermon on the Mount' }),
+  W('HYMN_BOARD',         CAT_WORSHIP, 'Hymn Board',         "Today's hymn numbers + titles",          'universal', Music,          withMeasuredHeight(HymnBoardWidget),         {}),
+  W('GIVING_THERMOMETER', CAT_WORSHIP, 'Giving Thermometer', 'Campaign progress with QR-to-give',       'universal', HandCoins,      withMeasuredHeight(GivingThermometerWidget), { label: 'Capital Campaign', title: 'Build the new student wing', goal: 250000, raised: 167200 }),
+  W('SCRIPTURE_VERSE',    CAT_WORSHIP, 'Scripture Verse',    'Centered editorial verse card',          'universal', BookOpen,       withMeasuredHeight(ScriptureVerseWidget),    { reference: 'John 3:16', translation: 'KJV' }),
+  W('PRAYER_REQUEST_QR',  CAT_WORSHIP, 'Prayer Request QR',  'QR to a confidential prayer form',       'universal', HeartHandshake, withMeasuredHeight(PrayerRequestQrWidget),   { qrLabel: 'firstchurch.org/prayer' }),
+];
+
+export const CHART_WIDGETS: RegisteredWidget[] = [
+  W('CHART_BAR',         CAT_CHARTS, 'Bar Chart',      'Categorical bars with auto-labeled values', 'universal', BarChart3,  withMeasuredHeight(BarChartWidget),     { label: 'Weekly signups', title: 'New users · last 7 days' }),
+  W('CHART_DONUT_GAUGE', CAT_CHARTS, 'Donut Gauge',    'Big circular gauge with a goal target',     'universal', PieChart,   withMeasuredHeight(DonutGaugeWidget),   { label: 'NPS · Last 30d', title: 'Customer satisfaction', value: 78, goal: 100 }),
+  W('CHART_LINE',        CAT_CHARTS, 'Line Chart',     'Multi-series line chart with grid',         'universal', LineChart,  withMeasuredHeight(LineChartWidget),    { label: '6-week trend', title: 'Revenue vs forecast' }),
+  W('CHART_PROGRESS',    CAT_CHARTS, 'Progress List',  'Stacked progress bars',                     'universal', ListChecks, withMeasuredHeight(ProgressListWidget), { label: 'Project status', title: 'Where we are this week' }),
+  W('CHART_COUNTUP',     CAT_CHARTS, 'Count-Up Stats', 'Four big-number stat cards',                'universal', Calculator, withMeasuredHeight(CountUpStatsWidget),  { label: 'By the numbers', title: 'A year in numbers' }),
+];
+
 /* ─── ALL ───────────────────────────────────────────────────────────── */
 export const ALL_V2_WIDGETS: RegisteredWidget[] = [
   ...CLOCK_WIDGETS, ...HEADLINE_WIDGETS, ...ANNOUNCEMENT_WIDGETS, ...CALENDAR_WIDGETS,
   ...STAFF_WIDGETS, ...COUNTDOWN_WIDGETS, ...LOGO_WIDGETS, ...TICKER_WIDGETS,
   ...WEATHER_WIDGETS, ...PHOTO_WIDGETS, ...RICHTEXT_WIDGETS, ...IMAGE_WIDGETS,
   ...LUNCH_WIDGETS, ...BELL_WIDGETS,
-  ...CEL_BASEBALL_WIDGETS, ...CEL_FOOTBALL_WIDGETS, ...CEL_BASKETBALL_WIDGETS,
+  // VenueOS Sports — celebration ribbons, scoped to the SPORTS vertical
+  // so they never appear in a school / restaurant / clinic palette.
+  ...withVertical('SPORTS', [
+    ...CEL_BASEBALL_WIDGETS, ...CEL_FOOTBALL_WIDGETS, ...CEL_BASKETBALL_WIDGETS,
+    ...CEL_HOCKEY_WIDGETS, ...CEL_SOCCER_WIDGETS,
+  ]),
+  // Industry packs — each scoped to its own business line.
+  ...withVertical('HEALTHCARE', HEALTHCARE_WIDGETS),
+  ...withVertical('CORPORATE', CORPORATE_WIDGETS),
+  ...withVertical('HOSPITALITY', HOSPITALITY_WIDGETS),
+  ...withVertical('WORSHIP', WORSHIP_WIDGETS),
+  // Charts are universal — a KPI bar chart fits every vertical, so no
+  // vertical tag (shows in every palette).
+  ...CHART_WIDGETS,
 ];
 
 export const V2_BY_TYPE: Record<string, RegisteredWidget> = Object.fromEntries(

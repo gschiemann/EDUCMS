@@ -1,0 +1,327 @@
+"use client";
+/**
+ * VenueOS · Healthcare widgets.
+ * Queue management, wayfinding, provider spotlights, education loops, visitor info.
+ */
+import React from 'react';
+import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
+import type { BaseCfg, WidgetProps } from './_shared/types';
+
+function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
+
+/* ════════════════ NOW SERVING ════════════════ */
+
+export interface NowServingCfg extends BaseCfg {
+  station?: string;
+  current?: string;
+  upcoming?: string[];
+}
+
+export function NowServingWidget({ config, live = true, height = 480 }: WidgetProps<NowServingCfg>) {
+  const c = config ?? {};
+  const r = resolveStyle({ bgColor: '#f7f7f5', textColor: '#0b0c0e', accentColor: '#13a6ad', ...c.style });
+  const station = c.station ?? 'Reception · Counter 3';
+  const current = c.current ?? 'A 47';
+  const upcoming = c.upcoming ?? ['A 48', 'A 49', 'A 50', 'A 51'];
+  const animOn = r.anim.on && live;
+  const pulse = `${animDurationSec(r.anim.speed, 1.2)}s`;
+
+  return (
+    <div style={frameStyle(r)}>
+      {animOn && <style>{`@keyframes nowServingPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }`}</style>}
+
+      <div style={{ position: 'absolute', top: '5%', left: '5%', right: '5%', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ color: '#74767d', fontSize: px(height, 0.07), fontWeight: 700, letterSpacing: '0.06em' }}>NOW SERVING</div>
+          <div style={{ color: r.accent.primary, fontSize: px(height, 0.09), fontWeight: 700, marginTop: '0.5%' }}>{station}</div>
+        </div>
+        <div style={{ color: '#74767d', fontSize: px(height, 0.055), fontWeight: 600 }}>
+          {new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+        </div>
+      </div>
+
+      <div style={{ position: 'absolute', top: '20%', bottom: '30%', left: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: animOn ? `nowServingPulse ${pulse} ease-in-out infinite` : undefined }}>
+        <div style={{ fontSize: px(height, 1.0), fontWeight: 800, lineHeight: 0.85, letterSpacing: '-0.04em' }}>{current}</div>
+      </div>
+
+      <div style={{ position: 'absolute', bottom: '5%', left: '5%', right: '5%' }}>
+        <div style={{ color: '#74767d', fontSize: px(height, 0.055), fontWeight: 700, letterSpacing: '0.06em', marginBottom: '1.5%' }}>UP NEXT</div>
+        <div style={{ display: 'flex' }}>
+          {upcoming.slice(0, 4).map((n, i) => (
+            <div key={i} style={{ background: '#fff', border: '1px solid #e7e6e1', borderRadius: 14, padding: '4% 6%', fontSize: px(height, 0.1), fontWeight: 800, textAlign: 'center', minWidth: '14%', marginRight: i === 3 ? 0 : '2%', opacity: 1 - i * 0.2 }}>{n}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════ WAIT TIMES BOARD ════════════════ */
+
+export interface WaitRow { dept: string; note?: string; queued: number; wait: number; }
+export interface WaitTimesBoardCfg extends BaseCfg { rows?: WaitRow[]; }
+
+export function WaitTimesBoardWidget({ config, live = true, height = 480 }: WidgetProps<WaitTimesBoardCfg>) {
+  const c = config ?? {};
+  const r = resolveStyle({ bgColor: '#0b1b1d', textColor: '#fff', accentColor: '#13a6ad', ...c.style });
+  const rows: WaitRow[] = c.rows ?? [
+    { dept: 'Emergency · Triage', note: 'Walk-in', queued: 4, wait: 12 },
+    { dept: 'Urgent Care', note: 'Level 4-5 conditions', queued: 8, wait: 38 },
+    { dept: 'Radiology · X-Ray', note: 'Walk-in + scheduled', queued: 3, wait: 22 },
+    { dept: 'Lab Draw', note: 'Outpatient', queued: 11, wait: 18 },
+    { dept: 'Pharmacy', note: 'Prescription pickup', queued: 6, wait: 9 },
+  ];
+
+  return (
+    <div style={frameStyle(r)}>
+      <div style={{ position: 'absolute', top: '4%', left: '4%', right: '4%', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <div style={{ fontWeight: 800, fontSize: px(height, 0.1), letterSpacing: '-0.02em' }}>Estimated Wait Times</div>
+        <div style={{ color: '#9bb2b4', fontSize: px(height, 0.05), fontWeight: 600 }}>
+          Updated {new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+        </div>
+      </div>
+
+      <div style={{ position: 'absolute', top: '20%', bottom: '4%', left: '4%', right: '4%', background: '#0e2326', border: '1px solid #1a3a3e', borderRadius: 18, overflow: 'hidden' }}>
+        {rows.map((row, i) => {
+          const tone = row.wait > 60 ? '#ff6b7a' : row.wait > 30 ? '#fbbf24' : '#7fd1ad';
+          return (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '3% 4%', borderBottom: i < rows.length - 1 ? '1px solid #1a3a3e' : 'none' }}>
+              <div style={{ flex: '2 0 0' }}>
+                <div style={{ fontWeight: 700, fontSize: px(height, 0.075) }}>{row.dept}</div>
+                {row.note && <div style={{ color: '#9bb2b4', fontSize: px(height, 0.042), fontWeight: 600 }}>{row.note}</div>}
+              </div>
+              <div style={{ flex: '1 0 0', textAlign: 'center', color: row.queued > 10 ? '#f59e0b' : r.accent.primary, fontSize: px(height, 0.058), fontWeight: 700 }}>● {row.queued} in queue</div>
+              <div style={{ flex: '1 0 0', textAlign: 'right', fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontWeight: 700, fontSize: px(height, 0.1), color: tone }}>
+                {row.wait} <span style={{ fontSize: px(height, 0.05), color: '#9bb2b4' }}>min</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════ PROVIDER SPOTLIGHT ════════════════ */
+
+export interface ProviderSpotlightCfg extends BaseCfg {
+  name?: string;
+  title?: string;
+  specialties?: string[];
+  bio?: string;
+  years?: number;
+  patients?: string;
+  rating?: string;
+}
+
+export function ProviderSpotlightWidget({ config, live = true, height = 480 }: WidgetProps<ProviderSpotlightCfg>) {
+  const c = config ?? {};
+  const r = resolveStyle({ bgColor: '#fdfaf3', textColor: '#0b0c0e', accentColor: '#13a6ad', ...c.style });
+  const name = c.name ?? 'Dr. Aisha Pereira';
+  const title = c.title ?? 'Cardiothoracic Surgeon · MD, FACS';
+  const specialties = c.specialties ?? ['Coronary bypass', 'Valve replacement', 'Heart failure'];
+  const bio = c.bio ?? 'Board-certified surgeon with a focus on minimally-invasive procedures.';
+  const years = c.years ?? 16;
+  const patients = c.patients ?? '2,400+';
+  const rating = c.rating ?? '4.9';
+
+  return (
+    <div style={frameStyle(r)}>
+      <div style={{ position: 'absolute', top: '6%', left: '6%', bottom: '6%', width: '28%', borderRadius: 24, background: `linear-gradient(135deg, ${r.accent.primary}, #0b1b1d)`, overflow: 'hidden' }}>
+        <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundImage: 'repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0 8px, rgba(255,255,255,0) 8px 16px)' }} />
+      </div>
+
+      <div style={{ position: 'absolute', top: '6%', left: '38%', right: '6%', bottom: '6%' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', color: r.accent.primary, background: '#dffaf8', padding: '1.5% 3%', borderRadius: 999, fontWeight: 700, fontSize: px(height, 0.045) }}>● PROVIDER SPOTLIGHT</div>
+        <div style={{ fontWeight: 800, fontSize: px(height, 0.2), lineHeight: 1.0, letterSpacing: '-0.02em', marginTop: '2%' }}>{name}</div>
+        <div style={{ color: '#74767d', fontWeight: 700, fontSize: px(height, 0.07), marginTop: '1.5%' }}>{title}</div>
+
+        <div style={{ marginTop: '2%' }}>
+          {specialties.map((s, i) => (
+            <span key={i} style={{ display: 'inline-block', background: '#fff', border: '1px solid #e7e6e1', padding: '1.5% 3%', borderRadius: 10, fontSize: px(height, 0.046), fontWeight: 600, color: '#404249', marginRight: i === specialties.length - 1 ? 0 : '1%' }}>{s}</span>
+          ))}
+        </div>
+
+        <p style={{ color: '#404249', fontSize: px(height, 0.062), lineHeight: 1.45, marginTop: '3%', marginBottom: 0 }}>{bio}</p>
+
+        <div style={{ display: 'flex', marginTop: '3%' }}>
+          {[{ label: 'YEARS PRACTICING', val: years }, { label: 'PATIENTS', val: patients }, { label: 'RATING', val: `${rating} ★` }].map((s, i) => (
+            <div key={i} style={{ marginRight: i === 2 ? 0 : '6%' }}>
+              <div style={{ color: '#74767d', fontSize: px(height, 0.038), fontWeight: 700, letterSpacing: '0.06em' }}>{s.label}</div>
+              <div style={{ fontWeight: 800, fontSize: px(height, 0.11) }}>{s.val}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════ VISITOR HOURS ════════════════ */
+
+export interface VisitorHoursRow { unit: string; note: string; hours: string; }
+export interface VisitorHoursCfg extends BaseCfg { hours?: VisitorHoursRow[]; note?: string; }
+
+export function VisitorHoursWidget({ config, live = true, height = 480 }: WidgetProps<VisitorHoursCfg>) {
+  const c = config ?? {};
+  const r = resolveStyle({ bgColor: '#fdfaf3', textColor: '#0b0c0e', accentColor: '#13a6ad', ...c.style });
+  const rows: VisitorHoursRow[] = c.hours ?? [
+    { unit: 'General medical & surgical', note: 'Floors 3-6', hours: '8:00 AM – 9:00 PM' },
+    { unit: 'Maternity', note: '5th floor west', hours: '24 hours, partners only at night' },
+    { unit: 'ICU & Critical Care', note: '2nd floor, badge req.', hours: '10:00 AM – 8:00 PM' },
+    { unit: 'Pediatrics', note: '4th floor', hours: '9:00 AM – 8:00 PM' },
+    { unit: 'Emergency Department', note: 'Ground level', hours: '1 visitor only' },
+  ];
+  const footerNote = c.note ?? 'Two visitors per patient. No children under 12 in ICU.';
+
+  return (
+    <div style={frameStyle(r)}>
+      <div style={{ position: 'absolute', top: '4%', left: '5%', right: '5%' }}>
+        <div style={{ color: r.accent.primary, fontWeight: 700, fontSize: px(height, 0.062), letterSpacing: '0.08em' }}>FOR VISITORS</div>
+        <div style={{ fontWeight: 800, fontSize: px(height, 0.22), letterSpacing: '-0.02em' }}>Visiting Hours</div>
+      </div>
+
+      <div style={{ position: 'absolute', top: '32%', bottom: '22%', left: '5%', right: '5%', background: '#fff', border: '1px solid #e7e6e1', borderRadius: 24, padding: '2%', display: 'flex', flexDirection: 'column' }}>
+        {rows.map((row, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '2% 1%', borderBottom: i < rows.length - 1 ? '1px solid #efeeea' : 'none' }}>
+            <div style={{ flex: '2 0 0', fontWeight: 700, fontSize: px(height, 0.075) }}>{row.unit}</div>
+            <div style={{ flex: '1.5 0 0', color: '#74767d', fontSize: px(height, 0.058), fontWeight: 600 }}>{row.note}</div>
+            <div style={{ flex: '1.4 0 0', textAlign: 'right', fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontWeight: 700, fontSize: px(height, 0.075) }}>{row.hours}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ position: 'absolute', bottom: '4%', left: '5%', right: '5%', background: r.accent.primary, color: '#fff', padding: '3% 5%', borderRadius: 18 }}>
+        <div style={{ fontSize: px(height, 0.045), fontWeight: 700, letterSpacing: '0.06em', opacity: 0.85 }}>PLEASE NOTE</div>
+        <div style={{ fontWeight: 700, fontSize: px(height, 0.066), marginTop: '0.5%' }}>{footerNote}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════ CODE BANNER (Emergency) ════════════════ */
+
+export interface CodeBannerCfg extends BaseCfg {
+  kind?: string;
+  code?: string;
+  location?: string;
+}
+
+export function CodeBannerWidget({ config, live = true, height = 480 }: WidgetProps<CodeBannerCfg>) {
+  const c = config ?? {};
+  const r = resolveStyle({ bgColor: '#160102', textColor: '#fff', accentColor: '#ff8a92', ...c.style });
+  const kind = c.kind ?? 'STAFF EMERGENCY ALERT';
+  const code = c.code ?? 'CODE BLUE';
+  const location = c.location ?? '4-WEST · ROOM 412';
+  const animOn = r.anim.on && live;
+  const flash = `${animDurationSec(r.anim.speed, 1.4)}s`;
+  const time = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+
+  return (
+    <div style={frameStyle(r)}>
+      {animOn && <style>{`@keyframes codeBannerFlash { 0%, 100% { background: #160102; } 50% { background: #5c0008; } }`}</style>}
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, animation: animOn ? `codeBannerFlash ${flash} infinite alternate` : undefined }} />
+
+      <div style={{ position: 'absolute', top: '5%', left: 0, right: 0, textAlign: 'center', color: r.accent.primary, fontSize: px(height, 0.075), fontWeight: 800, letterSpacing: '0.12em' }}>{kind}</div>
+      <div style={{ position: 'absolute', top: '20%', left: 0, right: 0, textAlign: 'center', fontWeight: 800, fontSize: px(height, 0.58), letterSpacing: '-0.04em', lineHeight: 0.85 }}>{code}</div>
+      <div style={{ position: 'absolute', bottom: '20%', left: 0, right: 0, textAlign: 'center', fontWeight: 700, fontSize: px(height, 0.125), letterSpacing: '0.02em' }}>{location}</div>
+      <div style={{ position: 'absolute', bottom: '5%', left: 0, right: 0, textAlign: 'center', color: r.accent.primary, fontWeight: 700, fontSize: px(height, 0.07), letterSpacing: '0.08em' }}>RESPOND IMMEDIATELY · {time}</div>
+    </div>
+  );
+}
+
+/* ════════════════ PATIENT EDUCATION ════════════════ */
+
+export interface PatientEducationCfg extends BaseCfg {
+  title?: string;
+  points?: string[];
+  qrLabel?: string;
+}
+
+export function PatientEducationWidget({ config, live = true, height = 480 }: WidgetProps<PatientEducationCfg>) {
+  const c = config ?? {};
+  const r = resolveStyle({ bgColor: '#0d2226', textColor: '#fff', accentColor: '#13a6ad', ...c.style });
+  const title = c.title ?? 'Managing high blood pressure';
+  const points = c.points ?? [
+    'Aim for less than 1500 mg sodium per day',
+    'Daily walking, 30 minutes, lowers BP by ~5 mmHg',
+    'Take medications at the same time daily',
+    'Track your home readings — bring them to every visit',
+  ];
+  const qrLabel = c.qrLabel ?? 'Take this on your phone';
+
+  return (
+    <div style={frameStyle(r)}>
+      <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '55%', background: `linear-gradient(135deg, ${r.accent.primary}, #0d2226)`, padding: '5%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+        <div style={{ fontSize: px(height, 0.058), fontWeight: 700, letterSpacing: '0.06em', opacity: 0.7 }}>SERIES · LIVING WELL</div>
+        <div style={{ fontWeight: 800, fontSize: px(height, 0.18), letterSpacing: '-0.02em', lineHeight: 1, marginTop: '2%' }}>{title}</div>
+        <div style={{ color: '#dffaf8', fontSize: px(height, 0.063), fontWeight: 600, marginTop: '2%' }}>Episode 3 of 12 · 2 min watch</div>
+      </div>
+
+      <div style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: '45%', padding: '5%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: px(height, 0.062), color: '#9bb2b4', letterSpacing: '0.06em', marginBottom: '4%' }}>KEY POINTS</div>
+          {points.slice(0, 4).map((pt, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '4%' }}>
+              <div style={{ width: px(height, 0.11), height: px(height, 0.11), borderRadius: '50%', background: `${r.accent.primary}22`, color: r.accent.primary, fontWeight: 800, fontSize: px(height, 0.062), display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '4%', flexShrink: 0 }}>{i + 1}</div>
+              <div style={{ color: '#cfd8e3', fontSize: px(height, 0.062), lineHeight: 1.35, fontWeight: 600 }}>{pt}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ background: '#0e2326', border: '1px dashed #1a3a3e', borderRadius: 18, padding: '4%', display: 'flex', alignItems: 'center' }}>
+          <div style={{ width: px(height, 0.25), height: px(height, 0.25), background: '#fff', borderRadius: 10, padding: '1%', marginRight: '4%', flexShrink: 0 }}>
+            <div style={{ width: '100%', height: '100%', background: 'repeating-conic-gradient(#000 0% 12%, #fff 0% 25%)' }} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: px(height, 0.05), color: '#9bb2b4' }}>SCAN TO CONTINUE</div>
+            <div style={{ fontWeight: 700, fontSize: px(height, 0.066), marginTop: '0.5%' }}>{qrLabel}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════ INSURANCE ACCEPTED ════════════════ */
+
+export interface InsuranceCarrier { name: string; color: string; note?: string; }
+export interface InsuranceAcceptedCfg extends BaseCfg { carriers?: InsuranceCarrier[]; }
+
+export function InsuranceAcceptedWidget({ config, live = true, height = 480 }: WidgetProps<InsuranceAcceptedCfg>) {
+  const c = config ?? {};
+  const r = resolveStyle({ bgColor: '#fff', textColor: '#0b0c0e', accentColor: '#13a6ad', ...c.style });
+  const carriers: InsuranceCarrier[] = c.carriers ?? [
+    { name: 'Aetna', color: '#7c3aed', note: 'Most plans' },
+    { name: 'Anthem Blue Cross', color: '#1d4ed8', note: 'PPO + HMO' },
+    { name: 'United Healthcare', color: '#0ea5e9', note: 'Most plans' },
+    { name: 'Cigna', color: '#15803d', note: 'Most plans' },
+    { name: 'Humana', color: '#16a34a', note: 'Medicare Advantage' },
+    { name: 'Kaiser Permanente', color: '#1f5d4f', note: 'Affiliate referrals' },
+    { name: 'Medicare', color: '#dc2626', note: 'Original + Advantage' },
+    { name: 'Medicaid', color: '#b91c1c', note: 'State plans' },
+  ];
+
+  return (
+    <div style={frameStyle(r)}>
+      <div style={{ position: 'absolute', top: '4%', left: '5%', right: '5%' }}>
+        <div style={{ fontWeight: 800, fontSize: px(height, 0.18), letterSpacing: '-0.02em' }}>Plans we accept</div>
+        <div style={{ color: '#74767d', fontSize: px(height, 0.058), fontWeight: 600, marginTop: '1%' }}>Bring your insurance card and a photo ID to check-in.</div>
+      </div>
+
+      <div style={{ position: 'absolute', top: '40%', bottom: '5%', left: '5%', right: '5%', display: 'flex', flexWrap: 'wrap' }}>
+        {carriers.slice(0, 8).map((carrier, i) => {
+          const col = i % 4;
+          return (
+            <div key={i} style={{ width: '23.5%', marginRight: col === 3 ? 0 : '2%', marginBottom: '2%', background: '#fafaf7', border: '1px solid #e7e6e1', borderRadius: 18, padding: '3%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ width: px(height, 0.13), height: px(height, 0.13), borderRadius: 18, background: carrier.color, color: '#fff', fontWeight: 800, fontSize: px(height, 0.058), display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '5%' }}>
+                {carrier.name.split(' ').map(x => x[0]).slice(0, 2).join('')}
+              </div>
+              <div style={{ fontWeight: 700, fontSize: px(height, 0.054), textAlign: 'center', lineHeight: 1.15 }}>{carrier.name}</div>
+              {carrier.note && <div style={{ color: '#74767d', fontSize: px(height, 0.038), fontWeight: 600, marginTop: '5%' }}>{carrier.note}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
