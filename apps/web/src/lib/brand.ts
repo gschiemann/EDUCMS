@@ -76,9 +76,14 @@ export const BRANDS: Record<BrandKey, BrandConfig> = {
     // platform reads as a universal CMS, not a school-only tool.
     pitch: 'Digital signage, kiosks, and emergency alerts for K-12 schools, restaurants, gyms, retail, healthcare, hotels, and corporate lobbies. One CMS, every industry.',
     colors: {
-      primary: '#0ea5e9',      // sky-500 — distinct from EDU's indigo
-      primaryHover: '#0284c7', // sky-600
-      accent: '#f59e0b',       // amber-500 (warm, broad-appeal)
+      // Indigo — matches the redesigned signup / login / landing chrome
+      // and the hexagonal brand mark (BrandMark.tsx). A brand-new account
+      // with no custom TenantBranding paints THIS palette (via
+      // BrandStyleInjector → brandDefaultPalette) so the dashboard reads
+      // as the same product as the marketing site from the first login.
+      primary: '#4f46e5',      // indigo-600 — the hex-mark fill + signup CTA
+      primaryHover: '#4338ca', // indigo-700 — the CTA hover
+      accent: '#6366f1',       // indigo-500 — focus rings, highlights
     },
     primaryDomain: 'venueos.com', // placeholder until domain is acquired
     logoVariant: 'venue',

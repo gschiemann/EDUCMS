@@ -293,8 +293,16 @@ export function Sidebar() {
                 {brandName.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
               </div>
             ) : (
-              <div className="p-2 rounded-2xl text-white shadow-md flex-shrink-0 w-10 h-10 flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--brand-primary, #6366f1), color-mix(in srgb, var(--brand-primary, #6366f1) 70%, #8b5cf6))' }}>
-                <MonitorPlay className="w-5 h-5" />
+              // Default (unbranded tenant) — the VenueOS hexagonal mark,
+              // the same logo used on the signup / login / landing
+              // chrome (see BrandMark.tsx). A brand-new account's
+              // dashboard now reads as the same product as the
+              // marketing site, not a generic monitor icon.
+              <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center" aria-hidden>
+                <svg width="34" height="34" viewBox="0 0 32 32">
+                  <polygon points="30,16 23,28.12 9,28.12 2,16 9,3.88 23,3.88" fill="#4f46e5" />
+                  <polygon points="22,16 19,21.2 13,21.2 10,16 13,10.8 19,10.8" fill="#a5b4fc" />
+                </svg>
               </div>
             )}
             <span

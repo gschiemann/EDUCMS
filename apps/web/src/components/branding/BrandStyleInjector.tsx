@@ -16,7 +16,8 @@
 import { useEffect } from 'react';
 import { useAppStore } from '@/lib/store';
 import { apiFetch } from '@/lib/api-client';
-import { TenantBranding, cssVarsFromPalette } from '@/lib/branding';
+import { TenantBranding, cssVarsFromPalette, brandDefaultPalette } from '@/lib/branding';
+import { getClientBrand } from '@/lib/brand';
 
 // Per-tenant cache prefix. The key used to be a single global
 // `edu-cms-branding-cache-v1` which caused a cross-tenant theme bleed:
@@ -42,10 +43,11 @@ export function BrandStyleInjector() {
     // Harmless once it's gone; prevents the old value ever being applied.
     try { localStorage.removeItem(LS_KEY_LEGACY); } catch {}
 
-    // Always wipe vars left over from a prior tenant before painting the
-    // current one. Without this, switching A→B would briefly show A's
-    // palette (vars still on :root) until B's cache/fetch overwrote them.
-    resetBranding();
+    // Repaint the vendor default palette before painting the current
+    // tenant. Without this, switching A→B would briefly show A's palette
+    // (vars still on :root) until B's cache/fetch overwrote them — and a
+    // brand-new tenant with no branding would show no palette at all.
+    applyBrandDefault();
 
     if (!tenantId || !user) return;
 
@@ -77,13 +79,13 @@ export function BrandStyleInjector() {
           window.dispatchEvent(new CustomEvent('branding:update', { detail: branding }));
         } else {
           localStorage.removeItem(key);
-          resetBranding();
+          applyBrandDefault();
         }
       } catch {
         // Fetch failed — drop this tenant's stale cache so a broken
         // backend can't leave a neighbor-tenant's theme on screen.
         localStorage.removeItem(key);
-        resetBranding();
+        applyBrandDefault();
       }
     })();
 
@@ -96,13 +98,13 @@ export function BrandStyleInjector() {
     return () => {
       cancelled = true;
       window.removeEventListener('branding:update', onUpdate as EventListener);
-      // Reset tenant CSS vars on unmount — when the user signs out and
-      // the dashboard unmounts, the public marketing site / login must
-      // render in the vendor's default palette (not the last tenant's
-      // red theme). Without this the style attributes the injector wrote
-      // to document.documentElement persist for the lifetime of the
-      // page load.
-      resetBranding();
+      // Repaint the vendor default on unmount — when the user signs out
+      // and the dashboard unmounts, the public marketing site / login
+      // must render in the vendor's default palette (not the last
+      // tenant's red theme). Without this the tenant style attributes
+      // the injector wrote to document.documentElement persist for the
+      // lifetime of the page load.
+      applyBrandDefault();
     };
   }, [tenantId, activeTenant, user]);
 
@@ -149,15 +151,28 @@ function applyBranding(b: TenantBranding | null) {
   }
 }
 
-function resetBranding() {
+/**
+ * Paint the VENDOR default palette (VenueOS indigo) onto :root.
+ *
+ * This is what a tenant with no custom TenantBranding row sees — and
+ * it's also the pre-paint state before a tenant's cache/fetch lands,
+ * and the post-sign-out state for the public marketing chrome. We
+ * deliberately SET the full `--brand-*` var block (rather than the old
+ * behavior of REMOVING it): with the vars unset, every component fell
+ * through to its own hard-coded fallback, and those drifted — some
+ * were indigo, some were the stale emerald `#059669`. Painting the
+ * brand default guarantees a fresh account's dashboard matches the
+ * signup / landing chrome from the first login.
+ */
+function applyBrandDefault() {
   const root = document.documentElement;
-  const keys = [
-    '--brand-primary','--brand-primary-hover','--brand-primary-active','--brand-primary-soft','--brand-primary-ink',
-    '--brand-accent','--brand-accent-hover','--brand-accent-soft','--brand-accent-ink',
-    '--brand-ink','--brand-ink-muted','--brand-surface','--brand-surface-alt','--brand-border',
-    '--brand-font-heading','--brand-font-body',
-  ];
-  for (const k of keys) root.style.removeProperty(k);
+  // Tenant fonts are not part of the vendor default — clear any left
+  // over from a prior tenant so the default falls back to the base
+  // system font stack.
+  root.style.removeProperty('--brand-font-heading');
+  root.style.removeProperty('--brand-font-body');
+  const vars = cssVarsFromPalette(brandDefaultPalette(getClientBrand().colors));
+  for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
 }
 
 /** Fire a live-preview update event. Used by the wizard. */
