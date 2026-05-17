@@ -197,6 +197,8 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
   const [awayTeam, setAwayTeam] = useState('');
   const [homeColor, setHomeColor] = useState(TEAM_COLORS[0]);
   const [awayColor, setAwayColor] = useState(TEAM_COLORS[1]);
+  const [homeLogoUrl, setHomeLogoUrl] = useState('');
+  const [awayLogoUrl, setAwayLogoUrl] = useState('');
   const [err, setErr] = useState('');
 
   const def = useMemo(() => findSport(sport), [sport]);
@@ -213,6 +215,8 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
         awayTeam: awayTeam.trim(),
         homeColor,
         awayColor,
+        homeLogoUrl: homeLogoUrl.trim() || undefined,
+        awayLogoUrl: awayLogoUrl.trim() || undefined,
       });
       onClose();
       if (game?.id) router.push(`/${schoolId}/sports/${game.id}`);
@@ -273,6 +277,7 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
               maxLength={80}
             />
             <ColorRow label="Home color" value={homeColor} onChange={setHomeColor} />
+            <LogoRow label="Home logo URL" value={homeLogoUrl} onChange={setHomeLogoUrl} />
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -286,6 +291,7 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
               maxLength={80}
             />
             <ColorRow label="Away color" value={awayColor} onChange={setAwayColor} />
+            <LogoRow label="Away logo URL" value={awayLogoUrl} onChange={setAwayLogoUrl} />
           </div>
         </div>
 
@@ -341,6 +347,43 @@ function ColorRow({
             style={{ backgroundColor: c }}
           />
         ))}
+      </div>
+    </div>
+  );
+}
+
+function LogoRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const url = value.trim();
+  return (
+    <div className="mt-2">
+      <span className="text-[11px] text-slate-400">{label}</span>
+      <div className="mt-1 flex items-center gap-2">
+        {url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={url}
+            src={url}
+            alt=""
+            className="h-9 w-9 shrink-0 rounded object-contain bg-slate-50 ring-1 ring-slate-200"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : null}
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="https://…/logo.png"
+          maxLength={2048}
+        />
       </div>
     </div>
   );

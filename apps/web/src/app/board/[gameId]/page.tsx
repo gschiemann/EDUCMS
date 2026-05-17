@@ -49,6 +49,8 @@ interface BoardData {
   awayScore: number;
   homeColor: string | null;
   awayColor: string | null;
+  homeLogoUrl: string | null;
+  awayLogoUrl: string | null;
   clockMs: number;
   clockRunning: boolean;
   clockUpdatedAt: string;
@@ -111,12 +113,14 @@ function TeamPanel({
   name,
   score,
   color,
+  logoUrl,
   winning,
 }: {
   side: 'home' | 'away';
   name: string;
   score: number;
   color: string;
+  logoUrl: string | null;
   winning: boolean;
 }) {
   return (
@@ -129,19 +133,79 @@ function TeamPanel({
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        background: `linear-gradient(${side === 'home' ? '135deg' : '225deg'}, ${color}26, #0b0f1a 70%)`,
+        background: `linear-gradient(${side === 'home' ? '135deg' : '225deg'}, ${color}2e, #0b0f1a 72%)`,
         borderTop: `10px solid ${color}`,
       }}
     >
+      {/* brand logo — the team's actual mark, with a soft team-color halo */}
       <div
         style={{
-          fontSize: 62,
+          position: 'relative',
+          width: 200,
+          height: 176,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            background: `radial-gradient(circle at 50% 48%, ${color}59, transparent 64%)`,
+          }}
+        />
+        {logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logoUrl}
+            alt=""
+            style={{
+              position: 'relative',
+              width: 176,
+              height: 176,
+              objectFit: 'contain',
+              filter: 'drop-shadow(0 8px 20px rgba(0,0,0,0.55))',
+            }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              position: 'relative',
+              width: 130,
+              height: 130,
+              borderRadius: '50%',
+              background: color,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 66,
+              fontWeight: 900,
+              color: '#fff',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            }}
+          >
+            {(name.trim()[0] || '?').toUpperCase()}
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          fontSize: 54,
           fontWeight: 800,
           letterSpacing: 1,
           color: '#fff',
           textAlign: 'center',
-          maxWidth: 620,
+          maxWidth: 640,
           lineHeight: 1.05,
+          marginTop: 6,
           textShadow: '0 4px 18px rgba(0,0,0,0.6)',
         }}
       >
@@ -149,24 +213,24 @@ function TeamPanel({
       </div>
       <div
         style={{
-          fontSize: 16,
+          fontSize: 15,
           fontWeight: 700,
           letterSpacing: 6,
           color,
-          marginTop: 10,
+          marginTop: 8,
         }}
       >
         {side === 'home' ? 'HOME' : 'AWAY'}
       </div>
       <div
         style={{
-          fontSize: 300,
+          fontSize: 264,
           fontWeight: 900,
           color: '#fff',
           lineHeight: 1,
-          marginTop: 8,
+          marginTop: 2,
           fontVariantNumeric: 'tabular-nums',
-          textShadow: winning ? `0 0 60px ${color}` : '0 8px 30px rgba(0,0,0,0.7)',
+          textShadow: winning ? `0 0 64px ${color}` : '0 8px 30px rgba(0,0,0,0.7)',
         }}
       >
         {score}
@@ -301,6 +365,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           name={data.homeTeam}
           score={data.homeScore}
           color={homeColor}
+          logoUrl={data.homeLogoUrl}
           winning={data.homeScore > data.awayScore && data.status !== 'SCHEDULED'}
         />
 
@@ -363,6 +428,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           name={data.awayTeam}
           score={data.awayScore}
           color={awayColor}
+          logoUrl={data.awayLogoUrl}
           winning={data.awayScore > data.homeScore && data.status !== 'SCHEDULED'}
         />
       </div>
@@ -540,24 +606,44 @@ function CueOverlay({ cue }: { cue: Cue }) {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(5,7,13,0.78)',
+        background: 'rgba(5,7,13,0.8)',
         animation: 'venueCueFade 3.8s ease-in-out forwards',
         zIndex: 50,
       }}
     >
+      {/* expanding shockwave rings */}
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            width: 440,
+            height: 440,
+            borderRadius: 999,
+            border: '7px solid rgba(251,191,36,0.8)',
+            animation: `venueCueRing 3.8s ${(0.04 + i * 0.22).toFixed(2)}s cubic-bezier(.15,.7,.3,1) forwards`,
+          }}
+        />
+      ))}
+      {/* warm glow */}
       <div
         style={{
           position: 'absolute',
-          width: 900,
-          height: 900,
+          left: '50%',
+          top: '50%',
+          width: 1040,
+          height: 1040,
           borderRadius: 999,
-          background: 'radial-gradient(circle, rgba(251,191,36,0.55), transparent 65%)',
+          background: 'radial-gradient(circle, rgba(251,191,36,0.55), transparent 64%)',
           animation: 'venueCueGlow 3.8s ease-in-out forwards',
         }}
       />
       <div
         style={{
-          fontSize: 420,
+          position: 'relative',
+          fontSize: 430,
           lineHeight: 1,
           animation: 'venueCuePop 3.8s cubic-bezier(.2,.9,.2,1) forwards',
         }}
@@ -566,12 +652,13 @@ function CueOverlay({ cue }: { cue: Cue }) {
       </div>
       <div
         style={{
-          fontSize: 130,
+          position: 'relative',
+          fontSize: 134,
           fontWeight: 900,
-          letterSpacing: 4,
+          letterSpacing: 5,
           color: '#fff',
-          marginTop: 10,
-          textShadow: '0 8px 40px rgba(0,0,0,0.8)',
+          marginTop: 6,
+          textShadow: '0 8px 44px rgba(0,0,0,0.85)',
           animation: 'venueCuePop 3.8s cubic-bezier(.2,.9,.2,1) forwards',
         }}
       >
@@ -670,7 +757,16 @@ export default function ScoreboardPage() {
       @keyframes venuePulse { 0%,100%{opacity:1} 50%{opacity:0.55} }
       @keyframes venueFooterFade { 0%{opacity:0} 100%{opacity:1} }
       @keyframes venueCueFade { 0%{opacity:0} 8%{opacity:1} 82%{opacity:1} 100%{opacity:0} }
-      @keyframes venueCueGlow { 0%{opacity:0;transform:scale(0.4)} 20%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(1.2)} }
+      @keyframes venueCueGlow {
+        0%{opacity:0;transform:translate(-50%,-50%) scale(0.4)}
+        20%{opacity:1;transform:translate(-50%,-50%) scale(1)}
+        100%{opacity:0;transform:translate(-50%,-50%) scale(1.2)}
+      }
+      @keyframes venueCueRing {
+        0%{opacity:0;transform:translate(-50%,-50%) scale(0.25)}
+        10%{opacity:0.95}
+        100%{opacity:0;transform:translate(-50%,-50%) scale(3.4)}
+      }
       @keyframes venueCuePop {
         0%{opacity:0;transform:scale(0.3)}
         12%{opacity:1;transform:scale(1.12)}

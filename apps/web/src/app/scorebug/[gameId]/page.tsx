@@ -42,6 +42,8 @@ interface BoardData {
   awayScore: number;
   homeColor: string | null;
   awayColor: string | null;
+  homeLogoUrl: string | null;
+  awayLogoUrl: string | null;
   clockMs: number;
   clockRunning: boolean;
   clockUpdatedAt: string;
@@ -293,6 +295,7 @@ export default function ScorebugPage() {
               code={teamCode(data.homeTeam, homeOverride)}
               score={data.homeScore}
               color={homeColor}
+              logoUrl={data.homeLogoUrl}
               side="home"
             />
 
@@ -337,6 +340,7 @@ export default function ScorebugPage() {
               code={teamCode(data.awayTeam, awayOverride)}
               score={data.awayScore}
               color={awayColor}
+              logoUrl={data.awayLogoUrl}
               side="away"
             />
           </div>
@@ -350,11 +354,13 @@ function TeamBlock({
   code,
   score,
   color,
+  logoUrl,
   side,
 }: {
   code: string;
   score: number;
   color: string;
+  logoUrl: string | null;
   side: 'home' | 'away';
 }) {
   const name = (
@@ -363,14 +369,32 @@ function TeamBlock({
         width: 158,
         background: color,
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '0 12px',
       }}
     >
+      {logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logoUrl}
+          alt=""
+          style={{
+            width: 48,
+            height: 48,
+            objectFit: 'contain',
+            marginBottom: 2,
+            filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.5))',
+          }}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = 'none';
+          }}
+        />
+      ) : null}
       <span
         style={{
-          fontSize: 26,
+          fontSize: logoUrl ? 19 : 26,
           fontWeight: 900,
           letterSpacing: 1,
           color: '#fff',
@@ -378,6 +402,7 @@ function TeamBlock({
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
+          maxWidth: '100%',
         }}
       >
         {code}

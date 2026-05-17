@@ -2039,6 +2039,8 @@ export function useCreateGame() {
       awayTeam: string;
       homeColor?: string;
       awayColor?: string;
+      homeLogoUrl?: string;
+      awayLogoUrl?: string;
       screenGroupId?: string;
     }) => apiFetch('/sports/games', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-games'] }),

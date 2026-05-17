@@ -119,6 +119,47 @@ describe('SportsService — createGame', () => {
   });
 });
 
+describe('SportsService — team branding', () => {
+  it('stores team logo URLs on create', async () => {
+    const { service } = setup();
+    const g = await service.createGame(TENANT, {
+      sport: 'baseball',
+      homeTeam: 'Dodgers',
+      awayTeam: 'Giants',
+      homeLogoUrl: 'https://cdn.example.com/dodgers.png',
+      awayLogoUrl: 'https://cdn.example.com/giants.png',
+    });
+    expect(g.homeLogoUrl).toBe('https://cdn.example.com/dodgers.png');
+    expect(g.awayLogoUrl).toBe('https://cdn.example.com/giants.png');
+  });
+
+  it('edits team names, colors, and logos without disturbing the score', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 7 });
+    const edited = await service.updateGameDetails(TENANT, g.id, {
+      homeTeam: 'LA Dodgers',
+      homeColor: '#005A9C',
+      homeLogoUrl: 'https://cdn.example.com/lad.svg',
+    });
+    expect(edited.homeTeam).toBe('LA Dodgers');
+    expect(edited.homeColor).toBe('#005A9C');
+    expect(edited.homeLogoUrl).toBe('https://cdn.example.com/lad.svg');
+    expect(edited.homeScore).toBe(7); // score untouched by an identity edit
+  });
+
+  it('rejects an empty team name on edit and is tenant-scoped', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    await expect(service.updateGameDetails(TENANT, g.id, { homeTeam: '  ' })).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(
+      service.updateGameDetails('other-tenant', g.id, { homeTeam: 'X' }),
+    ).rejects.toThrow(NotFoundException);
+  });
+});
+
 describe('SportsService — tenant isolation', () => {
   it('refuses to read another tenant’s game', async () => {
     const { service } = setup();
