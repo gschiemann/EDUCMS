@@ -8,15 +8,20 @@
  * operator control surface and the public scoreboard board page.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Trophy, Plus, Radio, ExternalLink, Trash2, X, BadgeDollarSign } from 'lucide-react';
+import {
+  Trophy, Plus, Radio, ExternalLink, Trash2, X, BadgeDollarSign,
+  Upload, Loader2, ImageIcon, Globe,
+} from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useGames, useCreateGame, useDeleteGame } from '@/hooks/use-api';
+import { useGames, useCreateGame, useDeleteGame, useScrapeBranding } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { SPORTS, findSport } from '@cms/api-types';
+import { useUIStore } from '@/store/ui-store';
+import { API_URL } from '@/lib/api-url';
 
 const STATUS_BADGE: Record<string, string> = {
   SCHEDULED: 'bg-slate-100 text-slate-600',
@@ -276,8 +281,12 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
               placeholder="Home"
               maxLength={80}
             />
-            <ColorRow label="Home color" value={homeColor} onChange={setHomeColor} />
-            <LogoRow label="Home logo URL" value={homeLogoUrl} onChange={setHomeLogoUrl} />
+            <TeamBrand
+              color={homeColor}
+              logoUrl={homeLogoUrl}
+              onColor={setHomeColor}
+              onLogo={setHomeLogoUrl}
+            />
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -290,8 +299,12 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
               placeholder="Away"
               maxLength={80}
             />
-            <ColorRow label="Away color" value={awayColor} onChange={setAwayColor} />
-            <LogoRow label="Away logo URL" value={awayLogoUrl} onChange={setAwayLogoUrl} />
+            <TeamBrand
+              color={awayColor}
+              logoUrl={awayLogoUrl}
+              onColor={setAwayColor}
+              onLogo={setAwayLogoUrl}
+            />
           </div>
         </div>
 
@@ -352,39 +365,155 @@ function ColorRow({
   );
 }
 
-function LogoRow({
-  label,
-  value,
-  onChange,
+/** Upload one image file (a team logo) and return its hosted URL. */
+async function uploadLogoFile(file: File): Promise<string> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const token = useUIStore.getState().token;
+  const res = await fetch(`${API_URL}/assets/upload`, {
+    method: 'POST',
+    body: fd,
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`Upload failed (${res.status}) ${t}`.trim());
+  }
+  const data = await res.json().catch(() => ({}) as any);
+  const url = data.fileUrl || data.url || data?.asset?.fileUrl || '';
+  if (!url) throw new Error('Upload succeeded but no URL came back.');
+  return url;
+}
+
+/**
+ * Team branding for the new-game form. Three ways to set a team's
+ * logo + color: pull both from the team's website (the branding
+ * scraper), upload a logo file, or paste a URL / pick a color.
+ */
+function TeamBrand({
+  color,
+  logoUrl,
+  onColor,
+  onLogo,
 }: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
+  color: string;
+  logoUrl: string;
+  onColor: (c: string) => void;
+  onLogo: (u: string) => void;
 }) {
-  const url = value.trim();
+  const scrape = useScrapeBranding();
+  const [site, setSite] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [msg, setMsg] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const pull = async () => {
+    if (!site.trim() || scrape.isPending) return;
+    setMsg('');
+    try {
+      const p: any = await scrape.mutateAsync(site.trim());
+      const logo = (p?.logos || []).find((l: any) => l?.url)?.url;
+      const primary = p?.palette?.primary;
+      if (logo) onLogo(logo);
+      if (primary) onColor(primary);
+      setMsg(
+        logo || primary
+          ? `Pulled${p?.displayName ? ` ${p.displayName}` : ''} — logo + colors applied.`
+          : 'No logo or color found on that site.',
+      );
+    } catch (e: any) {
+      setMsg(e?.message || "Couldn't read that site.");
+    }
+  };
+
+  const upload = async (file?: File) => {
+    if (!file) return;
+    setUploading(true);
+    setMsg('');
+    try {
+      onLogo(await uploadLogoFile(file));
+    } catch (e: any) {
+      setMsg(e?.message || 'Upload failed.');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
   return (
-    <div className="mt-2">
-      <span className="text-[11px] text-slate-400">{label}</span>
-      <div className="mt-1 flex items-center gap-2">
-        {url ? (
+    <div className="mt-2 space-y-2">
+      <div className="flex items-center gap-1.5">
+        <Input
+          value={site}
+          onChange={(e) => setSite(e.target.value)}
+          placeholder="Team website — pull logo + colors"
+          maxLength={300}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="shrink-0 gap-1.5"
+          disabled={scrape.isPending}
+          onClick={pull}
+        >
+          {scrape.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Globe className="h-4 w-4" />
+          )}
+          Pull
+        </Button>
+      </div>
+      <div className="flex items-center gap-2">
+        {logoUrl.trim() ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            key={url}
-            src={url}
+            key={logoUrl}
+            src={logoUrl}
             alt=""
             className="h-9 w-9 shrink-0 rounded object-contain bg-slate-50 ring-1 ring-slate-200"
             onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = 'none';
+              (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
             }}
           />
-        ) : null}
+        ) : (
+          <div className="h-9 w-9 shrink-0 rounded bg-slate-100 flex items-center justify-center">
+            <ImageIcon className="h-4 w-4 text-slate-300" />
+          </div>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => upload(e.target.files?.[0])}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="shrink-0 gap-1.5"
+          disabled={uploading}
+          onClick={() => fileRef.current?.click()}
+        >
+          {uploading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Upload className="h-4 w-4" />
+          )}
+          Logo
+        </Button>
         <Input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="https://…/logo.png"
+          value={logoUrl}
+          onChange={(e) => onLogo(e.target.value)}
+          placeholder="…or paste a logo URL"
           maxLength={2048}
         />
       </div>
+      <ColorRow label="Color" value={color} onChange={onColor} />
+      {msg && <p className="text-[11px] text-slate-500">{msg}</p>}
     </div>
   );
 }

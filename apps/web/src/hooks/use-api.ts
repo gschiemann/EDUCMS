@@ -2318,3 +2318,12 @@ export function useCueMutations() {
   });
   return { create, update, remove };
 }
+
+// ── branding scrape (pull a logo + palette from a website) ─────
+
+export function useScrapeBranding() {
+  return useMutation({
+    mutationFn: (url: string) =>
+      apiFetch('/branding/scrape', { method: 'POST', body: JSON.stringify({ url }) }),
+  });
+}
