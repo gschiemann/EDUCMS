@@ -17,30 +17,7 @@ import { UserPlus, Upload, Pencil, Trash2, Loader2, X, ImageIcon, Download } fro
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGameRoster, useRosterMutations, type RosterPlayer } from '@/hooks/use-api';
-import { useUIStore } from '@/store/ui-store';
-import { API_URL } from '@/lib/api-url';
-
-/** Upload one image file, return its hosted URL. Reuses /assets/upload. */
-async function uploadPhoto(file: File): Promise<string> {
-  const fd = new FormData();
-  fd.append('file', file);
-  // Bypass the JSON apiFetch helper — multipart needs its own boundary.
-  const token = useUIStore.getState().token;
-  const res = await fetch(`${API_URL}/assets/upload`, {
-    method: 'POST',
-    body: fd,
-    credentials: 'include',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-  if (!res.ok) {
-    const t = await res.text().catch(() => '');
-    throw new Error(`Photo upload failed (${res.status}) ${t}`.trim());
-  }
-  const data = await res.json().catch(() => ({} as any));
-  const url = data.fileUrl || data.url || data?.asset?.fileUrl || '';
-  if (!url) throw new Error('Upload succeeded but no URL came back.');
-  return url;
-}
+import { AssetPicker } from '@/components/assets/AssetPicker';
 
 type Editing =
   | { mode: 'add'; team: 'home' | 'away' }
@@ -337,26 +314,11 @@ function PlayerEditorModal({
     return rows;
   });
   const [busy, setBusy] = useState(false);
-  const [photoBusy, setPhotoBusy] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [err, setErr] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const setStat = (i: number, key: 'k' | 'v', val: string) =>
     setStats((s) => s.map((row, idx) => (idx === i ? { ...row, [key]: val } : row)));
-
-  const pickPhoto = async (file: File | undefined) => {
-    if (!file) return;
-    setPhotoBusy(true);
-    setErr('');
-    try {
-      setPhotoUrl(await uploadPhoto(file));
-    } catch (e: any) {
-      setErr(e?.message || 'Photo upload failed.');
-    } finally {
-      setPhotoBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  };
 
   const save = async () => {
     if (!name.trim()) {
@@ -420,37 +382,37 @@ function PlayerEditorModal({
             </div>
           )}
           <div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => pickPhoto(e.target.files?.[0])}
-            />
             <Button
               size="sm"
               variant="outline"
               className="gap-1.5"
-              disabled={photoBusy}
-              onClick={() => fileRef.current?.click()}
+              onClick={() => setPickerOpen(true)}
             >
-              {photoBusy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Upload className="h-4 w-4" />
-              )}
-              {photoUrl ? 'Replace photo' : 'Upload photo'}
+              <ImageIcon className="h-4 w-4" />
+              {photoUrl ? 'Replace photo' : 'Choose photo'}
             </Button>
             {photoUrl && (
               <button
+                type="button"
                 onClick={() => setPhotoUrl('')}
-                className="ml-2 text-xs text-slate-400 hover:text-red-600"
+                className="ml-2 text-xs text-slate-400 hover:text-red-600 cursor-pointer"
               >
                 Remove
               </button>
             )}
           </div>
         </div>
+        {pickerOpen && (
+          <AssetPicker
+            kind="image"
+            title="Choose player photo"
+            onPick={(url) => {
+              setPhotoUrl(url);
+              setPickerOpen(false);
+            }}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
 
         <div className="space-y-3">
           <EditorField label="Name">

@@ -28,7 +28,7 @@ import {
   MonitorPlay,
   Star,
   RectangleHorizontal,
-  Upload,
+  ImageIcon,
   Loader2,
 } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
@@ -44,11 +44,10 @@ import {
 } from '@/hooks/use-api';
 import { findSport, PLAYER_STATS } from '@cms/api-types';
 import type { SportDefinition, SportStatField } from '@cms/api-types';
-import { useUIStore } from '@/store/ui-store';
-import { API_URL } from '@/lib/api-url';
 import { RosterPanel } from './RosterPanel';
 import { CueDeckPanel } from './CueDeckPanel';
 import { SponsorPanel } from './SponsorPanel';
+import { AssetPicker } from '@/components/assets/AssetPicker';
 
 const GAME_STATUSES: { key: string; label: string }[] = [
   { key: 'SCHEDULED', label: 'Scheduled' },
@@ -896,27 +895,6 @@ function DownControl({ value, onSet }: { value: number; onSet: (n: number) => vo
   );
 }
 
-/** Upload an image (a spotlight headshot) and return its hosted URL. */
-async function uploadPhoto(file: File): Promise<string> {
-  const fd = new FormData();
-  fd.append('file', file);
-  const token = useUIStore.getState().token;
-  const res = await fetch(`${API_URL}/assets/upload`, {
-    method: 'POST',
-    body: fd,
-    credentials: 'include',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-  if (!res.ok) {
-    const t = await res.text().catch(() => '');
-    throw new Error(`Photo upload failed (${res.status}) ${t}`.trim());
-  }
-  const data = await res.json().catch(() => ({}) as any);
-  const url = data.fileUrl || data.url || data?.asset?.fileUrl || '';
-  if (!url) throw new Error('Upload succeeded but no URL came back.');
-  return url;
-}
-
 function SpotlightControl({ gameId, current }: { gameId: string; current: any }) {
   const ctl = useGameControl(gameId);
   const sp = current && typeof current === 'object' ? current : {};
@@ -931,8 +909,7 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
 
   const roster = useGameRoster(gameId);
   const players: any[] = Array.isArray(roster.data) ? roster.data : [];
-  const [photoBusy, setPhotoBusy] = useState(false);
-  const photoRef = useRef<HTMLInputElement>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // Pull a roster player straight into the spotlight — name, headshot,
   // number/position, and their stat lines, all in one pick.
@@ -947,19 +924,6 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
         value: entries[i] ? String(entries[i][1]) : '',
       })),
     );
-  };
-
-  const pickPhoto = async (file?: File) => {
-    if (!file) return;
-    setPhotoBusy(true);
-    try {
-      setPhotoUrl(await uploadPhoto(file));
-    } catch {
-      /* leave the field as-is on failure */
-    } finally {
-      setPhotoBusy(false);
-      if (photoRef.current) photoRef.current.value = '';
-    }
   };
 
   const setLine = (i: number, key: 'label' | 'value', val: string) =>
@@ -1043,22 +1007,14 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
               }}
             />
           ) : null}
-          <input
-            ref={photoRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => pickPhoto(e.target.files?.[0])}
-          />
           <Button
             size="sm"
             variant="outline"
             className="gap-1.5 shrink-0"
-            disabled={photoBusy}
-            onClick={() => photoRef.current?.click()}
+            onClick={() => setPickerOpen(true)}
           >
-            {photoBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            Upload
+            <ImageIcon className="h-4 w-4" />
+            Choose
           </Button>
           <Input
             value={photoUrl}
@@ -1068,6 +1024,17 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
           />
         </div>
       </div>
+      {pickerOpen && (
+        <AssetPicker
+          kind="image"
+          title="Choose spotlight photo"
+          onPick={(url) => {
+            setPhotoUrl(url);
+            setPickerOpen(false);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
       <div className="mt-3">
         <label className="text-xs font-semibold text-slate-500">Stat lines</label>
         <div className="mt-1 grid sm:grid-cols-2 gap-2">

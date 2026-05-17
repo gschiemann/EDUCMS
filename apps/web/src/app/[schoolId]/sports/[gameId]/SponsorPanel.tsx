@@ -14,8 +14,8 @@
  * hardened /assets/upload chain.
  */
 
-import { useRef, useState } from 'react';
-import { Plus, Pencil, Trash2, Loader2, X, Upload, ImageIcon, Megaphone } from 'lucide-react';
+import { useState } from 'react';
+import { Plus, Pencil, Trash2, Loader2, X, ImageIcon, Megaphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -24,8 +24,7 @@ import {
   useUpdateSponsor,
   useDeleteSponsor,
 } from '@/hooks/use-api';
-import { useUIStore } from '@/store/ui-store';
-import { API_URL } from '@/lib/api-url';
+import { AssetPicker } from '@/components/assets/AssetPicker';
 
 interface Sponsor {
   id: string;
@@ -40,28 +39,6 @@ interface Sponsor {
 
 /** Common sponsor-tier labels — offered as datalist hints, freeform. */
 const TIER_SUGGESTIONS = ['Title', 'Presenting', 'Gold', 'Silver', 'Bronze', 'Community'];
-
-/** Upload one logo file, return its hosted URL. Reuses /assets/upload. */
-async function uploadLogo(file: File): Promise<string> {
-  const fd = new FormData();
-  fd.append('file', file);
-  // Bypass the JSON apiFetch helper — multipart needs its own boundary.
-  const token = useUIStore.getState().token;
-  const res = await fetch(`${API_URL}/assets/upload`, {
-    method: 'POST',
-    body: fd,
-    credentials: 'include',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-  if (!res.ok) {
-    const t = await res.text().catch(() => '');
-    throw new Error(`Logo upload failed (${res.status}) ${t}`.trim());
-  }
-  const data = await res.json().catch(() => ({}) as any);
-  const url = data.fileUrl || data.url || data?.asset?.fileUrl || '';
-  if (!url) throw new Error('Upload succeeded but no URL came back.');
-  return url;
-}
 
 export function SponsorPanel() {
   const { data, isLoading } = useSponsors();
@@ -238,23 +215,8 @@ function SponsorEditorModal({
   const [weight, setWeight] = useState(sponsor?.weight || 1);
   const [active, setActive] = useState(sponsor ? sponsor.active : true);
   const [busy, setBusy] = useState(false);
-  const [logoBusy, setLogoBusy] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [err, setErr] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const pickLogo = async (file: File | undefined) => {
-    if (!file) return;
-    setLogoBusy(true);
-    setErr('');
-    try {
-      setLogoUrl(await uploadLogo(file));
-    } catch (e: any) {
-      setErr(e?.message || 'Logo upload failed.');
-    } finally {
-      setLogoBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  };
 
   const save = async () => {
     if (!name.trim()) {
@@ -315,22 +277,14 @@ function SponsorEditorModal({
           )}
         </div>
         <div className="mt-2 flex items-center gap-2">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => pickLogo(e.target.files?.[0])}
-          />
           <Button
             size="sm"
             variant="outline"
             className="gap-1.5"
-            disabled={logoBusy}
-            onClick={() => fileRef.current?.click()}
+            onClick={() => setPickerOpen(true)}
           >
-            {logoBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {logoUrl ? 'Replace logo' : 'Upload logo'}
+            <ImageIcon className="h-4 w-4" />
+            {logoUrl ? 'Replace logo' : 'Choose logo'}
           </Button>
           {logoUrl && (
             <button
@@ -342,6 +296,17 @@ function SponsorEditorModal({
             </button>
           )}
         </div>
+        {pickerOpen && (
+          <AssetPicker
+            kind="image"
+            title="Choose sponsor logo"
+            onPick={(url) => {
+              setLogoUrl(url);
+              setPickerOpen(false);
+            }}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
 
         <div className="space-y-3 mt-4">
           <Field label="Sponsor name">

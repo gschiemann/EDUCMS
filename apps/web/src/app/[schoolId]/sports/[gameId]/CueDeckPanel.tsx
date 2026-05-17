@@ -11,32 +11,11 @@
  */
 
 import { useRef, useState } from 'react';
-import { Plus, Pencil, Trash2, Loader2, X, Upload, ImageIcon, Zap } from 'lucide-react';
+import { Plus, Pencil, Trash2, Loader2, X, ImageIcon, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCues, useCueMutations, useGameControl, type CustomCue } from '@/hooks/use-api';
-import { useUIStore } from '@/store/ui-store';
-import { API_URL } from '@/lib/api-url';
-
-async function uploadCueMedia(file: File): Promise<string> {
-  const fd = new FormData();
-  fd.append('file', file);
-  const token = useUIStore.getState().token;
-  const res = await fetch(`${API_URL}/assets/upload`, {
-    method: 'POST',
-    body: fd,
-    credentials: 'include',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-  if (!res.ok) {
-    const t = await res.text().catch(() => '');
-    throw new Error(`Upload failed (${res.status}) ${t}`.trim());
-  }
-  const data = await res.json().catch(() => ({}) as any);
-  const url = data.fileUrl || data.url || data?.asset?.fileUrl || '';
-  if (!url) throw new Error('Upload succeeded but no URL came back.');
-  return url;
-}
+import { AssetPicker } from '@/components/assets/AssetPicker';
 
 export function CueDeckPanel({ gameId }: { gameId: string }) {
   const { data, isLoading } = useCues();
@@ -153,23 +132,8 @@ function CueEditorModal({
   const [mediaUrl, setMediaUrl] = useState(cue?.mediaUrl || '');
   const [durationMs, setDurationMs] = useState(cue?.durationMs || 6000);
   const [busy, setBusy] = useState(false);
-  const [mediaBusy, setMediaBusy] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [err, setErr] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const pick = async (file: File | undefined) => {
-    if (!file) return;
-    setMediaBusy(true);
-    setErr('');
-    try {
-      setMediaUrl(await uploadCueMedia(file));
-    } catch (e: any) {
-      setErr(e?.message || 'Upload failed.');
-    } finally {
-      setMediaBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  };
 
   const save = async () => {
     if (!name.trim()) {
@@ -217,32 +181,36 @@ function CueEditorModal({
           )}
         </div>
         <div className="mt-2 flex items-center gap-2">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => pick(e.target.files?.[0])}
-          />
           <Button
             size="sm"
             variant="outline"
             className="gap-1.5"
-            disabled={mediaBusy}
-            onClick={() => fileRef.current?.click()}
+            onClick={() => setPickerOpen(true)}
           >
-            {mediaBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {mediaUrl ? 'Replace content' : 'Upload content'}
+            <ImageIcon className="h-4 w-4" />
+            {mediaUrl ? 'Replace content' : 'Choose content'}
           </Button>
           {mediaUrl && (
             <button
+              type="button"
               onClick={() => setMediaUrl('')}
-              className="text-xs text-slate-400 hover:text-red-600"
+              className="text-xs text-slate-400 hover:text-red-600 cursor-pointer"
             >
               Remove
             </button>
           )}
         </div>
+        {pickerOpen && (
+          <AssetPicker
+            kind="image"
+            title="Choose cue content"
+            onPick={(url) => {
+              setMediaUrl(url);
+              setPickerOpen(false);
+            }}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
 
         <label className="text-xs font-semibold text-slate-500 mt-4 block">Button name</label>
         <Input
