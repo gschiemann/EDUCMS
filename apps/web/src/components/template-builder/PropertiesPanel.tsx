@@ -141,7 +141,38 @@ const V2_FONT_OPTIONS: [string, string][] = [
   ['system-ui, sans-serif', 'System sans'],
   ["Georgia, 'Times New Roman', serif", 'Georgia (serif)'],
   ["'Arial Black', Arial, sans-serif", 'Arial Black (heavy)'],
+  ["Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif", 'Impact (condensed)'],
+  ["'Trebuchet MS', Verdana, sans-serif", 'Trebuchet'],
+  ['Tahoma, Geneva, Verdana, sans-serif', 'Tahoma'],
   ["'Courier New', monospace", 'Monospace'],
+];
+
+// Font-weight choices for the v2 brand-style editor. Values are the
+// numeric weights resolveStyle() feeds straight into `font-weight`.
+const V2_WEIGHT_OPTIONS: [string, string][] = [
+  ['', 'Theme default'],
+  ['300', 'Light'],
+  ['400', 'Regular'],
+  ['500', 'Medium'],
+  ['600', 'Semibold'],
+  ['700', 'Bold'],
+  ['800', 'Extrabold'],
+  ['900', 'Black'],
+];
+
+// Gradient washes for the v2 background editor. Plain CSS gradient
+// strings — frameStyle() drops them straight into `background-image`
+// when no bgImage is set. Pre-baked so a non-technical operator picks
+// a look instead of hand-writing CSS.
+const V2_GRADIENT_OPTIONS: [string, string][] = [
+  ['', 'None'],
+  ['linear-gradient(135deg, #1e3a8a, #312e81)', 'Midnight blue'],
+  ['linear-gradient(135deg, #7f1d1d, #450a0a)', 'Deep crimson'],
+  ['linear-gradient(135deg, #064e3b, #022c22)', 'Forest green'],
+  ['linear-gradient(135deg, #4c1d95, #1e1b4b)', 'Royal purple'],
+  ['linear-gradient(135deg, #0f172a, #1e293b)', 'Slate night'],
+  ['linear-gradient(135deg, #b45309, #7c2d12)', 'Amber heat'],
+  ['radial-gradient(circle at 50% 0%, #475569, #0f172a)', 'Spotlight'],
 ];
 
 const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
@@ -3759,11 +3790,12 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       // / worship / chart widgets register as variants under canonical
       // types with no hand-built case. Without this they'd show an
       // EMPTY panel — "not editable". We read the widget's registry
-      // `defaults` for its content fields and add a Style section
-      // (background / text / accent color + font) so the operator can
-      // recolor + refont the widget to their team's brand. Every v2
-      // widget routes config.style through resolveStyle(), so these
-      // controls take effect live.
+      // `defaults` for its content fields and add a full Style section
+      // (background color / image / gradient, text + accent + highlight
+      // colors, font family + weight) so the operator can recolor,
+      // refont, and re-background the widget to their team's brand.
+      // Every v2 widget routes config.style through resolveStyle(), so
+      // these controls take effect live.
       const v2w = cfg.variant ? V2_BY_VARIANT_ID[String(cfg.variant)] : undefined;
       if (v2w) {
         const SHv2 = (k: string, label: string) => (
@@ -3849,11 +3881,24 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
           );
         }
         // Brand style — overrides the widget's designed palette + font.
+        // EVERY v2 widget (celebration / scoreboard / industry pack /
+        // background / chart) funnels config.style through resolveStyle()
+        // + frameStyle(), so the controls below recolor, refont, and
+        // re-background ANY of them — fully customizable for any operator.
         const st: Record<string, unknown> =
           cfg.style && typeof cfg.style === 'object' ? cfg.style : {};
-        const setStyle = (patch: Record<string, unknown>) =>
-          setField({ style: { ...st, ...patch } });
-        fields.push(SHv2('style', 'Style — match your brand'));
+        // Patch the style object. An empty value DELETES the key so the
+        // widget falls back to its designed default instead of being
+        // pinned to '' (which would paint a blank background / no font).
+        const setStyle = (patch: Record<string, unknown>) => {
+          const next: Record<string, unknown> = { ...st };
+          for (const [k, v] of Object.entries(patch)) {
+            if (v === '' || v == null) delete next[k];
+            else next[k] = v;
+          }
+          setField({ style: next });
+        };
+        fields.push(SHv2('style', 'Colors — match your brand'));
         fields.push(
           <ColorPickerField
             key="v2-bg"
@@ -3878,6 +3923,26 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
             onChange={(v) => setStyle({ accentColor: v })}
           />,
         );
+        // Highlight / glow — celebration widgets paint the neon glow on
+        // their hero text + numbers with this; without the control the
+        // most prominent part of a celebration can't be rebranded.
+        fields.push(
+          <ColorPickerField
+            key="v2-highlight"
+            label="Highlight / glow"
+            value={String(st.highlightColor || '')}
+            onChange={(v) => setStyle({ highlightColor: v })}
+          />,
+        );
+        fields.push(
+          <ColorPickerField
+            key="v2-accent2"
+            label="Secondary accent"
+            value={String(st.accentColor2 || '')}
+            onChange={(v) => setStyle({ accentColor2: v })}
+          />,
+        );
+        fields.push(SHv2('typography', 'Type'));
         fields.push(
           <SelectField
             key="v2-font"
@@ -3885,6 +3950,37 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
             value={String(st.fontFamily || '')}
             options={V2_FONT_OPTIONS}
             onChange={(v) => setStyle({ fontFamily: v })}
+          />,
+        );
+        fields.push(
+          <SelectField
+            key="v2-weight"
+            label="Font weight"
+            value={st.fontWeight != null ? String(st.fontWeight) : ''}
+            options={V2_WEIGHT_OPTIONS}
+            onChange={(v) => setStyle({ fontWeight: v === '' ? '' : Number(v) })}
+          />,
+        );
+        // Background — swap the whole backdrop for an uploaded image or
+        // a one-click gradient wash. frameStyle() prefers bgImage over
+        // bgGradient over the solid bgColor above.
+        fields.push(SHv2('v2bg', 'Background'));
+        fields.push(
+          <AssetPickerField
+            key="v2-bgimage"
+            label="Background image"
+            kind="image"
+            value={String(st.bgImage || '')}
+            onChange={(v) => setStyle({ bgImage: v })}
+          />,
+        );
+        fields.push(
+          <SelectField
+            key="v2-bggradient"
+            label="Gradient wash"
+            value={String(st.bgGradient || '')}
+            options={V2_GRADIENT_OPTIONS}
+            onChange={(v) => setStyle({ bgGradient: v })}
           />,
         );
         break;
