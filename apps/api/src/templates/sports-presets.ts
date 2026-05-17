@@ -6,15 +6,16 @@
  * The templates list endpoint then surfaces these only to tenants on
  * the SPORTS vertical — they never bleed into a school or clinic.
  *
- * This is the STARTER set — full-screen celebration scenes built from
- * the EDU CMS-10/12 celebration widgets (which are already designed +
- * animated) plus a game-day countdown. Each celebration preset is a
- * single full-canvas zone holding one CELEBRATION variant.
+ * Contents:
+ *  - 3 live scoreboard templates (HS / College / Pro) — each a
+ *    full-canvas SCOREBOARD widget that binds to a game and renders
+ *    off the sports engine.
+ *  - 12 full-screen celebration scenes built from the EDU CMS-10/12
+ *    celebration widgets (already designed + animated).
+ *  - A game-day countdown.
  *
- * Scoreboard + ribbon templates are intentionally NOT here yet — they
- * need the dedicated scoreboard / ribbon widget set (Claude Design's
- * SportsVenue batch) before they can be assembled. They land in a
- * follow-up once those widgets exist.
+ * Ribbon-board templates still need the dedicated ribbon widget set
+ * before they can be assembled — they land in a follow-up.
  */
 
 import type { SystemPreset } from './system-presets';
@@ -51,7 +52,62 @@ function celebration(
   };
 }
 
+/** A full-screen live scoreboard — one SCOREBOARD tier variant. */
+function scoreboardPreset(
+  id: string,
+  name: string,
+  description: string,
+  variant: string,
+  tier: string,
+): SystemPreset {
+  return {
+    id,
+    name,
+    description,
+    category: 'SCOREBOARD',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#05070d',
+    zones: [
+      {
+        name: 'Scoreboard',
+        widgetType: 'SCOREBOARD',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        zIndex: 0,
+        sortOrder: 0,
+        defaultConfig: { variant, tier },
+      },
+    ],
+  };
+}
+
 export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
+  // ── Scoreboards — live, engine-driven (bind a game in the editor) ──
+  scoreboardPreset(
+    'sports-scoreboard-hs',
+    'High School Scoreboard',
+    'Live game scoreboard, high-school tier. Bind it to a game and it auto-adapts to that sport — clock, periods, and the stat row all come from the sports engine.',
+    'scoreboard-hs',
+    'hs',
+  ),
+  scoreboardPreset(
+    'sports-scoreboard-college',
+    'College Scoreboard',
+    'Live game scoreboard, college tier — broadcast polish. Same engine: bind a game and the board reflects its sport automatically.',
+    'scoreboard-college',
+    'college',
+  ),
+  scoreboardPreset(
+    'sports-scoreboard-pro',
+    'Pro Scoreboard',
+    'Live game scoreboard, professional tier — sleek broadcast look. Drives off the live game feed and the sports engine.',
+    'scoreboard-pro',
+    'pro',
+  ),
   // ── Football ──────────────────────────────────────────────────
   celebration(
     'sports-cel-touchdown',

@@ -768,6 +768,8 @@ const V2_CATEGORY_TO_CANONICAL: Record<string, WidgetType> = {
   'Hospitality':  'HOSPITALITY',
   'Worship':      'WORSHIP',
   'Charts':       'CHART',
+  // VenueOS Sports — the live scoreboard widget (HS / College / Pro).
+  'Scoreboards':  'SCOREBOARD',
 };
 
 for (const w of ALL_V2_WIDGETS) {

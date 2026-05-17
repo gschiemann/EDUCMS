@@ -43,7 +43,9 @@ export type WidgetType =
   // VenueOS multi-industry widget packs (EDU CMS-11/12). Each canonical
   // type groups a vertical's widgets under one picker chip; all are
   // variant-rendered.
-  | 'HEALTHCARE' | 'CORPORATE' | 'HOSPITALITY' | 'WORSHIP' | 'CHART';
+  | 'HEALTHCARE' | 'CORPORATE' | 'HOSPITALITY' | 'WORSHIP' | 'CHART'
+  // VenueOS Sports — the live, engine-driven scoreboard widget.
+  | 'SCOREBOARD';
 
 export interface ThemeWidgetProps {
   config: any;

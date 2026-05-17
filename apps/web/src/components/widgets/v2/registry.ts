@@ -33,6 +33,8 @@ import {
   UserCheck, DoorOpen, PartyPopper, BarChart3, PieChart, LineChart,
   ListChecks, Calculator, BedDouble, Calendar, MapPin, Clock4, Key,
   Cross, HandCoins, HeartHandshake,
+  // Live scoreboard widget.
+  Tv,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -104,6 +106,10 @@ import {
   BarChartWidget, DonutGaugeWidget, LineChartWidget,
   ProgressListWidget, CountUpStatsWidget,
 } from './ChartsWidgets';
+
+// Live scoreboard — one widget, every sport. Polls /sports/board/:id
+// and renders driven by the game's SportDefinition. Three tiers.
+import { SportsScoreboardWidget } from './SportsScoreboardWidgets';
 
 import type { WidgetMeta, SchoolLevel } from './_shared/types';
 
@@ -367,6 +373,15 @@ export const WORSHIP_WIDGETS: RegisteredWidget[] = [
   W('PRAYER_REQUEST_QR',  CAT_WORSHIP, 'Prayer Request QR',  'QR to a confidential prayer form',       'universal', HeartHandshake, withMeasuredHeight(PrayerRequestQrWidget),   { qrLabel: 'firstchurch.org/prayer' }),
 ];
 
+/* ─── SCOREBOARDS — live game scoreboard, three tiers ───────────────── */
+const CAT_SCOREBOARD = 'Scoreboards';
+
+export const SCOREBOARD_WIDGETS: RegisteredWidget[] = [
+  W('SCOREBOARD_HS',      CAT_SCOREBOARD, 'High School Scoreboard', 'Live game scoreboard — bind a game and it auto-adapts to that sport (clock, periods, stats from the engine). High-school tier.', 'universal', Tv, withMeasuredHeight(SportsScoreboardWidget), { tier: 'hs' }),
+  W('SCOREBOARD_COLLEGE', CAT_SCOREBOARD, 'College Scoreboard',     'Live game scoreboard — college tier, broadcast polish. Drives off the same sports engine.',                                     'universal', Tv, withMeasuredHeight(SportsScoreboardWidget), { tier: 'college' }),
+  W('SCOREBOARD_PRO',     CAT_SCOREBOARD, 'Pro Scoreboard',         'Live game scoreboard — professional tier, sleek broadcast look. Drives off the same sports engine.',                             'universal', Tv, withMeasuredHeight(SportsScoreboardWidget), { tier: 'pro' }),
+];
+
 export const CHART_WIDGETS: RegisteredWidget[] = [
   W('CHART_BAR',         CAT_CHARTS, 'Bar Chart',      'Categorical bars with auto-labeled values', 'universal', BarChart3,  withMeasuredHeight(BarChartWidget),     { label: 'Weekly signups', title: 'New users · last 7 days' }),
   W('CHART_DONUT_GAUGE', CAT_CHARTS, 'Donut Gauge',    'Big circular gauge with a goal target',     'universal', PieChart,   withMeasuredHeight(DonutGaugeWidget),   { label: 'NPS · Last 30d', title: 'Customer satisfaction', value: 78, goal: 100 }),
@@ -386,6 +401,7 @@ export const ALL_V2_WIDGETS: RegisteredWidget[] = [
   ...withVertical('SPORTS', [
     ...CEL_BASEBALL_WIDGETS, ...CEL_FOOTBALL_WIDGETS, ...CEL_BASKETBALL_WIDGETS,
     ...CEL_HOCKEY_WIDGETS, ...CEL_SOCCER_WIDGETS,
+    ...SCOREBOARD_WIDGETS,
   ]),
   // Industry packs — each scoped to its own business line.
   ...withVertical('HEALTHCARE', HEALTHCARE_WIDGETS),
