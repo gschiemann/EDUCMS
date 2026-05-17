@@ -69,6 +69,7 @@ const INDUSTRIES: Industry[] = [
     ],
     template: {
       src: '/templates/hs/ath-gameday.html',
+      staticImage: '/demo/templates/sports-gameday.jpg',
       label: 'Game Day Hub',
     },
     badge: STAR,
@@ -103,6 +104,7 @@ const INDUSTRIES: Industry[] = [
     ],
     template: {
       src: '/templates/signage/menus-pos/01-fullservice-menu.html',
+      staticImage: '/demo/templates/restaurant-menu.jpg',
       label: 'Full-Service Menu',
     },
   },
@@ -118,8 +120,9 @@ const INDUSTRIES: Industry[] = [
       'Schedule campaigns to start and end on their own',
     ],
     template: {
-      src: '/templates/signage/fashion/02-editorial.html',
-      label: 'Promo & Campaign Board',
+      src: '/templates/signage/fashion/03-sale.html',
+      staticImage: '/demo/templates/retail-sale.jpg',
+      label: 'Seasonal Sale Board',
     },
   },
   {
@@ -169,6 +172,7 @@ const INDUSTRIES: Industry[] = [
     ],
     template: {
       src: '/templates/signage/healthcare/01-waiting-room-flagship.html',
+      staticImage: '/demo/templates/healthcare-waiting.jpg',
       label: 'Waiting-Room Board',
     },
   },
@@ -184,8 +188,9 @@ const INDUSTRIES: Industry[] = [
       'One dashboard across every property in the group',
     ],
     template: {
-      src: '/templates/signage/hospitality/01-lobby-welcome-flagship.html',
-      label: 'Lobby Welcome Board',
+      src: '/templates/signage/hospitality/03-events-board.html',
+      staticImage: '/demo/templates/hospitality-events.jpg',
+      label: 'Events & Catering Board',
     },
   },
   {
@@ -201,6 +206,7 @@ const INDUSTRIES: Industry[] = [
     ],
     template: {
       src: '/templates/signage/corporate/01-lobby-welcome-flagship.html',
+      staticImage: '/demo/templates/corporate-lobby.jpg',
       label: 'Lobby & Comms Board',
     },
   },
@@ -217,6 +223,7 @@ const INDUSTRIES: Industry[] = [
     ],
     template: {
       src: '/templates/signage/bar/01-tap-list-flagship.html',
+      staticImage: '/demo/templates/bar-taplist.jpg',
       label: 'Tap List',
     },
   },
