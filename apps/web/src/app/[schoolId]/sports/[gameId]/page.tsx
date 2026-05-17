@@ -26,6 +26,7 @@ import {
   Tv,
   Check,
   MonitorPlay,
+  Star,
 } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
@@ -321,6 +322,11 @@ function GameControl() {
           </div>
         </Section>
       )}
+
+      {/* broadcast spotlight */}
+      <Section title="Scoreboard spotlight">
+        <SpotlightControl gameId={gameId} current={g.spotlight} />
+      </Section>
     </div>
   );
 }
@@ -648,6 +654,126 @@ function StatField({
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
         }}
       />
+    </div>
+  );
+}
+
+function SpotlightControl({ gameId, current }: { gameId: string; current: any }) {
+  const ctl = useGameControl(gameId);
+  const sp = current && typeof current === 'object' ? current : {};
+  const [title, setTitle] = useState<string>(sp.title || '');
+  const [photoUrl, setPhotoUrl] = useState<string>(sp.photoUrl || '');
+  const [subtitle, setSubtitle] = useState<string>(sp.subtitle || '');
+  const seed: Array<{ label?: string; value?: string }> = Array.isArray(sp.lines) ? sp.lines : [];
+  const [lines, setLines] = useState(
+    [0, 1, 2, 3].map((i) => ({ label: seed[i]?.label || '', value: seed[i]?.value || '' })),
+  );
+  const onAir = !!(sp.visible && sp.title);
+
+  const setLine = (i: number, key: 'label' | 'value', val: string) =>
+    setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, [key]: val } : l)));
+
+  const show = () => {
+    if (!title.trim()) return;
+    ctl.spotlight.mutate({
+      visible: true,
+      title: title.trim(),
+      photoUrl: photoUrl.trim() || undefined,
+      subtitle: subtitle.trim() || undefined,
+      lines: lines.filter((l) => l.label.trim() || l.value.trim()),
+    });
+  };
+  const remove = () => ctl.spotlight.mutate({ clear: true });
+
+  return (
+    <div>
+      <p className="text-xs text-slate-400 mb-3">
+        Feature a player or a promo on the scoreboard — photo, title, and up to four stat
+        lines.
+        {onAir && <span className="ml-1 font-bold text-green-600">● On the board now</span>}
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-semibold text-slate-500">Title</label>
+          <Input
+            className="mt-1"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Mookie Betts  ·  or  ·  $2 Hot Dog Night"
+            maxLength={80}
+          />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-500">Subtitle</label>
+          <Input
+            className="mt-1"
+            value={subtitle}
+            onChange={(e) => setSubtitle(e.target.value)}
+            placeholder="#50 · Right Field"
+            maxLength={80}
+          />
+        </div>
+      </div>
+      <div className="mt-3">
+        <label className="text-xs font-semibold text-slate-500">Photo URL</label>
+        <div className="mt-1 flex items-center gap-2">
+          {photoUrl.trim() ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={photoUrl}
+              src={photoUrl}
+              alt=""
+              className="h-10 w-10 shrink-0 rounded object-cover ring-1 ring-slate-200"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          ) : null}
+          <Input
+            value={photoUrl}
+            onChange={(e) => setPhotoUrl(e.target.value)}
+            placeholder="https://…/headshot.jpg"
+            maxLength={2048}
+          />
+        </div>
+      </div>
+      <div className="mt-3">
+        <label className="text-xs font-semibold text-slate-500">Stat lines</label>
+        <div className="mt-1 grid sm:grid-cols-2 gap-2">
+          {lines.map((l, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <Input
+                className="w-24"
+                value={l.label}
+                onChange={(e) => setLine(i, 'label', e.target.value)}
+                placeholder="AVG"
+                maxLength={24}
+              />
+              <Input
+                value={l.value}
+                onChange={(e) => setLine(i, 'value', e.target.value)}
+                placeholder=".312"
+                maxLength={24}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="mt-4 flex items-center gap-2">
+        <Button
+          onClick={show}
+          disabled={!title.trim() || ctl.spotlight.isPending}
+          className="gap-1.5"
+        >
+          <Star className="h-4 w-4" />
+          Put on the board
+        </Button>
+        {onAir && (
+          <Button variant="outline" onClick={remove} disabled={ctl.spotlight.isPending}>
+            Remove from board
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

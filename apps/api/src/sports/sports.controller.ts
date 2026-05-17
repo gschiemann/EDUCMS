@@ -192,6 +192,30 @@ export class SportsController {
     return this.sports.updateStats(req.user.tenantId, id, body);
   }
 
+  /** Set or clear the broadcast spotlight (featured player / promo). */
+  @Patch('games/:id/spotlight')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  spotlight(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      clear?: boolean;
+      visible?: boolean;
+      title?: string;
+      photoUrl?: string;
+      subtitle?: string;
+      lines?: Array<{ label?: string; value?: string }>;
+    },
+  ) {
+    return this.sports.setSpotlight(req.user.tenantId, id, body);
+  }
+
   @Patch('games/:id/status')
   @RequireRoles(
     AppRole.SUPER_ADMIN,

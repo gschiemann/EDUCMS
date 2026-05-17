@@ -38,6 +38,13 @@ interface Sponsor {
   color?: string | null;
   weight?: number;
 }
+interface Spotlight {
+  visible?: boolean;
+  title?: string;
+  photoUrl?: string | null;
+  subtitle?: string;
+  lines?: { label: string; value: string }[];
+}
 interface BoardData {
   id: string;
   sport: string;
@@ -55,6 +62,7 @@ interface BoardData {
   clockRunning: boolean;
   clockUpdatedAt: string;
   stats: Record<string, unknown>;
+  spotlight?: Spotlight | null;
   cues: Cue[];
   sponsors?: Sponsor[];
   sponsorSpotSeconds?: number;
@@ -433,6 +441,11 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
         />
       </div>
 
+      {/* broadcast spotlight — featured player / promo panel */}
+      {data.spotlight && data.spotlight.visible && data.spotlight.title ? (
+        <SpotlightBand spot={data.spotlight} />
+      ) : null}
+
       {/* footer strip — rotates between sport stats and sponsor banners */}
       <div
         style={{
@@ -587,6 +600,107 @@ function SponsorBanner({ sponsor }: { sponsor: Sponsor }) {
       >
         PROUD SPONSOR
       </div>
+    </div>
+  );
+}
+
+// ── spotlight band (featured player / promo) ───────────────────
+
+function SpotlightBand({ spot }: { spot: Spotlight }) {
+  const lines = (spot.lines || []).filter((l) => l && (l.label || l.value)).slice(0, 4);
+  return (
+    <div
+      style={{
+        height: 184,
+        background: '#0b1020',
+        borderTop: '3px solid #4f46e5',
+        display: 'flex',
+        alignItems: 'center',
+        padding: '0 48px',
+        fontFamily: 'Inter, system-ui, sans-serif',
+      }}
+    >
+      {spot.photoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={spot.photoUrl}
+          alt=""
+          style={{
+            width: 148,
+            height: 148,
+            objectFit: 'cover',
+            borderRadius: 16,
+            border: '3px solid #1e2638',
+            background: '#05070d',
+            marginRight: 32,
+            flex: 'none',
+          }}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = 'none';
+          }}
+        />
+      ) : null}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: 4, color: '#818cf8' }}>
+          SPOTLIGHT
+        </div>
+        <div
+          style={{
+            fontSize: 52,
+            fontWeight: 900,
+            color: '#fff',
+            lineHeight: 1.05,
+            marginTop: 4,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {spot.title}
+        </div>
+        {spot.subtitle ? (
+          <div style={{ fontSize: 23, fontWeight: 600, color: '#94a3b8', marginTop: 2 }}>
+            {spot.subtitle}
+          </div>
+        ) : null}
+      </div>
+      {lines.length > 0 ? (
+        <div style={{ display: 'flex', alignItems: 'center', flex: 'none' }}>
+          {lines.map((l, i) => (
+            <div
+              key={i}
+              style={{
+                textAlign: 'center',
+                padding: '0 26px',
+                borderLeft: i > 0 ? '2px solid #1e2638' : undefined,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 54,
+                  fontWeight: 900,
+                  color: '#fff',
+                  lineHeight: 1,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {l.value || '—'}
+              </div>
+              <div
+                style={{
+                  fontSize: 15,
+                  fontWeight: 700,
+                  letterSpacing: 2,
+                  color: '#64748b',
+                  marginTop: 6,
+                }}
+              >
+                {(l.label || '').toUpperCase()}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -170,6 +170,7 @@ export class SportsService {
       clockRunning: game.clockRunning,
       clockUpdatedAt: game.clockUpdatedAt,
       stats: game.stats,
+      spotlight: game.spotlight,
       cues: cues.map((c) => ({
         id: c.id,
         ...(c.payload as Record<string, unknown>),
@@ -267,6 +268,56 @@ export class SportsService {
     if (dto.homeLogoUrl !== undefined) data.homeLogoUrl = this.cleanLogo(dto.homeLogoUrl);
     if (dto.awayLogoUrl !== undefined) data.awayLogoUrl = this.cleanLogo(dto.awayLogoUrl);
     return this.prisma.client.game.update({ where: { id }, data });
+  }
+
+  /**
+   * Set (or clear) the broadcast spotlight — the featured-player /
+   * promo panel on the scoreboard: a title, photo, subtitle, and up
+   * to four stat lines. `clear` wipes it; otherwise the whole panel
+   * is replaced. `visible` lets the operator stage a player and
+   * toggle the panel on/off without losing the content.
+   */
+  async setSpotlight(
+    tenantId: string,
+    id: string,
+    dto: {
+      clear?: boolean;
+      visible?: boolean;
+      title?: string;
+      photoUrl?: string;
+      subtitle?: string;
+      lines?: Array<{ label?: string; value?: string }>;
+    },
+  ) {
+    await this.owned(tenantId, id);
+    if (dto.clear) {
+      return this.prisma.client.game.update({
+        where: { id },
+        data: { spotlight: {} },
+      });
+    }
+    const title = String(dto.title ?? '').trim().slice(0, 80);
+    if (!title) throw new BadRequestException('Spotlight title is required');
+    const lines = Array.isArray(dto.lines)
+      ? dto.lines
+          .slice(0, 4)
+          .map((l) => ({
+            label: String(l?.label ?? '').trim().slice(0, 24),
+            value: String(l?.value ?? '').trim().slice(0, 24),
+          }))
+          .filter((l) => l.label || l.value)
+      : [];
+    const spotlight = {
+      visible: dto.visible !== false,
+      title,
+      photoUrl: this.cleanLogo(dto.photoUrl),
+      subtitle: String(dto.subtitle ?? '').trim().slice(0, 80),
+      lines,
+    };
+    return this.prisma.client.game.update({
+      where: { id },
+      data: { spotlight: spotlight as any },
+    });
   }
 
   async deleteGame(tenantId: string, id: string) {

@@ -1406,6 +1406,7 @@ model Game {
   clockRunning   Boolean   @default(false) @map("clock_running")
   clockUpdatedAt DateTime  @default(now()) @map("clock_updated_at")
   stats          Json      @default("{}")                 // sport-specific stat values
+  spotlight      Json      @default("{}")                 // broadcast spotlight: featured player / promo
   status         String    @default("SCHEDULED")          // SCHEDULED|PRE_GAME|LIVE|HALFTIME|FINAL
   screenGroupId  String?   @map("screen_group_id")        // surfaces showing this game
   homeColor      String?   @map("home_color")

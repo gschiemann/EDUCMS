@@ -360,6 +360,62 @@ describe('SportsService — scoreboard-to-screen push', () => {
   });
 });
 
+describe('SportsService — spotlight', () => {
+  it('sets a featured-player spotlight with stat lines', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    const after = await service.setSpotlight(TENANT, g.id, {
+      title: 'Mookie Betts',
+      photoUrl: 'https://cdn.example.com/betts.jpg',
+      subtitle: '#50 · RF',
+      lines: [
+        { label: 'AVG', value: '.312' },
+        { label: 'HR', value: '19' },
+      ],
+    });
+    const sp = after.spotlight as any;
+    expect(sp.visible).toBe(true);
+    expect(sp.title).toBe('Mookie Betts');
+    expect(sp.lines).toHaveLength(2);
+    expect(sp.lines[0]).toEqual({ label: 'AVG', value: '.312' });
+  });
+
+  it('rejects a spotlight with no title', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    await expect(service.setSpotlight(TENANT, g.id, { title: '  ' })).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('clears the spotlight', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    await service.setSpotlight(TENANT, g.id, { title: 'Promo Night' });
+    const cleared = await service.setSpotlight(TENANT, g.id, { clear: true });
+    expect(cleared.spotlight).toEqual({});
+  });
+
+  it('caps stat lines at four and is tenant-scoped', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    const after = await service.setSpotlight(TENANT, g.id, {
+      title: 'Player',
+      lines: [
+        { label: 'A', value: '1' },
+        { label: 'B', value: '2' },
+        { label: 'C', value: '3' },
+        { label: 'D', value: '4' },
+        { label: 'E', value: '5' },
+      ],
+    });
+    expect((after.spotlight as any).lines).toHaveLength(4);
+    await expect(
+      service.setSpotlight('other-tenant', g.id, { title: 'X' }),
+    ).rejects.toThrow(NotFoundException);
+  });
+});
+
 describe('SportsService — public board view', () => {
   it('returns the game plus its recent cue feed', async () => {
     const { service } = setup();

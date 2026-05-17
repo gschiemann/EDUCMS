@@ -2097,8 +2097,23 @@ export function useGameControl(gameId: string) {
     mutationFn: (body: { key: string }) =>
       apiFetch(`/sports/games/${gameId}/cue`, { method: 'POST', body: JSON.stringify(body) }),
   });
+  const spotlight = useMutation({
+    mutationFn: (body: {
+      clear?: boolean;
+      visible?: boolean;
+      title?: string;
+      photoUrl?: string;
+      subtitle?: string;
+      lines?: Array<{ label: string; value: string }>;
+    }) =>
+      apiFetch(`/sports/games/${gameId}/spotlight`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: writeBack,
+  });
 
-  return { score, clock, segment, stats, status, cue };
+  return { score, clock, segment, stats, status, cue, spotlight };
 }
 
 // ─── VenueOS Sports — Sprint 13 Phase 2: Sponsorship ────────────
