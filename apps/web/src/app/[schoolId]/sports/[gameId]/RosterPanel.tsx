@@ -51,10 +51,12 @@ export function RosterPanel({
   gameId,
   homeTeam,
   awayTeam,
+  statKeys,
 }: {
   gameId: string;
   homeTeam: string;
   awayTeam: string;
+  statKeys: string[];
 }) {
   const { data, isLoading } = useGameRoster(gameId);
   const m = useRosterMutations(gameId);
@@ -139,6 +141,7 @@ export function RosterPanel({
       {editing && (
         <PlayerEditorModal
           editing={editing}
+          statKeys={statKeys}
           onClose={() => setEditing(null)}
           onSave={async (vals) => {
             if (editing.mode === 'add') {
@@ -262,10 +265,12 @@ function PlayerRow({
 
 function PlayerEditorModal({
   editing,
+  statKeys,
   onClose,
   onSave,
 }: {
   editing: Exclude<Editing, null>;
+  statKeys: string[];
   onClose: () => void;
   onSave: (vals: Partial<RosterPlayer>) => Promise<void>;
 }) {
@@ -276,6 +281,14 @@ function PlayerEditorModal({
   const [photoUrl, setPhotoUrl] = useState(existing?.photoUrl || '');
   const [stats, setStats] = useState<Array<{ k: string; v: string }>>(() => {
     const rows = Object.entries(existing?.stats || {}).map(([k, v]) => ({ k, v: String(v) }));
+    // Seed the sport's typical player stats so the keys make sense for
+    // this sport (basketball → PTS/REB/AST, not baseball's AVG/HR).
+    for (const key of statKeys) {
+      if (rows.length >= 6) break;
+      if (!rows.some((r) => r.k.toUpperCase() === key.toUpperCase())) {
+        rows.push({ k: key, v: '' });
+      }
+    }
     while (rows.length < 4) rows.push({ k: '', v: '' });
     return rows;
   });
@@ -431,13 +444,13 @@ function PlayerEditorModal({
                     className="w-20"
                     value={row.k}
                     onChange={(e) => setStat(i, 'k', e.target.value)}
-                    placeholder="AVG"
+                    placeholder="Stat"
                     maxLength={24}
                   />
                   <Input
                     value={row.v}
                     onChange={(e) => setStat(i, 'v', e.target.value)}
-                    placeholder=".312"
+                    placeholder="Value"
                     maxLength={40}
                   />
                 </div>

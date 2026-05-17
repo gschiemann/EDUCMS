@@ -28,6 +28,8 @@ import {
   MonitorPlay,
   Star,
   RectangleHorizontal,
+  Upload,
+  Loader2,
 } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
@@ -38,9 +40,12 @@ import {
   useGameScreens,
   useShowGameOnScreens,
   useHideGameFromScreens,
+  useGameRoster,
 } from '@/hooks/use-api';
-import { findSport } from '@cms/api-types';
+import { findSport, PLAYER_STATS } from '@cms/api-types';
 import type { SportDefinition, SportStatField } from '@cms/api-types';
+import { useUIStore } from '@/store/ui-store';
+import { API_URL } from '@/lib/api-url';
 import { RosterPanel } from './RosterPanel';
 import { CueDeckPanel } from './CueDeckPanel';
 
@@ -358,7 +363,12 @@ function GameControl() {
 
       {/* team rosters — players, headshots, stats */}
       <Section title="Team rosters">
-        <RosterPanel gameId={gameId} homeTeam={g.homeTeam} awayTeam={g.awayTeam} />
+        <RosterPanel
+          gameId={gameId}
+          homeTeam={g.homeTeam}
+          awayTeam={g.awayTeam}
+          statKeys={PLAYER_STATS[g.sport] || []}
+        />
       </Section>
 
       {/* broadcast spotlight */}
@@ -880,6 +890,27 @@ function DownControl({ value, onSet }: { value: number; onSet: (n: number) => vo
   );
 }
 
+/** Upload an image (a spotlight headshot) and return its hosted URL. */
+async function uploadPhoto(file: File): Promise<string> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const token = useUIStore.getState().token;
+  const res = await fetch(`${API_URL}/assets/upload`, {
+    method: 'POST',
+    body: fd,
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`Photo upload failed (${res.status}) ${t}`.trim());
+  }
+  const data = await res.json().catch(() => ({}) as any);
+  const url = data.fileUrl || data.url || data?.asset?.fileUrl || '';
+  if (!url) throw new Error('Upload succeeded but no URL came back.');
+  return url;
+}
+
 function SpotlightControl({ gameId, current }: { gameId: string; current: any }) {
   const ctl = useGameControl(gameId);
   const sp = current && typeof current === 'object' ? current : {};
@@ -891,6 +922,39 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
     [0, 1, 2, 3].map((i) => ({ label: seed[i]?.label || '', value: seed[i]?.value || '' })),
   );
   const onAir = !!(sp.visible && sp.title);
+
+  const roster = useGameRoster(gameId);
+  const players: any[] = Array.isArray(roster.data) ? roster.data : [];
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const photoRef = useRef<HTMLInputElement>(null);
+
+  // Pull a roster player straight into the spotlight — name, headshot,
+  // number/position, and their stat lines, all in one pick.
+  const fillFromPlayer = (p: any) => {
+    setTitle(p.name || '');
+    setPhotoUrl(p.photoUrl || '');
+    setSubtitle([p.number ? `#${p.number}` : null, p.position].filter(Boolean).join(' · '));
+    const entries = Object.entries(p.stats || {});
+    setLines(
+      [0, 1, 2, 3].map((i) => ({
+        label: entries[i] ? String(entries[i][0]) : '',
+        value: entries[i] ? String(entries[i][1]) : '',
+      })),
+    );
+  };
+
+  const pickPhoto = async (file?: File) => {
+    if (!file) return;
+    setPhotoBusy(true);
+    try {
+      setPhotoUrl(await uploadPhoto(file));
+    } catch {
+      /* leave the field as-is on failure */
+    } finally {
+      setPhotoBusy(false);
+      if (photoRef.current) photoRef.current.value = '';
+    }
+  };
 
   const setLine = (i: number, key: 'label' | 'value', val: string) =>
     setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, [key]: val } : l)));
@@ -914,6 +978,28 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
         lines.
         {onAir && <span className="ml-1 font-bold text-green-600">● On the board now</span>}
       </p>
+      {players.length > 0 && (
+        <div className="mb-3">
+          <label className="text-xs font-semibold text-slate-500">Pull from roster</label>
+          <select
+            value=""
+            onChange={(e) => {
+              const p = players.find((x) => x.id === e.target.value);
+              if (p) fillFromPlayer(p);
+            }}
+            className="mt-1 w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+          >
+            <option value="">Choose a player — fills name, photo &amp; stats…</option>
+            {players.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.number ? `#${p.number} ` : ''}
+                {p.name}
+                {p.team === 'away' ? ' (away)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="grid sm:grid-cols-2 gap-3">
         <div>
           <label className="text-xs font-semibold text-slate-500">Title</label>
@@ -937,7 +1023,7 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
         </div>
       </div>
       <div className="mt-3">
-        <label className="text-xs font-semibold text-slate-500">Photo URL</label>
+        <label className="text-xs font-semibold text-slate-500">Photo</label>
         <div className="mt-1 flex items-center gap-2">
           {photoUrl.trim() ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -951,10 +1037,27 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
               }}
             />
           ) : null}
+          <input
+            ref={photoRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => pickPhoto(e.target.files?.[0])}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 shrink-0"
+            disabled={photoBusy}
+            onClick={() => photoRef.current?.click()}
+          >
+            {photoBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            Upload
+          </Button>
           <Input
             value={photoUrl}
             onChange={(e) => setPhotoUrl(e.target.value)}
-            placeholder="https://…/headshot.jpg"
+            placeholder="…or paste a URL"
             maxLength={2048}
           />
         </div>
@@ -968,13 +1071,13 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
                 className="w-24"
                 value={l.label}
                 onChange={(e) => setLine(i, 'label', e.target.value)}
-                placeholder="AVG"
+                placeholder="Stat"
                 maxLength={24}
               />
               <Input
                 value={l.value}
                 onChange={(e) => setLine(i, 'value', e.target.value)}
-                placeholder=".312"
+                placeholder="Value"
                 maxLength={24}
               />
             </div>

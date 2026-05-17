@@ -337,3 +337,24 @@ export const SPORTS: SportDefinition[] = [
 export function findSport(key: string | null | undefined): SportDefinition | undefined {
   return key ? SPORT_DEFINITIONS[key] : undefined;
 }
+
+/**
+ * Typical per-player stat abbreviations for each sport — used to seed
+ * the roster editor so a player's stat fields make sense for their
+ * sport (a basketball player shows PTS/REB/AST, not baseball's
+ * AVG/HR/RBI). Operators can still type any custom stat key.
+ */
+export const PLAYER_STATS: Record<string, string[]> = {
+  football: ['YDS', 'TD', 'REC', 'TKL', 'INT'],
+  basketball: ['PTS', 'REB', 'AST', 'STL', 'BLK'],
+  baseball: ['AVG', 'HR', 'RBI', 'H', 'R', 'SB'],
+  softball: ['AVG', 'HR', 'RBI', 'H', 'R', 'SB'],
+  soccer: ['G', 'A', 'SH', 'SV'],
+  volleyball: ['K', 'AST', 'DIG', 'BLK', 'ACE'],
+  wrestling: ['W', 'L', 'PIN', 'TD'],
+  hockey: ['G', 'A', 'PTS', 'PIM', 'SOG'],
+  lacrosse: ['G', 'A', 'GB', 'SH'],
+  field_hockey: ['G', 'A', 'SH', 'SV'],
+  water_polo: ['G', 'A', 'ST', 'EXC'],
+  pickleball: ['W', 'L', 'PTS'],
+};
