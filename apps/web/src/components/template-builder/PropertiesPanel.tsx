@@ -10,6 +10,7 @@ import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinat
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { useBuilderStore } from './useBuilderStore';
 import { widgetLabel } from './constants';
+import { ALL_V2_WIDGETS } from '@/components/widgets/v2/registry';
 import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
 import { ColorPickerField } from '@/components/ui/color-picker';
@@ -120,6 +121,28 @@ import {
   type HolidayVariant,
   type HolidayGradeLevel,
 } from '@/components/widgets/HolidayWidget';
+
+// v2 widget pack — lookup by the kebab variant id stored in
+// `cfg.variant` (e.g. 'cel-football-touchdown', 'scoreboard-hs').
+// The generic v2 editor in ContentFields' default case reads the
+// matched widget's `defaults` to build a content + style form, so
+// celebration / scoreboard / industry widgets are fully editable.
+const V2_BY_VARIANT_ID: Record<string, { defaults?: Record<string, unknown> }> =
+  Object.fromEntries(
+    ALL_V2_WIDGETS.map((w) => [w.type.toLowerCase().replace(/_/g, '-'), w]),
+  );
+
+// Curated font choices for the v2 brand-style editor. Every stack here
+// renders without loading an external font (system-safe), so picking
+// one never leaves the operator with a silent fallback.
+const V2_FONT_OPTIONS: [string, string][] = [
+  ['', 'Theme default'],
+  ["'Inter', system-ui, sans-serif", 'Inter'],
+  ['system-ui, sans-serif', 'System sans'],
+  ["Georgia, 'Times New Roman', serif", 'Georgia (serif)'],
+  ["'Arial Black', Arial, sans-serif", 'Arial Black (heavy)'],
+  ["'Courier New', monospace", 'Monospace'],
+];
 
 const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
   MS_ARCADE: MS_ARCADE_DEFAULTS as any,
@@ -3731,6 +3754,142 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       break;
     }
     default: {
+      // ── v2 widget pack — generic content + brand-style editor ──
+      // Celebration / scoreboard / healthcare / corporate / hospitality
+      // / worship / chart widgets register as variants under canonical
+      // types with no hand-built case. Without this they'd show an
+      // EMPTY panel — "not editable". We read the widget's registry
+      // `defaults` for its content fields and add a Style section
+      // (background / text / accent color + font) so the operator can
+      // recolor + refont the widget to their team's brand. Every v2
+      // widget routes config.style through resolveStyle(), so these
+      // controls take effect live.
+      const v2w = cfg.variant ? V2_BY_VARIANT_ID[String(cfg.variant)] : undefined;
+      if (v2w) {
+        const SHv2 = (k: string, label: string) => (
+          <div
+            key={`shv2-${k}`}
+            className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200"
+          >
+            {label}
+          </div>
+        );
+        const defs = (v2w.defaults || {}) as Record<string, unknown>;
+        const contentKeys = Object.keys(defs).filter(
+          (k) => k !== 'variant' && k !== 'style' && k !== 'tier',
+        );
+        if (contentKeys.length > 0) {
+          fields.push(SHv2('content', 'Content'));
+          for (const key of contentKeys) {
+            const dv = defs[key];
+            const cur = cfg[key];
+            if (Array.isArray(dv)) {
+              const val = Array.isArray(cur)
+                ? cur.join(', ')
+                : (dv as unknown[]).join(', ');
+              fields.push(
+                <TextField
+                  key={key}
+                  label={prettyFieldLabel(key)}
+                  value={val}
+                  onChange={(v) =>
+                    setField({
+                      [key]: v.split(',').map((s) => s.trim()).filter(Boolean),
+                    })
+                  }
+                />,
+              );
+            } else if (typeof dv === 'boolean') {
+              fields.push(
+                <ToggleField
+                  key={key}
+                  label={prettyFieldLabel(key)}
+                  value={cur != null ? !!cur : (dv as boolean)}
+                  onChange={(v) => setField({ [key]: v })}
+                />,
+              );
+            } else if (typeof dv === 'number') {
+              fields.push(
+                <TextField
+                  key={key}
+                  label={prettyFieldLabel(key)}
+                  value={cur != null ? String(cur) : String(dv)}
+                  onChange={(v) =>
+                    setField({ [key]: v.trim() === '' ? 0 : Number(v) })
+                  }
+                />,
+              );
+            } else {
+              fields.push(
+                <TextField
+                  key={key}
+                  label={prettyFieldLabel(key)}
+                  value={cur != null ? String(cur) : String(dv ?? '')}
+                  placeholder={String(dv ?? '')}
+                  onChange={(v) => setField({ [key]: v })}
+                />,
+              );
+            }
+          }
+        }
+        if ('tier' in defs) {
+          fields.push(SHv2('tier', 'Scoreboard tier'));
+          fields.push(
+            <SelectField
+              key="v2-tier"
+              label="Tier"
+              value={String(cfg.tier ?? defs.tier ?? 'hs')}
+              options={[
+                ['hs', 'High School'],
+                ['college', 'College'],
+                ['pro', 'Professional'],
+              ]}
+              onChange={(v) => setField({ tier: v })}
+            />,
+          );
+        }
+        // Brand style — overrides the widget's designed palette + font.
+        const st: Record<string, unknown> =
+          cfg.style && typeof cfg.style === 'object' ? cfg.style : {};
+        const setStyle = (patch: Record<string, unknown>) =>
+          setField({ style: { ...st, ...patch } });
+        fields.push(SHv2('style', 'Style — match your brand'));
+        fields.push(
+          <ColorPickerField
+            key="v2-bg"
+            label="Background color"
+            value={String(st.bgColor || '')}
+            onChange={(v) => setStyle({ bgColor: v })}
+          />,
+        );
+        fields.push(
+          <ColorPickerField
+            key="v2-text"
+            label="Text color"
+            value={String(st.textColor || '')}
+            onChange={(v) => setStyle({ textColor: v })}
+          />,
+        );
+        fields.push(
+          <ColorPickerField
+            key="v2-accent"
+            label="Accent color"
+            value={String(st.accentColor || '')}
+            onChange={(v) => setStyle({ accentColor: v })}
+          />,
+        );
+        fields.push(
+          <SelectField
+            key="v2-font"
+            label="Font"
+            value={String(st.fontFamily || '')}
+            options={V2_FONT_OPTIONS}
+            onChange={(v) => setStyle({ fontFamily: v })}
+          />,
+        );
+        break;
+      }
+
       // Generic MS pack handler — all 16 MS widget types (8 landscape +
       // 8 portrait) share this same auto-form generator. Each widget
       // exports its DEFAULTS object keyed by dot-notation field paths.

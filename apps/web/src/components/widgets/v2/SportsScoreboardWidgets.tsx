@@ -21,6 +21,7 @@ import { useEffect, useState } from 'react';
 import { findSport } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import type { WidgetProps } from './_shared/types';
+import type { WidgetStyle } from './_shared/styleSystem';
 import { API_URL } from '@/lib/api-url';
 
 type Tier = 'hs' | 'college' | 'pro';
@@ -50,6 +51,9 @@ export interface SportsScoreboardCfg {
   gameId?: string;
   /** Visual tier: 'hs' | 'college' | 'pro'. */
   tier?: Tier;
+  /** Brand overrides (Properties Panel → Style) — bg / text / accent
+   *  color + font win over the tier's designed palette. */
+  style?: WidgetStyle;
 }
 
 // ── sample game (editor / no game bound) ───────────────────────────
@@ -178,7 +182,17 @@ export function SportsScoreboardWidget({
   height = 480,
 }: WidgetProps<SportsScoreboardCfg>) {
   const c = config || {};
-  const tier = TIERS[c.tier && TIERS[c.tier] ? c.tier : 'hs'];
+  const baseTier = TIERS[c.tier && TIERS[c.tier] ? c.tier : 'hs'];
+  // Operator brand overrides (Properties Panel → Style) win over the
+  // tier's designed palette, so a scoreboard can match team colors.
+  const st: WidgetStyle = c.style || {};
+  const tier: TierStyle = {
+    ...baseTier,
+    bg: st.bgColor || baseTier.bg,
+    accent: st.accentColor || baseTier.accent,
+    ink: st.textColor || baseTier.ink,
+    fontFamily: st.fontFamily || baseTier.fontFamily,
+  };
   const gameId = (c.gameId || '').trim();
 
   const [data, setData] = useState<BoardData | null>(null);

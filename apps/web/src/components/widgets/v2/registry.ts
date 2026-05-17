@@ -377,9 +377,9 @@ export const WORSHIP_WIDGETS: RegisteredWidget[] = [
 const CAT_SCOREBOARD = 'Scoreboards';
 
 export const SCOREBOARD_WIDGETS: RegisteredWidget[] = [
-  W('SCOREBOARD_HS',      CAT_SCOREBOARD, 'High School Scoreboard', 'Live game scoreboard — bind a game and it auto-adapts to that sport (clock, periods, stats from the engine). High-school tier.', 'universal', Tv, withMeasuredHeight(SportsScoreboardWidget), { tier: 'hs' }),
-  W('SCOREBOARD_COLLEGE', CAT_SCOREBOARD, 'College Scoreboard',     'Live game scoreboard — college tier, broadcast polish. Drives off the same sports engine.',                                     'universal', Tv, withMeasuredHeight(SportsScoreboardWidget), { tier: 'college' }),
-  W('SCOREBOARD_PRO',     CAT_SCOREBOARD, 'Pro Scoreboard',         'Live game scoreboard — professional tier, sleek broadcast look. Drives off the same sports engine.',                             'universal', Tv, withMeasuredHeight(SportsScoreboardWidget), { tier: 'pro' }),
+  W('SCOREBOARD_HS',      CAT_SCOREBOARD, 'High School Scoreboard', 'Live game scoreboard — bind a game and it auto-adapts to that sport (clock, periods, stats from the engine). High-school tier.', 'universal', Tv, withMeasuredHeight(SportsScoreboardWidget), { tier: 'hs', gameId: '' }),
+  W('SCOREBOARD_COLLEGE', CAT_SCOREBOARD, 'College Scoreboard',     'Live game scoreboard — college tier, broadcast polish. Drives off the same sports engine.',                                     'universal', Tv, withMeasuredHeight(SportsScoreboardWidget), { tier: 'college', gameId: '' }),
+  W('SCOREBOARD_PRO',     CAT_SCOREBOARD, 'Pro Scoreboard',         'Live game scoreboard — professional tier, sleek broadcast look. Drives off the same sports engine.',                             'universal', Tv, withMeasuredHeight(SportsScoreboardWidget), { tier: 'pro', gameId: '' }),
 ];
 
 export const CHART_WIDGETS: RegisteredWidget[] = [
