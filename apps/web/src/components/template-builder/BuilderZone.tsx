@@ -678,7 +678,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           the same zone, so font-size !important grew the badge text.
           Scoping to `[data-widget-content]` keeps chrome at its fixed
           design size and only restyles the actual widget rendering. */}
-      <div data-widget-content="true" style={{ position: 'absolute', inset: 0 }}>
+      <div data-widget-content="true" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
         <WidgetErrorBoundary resetKey={zone.id} widgetLabel={label}>
           {/* 2026-05-17 — celebration widgets are motion-first (sparkle
               bursts, stadium-light shake, ribbon sweep). A frozen

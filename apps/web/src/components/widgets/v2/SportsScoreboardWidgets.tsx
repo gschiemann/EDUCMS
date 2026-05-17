@@ -156,13 +156,16 @@ function ordinal(n: number): string {
 }
 function segmentLabel(def: SportDefinition, b: BoardData): string {
   const n = b.segment;
-  if (n > def.segment.count) {
-    const ot = n - def.segment.count;
-    return ot > 1 ? `OT${ot}` : 'OT';
-  }
+  // Inning sports (baseball / softball) have no overtime — extra
+  // innings just keep counting up (10TH, 11TH…). This MUST be checked
+  // before the OT branch, or innings past `count` mislabel as "OT".
   if (def.segment.name === 'Inning') {
     const half = String((b.stats || {}).half || '').toUpperCase();
     return `${half ? half + ' ' : ''}${ordinal(n)}`;
+  }
+  if (n > def.segment.count) {
+    const ot = n - def.segment.count;
+    return ot > 1 ? `OT${ot}` : 'OT';
   }
   return `${def.segment.name.toUpperCase()} ${n}`;
 }

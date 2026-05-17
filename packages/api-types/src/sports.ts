@@ -110,7 +110,10 @@ const BASEBALL: SportDefinition = {
   emoji: '⚾',
   mode: 'HEAD_TO_HEAD',
   clock: { type: 'none' },
-  segment: { name: 'Inning', count: 7, overtime: true },
+  // MLB / college regulation is 9 innings. Extra innings just keep
+  // counting up (10TH, 11TH…) — segmentLabel never shows "OT" for a
+  // sport whose segment is an Inning.
+  segment: { name: 'Inning', count: 9, overtime: true },
   score: { unit: 'runs', increments: [1, 2, 3, 4] },
   stats: [
     { key: 'balls', label: 'Balls', scope: 'game', type: 'number', min: 0, max: 3 },
@@ -131,6 +134,8 @@ const SOFTBALL: SportDefinition = {
   key: 'softball',
   name: 'Softball',
   emoji: '🥎',
+  // NCAA / high-school softball regulation is 7 innings (not 9).
+  segment: { name: 'Inning', count: 7, overtime: true },
 };
 
 const SOCCER: SportDefinition = {

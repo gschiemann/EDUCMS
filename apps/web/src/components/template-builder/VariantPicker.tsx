@@ -24,6 +24,7 @@ import {
 } from '@/components/widgets/variants';
 import { useBuilderStore } from './useBuilderStore';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 
 const WIDGET_TYPE_LABELS: Record<string, string> = {
   CLOCK:           'Clocks',
@@ -444,7 +445,13 @@ function VariantTile({ variant, active, onPick }: { variant: WidgetVariant; acti
       {/* Live preview — wider 16:10 ratio, larger font scale so the widget reads */}
       <div className="relative w-full bg-slate-100" style={{ aspectRatio: '16 / 10', fontSize: '14px' }}>
         <div className="absolute inset-0 pointer-events-none">
-          <Render config={{ ...(variant.defaultConfig || {}), _thumb: true }} compact={false} />
+          {/* One malformed thumbnail must not blank the whole widgets
+              panel. Without this boundary a single throwing tile (bad
+              defaultConfig, render bug) crashes every widget tile and
+              the operator can no longer add ANY widget. */}
+          <WidgetErrorBoundary resetKey={variant.id} widgetLabel={variant.name}>
+            <Render config={{ ...(variant.defaultConfig || {}), _thumb: true }} compact={false} />
+          </WidgetErrorBoundary>
         </div>
       </div>
       {/* Label below the preview (not overlay — easier to read) */}
