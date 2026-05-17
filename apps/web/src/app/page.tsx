@@ -1,13 +1,5 @@
 import Link from 'next/link';
-import {
-  Shield,
-  MonitorPlay,
-  Sparkles,
-  ArrowRight,
-  Palette,
-  Zap,
-  KeyRound,
-} from 'lucide-react';
+import { ArrowRight, Shield, Palette, Zap, KeyRound } from 'lucide-react';
 import { PublicShell } from '@/components/marketing/PublicShell';
 import { TemplateEmbed } from '@/components/marketing/TemplateEmbed';
 import { IndustryShowcase } from '@/components/marketing/IndustryShowcase';
@@ -15,24 +7,21 @@ import { IndustryShowcase } from '@/components/marketing/IndustryShowcase';
 /**
  * VenueOS landing page.
  *
- * 2026-05-16 — rebranded from school-only to universal CMS. VenueOS
- * runs digital signage, kiosks, and emergency alerts for ANY venue:
- * K-12 schools, restaurants, retail, gyms, healthcare, hotels, bars,
- * corporate. K-12 still leads every section — it's the proven pilot
- * and the strongest emergency-alert story — but the page no longer
- * reads as a school-only product. New "Industries" section makes the
- * multi-vertical coverage explicit; gallery + copy span industries.
- *
- * CTAs:
- *   - "Start free trial" → /signup
- *   - "Explore help center" → /help
+ * 2026-05-16 — design refresh: "minimal & precise" (Linear/Vercel
+ * territory). Dark navy hero, professional indigo (no rainbow
+ * gradients), Inter throughout (the rounded Fredoka display font is
+ * retired here — it read as a K-12 toy). Built around the hexagonal
+ * network mark. K-12 still leads the industry list as the proven
+ * pilot, but nothing on the page reads as a school-only product.
  */
 
 export const metadata = {
-  title: 'VenueOS — every screen, every venue, in one place',
+  title: 'VenueOS — the operating system for every screen you run',
   description:
     'One platform for digital signage, interactive kiosks, live sports scoreboards, and emergency alerts — across K-12 schools, sports venues, restaurants, retail, gyms, healthcare, hotels, and corporate venues.',
 };
+
+const NAVY = '#070a14';
 
 export default function LandingPage() {
   return (
@@ -49,148 +38,138 @@ export default function LandingPage() {
   );
 }
 
+// ── hero ─────────────────────────────────────────────────────────
+
 function Hero() {
   return (
-    <section className="relative pt-20 pb-24 md:pt-28 md:pb-32">
-      <div className="max-w-6xl mx-auto px-6 text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-200 shadow-sm text-xs font-medium text-slate-600 mb-8">
-          <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-          One CMS for every industry
-        </div>
-        <h1 className="font-[family-name:var(--font-fredoka)] text-5xl md:text-7xl font-semibold tracking-tight text-slate-900 leading-[1.05]">
-          Every screen in your venue,
-          <br />
-          <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-500 bg-clip-text text-transparent">
-            in one place.
-          </span>
+    <section className="relative overflow-hidden" style={{ background: NAVY }}>
+      {/* radial indigo glow */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-[420px] h-[900px] w-[900px]"
+        style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.18), transparent 62%)' }}
+      />
+      {/* faint hexagon network field */}
+      <svg
+        aria-hidden
+        className="pointer-events-none absolute top-0 left-0 h-full w-full opacity-40"
+        viewBox="0 0 1120 560"
+        preserveAspectRatio="xMidYMid slice"
+      >
+        <g stroke="#26304d" strokeWidth="1.25" fill="none">
+          <polygon points="120,90 165,116 165,168 120,194 75,168 75,116" />
+          <polygon points="210,142 255,168 255,220 210,246 165,220 165,168" />
+          <polygon points="1000,360 1045,386 1045,438 1000,464 955,438 955,386" />
+          <polygon points="910,308 955,334 955,386 910,412 865,386 865,334" />
+          <polygon points="990,150 1035,176 1035,228 990,254 945,228 945,176" />
+          <polygon points="60,360 105,386 105,438 60,464 15,438 15,386" />
+        </g>
+      </svg>
+
+      <div className="relative max-w-5xl mx-auto px-6 pt-24 pb-24 md:pt-28 md:pb-28 text-center">
+        <span className="text-xs font-semibold tracking-[0.14em] uppercase text-indigo-300">
+          Signage · Kiosks · Scoreboards · Emergency alerts
+        </span>
+        <h1 className="mt-5 text-4xl sm:text-5xl md:text-6xl font-semibold tracking-tight text-white leading-[1.08] max-w-4xl mx-auto">
+          The operating system for{' '}
+          <span className="text-indigo-300">every screen</span> you run.
         </h1>
-        <p className="mt-6 text-lg md:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
-          Digital signage, interactive kiosks, live scoreboards, and emergency alerts —
-          for K-12 schools, sports venues, restaurants, retail, gyms, clinics, hotels,
-          and offices. One dashboard anyone on your team can run.
+        <p className="mt-6 text-base md:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
+          One platform for digital signage, interactive kiosks, live scoreboards, and
+          life-safety alerts — across schools, stadiums, restaurants, retail, healthcare,
+          hospitality, and corporate venues.
         </p>
-        <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
+        <div className="mt-9 flex flex-col sm:flex-row gap-3 justify-center">
           <Link
             href="/signup"
-            className="group inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 shadow-xl shadow-indigo-500/25 transition"
+            className="group inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
           >
             Start free trial
             <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
           </Link>
           <Link
-            href="/help"
-            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl text-sm font-semibold text-slate-700 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition"
+            href="/pricing"
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold text-white border border-[#2b3550] hover:border-[#46527a] transition-colors"
           >
-            Explore help center
+            See pricing
           </Link>
         </div>
-        <p className="mt-5 text-xs text-slate-500">
-          No credit card required &middot; Free pilot, any industry &middot; Up in 10 minutes
+        <p className="mt-5 text-sm text-slate-500">
+          No credit card · Free pilot, any industry · Up and running in 10 minutes
         </p>
-
-        {/* Hero template preview — a live VenueOS template in a
-            browser-chrome frame. TemplateEmbed sizes the 1920×1080
-            render with a CSS transform; on mobile it shows the
-            staticImage so Safari never has to composite a live
-            animated iframe. */}
-        <div className="mt-16 relative mx-auto max-w-5xl">
-          <div
-            aria-hidden
-            className="absolute -inset-8 -z-10 rounded-[40px]"
-            style={{
-              background:
-                'radial-gradient(ellipse 60% 50% at 30% 40%, rgba(99,102,241,.18), transparent 70%), radial-gradient(ellipse 50% 40% at 80% 60%, rgba(217,70,239,.16), transparent 70%)',
-              filter: 'blur(40px)',
-            }}
-          />
-          <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-[0_24px_60px_-12px_rgba(15,23,42,0.25)]">
-            <div className="h-9 bg-slate-100/80 border-b border-slate-200 flex items-center gap-1.5 px-4">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-300" />
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-300" />
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-300" />
-              <span className="ml-3 text-[11px] text-slate-500 font-mono">
-                venueos.app/your-venue/screens/lobby
-              </span>
-            </div>
-            <TemplateEmbed
-              src="/demo/templates/rainbow.html"
-              staticImage="/demo/templates/rainbow.jpg"
-              title="Live preview — VenueOS template"
-              eager
-            />
-          </div>
-        </div>
       </div>
     </section>
   );
 }
+
+// ── trusted strip ────────────────────────────────────────────────
 
 function LogoStrip() {
   return (
-    <section className="py-10">
-      <div className="max-w-5xl mx-auto px-6">
-        <p className="text-center text-xs font-semibold tracking-wider uppercase text-slate-500 mb-8">
-          Trusted across schools, venues, restaurants, gyms &amp; retail
-        </p>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-6 opacity-70">
-          {['Lincoln USD', 'Riverside Arena', 'Northgate Market', 'Iron & Oak Fitness', 'Summit Hotels'].map((d) => (
-            <div
-              key={d}
-              className="flex items-center justify-center text-sm font-[family-name:var(--font-fredoka)] font-semibold text-slate-500 text-center"
-            >
+    <div className="border-b border-slate-200 bg-[#fafbfc]">
+      <div className="max-w-5xl mx-auto px-6 py-7 flex flex-wrap items-center justify-center gap-x-9 gap-y-3">
+        <span className="text-[11px] font-semibold tracking-[0.12em] uppercase text-slate-400">
+          Running on screens at
+        </span>
+        {['Lincoln USD', 'Riverside Arena', 'Northgate Market', 'Iron & Oak Fitness', 'Summit Hotels'].map(
+          (d) => (
+            <span key={d} className="text-sm font-semibold text-slate-400">
               {d}
-            </div>
-          ))}
-        </div>
+            </span>
+          ),
+        )}
       </div>
-    </section>
+    </div>
   );
 }
+
+// ── template gallery ─────────────────────────────────────────────
 
 const GALLERY = [
   {
     src: '/demo/templates/rainbow.html',
     staticImage: '/demo/templates/rainbow.jpg',
     name: 'Elementary Lobby',
-    blurb: 'Friendly, playful welcome board for K-5 schools.',
+    blurb: 'A friendly welcome board for K-5 schools.',
     chip: 'K-12',
-    chipCls: 'bg-amber-100 text-amber-700',
+  },
+  {
+    src: '/templates/hs/ath-gameday.html',
+    staticImage: '/demo/templates/sports-gameday.jpg',
+    name: 'Game Day Hub',
+    blurb: 'Live scoreboard and game-day show control.',
+    chip: 'Sports',
   },
   {
     src: '/templates/signage/qsr/01-drive-thru-flagship.html',
     staticImage: '/demo/templates/qsr-drive-thru.jpg',
     name: 'Drive-Thru Menu',
-    blurb: 'Quick-service menu board with combos and live pricing.',
+    blurb: 'A counter menu board with live pricing.',
     chip: 'Restaurant',
-    chipCls: 'bg-orange-100 text-orange-700',
-  },
-  {
-    src: '/templates/signage/fashion/01-lookbook-flagship.html',
-    staticImage: '/demo/templates/fashion-lookbook.jpg',
-    name: 'Boutique Lookbook',
-    blurb: 'Editorial lookbook display for fashion retail.',
-    chip: 'Fashion',
-    chipCls: 'bg-fuchsia-100 text-fuchsia-700',
   },
 ];
 
 function Gallery() {
   return (
-    <section id="templates" className="py-12 md:py-16">
+    <section id="templates" className="py-20 md:py-24">
       <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-10">
-          <p className="text-xs font-bold tracking-[0.12em] uppercase text-indigo-600 mb-2">
+        <div className="max-w-2xl">
+          <p className="text-xs font-semibold tracking-[0.14em] uppercase text-indigo-600">
             170+ templates, every industry
           </p>
-          <h2 className="font-[family-name:var(--font-fredoka)] text-3xl md:text-5xl font-semibold tracking-tight text-slate-900">
+          <h2 className="mt-3 text-3xl md:text-4xl font-semibold tracking-tight text-slate-900">
             A look for every space.
           </h2>
+          <p className="mt-3 text-base md:text-lg text-slate-600">
+            Start from a polished template, change the text, recolor it to your brand —
+            then drop it on any screen.
+          </p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-5">
           {GALLERY.map((t) => (
             <div
               key={t.name}
-              className="bg-white rounded-2xl overflow-hidden border border-slate-200 hover:border-indigo-300 hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)] transition-all"
+              className="bg-white rounded-xl overflow-hidden border border-slate-200 hover:border-indigo-300 hover:-translate-y-0.5 transition-all"
             >
               <TemplateEmbed
                 src={t.src}
@@ -199,12 +178,10 @@ function Gallery() {
               />
               <div className="px-5 py-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h3 className="font-[family-name:var(--font-fredoka)] font-semibold text-slate-900 text-lg">
-                    {t.name}
-                  </h3>
+                  <h3 className="font-semibold tracking-tight text-slate-900">{t.name}</h3>
                   <p className="text-xs text-slate-500 mt-0.5">{t.blurb}</p>
                 </div>
-                <span className={`shrink-0 text-[10px] font-bold tracking-wider uppercase px-2 py-1 rounded-md ${t.chipCls}`}>
+                <span className="shrink-0 text-[10px] font-semibold tracking-wider uppercase px-2 py-1 rounded-md bg-indigo-50 text-indigo-600">
                   {t.chip}
                 </span>
               </div>
@@ -216,73 +193,55 @@ function Gallery() {
   );
 }
 
-/**
- * 4 plain-English benefits. Every tile answers "what's in it for me?"
- * Lockdown leads — it's the K-12-born differentiator and a universal
- * venue-safety story.
- */
+// ── features ─────────────────────────────────────────────────────
+
 const FEATURES = [
   {
     icon: Shield,
-    title: 'Emergency alert in a tap.',
+    title: 'Emergency alerts in a tap',
     desc:
-      'Every screen in the venue flips to a lockdown, evacuation, or weather message within seconds. Hold-to-trigger so no one fires it by accident.',
-    cls: 'from-red-500 to-rose-500',
+      'Every screen flips to a lockdown, evacuation, or weather message in seconds — signed, audited, and hold-to-trigger so nothing fires by accident.',
   },
   {
     icon: Palette,
-    title: 'Templates for every industry.',
+    title: 'Templates for every industry',
     desc:
-      'Schools, sports venues, restaurants, gyms, retail, healthcare, hotels. Pick one, change the text, recolor it to your brand — you’re done.',
-    cls: 'from-indigo-500 to-violet-500',
+      'Schools, stadiums, restaurants, gyms, retail, healthcare, hotels. Pick one, change the text, recolor it to your brand — done.',
   },
   {
     icon: Zap,
-    title: 'Any screen, anywhere.',
+    title: 'Runs on any screen',
     desc:
-      'Works on a Smart TV, a cheap Android stick, or the touchscreen you already own. No proprietary hardware to buy.',
-    cls: 'from-emerald-500 to-teal-500',
+      'Smart TVs, Android players, LED controllers, kiosks. No proprietary hardware to buy or maintain.',
   },
   {
     icon: KeyRound,
-    title: 'Logs in with what you use.',
+    title: 'Logs in with what you use',
     desc:
       'Google, Microsoft, SSO — sign-in works out of the box. K-12 districts get Clever rostering with staff sync built in.',
-    cls: 'from-amber-500 to-orange-500',
   },
 ];
 
 function Features() {
   return (
-    <section id="features" className="py-20 md:py-24">
+    <section id="features" className="py-20 md:py-24 bg-[#fafbfc] border-y border-slate-200">
       <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-14">
-          <p className="text-xs font-bold tracking-[0.12em] uppercase text-indigo-600 mb-2">
-            Why teams pick VenueOS
+        <div className="max-w-2xl">
+          <p className="text-xs font-semibold tracking-[0.14em] uppercase text-indigo-600">
+            Why teams choose VenueOS
           </p>
-          <h2 className="font-[family-name:var(--font-fredoka)] text-3xl md:text-5xl font-semibold tracking-tight text-slate-900">
-            Built for the people actually running the place.
+          <h2 className="mt-3 text-3xl md:text-4xl font-semibold tracking-tight text-slate-900">
+            Serious infrastructure, run by anyone.
           </h2>
-          <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto">
-            Not just another signage tool — designed around the stuff a real
-            venue does every day.
-          </p>
         </div>
-        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-10 grid gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
           {FEATURES.map((f) => (
-            <div
-              key={f.title}
-              className="group relative rounded-3xl bg-white border border-slate-200 p-7 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all"
-            >
-              <div
-                className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${f.cls} flex items-center justify-center shadow-lg`}
-              >
-                <f.icon className="w-5 h-5 text-white" strokeWidth={2.25} />
+            <div key={f.title}>
+              <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <f.icon className="w-5 h-5 text-indigo-600" strokeWidth={2.1} />
               </div>
-              <h3 className="mt-5 font-[family-name:var(--font-fredoka)] text-xl font-semibold text-slate-900">
-                {f.title}
-              </h3>
-              <p className="mt-2 text-sm text-slate-600 leading-relaxed">{f.desc}</p>
+              <h3 className="mt-4 font-semibold tracking-tight text-slate-900">{f.title}</h3>
+              <p className="mt-1.5 text-sm text-slate-600 leading-relaxed">{f.desc}</p>
             </div>
           ))}
         </div>
@@ -291,29 +250,34 @@ function Features() {
   );
 }
 
+// ── emergency callout ────────────────────────────────────────────
+
 function EmergencyCallout() {
   return (
-    <section className="py-16">
+    <section className="py-20 md:py-24">
       <div className="max-w-6xl mx-auto px-6">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-10 md:p-16 text-white shadow-2xl">
-          <div aria-hidden className="absolute -top-20 -right-20 w-80 h-80 rounded-full bg-red-500/20 blur-3xl" />
-          <div aria-hidden className="absolute -bottom-20 -left-20 w-80 h-80 rounded-full bg-indigo-500/20 blur-3xl" />
+        <div
+          className="relative overflow-hidden rounded-2xl p-10 md:p-14 text-white"
+          style={{ background: NAVY }}
+        >
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -top-24 -right-24 w-80 h-80 rounded-full"
+            style={{ background: 'radial-gradient(circle, rgba(239,68,68,0.18), transparent 70%)' }}
+          />
           <div className="relative grid md:grid-cols-2 gap-10 items-center">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/20 border border-red-400/30 text-xs font-semibold">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/15 border border-red-400/25 text-xs font-semibold text-red-200">
                 <Shield className="w-3.5 h-3.5" />
                 Built for safety
               </div>
-              <h2 className="mt-5 font-[family-name:var(--font-fredoka)] text-4xl md:text-5xl font-semibold tracking-tight leading-tight">
-                When seconds matter,
-                <br />
-                it doesn&apos;t miss.
+              <h2 className="mt-5 text-3xl md:text-4xl font-semibold tracking-tight leading-tight text-white">
+                When seconds matter, it doesn&rsquo;t miss.
               </h2>
-              <p className="mt-5 text-slate-300 text-base leading-relaxed max-w-lg">
-                A hold-to-trigger panic button, a private alert channel, and every action
-                written to an immutable log. Forged for K-12 lockdown drills — and just
-                as ready for an office, a hotel, or a hospital. Drill it Monday morning
-                with confidence.
+              <p className="mt-4 text-slate-400 leading-relaxed max-w-lg">
+                A hold-to-trigger panic button, a private signed alert channel, and every
+                action written to an immutable log. Forged for K-12 lockdown drills — and
+                just as ready for a stadium, an office, or a hospital.
               </p>
             </div>
             <ul className="space-y-3 text-sm">
@@ -322,12 +286,11 @@ function EmergencyCallout() {
                 '3-second hold to trigger — no accidental taps',
                 'Every action logged forever, viewable by admins',
                 'Keeps running even if the network goes down',
-                'Tested with real-world drill scenarios',
               ].map((item) => (
-                <li key={item} className="flex items-start gap-3 text-slate-200">
+                <li key={item} className="flex items-start gap-3 text-slate-300">
                   <span
                     aria-hidden
-                    className="mt-1.5 inline-block w-2 h-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]"
+                    className="mt-1.5 inline-block w-1.5 h-1.5 shrink-0 rounded-full bg-indigo-400"
                   />
                   <span>{item}</span>
                 </li>
@@ -340,20 +303,23 @@ function EmergencyCallout() {
   );
 }
 
+// ── pricing teaser ───────────────────────────────────────────────
+
 function PricingTeaser() {
   return (
-    <section className="py-20">
-      <div className="max-w-4xl mx-auto px-6 text-center">
-        <h2 className="font-[family-name:var(--font-fredoka)] text-4xl md:text-5xl font-semibold tracking-tight text-slate-900">
+    <section className="py-8 md:py-12">
+      <div className="max-w-3xl mx-auto px-6 text-center">
+        <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-slate-900">
           Fair pricing. No screen taxes.
         </h2>
-        <p className="mt-4 text-lg text-slate-600">
-          One price per location. Unlimited screens, users, and templates. See all tiers on the pricing page.
+        <p className="mt-3 text-base md:text-lg text-slate-600">
+          One price per location — unlimited screens, users, and templates. See every
+          tier on the pricing page.
         </p>
-        <div className="mt-8">
+        <div className="mt-7">
           <Link
             href="/pricing"
-            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition"
+            className="inline-flex items-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors"
           >
             See pricing <ArrowRight className="w-4 h-4" />
           </Link>
@@ -363,32 +329,44 @@ function PricingTeaser() {
   );
 }
 
+// ── final CTA ────────────────────────────────────────────────────
+
 function CTA() {
   return (
-    <section className="py-24">
-      <div className="max-w-4xl mx-auto px-6 text-center">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-500 to-violet-600 p-12 md:p-16 shadow-2xl shadow-indigo-500/30">
-          <div aria-hidden className="absolute -top-16 -right-16 w-64 h-64 rounded-full bg-white/10 blur-2xl" />
-          <MonitorPlay className="w-12 h-12 mx-auto text-white/90" strokeWidth={1.75} />
-          <h2 className="mt-6 font-[family-name:var(--font-fredoka)] text-4xl md:text-5xl font-semibold tracking-tight text-white">
-            Ready to light up your venue?
-          </h2>
-          <p className="mt-4 text-white/90 text-lg max-w-xl mx-auto">
-            Free pilot for any industry. Up and running in under ten minutes — no card on file, no hardware, no calls.
-          </p>
-          <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              href="/signup"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl text-sm font-semibold text-indigo-700 bg-white hover:bg-slate-50 shadow-lg transition"
-            >
-              Start free trial <ArrowRight className="w-4 h-4" />
-            </Link>
-            <Link
-              href="/help"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl text-sm font-semibold text-white bg-white/10 hover:bg-white/20 border border-white/20 transition"
-            >
-              Browse help articles
-            </Link>
+    <section className="py-20 md:py-24">
+      <div className="max-w-5xl mx-auto px-6">
+        <div
+          className="relative overflow-hidden rounded-2xl px-8 py-16 md:px-16 md:py-20 text-center"
+          style={{ background: NAVY }}
+        >
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-40 h-[520px] w-[520px]"
+            style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.2), transparent 64%)' }}
+          />
+          <div className="relative">
+            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white">
+              Put it on every screen.
+            </h2>
+            <p className="mt-4 text-slate-400 text-base md:text-lg max-w-xl mx-auto">
+              Free pilot, any industry. Up and running in under ten minutes — no card,
+              no hardware, no sales call.
+            </p>
+            <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+              <Link
+                href="/signup"
+                className="group inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+              >
+                Start free trial
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </Link>
+              <Link
+                href="/help"
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold text-white border border-[#2b3550] hover:border-[#46527a] transition-colors"
+              >
+                Browse help center
+              </Link>
+            </div>
           </div>
         </div>
       </div>

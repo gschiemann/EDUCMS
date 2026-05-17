@@ -152,13 +152,10 @@ export function TemplateEmbed({
       className="relative w-full bg-slate-950 overflow-hidden"
       style={{ aspectRatio: '16 / 9' }}
     >
-      {/* Brand-gradient backdrop — used as the actual visible content
-          on mobile + as a behind-iframe colour on desktop while the
-          frame is still loading. */}
-      <div
-        aria-hidden
-        className="absolute inset-0 bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500"
-      />
+      {/* Solid navy backdrop — a behind-iframe colour on desktop while
+          the frame is still loading, and the base for the (now rare)
+          mobile fallback when a template has no staticImage. */}
+      <div aria-hidden className="absolute inset-0 bg-[#0e1424]" />
       {/* Mobile: static JPG snapshot if provided, otherwise the gradient
           + label fallback. ONLY rendered when we know we're on mobile
           (isDesktop === false). On desktop the iframe covers it; during

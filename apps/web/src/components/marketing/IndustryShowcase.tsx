@@ -237,16 +237,16 @@ export function IndustryShowcase() {
     .map((c) => c.label);
 
   return (
-    <section id="industries" className="py-16 md:py-20">
+    <section id="industries" className="py-20 md:py-24">
       <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-12">
-          <p className="text-xs font-bold tracking-[0.12em] uppercase text-indigo-600 mb-2">
+        <div className="text-center mb-10">
+          <p className="text-xs font-semibold tracking-[0.14em] uppercase text-indigo-600 mb-2">
             One platform, every industry
           </p>
-          <h2 className="font-[family-name:var(--font-fredoka)] text-3xl md:text-5xl font-semibold tracking-tight text-slate-900">
-            Built for your industry.
+          <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-slate-900">
+            Built for the way your venue runs.
           </h2>
-          <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto">
+          <p className="mt-3 text-base md:text-lg text-slate-600 max-w-2xl mx-auto">
             Pick yours — see the templates, the workflow, and the benefits tuned
             to how that kind of venue actually runs.
           </p>
@@ -262,17 +262,17 @@ export function IndustryShowcase() {
                 type="button"
                 onClick={() => setSelected(ind.vertical)}
                 aria-pressed={isSelected}
-                className={`text-left rounded-2xl border p-5 transition-all ${
+                className={`text-left rounded-xl border p-5 transition-all ${
                   isSelected
-                    ? 'border-indigo-400 bg-gradient-to-br from-indigo-50 to-violet-50 shadow-md ring-2 ring-indigo-300'
-                    : 'border-slate-200 bg-white hover:border-indigo-200 hover:shadow-md hover:-translate-y-0.5'
+                    ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500'
+                    : 'border-slate-200 bg-white hover:border-indigo-300 hover:-translate-y-0.5'
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <span className="text-3xl leading-none" aria-hidden>
                     {ind.emoji}
                   </span>
-                  <h3 className="font-[family-name:var(--font-fredoka)] font-semibold text-slate-900 text-base">
+                  <h3 className="font-semibold tracking-tight text-slate-900 text-base">
                     {ind.name}
                   </h3>
                   {ind.badge && (
@@ -290,7 +290,7 @@ export function IndustryShowcase() {
         </div>
 
         {/* detail panel for the selected industry */}
-        <div className="mt-6 rounded-3xl border border-slate-200 bg-white shadow-[0_12px_40px_rgba(15,23,42,0.07)] overflow-hidden">
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white overflow-hidden">
           <div className="grid md:grid-cols-[1fr_1.05fr]">
             {/* left — pitch, benefits, CTA */}
             <div className="p-7 md:p-9">
@@ -299,7 +299,7 @@ export function IndustryShowcase() {
                   {active.emoji}
                 </span>
                 <div>
-                  <h3 className="font-[family-name:var(--font-fredoka)] text-2xl font-semibold text-slate-900">
+                  <h3 className="text-2xl font-semibold tracking-tight text-slate-900">
                     {active.name}
                   </h3>
                   <p className="text-xs text-slate-500">{active.tagline}</p>
@@ -335,7 +335,7 @@ export function IndustryShowcase() {
               </div>
               <Link
                 href={`/signup?vertical=${active.vertical}`}
-                className="group mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 shadow-lg shadow-indigo-500/25 transition"
+                className="group mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
               >
                 Start your free {active.name} trial
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
@@ -343,8 +343,8 @@ export function IndustryShowcase() {
             </div>
 
             {/* right — a live template preview for this industry */}
-            <div className="p-5 md:p-7 bg-gradient-to-br from-slate-50 to-indigo-50/60 border-t md:border-t-0 md:border-l border-slate-200 flex flex-col">
-              <p className="text-xs font-bold tracking-[0.12em] uppercase text-indigo-600 mb-3">
+            <div className="p-5 md:p-7 bg-[#fafbfc] border-t md:border-t-0 md:border-l border-slate-200 flex flex-col">
+              <p className="text-xs font-semibold tracking-[0.14em] uppercase text-indigo-600 mb-3">
                 A ready-made {active.name} template
               </p>
               <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-slate-950">

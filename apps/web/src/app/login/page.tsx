@@ -4,16 +4,20 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { MonitorPlay, Loader2, AlertCircle, KeyRound } from 'lucide-react';
+import { Loader2, AlertCircle, KeyRound } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { API_URL, warnIfMisconfigured, isLikelyMisconfigured } from '@/lib/api-url';
 import { clog } from '@/lib/client-logger';
 import { getClientBrand } from '@/lib/brand';
 
+const INPUT_CLS =
+  'w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 ' +
+  'placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition';
+
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="w-8 h-8 text-indigo-500 animate-spin" /></div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#fafbfc]"><Loader2 className="w-8 h-8 text-indigo-500 animate-spin" /></div>}>
       <LoginContent />
     </Suspense>
   );
@@ -161,29 +165,25 @@ function LoginContent() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 relative overflow-hidden">
-      {/* Soft pastel blobs — match the dashboard aesthetic */}
-      <div className="absolute -top-20 -left-20 w-[500px] h-[500px] bg-indigo-100/50 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute -bottom-20 -right-20 w-[500px] h-[500px] bg-violet-100/40 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-emerald-50/60 rounded-full blur-[100px] pointer-events-none" />
-
-      <div className="w-full max-w-sm relative z-10">
-        {/* Logo / brand */}
+    <div className="min-h-screen flex items-center justify-center bg-[#fafbfc] px-4 py-10">
+      <div className="w-full max-w-sm">
+        {/* brand */}
         <div className="text-center mb-7">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-indigo-500 to-violet-500 rounded-2xl mb-4 shadow-lg shadow-indigo-500/25">
-            <MonitorPlay className="w-7 h-7 text-white" />
-          </div>
-          <h1 className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700">
-            {brand.name}
+          <svg width="40" height="40" viewBox="0 0 32 32" aria-hidden className="mx-auto">
+            <polygon points="30,16 23,28.12 9,28.12 2,16 9,3.88 23,3.88" fill="#4f46e5" />
+            <polygon points="22,16 19,21.2 13,21.2 10,16 13,10.8 19,10.8" fill="#a5b4fc" />
+          </svg>
+          <h1 className="mt-4 text-xl font-semibold tracking-tight text-slate-900">
+            Sign in to {brand.name}
           </h1>
-          <p className="text-sm font-medium text-slate-500 mt-1">{brand.tagline}</p>
+          <p className="mt-1 text-sm text-slate-500">{brand.tagline}</p>
         </div>
 
-        {/* Card */}
-        <div className="bg-white/80 backdrop-blur-2xl border border-slate-200/70 rounded-2xl shadow-[0_20px_60px_-15px_rgba(15,23,42,0.15)] p-7">
+        {/* card */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-7">
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label htmlFor="login-email" className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Email</label>
+              <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 mb-1.5">Email</label>
               <input
                 id="login-email"
                 type="email"
@@ -191,36 +191,34 @@ function LoginContent() {
                 autoFocus
                 autoComplete="email"
                 placeholder="you@company.com"
-                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm"
+                className={INPUT_CLS}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
               />
             </div>
             <div>
-              <label htmlFor="login-password" className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Password</label>
+              <label htmlFor="login-password" className="block text-xs font-semibold text-slate-700 mb-1.5">Password</label>
               <input
                 id="login-password"
                 type="password"
                 required
                 autoComplete="current-password"
                 placeholder="••••••••"
-                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm"
+                className={INPUT_CLS}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
               />
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <label className="flex items-center gap-2 cursor-pointer group select-none">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={e => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400 cursor-pointer"
+                  className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                 />
-                <span className="text-xs font-medium text-slate-600 group-hover:text-slate-800 transition-colors">
-                  Keep me signed in
-                </span>
+                <span className="text-xs font-medium text-slate-600">Keep me signed in</span>
               </label>
               <Link
                 href="/reset-password/request"
@@ -231,16 +229,16 @@ function LoginContent() {
             </div>
 
             {/* EULA acceptance — required. Gates the Sign-in button. */}
-            <label className="flex items-start gap-2 cursor-pointer group select-none">
+            <label className="flex items-start gap-2 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={eulaAccepted}
                 onChange={e => setEulaAccepted(e.target.checked)}
-                className="w-4 h-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400 cursor-pointer shrink-0"
+                className="w-4 h-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
                 required
                 aria-describedby="eula-text"
               />
-              <span id="eula-text" className="text-[11px] leading-snug text-slate-600 group-hover:text-slate-800 transition-colors">
+              <span id="eula-text" className="text-[11px] leading-snug text-slate-600">
                 I have read and agree to the{' '}
                 <Link
                   href="/terms/eula"
@@ -254,7 +252,7 @@ function LoginContent() {
             </label>
 
             {!error && authReason === 'session-expired' && (
-              <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
                 <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-800 font-medium">
                   Your session expired. Please sign in again to continue.
@@ -263,7 +261,7 @@ function LoginContent() {
             )}
 
             {error && (
-              <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-xl">
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
                 <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-rose-700 font-medium">{error}</p>
               </div>
@@ -272,7 +270,7 @@ function LoginContent() {
             <button
               type="submit"
               disabled={loading || !eulaAccepted}
-              className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2.5 px-4 rounded-xl transition-all shadow-md shadow-indigo-500/20 flex items-center justify-center gap-2 text-sm"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
               title={!eulaAccepted ? 'You must accept the EULA to sign in' : undefined}
             >
               {loading ? (
@@ -289,13 +287,13 @@ function LoginContent() {
               <button
                 type="button"
                 onClick={() => { setSsoOpen(true); setError(''); }}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition-colors"
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 transition-colors"
               >
                 <KeyRound className="w-4 h-4" /> Sign in with SSO
               </button>
             ) : (
               <form onSubmit={handleSsoStart} className="space-y-3">
-                <label htmlFor="sso-slug" className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                <label htmlFor="sso-slug" className="block text-xs font-semibold text-slate-700">
                   Organization slug
                 </label>
                 <input
@@ -305,20 +303,20 @@ function LoginContent() {
                   placeholder="acme-co"
                   value={ssoSlug}
                   onChange={(e) => setSsoSlug(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 shadow-sm"
+                  className={INPUT_CLS}
                 />
                 <div className="flex gap-2">
                   <button
                     type="submit"
                     disabled={ssoChecking}
-                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-2"
+                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2"
                   >
                     {ssoChecking ? <><Loader2 className="w-4 h-4 animate-spin" /> Redirecting…</> : 'Continue with SSO'}
                   </button>
                   <button
                     type="button"
                     onClick={() => setSsoOpen(false)}
-                    className="px-4 py-2.5 text-slate-500 hover:text-slate-700 text-xs font-bold"
+                    className="px-4 py-2.5 text-slate-500 hover:text-slate-700 text-xs font-semibold"
                   >
                     Cancel
                   </button>
@@ -328,27 +326,16 @@ function LoginContent() {
           </div>
         </div>
 
-        <p className="text-center text-xs text-slate-500 mt-6 font-medium">
-          New here? <Link href="/signup" className="text-indigo-600 hover:text-indigo-700 font-bold">Create a workspace</Link>
-        </p>
-        <p className="text-center text-[11px] text-slate-400 mt-2 font-medium">
-          Secure multi-tenant CMS • RBAC enforced
+        <p className="text-center text-xs text-slate-500 mt-6">
+          New here? <Link href="/signup" className="text-indigo-600 hover:text-indigo-700 font-semibold">Create a workspace</Link>
         </p>
 
-        <nav className="mt-7 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] text-slate-500 font-medium">
-          <a href="/" className="hover:text-slate-700 transition">Home</a>
-          <span className="text-slate-300">&middot;</span>
-          <a href="/pricing" className="hover:text-slate-700 transition">Pricing</a>
-          <span className="text-slate-300">&middot;</span>
-          <a href="/help" className="hover:text-slate-700 transition">Help</a>
-          <span className="text-slate-300">&middot;</span>
-          <a href="/privacy" className="hover:text-slate-700 transition">Privacy</a>
-          <span className="text-slate-300">&middot;</span>
-          <a href="/terms" className="hover:text-slate-700 transition">Terms</a>
-          <span className="text-slate-300">&middot;</span>
-          <a href="/ferpa" className="hover:text-slate-700 transition">FERPA</a>
-          <span className="text-slate-300">&middot;</span>
-          <a href="/coppa" className="hover:text-slate-700 transition">COPPA</a>
+        <nav className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] text-slate-400">
+          <Link href="/" className="hover:text-slate-600 transition">Home</Link>
+          <Link href="/pricing" className="hover:text-slate-600 transition">Pricing</Link>
+          <Link href="/help" className="hover:text-slate-600 transition">Help</Link>
+          <Link href="/privacy" className="hover:text-slate-600 transition">Privacy</Link>
+          <Link href="/terms" className="hover:text-slate-600 transition">Terms</Link>
         </nav>
       </div>
     </div>
