@@ -1,0 +1,227 @@
+<!--
+  FITNESS 01 — STADIUM (redesign of "Cardio Floor Hub")
+  Big-game broadcast vibe: massive TV pane on the left like a stadium
+  Jumbotron, scorebug ribbon under it, right-rail with neon now-playing
+  + clock + sponsor card. Charcoal + neon-yellow + red.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Stadium — Cardio Hub 4K</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=JetBrains+Mono:wght@500;700&family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root { --stage-w: 3840px; --stage-h: 2160px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#000; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.7); overflow:hidden; }
+
+  :root { --bg:#07070c; --ink:#f4f5f7; --muted:#9aa0ab; --neon:#d7ff1e; --hot:#ff2a4d; --cyan:#00d4ff; --panel:#11131a; --line:rgba(255,255,255,.08); }
+  .stage {
+    background:
+      radial-gradient(1400px 800px at 12% 12%, rgba(215,255,30,.07), transparent 60%),
+      radial-gradient(1100px 700px at 90% 88%, rgba(255,42,77,.07), transparent 60%),
+      linear-gradient(135deg, #07070c 0%, #0e0e16 50%, #07070c 100%);
+    color:var(--ink); font-family:'Outfit', system-ui, sans-serif;
+  }
+  .stage::before {
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 1px, transparent 1px 4px);
+  }
+
+  /* Top bar — broadcast scorebug */
+  .scorebug { position:absolute; top:48px; left:64px; right:64px; height:120px;
+    display:flex; align-items:center; gap:32px; border-bottom:2px solid var(--line); padding-bottom:20px; }
+  .scorebug .live { font-family:'Archivo Black'; font-size:46px; letter-spacing:.06em; color:#000;
+    background:var(--hot); padding:14px 22px; border-radius:6px; display:flex; gap:14px; align-items:center; }
+  .scorebug .live::before { content:''; width:18px; height:18px; border-radius:50%; background:#000; animation:blink 1.4s infinite; }
+  @keyframes blink { 50% { opacity:.3; } }
+  .scorebug .channel { font-family:'JetBrains Mono'; font-size:38px; letter-spacing:.2em; color:var(--muted); }
+  .scorebug .channel b { color:var(--ink); }
+  .scorebug .spacer { flex:1; }
+  .scorebug .clock { font-family:'Archivo Black'; font-size:120px; letter-spacing:-.02em; line-height:.85; color:var(--neon); }
+  .scorebug .clock .date { display:block; font-family:'JetBrains Mono'; font-size:34px; color:var(--muted); letter-spacing:.18em; margin-top:6px; }
+
+  /* Left — TV pane */
+  .tv { position:absolute; top:220px; left:64px; width:2300px; height:1280px;
+    background:linear-gradient(180deg, #1a1d24, #0c0e13);
+    border:3px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+  .tv .crt {
+    position:absolute; inset:0;
+    background:
+      radial-gradient(1600px 900px at 50% 40%, rgba(0,212,255,.16), transparent 60%),
+      linear-gradient(180deg, #0a0d14 0%, #1a2030 50%, #0a0d14 100%);
+  }
+  .tv .crt::after {
+    content:''; position:absolute; inset:0;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,.04) 0 2px, transparent 2px 6px);
+    mix-blend-mode:screen;
+  }
+  .tv .lower {
+    position:absolute; left:0; right:0; bottom:0; padding:42px 56px;
+    background:linear-gradient(180deg, transparent, rgba(0,0,0,.85));
+  }
+  .tv .lower .tag { font-family:'JetBrains Mono'; font-size:32px; letter-spacing:.24em; color:var(--neon); margin-bottom:14px; }
+  .tv .lower h2 { margin:0; font-family:'Archivo Black'; font-size:108px; line-height:.92; letter-spacing:-.02em; }
+  .tv .lower h2 em { font-style:normal; color:var(--neon); }
+  .tv .center {
+    position:absolute; top:50%; left:50%; transform:translate(-50%, -75%);
+    text-align:center; padding:0 60px;
+  }
+  .tv .center .mark { font-family:'Archivo Black'; font-size:380px; line-height:.85; letter-spacing:-.04em; color:var(--ink);
+    text-shadow: 0 14px 48px rgba(0,212,255,.35); }
+  .tv .center .net { display:inline-block; font-family:'JetBrains Mono'; font-size:34px; letter-spacing:.34em; color:var(--cyan);
+    border:2px solid var(--cyan); padding:10px 26px; margin-top:28px; }
+
+  /* Right — column */
+  .right { position:absolute; top:220px; right:64px; width:1340px; display:flex; flex-direction:column; gap:36px; }
+  .panel { background:var(--panel); border:2px solid var(--line); border-radius:14px; padding:46px; position:relative; }
+  .panel .label { font-family:'JetBrains Mono'; font-size:28px; letter-spacing:.28em; color:var(--muted); margin-bottom:16px; }
+
+  .nowplay { background:linear-gradient(135deg, #0e2014 0%, #0d1117 100%); border-color:rgba(215,255,30,.25); }
+  .nowplay .label { color:var(--neon); }
+  .nowplay .row { display:flex; gap:32px; align-items:center; }
+  .nowplay .art { width:220px; height:220px; border-radius:14px; flex:none;
+    background:linear-gradient(135deg,#d7ff1e 0%, #79e600 100%); position:relative; overflow:hidden; }
+  .nowplay .art::after { content:'♫'; position:absolute; inset:0; display:grid; place-items:center;
+    font-family:'Archivo Black'; font-size:200px; color:rgba(0,0,0,.85); }
+  .nowplay .meta .ti { font-family:'Archivo Black'; font-size:80px; line-height:.95; letter-spacing:-.02em; }
+  .nowplay .meta .ar { font-family:'Outfit'; font-weight:400; font-size:42px; color:var(--muted); margin-top:10px; }
+  .nowplay .eq { display:flex; gap:8px; margin-top:24px; align-items:flex-end; height:48px; }
+  .nowplay .eq span { width:14px; background:var(--neon); border-radius:3px; animation:eq 1s ease-in-out infinite; }
+  .nowplay .eq span:nth-child(1) { animation-delay:0s; height:36%; }
+  .nowplay .eq span:nth-child(2) { animation-delay:.15s; height:80%; }
+  .nowplay .eq span:nth-child(3) { animation-delay:.3s; height:55%; }
+  .nowplay .eq span:nth-child(4) { animation-delay:.45s; height:90%; }
+  .nowplay .eq span:nth-child(5) { animation-delay:.6s; height:48%; }
+  .nowplay .eq span:nth-child(6) { animation-delay:.75s; height:70%; }
+  .nowplay .eq span:nth-child(7) { animation-delay:.9s; height:42%; }
+  @keyframes eq { 0%,100% { transform:scaleY(.4);} 50% { transform:scaleY(1);} }
+  .nowplay .pgr { margin-top:30px; height:8px; background:rgba(255,255,255,.08); border-radius:4px; overflow:hidden; }
+  .nowplay .pgr i { display:block; height:100%; width:48%; background:var(--neon); }
+  .nowplay .times { display:flex; justify-content:space-between; margin-top:10px;
+    font-family:'JetBrains Mono'; font-size:28px; color:var(--muted); letter-spacing:.1em; }
+
+  .promo { background:linear-gradient(135deg, #2a1500 0%, #150a00 100%); border-color:rgba(251,191,36,.32); }
+  .promo .label { color:#fbbf24; }
+  .promo .badge { position:absolute; top:30px; right:30px; font-family:'JetBrains Mono'; font-size:22px; letter-spacing:.24em; color:#000;
+    background:#fbbf24; padding:6px 14px; border-radius:4px; }
+  .promo h3 { margin:0; font-family:'Archivo Black'; font-size:96px; line-height:.92; letter-spacing:-.02em; }
+  .promo h3 em { font-style:normal; color:#fbbf24; }
+  .promo .sub { font-size:42px; color:var(--muted); margin-top:18px; line-height:1.25; }
+  .promo .cta { display:inline-block; margin-top:30px; font-family:'Archivo Black'; font-size:42px; letter-spacing:.04em;
+    background:#fbbf24; color:#000; padding:18px 36px; border-radius:8px; }
+
+  /* Bottom — stat strip */
+  .stats { position:absolute; left:64px; right:64px; bottom:160px; height:230px;
+    display:grid; grid-template-columns: repeat(4, 1fr); gap:36px; }
+  .stat { background:var(--panel); border:2px solid var(--line); border-radius:14px; padding:36px 40px; position:relative; overflow:hidden; }
+  .stat .k { font-family:'JetBrains Mono'; font-size:26px; letter-spacing:.28em; color:var(--muted); }
+  .stat .v { font-family:'Archivo Black'; font-size:120px; line-height:.92; letter-spacing:-.02em; margin-top:8px; }
+  .stat.acc1 .v { color:var(--neon); }
+  .stat.acc2 .v { color:var(--hot); }
+  .stat.acc3 .v { color:var(--cyan); }
+  .stat .cap { font-family:'Outfit'; font-size:30px; color:var(--muted); margin-top:8px; }
+  .stat::after { content:''; position:absolute; right:-30px; top:-30px; width:140px; height:140px; border-radius:50%; opacity:.12; }
+  .stat.acc1::after { background:var(--neon); }
+  .stat.acc2::after { background:var(--hot); }
+  .stat.acc3::after { background:var(--cyan); }
+
+  /* Ticker */
+  .ticker { position:absolute; left:0; right:0; bottom:0; height:108px;
+    background:linear-gradient(90deg, var(--neon), var(--neon)); color:#000;
+    display:flex; align-items:center; gap:48px; overflow:hidden;
+    font-family:'Archivo Black'; font-size:60px; letter-spacing:.02em; }
+  .ticker .tag { background:#000; color:var(--neon); padding:14px 30px; margin-left:24px; font-size:42px; letter-spacing:.18em; flex:none; }
+  .ticker .msg { white-space:nowrap; }
+</style>
+</head>
+<body>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <!-- Scorebug -->
+  <div class="scorebug" data-widget="scorebug">
+    <div class="live"><span data-field="scorebug.live">LIVE</span></div>
+    <div class="channel">CH <b data-field="scorebug.channel">12</b> · <span data-field="scorebug.network">ESPN</span></div>
+    <div class="spacer"></div>
+    <div class="clock" data-widget="clock">
+      <div data-field="clock.time">7:42</div>
+      <div class="date" data-field="clock.date">TUE · APR 23 · 72°F</div>
+    </div>
+  </div>
+
+  <!-- TV pane -->
+  <div class="tv" data-widget="tv">
+    <div class="crt"></div>
+    <div class="center">
+      <div class="mark" data-field="tv.mark">ESPN</div>
+      <div class="net" data-field="tv.show">SPORTSCENTER · LIVE</div>
+    </div>
+    <div class="lower">
+      <div class="tag" data-field="tv.tag">▸ NOW PLAYING ON CARDIO</div>
+      <h2><span data-field="tv.t1">Top </span><em data-field="tv.t2">10</em><span data-field="tv.t3"> plays of the week.</span></h2>
+    </div>
+  </div>
+
+  <!-- Right column -->
+  <div class="right">
+
+    <div class="panel nowplay" data-widget="nowplaying">
+      <div class="label" data-field="nowplaying.label">▸ NOW BLASTING · CARDIO FLOOR</div>
+      <div class="row">
+        <div class="art"></div>
+        <div class="meta">
+          <div class="ti" data-field="nowplaying.title">Titanium</div>
+          <div class="ar" data-field="nowplaying.artist">David Guetta ft. Sia</div>
+        </div>
+      </div>
+      <div class="eq"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      <div class="pgr"><i></i></div>
+      <div class="times"><span data-field="nowplaying.elapsed">2:01</span><span data-field="nowplaying.total">4:05</span></div>
+    </div>
+
+    <div class="panel promo" data-widget="promo">
+      <div class="badge" data-field="promo.badge">AD</div>
+      <div class="label" data-field="promo.label">▸ FEATURED · LIMITED TIME</div>
+      <h3><span data-field="promo.t1">First </span><em data-field="promo.t2">PT</em><span data-field="promo.t3"> session free.</span></h3>
+      <div class="sub" data-field="promo.sub">Book at the front desk before Friday — new members only.</div>
+      <div class="cta" data-field="promo.cta">→ Ask the desk</div>
+    </div>
+
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat acc1" data-widget="stats.0">
+      <div class="k" data-field="stats.0.k">CHECKED IN TODAY</div>
+      <div class="v" data-field="stats.0.v">412</div>
+      <div class="cap" data-field="stats.0.cap">+18% vs Tuesday avg</div>
+    </div>
+    <div class="stat acc2" data-widget="stats.1">
+      <div class="k" data-field="stats.1.k">PRS THIS WEEK</div>
+      <div class="v" data-field="stats.1.v">37</div>
+      <div class="cap" data-field="stats.1.cap">Heavy Hour at 5:30 again</div>
+    </div>
+    <div class="stat acc3" data-widget="stats.2">
+      <div class="k" data-field="stats.2.k">CLASSES TODAY</div>
+      <div class="v" data-field="stats.2.v">11</div>
+      <div class="cap" data-field="stats.2.cap">8 still have spots</div>
+    </div>
+    <div class="stat" data-widget="stats.3">
+      <div class="k" data-field="stats.3.k">FLOOR TEMP</div>
+      <div class="v" data-field="stats.3.v">68°</div>
+      <div class="cap" data-field="stats.3.cap">Set & holding</div>
+    </div>
+  </div>
+
+  <!-- Ticker -->
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">★ THE GRIND</div>
+    <div class="msg" data-field="ticker.message">★ THE BAR DOESN'T CARE ABOUT YOUR FEELINGS ★ SHOW UP. THAT'S THE WHOLE SECRET. ★ HEAVY HOUR · 5:30PM · PLATFORM C ★ FREE GUEST PASSES ALL MONTH ★</div>
+  </div>
+
+</div></div></div>
+
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const scale=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',scale);}fit();window.addEventListener('resize',fit);})();</script>
+</body></html>

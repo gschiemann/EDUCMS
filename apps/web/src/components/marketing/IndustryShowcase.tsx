@@ -68,9 +68,9 @@ const INDUSTRIES: Industry[] = [
       'One scorebug drives the in-venue board and your livestream overlay',
     ],
     template: {
-      src: '/templates/hs/ath-gameday.html',
-      staticImage: '/demo/templates/sports-gameday.jpg',
-      label: 'Game Day Hub',
+      src: '/templates/hs/ath-broadcast.html',
+      staticImage: '/demo/templates/sports-broadcast.jpg',
+      label: 'Scoreboard & Standings',
     },
     badge: STAR,
   },
@@ -154,9 +154,9 @@ const INDUSTRIES: Industry[] = [
       'Evacuate and weather alerts for the whole facility',
     ],
     template: {
-      src: '/demo/templates/varsity.html',
-      staticImage: '/demo/templates/varsity.jpg',
-      label: 'Athletics & Fitness Board',
+      src: '/templates/fitness/01-stadium.html',
+      staticImage: '/demo/templates/fitness-stadium.jpg',
+      label: 'Gym Floor Board',
     },
   },
   {

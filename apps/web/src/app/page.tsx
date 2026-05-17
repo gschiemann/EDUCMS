@@ -310,11 +310,11 @@ function PricingTeaser() {
     <section className="py-8 md:py-12">
       <div className="max-w-3xl mx-auto px-6 text-center">
         <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-slate-900">
-          Fair pricing. No screen taxes.
+          One price per location. No per-screen tax.
         </h2>
         <p className="mt-3 text-base md:text-lg text-slate-600">
-          One price per location — unlimited screens, users, and templates. See every
-          tier on the pricing page.
+          Unlimited screens, users, and templates on every plan — you&rsquo;re never
+          charged more for adding a display. See every tier on the pricing page.
         </p>
         <div className="mt-7">
           <Link
