@@ -680,12 +680,21 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           design size and only restyles the actual widget rendering. */}
       <div data-widget-content="true" style={{ position: 'absolute', inset: 0 }}>
         <WidgetErrorBoundary resetKey={zone.id} widgetLabel={label}>
+          {/* 2026-05-17 — celebration widgets are motion-first (sparkle
+              bursts, stadium-light shake, ribbon sweep). A frozen
+              preview reads as "broken" to the operator who's wiring a
+              touchdown cue to the ribbon + scoreboard. Run their
+              animations in the builder. Safe: celebration widgets do
+              ZERO data-fetching — `live` only gates their CSS
+              keyframes. Data-driven widgets (SCOREBOARD polls
+              /sports/board/:id, WEATHER fetches) stay `live={false}`
+              so the builder never hammers an API. */}
           <WidgetPreview
             widgetType={zone.widgetType}
             config={zone.defaultConfig || {}}
             width={zone.width}
             height={zone.height}
-            live={false}
+            live={zone.widgetType === 'CELEBRATION' || String((zone.defaultConfig || {}).variant || '').startsWith('cel-')}
             onConfigChange={!previewMode && onConfigChange ? (patch) => onConfigChange(zone.id, patch) : undefined}
           />
         </WidgetErrorBoundary>
