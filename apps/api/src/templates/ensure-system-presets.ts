@@ -5,6 +5,7 @@ import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
 import { RESTAURANT_TEMPLATE_PRESETS } from './restaurant-presets';
 import { BAR_TEMPLATE_PRESETS } from './bar-presets';
 import { RETAIL_TEMPLATE_PRESETS } from './retail-presets';
+import { SPORTS_TEMPLATE_PRESETS } from './sports-presets';
 
 // Fitness presets live in their own file so the EDU pack stays
 // uncontaminated. At seed time we tag each row with the vertical it
@@ -19,6 +20,7 @@ const ALL_PRESETS = [
   ...RESTAURANT_TEMPLATE_PRESETS,
   ...BAR_TEMPLATE_PRESETS,
   ...RETAIL_TEMPLATE_PRESETS,
+  ...SPORTS_TEMPLATE_PRESETS,
 ];
 const PRESET_VERTICAL: Map<string, string> = new Map();
 SYSTEM_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'K12'));
@@ -48,6 +50,11 @@ BAR_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'BAR'));
 // department-store visual DNA — kept separate from the K12 + GYM
 // packs so each vertical can ship templates without crosstalk.
 RETAIL_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'RETAIL'));
+// Sports vertical (2026-05-17). Starter set of full-screen celebration
+// scenes + a game-day countdown. Tagged 'SPORTS' so VenueOS Sports
+// tenants finally have a non-empty template gallery; scoreboard +
+// ribbon templates follow once their widget set lands.
+SPORTS_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'SPORTS'));
 
 // 2026-05-16 — the 70-template industry signage pack (preset-sig-*)
 // lives INSIDE SYSTEM_TEMPLATE_PRESETS so it shares the seeder, which
