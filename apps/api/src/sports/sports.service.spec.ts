@@ -17,6 +17,7 @@ function matches(row: any, where: any = {}): boolean {
       if ('in' in v) return v.in.includes(row[k]);
       if ('not' in v) return row[k] !== v.not;
       if ('gte' in v) return new Date(row[k]).getTime() >= new Date(v.gte).getTime();
+      if ('lt' in v) return Number(row[k]) < Number(v.lt);
       return false;
     }
     return row[k] === v;

@@ -654,13 +654,24 @@ export class SportsService {
           ? { homeScore: { increment: delta } }
           : { awayScore: { increment: delta } },
     });
-    // A score never goes below zero (e.g. a −1 correction at 0).
-    const value = team === 'home' ? updated.homeScore : updated.awayScore;
-    if (value < 0) {
-      updated = await this.prisma.client.game.update({
-        where: { id },
+    // A score never goes below zero (e.g. a −1 correction at 0). Clamp
+    // atomically + conditionally: `updateMany` with a `< 0` filter only
+    // fires if the score is STILL negative at write time, so a
+    // concurrent increment that already pushed it positive can't be
+    // clobbered back to zero by this operator's stale read.
+    const raw = team === 'home' ? updated.homeScore : updated.awayScore;
+    if (raw < 0) {
+      const clamp = await this.prisma.client.game.updateMany({
+        where:
+          team === 'home'
+            ? { id, homeScore: { lt: 0 } }
+            : { id, awayScore: { lt: 0 } },
         data: team === 'home' ? { homeScore: 0 } : { awayScore: 0 },
       });
+      if (clamp.count > 0) {
+        const fresh = await this.prisma.client.game.findUnique({ where: { id } });
+        if (fresh) updated = fresh;
+      }
     }
     await this.record(id, 'SCORE', {
       team,
