@@ -35,6 +35,15 @@ import {
   Cross, HandCoins, HeartHandshake,
   // Live scoreboard widget.
   Tv,
+  // VenueOS Sports Venue + universal packs (EDU CMS-6/7 batches) —
+  // sports-venue surfaces, backgrounds, live-data feeds, touch
+  // engagement, and transit boards.
+  ScrollText, GitCompareArrows, ListOrdered, Volume2, Gift,
+  Navigation, Image as ImageIcon2, Layers, Sparkle, CircleDot,
+  Grid3x3, Spline, Waves, Building2, Wind, Globe, DollarSign,
+  TrafficCone, UserPlus, Languages, Accessibility, SmilePlus,
+  Lightbulb, Disc3, Search, Map as MapIcon, HeartPulse, PlaneTakeoff,
+  Plane, TrainFront, SquareParking, Activity, Coins,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -110,6 +119,58 @@ import {
 // Live scoreboard — one widget, every sport. Polls /sports/board/:id
 // and renders driven by the game's SportDefinition. Three tiers.
 import { SportsScoreboardWidget } from './SportsScoreboardWidgets';
+
+// VenueOS Sports Venue (EDU CMS-6) — jumbotron / ribbon / concourse
+// surfaces. SPORTS-vertical scoped.
+import {
+  StadiumScoreboardWidget, RibbonTickerWidget, RibbonSponsorWidget,
+  RibbonFanShoutoutWidget, PlayerCardWidget, StartingLineupWidget,
+  StatComparisonWidget, OutOfTownScoresWidget, KissCamWidget,
+  NoiseMeterWidget, InGamePromoWidget, SponsorTakeoverWidget,
+  HomeScheduleWidget, StandingsBoardWidget, ConcessionWaitsWidget,
+  GateWayfindingWidget, GoalCelebrationWidget,
+} from './SportsVenueWidgets';
+// VenueOS celebration ribbons — remaining sports + retro/neon variants.
+import {
+  BbHomeRunRetroWidget, BbHomeRunNeonWidget, BbStrikeoutNeonWidget,
+  FbTouchdownNeonWidget, FbTouchdownRetroWidget, BkThreeNeonWidget,
+  BkThreeRetroWidget, HkGoalNeonWidget, HkGoalRetroWidget,
+  ScGoalRetroWidget, ScGoalNeonWidget, TnAceWidget, TnAceNeonWidget,
+  TnBreakPointWidget, TnMatchPointWidget, TnWinnerWidget, LxGoalWidget,
+  LxBehindTheBackWidget, LxBigSaveWidget, LxFaceoffWidget, WrPinWidget,
+  WrTakedownWidget, WrNearFallWidget, WrTechFallWidget, GfAceWidget,
+  GfEagleWidget, GfBirdieWidget, BxKnockoutWidget, BxTkoWidget,
+  BxKnockdownWidget, BxEndOfRoundWidget, TrWorldRecordWidget,
+  TrFinishWidget, TrPersonalBestWidget, SwRecordWidget, SwFinishWidget,
+  SwSplitWidget,
+} from './CelebrationsOtherSportsWidgets';
+// VenueOS universal — drop-in template backgrounds.
+import {
+  BgIndigoMidnight, BgAurora, BgGoldenHour, BgForestDeep, BgPeachCream,
+  BgOceanBlue, BgMeshViolet, BgMeshOcean, BgMeshDesert, BgDiamondTile,
+  BgDotsGrid, BgTopoLines, BgAnimatedFlow, BgPhotoLobbyWarm,
+  BgPhotoCampus, BgPhotoHospital, BgPhotoRetail,
+} from './BackgroundsWidgets';
+// VenueOS universal — live data feeds (markets, news, weather, transit).
+// `SportsScoreboardWidget` here is the data-feed scoreboard, distinct
+// from the engine-driven one above — aliased to avoid the name clash.
+import {
+  SportsScoreboardWidget as LiveSportsScoreboardWidget,
+  StockTickerWidget, CryptoTickerWidget, NewsHeadlinesWidget,
+  AirQualityWidget, WorldClocksWidget, FxRatesWidget, TrafficCamWidget,
+} from './LiveDataWidgets';
+// VenueOS universal — touch & engagement surfaces.
+import {
+  PhotoBoothWidget, SignInPadWidget, LanguagePickerWidget,
+  AccessibilityTrayWidget, NpsSmileyWidget, TriviaGameWidget,
+  SpinToWinWidget, DirectorySearchWidget, WayfindingFloorMapWidget,
+  DonationThermometerWidget,
+} from './TouchEngageWidgets';
+// VenueOS universal — transit / airport boards.
+import {
+  DeparturesBoardWidget, FlightStatusHeroWidget, TransitDeparturesWidget,
+  ParkingAvailabilityWidget,
+} from './TransitWidgets';
 
 import type { WidgetMeta, SchoolLevel } from './_shared/types';
 
@@ -390,18 +451,168 @@ export const CHART_WIDGETS: RegisteredWidget[] = [
   W('CHART_COUNTUP',     CAT_CHARTS, 'Count-Up Stats', 'Four big-number stat cards',                'universal', Calculator, withMeasuredHeight(CountUpStatsWidget),  { label: 'By the numbers', title: 'A year in numbers' }),
 ];
 
+/* ─── SPORTS VENUE — jumbotron / ribbon / concourse (EDU CMS-6) ──────
+ * Net-new vertical built for live-event venues. Scoped to the SPORTS
+ * vertical at the ALL_V2_WIDGETS assembly point. Each Component sizes
+ * off a pixel `height`, so all are wrapped in withMeasuredHeight.
+ * (variants-register.ts maps 'Sports Venue' → SCOREBOARD.) */
+const CAT_SPORTS_VENUE = 'Sports Venue';
+
+export const SPORTS_VENUE_WIDGETS: RegisteredWidget[] = [
+  W('STADIUM_SCOREBOARD',   CAT_SPORTS_VENUE, 'Stadium Scoreboard',  'Full jumbotron scoreboard — twin team panels, clock, fouls, sponsor bars', 'universal', Tv,               withMeasuredHeight(StadiumScoreboardWidget),  { sport: 'BASKETBALL', clock: '4:21', period: 'Q3', homeFouls: 5, awayFouls: 3, homeBonus: false, awayBonus: false, topSponsor: 'PRESENTED BY · MIDWEST AUTO GROUP', bottomSponsor: 'BUDWEISER · OFFICIAL BEER PARTNER' }),
+  W('RIBBON_TICKER',        CAT_SPORTS_VENUE, 'Ribbon Ticker',       'LED ribbon-board scoreline with a scrolling segment marquee',              'universal', ScrollText,       withMeasuredHeight(RibbonTickerWidget),       { clock: '4:21', period: 'Q3', scrollSpeed: 40 }),
+  W('RIBBON_SPONSOR',       CAT_SPORTS_VENUE, 'Ribbon Sponsor',      'Ribbon-board sponsor lockup — logo, tagline, call-to-action',              'universal', Megaphone,        withMeasuredHeight(RibbonSponsorWidget),      { sponsor: 'BUDWEISER', tagline: 'KING OF BEERS', cta: 'now pouring · sec 110-114', bg: '#dc2626' }),
+  W('RIBBON_FAN_SHOUTOUT',  CAT_SPORTS_VENUE, 'Ribbon Fan Shoutout', 'Ribbon-board fan shoutout — birthdays, anniversaries, group welcomes',     'universal', PartyPopper,      withMeasuredHeight(RibbonFanShoutoutWidget),  { kind: 'HAPPY BIRTHDAY', name: 'JAMES, AGE 8', from: 'YOUR BULLS FAMILY' }),
+  W('PLAYER_CARD',          CAT_SPORTS_VENUE, 'Player Card',         'Featured-player hero card with team colors and a stat line',               'universal', UserCog,          withMeasuredHeight(PlayerCardWidget),         {}),
+  W('STARTING_LINEUP',      CAT_SPORTS_VENUE, 'Starting Lineup',     "Tonight's starting five — portrait cards per player",                      'universal', Users,            withMeasuredHeight(StartingLineupWidget),     {}),
+  W('STAT_COMPARISON',      CAT_SPORTS_VENUE, 'Stat Comparison',     'Head-to-head team stat bars — season or game averages',                    'universal', GitCompareArrows, withMeasuredHeight(StatComparisonWidget),     { scope: 'SEASON AVERAGES' }),
+  W('OUT_OF_TOWN_SCORES',   CAT_SPORTS_VENUE, 'Out-of-Town Scores',  'Around-the-league scoreboard grid of other games',                         'universal', ListOrdered,      withMeasuredHeight(OutOfTownScoresWidget),    {}),
+  W('KISS_CAM',             CAT_SPORTS_VENUE, 'Kiss Cam',            'Heart-cutout fan-cam overlay with a sponsor caption',                      'universal', HeartHandshake,   withMeasuredHeight(KissCamWidget),            { kind: 'KISS CAM', tone: '#ec4899', sponsor: 'BROUGHT TO YOU BY JEWELED VOWS DIAMOND CO.' }),
+  W('NOISE_METER',          CAT_SPORTS_VENUE, 'Noise Meter',         'Live crowd decibel meter — "make some noise" prompt',                      'universal', Volume2,          withMeasuredHeight(NoiseMeterWidget),         { prompt: 'Get LOUD!', target: 100, level: 87 }),
+  W('IN_GAME_PROMO',        CAT_SPORTS_VENUE, 'In-Game Promo',       'Sponsored in-game promo — t-shirt toss, section callouts',                 'universal', Gift,             withMeasuredHeight(InGamePromoWidget),        { kicker: "BROUGHT TO YOU BY POPEYE'S", title: 'T-SHIRT TOSS', subtitle: 'Look up · catch a shirt · take a selfie · tag @ChicagoBulls', sections: ['SEC 100', 'SEC 200', 'SEC 300', 'SEC 400'], cta: 'NEXT TOSS · 4:00', accent: '#ffd23a' }),
+  W('SPONSOR_TAKEOVER',     CAT_SPORTS_VENUE, 'Sponsor Takeover',    'Full-screen official-partner takeover with logo and offer',                'universal', Crown,            withMeasuredHeight(SponsorTakeoverWidget),    { sponsor: 'AMERICAN AIRLINES', tagline: 'Going for great.', body: 'Fly the Bulls and earn double AAdvantage miles all season long.', cta: 'aa.com/bulls', bg: '#0a4a8a' }),
+  W('HOME_SCHEDULE',        CAT_SPORTS_VENUE, 'Home Schedule',       'Next five home games — date, opponent, theme night, tickets',              'universal', CalendarDays,     withMeasuredHeight(HomeScheduleWidget),       {}),
+  W('STANDINGS_BOARD',      CAT_SPORTS_VENUE, 'Standings Board',     'Conference standings table — W/L, PCT, GB, streak, last 10',               'universal', ListOrdered,      withMeasuredHeight(StandingsBoardWidget),     { scope: 'EASTERN CONFERENCE' }),
+  W('CONCESSION_WAITS',     CAT_SPORTS_VENUE, 'Concession Waits',    'Shortest concession lines right now — per-stand wait estimates',           'universal', UtensilsCrossed,  withMeasuredHeight(ConcessionWaitsWidget),    {}),
+  W('GATE_WAYFINDING',      CAT_SPORTS_VENUE, 'Gate Wayfinding',     'Portrait concourse wayfinding — section, gate, walk time, QR',             'universal', Navigation,       withMeasuredHeight(GateWayfindingWidget),     { section: '212', gate: 'B', distance: '4 MIN WALK', directions: 'Take the escalator to the upper concourse, walk left past Goose Island.' }),
+  W('GOAL_CELEBRATION',     CAT_SPORTS_VENUE, 'Goal Celebration',    'Team-color goal celebration burst with scorer callout',                    'universal', Goal,             withMeasuredHeight(GoalCelebrationWidget),    { label: 'GOAL!' }),
+];
+
+/* ─── CELEBRATIONS — More Sports (EDU CMS batch) ─────────────────────
+ * Celebration ribbons for the remaining sports plus retro/neon style
+ * variants of the big events. Scoped to the SPORTS vertical.
+ * (variants-register.ts maps 'Celebrations · More Sports' → CELEBRATION.) */
+const CAT_CEL_MORE = 'Celebrations · More Sports';
+
+export const CELEBRATIONS_MORE_WIDGETS: RegisteredWidget[] = [
+  W('CEL_BB_HOMERUN_RETRO',   CAT_CEL_MORE, 'Home Run · Retro',     'Baseball home run — split-flap retro scoreboard style',  'universal', TrendingUp,   withMeasuredHeight(BbHomeRunRetroWidget),   { player: 'BENCH', distance: '418 FT' }),
+  W('CEL_BB_HOMERUN_NEON',    CAT_CEL_MORE, 'Home Run · Neon',      'Baseball home run — synthwave neon-grid style',          'universal', TrendingUp,   withMeasuredHeight(BbHomeRunNeonWidget),    { player: 'OHTANI', distance: '462 FT' }),
+  W('CEL_BB_STRIKEOUT_NEON',  CAT_CEL_MORE, 'Strikeout · Neon',     'Baseball strikeout — blinking neon Ks',                  'universal', Zap,          withMeasuredHeight(BbStrikeoutNeonWidget),  { pitcher: 'SKENES', kCount: 13 }),
+  W('CEL_FB_TOUCHDOWN_NEON',  CAT_CEL_MORE, 'Touchdown · Neon',     'Football touchdown — neon spark-rain style',             'universal', Trophy,       withMeasuredHeight(FbTouchdownNeonWidget),  { player: 'MAHOMES', distance: '48 YD' }),
+  W('CEL_FB_TOUCHDOWN_RETRO', CAT_CEL_MORE, 'Touchdown · Retro',    'Football touchdown — 1972 NFL Films retro style',        'universal', Trophy,       withMeasuredHeight(FbTouchdownRetroWidget), { player: 'PAYTON', distance: '12 YD' }),
+  W('CEL_BK_THREE_NEON',      CAT_CEL_MORE, '3-Pointer · Neon',     'Basketball three — glowing neon-grid style',             'universal', Target,       withMeasuredHeight(BkThreeNeonWidget),      { player: 'CURRY', threeCount: 9 }),
+  W('CEL_BK_THREE_RETRO',     CAT_CEL_MORE, '3-Pointer · Retro',    'Basketball three — skewed retro splash style',           'universal', Target,       withMeasuredHeight(BkThreeRetroWidget),     { player: 'BIRD', threeCount: 5 }),
+  W('CEL_HK_GOAL_NEON',       CAT_CEL_MORE, 'Hockey Goal · Neon',   'Hockey goal — bass-thump neon style',                    'universal', Goal,         withMeasuredHeight(HkGoalNeonWidget),       { scorer: 'PASTRNAK' }),
+  W('CEL_HK_GOAL_RETRO',      CAT_CEL_MORE, 'Hockey Goal · Retro',  'Hockey goal — split-flap retro style',                   'universal', Goal,         withMeasuredHeight(HkGoalRetroWidget),      { scorer: 'HOWE', period: 2 }),
+  W('CEL_SC_GOAL_RETRO',      CAT_CEL_MORE, 'Soccer Goal · Retro',  'Soccer GOOOOAL — vintage World Cup broadcast style',     'universal', Goal,         withMeasuredHeight(ScGoalRetroWidget),      { scorer: 'PELÉ', minute: "42'" }),
+  W('CEL_SC_GOAL_NEON',       CAT_CEL_MORE, 'Soccer Goal · Neon',   'Soccer GOOOOAL — neon word-echo style',                  'universal', Goal,         withMeasuredHeight(ScGoalNeonWidget),       { scorer: 'MBAPPÉ', minute: "90'+3" }),
+  W('CEL_TN_ACE',             CAT_CEL_MORE, 'Tennis Ace',           'Tennis ace — court diagram with serve trail',            'universal', Zap,          withMeasuredHeight(TnAceWidget),            { player: 'ALCARAZ', speed: '141 MPH', aces: 8 }),
+  W('CEL_TN_ACE_NEON',        CAT_CEL_MORE, 'Tennis Ace · Neon',    'Tennis ace — neon-grid serve-trail style',               'universal', Zap,          withMeasuredHeight(TnAceNeonWidget),        { player: 'SINNER', speed: '138 MPH' }),
+  W('CEL_TN_BREAKPOINT',      CAT_CEL_MORE, 'Break Point Won',      'Tennis break point — serve-broken callout',              'universal', Flag,         withMeasuredHeight(TnBreakPointWidget),     { player: 'SWIATEK', set: 1, score: '4-3' }),
+  W('CEL_TN_MATCHPOINT',      CAT_CEL_MORE, 'Match Point',          'Tennis match point — spark-rain finale',                 'universal', Crown,        withMeasuredHeight(TnMatchPointWidget),     { player: 'DJOKOVIC', score: '40-30' }),
+  W('CEL_TN_WINNER',          CAT_CEL_MORE, 'Tennis Winner',        'Tennis winner — painted-the-line shot callout',          'universal', Sparkles,     withMeasuredHeight(TnWinnerWidget),         { player: 'GAUFF', shot: 'FOREHAND', winners: 24 }),
+  W('CEL_LX_GOAL',            CAT_CEL_MORE, 'Lacrosse Goal',        'Lacrosse goal — sticks-up spark-rain celebration',       'universal', Goal,         withMeasuredHeight(LxGoalWidget),           { scorer: 'RAMBO', number: '1', score: '8-6' }),
+  W('CEL_LX_BEHINDTHEBACK',   CAT_CEL_MORE, 'Behind-the-Back Goal', 'Lacrosse highlight-reel behind-the-back goal',           'universal', Sparkles,     withMeasuredHeight(LxBehindTheBackWidget),  { player: 'GAIT', distance: '10 YD' }),
+  W('CEL_LX_BIGSAVE',         CAT_CEL_MORE, 'Lacrosse Big Save',    'Lacrosse goalie stonewall — save count',                 'universal', Shield,       withMeasuredHeight(LxBigSaveWidget),        { goalie: 'GAUDET', saves: 11 }),
+  W('CEL_LX_FACEOFF',         CAT_CEL_MORE, 'Face-Off Win',         'Lacrosse face-off win — arrow-sweep with win rate',      'universal', GitCompareArrows, withMeasuredHeight(LxFaceoffWidget),     { player: "O'CONNOR", winPct: 78 }),
+  W('CEL_WR_PIN',             CAT_CEL_MORE, 'Wrestling Pin',        'Wrestling pin — blinking 1-2-3 count',                   'universal', Award,        withMeasuredHeight(WrPinWidget),            { winner: 'JORDAN BURROUGHS', weight: '74 KG', time: '1:47' }),
+  W('CEL_WR_TAKEDOWN',        CAT_CEL_MORE, 'Wrestling Takedown',   'Wrestling takedown — +2 callout',                        'universal', Zap,          withMeasuredHeight(WrTakedownWidget),       { wrestler: 'TAYLOR', score: '7-2' }),
+  W('CEL_WR_NEARFALL',        CAT_CEL_MORE, 'Near Fall',            'Wrestling near fall — back-points callout',              'universal', TrendingUp,   withMeasuredHeight(WrNearFallWidget),       { wrestler: 'STEVESON', points: 4, score: '11-2' }),
+  W('CEL_WR_TECHFALL',        CAT_CEL_MORE, 'Technical Fall',       'Wrestling technical fall — match-over spark-rain',       'universal', Award,        withMeasuredHeight(WrTechFallWidget),       { winner: 'DAKE', lead: '17-2' }),
+  W('CEL_GF_ACE',             CAT_CEL_MORE, 'Hole-in-One',          'Golf hole-in-one — flag-pin trajectory celebration',     'universal', Flag,         withMeasuredHeight(GfAceWidget),            { player: 'WOODS', hole: 7, yards: 165 }),
+  W('CEL_GF_EAGLE',           CAT_CEL_MORE, 'Golf Eagle',           'Golf eagle — under-par score callout',                   'universal', TrendingUp,   withMeasuredHeight(GfEagleWidget),          { player: 'SCHEFFLER', score: '-7' }),
+  W('CEL_GF_BIRDIE',          CAT_CEL_MORE, 'Golf Birdie',          'Golf birdie — one-under callout with tourney score',     'universal', Goal,         withMeasuredHeight(GfBirdieWidget),         { player: 'MORIKAWA', hole: 5, score: '-3' }),
+  W('CEL_BX_KNOCKOUT',        CAT_CEL_MORE, 'Knockout',             'Boxing/MMA knockout — fight-over screen-shake',          'universal', Zap,          withMeasuredHeight(BxKnockoutWidget),       { winner: 'FURY', round: 4, time: '2:31' }),
+  W('CEL_BX_TKO',             CAT_CEL_MORE, 'TKO',                  'Boxing/MMA TKO — ref-stops-it callout',                  'universal', AlertOctagon, withMeasuredHeight(BxTkoWidget),            { winner: 'USYK', round: 6 }),
+  W('CEL_BX_KNOCKDOWN',       CAT_CEL_MORE, 'Knockdown',            'Boxing/MMA knockdown — bass-thump standing count',       'universal', AlertOctagon, withMeasuredHeight(BxKnockdownWidget),      { winner: 'CANELO', round: 3, count: 7 }),
+  W('CEL_BX_ENDOFROUND',      CAT_CEL_MORE, 'End of Round',         'Boxing/MMA end-of-round — punches-landed tally',         'universal', CircleEqual,  withMeasuredHeight(BxEndOfRoundWidget),     { round: 6, p1: 'CANELO', p2: 'BIVOL', p1Punches: 48, p2Punches: 31 }),
+  W('CEL_TR_WORLDRECORD',     CAT_CEL_MORE, 'Track World Record',   'Track & field world record — spark-rain finale',        'universal', Crown,        withMeasuredHeight(TrWorldRecordWidget),    { athlete: 'BOLT', event: '100M', time: '9.58s', country: 'JAM' }),
+  W('CEL_TR_FINISH',          CAT_CEL_MORE, 'Track Finish',         'Track & field finish — top-3 medal podium',              'universal', ListOrdered,  withMeasuredHeight(TrFinishWidget),         { event: '400M FINAL' }),
+  W('CEL_TR_PERSONALBEST',    CAT_CEL_MORE, 'Personal Best',        'Track & field personal best — time-delta callout',       'universal', TrendingUp,   withMeasuredHeight(TrPersonalBestWidget),   { athlete: 'RICHARDSON', event: '100M', time: '10.65', delta: '-0.18' }),
+  W('CEL_SW_RECORD',          CAT_CEL_MORE, 'Swimming Record',      'Swimming world record — lane-line spark-rain',           'universal', Crown,        withMeasuredHeight(SwRecordWidget),         { athlete: 'LEDECKY', event: '1500M', time: '15:20.48' }),
+  W('CEL_SW_FINISH',          CAT_CEL_MORE, 'Swimming Finish',      'Swimming race finish — top-3 lane podium',               'universal', ListOrdered,  withMeasuredHeight(SwFinishWidget),         { event: '100M FREE' }),
+  W('CEL_SW_SPLIT',           CAT_CEL_MORE, 'Swimming Split',       'Swimming split milestone — pace vs world record',        'universal', Activity,     withMeasuredHeight(SwSplitWidget),          { athlete: 'PHELPS', split: '1:55.31', vsWR: '-0.42', lap: 3 }),
+];
+
+/* ─── BACKGROUNDS — drop-in template backgrounds (EDU CMS-7) ─────────
+ * Universal: a background fits every vertical. Each Component sizes off
+ * a pixel `height`, so all are wrapped in withMeasuredHeight.
+ * (variants-register.ts maps 'Backgrounds' → BACKGROUND.) */
+const CAT_BACKGROUNDS = 'Backgrounds';
+
+export const BACKGROUNDS_WIDGETS: RegisteredWidget[] = [
+  W('BG_INDIGO_MIDNIGHT', CAT_BACKGROUNDS, 'Indigo Midnight',     'Deep indigo-to-violet diagonal gradient',          'universal', Sparkle,    withMeasuredHeight(BgIndigoMidnight),  {}),
+  W('BG_AURORA',          CAT_BACKGROUNDS, 'Aurora',              'Teal-to-violet aurora gradient',                   'universal', Sparkle,    withMeasuredHeight(BgAurora),          {}),
+  W('BG_GOLDEN_HOUR',     CAT_BACKGROUNDS, 'Golden Hour',         'Warm amber-to-rust sunset gradient',               'universal', Sparkle,    withMeasuredHeight(BgGoldenHour),      {}),
+  W('BG_FOREST_DEEP',     CAT_BACKGROUNDS, 'Forest Deep',         'Deep evergreen diagonal gradient',                 'universal', Sparkle,    withMeasuredHeight(BgForestDeep),      {}),
+  W('BG_PEACH_CREAM',     CAT_BACKGROUNDS, 'Peach Cream',         'Soft cream-to-peach pastel gradient',              'universal', Sparkle,    withMeasuredHeight(BgPeachCream),      {}),
+  W('BG_OCEAN_BLUE',      CAT_BACKGROUNDS, 'Ocean Blue',          'Deep-to-bright ocean blue gradient',               'universal', Sparkle,    withMeasuredHeight(BgOceanBlue),       {}),
+  W('BG_MESH_VIOLET',     CAT_BACKGROUNDS, 'Mesh · Violet Plum',  'Multi-blob violet-plum mesh gradient',             'universal', Layers,     withMeasuredHeight(BgMeshViolet),      {}),
+  W('BG_MESH_OCEAN',      CAT_BACKGROUNDS, 'Mesh · Ocean Glow',   'Multi-blob ocean-glow mesh gradient',              'universal', Layers,     withMeasuredHeight(BgMeshOcean),       {}),
+  W('BG_MESH_DESERT',     CAT_BACKGROUNDS, 'Mesh · Desert Dusk',  'Multi-blob desert-dusk mesh gradient',             'universal', Layers,     withMeasuredHeight(BgMeshDesert),      {}),
+  W('BG_DIAMOND_TILE',    CAT_BACKGROUNDS, 'Diamond Tile',        'Repeating diamond-tile geometric pattern',         'universal', Grid3x3,    withMeasuredHeight(BgDiamondTile),     { tone1: '#0a0e2a', tone2: '#7b5cff', tileSize: 60 }),
+  W('BG_DOTS_GRID',       CAT_BACKGROUNDS, 'Dots Grid',           'Soft polka-dot grid pattern',                      'universal', CircleDot,  withMeasuredHeight(BgDotsGrid),        { base: '#f7f7f5', dot: '#0b0c0e22', spacing: 32 }),
+  W('BG_TOPO_LINES',      CAT_BACKGROUNDS, 'Topographic Lines',   'Layered topographic contour lines',                'universal', Spline,     withMeasuredHeight(BgTopoLines),       { base: '#0d2226', line: '#13a6ad', density: 18 }),
+  W('BG_ANIMATED_FLOW',   CAT_BACKGROUNDS, 'Animated Flow',       'Slow-drifting animated blur-blob background',      'universal', Waves,      withMeasuredHeight(BgAnimatedFlow),    { speed: 1 }),
+  W('BG_PHOTO_LOBBY_WARM',CAT_BACKGROUNDS, 'Hotel Lobby (Warm)',  'Warm hotel-lobby photo placeholder, tinted',       'universal', ImageIcon2, withMeasuredHeight(BgPhotoLobbyWarm),  {}),
+  W('BG_PHOTO_CAMPUS',    CAT_BACKGROUNDS, 'Campus Quad',         'Campus-quad photo placeholder, tinted',            'universal', ImageIcon2, withMeasuredHeight(BgPhotoCampus),     {}),
+  W('BG_PHOTO_HOSPITAL',  CAT_BACKGROUNDS, 'Hospital Atrium',     'Hospital-atrium photo placeholder, tinted',        'universal', ImageIcon2, withMeasuredHeight(BgPhotoHospital),   {}),
+  W('BG_PHOTO_RETAIL',    CAT_BACKGROUNDS, 'Retail Interior',     'Retail-interior photo placeholder, tinted',        'universal', ImageIcon2, withMeasuredHeight(BgPhotoRetail),     {}),
+];
+
+/* ─── LIVE DATA — universal data feeds (EDU CMS-7) ───────────────────
+ * Markets, news, weather, transit — rendered from config with sample
+ * defaults. Universal. Each Component sizes off a pixel `height`.
+ * (variants-register.ts maps 'Live Data' → LIVE_DATA.) */
+const CAT_LIVE_DATA = 'Live Data';
+
+export const LIVE_DATA_WIDGETS: RegisteredWidget[] = [
+  W('SPORTS_SCOREBOARD', CAT_LIVE_DATA, 'Live Scoreboard',  'Multi-game live scoreboard grid for a league',        'universal', Tv,          withMeasuredHeight(LiveSportsScoreboardWidget), { league: 'NBA', accent: '#ffd23a' }),
+  W('STOCK_TICKER',      CAT_LIVE_DATA, 'Stock Ticker',     'Market tiles plus a scrolling stock ticker band',     'universal', TrendingUp,  withMeasuredHeight(StockTickerWidget),         { exchange: 'NYSE / NASDAQ' }),
+  W('CRYPTO_TICKER',     CAT_LIVE_DATA, 'Crypto Ticker',    '24-hour cryptocurrency price board',                  'universal', Coins,       withMeasuredHeight(CryptoTickerWidget),        {}),
+  W('NEWS_HEADLINES',    CAT_LIVE_DATA, 'News Headlines',   'Breaking-news headline list from an RSS source',      'universal', Newspaper,   withMeasuredHeight(NewsHeadlinesWidget),       { source: 'AP · Reuters · BBC', accent: '#e7142b' }),
+  W('AIR_QUALITY',       CAT_LIVE_DATA, 'Air Quality',      'Air-quality index gauge with pollutant breakdown',    'universal', Wind,        withMeasuredHeight(AirQualityWidget),          { location: 'Springfield, IL', aqi: 62, pm25: 14, pm10: 28, o3: 52, no2: 12 }),
+  W('WORLD_CLOCKS',      CAT_LIVE_DATA, 'World Clocks',     'Live multi-timezone clock cards',                     'universal', Globe,       withMeasuredHeight(WorldClocksWidget),         { hour12: false }),
+  W('FX_RATES',          CAT_LIVE_DATA, 'FX Rates',         'Foreign-exchange rate board against a base currency', 'universal', DollarSign,  withMeasuredHeight(FxRatesWidget),             { base: 'USD' }),
+  W('TRAFFIC_CAM',       CAT_LIVE_DATA, 'Traffic Cameras',  'DOT traffic-camera grid with congestion status',     'universal', TrafficCone, withMeasuredHeight(TrafficCamWidget),          { city: 'I-5 Corridor' }),
+];
+
+/* ─── TOUCH & ENGAGE — interactive kiosk surfaces (EDU CMS-7) ────────
+ * Universal touch widgets — photo booth, sign-in, language, feedback,
+ * games, wayfinding, fundraising. Each Component sizes off `height`.
+ * (variants-register.ts maps 'Touch & Engage' → TOUCH_POINT.) */
+const CAT_TOUCH_ENGAGE = 'Touch & Engage';
+
+export const TOUCH_ENGAGE_WIDGETS: RegisteredWidget[] = [
+  W('PHOTO_BOOTH',          CAT_TOUCH_ENGAGE, 'Photo Booth',         'Kiosk photo booth — frame picker and countdown',       'universal', Camera,        withMeasuredHeight(PhotoBoothWidget),          { frames: ['Polaroid', 'Strip', 'Grid 4', 'Single'], countdownSec: 3 }),
+  W('SIGN_IN_PAD',          CAT_TOUCH_ENGAGE, 'Visitor Sign-In Pad', 'Visitor sign-in form with a visit-type picker',        'universal', UserPlus,      withMeasuredHeight(SignInPadWidget),           { visitTypes: ['Meeting', 'Interview', 'Delivery', 'Vendor', 'Tour', 'Other'] }),
+  W('LANGUAGE_PICKER',      CAT_TOUCH_ENGAGE, 'Language Picker',     'Tap-to-select language grid with native names',       'universal', Languages,     withMeasuredHeight(LanguagePickerWidget),      {}),
+  W('ACCESSIBILITY_TRAY',   CAT_TOUCH_ENGAGE, 'Accessibility Tray',  'On-screen accessibility controls — text, contrast',    'universal', Accessibility, withMeasuredHeight(AccessibilityTrayWidget),   {}),
+  W('NPS_SMILEY',           CAT_TOUCH_ENGAGE, 'Feedback Smileys',    'One-tap NPS smiley feedback prompt',                   'universal', SmilePlus,     withMeasuredHeight(NpsSmileyWidget),           { question: 'How was your visit?' }),
+  W('TRIVIA_GAME',          CAT_TOUCH_ENGAGE, 'Trivia Game',         'Timed multiple-choice trivia question card',           'universal', Lightbulb,     withMeasuredHeight(TriviaGameWidget),          { question: 'Which planet is closest to the Sun?', options: ['Venus', 'Mercury', 'Mars', 'Jupiter'] }),
+  W('SPIN_TO_WIN',          CAT_TOUCH_ENGAGE, 'Spin-to-Win Wheel',   'Spin-to-win prize wheel for promotions',               'universal', Disc3,         withMeasuredHeight(SpinToWinWidget),           { intro: "TONIGHT'S GIVEAWAY" }),
+  W('DIRECTORY_SEARCH',     CAT_TOUCH_ENGAGE, 'Directory Search',    'Searchable people directory with category chips',      'universal', Search,        withMeasuredHeight(DirectorySearchWidget),     { searchOf: 'doctor' }),
+  W('WAYFINDING_FLOOR_MAP', CAT_TOUCH_ENGAGE, 'Wayfinding Floor Map','Interactive floor map with route and floor picker',    'universal', MapIcon,       withMeasuredHeight(WayfindingFloorMapWidget),  { floors: [1, 2, 3, 4, 5], currentFloor: 2 }),
+  W('DONATION_THERMOMETER', CAT_TOUCH_ENGAGE, 'Donation Thermometer','Fundraiser progress meter with a donate QR code',      'universal', HeartHandshake, withMeasuredHeight(DonationThermometerWidget), { goal: 50000, raised: 32800, donors: 246, daysLeft: 14, qrLabel: 'donate.school.org' }),
+];
+
+/* ─── TRANSIT — airport / transit boards (EDU CMS-7) ─────────────────
+ * Universal transit widgets — departures, flight status, transit
+ * arrivals, parking. Each Component sizes off a pixel `height`.
+ * (variants-register.ts maps 'Transit' → LIVE_DATA.) */
+const CAT_TRANSIT = 'Transit';
+
+export const TRANSIT_WIDGETS: RegisteredWidget[] = [
+  W('DEPARTURES_BOARD',     CAT_TRANSIT, 'Departures Board',     'Airport split-flap departures board',               'universal', PlaneTakeoff,  withMeasuredHeight(DeparturesBoardWidget),     { airport: 'SFO · TERMINAL 2' }),
+  W('FLIGHT_STATUS_HERO',   CAT_TRANSIT, 'Flight Status Hero',   'Single-flight status hero — route, gate, boarding',  'universal', Plane,         withMeasuredHeight(FlightStatusHeroWidget),    { flight: 'UA 504', from: 'SFO', fromCity: 'San Francisco', to: 'JFK', toCity: 'New York', depTime: '14:30', arrTime: '22:52', status: 'ON TIME', gate: 'B07', board: '13:50', terminal: '2', aircraft: 'Boeing 737-900' }),
+  W('TRANSIT_DEPARTURES',   CAT_TRANSIT, 'Transit Departures',   'Next-trains board — line, destination, minutes',     'universal', TrainFront,    withMeasuredHeight(TransitDeparturesWidget),   { station: 'EMBARCADERO' }),
+  W('PARKING_AVAILABILITY', CAT_TRANSIT, 'Parking Availability', 'Live parking-lot availability with capacity bars',  'universal', SquareParking, withMeasuredHeight(ParkingAvailabilityWidget), { facility: 'SFO TERMINAL 2' }),
+];
+
 /* ─── ALL ───────────────────────────────────────────────────────────── */
 export const ALL_V2_WIDGETS: RegisteredWidget[] = [
   ...CLOCK_WIDGETS, ...HEADLINE_WIDGETS, ...ANNOUNCEMENT_WIDGETS, ...CALENDAR_WIDGETS,
   ...STAFF_WIDGETS, ...COUNTDOWN_WIDGETS, ...LOGO_WIDGETS, ...TICKER_WIDGETS,
   ...WEATHER_WIDGETS, ...PHOTO_WIDGETS, ...RICHTEXT_WIDGETS, ...IMAGE_WIDGETS,
   ...LUNCH_WIDGETS, ...BELL_WIDGETS,
-  // VenueOS Sports — celebration ribbons, scoped to the SPORTS vertical
-  // so they never appear in a school / restaurant / clinic palette.
+  // VenueOS Sports — celebration ribbons + venue surfaces, scoped to the
+  // SPORTS vertical so they never appear in a school / restaurant /
+  // clinic palette.
   ...withVertical('SPORTS', [
     ...CEL_BASEBALL_WIDGETS, ...CEL_FOOTBALL_WIDGETS, ...CEL_BASKETBALL_WIDGETS,
     ...CEL_HOCKEY_WIDGETS, ...CEL_SOCCER_WIDGETS,
     ...SCOREBOARD_WIDGETS,
+    ...SPORTS_VENUE_WIDGETS, ...CELEBRATIONS_MORE_WIDGETS,
   ]),
   // Industry packs — each scoped to its own business line.
   ...withVertical('HEALTHCARE', HEALTHCARE_WIDGETS),
@@ -411,6 +622,10 @@ export const ALL_V2_WIDGETS: RegisteredWidget[] = [
   // Charts are universal — a KPI bar chart fits every vertical, so no
   // vertical tag (shows in every palette).
   ...CHART_WIDGETS,
+  // VenueOS universal packs — backgrounds, live data feeds, touch
+  // engagement, and transit boards. No vertical tag — every palette.
+  ...BACKGROUNDS_WIDGETS, ...LIVE_DATA_WIDGETS,
+  ...TOUCH_ENGAGE_WIDGETS, ...TRANSIT_WIDGETS,
 ];
 
 export const V2_BY_TYPE: Record<string, RegisteredWidget> = Object.fromEntries(

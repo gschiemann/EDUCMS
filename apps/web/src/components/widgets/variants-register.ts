@@ -770,6 +770,16 @@ const V2_CATEGORY_TO_CANONICAL: Record<string, WidgetType> = {
   'Charts':       'CHART',
   // VenueOS Sports — the live scoreboard widget (HS / College / Pro).
   'Scoreboards':  'SCOREBOARD',
+  // VenueOS Sports Venue — jumbotron / ribbon / concourse surfaces.
+  'Sports Venue':              'SCOREBOARD',
+  // VenueOS Sports — celebration ribbons for the remaining sports.
+  'Celebrations · More Sports': 'CELEBRATION',
+  // VenueOS universal packs — backgrounds, live data feeds, touch
+  // engagement, and transit boards. All variant-rendered.
+  'Backgrounds':   'BACKGROUND',
+  'Live Data':     'LIVE_DATA',
+  'Touch & Engage': 'TOUCH_POINT',
+  'Transit':       'LIVE_DATA',
 };
 
 for (const w of ALL_V2_WIDGETS) {

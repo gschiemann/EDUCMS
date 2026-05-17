@@ -45,7 +45,11 @@ export type WidgetType =
   // variant-rendered.
   | 'HEALTHCARE' | 'CORPORATE' | 'HOSPITALITY' | 'WORSHIP' | 'CHART'
   // VenueOS Sports — the live, engine-driven scoreboard widget.
-  | 'SCOREBOARD';
+  | 'SCOREBOARD'
+  // VenueOS universal packs — drop-in template backgrounds and live
+  // data feeds (markets, news, weather, transit). Variant-rendered;
+  // each canonical type groups its pack under one picker chip.
+  | 'BACKGROUND' | 'LIVE_DATA';
 
 export interface ThemeWidgetProps {
   config: any;
