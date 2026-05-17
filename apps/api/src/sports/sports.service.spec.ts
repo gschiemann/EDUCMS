@@ -557,14 +557,7 @@ describe('SportsService — baseball count rules', () => {
   });
 });
 
-describe('SportsService — football & set-sport rules', () => {
-  it('a 5th down wraps back to 1st down', async () => {
-    const { service } = setup();
-    const g = await newGame(service, 'football');
-    const r: any = await service.updateStats(TENANT, g.id, { stats: { down: 5 } });
-    expect(r.stats).toMatchObject({ down: 1 });
-  });
-
+describe('SportsService — set-sport rules', () => {
   it('volleyball: reaching 25 by 2 wins the set and advances', async () => {
     const { service } = setup();
     const g = await newGame(service, 'volleyball');

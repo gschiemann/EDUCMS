@@ -336,14 +336,22 @@ function GameControl() {
       ) : def.stats.length > 0 ? (
         <Section title="Game stats">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {def.stats.map((s) => (
-              <StatField
-                key={s.key}
-                field={s}
-                value={(g.stats || {})[s.key]}
-                onCommit={(v) => ctl.stats.mutate({ stats: { [s.key]: v } })}
-              />
-            ))}
+            {def.stats.map((s) =>
+              s.key === 'down' && def.key === 'football' ? (
+                <DownControl
+                  key={s.key}
+                  value={Number((g.stats || {}).down) || 1}
+                  onSet={(n) => ctl.stats.mutate({ stats: { down: n } })}
+                />
+              ) : (
+                <StatField
+                  key={s.key}
+                  field={s}
+                  value={(g.stats || {})[s.key]}
+                  onCommit={(v) => ctl.stats.mutate({ stats: { [s.key]: v } })}
+                />
+              ),
+            )}
           </div>
         </Section>
       ) : null}
@@ -835,6 +843,38 @@ function CountChip({
         >
           +1
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Football down selector. Football has exactly four downs — the
+ * operator taps the current one. There is no 5th down; tapping never
+ * produces an out-of-range value.
+ */
+function DownControl({ value, onSet }: { value: number; onSet: (n: number) => void }) {
+  const d = value >= 1 && value <= 4 ? value : 1;
+  const labels = ['1st', '2nd', '3rd', '4th'];
+  return (
+    <div>
+      <label className="text-xs font-semibold text-slate-500">Down</label>
+      <div className="mt-1 flex gap-1">
+        {labels.map((lbl, i) => (
+          <button
+            key={lbl}
+            type="button"
+            onClick={() => onSet(i + 1)}
+            aria-pressed={i + 1 === d}
+            className={`flex-1 rounded-lg py-2 text-xs font-bold transition-colors ${
+              i + 1 === d
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+            }`}
+          >
+            {lbl}
+          </button>
+        ))}
       </div>
     </div>
   );

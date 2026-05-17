@@ -821,14 +821,11 @@ export class SportsService {
       else if (typeof value === 'number' || typeof value === 'boolean') next[key] = value;
     }
 
-    // Sport rules: each sport's count follows its real rules — the
-    // baseball/softball ball-strike-out cascade, the football down cycle.
-    let segmentDelta = 0;
-    if (game.sport === 'baseball' || game.sport === 'softball') {
-      segmentDelta = this.applyBaseballCount(next);
-    } else if (game.sport === 'football') {
-      this.applyFootballDown(next);
-    }
+    // Sport rules: the baseball/softball count cascades automatically.
+    const segmentDelta =
+      game.sport === 'baseball' || game.sport === 'softball'
+        ? this.applyBaseballCount(next)
+        : 0;
 
     const data: Record<string, unknown> = { stats: next as any };
     if (segmentDelta) {
@@ -888,16 +885,6 @@ export class SportsService {
     s.outs = outs;
     s.half = half;
     return segmentDelta;
-  }
-
-  /**
-   * Football down rules. Downs cycle 1→4; a 5th down means a new set
-   * of downs (a first down, or a change of possession) — wrap to 1st.
-   */
-  private applyFootballDown(s: Record<string, unknown>): void {
-    if (typeof s.down !== 'number' || !isFinite(s.down)) return;
-    const d = Math.floor(s.down);
-    if (d > 4 || d < 1) s.down = 1;
   }
 
   /**
