@@ -15,7 +15,17 @@
  */
 
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Loader2, X, ImageIcon, Megaphone } from 'lucide-react';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Loader2,
+  X,
+  ImageIcon,
+  Megaphone,
+  BarChart3,
+  ChevronDown,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -23,6 +33,7 @@ import {
   useCreateSponsor,
   useUpdateSponsor,
   useDeleteSponsor,
+  useSponsorReport,
 } from '@/hooks/use-api';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 
@@ -98,6 +109,8 @@ export function SponsorPanel() {
           weight = a brand comes around more often per loop.
         </p>
       )}
+
+      {sponsors.length > 0 && <SponsorReport />}
 
       {editing && (
         <SponsorEditorModal
@@ -412,6 +425,98 @@ function SponsorEditorModal({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Seconds → a compact "1h 12m" / "8m" / "40s" duration string. */
+function fmtDuration(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${s}s`;
+}
+
+interface SponsorReportRow {
+  id: string;
+  name: string;
+  tier?: string | null;
+  active: boolean;
+  estimatedSpots: number;
+  estimatedExposureSeconds: number;
+}
+interface SponsorReportData {
+  totalGames?: number;
+  totalLiveSeconds?: number;
+  sponsors?: SponsorReportRow[];
+}
+
+/**
+ * Proof of play — the report that closes the ad renewal. It tells a
+ * sponsor "your logo ran ~N spots for M minutes of live game time"
+ * across every game the venue has run. Estimated from rotation weight
+ * and live game duration (no per-impression tracking needed).
+ */
+function SponsorReport() {
+  const { data } = useSponsorReport();
+  const [open, setOpen] = useState(false);
+
+  const report = (data && typeof data === 'object' ? data : null) as SponsorReportData | null;
+  const rows = (report?.sponsors || []).filter((s) => s.active && s.estimatedSpots > 0);
+  if (rows.length === 0) return null;
+
+  const games = report?.totalGames || 0;
+
+  return (
+    <div className="mt-3 rounded-xl border border-slate-200 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2 px-3 py-2.5 bg-slate-50 hover:bg-slate-100 cursor-pointer text-left"
+      >
+        <BarChart3 className="h-4 w-4 text-indigo-600 shrink-0" />
+        <span className="text-sm font-bold text-slate-800">Proof of play</span>
+        <span className="text-[11px] text-slate-400 truncate">
+          — what each sponsor got across {games} game{games === 1 ? '' : 's'}
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 text-slate-400 ml-auto shrink-0 transition-transform ${
+            open ? 'rotate-180' : ''
+          }`}
+        />
+      </button>
+      {open && (
+        <div className="px-3 py-3">
+          <p className="text-[11px] text-slate-400 mb-2.5">
+            {fmtDuration(report?.totalLiveSeconds || 0)} of live game time so far.
+            Estimated from rotation weight — the numbers you show a sponsor at
+            renewal.
+          </p>
+          <div className="space-y-1.5">
+            {rows.map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center gap-2 text-xs rounded-lg bg-slate-50 px-2.5 py-1.5"
+              >
+                <span className="font-semibold text-slate-700 truncate flex-1">
+                  {s.name}
+                  {s.tier ? (
+                    <span className="ml-1.5 font-normal text-slate-400">{s.tier}</span>
+                  ) : null}
+                </span>
+                <span className="tabular-nums font-bold text-indigo-600 shrink-0">
+                  ~{s.estimatedSpots.toLocaleString()} spots
+                </span>
+                <span className="tabular-nums text-slate-400 shrink-0 w-14 text-right">
+                  {fmtDuration(s.estimatedExposureSeconds)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
