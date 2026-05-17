@@ -87,11 +87,37 @@ export class SportsController {
       awayTeam?: string;
       homeColor?: string;
       awayColor?: string;
+      homeLogoUrl?: string;
+      awayLogoUrl?: string;
       screenGroupId?: string;
       status?: string;
     },
   ) {
     return this.sports.createGame(req.user.tenantId, body);
+  }
+
+  /** Edit a game's identity — team names, colors, brand logos. */
+  @Patch('games/:id')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  updateGameDetails(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      homeTeam?: string;
+      awayTeam?: string;
+      homeColor?: string;
+      awayColor?: string;
+      homeLogoUrl?: string | null;
+      awayLogoUrl?: string | null;
+    },
+  ) {
+    return this.sports.updateGameDetails(req.user.tenantId, id, body);
   }
 
   @Delete('games/:id')

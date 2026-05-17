@@ -164,6 +164,8 @@ export class SportsService {
       awayScore: game.awayScore,
       homeColor: game.homeColor,
       awayColor: game.awayColor,
+      homeLogoUrl: game.homeLogoUrl,
+      awayLogoUrl: game.awayLogoUrl,
       clockMs: game.clockMs,
       clockRunning: game.clockRunning,
       clockUpdatedAt: game.clockUpdatedAt,
@@ -181,6 +183,13 @@ export class SportsService {
 
   // ── writes ───────────────────────────────────────────────────
 
+  /** Bound a logo URL — trim, cap length, drop empties. */
+  private cleanLogo(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const s = value.trim();
+    return s ? s.slice(0, 2048) : null;
+  }
+
   async createGame(
     tenantId: string,
     dto: {
@@ -189,6 +198,8 @@ export class SportsService {
       awayTeam?: string;
       homeColor?: string;
       awayColor?: string;
+      homeLogoUrl?: string;
+      awayLogoUrl?: string;
       screenGroupId?: string;
       status?: string;
     },
@@ -209,6 +220,8 @@ export class SportsService {
         awayTeam: awayTeam.slice(0, 80),
         homeColor: dto.homeColor?.slice(0, 32) || null,
         awayColor: dto.awayColor?.slice(0, 32) || null,
+        homeLogoUrl: this.cleanLogo(dto.homeLogoUrl),
+        awayLogoUrl: this.cleanLogo(dto.awayLogoUrl),
         screenGroupId: dto.screenGroupId || null,
         status,
         segment: 1,
@@ -218,6 +231,42 @@ export class SportsService {
         stats: {},
       },
     });
+  }
+
+  /**
+   * Edit a game's identity — team names, colors, logos. Lets an
+   * operator fix a typo or drop in a brand logo without recreating
+   * the game (and losing the score/clock). Tenant-scoped.
+   */
+  async updateGameDetails(
+    tenantId: string,
+    id: string,
+    dto: {
+      homeTeam?: string;
+      awayTeam?: string;
+      homeColor?: string;
+      awayColor?: string;
+      homeLogoUrl?: string | null;
+      awayLogoUrl?: string | null;
+    },
+  ) {
+    await this.owned(tenantId, id);
+    const data: Record<string, unknown> = {};
+    if (dto.homeTeam !== undefined) {
+      const t = String(dto.homeTeam).trim();
+      if (!t) throw new BadRequestException('homeTeam cannot be empty');
+      data.homeTeam = t.slice(0, 80);
+    }
+    if (dto.awayTeam !== undefined) {
+      const t = String(dto.awayTeam).trim();
+      if (!t) throw new BadRequestException('awayTeam cannot be empty');
+      data.awayTeam = t.slice(0, 80);
+    }
+    if (dto.homeColor !== undefined) data.homeColor = dto.homeColor?.slice(0, 32) || null;
+    if (dto.awayColor !== undefined) data.awayColor = dto.awayColor?.slice(0, 32) || null;
+    if (dto.homeLogoUrl !== undefined) data.homeLogoUrl = this.cleanLogo(dto.homeLogoUrl);
+    if (dto.awayLogoUrl !== undefined) data.awayLogoUrl = this.cleanLogo(dto.awayLogoUrl);
+    return this.prisma.client.game.update({ where: { id }, data });
   }
 
   async deleteGame(tenantId: string, id: string) {

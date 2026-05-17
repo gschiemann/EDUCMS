@@ -1410,6 +1410,8 @@ model Game {
   screenGroupId  String?   @map("screen_group_id")        // surfaces showing this game
   homeColor      String?   @map("home_color")
   awayColor      String?   @map("away_color")
+  homeLogoUrl    String?   @map("home_logo_url")          // team brand mark on the scoreboard
+  awayLogoUrl    String?   @map("away_logo_url")
   startedAt      DateTime? @map("started_at")
   endedAt        DateTime? @map("ended_at")
   createdAt      DateTime  @default(now()) @map("created_at")
