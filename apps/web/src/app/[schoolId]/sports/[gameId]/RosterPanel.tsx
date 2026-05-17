@@ -13,7 +13,7 @@
  */
 
 import { useRef, useState } from 'react';
-import { UserPlus, Upload, Pencil, Trash2, Loader2, X, ImageIcon } from 'lucide-react';
+import { UserPlus, Upload, Pencil, Trash2, Loader2, X, ImageIcon, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGameRoster, useRosterMutations, type RosterPlayer } from '@/hooks/use-api';
@@ -69,6 +69,35 @@ export function RosterPanel({
   const home = roster.filter((p) => p.team !== 'away');
   const away = roster.filter((p) => p.team === 'away');
 
+  /**
+   * Download a ready-to-fill CSV template. Header is the exact column
+   * set the importer expects — `team,name,number,position` plus this
+   * sport's typical stat columns — followed by two example rows the
+   * operator overwrites with their real roster. Generated client-side
+   * (no server round-trip) as a Blob download.
+   */
+  const downloadTemplate = () => {
+    const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const cols = ['team', 'name', 'number', 'position', ...statKeys];
+    // team = the literal word `home` or `away`; position is optional.
+    const exampleRow = (team: string, name: string, num: string) =>
+      [team, name, num, '', ...statKeys.map(() => '')].map(esc).join(',');
+    const csv =
+      [
+        cols.map(esc).join(','),
+        exampleRow('home', 'Example Player A', '12'),
+        exampleRow('away', 'Example Player B', '7'),
+      ].join('\r\n') + '\r\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'roster-template.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+
   const onCsv = async (file: File | undefined) => {
     if (!file) return;
     setCsvBusy(true);
@@ -93,7 +122,7 @@ export function RosterPanel({
           Build each side&rsquo;s roster — players, headshots, and stats. It drives the
           player cards on the scoreboard and the ribbon.
         </p>
-        <div className="shrink-0">
+        <div className="shrink-0 flex items-center gap-2">
           <input
             ref={csvInput}
             type="file"
@@ -101,6 +130,16 @@ export function RosterPanel({
             className="hidden"
             onChange={(e) => onCsv(e.target.files?.[0])}
           />
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={downloadTemplate}
+            title="Download a ready-to-fill CSV with the correct columns"
+          >
+            <Download className="h-4 w-4" />
+            Template
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -114,8 +153,13 @@ export function RosterPanel({
         </div>
       </div>
       <p className="text-[11px] text-slate-400 mb-3">
-        CSV columns: <code className="text-slate-500">team, name, number, position</code>{' '}
-        plus any stat columns (AVG, HR, PTS…). One player per row.
+        Download the <strong className="font-semibold text-slate-500">Template</strong>,
+        fill it in a spreadsheet, then <strong className="font-semibold text-slate-500">Import CSV</strong>{' '}
+        — you can still edit players and add photos after. Columns:{' '}
+        <code className="text-slate-500">team, name, number, position</code>{' '}
+        plus stat columns. <code className="text-slate-500">team</code> is{' '}
+        <code className="text-slate-500">home</code> or <code className="text-slate-500">away</code>.
+        One player per row.
       </p>
       {csvMsg && <p className="text-xs text-slate-500 mb-3">{csvMsg}</p>}
 
