@@ -262,7 +262,8 @@ export class SportsController {
     return this.sports.listGameScreens(req.user.tenantId, id);
   }
 
-  /** Push this game's live scoreboard to the selected screens. */
+  /** Push this game to the selected screens on a chosen surface
+   *  (BOARD scoreboard | RIBBON LED strip | SCOREBUG overlay). */
   @Post('games/:id/show')
   @RequireRoles(
     AppRole.SUPER_ADMIN,
@@ -273,9 +274,14 @@ export class SportsController {
   showOnScreens(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { screenIds?: string[] },
+    @Body() body: { screenIds?: string[]; surface?: string },
   ) {
-    return this.sports.showOnScreens(req.user.tenantId, id, body?.screenIds);
+    return this.sports.showOnScreens(
+      req.user.tenantId,
+      id,
+      body?.screenIds,
+      body?.surface,
+    );
   }
 
   /** Stop showing this game — on the given screens, or all of them. */

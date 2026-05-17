@@ -538,6 +538,11 @@ model Screen {
   // emergency takeover always wins: the manifest's emergency branch
   // runs and returns BEFORE the scoreboard branch is ever reached.
   activeBoardGameId                   String?      @map("active_board_game_id")
+  // Which sports surface this screen shows for activeBoardGameId:
+  // BOARD (full scoreboard) | RIBBON (LED ribbon strip) | SCOREBUG
+  // (broadcast overlay). Null is treated as BOARD for back-compat
+  // with screens pushed before the surface picker shipped.
+  activeBoardSurface                  String?      @map("active_board_surface")
   schedules                           Schedule[]
   screenGroup                         ScreenGroup? @relation(fields: [screenGroupId], references: [id])
   tenant                              Tenant?      @relation(fields: [tenantId], references: [id])

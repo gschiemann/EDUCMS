@@ -326,7 +326,7 @@ export class SportsService {
     // back to their scheduled content (the pointer has no FK).
     await this.prisma.client.screen.updateMany({
       where: { tenantId, activeBoardGameId: id },
-      data: { activeBoardGameId: null },
+      data: { activeBoardGameId: null, activeBoardSurface: null },
     });
     await this.prisma.client.game.delete({ where: { id } }); // cascades events
     return { deleted: true };
@@ -334,12 +334,30 @@ export class SportsService {
 
   // ── scoreboard-to-screen push ────────────────────────────────
 
-  /** Tenant's screens + whether each currently shows this game's board. */
+  /** The valid sports display surfaces an operator can push to a screen. */
+  static readonly BOARD_SURFACES = ['BOARD', 'RIBBON', 'SCOREBUG'] as const;
+
+  /** Normalize an untrusted surface value; defaults to BOARD. */
+  private cleanSurface(surface: unknown): 'BOARD' | 'RIBBON' | 'SCOREBUG' {
+    const s = String(surface || 'BOARD').toUpperCase();
+    return s === 'RIBBON' || s === 'SCOREBUG' ? s : 'BOARD';
+  }
+
+  /**
+   * Tenant's screens + whether each currently shows this game, and which
+   * surface (scoreboard / ribbon / scorebug) it's showing.
+   */
   async listGameScreens(tenantId: string, gameId: string) {
     await this.owned(tenantId, gameId);
     const screens = await this.prisma.client.screen.findMany({
       where: { tenantId },
-      select: { id: true, name: true, status: true, activeBoardGameId: true },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        activeBoardGameId: true,
+        activeBoardSurface: true,
+      },
       orderBy: { name: 'asc' },
     });
     return screens.map((s) => ({
@@ -348,11 +366,24 @@ export class SportsService {
       status: s.status,
       showing: s.activeBoardGameId === gameId,
       showingOther: !!s.activeBoardGameId && s.activeBoardGameId !== gameId,
+      // The surface this screen renders when it IS showing this game.
+      // Null surface on a pushed screen reads as BOARD (back-compat).
+      surface:
+        s.activeBoardGameId === gameId ? s.activeBoardSurface || 'BOARD' : null,
     }));
   }
 
-  /** Push this game's live scoreboard to the given screens. */
-  async showOnScreens(tenantId: string, gameId: string, screenIds: unknown) {
+  /**
+   * Push this game to the given screens on a chosen surface — the full
+   * scoreboard (BOARD), the LED ribbon (RIBBON), or the broadcast
+   * scorebug (SCOREBUG). Defaults to BOARD.
+   */
+  async showOnScreens(
+    tenantId: string,
+    gameId: string,
+    screenIds: unknown,
+    surface?: unknown,
+  ) {
     await this.owned(tenantId, gameId);
     const ids = Array.isArray(screenIds)
       ? screenIds.filter((x): x is string => typeof x === 'string' && x.length > 0)
@@ -360,7 +391,7 @@ export class SportsService {
     if (ids.length === 0) throw new BadRequestException('screenIds is required');
     await this.prisma.client.screen.updateMany({
       where: { id: { in: ids }, tenantId },
-      data: { activeBoardGameId: gameId },
+      data: { activeBoardGameId: gameId, activeBoardSurface: this.cleanSurface(surface) },
     });
     return this.listGameScreens(tenantId, gameId);
   }
@@ -374,7 +405,10 @@ export class SportsService {
         in: screenIds.filter((x): x is string => typeof x === 'string' && x.length > 0),
       };
     }
-    await this.prisma.client.screen.updateMany({ where, data: { activeBoardGameId: null } });
+    await this.prisma.client.screen.updateMany({
+      where,
+      data: { activeBoardGameId: null, activeBoardSurface: null },
+    });
     return this.listGameScreens(tenantId, gameId);
   }
 

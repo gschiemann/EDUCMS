@@ -240,8 +240,8 @@ function GameControl() {
         </div>
       </Section>
 
-      {/* push the scoreboard to the venue's screens */}
-      <Section title="Show on screens">
+      {/* push a surface (scoreboard / ribbon) to the venue's screens */}
+      <Section title="Put it on your screens">
         <ScreenPushPanel gameId={gameId} />
       </Section>
 
@@ -367,6 +367,12 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+/**
+ * Per-screen surface picker. Every paired screen in the venue is a row
+ * with a 3-way choice — Scoreboard, Ribbon, or Off. One tap puts that
+ * surface live on the screen; the player swaps within a couple seconds.
+ * An emergency alert always overrides whatever is showing.
+ */
 function ScreenPushPanel({ gameId }: { gameId: string }) {
   const { data: screens, isLoading } = useGameScreens(gameId);
   const show = useShowGameOnScreens(gameId);
@@ -380,14 +386,20 @@ function ScreenPushPanel({ gameId }: { gameId: string }) {
     return <p className="text-sm text-slate-400">Loading screens…</p>;
   }
   if (list.length === 0) {
-    return <p className="text-sm text-slate-400">No paired screens in this venue yet.</p>;
+    return (
+      <p className="text-sm text-slate-400">
+        No paired screens in this venue yet. Pair a display first, then come back to
+        put the scoreboard or ribbon on it.
+      </p>
+    );
   }
 
   return (
     <div>
       <div className="flex items-center justify-between gap-3 mb-3">
         <p className="text-xs text-slate-400">
-          Push this scoreboard to a display. An emergency alert always overrides it.
+          Pick what each screen shows — the full scoreboard, the LED ribbon, or off.
+          An emergency alert always overrides it.
         </p>
         {showingCount > 0 && (
           <Button
@@ -397,52 +409,88 @@ function ScreenPushPanel({ gameId }: { gameId: string }) {
             onClick={() => hide.mutate(undefined)}
             className="shrink-0"
           >
-            Stop all ({showingCount})
+            All off ({showingCount})
           </Button>
         )}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {list.map((s) => (
-          <div
-            key={s.id}
-            className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2"
-          >
-            <span
-              className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                s.status === 'ONLINE' ? 'bg-green-500' : 'bg-slate-300'
-              }`}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-slate-800 truncate">{s.name}</div>
-              {s.showingOther && !s.showing && (
-                <div className="text-[11px] text-amber-600">showing another game</div>
-              )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        {list.map((s) => {
+          const current: string = s.showing ? s.surface || 'BOARD' : 'OFF';
+          return (
+            <div key={s.id} className="rounded-xl border border-slate-200 px-3 py-2.5">
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                    s.status === 'ONLINE' ? 'bg-green-500' : 'bg-slate-300'
+                  }`}
+                />
+                <span className="text-sm font-semibold text-slate-800 truncate flex-1">
+                  {s.name}
+                </span>
+                {current !== 'OFF' ? (
+                  <span className="text-[11px] font-bold text-green-600 shrink-0">● On air</span>
+                ) : s.showingOther ? (
+                  <span className="text-[11px] text-amber-600 shrink-0">other game</span>
+                ) : null}
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                <SurfaceBtn
+                  label="Scoreboard"
+                  icon={MonitorPlay}
+                  active={current === 'BOARD'}
+                  disabled={busy}
+                  onClick={() => show.mutate({ screenIds: [s.id], surface: 'BOARD' })}
+                />
+                <SurfaceBtn
+                  label="Ribbon"
+                  icon={RectangleHorizontal}
+                  active={current === 'RIBBON'}
+                  disabled={busy}
+                  onClick={() => show.mutate({ screenIds: [s.id], surface: 'RIBBON' })}
+                />
+                <SurfaceBtn
+                  label="Off"
+                  active={current === 'OFF'}
+                  disabled={busy}
+                  onClick={() => hide.mutate([s.id])}
+                />
+              </div>
             </div>
-            {s.showing ? (
-              <Button
-                size="sm"
-                disabled={busy}
-                className="bg-green-600 text-white gap-1.5 shrink-0"
-                onClick={() => hide.mutate([s.id])}
-              >
-                <MonitorPlay className="h-3.5 w-3.5" />
-                On air
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy}
-                className="shrink-0"
-                onClick={() => show.mutate([s.id])}
-              >
-                Show
-              </Button>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+function SurfaceBtn({
+  label,
+  icon: Icon,
+  active,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${
+        active
+          ? 'bg-green-600 text-white'
+          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+      }`}
+    >
+      {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+      {label}
+    </button>
   );
 }
 

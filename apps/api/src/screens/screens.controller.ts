@@ -1542,9 +1542,9 @@ export class ScreensController {
   // WEBPAGE zone pointing at the live scoreboard page (direct mode, so
   // the player iframes it un-proxied). The player renders this through
   // the existing template pipeline — zero player-code change.
-  private buildScoreboardManifest(screen: any, game: any): any[] {
+  private buildScoreboardManifest(screen: any, game: any, surface?: string): any[] {
     // Match the synthetic template to the panel's resolution so the
-    // WEBPAGE zone gets a correctly-shaped box; the board page scales
+    // WEBPAGE zone gets a correctly-shaped box; the surface page scales
     // its own scene to fit either way. Default to 1080p landscape.
     let w = 1920;
     let h = 1080;
@@ -1553,16 +1553,25 @@ export class ScreensController {
       w = parseInt(m[1], 10);
       h = parseInt(m[2], 10);
     }
+    // Which sports surface this screen renders. The operator picks it
+    // per-screen (BOARD full scoreboard / RIBBON LED strip / SCOREBUG
+    // broadcast overlay); each is a public route the WEBPAGE zone loads
+    // directly. Null / unknown reads as BOARD (back-compat).
+    const s = String(surface || 'BOARD').toUpperCase();
+    const route = s === 'RIBBON' ? 'ribbon' : s === 'SCOREBUG' ? 'scorebug' : 'board';
+    const surfaceName =
+      s === 'RIBBON' ? 'Live Ribbon' : s === 'SCOREBUG' ? 'Live Scorebug' : 'Live Scoreboard';
     return [{
-      id: `board-${game.id}`,
-      name: 'Live Scoreboard',
+      id: `${route}-${game.id}`,
+      name: surfaceName,
       schedule: { daysOfWeek: null, timeStart: null, timeEnd: null, mutedOverride: null },
       totalBytes: 0,
       template: {
-        // Stable per game so the player's template signature doesn't
-        // churn; changes when a different game is pushed.
-        id: `board-tpl-${game.id}`,
-        name: 'Live Scoreboard',
+        // Stable per game + surface so the player's template signature
+        // doesn't churn; changes when a different game OR surface is
+        // pushed (so a board→ribbon switch forces a clean reload).
+        id: `${route}-tpl-${game.id}`,
+        name: surfaceName,
         screenWidth: w,
         screenHeight: h,
         bgColor: '#000000',
@@ -1571,8 +1580,8 @@ export class ScreensController {
         isTouchEnabled: false,
         idleResetMs: undefined,
         zones: [{
-          id: `board-zone-${game.id}`,
-          name: 'Scoreboard',
+          id: `${route}-zone-${game.id}`,
+          name: surfaceName,
           widgetType: 'WEBPAGE',
           x: 0,
           y: 0,
@@ -1582,7 +1591,7 @@ export class ScreensController {
           sortOrder: 0,
           touchAction: null,
           sceneId: null,
-          defaultConfig: { url: `/board/${game.id}`, direct: true },
+          defaultConfig: { url: `/${route}/${game.id}`, direct: true },
         }],
         scenes: [],
       },
@@ -2000,7 +2009,11 @@ export class ScreensController {
           screenId: id,
           tenantId: screen.tenantId,
           generatedAt: new Date().toISOString(),
-          playlists: this.buildScoreboardManifest(screen, boardGame),
+          playlists: this.buildScoreboardManifest(
+            screen,
+            boardGame,
+            (screen as any).activeBoardSurface,
+          ),
         };
         const boardHash = crypto
           .createHash('sha256')
