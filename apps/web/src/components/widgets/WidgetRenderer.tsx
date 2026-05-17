@@ -2661,14 +2661,17 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
   // and would serve a dead static snapshot, not a live scoreboard.
   //
   // SECURITY: `direct` is honored ONLY for our own root-relative
-  // /board/ route. The flag lives in zone config, which a template
-  // author can hand-edit (JSON editor) — so we must NOT trust it to
-  // load an arbitrary URL unproxied + unsandboxed. An external URL
-  // with direct:true just falls through to the proxy path below.
+  // sports surfaces — /board/, /ribbon/, /scorebug/ (all built by the
+  // server's scoreboard manifest). The flag lives in zone config,
+  // which a template author can hand-edit (JSON editor) — so we must
+  // NOT trust it to load an arbitrary URL unproxied + unsandboxed. An
+  // external URL with direct:true just falls through to the proxy.
   const directMode =
     config.direct === true &&
     typeof rawUrl === 'string' &&
-    rawUrl.startsWith('/board/') &&
+    (rawUrl.startsWith('/board/') ||
+      rawUrl.startsWith('/ribbon/') ||
+      rawUrl.startsWith('/scorebug/')) &&
     !rawUrl.includes('..');
   const url = rawUrl && !directMode && !rawUrl.startsWith('http://') && !rawUrl.startsWith('https://') && !rawUrl.startsWith('//')
     ? `https://${rawUrl}`
