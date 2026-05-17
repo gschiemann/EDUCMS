@@ -668,6 +668,12 @@ export class SportsService {
       homeScore: updated.homeScore,
       awayScore: updated.awayScore,
     });
+    // Sport rules: volleyball / pickleball set-and-match scoring runs
+    // off the rally score the moment a team reaches the set target.
+    const def = this.sportOf((updated as any).sport);
+    if (def.key === 'volleyball' || def.key === 'pickleball') {
+      return this.applySetWin(updated, def);
+    }
     return updated;
   }
 
@@ -815,11 +821,14 @@ export class SportsService {
       else if (typeof value === 'number' || typeof value === 'boolean') next[key] = value;
     }
 
-    // Sport rules: the baseball/softball count cascades automatically.
-    const segmentDelta =
-      game.sport === 'baseball' || game.sport === 'softball'
-        ? this.applyBaseballCount(next)
-        : 0;
+    // Sport rules: each sport's count follows its real rules — the
+    // baseball/softball ball-strike-out cascade, the football down cycle.
+    let segmentDelta = 0;
+    if (game.sport === 'baseball' || game.sport === 'softball') {
+      segmentDelta = this.applyBaseballCount(next);
+    } else if (game.sport === 'football') {
+      this.applyFootballDown(next);
+    }
 
     const data: Record<string, unknown> = { stats: next as any };
     if (segmentDelta) {
@@ -879,6 +888,70 @@ export class SportsService {
     s.outs = outs;
     s.half = half;
     return segmentDelta;
+  }
+
+  /**
+   * Football down rules. Downs cycle 1→4; a 5th down means a new set
+   * of downs (a first down, or a change of possession) — wrap to 1st.
+   */
+  private applyFootballDown(s: Record<string, unknown>): void {
+    if (typeof s.down !== 'number' || !isFinite(s.down)) return;
+    const d = Math.floor(s.down);
+    if (d > 4 || d < 1) s.down = 1;
+  }
+
+  /**
+   * Volleyball / pickleball set-and-match scoring. A set is won at its
+   * target — pickleball games to 11, volleyball sets to 25 (the
+   * deciding final set to 15) — by a 2-point margin. Winning a set
+   * bumps that team's set count, resets the rally score to 0-0, and
+   * advances to the next set; winning the majority ends the match.
+   */
+  private async applySetWin(game: any, def: SportDefinition): Promise<any> {
+    const h: number = game.homeScore;
+    const a: number = game.awayScore;
+    const deciding = game.segment >= def.segment.count;
+    const target = def.key === 'pickleball' ? 11 : deciding ? 15 : 25;
+    let winner: 'home' | 'away' | null = null;
+    if (h >= target && h - a >= 2) winner = 'home';
+    else if (a >= target && a - h >= 2) winner = 'away';
+    if (!winner) return game;
+
+    const n = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : 0);
+    const isPickle = def.key === 'pickleball';
+    const homeKey = isPickle ? 'homeGames' : 'homeSets';
+    const awayKey = isPickle ? 'awayGames' : 'awaySets';
+    const stats = { ...((game.stats as Record<string, unknown>) || {}) };
+    const wonKey = winner === 'home' ? homeKey : awayKey;
+    stats[wonKey] = n(stats[wonKey]) + 1;
+
+    // Best-of: volleyball is best-of-5 (need 3 sets), pickleball
+    // best-of-3 (need 2 games). majority = ceil((count + 1) / 2).
+    const needed = Math.ceil((def.segment.count + 1) / 2);
+    const matchOver = n(stats[homeKey]) >= needed || n(stats[awayKey]) >= needed;
+
+    const data: Record<string, unknown> = {
+      stats: stats as any,
+      homeScore: 0,
+      awayScore: 0,
+    };
+    if (matchOver) {
+      data.status = 'FINAL';
+      data.endedAt = new Date();
+      data.clockRunning = false;
+    } else {
+      data.segment = Math.min(def.segment.count, game.segment + 1);
+    }
+    const updated = await this.prisma.client.game.update({
+      where: { id: game.id },
+      data,
+    });
+    await this.record(
+      game.id,
+      matchOver ? 'STATUS' : 'SEGMENT',
+      matchOver ? { status: 'FINAL' } : { segment: data.segment },
+    );
+    return updated;
   }
 
   /** Change the game status (SCHEDULED → LIVE → HALFTIME → FINAL …). */

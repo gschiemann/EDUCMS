@@ -547,11 +547,62 @@ describe('SportsService — baseball count rules', () => {
     expect(r.stats).toMatchObject({ outs: 0, strikes: 0, balls: 0, half: 'Bottom' });
   });
 
-  it('non-baseball stats do not cascade', async () => {
+  it('a football down of 4 does not cascade', async () => {
     const { service } = setup();
     const g = await newGame(service, 'football');
     const r: any = await service.updateStats(TENANT, g.id, { stats: { down: 4 } });
     expect(r.stats).toMatchObject({ down: 4 });
     expect(r.segment).toBe(1);
+  });
+});
+
+describe('SportsService — football & set-sport rules', () => {
+  it('a 5th down wraps back to 1st down', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'football');
+    const r: any = await service.updateStats(TENANT, g.id, { stats: { down: 5 } });
+    expect(r.stats).toMatchObject({ down: 1 });
+  });
+
+  it('volleyball: reaching 25 by 2 wins the set and advances', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'volleyball');
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 23 });
+    const r: any = await service.adjustScore(TENANT, g.id, { team: 'home', delta: 25 });
+    expect(r.homeScore).toBe(0);
+    expect(r.awayScore).toBe(0);
+    expect(r.stats).toMatchObject({ homeSets: 1 });
+    expect(r.segment).toBe(2);
+  });
+
+  it('volleyball: 25-24 does not win — a set needs a 2-point lead', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'volleyball');
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 24 });
+    const r: any = await service.adjustScore(TENANT, g.id, { team: 'home', delta: 25 });
+    expect(r.homeScore).toBe(25);
+    expect(r.awayScore).toBe(24);
+  });
+
+  it('volleyball: winning 3 sets ends the match', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'volleyball');
+    let r: any;
+    for (let i = 0; i < 3; i++) {
+      await service.adjustScore(TENANT, g.id, { team: 'away', delta: 10 });
+      r = await service.adjustScore(TENANT, g.id, { team: 'home', delta: 25 });
+    }
+    expect(r.stats).toMatchObject({ homeSets: 3 });
+    expect(r.status).toBe('FINAL');
+  });
+
+  it('pickleball: reaching 11 by 2 wins the game', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'pickleball');
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 9 });
+    const r: any = await service.adjustScore(TENANT, g.id, { team: 'home', delta: 11 });
+    expect(r.homeScore).toBe(0);
+    expect(r.stats).toMatchObject({ homeGames: 1 });
+    expect(r.segment).toBe(2);
   });
 });

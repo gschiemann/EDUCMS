@@ -67,7 +67,9 @@ const FOOTBALL: SportDefinition = {
   segment: { name: 'Quarter', count: 4, overtime: true },
   score: { unit: 'points', increments: [1, 2, 3, 6] },
   stats: [
-    { key: 'down', label: 'Down', scope: 'game', type: 'number', min: 1, max: 4 },
+    // max 5 so the operator can tick past 4th down — the rules engine
+    // wraps a 5th down back to 1st (new set of downs / change of poss.).
+    { key: 'down', label: 'Down', scope: 'game', type: 'number', min: 1, max: 5 },
     { key: 'distance', label: 'To Go', scope: 'game', type: 'number', min: 0, max: 99 },
     { key: 'ballOn', label: 'Ball On', scope: 'game', type: 'number', min: 0, max: 50 },
     { key: 'homeTimeouts', label: 'Home Timeouts', scope: 'home', type: 'number', min: 0, max: 3 },
