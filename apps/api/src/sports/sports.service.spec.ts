@@ -506,3 +506,52 @@ describe('SportsService — roster', () => {
     expect(board.roster).toHaveLength(1);
   });
 });
+
+describe('SportsService — baseball count rules', () => {
+  it('a 4th ball is a walk — count resets, no out', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    const r: any = await service.updateStats(TENANT, g.id, { stats: { balls: 4 } });
+    expect(r.stats).toMatchObject({ balls: 0, strikes: 0, outs: 0 });
+  });
+
+  it('a 3rd strike is an out — count resets, outs +1', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    const r: any = await service.updateStats(TENANT, g.id, { stats: { strikes: 3 } });
+    expect(r.stats).toMatchObject({ strikes: 0, balls: 0, outs: 1 });
+  });
+
+  it('the 3rd out flips Top → Bottom, same inning', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    const r: any = await service.updateStats(TENANT, g.id, { stats: { outs: 3 } });
+    expect(r.stats).toMatchObject({ outs: 0, half: 'Bottom' });
+    expect(r.segment).toBe(1);
+  });
+
+  it('the 3rd out of the bottom advances the inning', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    await service.updateStats(TENANT, g.id, { stats: { half: 'Bottom' } });
+    const r: any = await service.updateStats(TENANT, g.id, { stats: { outs: 3 } });
+    expect(r.stats).toMatchObject({ outs: 0, half: 'Top' });
+    expect(r.segment).toBe(2);
+  });
+
+  it('a strikeout for the 3rd out retires the side', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    await service.updateStats(TENANT, g.id, { stats: { outs: 2 } });
+    const r: any = await service.updateStats(TENANT, g.id, { stats: { strikes: 3 } });
+    expect(r.stats).toMatchObject({ outs: 0, strikes: 0, balls: 0, half: 'Bottom' });
+  });
+
+  it('non-baseball stats do not cascade', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'football');
+    const r: any = await service.updateStats(TENANT, g.id, { stats: { down: 4 } });
+    expect(r.stats).toMatchObject({ down: 4 });
+    expect(r.segment).toBe(1);
+  });
+});

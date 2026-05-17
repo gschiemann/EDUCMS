@@ -318,8 +318,16 @@ function GameControl() {
         </div>
       </Section>
 
-      {/* stats */}
-      {def.stats.length > 0 && (
+      {/* stats — baseball/softball get a real count engine; every
+          other sport gets the generic stat grid */}
+      {def.key === 'baseball' || def.key === 'softball' ? (
+        <Section title="The count">
+          <CountControl
+            stats={(g.stats as Record<string, unknown>) || {}}
+            onStat={(s) => ctl.stats.mutate({ stats: s })}
+          />
+        </Section>
+      ) : def.stats.length > 0 ? (
         <Section title="Game stats">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {def.stats.map((s) => (
@@ -332,7 +340,7 @@ function GameControl() {
             ))}
           </div>
         </Section>
-      )}
+      ) : null}
 
       {/* team rosters — players, headshots, stats */}
       <Section title="Team rosters">
@@ -718,6 +726,110 @@ function StatField({
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * Baseball / softball count engine. The operator just clicks Ball,
+ * Strike, or Out — the server cascades the rules: a 4th ball walks,
+ * a 3rd strike is an out, a 3rd out flips the half-inning. Each click
+ * sends the next raw count; the rolled-over result polls straight
+ * back, so a walk or a retired side is visible immediately.
+ */
+function CountControl({
+  stats,
+  onStat,
+}: {
+  stats: Record<string, unknown>;
+  onStat: (s: Record<string, number>) => void;
+}) {
+  const num = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : 0);
+  const balls = num(stats.balls);
+  const strikes = num(stats.strikes);
+  const outs = num(stats.outs);
+  const half = String(stats.half || 'Top').toLowerCase().startsWith('b') ? 'Bottom' : 'Top';
+
+  return (
+    <div>
+      <p className="text-xs text-slate-400 mb-3">
+        Click Ball, Strike, or Out — a 4th ball walks the batter, a 3rd strike is an out,
+        and 3 outs flip the half-inning automatically.
+      </p>
+      <div className="grid grid-cols-3 gap-3">
+        <CountChip
+          label="Balls"
+          value={balls}
+          dots={3}
+          dotClass="bg-emerald-500"
+          onAdd={() => onStat({ balls: balls + 1 })}
+          onSub={() => onStat({ balls: Math.max(0, balls - 1) })}
+        />
+        <CountChip
+          label="Strikes"
+          value={strikes}
+          dots={2}
+          dotClass="bg-amber-500"
+          onAdd={() => onStat({ strikes: strikes + 1 })}
+          onSub={() => onStat({ strikes: Math.max(0, strikes - 1) })}
+        />
+        <CountChip
+          label="Outs"
+          value={outs}
+          dots={2}
+          dotClass="bg-red-500"
+          onAdd={() => onStat({ outs: outs + 1 })}
+          onSub={() => onStat({ outs: Math.max(0, outs - 1) })}
+        />
+      </div>
+      <div className="mt-3 text-xs font-semibold text-slate-500">
+        {half} of the inning
+      </div>
+    </div>
+  );
+}
+
+function CountChip({
+  label,
+  value,
+  dots,
+  dotClass,
+  onAdd,
+  onSub,
+}: {
+  label: string;
+  value: number;
+  dots: number;
+  dotClass: string;
+  onAdd: () => void;
+  onSub: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 p-3 text-center">
+      <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">{label}</div>
+      <div className="flex items-center justify-center gap-1.5 my-2.5">
+        {Array.from({ length: dots }, (_, i) => (
+          <span
+            key={i}
+            className={`h-3 w-3 rounded-full ${i < value ? dotClass : 'bg-slate-200'}`}
+          />
+        ))}
+      </div>
+      <div className="flex items-center justify-center gap-1.5">
+        <button
+          onClick={onSub}
+          aria-label={`Remove a ${label.toLowerCase().replace(/s$/, '')}`}
+          className="h-9 w-9 rounded-lg bg-slate-100 text-slate-600 font-bold hover:bg-slate-200"
+        >
+          −
+        </button>
+        <button
+          onClick={onAdd}
+          className="h-9 flex-1 rounded-lg bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700"
+        >
+          +1
+        </button>
+      </div>
     </div>
   );
 }

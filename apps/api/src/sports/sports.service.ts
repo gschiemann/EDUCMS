@@ -784,7 +784,15 @@ export class SportsService {
     return updated;
   }
 
-  /** Merge sport-specific stat values into the game's stats JSON. */
+  /**
+   * Merge sport-specific stat values into the game's stats JSON.
+   *
+   * For baseball / softball the ball–strike–out count is a real rules
+   * engine, not a free-form number: a 4th ball is a walk, a 3rd strike
+   * is an out, and a 3rd out retires the side — flipping the half and
+   * advancing the inning after the bottom. The operator just clicks
+   * Ball / Strike / Out and the count cascades on its own.
+   */
   async updateStats(
     tenantId: string,
     id: string,
@@ -807,12 +815,70 @@ export class SportsService {
       else if (typeof value === 'number' || typeof value === 'boolean') next[key] = value;
     }
 
-    const updated = await this.prisma.client.game.update({
-      where: { id },
-      data: { stats: next as any },
-    });
+    // Sport rules: the baseball/softball count cascades automatically.
+    const segmentDelta =
+      game.sport === 'baseball' || game.sport === 'softball'
+        ? this.applyBaseballCount(next)
+        : 0;
+
+    const data: Record<string, unknown> = { stats: next as any };
+    if (segmentDelta) {
+      const max = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
+      data.segment = Math.min(max, game.segment + segmentDelta);
+    }
+
+    const updated = await this.prisma.client.game.update({ where: { id }, data });
     await this.record(id, 'STAT', { stats: next });
+    if (segmentDelta) await this.record(id, 'SEGMENT', { segment: data.segment });
     return updated;
+  }
+
+  /**
+   * Baseball / softball count rules, applied in place to the merged
+   * stats. Returns how many innings to advance (0 or 1).
+   *   · 3rd strike → out; the count resets.
+   *   · 4th ball   → walk; the count resets, no out.
+   *   · 3rd out    → side retired: outs + count reset, half flips
+   *                  Top↔Bottom; advancing past the bottom bumps the
+   *                  inning.
+   */
+  private applyBaseballCount(s: Record<string, unknown>): number {
+    const n = (v: unknown) =>
+      typeof v === 'number' && isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+    let balls = n(s.balls);
+    let strikes = n(s.strikes);
+    let outs = n(s.outs);
+    let half = String(s.half || 'Top');
+    let segmentDelta = 0;
+
+    // A strikeout takes precedence over a walk if both somehow trip in
+    // one update (a single click only ever moves one count).
+    if (strikes >= 3) {
+      strikes = 0;
+      balls = 0;
+      outs += 1;
+    } else if (balls >= 4) {
+      balls = 0;
+      strikes = 0;
+    }
+
+    if (outs >= 3) {
+      outs = 0;
+      balls = 0;
+      strikes = 0;
+      if (half.toLowerCase().startsWith('b')) {
+        half = 'Top';
+        segmentDelta = 1;
+      } else {
+        half = 'Bottom';
+      }
+    }
+
+    s.balls = balls;
+    s.strikes = strikes;
+    s.outs = outs;
+    s.half = half;
+    return segmentDelta;
   }
 
   /** Change the game status (SCHEDULED → LIVE → HALFTIME → FINAL …). */
