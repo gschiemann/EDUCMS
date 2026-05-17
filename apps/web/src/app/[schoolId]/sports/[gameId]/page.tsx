@@ -27,6 +27,7 @@ import {
   Check,
   MonitorPlay,
   Star,
+  RectangleHorizontal,
 } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
@@ -179,6 +180,15 @@ function GameControl() {
           >
             {copied ? <Check className="h-4 w-4 text-green-600" /> : <Tv className="h-4 w-4" />}
             {copied ? 'Overlay URL copied' : 'Stream overlay'}
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => window.open(`/ribbon/${gameId}`, '_blank')}
+            title="Open the stadium ribbon / fascia board — a seamless scrolling strip"
+          >
+            <RectangleHorizontal className="h-4 w-4" />
+            Open ribbon
           </Button>
           <Button
             variant="outline"
