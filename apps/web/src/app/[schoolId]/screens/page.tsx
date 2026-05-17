@@ -904,6 +904,76 @@ function ScreenSettingsMenu({
   );
 }
 
+/**
+ * Copy-to-clipboard button for the player URL.
+ *
+ * Three things the old inline `onClick={() => navigator.clipboard?...}`
+ * got wrong, all of which made operators report "the button doesn't
+ * work":
+ *  1. No `cursor-pointer` — Tailwind v4's Preflight no longer sets it
+ *     on <button>, so the pointer stayed an arrow and the control read
+ *     as dead/un-clickable.
+ *  2. No feedback — `navigator.clipboard.writeText` is silent, so a
+ *     successful copy looked like nothing happened.
+ *  3. No fallback — `navigator.clipboard` is `undefined` outside a
+ *     secure context (plain-HTTP previews, some kiosk webviews), so
+ *     the optional-chain silently no-op'd.
+ * This component fixes all three: pointer cursor, a "Copied!" state,
+ * and a legacy `execCommand('copy')` fallback.
+ */
+function CopyUrlButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const copy = async () => {
+    let ok = false;
+    // Modern path — only present in a secure context (HTTPS/localhost).
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        ok = true;
+      }
+    } catch {
+      /* fall through to the legacy path */
+    }
+    // Legacy fallback — works on plain HTTP and older webviews.
+    if (!ok) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.position = 'fixed';
+        ta.style.top = '0';
+        ta.style.left = '0';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch {
+        ok = false;
+      }
+    }
+    setCopied(ok);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(false), 2000);
+  };
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className="flex items-center gap-1.5 px-4 py-2.5 text-white text-sm font-bold rounded-xl shrink-0 shadow-sm transition-all active:scale-95 cursor-pointer"
+      style={{ background: copied ? '#16a34a' : 'var(--brand-primary, #4f46e5)' }}
+    >
+      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+      {copied ? 'Copied!' : 'Copy URL'}
+    </button>
+  );
+}
+
 export default function ScreensPage() {
   const { data: groups, isLoading, refetch } = useScreenGroups();
   const { data: allScreens, refetch: refetchScreens } = useScreens();
@@ -1099,8 +1169,8 @@ export default function ScreensPage() {
       {/* Brand-aware hover rules for pair action buttons. Using inline
           <style> keeps the brand var in play without fighting Tailwind. */}
       <style>{`
-        .screens-pair-btn { background: color-mix(in srgb, var(--brand-primary, #059669) 10%, white); color: var(--brand-primary, #059669); }
-        .screens-pair-btn:hover { background: var(--brand-primary, #059669); color: white; }
+        .screens-pair-btn { background: color-mix(in srgb, var(--brand-primary, #4f46e5) 10%, white); color: var(--brand-primary, #4f46e5); }
+        .screens-pair-btn:hover { background: var(--brand-primary, #4f46e5); color: white; }
         .screens-name-btn:hover { color: var(--brand-primary, #4f46e5); }
         .screens-ext-link:hover { color: var(--brand-primary, #4f46e5); border-color: color-mix(in srgb, var(--brand-primary, #4f46e5) 30%, transparent); background: color-mix(in srgb, var(--brand-primary, #4f46e5) 5%, white); }
       `}</style>
@@ -1161,7 +1231,7 @@ export default function ScreensPage() {
                 disabled={isViewer}
                 title={isViewer ? 'Read-only — viewer role' : undefined}
                 className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ background: 'var(--brand-accent, var(--brand-primary, #059669))' }}>
+                style={{ background: 'var(--brand-accent, var(--brand-primary, #4f46e5))' }}>
                 <Wifi className="w-4 h-4" /> Pair Screen
               </button>
               <button onClick={() => setShowCreateGroup(true)}
@@ -1232,21 +1302,21 @@ export default function ScreensPage() {
         <h3 className="text-sm font-bold text-slate-800 mb-4">How to Connect a Screen</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div className="flex gap-3.5 items-center">
-            <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #059669)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #059669) 30%, transparent)' }}>1</div>
+            <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #4f46e5)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #4f46e5) 30%, transparent)' }}>1</div>
             <div>
               <p className="text-sm font-bold text-slate-700">Open the Player URL</p>
               <p className="text-xs text-slate-500">On any device browser</p>
             </div>
           </div>
           <div className="flex gap-3.5 items-center">
-            <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #059669)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #059669) 30%, transparent)' }}>2</div>
+            <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #4f46e5)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #4f46e5) 30%, transparent)' }}>2</div>
             <div>
               <p className="text-sm font-bold text-slate-700">Get Pairing Code</p>
               <p className="text-xs text-slate-500">6 digits on screen</p>
             </div>
           </div>
           <div className="flex gap-3.5 items-center">
-            <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #059669)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #059669) 30%, transparent)' }}>3</div>
+            <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #4f46e5)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #4f46e5) 30%, transparent)' }}>3</div>
             <div>
               <p className="text-sm font-bold text-slate-700">Pair it Here</p>
               <p className="text-xs text-slate-500">Click &quot;Pair Screen&quot;</p>
@@ -1257,11 +1327,7 @@ export default function ScreensPage() {
           <code className="flex-1 px-4 py-2.5 bg-white rounded-xl text-sm font-mono text-slate-700 select-all shadow-sm">
             {playerUrl}
           </code>
-          <button onClick={() => navigator.clipboard?.writeText(playerUrl)}
-            className="px-4 py-2.5 text-white text-sm font-bold rounded-xl shrink-0 shadow-sm transition-all focus:scale-95"
-            style={{ background: 'var(--brand-primary, #059669)' }}>
-            Copy URL
-          </button>
+          <CopyUrlButton url={playerUrl} />
         </div>
       </div>
 
