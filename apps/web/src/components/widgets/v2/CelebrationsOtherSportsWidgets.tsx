@@ -9,8 +9,48 @@
 import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
+import { useElementSize } from './_shared/useElementSize';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
+
+/* ════════════════ aspect-aware layout helpers ════════════════
+ * These widgets get triggered onto BOTH a wide LED ribbon (≈16:1) and
+ * a near-16:9 scoreboard. The ribbon design is horizontal; in a squarer
+ * zone the same horizontal layout crushes its elements together and the
+ * text piles up. Each widget measures its own box (useElementSize) and
+ * branches: wide → keep the ribbon layout; scene → a centered, stacked
+ * layout sized off `height` and clamped by `width` so nothing overflows.
+ */
+
+/** At/above this width:height ratio → horizontal ribbon layout; below it
+ *  (≈16:9 / squarer) → centered vertical scene. Default wide pre-measure. */
+function isWide(width: number, height: number): boolean {
+  return width > 0 ? width / Math.max(height, 1) >= 3.2 : true;
+}
+
+/** Scene-branch hero size — bounded by BOTH the box height and width so a
+ *  big celebration word/number can never overflow a 16:9 zone on either
+ *  axis. hFactor/wFactor tuned per widget when the hero is multi-line. */
+function sceneHero(width: number, height: number, hFactor = 0.34, wFactor = 0.13): number {
+  return Math.max(8, Math.round(Math.min(height * hFactor, width * wFactor)));
+}
+
+/** Scene-branch secondary text — sized off height, clamped by width via a
+ *  rough glyph-advance estimate so a long label never runs past the box. */
+function sceneText(width: number, height: number, hFactor: number, widthChars = 0): number {
+  const byHeight = height * hFactor;
+  const byWidth = widthChars > 0 ? (width * 0.92) / (widthChars * 0.62) : byHeight;
+  return Math.max(8, Math.round(Math.min(byHeight, byWidth)));
+}
+
+/** Absolute, centered, column flow used by every scene branch. `margin`
+ *  (never `gap`) separates the stacked lines — see CLAUDE.md rule #10. */
+const sceneWrap: React.CSSProperties = {
+  position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+  display: 'flex', flexDirection: 'column', alignItems: 'center',
+  justifyContent: 'center', textAlign: 'center', padding: '4%',
+  boxSizing: 'border-box',
+};
 
 /* ════════════════ shared building blocks ════════════════ */
 
@@ -148,22 +188,32 @@ export function BbHomeRunRetroWidget({ config, live = true, height = 480 }: Widg
   const r = resolveStyle({ bgColor: '#0d3a1a', textColor: '#ffd23a', accentColor: '#fff', borderColor: '#ffd23a', ...c.style });
   const player = c.player ?? 'BENCH';
   const distance = c.distance ?? '418 FT';
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
 
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundImage: 'repeating-linear-gradient(0deg, #0a3015 0 4px, #0d3a1a 4px 8px)' }} />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontFamily: JBM, fontWeight: 800, fontSize: px(height, 50 / 480), letterSpacing: '0.16em', borderBottom: '4px solid #ffd23a', paddingBottom: 8 }}>HOME · RUN</div>
-          <div style={{ marginTop: px(height, 18 / 480) }}><SplitFlap size={160} color="#ffd23a" height={height}>HR</SplitFlap></div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontFamily: JBM, fontWeight: 800, fontSize: px(height, 50 / 480), letterSpacing: '0.16em', borderBottom: '4px solid #ffd23a', paddingBottom: 8 }}>HOME · RUN</div>
+            <div style={{ marginTop: px(height, 18 / 480) }}><SplitFlap size={160} color="#ffd23a" height={height}>HR</SplitFlap></div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#ffd23a', fontFamily: JBM, fontWeight: 800, fontSize: px(height, 42 / 480), letterSpacing: '0.1em' }}>BATTER</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1, color: '#fff' }}>{player}</div>
+            <div style={{ marginTop: px(height, 16 / 480) }}><SplitFlap size={120} color="#fff" height={height}>{distance}</SplitFlap></div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: '#ffd23a', fontFamily: JBM, fontWeight: 800, fontSize: px(height, 42 / 480), letterSpacing: '0.1em' }}>BATTER</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1, color: '#fff' }}>{player}</div>
-          <div style={{ marginTop: px(height, 16 / 480) }}><SplitFlap size={120} color="#fff" height={height}>{distance}</SplitFlap></div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 14), letterSpacing: '0.16em', borderBottom: '4px solid #ffd23a', paddingBottom: px(mh, 6 / 480) }}>HOME · RUN</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.30, 0.12), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.05) }}>{player}</div>
+          <div style={{ color: '#ffd23a', fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.1, distance.length + 2), marginTop: px(mh, 0.035) }}>{distance}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -181,25 +231,36 @@ export function BbHomeRunNeonWidget({ config, live = true, height = 480 }: Widge
   const animOn = r.anim.on && live;
   const player = c.player ?? 'OHTANI';
   const distance = c.distance ?? '462 FT';
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
 
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <NeonGrid on={animOn} color="#ff00ff" />
       <Vignette />
       <svg viewBox="0 0 7680 480" preserveAspectRatio="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' }}>
         <path d="M 200 400 Q 3000 -800 6800 380" stroke="#00ffff" strokeWidth="28" fill="none" strokeDasharray="600" style={{ filter: 'drop-shadow(0 0 30px #00ffff)', animation: animOn ? 'celOtherSwoosh 1.5s ease-out infinite' : undefined }} />
       </svg>
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#00ffff', fontWeight: 800, fontSize: px(height, 50 / 480), letterSpacing: '0.16em', textShadow: '0 0 30px #00ffff' }}>+1 RUN · HOME RUN</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 260 / 480), lineHeight: 0.9, color: '#ff00ff', textShadow: '0 0 40px #ff00ff, 0 0 80px #ff00ff' }}>BOMB.</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#00ffff', fontWeight: 800, fontSize: px(height, 50 / 480), letterSpacing: '0.16em', textShadow: '0 0 30px #00ffff' }}>+1 RUN · HOME RUN</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 260 / 480), lineHeight: 0.9, color: '#ff00ff', textShadow: '0 0 40px #ff00ff, 0 0 80px #ff00ff' }}>BOMB.</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 240 / 480), color: '#00ffff', textShadow: '0 0 40px #00ffff' }}>{distance}</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 140 / 480), color: '#fff' }}>{player}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 240 / 480), color: '#00ffff', textShadow: '0 0 40px #00ffff' }}>{distance}</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 140 / 480), color: '#fff' }}>{player}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#00ffff', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 18), letterSpacing: '0.12em', textShadow: '0 0 30px #00ffff' }}>+1 RUN · HOME RUN</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.32, 0.16), lineHeight: 0.9, color: '#ff00ff', textShadow: '0 0 40px #ff00ff, 0 0 80px #ff00ff', marginTop: px(mh, 0.03) }}>BOMB.</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.13, distance.length + 1), color: '#00ffff', textShadow: '0 0 40px #00ffff', marginTop: px(mh, 0.035) }}>{distance}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.1, player.length), color: '#fff', marginTop: px(mh, 0.02) }}>{player}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -218,22 +279,39 @@ export function BbStrikeoutNeonWidget({ config, live = true, height = 480 }: Wid
   const pitcher = c.pitcher ?? 'SKENES';
   const kCount = c.kCount ?? 13;
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+  // Three Ks side-by-side — bound the glyph so the whole row fits the box.
+  const kHero = sceneHero(width, mh, 0.4, 0.18);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <NeonGrid on={animOn} color="#00ffff" />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div style={{ display: 'flex' }}>
-          {[0, 1, 2].map(i => (
-            <div key={i} style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 380 / 480), lineHeight: 1, color: '#00ffff', textShadow: '0 0 30px #00ffff, 0 0 60px #00ffff, 0 0 120px #ff00ff', marginRight: i === 2 ? 0 : px(height, 50 / 480), animation: animOn ? `celOtherBlink 0.5s ${i * 0.18}s infinite` : undefined }}>K</div>
-          ))}
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div style={{ display: 'flex' }}>
+            {[0, 1, 2].map(i => (
+              <div key={i} style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 380 / 480), lineHeight: 1, color: '#00ffff', textShadow: '0 0 30px #00ffff, 0 0 60px #00ffff, 0 0 120px #ff00ff', marginRight: i === 2 ? 0 : px(height, 50 / 480), animation: animOn ? `celOtherBlink 0.5s ${i * 0.18}s infinite` : undefined }}>K</div>
+            ))}
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#ff00ff', fontWeight: 800, fontSize: px(height, 48 / 480), letterSpacing: '0.14em', textShadow: '0 0 20px #ff00ff' }}>K · {kCount}</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 220 / 480), lineHeight: 1 }}>{pitcher}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: '#ff00ff', fontWeight: 800, fontSize: px(height, 48 / 480), letterSpacing: '0.14em', textShadow: '0 0 20px #ff00ff' }}>K · {kCount}</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 220 / 480), lineHeight: 1 }}>{pitcher}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            {[0, 1, 2].map(i => (
+              <div key={i} style={{ fontFamily: PJS, fontWeight: 800, fontSize: kHero, lineHeight: 1, color: '#00ffff', textShadow: '0 0 30px #00ffff, 0 0 60px #00ffff, 0 0 120px #ff00ff', marginRight: i === 2 ? 0 : px(mh, 0.04), animation: animOn ? `celOtherBlink 0.5s ${i * 0.18}s infinite` : undefined }}>K</div>
+            ))}
+          </div>
+          <div style={{ color: '#ff00ff', fontWeight: 800, fontSize: sceneText(width, mh, 0.08, 10), letterSpacing: '0.14em', textShadow: '0 0 20px #ff00ff', marginTop: px(mh, 0.04) }}>K · {kCount}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.13, pitcher.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.02) }}>{pitcher}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -252,22 +330,38 @@ export function FbTouchdownNeonWidget({ config, live = true, height = 480 }: Wid
   const player = c.player ?? 'MAHOMES';
   const distance = c.distance ?? '48 YD';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+  // Two-line hero ("TOUCH"/"DOWN!") — bound so BOTH lines fit the box.
+  const hero = sceneHero(width, mh, 0.30, 0.16);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <NeonGrid on={animOn} color="#ff00ff" />
       <SparkRain on={animOn} color="#00ffff" count={80} kf="celOtherSpark" />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.85, color: '#ff00ff', textShadow: '0 0 60px #ff00ff, 0 0 120px #ff00ff', letterSpacing: '-0.04em' }}>TOUCH</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.85, color: '#00ffff', textShadow: '0 0 60px #00ffff, 0 0 120px #00ffff', letterSpacing: '-0.04em' }}>DOWN!</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.85, color: '#ff00ff', textShadow: '0 0 60px #ff00ff, 0 0 120px #ff00ff', letterSpacing: '-0.04em' }}>TOUCH</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.85, color: '#00ffff', textShadow: '0 0 60px #00ffff, 0 0 120px #00ffff', letterSpacing: '-0.04em' }}>DOWN!</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 220 / 480), color: '#00ffff', textShadow: '0 0 30px #00ffff' }}>+6 · {distance}</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{player}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 220 / 480), color: '#00ffff', textShadow: '0 0 30px #00ffff' }}>+6 · {distance}</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{player}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.08, distance.length + 5), color: '#00ffff', textShadow: '0 0 30px #00ffff' }}>+6 · {distance}</div>
+          <div style={{ marginTop: px(mh, 0.03) }}>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: hero, lineHeight: 0.86, color: '#ff00ff', textShadow: '0 0 60px #ff00ff, 0 0 120px #ff00ff', letterSpacing: '-0.04em' }}>TOUCH</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: hero, lineHeight: 0.86, color: '#00ffff', textShadow: '0 0 60px #00ffff, 0 0 120px #00ffff', letterSpacing: '-0.04em' }}>DOWN!</div>
+          </div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{player}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -285,21 +379,33 @@ export function FbTouchdownRetroWidget({ config, live = true, height = 480 }: Wi
   const player = c.player ?? 'PAYTON';
   const distance = c.distance ?? '12 YD';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'radial-gradient(ellipse at center, #5a3d1f 0%, #1a0d00 70%)' }} />
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.15, backgroundImage: 'repeating-linear-gradient(90deg, transparent 0 3px, #d4a36a 3px 4px)' }} />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#d4a36a' }}>
-        <div>
-          <div style={{ fontWeight: 800, fontSize: px(height, 40 / 480), letterSpacing: '0.24em', borderTop: '2px solid #d4a36a', borderBottom: '2px solid #d4a36a', padding: '8px 0' }}>1972 NFL FILMS · ARENA SERIES</div>
-          <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: px(height, 260 / 480), lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: '0 6px 30px #000' }}>Touchdown.</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#d4a36a' }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: px(height, 40 / 480), letterSpacing: '0.24em', borderTop: '2px solid #d4a36a', borderBottom: '2px solid #d4a36a', padding: '8px 0' }}>1972 NFL FILMS · ARENA SERIES</div>
+            <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: px(height, 260 / 480), lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: '0 6px 30px #000' }}>Touchdown.</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: px(height, 46 / 480), letterSpacing: '0.1em' }}>+6 · {distance}</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1, color: '#ffd23a' }}>{player}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: px(height, 46 / 480), letterSpacing: '0.1em' }}>+6 · {distance}</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1, color: '#ffd23a' }}>{player}</div>
+      ) : (
+        <div style={{ ...sceneWrap, color: '#d4a36a' }}>
+          <div style={{ fontWeight: 800, fontSize: sceneText(width, mh, 0.05, 28), letterSpacing: '0.18em', borderTop: '2px solid #d4a36a', borderBottom: '2px solid #d4a36a', padding: `${px(mh, 6 / 480)}px 0` }}>1972 NFL FILMS · ARENA SERIES</div>
+          <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: sceneHero(width, mh, 0.32, 0.13), lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: '0 6px 30px #000', marginTop: px(mh, 0.04) }}>Touchdown.</div>
+          <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: sceneText(width, mh, 0.08, distance.length + 5), letterSpacing: '0.1em', marginTop: px(mh, 0.035) }}>+6 · {distance}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.1, player.length), lineHeight: 1, color: '#ffd23a', marginTop: px(mh, 0.02) }}>{player}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -318,19 +424,31 @@ export function BkThreeNeonWidget({ config, live = true, height = 480 }: WidgetP
   const player = c.player ?? 'CURRY';
   const threeCount = c.threeCount ?? 9;
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <NeonGrid on={animOn} color="#00ffff" />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 440 / 480), lineHeight: 0.85, color: '#00ffff', textShadow: '0 0 60px #00ffff, 0 0 120px #00ffff, 0 0 200px #ff00ff' }}>3</div>
-        <div>
-          <div style={{ color: '#ff00ff', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em', textShadow: '0 0 30px #ff00ff' }}>FROM DOWNTOWN</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 1 }}>{player}</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 440 / 480), lineHeight: 0.85, color: '#00ffff', textShadow: '0 0 60px #00ffff, 0 0 120px #00ffff, 0 0 200px #ff00ff' }}>3</div>
+          <div>
+            <div style={{ color: '#ff00ff', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em', textShadow: '0 0 30px #ff00ff' }}>FROM DOWNTOWN</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 1 }}>{player}</div>
+          </div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 220 / 480), color: '#ffd23a', textShadow: '0 0 30px #ffd23a' }}>{threeCount}</div>
         </div>
-        <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 220 / 480), color: '#ffd23a', textShadow: '0 0 30px #ffd23a' }}>{threeCount}</div>
-      </div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.36, 0.2), lineHeight: 0.85, color: '#00ffff', textShadow: '0 0 60px #00ffff, 0 0 120px #00ffff, 0 0 200px #ff00ff' }}>3</div>
+          <div style={{ color: '#ff00ff', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 16), letterSpacing: '0.12em', textShadow: '0 0 30px #ff00ff', marginTop: px(mh, 0.025) }}>FROM DOWNTOWN</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.13, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.02) }}>{player}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.09, 6), color: '#ffd23a', textShadow: '0 0 30px #ffd23a', marginTop: px(mh, 0.02) }}>#{threeCount}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -349,21 +467,33 @@ export function BkThreeRetroWidget({ config, live = true, height = 480 }: Widget
   const player = c.player ?? 'BIRD';
   const threeCount = c.threeCount ?? 5;
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <StripeFly on={animOn} from="#dc2626" to="#000" kf="celOtherStripeFly" speedSec={2} />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div style={{ transform: 'skewX(-12deg)' }}>
-          <div style={{ background: '#ffd23a', color: '#000', padding: '10px 24px', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em', display: 'inline-block' }}>SPLASH!</div>
-          <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#fff', textShadow: '8px 8px 0 #dc2626' }}>THREE.</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div style={{ transform: 'skewX(-12deg)' }}>
+            <div style={{ background: '#ffd23a', color: '#000', padding: '10px 24px', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em', display: 'inline-block' }}>SPLASH!</div>
+            <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#fff', textShadow: '8px 8px 0 #dc2626' }}>THREE.</div>
+          </div>
+          <div style={{ textAlign: 'right', transform: 'skewX(-12deg)' }}>
+            <div style={{ background: '#dc2626', color: '#fff', padding: '10px 24px', display: 'inline-block', fontWeight: 800, fontSize: px(height, 42 / 480), letterSpacing: '0.1em' }}>#{threeCount} TONIGHT</div>
+            <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1, color: '#ffd23a' }}>{player}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right', transform: 'skewX(-12deg)' }}>
-          <div style={{ background: '#dc2626', color: '#fff', padding: '10px 24px', display: 'inline-block', fontWeight: 800, fontSize: px(height, 42 / 480), letterSpacing: '0.1em' }}>#{threeCount} TONIGHT</div>
-          <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1, color: '#ffd23a' }}>{player}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ background: '#ffd23a', color: '#000', padding: `${px(mh, 8 / 480)}px ${px(mh, 18 / 480)}px`, fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 9), letterSpacing: '0.12em', transform: 'skewX(-12deg)' }}>SPLASH!</div>
+          <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: sceneHero(width, mh, 0.3, 0.16), lineHeight: 0.9, color: '#fff', textShadow: '8px 8px 0 #dc2626', transform: 'skewX(-12deg)', marginTop: px(mh, 0.03) }}>THREE.</div>
+          <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: sceneText(width, mh, 0.11, player.length), lineHeight: 1, color: '#ffd23a', transform: 'skewX(-12deg)', marginTop: px(mh, 0.035) }}>{player}</div>
+          <div style={{ background: '#dc2626', color: '#fff', padding: `${px(mh, 6 / 480)}px ${px(mh, 16 / 480)}px`, fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 14), letterSpacing: '0.08em', transform: 'skewX(-12deg)', marginTop: px(mh, 0.02) }}>#{threeCount} TONIGHT</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -380,20 +510,33 @@ export function HkGoalNeonWidget({ config, live = true, height = 480 }: WidgetPr
   const animOn = r.anim.on && live;
   const scorer = c.scorer ?? 'PASTRNAK';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <NeonGrid on={animOn} color="#ff00aa" />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div style={{ animation: animOn ? 'celOtherBassThump 0.4s infinite' : undefined }}>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 320 / 480), lineHeight: 0.85, color: '#ff00aa', textShadow: '0 0 60px #ff00aa, 0 0 120px #ff00aa, 0 0 200px #00ffff', letterSpacing: '-0.04em' }}>GOAL.</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div style={{ animation: animOn ? 'celOtherBassThump 0.4s infinite' : undefined }}>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 320 / 480), lineHeight: 0.85, color: '#ff00aa', textShadow: '0 0 60px #ff00aa, 0 0 120px #ff00aa, 0 0 200px #00ffff', letterSpacing: '-0.04em' }}>GOAL.</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#00ffff', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em', textShadow: '0 0 20px #00ffff' }}>LAMP IS LIT</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 1 }}>{scorer}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: '#00ffff', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em', textShadow: '0 0 20px #00ffff' }}>LAMP IS LIT</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 1 }}>{scorer}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ animation: animOn ? 'celOtherBassThump 0.4s infinite' : undefined }}>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.34, 0.18), lineHeight: 0.85, color: '#ff00aa', textShadow: '0 0 60px #ff00aa, 0 0 120px #ff00aa, 0 0 200px #00ffff', letterSpacing: '-0.04em' }}>GOAL.</div>
+          </div>
+          <div style={{ color: '#00ffff', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 12), letterSpacing: '0.14em', textShadow: '0 0 20px #00ffff', marginTop: px(mh, 0.035) }}>LAMP IS LIT</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.13, scorer.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.02) }}>{scorer}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -411,20 +554,32 @@ export function HkGoalRetroWidget({ config, live = true, height = 480 }: WidgetP
   const scorer = c.scorer ?? 'HOWE';
   const period = c.period ?? 2;
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'radial-gradient(ellipse at center, #3a1d0d 0%, #1a0d05 70%)' }} />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#ffd23a' }}>
-        <div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 40 / 480), letterSpacing: '0.2em', borderBottom: '4px solid #ffd23a' }}>HE SHOOTS · HE SCORES</div>
-          <div style={{ marginTop: px(height, 16 / 480) }}><SplitFlap size={200} color="#ffd23a" height={height}>GOAL</SplitFlap></div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#ffd23a' }}>
+          <div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 40 / 480), letterSpacing: '0.2em', borderBottom: '4px solid #ffd23a' }}>HE SHOOTS · HE SCORES</div>
+            <div style={{ marginTop: px(height, 16 / 480) }}><SplitFlap size={200} color="#ffd23a" height={height}>GOAL</SplitFlap></div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: px(height, 44 / 480), letterSpacing: '0.1em' }}>PERIOD {period}</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 220 / 480), lineHeight: 1 }}>{scorer}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: px(height, 44 / 480), letterSpacing: '0.1em' }}>PERIOD {period}</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 220 / 480), lineHeight: 1 }}>{scorer}</div>
+      ) : (
+        <div style={{ ...sceneWrap, color: '#ffd23a' }}>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.055, 22), letterSpacing: '0.16em', borderBottom: '4px solid #ffd23a', paddingBottom: px(mh, 6 / 480) }}>HE SHOOTS · HE SCORES</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.28, 0.13), lineHeight: 1, marginTop: px(mh, 0.04) }}>GOAL</div>
+          <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: sceneText(width, mh, 0.07, 10), letterSpacing: '0.1em', marginTop: px(mh, 0.035) }}>PERIOD {period}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, scorer.length), lineHeight: 1, marginTop: px(mh, 0.02) }}>{scorer}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -442,20 +597,34 @@ export function ScGoalRetroWidget({ config, live = true, height = 480 }: WidgetP
   const scorer = c.scorer ?? 'PELÉ';
   const minute = c.minute ?? "42'";
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundImage: 'repeating-linear-gradient(90deg, #0a3a0d 0 4px, #0d3f10 4px 8px)' }} />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: px(height, 36 / 480), letterSpacing: '0.24em', opacity: 0.8 }}>WORLD CUP · LIVE FROM MEXICO</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: '8px 8px 0 #000' }}>GOOOOAL!</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: px(height, 36 / 480), letterSpacing: '0.24em', opacity: 0.8 }}>WORLD CUP · LIVE FROM MEXICO</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: '8px 8px 0 #000' }}>GOOOOAL!</div>
+          </div>
+          <div style={{ background: '#000', padding: '24px 30px', borderRadius: 8, border: '3px solid #ffd23a' }}>
+            <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: px(height, 34 / 480), color: '#ffd23a' }}>{minute}</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 120 / 480), color: '#fff' }}>{scorer}</div>
+          </div>
         </div>
-        <div style={{ background: '#000', padding: '24px 30px', borderRadius: 8, border: '3px solid #ffd23a' }}>
-          <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: px(height, 34 / 480), color: '#ffd23a' }}>{minute}</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 120 / 480), color: '#fff' }}>{scorer}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: sceneText(width, mh, 0.05, 26), letterSpacing: '0.18em', opacity: 0.8, color: '#fff' }}>WORLD CUP · LIVE FROM MEXICO</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.3, 0.15), lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: '8px 8px 0 #000', color: '#fff', marginTop: px(mh, 0.03) }}>GOOOOAL!</div>
+          <div style={{ background: '#000', padding: `${px(mh, 10 / 480)}px ${px(mh, 22 / 480)}px`, borderRadius: 8, border: '3px solid #ffd23a', marginTop: px(mh, 0.04), display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: sceneText(width, mh, 0.06, 8), color: '#ffd23a' }}>{minute}</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, scorer.length + 1), color: '#fff' }}>{scorer}</div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -474,16 +643,26 @@ export function ScGoalNeonWidget({ config, live = true, height = 480 }: WidgetPr
   const scorer = c.scorer ?? 'MBAPPÉ';
   const minute = c.minute ?? "90'+3";
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <NeonGrid on={animOn} color="#00ff66" />
-      <WordEcho on={animOn} word="GOAL!" color="#00ff66" size={260} height={height} />
+      <WordEcho on={animOn} word="GOAL!" color="#00ff66" size={wide ? 260 : 360} height={wide ? height : Math.max(mh, 1)} />
       <Vignette />
-      <div style={{ position: 'absolute', bottom: px(height, 30 / 480), left: px(height, 80 / 480), right: px(height, 80 / 480), display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', color: '#fff' }}>
-        <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 80 / 480), color: '#ff00aa', textShadow: '0 0 20px #ff00aa' }}>{minute}</div>
-        <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 160 / 480), color: '#00ffff', textShadow: '0 0 40px #00ffff' }}>{scorer}</div>
-      </div>
+      {wide ? (
+        <div style={{ position: 'absolute', bottom: px(height, 30 / 480), left: px(height, 80 / 480), right: px(height, 80 / 480), display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', color: '#fff' }}>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 80 / 480), color: '#ff00aa', textShadow: '0 0 20px #ff00aa' }}>{minute}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 160 / 480), color: '#00ffff', textShadow: '0 0 40px #00ffff' }}>{scorer}</div>
+        </div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.22, 0.13), color: '#00ffff', textShadow: '0 0 40px #00ffff' }}>{scorer}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, minute.length + 1), color: '#ff00aa', textShadow: '0 0 20px #ff00aa', marginTop: px(mh, 0.04) }}>{minute}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -508,8 +687,11 @@ export function TnAceWidget({ config, live = true, height = 480 }: WidgetProps<T
   const speed = c.speed ?? '141 MPH';
   const aces = c.aces ?? 8;
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <Vignette />
       <svg viewBox="0 0 7680 480" preserveAspectRatio="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' }}>
@@ -518,17 +700,27 @@ export function TnAceWidget({ config, live = true, height = 480 }: WidgetProps<T
         <path d="M 600 200 L 6900 380" stroke="#ffd23a" strokeWidth="18" fill="none" strokeDasharray="600" style={{ filter: 'drop-shadow(0 0 20px #ffd23a)', animation: animOn ? 'celOtherSwoosh 1s linear infinite' : undefined }} />
         <circle cx="6900" cy="380" r="32" fill="#ffd23a" />
       </svg>
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>UNRETURNABLE!</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>ACE!</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>UNRETURNABLE!</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>ACE!</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 140 / 480), color: '#ffd23a' }}>{speed}</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 180 / 480), lineHeight: 1 }}>{player}</div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 34 / 480) }}>{aces} aces this match</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 140 / 480), color: '#ffd23a' }}>{speed}</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 180 / 480), lineHeight: 1 }}>{player}</div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 34 / 480) }}>{aces} aces this match</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 14), letterSpacing: '0.14em' }}>UNRETURNABLE!</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.3, 0.16), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.02) }}>ACE!</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{player}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.08, speed.length + 1), color: '#ffd23a', marginTop: px(mh, 0.02) }}>{speed}</div>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.05, 22), marginTop: px(mh, 0.015) }}>{aces} aces this match</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -547,8 +739,11 @@ export function TnAceNeonWidget({ config, live = true, height = 480 }: WidgetPro
   const player = c.player ?? 'SINNER';
   const speed = c.speed ?? '138 MPH';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <NeonGrid on={animOn} color="#00ffff" />
       <Vignette />
@@ -556,13 +751,21 @@ export function TnAceNeonWidget({ config, live = true, height = 480 }: WidgetPro
         <path d="M 500 200 L 7000 380" stroke="#ff00ff" strokeWidth="24" fill="none" strokeDasharray="600" style={{ filter: 'drop-shadow(0 0 40px #ff00ff)', animation: animOn ? 'celOtherSwoosh 0.8s linear infinite' : undefined }} />
         <circle cx="7000" cy="380" r="60" fill="#00ffff" style={{ filter: 'drop-shadow(0 0 40px #00ffff)' }} />
       </svg>
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 340 / 480), lineHeight: 0.9, color: '#00ffff', textShadow: '0 0 60px #00ffff, 0 0 120px #ff00ff' }}>ACE</div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 160 / 480), color: '#ff00ff', textShadow: '0 0 30px #ff00ff' }}>{speed}</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{player}</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 340 / 480), lineHeight: 0.9, color: '#00ffff', textShadow: '0 0 60px #00ffff, 0 0 120px #ff00ff' }}>ACE</div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 160 / 480), color: '#ff00ff', textShadow: '0 0 30px #ff00ff' }}>{speed}</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{player}</div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.34, 0.2), lineHeight: 0.9, color: '#00ffff', textShadow: '0 0 60px #00ffff, 0 0 120px #ff00ff' }}>ACE</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.1, speed.length + 1), color: '#ff00ff', textShadow: '0 0 30px #ff00ff', marginTop: px(mh, 0.035) }}>{speed}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.02) }}>{player}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -583,22 +786,35 @@ export function TnBreakPointWidget({ config, live = true, height = 480 }: Widget
   const set = c.set ?? 1;
   const score = c.score ?? '4-3';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <StripeFly on={animOn} from="#dc2626" to="#000" kf="celOtherStripeFly" speedSec={2} />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>SERVE BROKEN!</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.9, textShadow: '0 0 40px #000' }}>BREAK POINT</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>SERVE BROKEN!</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.9, textShadow: '0 0 40px #000' }}>BREAK POINT</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 42 / 480) }}>SET {set}</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{player}</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 100 / 480), color: '#ffd23a' }}>{score}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 42 / 480) }}>SET {set}</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{player}</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 100 / 480), color: '#ffd23a' }}>{score}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 14), letterSpacing: '0.14em' }}>SERVE BROKEN!</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.26, 0.12), lineHeight: 0.9, color: '#fff', textShadow: '0 0 40px #000', marginTop: px(mh, 0.025) }}>BREAK POINT</div>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 6), marginTop: px(mh, 0.035) }}>SET {set}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.015) }}>{player}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.08, score.length + 1), color: '#ffd23a', marginTop: px(mh, 0.015) }}>{score}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -617,17 +833,28 @@ export function TnMatchPointWidget({ config, live = true, height = 480 }: Widget
   const player = c.player ?? 'DJOKOVIC';
   const score = c.score ?? '40-30';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'radial-gradient(ellipse at center, #ffd23a22, transparent 60%)', animation: animOn ? 'celOtherPulse 1s infinite' : undefined }} />
       <SparkRain on={animOn} color="#ffd23a" count={100} kf="celOtherSpark" />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a, 0 0 160px #ffd23a44' }}>MATCH POINT</div>
-        <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 280 / 480), color: '#fff', textShadow: '0 0 30px #fff' }}>{score}</div>
-        <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 160 / 480), lineHeight: 1 }}>{player}</div>
-      </div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a, 0 0 160px #ffd23a44' }}>MATCH POINT</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 280 / 480), color: '#fff', textShadow: '0 0 30px #fff' }}>{score}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 160 / 480), lineHeight: 1 }}>{player}</div>
+        </div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.24, 0.11), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a, 0 0 160px #ffd23a44' }}>MATCH POINT</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.18, score.length + 1), color: '#fff', textShadow: '0 0 30px #fff', marginTop: px(mh, 0.03) }}>{score}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.1, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.025) }}>{player}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -648,21 +875,32 @@ export function TnWinnerWidget({ config, live = true, height = 480 }: WidgetProp
   const shot = c.shot ?? 'FOREHAND';
   const winners = c.winners ?? 24;
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <Vignette />
       <svg viewBox="0 0 7680 480" preserveAspectRatio="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' }}>
         <path d="M 6800 60 L 6800 420 M 6700 60 L 6900 60 M 6700 420 L 6900 420" stroke="#fff" strokeWidth="4" />
         <path d="M 700 120 Q 3500 60 6800 380" stroke="#ffd23a" strokeWidth="18" strokeDasharray="40 25" fill="none" style={{ animation: animOn ? 'celOtherSwoosh 1.4s linear infinite' : undefined }} />
       </svg>
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.1em' }}>{shot} WINNER</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>PAINTED IT.</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 140 / 480), lineHeight: 1 }}>{player} · {winners} winners</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.1em' }}>{shot} WINNER</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>PAINTED IT.</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 140 / 480), lineHeight: 1 }}>{player} · {winners} winners</div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, shot.length + 8), letterSpacing: '0.08em' }}>{shot} WINNER</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.28, 0.14), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.025) }}>PAINTED IT.</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.09, player.length + 12), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{player} · {winners} winners</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -687,23 +925,35 @@ export function LxGoalWidget({ config, live = true, height = 480 }: WidgetProps<
   const number = c.number ?? '1';
   const score = c.score ?? '8-6';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <StripeFly on={animOn} from="#003a14" to="#000" kf="celOtherStripeFly" speedSec={3} />
       <SparkRain on={animOn} color="#ffd23a" count={100} kf="celOtherSpark" />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>STICKS UP!</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>GOAL!</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>STICKS UP!</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>GOAL!</div>
+          </div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 340 / 480), color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>#{number}</div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{scorer}</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 100 / 480), color: '#ffd23a' }}>{score}</div>
+          </div>
         </div>
-        <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 340 / 480), color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>#{number}</div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{scorer}</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 100 / 480), color: '#ffd23a' }}>{score}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 11), letterSpacing: '0.14em' }}>STICKS UP!</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.3, 0.16), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.02) }}>GOAL!</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, scorer.length + 5), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>#{number} · {scorer}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.08, score.length + 1), color: '#ffd23a', marginTop: px(mh, 0.015) }}>{score}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -722,21 +972,33 @@ export function LxBehindTheBackWidget({ config, live = true, height = 480 }: Wid
   const player = c.player ?? 'GAIT';
   const distance = c.distance ?? '10 YD';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <SparkRain on={animOn} color="#ffd23a" count={130} kf="celOtherSpark" />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>HIGHLIGHT REEL</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>BEHIND-THE-BACK</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>HIGHLIGHT REEL</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>BEHIND-THE-BACK</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 220 / 480), lineHeight: 1 }}>{player}</div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480) }}>{distance}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 220 / 480), lineHeight: 1 }}>{player}</div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480) }}>{distance}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 15), letterSpacing: '0.14em' }}>HIGHLIGHT REEL</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.16, 16), lineHeight: 0.95, color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.025) }}>BEHIND-THE-BACK</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{player}</div>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.08, distance.length + 1), marginTop: px(mh, 0.015) }}>{distance}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -754,19 +1016,31 @@ export function LxBigSaveWidget({ config, live = true, height = 480 }: WidgetPro
   const goalie = c.goalie ?? 'GAUDET';
   const saves = c.saves ?? 11;
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#22d39b', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>STONEWALL!</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#22d39b', textShadow: '0 0 60px #22d39b' }}>BIG SAVE</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#22d39b', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>STONEWALL!</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#22d39b', textShadow: '0 0 60px #22d39b' }}>BIG SAVE</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{goalie}</div>
+            <div style={{ color: '#22d39b', fontWeight: 800, fontSize: px(height, 54 / 480) }}>{saves} SAVES TONIGHT</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{goalie}</div>
-          <div style={{ color: '#22d39b', fontWeight: 800, fontSize: px(height, 54 / 480) }}>{saves} SAVES TONIGHT</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#22d39b', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 11), letterSpacing: '0.14em' }}>STONEWALL!</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.28, 0.14), lineHeight: 0.9, color: '#22d39b', textShadow: '0 0 60px #22d39b', marginTop: px(mh, 0.025) }}>BIG SAVE</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, goalie.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{goalie}</div>
+          <div style={{ color: '#22d39b', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 18), marginTop: px(mh, 0.015) }}>{saves} SAVES TONIGHT</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -785,22 +1059,34 @@ export function LxFaceoffWidget({ config, live = true, height = 480 }: WidgetPro
   const player = c.player ?? "O'CONNOR";
   const winPct = c.winPct ?? 78;
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <ArrowSweep on={animOn} color="#ffd23a" count={6} duration={1.8} kf="celOtherArrowSweep" />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.12em' }}>WON THE X!</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>FACE-OFF</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.12em' }}>WON THE X!</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>FACE-OFF</div>
+          </div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 240 / 480), color: '#22c55e', textShadow: '0 0 50px #22c55e' }}>{winPct}%</div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{player}</div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 34 / 480) }}>face-off rate</div>
+          </div>
         </div>
-        <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 240 / 480), color: '#22c55e', textShadow: '0 0 50px #22c55e' }}>{winPct}%</div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{player}</div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 34 / 480) }}>face-off rate</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 11), letterSpacing: '0.12em' }}>WON THE X!</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.24, 0.12), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.02) }}>FACE-OFF</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.16, 5), color: '#22c55e', textShadow: '0 0 50px #22c55e', marginTop: px(mh, 0.03) }}>{winPct}%</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.1, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.025) }}>{player}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -826,22 +1112,40 @@ export function WrPinWidget({ config, live = true, height = 480 }: WidgetProps<W
   const weight = c.weight ?? '74 KG';
   const time = c.time ?? '1:47';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+  // Three count-squares in a row — size each so the whole row fits.
+  const sq = sceneHero(width, mh, 0.26, 0.16);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div style={{ display: 'flex', animation: animOn ? 'celOtherPunchOut 0.5s ease-out' : undefined }}>
-          {[1, 2, 3].map(n => (
-            <div key={n} style={{ width: px(height, 200 / 480), height: px(height, 200 / 480), borderRadius: 24, background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1, boxShadow: '0 0 50px #dc2626', marginRight: n === 3 ? 0 : px(height, 30 / 480), animation: animOn ? `celOtherBlink 0.4s ${(n - 1) * 0.18}s infinite` : undefined }}>{n}</div>
-          ))}
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div style={{ display: 'flex', animation: animOn ? 'celOtherPunchOut 0.5s ease-out' : undefined }}>
+            {[1, 2, 3].map(n => (
+              <div key={n} style={{ width: px(height, 200 / 480), height: px(height, 200 / 480), borderRadius: 24, background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1, boxShadow: '0 0 50px #dc2626', marginRight: n === 3 ? 0 : px(height, 30 / 480), animation: animOn ? `celOtherBlink 0.4s ${(n - 1) * 0.18}s infinite` : undefined }}>{n}</div>
+            ))}
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>PINNED · {time}</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 180 / 480), lineHeight: 1 }}>{winner}</div>
+            <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 46 / 480) }}>{weight}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>PINNED · {time}</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 180 / 480), lineHeight: 1 }}>{winner}</div>
-          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 46 / 480) }}>{weight}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ display: 'flex', justifyContent: 'center', animation: animOn ? 'celOtherPunchOut 0.5s ease-out' : undefined }}>
+            {[1, 2, 3].map(n => (
+              <div key={n} style={{ width: sq, height: sq, borderRadius: 16, background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: PJS, fontWeight: 800, fontSize: sq, lineHeight: 1, boxShadow: '0 0 50px #dc2626', marginRight: n === 3 ? 0 : px(mh, 0.03), animation: animOn ? `celOtherBlink 0.4s ${(n - 1) * 0.18}s infinite` : undefined }}>{n}</div>
+            ))}
+          </div>
+          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 14), letterSpacing: '0.14em', marginTop: px(mh, 0.035) }}>PINNED · {time}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, winner.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.02) }}>{winner}</div>
+          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, weight.length + 1), marginTop: px(mh, 0.015) }}>{weight}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -860,21 +1164,33 @@ export function WrTakedownWidget({ config, live = true, height = 480 }: WidgetPr
   const wrestler = c.wrestler ?? 'TAYLOR';
   const score = c.score ?? '7-2';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <StripeFly on={animOn} from="#1a1500" to="#000" kf="celOtherStripeFly" speedSec={3} />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>TAKEDOWN!</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>+2</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>TAKEDOWN!</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>+2</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{wrestler}</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 120 / 480), color: '#ffd23a' }}>{score}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{wrestler}</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 120 / 480), color: '#ffd23a' }}>{score}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 11), letterSpacing: '0.14em' }}>TAKEDOWN!</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.3, 0.16), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.02) }}>+2</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, wrestler.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{wrestler}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.08, score.length + 1), color: '#ffd23a', marginTop: px(mh, 0.015) }}>{score}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -894,19 +1210,31 @@ export function WrNearFallWidget({ config, live = true, height = 480 }: WidgetPr
   const points = c.points ?? 4;
   const score = c.score ?? '11-2';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>NEAR FALL</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#dc2626', textShadow: '0 0 60px #dc2626' }}>+{points} BACK</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>NEAR FALL</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#dc2626', textShadow: '0 0 60px #dc2626' }}>+{points} BACK</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{wrestler}</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 120 / 480), color: '#dc2626' }}>{score}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{wrestler}</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 120 / 480), color: '#dc2626' }}>{score}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 10), letterSpacing: '0.14em' }}>NEAR FALL</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.2, 9), lineHeight: 0.9, color: '#dc2626', textShadow: '0 0 60px #dc2626', marginTop: px(mh, 0.02) }}>+{points} BACK</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, wrestler.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{wrestler}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.08, score.length + 1), color: '#dc2626', marginTop: px(mh, 0.015) }}>{score}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -925,21 +1253,33 @@ export function WrTechFallWidget({ config, live = true, height = 480 }: WidgetPr
   const winner = c.winner ?? 'DAKE';
   const lead = c.lead ?? '17-2';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <SparkRain on={animOn} color="#ffd23a" count={120} kf="celOtherSpark" />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>MATCH OVER</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>TECH FALL</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>MATCH OVER</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>TECH FALL</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{winner}</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 140 / 480), color: '#ffd23a' }}>{lead}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{winner}</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 140 / 480), color: '#ffd23a' }}>{lead}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 11), letterSpacing: '0.14em' }}>MATCH OVER</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.26, 0.13), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.025) }}>TECH FALL</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, winner.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{winner}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.09, lead.length + 1), color: '#ffd23a', marginTop: px(mh, 0.015) }}>{lead}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -964,8 +1304,11 @@ export function GfAceWidget({ config, live = true, height = 480 }: WidgetProps<G
   const hole = c.hole ?? 7;
   const yards = c.yards ?? 165;
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <SparkRain on={animOn} color="#ffd23a" count={200} kf="celOtherSpark" />
       <Vignette />
@@ -975,16 +1318,25 @@ export function GfAceWidget({ config, live = true, height = 480 }: WidgetProps<G
         <line x1="6900" y1="280" x2="6900" y2="80" stroke="#dc2626" strokeWidth="8" />
         <polygon points="6900,80 7000,90 6900,110" fill="#dc2626" />
       </svg>
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>NEVER FORGET IT</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>HOLE-IN-ONE!</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>NEVER FORGET IT</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>HOLE-IN-ONE!</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>HOLE {hole} · {yards} YD</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 1 }}>{player}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>HOLE {hole} · {yards} YD</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 1 }}>{player}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 15), letterSpacing: '0.14em' }}>NEVER FORGET IT</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.21, 12), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a', marginTop: px(mh, 0.025) }}>HOLE-IN-ONE!</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{player}</div>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 16), marginTop: px(mh, 0.015) }}>HOLE {hole} · {yards} YD</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1003,19 +1355,31 @@ export function GfEagleWidget({ config, live = true, height = 480 }: WidgetProps
   const player = c.player ?? 'SCHEFFLER';
   const score = c.score ?? '-7';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>EAGLE!</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.95, textShadow: '0 0 40px #fff' }}>-2 ON 13</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>EAGLE!</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.95, textShadow: '0 0 40px #fff' }}>-2 ON 13</div>
+          </div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 280 / 480), color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>{score}</div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{player}</div>
+          </div>
         </div>
-        <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 280 / 480), color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>{score}</div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{player}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.08, 7), letterSpacing: '0.14em' }}>EAGLE!</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.16, 9), lineHeight: 0.95, color: '#fff', textShadow: '0 0 40px #fff', marginTop: px(mh, 0.025) }}>-2 ON 13</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.28, 0.16), color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.025) }}>{score}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.1, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.025) }}>{player}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1035,19 +1399,31 @@ export function GfBirdieWidget({ config, live = true, height = 480 }: WidgetProp
   const hole = c.hole ?? 5;
   const score = c.score ?? '-3';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>BIRDIE</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 240 / 480), color: '#ffd23a', textShadow: '0 0 40px #ffd23a' }}>-1</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>BIRDIE</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 240 / 480), color: '#ffd23a', textShadow: '0 0 40px #ffd23a' }}>-1</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 180 / 480), lineHeight: 1 }}>{player}</div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 48 / 480) }}>HOLE {hole} · TOURNEY {score}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 180 / 480), lineHeight: 1 }}>{player}</div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 48 / 480) }}>HOLE {hole} · TOURNEY {score}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.08, 7), letterSpacing: '0.14em' }}>BIRDIE</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.3, 0.16), color: '#ffd23a', textShadow: '0 0 40px #ffd23a', marginTop: px(mh, 0.02) }}>-1</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{player}</div>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 22), marginTop: px(mh, 0.015) }}>HOLE {hole} · TOURNEY {score}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1072,21 +1448,35 @@ export function BxKnockoutWidget({ config, live = true, height = 480 }: WidgetPr
   const round = c.round ?? 4;
   const time = c.time ?? '2:31';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <StripeFly on={animOn} from="#dc2626" to="#000" kf="celOtherStripeFly" speedSec={1.6} />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div style={{ animation: animOn ? 'celOtherShake 0.4s ease-in-out 2' : undefined }}>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.18em' }}>FIGHT OVER</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 380 / 480), lineHeight: 0.85, color: '#dc2626', textShadow: '0 0 80px #dc2626, 0 8px 30px #000', letterSpacing: '-0.04em' }}>KO!</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div style={{ animation: animOn ? 'celOtherShake 0.4s ease-in-out 2' : undefined }}>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.18em' }}>FIGHT OVER</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 380 / 480), lineHeight: 0.85, color: '#dc2626', textShadow: '0 0 80px #dc2626, 0 8px 30px #000', letterSpacing: '-0.04em' }}>KO!</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>RD {round} · {time}</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 1 }}>{winner}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>RD {round} · {time}</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 1 }}>{winner}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ animation: animOn ? 'celOtherShake 0.4s ease-in-out 2' : undefined, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 11), letterSpacing: '0.16em' }}>FIGHT OVER</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.36, 0.2), lineHeight: 0.85, color: '#dc2626', textShadow: '0 0 80px #dc2626, 0 8px 30px #000', letterSpacing: '-0.04em', marginTop: px(mh, 0.02) }}>KO!</div>
+          </div>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 14), marginTop: px(mh, 0.035) }}>RD {round} · {time}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, winner.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.015) }}>{winner}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1104,19 +1494,31 @@ export function BxTkoWidget({ config, live = true, height = 480 }: WidgetProps<B
   const winner = c.winner ?? 'USYK';
   const round = c.round ?? 6;
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>REF STOPS IT</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 320 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>TKO</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>REF STOPS IT</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 320 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>TKO</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>ROUND {round}</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 220 / 480), lineHeight: 1 }}>{winner}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>ROUND {round}</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 220 / 480), lineHeight: 1 }}>{winner}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 12), letterSpacing: '0.14em' }}>REF STOPS IT</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.34, 0.18), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a', marginTop: px(mh, 0.02) }}>TKO</div>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 9), marginTop: px(mh, 0.035) }}>ROUND {round}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, winner.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.015) }}>{winner}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1137,21 +1539,34 @@ export function BxKnockdownWidget({ config, live = true, height = 480 }: WidgetP
   const round = c.round ?? 3;
   const count = c.count ?? 7;
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>DOWN!</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#dc2626', textShadow: '0 0 60px #dc2626' }}>KNOCKDOWN</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>DOWN!</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#dc2626', textShadow: '0 0 60px #dc2626' }}>KNOCKDOWN</div>
+          </div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 300 / 480), color: '#ffd23a', textShadow: '0 0 60px #ffd23a', animation: animOn ? 'celOtherBassThump 0.5s infinite' : undefined }}>{count}</div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>RD {round}</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 180 / 480), lineHeight: 1 }}>{winner}</div>
+          </div>
         </div>
-        <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 300 / 480), color: '#ffd23a', textShadow: '0 0 60px #ffd23a', animation: animOn ? 'celOtherBassThump 0.5s infinite' : undefined }}>{count}</div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>RD {round}</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 180 / 480), lineHeight: 1 }}>{winner}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: sceneText(width, mh, 0.08, 6), letterSpacing: '0.14em' }}>DOWN!</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.18, 10), lineHeight: 0.9, color: '#dc2626', textShadow: '0 0 60px #dc2626', marginTop: px(mh, 0.02) }}>KNOCKDOWN</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.22, 0.14), color: '#ffd23a', textShadow: '0 0 60px #ffd23a', animation: animOn ? 'celOtherBassThump 0.5s infinite' : undefined, marginTop: px(mh, 0.025) }}>{count}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.1, winner.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.025) }}>{winner}</div>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 7), marginTop: px(mh, 0.015) }}>RD {round}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1175,24 +1590,42 @@ export function BxEndOfRoundWidget({ config, live = true, height = 480 }: Widget
     { n: c.p2 ?? 'BIVOL', v: c.p2Punches ?? 31 },
   ];
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>END OF ROUND</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.9, color: '#ffd23a' }}>{round}</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>END OF ROUND</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.9, color: '#ffd23a' }}>{round}</div>
+          </div>
+          <div style={{ display: 'flex' }}>
+            {boxers.map((b, i) => (
+              <div key={i} style={{ textAlign: 'center', marginLeft: i === 0 ? 0 : px(height, 80 / 480) }}>
+                <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 120 / 480), lineHeight: 1 }}>{b.n}</div>
+                <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 120 / 480), color: '#ffd23a' }}>{b.v}</div>
+                <div style={{ color: '#ffd23a', fontWeight: 700, fontSize: px(height, 24 / 480) }}>PUNCHES LANDED</div>
+              </div>
+            ))}
+          </div>
         </div>
-        <div style={{ display: 'flex' }}>
-          {boxers.map((b, i) => (
-            <div key={i} style={{ textAlign: 'center', marginLeft: i === 0 ? 0 : px(height, 80 / 480) }}>
-              <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 120 / 480), lineHeight: 1 }}>{b.n}</div>
-              <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 120 / 480), color: '#ffd23a' }}>{b.v}</div>
-              <div style={{ color: '#ffd23a', fontWeight: 700, fontSize: px(height, 24 / 480) }}>PUNCHES LANDED</div>
-            </div>
-          ))}
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 13), letterSpacing: '0.14em' }}>END OF ROUND {round}</div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: px(mh, 0.045) }}>
+            {boxers.map((b, i) => (
+              <div key={i} style={{ textAlign: 'center', marginLeft: i === 0 ? 0 : px(mh, 0.08), display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, b.n.length * 2 + 2), lineHeight: 1, color: '#fff' }}>{b.n}</div>
+                <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.16, 8), color: '#ffd23a', marginTop: px(mh, 0.01) }}>{b.v}</div>
+                <div style={{ color: '#ffd23a', fontWeight: 700, fontSize: sceneText(width, mh, 0.04, 30), marginTop: px(mh, 0.008) }}>PUNCHES LANDED</div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1219,25 +1652,38 @@ export function TrWorldRecordWidget({ config, live = true, height = 480 }: Widge
   const time = c.time ?? '9.58s';
   const country = c.country ?? 'JAM';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <SparkRain on={animOn} color="#ffd23a" count={200} kf="celOtherSpark" />
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'radial-gradient(ellipse at center, #ffd23a44 0%, transparent 60%)', animation: animOn ? 'celOtherPulse 1s infinite' : undefined }} />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div style={{ animation: animOn ? 'celOtherSlideL 0.7s ease-out' : undefined }}>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.16em' }}>WORLD RECORD!</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>{event}</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div style={{ animation: animOn ? 'celOtherSlideL 0.7s ease-out' : undefined }}>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.16em' }}>WORLD RECORD!</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>{event}</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 340 / 480), color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>{time}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>{country}</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{athlete}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 340 / 480), color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>{time}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 14), letterSpacing: '0.14em' }}>WORLD RECORD!</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.13, event.length + 1), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a', marginTop: px(mh, 0.02) }}>{event}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.26, 0.14), color: '#ffd23a', textShadow: '0 0 80px #ffd23a', marginTop: px(mh, 0.025) }}>{time}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.1, athlete.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.025) }}>{athlete}</div>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.05, country.length + 1), marginTop: px(mh, 0.012) }}>{country}</div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>{country}</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{athlete}</div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1261,25 +1707,45 @@ export function TrFinishWidget({ config, live = true, height = 480 }: WidgetProp
     { pos: 3, name: 'DOS SANTOS', country: 'BRA', time: '46.72' },
   ];
   const medals = ['#ffd23a', '#9aa3b2', '#cd7f32'];
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+  const rows = top.slice(0, 3);
 
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 60 / 480)}px`, display: 'flex', alignItems: 'center', color: '#fff' }}>
-        <div style={{ flex: '0 0 22%', marginRight: px(height, 40 / 480) }}>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 30 / 480), letterSpacing: '0.12em' }}>RESULTS</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 60 / 480), lineHeight: 1.05 }}>{event}</div>
-        </div>
-        {top.slice(0, 3).map((row, i) => (
-          <div key={i} style={{ flex: 1, background: '#11161e', border: `2px solid ${medals[i]}`, borderRadius: 14, padding: '24px 26px', marginRight: i === 2 ? 0 : px(height, 40 / 480), animation: animOn ? `celOtherSlideR 0.4s ${i * 0.18}s both` : undefined }}>
-            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 80 / 480), color: medals[i], lineHeight: 1 }}>#{row.pos}</div>
-            <div style={{ fontWeight: 800, fontSize: px(height, 46 / 480), lineHeight: 1.1 }}>{row.name}</div>
-            <div style={{ color: '#9aa3b2', fontWeight: 700, fontSize: px(height, 24 / 480) }}>{row.country}</div>
-            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 60 / 480), color: '#ffd23a' }}>{row.time}</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 60 / 480)}px`, display: 'flex', alignItems: 'center', color: '#fff' }}>
+          <div style={{ flex: '0 0 22%', marginRight: px(height, 40 / 480) }}>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 30 / 480), letterSpacing: '0.12em' }}>RESULTS</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 60 / 480), lineHeight: 1.05 }}>{event}</div>
           </div>
-        ))}
-      </div>
+          {rows.map((row, i) => (
+            <div key={i} style={{ flex: 1, background: '#11161e', border: `2px solid ${medals[i]}`, borderRadius: 14, padding: '24px 26px', marginRight: i === 2 ? 0 : px(height, 40 / 480), animation: animOn ? `celOtherSlideR 0.4s ${i * 0.18}s both` : undefined }}>
+              <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 80 / 480), color: medals[i], lineHeight: 1 }}>#{row.pos}</div>
+              <div style={{ fontWeight: 800, fontSize: px(height, 46 / 480), lineHeight: 1.1 }}>{row.name}</div>
+              <div style={{ color: '#9aa3b2', fontWeight: 700, fontSize: px(height, 24 / 480) }}>{row.country}</div>
+              <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 60 / 480), color: '#ffd23a' }}>{row.time}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.05, 8), letterSpacing: '0.12em' }}>RESULTS</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, event.length + 1), lineHeight: 1.05, color: '#fff', marginTop: px(mh, 0.01) }}>{event}</div>
+          <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: px(mh, 0.04) }}>
+            {rows.map((row, i) => (
+              <div key={i} style={{ flex: 1, maxWidth: '31%', background: '#11161e', border: `2px solid ${medals[i]}`, borderRadius: 12, padding: `${px(mh, 0.03)}px ${px(mh, 0.025)}px`, marginRight: i === 2 ? 0 : px(width, 0.02), animation: animOn ? `celOtherSlideR 0.4s ${i * 0.18}s both` : undefined, boxSizing: 'border-box' }}>
+                <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.09, 4), color: medals[i], lineHeight: 1 }}>#{row.pos}</div>
+                <div style={{ fontWeight: 800, fontSize: sceneText(width, mh, 0.055, row.name.length + 1), lineHeight: 1.1, color: '#fff' }}>{row.name}</div>
+                <div style={{ color: '#9aa3b2', fontWeight: 700, fontSize: sceneText(width, mh, 0.035, 5) }}>{row.country}</div>
+                <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.07, row.time.length + 1), color: '#ffd23a' }}>{row.time}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1302,22 +1768,35 @@ export function TrPersonalBestWidget({ config, live = true, height = 480 }: Widg
   const time = c.time ?? '10.65';
   const delta = c.delta ?? '-0.18';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <SparkRain on={animOn} color="#22c55e" count={100} kf="celOtherSpark" />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#22c55e', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>PERSONAL BEST</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{athlete}</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#22c55e', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>PERSONAL BEST</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{athlete}</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ color: '#22c55e', fontWeight: 800, fontSize: px(height, 40 / 480) }}>{event}</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 300 / 480), color: '#22c55e', textShadow: '0 0 60px #22c55e', lineHeight: 0.9 }}>{time}</div>
+          </div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 140 / 480), color: '#22c55e' }}>{delta}</div>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ color: '#22c55e', fontWeight: 800, fontSize: px(height, 40 / 480) }}>{event}</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 300 / 480), color: '#22c55e', textShadow: '0 0 60px #22c55e', lineHeight: 0.9 }}>{time}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#22c55e', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 14), letterSpacing: '0.14em' }}>PERSONAL BEST</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, athlete.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.02) }}>{athlete}</div>
+          <div style={{ color: '#22c55e', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, event.length + 1), marginTop: px(mh, 0.03) }}>{event}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.24, 0.15), color: '#22c55e', textShadow: '0 0 60px #22c55e', lineHeight: 0.9, marginTop: px(mh, 0.012) }}>{time}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.08, delta.length + 1), color: '#22c55e', marginTop: px(mh, 0.02) }}>{delta}</div>
         </div>
-        <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 140 / 480), color: '#22c55e' }}>{delta}</div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1342,20 +1821,32 @@ export function SwRecordWidget({ config, live = true, height = 480 }: WidgetProp
   const event = c.event ?? '1500M';
   const time = c.time ?? '15:20.48';
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       {animOn && <RibbonKeyframes />}
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundImage: 'repeating-linear-gradient(0deg, #02143d 0 70px, #0a4a8a 70px 74px)' }} />
       <SparkRain on={animOn} color="#ffd23a" count={120} kf="celOtherSpark" />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>WORLD RECORD!</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{athlete}</div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 50 / 480) }}>{event}</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>WORLD RECORD!</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{athlete}</div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 50 / 480) }}>{event}</div>
+          </div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 280 / 480), color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>{time}</div>
         </div>
-        <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 280 / 480), color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>{time}</div>
-      </div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 14), letterSpacing: '0.14em' }}>WORLD RECORD!</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, athlete.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.02) }}>{athlete}</div>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, event.length + 1), marginTop: px(mh, 0.025) }}>{event}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.24, 0.13), color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.025) }}>{time}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1378,24 +1869,43 @@ export function SwFinishWidget({ config, live = true, height = 480 }: WidgetProp
     { lane: 3, name: 'BRUSEMI', time: '47.78' },
   ];
   const medals = ['#ffd23a', '#9aa3b2', '#cd7f32'];
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+  const rows = top.slice(0, 3);
 
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundImage: 'repeating-linear-gradient(0deg, #02143d 0 70px, #0a4a8a 70px 74px)' }} />
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 60 / 480)}px`, display: 'flex', alignItems: 'center', color: '#fff' }}>
-        <div style={{ flex: '0 0 22%', marginRight: px(height, 40 / 480) }}>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 30 / 480), letterSpacing: '0.12em' }}>FINAL</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 80 / 480), lineHeight: 1 }}>{event}</div>
-        </div>
-        {top.slice(0, 3).map((row, i) => (
-          <div key={i} style={{ flex: 1, background: '#0a2444', border: `2px solid ${medals[i]}`, borderRadius: 14, padding: '24px 26px', marginRight: i === 2 ? 0 : px(height, 40 / 480) }}>
-            <div style={{ color: medals[i], fontWeight: 800, fontSize: px(height, 40 / 480), letterSpacing: '0.06em' }}>LANE {row.lane}</div>
-            <div style={{ fontWeight: 800, fontSize: px(height, 50 / 480), lineHeight: 1.1 }}>{row.name}</div>
-            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 80 / 480), color: '#ffd23a' }}>{row.time}</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 60 / 480)}px`, display: 'flex', alignItems: 'center', color: '#fff' }}>
+          <div style={{ flex: '0 0 22%', marginRight: px(height, 40 / 480) }}>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 30 / 480), letterSpacing: '0.12em' }}>FINAL</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 80 / 480), lineHeight: 1 }}>{event}</div>
           </div>
-        ))}
-      </div>
+          {rows.map((row, i) => (
+            <div key={i} style={{ flex: 1, background: '#0a2444', border: `2px solid ${medals[i]}`, borderRadius: 14, padding: '24px 26px', marginRight: i === 2 ? 0 : px(height, 40 / 480) }}>
+              <div style={{ color: medals[i], fontWeight: 800, fontSize: px(height, 40 / 480), letterSpacing: '0.06em' }}>LANE {row.lane}</div>
+              <div style={{ fontWeight: 800, fontSize: px(height, 50 / 480), lineHeight: 1.1 }}>{row.name}</div>
+              <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 80 / 480), color: '#ffd23a' }}>{row.time}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.05, 7), letterSpacing: '0.12em' }}>FINAL</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, event.length + 1), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.01) }}>{event}</div>
+          <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: px(mh, 0.04) }}>
+            {rows.map((row, i) => (
+              <div key={i} style={{ flex: 1, maxWidth: '31%', background: '#0a2444', border: `2px solid ${medals[i]}`, borderRadius: 12, padding: `${px(mh, 0.03)}px ${px(mh, 0.025)}px`, marginRight: i === 2 ? 0 : px(width, 0.02), boxSizing: 'border-box' }}>
+                <div style={{ color: medals[i], fontWeight: 800, fontSize: sceneText(width, mh, 0.045, 8), letterSpacing: '0.06em' }}>LANE {row.lane}</div>
+                <div style={{ fontWeight: 800, fontSize: sceneText(width, mh, 0.06, row.name.length + 1), lineHeight: 1.1, color: '#fff' }}>{row.name}</div>
+                <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.085, row.time.length + 1), color: '#ffd23a' }}>{row.time}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1417,20 +1927,33 @@ export function SwSplitWidget({ config, live = true, height = 480 }: WidgetProps
   const vsWR = c.vsWR ?? '-0.42';
   const lap = c.lap ?? 3;
 
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
   return (
-    <div style={frameStyle(r)}>
+    <div ref={ref} style={frameStyle(r)}>
       <Vignette />
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-        <div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>LAP {lap} SPLIT</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 160 / 480), lineHeight: 1 }}>{athlete}</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div>
+            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>LAP {lap} SPLIT</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 160 / 480), lineHeight: 1 }}>{athlete}</div>
+          </div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 280 / 480), color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>{split}</div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#22c55e', fontWeight: 800, fontSize: px(height, 46 / 480) }}>VS WR PACE</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 120 / 480), color: '#22c55e', textShadow: '0 0 40px #22c55e' }}>{vsWR}</div>
+          </div>
         </div>
-        <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 280 / 480), color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>{split}</div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: '#22c55e', fontWeight: 800, fontSize: px(height, 46 / 480) }}>VS WR PACE</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 120 / 480), color: '#22c55e', textShadow: '0 0 40px #22c55e' }}>{vsWR}</div>
+      ) : (
+        <div style={sceneWrap}>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 12), letterSpacing: '0.14em' }}>LAP {lap} SPLIT</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, athlete.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.02) }}>{athlete}</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.24, 0.14), color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.03) }}>{split}</div>
+          <div style={{ color: '#22c55e', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 11), marginTop: px(mh, 0.025) }}>VS WR PACE</div>
+          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.1, vsWR.length + 1), color: '#22c55e', textShadow: '0 0 40px #22c55e', marginTop: px(mh, 0.012) }}>{vsWR}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -1,12 +1,30 @@
 "use client";
 /**
  * VenueOS · Basketball celebration ribbons.
+ *
+ * Aspect-aware. Each widget is triggered onto BOTH a wide LED ribbon
+ * (≈16:1) and a near-16:9 scoreboard zone. The hook `useElementSize`
+ * measures the widget's own root box; `wide` decides the layout:
+ *   • wide  (w/h ≥ 3.2) → the original horizontal strip — unchanged.
+ *   • scene (w/h < 3.2) → a centered, vertically-stacked scene that
+ *     fits a 16:9 box with no overlap. Same content, re-arranged.
  */
 import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
+import { useElementSize } from './_shared/useElementSize';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
+
+/** Aspect ratio at/above which the wide ribbon layout is used. Below it
+ *  (squarer zones, scoreboards) the stacked scene layout is used. */
+const WIDE_RATIO = 3.2;
+
+/** Hero element size for the scene layout: bounded by BOTH the box
+ *  height and the box width so it can never overflow either axis. */
+function sceneHero(width: number, height: number): number {
+  return Math.max(8, Math.round(Math.min(height * 0.34, width * 0.13)));
+}
 
 interface SparklesProps { on: boolean; count: number; color: string; kf: string; dur: number; }
 function Sparkles({ on, count, color, kf, dur }: SparklesProps) {
@@ -39,13 +57,48 @@ export function CelBasketballThreeWidget({ config, live = true, height = 480 }: 
   const swoosh = `${animDurationSec(r.anim.speed, 1.5)}s`;
   const spin = `${animDurationSec(r.anim.speed, 1.5)}s`;
 
+  const { ref, width, height: boxH } = useElementSize<HTMLDivElement>();
+  const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
+
+  const keyframes = animOn && (
+    <style>{`
+      @keyframes celBkThreePulse  { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+      @keyframes celBkThreeSwoosh { 0% { stroke-dashoffset: 2200; } 100% { stroke-dashoffset: 0; } }
+      @keyframes celBkThreeSpin   { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+    `}</style>
+  );
+
+  const ball = (size: number, marginRight: number | string) => (
+    <div style={{ width: size, height: size, borderRadius: '50%', background: '#dc6a1d', animation: animOn ? `celBkThreeSpin ${spin} linear infinite` : undefined, marginRight }}>
+      <svg viewBox="0 0 100 100" width="100%" height="100%">
+        <circle cx="50" cy="50" r="48" fill="none" stroke="#0b0c0e" strokeWidth="2"/>
+        <path d="M50 4 Q70 50 50 96" stroke="#0b0c0e" strokeWidth="2" fill="none"/>
+        <path d="M4 50 Q50 30 96 50" stroke="#0b0c0e" strokeWidth="2" fill="none"/>
+        <path d="M4 50 Q50 70 96 50" stroke="#0b0c0e" strokeWidth="2" fill="none"/>
+      </svg>
+    </div>
+  );
+
+  if (!wide) {
+    const hero = sceneHero(width, boxH);
+    return (
+      <div ref={ref} style={frameStyle(r)}>
+        {keyframes}
+        <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: `radial-gradient(ellipse at center, ${r.accent.highlight}22, transparent 60%)`, animation: animOn ? `celBkThreePulse ${pulse} ease-in-out infinite` : undefined }} />
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+          {ball(Math.round(hero * 0.62), 0)}
+          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.052), letterSpacing: '0.14em', marginTop: hero * 0.14 }}>FROM DOWNTOWN</div>
+          <div style={{ color: r.accent.primary, fontSize: hero, lineHeight: 0.9, textShadow: `0 0 80px ${r.accent.highlight}`, marginTop: hero * 0.04 }}>3</div>
+          <div style={{ fontSize: px(boxH, 0.12), lineHeight: 1, marginTop: hero * 0.12 }}>{player}</div>
+          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.05), marginTop: hero * 0.06 }}>{threesTonight} TONIGHT</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={frameStyle(r)}>
-      {animOn && <style>{`
-        @keyframes celBkThreePulse  { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-        @keyframes celBkThreeSwoosh { 0% { stroke-dashoffset: 2200; } 100% { stroke-dashoffset: 0; } }
-        @keyframes celBkThreeSpin   { from { transform: rotate(0); } to { transform: rotate(360deg); } }
-      `}</style>}
+    <div ref={ref} style={frameStyle(r)}>
+      {keyframes}
 
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: `radial-gradient(ellipse at center, ${r.accent.highlight}22, transparent 60%)`, animation: animOn ? `celBkThreePulse ${pulse} ease-in-out infinite` : undefined }} />
 
@@ -54,14 +107,7 @@ export function CelBasketballThreeWidget({ config, live = true, height = 480 }: 
       </svg>
 
       <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
-        <div style={{ width: height * 0.62, height: height * 0.62, borderRadius: '50%', background: '#dc6a1d', animation: animOn ? `celBkThreeSpin ${spin} linear infinite` : undefined, marginRight: '4%' }}>
-          <svg viewBox="0 0 100 100" width="100%" height="100%">
-            <circle cx="50" cy="50" r="48" fill="none" stroke="#0b0c0e" strokeWidth="2"/>
-            <path d="M50 4 Q70 50 50 96" stroke="#0b0c0e" strokeWidth="2" fill="none"/>
-            <path d="M4 50 Q50 30 96 50" stroke="#0b0c0e" strokeWidth="2" fill="none"/>
-            <path d="M4 50 Q50 70 96 50" stroke="#0b0c0e" strokeWidth="2" fill="none"/>
-          </svg>
-        </div>
+        {ball(height * 0.62, '4%')}
         <div>
           <div style={{ color: r.accent.primary, fontSize: px(height, 0.11), letterSpacing: '0.14em' }}>FROM DOWNTOWN</div>
           <div style={{ color: r.accent.primary, fontSize: px(height, 0.58), lineHeight: 0.9, textShadow: `0 0 80px ${r.accent.highlight}` }}>3</div>
@@ -92,23 +138,53 @@ export function CelBasketballDunkWidget({ config, live = true, height = 480 }: W
   const burst = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
 
+  const { ref, width, height: boxH } = useElementSize<HTMLDivElement>();
+  const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
+
+  const keyframes = animOn && (
+    <style>{`
+      @keyframes celBkDunkBurst { 0% { transform: scale(0); opacity: 0; } 30% { transform: scale(1.15); opacity: 1; } 60% { transform: scale(1); } 100% { transform: scale(1); opacity: 1; } }
+      @keyframes celBkDunkRipple { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.3); } }
+      @keyframes celBkDunkSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
+    `}</style>
+  );
+
+  const rim = (svgW: string, svgH: string) => (
+    <svg viewBox="0 0 100 60" width={svgW} height={svgH}>
+      <rect x="20" y="6" width="60" height="6" fill={r.accent.primary}/>
+      {Array.from({ length: 10 }).map((_, i) => (
+        <line key={i} x1={22 + i * 6} y1="12" x2={22 + i * 6} y2="50" stroke="#fff" strokeWidth=".4" style={{ animation: animOn ? `celBkDunkRipple 0.5s ${i * 0.04}s infinite` : undefined, transformOrigin: `${22 + i * 6}px 12px` }}/>
+      ))}
+    </svg>
+  );
+
+  if (!wide) {
+    const hero = sceneHero(width, boxH);
+    return (
+      <div ref={ref} style={frameStyle(r)}>
+        {keyframes}
+        <Sparkles on={animOn} count={100} color={r.accent.primary} kf="celBkDunkSpark" dur={sparkDur} />
+        <div aria-hidden style={{ position: 'absolute', top: '8%', left: '50%', transform: 'translateX(-50%)', width: '34%', height: '24%', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.85 }}>
+          {rim('100%', '100%')}
+        </div>
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', animation: animOn ? `celBkDunkBurst ${burst} ease-out both` : undefined }}>
+          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.06), letterSpacing: '0.14em' }}>{kind}!</div>
+          <div style={{ fontSize: hero, lineHeight: 0.9, letterSpacing: '-0.04em', textShadow: `0 0 60px ${r.accent.highlight}`, marginTop: hero * 0.06 }}>SLAM</div>
+          <div style={{ fontSize: px(boxH, 0.12), lineHeight: 1, marginTop: hero * 0.16 }}>{player}</div>
+          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.05), marginTop: hero * 0.06 }}>nothing but rim</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={frameStyle(r)}>
-      {animOn && <style>{`
-        @keyframes celBkDunkBurst { 0% { transform: scale(0); opacity: 0; } 30% { transform: scale(1.15); opacity: 1; } 60% { transform: scale(1); } 100% { transform: scale(1); opacity: 1; } }
-        @keyframes celBkDunkRipple { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.3); } }
-        @keyframes celBkDunkSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-      `}</style>}
+    <div ref={ref} style={frameStyle(r)}>
+      {keyframes}
 
       <Sparkles on={animOn} count={100} color={r.accent.primary} kf="celBkDunkSpark" dur={sparkDur} />
 
       <div style={{ position: 'absolute', left: '34%', right: '34%', top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <svg viewBox="0 0 100 60" width="100%" height="80%">
-          <rect x="20" y="6" width="60" height="6" fill={r.accent.primary}/>
-          {Array.from({ length: 10 }).map((_, i) => (
-            <line key={i} x1={22 + i * 6} y1="12" x2={22 + i * 6} y2="50" stroke="#fff" strokeWidth=".4" style={{ animation: animOn ? `celBkDunkRipple 0.5s ${i * 0.04}s infinite` : undefined, transformOrigin: `${22 + i * 6}px 12px` }}/>
-          ))}
-        </svg>
+        {rim('100%', '80%')}
       </div>
 
       <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celBkDunkBurst ${burst} ease-out both` : undefined }}>
@@ -142,12 +218,38 @@ export function CelBasketballBuzzerWidget({ config, live = true, height = 480 }:
   const thump = `${animDurationSec(r.anim.speed, 0.4)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
 
+  const { ref, width, height: boxH } = useElementSize<HTMLDivElement>();
+  const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
+
+  const keyframes = animOn && (
+    <style>{`
+      @keyframes celBkBuzzerThump { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+      @keyframes celBkBuzzerSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
+    `}</style>
+  );
+
+  if (!wide) {
+    const hero = sceneHero(width, boxH);
+    return (
+      <div ref={ref} style={frameStyle(r)}>
+        {keyframes}
+        <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+          backgroundImage: `repeating-linear-gradient(135deg, ${r.bg.color} 0 100px, #000 100px 200px)` }} />
+        <Sparkles on={animOn} count={150} color={r.accent.highlight} kf="celBkBuzzerSpark" dur={sparkDur} />
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', animation: animOn ? `celBkBuzzerThump ${thump} ease-in-out infinite` : undefined }}>
+          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.05), letterSpacing: '0.14em' }}>AT THE BUZZER</div>
+          <div style={{ color: r.accent.primary, fontSize: hero, fontFamily: '"JetBrains Mono", ui-monospace, monospace', textShadow: `0 0 80px ${r.accent.highlight}`, lineHeight: 0.9, marginTop: hero * 0.06 }}>{clock}</div>
+          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.046), marginTop: hero * 0.04 }}>SECONDS</div>
+          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.1), lineHeight: 0.95, textShadow: `0 0 60px ${r.accent.highlight}`, marginTop: hero * 0.2 }}>{kind}</div>
+          <div style={{ fontSize: px(boxH, 0.12), lineHeight: 1, marginTop: hero * 0.06 }}>{player}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={frameStyle(r)}>
-      {animOn && <style>{`
-        @keyframes celBkBuzzerThump { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-        @keyframes celBkBuzzerSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-      `}</style>}
+    <div ref={ref} style={frameStyle(r)}>
+      {keyframes}
 
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         backgroundImage: `repeating-linear-gradient(135deg, ${r.bg.color} 0 100px, #000 100px 200px)` }} />
@@ -184,12 +286,44 @@ export function CelBasketballBlockWidget({ config, live = true, height = 480 }: 
   const burst = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const pulse = `${animDurationSec(r.anim.speed, 0.5)}s`;
 
+  const { ref, width, height: boxH } = useElementSize<HTMLDivElement>();
+  const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
+
+  const keyframes = animOn && (
+    <style>{`
+      @keyframes celBkBlockBurst { 0% { transform: scale(0); opacity: 0; } 30% { transform: scale(1.15); opacity: 1; } 60% { transform: scale(1); } 100% { transform: scale(1); opacity: 1; } }
+      @keyframes celBkBlockPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+    `}</style>
+  );
+
+  const rejection = (svgW: number, svgH: number) => (
+    <svg width={svgW} height={svgH} viewBox="0 0 60 80">
+      <rect x="10" y="10" width="40" height="60" rx="4" fill={r.accent.primary} stroke="#fff" strokeWidth="2"/>
+      <text x="30" y="60" textAnchor="middle" fontFamily="Plus Jakarta Sans" fontWeight="800" fontSize="44" fill="#fff">×</text>
+    </svg>
+  );
+
+  if (!wide) {
+    const hero = sceneHero(width, boxH);
+    return (
+      <div ref={ref} style={frameStyle(r)}>
+        {keyframes}
+        <div style={{ position: 'absolute', top: '8%', left: '50%', transform: 'translateX(-50%)', animation: animOn ? `celBkBlockPulse ${pulse} ease-in-out infinite` : undefined, opacity: 0.85 }}>
+          {rejection(Math.round(hero * 0.46), Math.round(hero * 0.58))}
+        </div>
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', animation: animOn ? `celBkBlockBurst ${burst} ease-out both` : undefined }}>
+          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.06), letterSpacing: '0.14em', marginTop: hero * 0.4 }}>GET THAT OUT!</div>
+          <div style={{ fontSize: hero, lineHeight: 0.9, letterSpacing: '-0.04em', textShadow: `0 0 60px ${r.accent.highlight}`, marginTop: hero * 0.06 }}>BLOCK!</div>
+          <div style={{ fontSize: px(boxH, 0.12), lineHeight: 1, marginTop: hero * 0.16 }}>{player}</div>
+          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.048), marginTop: hero * 0.06 }}>{blocks} BLOCKS TONIGHT</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={frameStyle(r)}>
-      {animOn && <style>{`
-        @keyframes celBkBlockBurst { 0% { transform: scale(0); opacity: 0; } 30% { transform: scale(1.15); opacity: 1; } 60% { transform: scale(1); } 100% { transform: scale(1); opacity: 1; } }
-        @keyframes celBkBlockPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-      `}</style>}
+    <div ref={ref} style={frameStyle(r)}>
+      {keyframes}
 
       <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celBkBlockBurst ${burst} ease-out both` : undefined }}>
         <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.14em' }}>GET THAT OUT!</div>
@@ -197,10 +331,7 @@ export function CelBasketballBlockWidget({ config, live = true, height = 480 }: 
       </div>
 
       <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', animation: animOn ? `celBkBlockPulse ${pulse} ease-in-out infinite` : undefined }}>
-        <svg width={height * 0.46} height={height * 0.58} viewBox="0 0 60 80">
-          <rect x="10" y="10" width="40" height="60" rx="4" fill={r.accent.primary} stroke="#fff" strokeWidth="2"/>
-          <text x="30" y="60" textAnchor="middle" fontFamily="Plus Jakarta Sans" fontWeight="800" fontSize="44" fill="#fff">×</text>
-        </svg>
+        {rejection(height * 0.46, height * 0.58)}
       </div>
 
       <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
@@ -226,17 +357,44 @@ export function CelBasketballStealWidget({ config, live = true, height = 480 }: 
   const steals = c.stealsTonight ?? 4;
   const sweep = `${animDurationSec(r.anim.speed, 1.4)}s`;
 
-  return (
-    <div style={frameStyle(r)}>
-      {animOn && <style>{`@keyframes celBkStealSweep { 0% { transform: translateX(-100%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(700%); opacity: 0; } }`}</style>}
+  const { ref, width, height: boxH } = useElementSize<HTMLDivElement>();
+  const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
 
-      <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, pointerEvents: 'none' }}>
-        {Array.from({ length: 12 }).map((_, i) => (
-          <div key={i} style={{ position: 'absolute', top: `${(i % 3) * 28 + 8}%`, left: 0, width: '14%', height: '12%', animation: animOn ? `celBkStealSweep ${sweep} linear ${i * 0.12}s infinite` : undefined, opacity: 0.5 + (i % 3) * 0.15 }}>
-            <svg viewBox="0 0 280 60" preserveAspectRatio="none" width="100%" height="100%"><polygon points="0,30 220,30 220,5 280,30 220,55 220,30" fill={r.accent.primary}/></svg>
-          </div>
-        ))}
+  const keyframes = animOn && (
+    <style>{`@keyframes celBkStealSweep { 0% { transform: translateX(-100%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(700%); opacity: 0; } }`}</style>
+  );
+
+  const arrows = (
+    <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, pointerEvents: 'none' }}>
+      {Array.from({ length: 12 }).map((_, i) => (
+        <div key={i} style={{ position: 'absolute', top: `${(i % 3) * 28 + 8}%`, left: 0, width: '14%', height: '12%', animation: animOn ? `celBkStealSweep ${sweep} linear ${i * 0.12}s infinite` : undefined, opacity: 0.5 + (i % 3) * 0.15 }}>
+          <svg viewBox="0 0 280 60" preserveAspectRatio="none" width="100%" height="100%"><polygon points="0,30 220,30 220,5 280,30 220,55 220,30" fill={r.accent.primary}/></svg>
+        </div>
+      ))}
+    </div>
+  );
+
+  if (!wide) {
+    const hero = sceneHero(width, boxH);
+    return (
+      <div ref={ref} style={frameStyle(r)}>
+        {keyframes}
+        {arrows}
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.06), letterSpacing: '0.14em' }}>PICKED OFF!</div>
+          <div style={{ fontSize: hero, lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: `0 0 60px ${r.accent.highlight}`, marginTop: hero * 0.06 }}>STEAL</div>
+          <div style={{ fontSize: px(boxH, 0.12), lineHeight: 1, marginTop: hero * 0.16 }}>{player}</div>
+          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.048), marginTop: hero * 0.06 }}>{steals} STEALS TONIGHT</div>
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div ref={ref} style={frameStyle(r)}>
+      {keyframes}
+
+      {arrows}
 
       <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
         <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.14em' }}>PICKED OFF!</div>
@@ -268,13 +426,39 @@ export function CelBasketballAlleyOopWidget({ config, live = true, height = 480 
   const swoosh = `${animDurationSec(r.anim.speed, 1.6)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
 
+  const { ref, width, height: boxH } = useElementSize<HTMLDivElement>();
+  const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
+
+  const keyframes = animOn && (
+    <style>{`
+      @keyframes celBkOopPulse  { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+      @keyframes celBkOopSwoosh { 0% { stroke-dashoffset: 2200; } 100% { stroke-dashoffset: 0; } }
+      @keyframes celBkOopSpark  { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
+    `}</style>
+  );
+
+  if (!wide) {
+    const hero = sceneHero(width, boxH);
+    return (
+      <div ref={ref} style={frameStyle(r)}>
+        {keyframes}
+        <Sparkles on={animOn} count={70} color={r.accent.highlight} kf="celBkOopSpark" dur={sparkDur} />
+        <svg viewBox="0 0 7680 480" preserveAspectRatio="none" aria-hidden style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0.5 }}>
+          <path d="M 900 300 Q 3500 -200 6700 280" stroke={r.accent.primary} strokeWidth="22" strokeDasharray="50 30" fill="none" style={animOn ? { animation: `celBkOopSwoosh ${swoosh} linear infinite` } : undefined} />
+        </svg>
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', animation: animOn ? `celBkOopPulse ${pulse} ease-in-out infinite` : undefined }}>
+          <div style={{ color: r.accent.highlight, fontSize: px(boxH, 0.045) }}>PASS · {passer}</div>
+          <div style={{ color: r.accent.primary, fontSize: hero, lineHeight: 0.95, textShadow: `0 0 60px ${r.accent.primary}`, marginTop: hero * 0.06 }}>ALLEY</div>
+          <div style={{ color: r.accent.highlight, fontSize: hero, lineHeight: 0.95, textShadow: `0 0 60px ${r.accent.highlight}` }}>OOP!</div>
+          <div style={{ color: r.accent.highlight, fontSize: px(boxH, 0.045), marginTop: hero * 0.12 }}>FINISH · {dunker}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={frameStyle(r)}>
-      {animOn && <style>{`
-        @keyframes celBkOopPulse  { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-        @keyframes celBkOopSwoosh { 0% { stroke-dashoffset: 2200; } 100% { stroke-dashoffset: 0; } }
-        @keyframes celBkOopSpark  { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-      `}</style>}
+    <div ref={ref} style={frameStyle(r)}>
+      {keyframes}
 
       <Sparkles on={animOn} count={70} color={r.accent.highlight} kf="celBkOopSpark" dur={sparkDur} />
 
@@ -314,12 +498,37 @@ export function CelBasketballAndOneWidget({ config, live = true, height = 480 }:
   const thump = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const pulse = `${animDurationSec(r.anim.speed, 0.6)}s`;
 
+  const { ref, width, height: boxH } = useElementSize<HTMLDivElement>();
+  const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
+
+  const keyframes = animOn && (
+    <style>{`
+      @keyframes celBkA1Thump { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(1.04); } }
+      @keyframes celBkA1Pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+    `}</style>
+  );
+
+  if (!wide) {
+    const hero = sceneHero(width, boxH);
+    return (
+      <div ref={ref} style={frameStyle(r)}>
+        {keyframes}
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center' }}>
+            <span style={{ color: r.accent.primary, fontSize: hero, lineHeight: 1, letterSpacing: '-0.04em', animation: animOn ? `celBkA1Thump ${thump} ease-in-out infinite` : undefined }}>AND</span>
+            <span style={{ color: r.accent.highlight, fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: Math.round(hero * 1.35), lineHeight: 1, textShadow: `0 0 80px ${r.accent.highlight}`, marginLeft: hero * 0.12, animation: animOn ? `celBkA1Pulse ${pulse} ease-in-out infinite` : undefined }}>1</span>
+          </div>
+          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.05), letterSpacing: '0.1em', marginTop: hero * 0.18 }}>FOUL ON THE PLAY</div>
+          <div style={{ fontSize: px(boxH, 0.12), lineHeight: 1, marginTop: hero * 0.06 }}>{player}</div>
+          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.044), marginTop: hero * 0.06 }}>shooting 1 of 1</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={frameStyle(r)}>
-      {animOn && <style>{`
-        @keyframes celBkA1Thump { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(1.04); } }
-        @keyframes celBkA1Pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-      `}</style>}
+    <div ref={ref} style={frameStyle(r)}>
+      {keyframes}
 
       <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)', animation: animOn ? `celBkA1Thump ${thump} ease-in-out infinite` : undefined }}>
         <div style={{ color: r.accent.primary, fontSize: px(height, 0.5), lineHeight: 1, letterSpacing: '-0.04em' }}>AND</div>
@@ -356,13 +565,48 @@ export function CelBasketballTripleDoubleWidget({ config, live = true, height = 
   const sparkDur = animDurationSec(r.anim.speed, 2);
   const stats = line.split(' · ');
 
+  const { ref, width, height: boxH } = useElementSize<HTMLDivElement>();
+  const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
+
+  const keyframes = animOn && (
+    <style>{`
+      @keyframes celBkTdSlide { 0% { transform: translateX(-30%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
+      @keyframes celBkTdPunch { 0% { transform: scale(2.4); opacity: 0; } 30% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.06); } }
+      @keyframes celBkTdSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
+    `}</style>
+  );
+
+  if (!wide) {
+    const hero = sceneHero(width, boxH);
+    // Stat-cell font bounded so 3 cells side-by-side never exceed the box width.
+    const cellFont = Math.max(8, Math.round(Math.min(hero * 0.62, width / (stats.length * 3.4))));
+    return (
+      <div ref={ref} style={frameStyle(r)}>
+        {keyframes}
+        <Sparkles on={animOn} count={120} color={r.accent.highlight} kf="celBkTdSpark" dur={sparkDur} />
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', animation: animOn ? `celBkTdSlide ${slide} ease-out` : undefined }}>
+          <div style={{ color: '#a78bfa', fontSize: px(boxH, 0.052), letterSpacing: '0.14em' }}>TRIPLE-DOUBLE</div>
+          <div style={{ fontSize: hero, lineHeight: 1, marginTop: hero * 0.06 }}>{player}</div>
+          <div style={{ color: '#a78bfa', fontSize: px(boxH, 0.046), marginTop: hero * 0.04 }}>career #{count}</div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', marginTop: hero * 0.22 }}>
+            {stats.map((s, i) => {
+              const [val, label] = s.split(' ');
+              return (
+                <div key={i} style={{ textAlign: 'center', marginLeft: i === 0 ? 0 : hero * 0.34, animation: animOn ? `celBkTdPunch ${punch} ${i * 0.15}s both` : undefined }}>
+                  <div style={{ color: r.accent.primary, fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: cellFont, textShadow: `0 0 60px ${r.accent.highlight}`, lineHeight: 0.9 }}>{val}</div>
+                  <div style={{ color: '#a78bfa', fontSize: Math.round(cellFont * 0.32), marginTop: cellFont * 0.1 }}>{label}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={frameStyle(r)}>
-      {animOn && <style>{`
-        @keyframes celBkTdSlide { 0% { transform: translateX(-30%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
-        @keyframes celBkTdPunch { 0% { transform: scale(2.4); opacity: 0; } 30% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.06); } }
-        @keyframes celBkTdSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-      `}</style>}
+    <div ref={ref} style={frameStyle(r)}>
+      {keyframes}
 
       <Sparkles on={animOn} count={120} color={r.accent.highlight} kf="celBkTdSpark" dur={sparkDur} />
 
