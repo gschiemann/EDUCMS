@@ -22,6 +22,11 @@ import {
   Clock, Megaphone, Newspaper, CalendarDays, Users, Timer, Shield,
   ArrowRight, Cloud, Camera, FileText, Image as ImageIcon,
   UtensilsCrossed, Bell,
+  // Celebration widgets (EDU CMS-10 batch). `RefreshCw` — the shipped
+  // registry imported `Refresh`, which does not exist in lucide-react.
+  Zap, TrendingUp, Crown, Star, Repeat2, CircleEqual, Flag, Trophy,
+  Hand, Goal, Hammer, AlertOctagon, RefreshCw, Target,
+  MousePointerClick, Award,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -39,6 +44,27 @@ import * as RichText     from './RichTextWidgets';
 import * as Images       from './ImageWidgets';
 import * as Lunch        from './LunchMenuWidgets';
 import * as BellSched    from './BellScheduleWidgets';
+
+// Celebration widgets — EDU CMS-10 batch. These size their content off
+// a pixel `height` prop; the variant render path doesn't pass zone
+// dimensions, so each Component is wrapped in `withMeasuredHeight`
+// (below) which measures the real rendered height and feeds it in.
+import {
+  CelBaseballStrikeoutWidget, CelBaseballHomeRunWidget, CelBaseballGrandSlamWidget,
+  CelBaseballNoHitterWidget, CelBaseballStolenBaseWidget, CelBaseballDoublePlayWidget,
+  CelBaseballTriplePlayWidget, CelBaseballWalkOffWidget,
+} from './CelebrationsBaseballWidgets';
+import {
+  CelFootballTouchdownWidget, CelFootballPickSixWidget, CelFootballFieldGoalWidget,
+  CelFootballSackWidget, CelFootballFirstDownWidget, CelFootballInterceptionWidget,
+  CelFootballSafetyWidget, CelFootballFumbleRecoveryWidget,
+} from './CelebrationsFootballWidgets';
+import {
+  CelBasketballThreeWidget, CelBasketballDunkWidget, CelBasketballBuzzerWidget,
+  CelBasketballBlockWidget, CelBasketballStealWidget, CelBasketballAlleyOopWidget,
+  CelBasketballAndOneWidget, CelBasketballTripleDoubleWidget,
+} from './CelebrationsBasketballWidgets';
+import { withMeasuredHeight } from './_shared/measured';
 
 import type { WidgetMeta, SchoolLevel } from './_shared/types';
 
@@ -187,12 +213,56 @@ export const BELL_WIDGETS: RegisteredWidget[] = [
   W('BELL_OPS',      'Bell Schedules', 'Ops Dispatch',     'Network dispatch board',               'admin',      Bell, BellSched.BellOpsDispatchWidget),
 ];
 
+/* ─── CELEBRATIONS — EDU CMS-10 batch ─────────────────────────────────
+ * Full-screen sports celebration ribbons — fire on a scoring event.
+ * Each Component is wrapped in withMeasuredHeight: the widget sizes its
+ * type off a pixel `height`, which the variant render path does not
+ * pass, so the wrapper measures the real rendered height and feeds it
+ * in. (variants-register.ts maps these three categories → CELEBRATION.) */
+const CAT_CEL_BASEBALL   = 'Celebrations · Baseball';
+const CAT_CEL_FOOTBALL   = 'Celebrations · Football';
+const CAT_CEL_BASKETBALL = 'Celebrations · Basketball';
+
+export const CEL_BASEBALL_WIDGETS: RegisteredWidget[] = [
+  W('CEL_BASEBALL_STRIKEOUT',  CAT_CEL_BASEBALL, 'Strikeout',     'Flashing Ks with a rotating baseball',            'universal', Zap,         withMeasuredHeight(CelBaseballStrikeoutWidget),  { pitcher: 'BURNES', kCount: 11, team: 'starting rotation' }),
+  W('CEL_BASEBALL_HOMERUN',    CAT_CEL_BASEBALL, 'Home Run',      'Arcing ball trail + player, distance, exit velo', 'universal', TrendingUp,  withMeasuredHeight(CelBaseballHomeRunWidget),    { player: 'TUCKER', distance: '418 FT', exitVelo: '108 MPH EXIT VELOCITY' }),
+  W('CEL_BASEBALL_GRANDSLAM',  CAT_CEL_BASEBALL, 'Grand Slam',    'Four-base diamond + GRAND SLAM',                  'universal', Crown,       withMeasuredHeight(CelBaseballGrandSlamWidget),  { player: 'DEVERS', score: '7-2' }),
+  W('CEL_BASEBALL_NOHITTER',   CAT_CEL_BASEBALL, 'No-Hitter',     'Mid-game no-hitter alert',                        'universal', Star,        withMeasuredHeight(CelBaseballNoHitterWidget),   { pitcher: 'KERSHAW', inning: 9 }),
+  W('CEL_BASEBALL_STOLENBASE', CAT_CEL_BASEBALL, 'Stolen Base',   'Speed arrows + safe call + season SB count',      'universal', Zap,         withMeasuredHeight(CelBaseballStolenBaseWidget), { runner: 'WITT JR.', base: '2ND', seasonSb: 14 }),
+  W('CEL_BASEBALL_DOUBLEPLAY', CAT_CEL_BASEBALL, 'Double Play',   'Two-stage ball flight with the player chain',     'universal', Repeat2,     withMeasuredHeight(CelBaseballDoublePlayWidget), { combo: '6-4-3', players: ['LINDOR', 'ALBIES', 'OLSON'] }),
+  W('CEL_BASEBALL_TRIPLEPLAY', CAT_CEL_BASEBALL, 'Triple Play',   'Three lit bases + TRIPLE PLAY punch',             'universal', CircleEqual, withMeasuredHeight(CelBaseballTriplePlayWidget), { caption: '1st in 6 yrs' }),
+  W('CEL_BASEBALL_WALKOFF',    CAT_CEL_BASEBALL, 'Walk-Off Win',  'Game-over team-color flood + walk-off hero',      'universal', Flag,        withMeasuredHeight(CelBaseballWalkOffWidget),    { teamName: 'BULLS', hero: 'JUDGE', finalScore: '5-4', innings: 11 }),
+];
+
+export const CEL_FOOTBALL_WIDGETS: RegisteredWidget[] = [
+  W('CEL_FOOTBALL_TOUCHDOWN', CAT_CEL_FOOTBALL, 'Touchdown',       'Massive TOUCHDOWN with stadium-light shake', 'universal', Trophy,       withMeasuredHeight(CelFootballTouchdownWidget),      { player: 'BARKLEY', distance: '67 YD', score: '21-14' }),
+  W('CEL_FOOTBALL_PICKSIX',   CAT_CEL_FOOTBALL, 'Pick Six',        'Defensive TD — interception to the house',   'universal', Hand,         withMeasuredHeight(CelFootballPickSixWidget),        { player: 'RAMSEY', distance: '42 YD RETURN' }),
+  W('CEL_FOOTBALL_FIELDGOAL', CAT_CEL_FOOTBALL, 'Field Goal',      'Twin uprights, arcing ball, +3 callout',     'universal', Goal,         withMeasuredHeight(CelFootballFieldGoalWidget),      { kicker: 'BUTKER', distance: '52 YD' }),
+  W('CEL_FOOTBALL_SACK',      CAT_CEL_FOOTBALL, 'Sack',            'QB takedown — impact lines + season sacks',  'universal', Hammer,       withMeasuredHeight(CelFootballSackWidget),           { player: 'PARSONS', sacks: 9.5 }),
+  W('CEL_FOOTBALL_FIRSTDOWN', CAT_CEL_FOOTBALL, 'First Down',      'Yard-line marker sweep — drive sustained',   'universal', ArrowRight,   withMeasuredHeight(CelFootballFirstDownWidget),      { distance: '14 YD' }),
+  W('CEL_FOOTBALL_INT',       CAT_CEL_FOOTBALL, 'Interception',    'Defender pulls it down — possession change', 'universal', Hand,         withMeasuredHeight(CelFootballInterceptionWidget),   { player: 'PEPPERS', count: 5 }),
+  W('CEL_FOOTBALL_SAFETY',    CAT_CEL_FOOTBALL, 'Safety',          '+2 in the end zone — flashing red flood',    'universal', AlertOctagon, withMeasuredHeight(CelFootballSafetyWidget),         {}),
+  W('CEL_FOOTBALL_FUMBLE',    CAT_CEL_FOOTBALL, 'Fumble Recovery', 'Ball scramble — possession change',          'universal', RefreshCw,    withMeasuredHeight(CelFootballFumbleRecoveryWidget), { player: 'BOSA' }),
+];
+
+export const CEL_BASKETBALL_WIDGETS: RegisteredWidget[] = [
+  W('CEL_BASKETBALL_THREE',        CAT_CEL_BASKETBALL, '3-Pointer',     'Arcing trail + spinning ball + tonight count', 'universal', Target,            withMeasuredHeight(CelBasketballThreeWidget),        { player: 'CURRY', threesTonight: 7 }),
+  W('CEL_BASKETBALL_DUNK',         CAT_CEL_BASKETBALL, 'Slam Dunk',     'Net-shred animation + player in lights',       'universal', Zap,               withMeasuredHeight(CelBasketballDunkWidget),         { player: 'GIANNIS', kind: 'POSTER' }),
+  W('CEL_BASKETBALL_BUZZER',       CAT_CEL_BASKETBALL, 'Buzzer Beater', 'Clock-to-zero with a team-color flood',        'universal', Timer,             withMeasuredHeight(CelBasketballBuzzerWidget),       { player: 'BOOKER', clock: '0.4', kind: 'GAME WINNER' }),
+  W('CEL_BASKETBALL_BLOCK',        CAT_CEL_BASKETBALL, 'Block',         'Rejection wall + block count',                 'universal', Hand,              withMeasuredHeight(CelBasketballBlockWidget),        { player: 'EMBIID', blocksTonight: 3 }),
+  W('CEL_BASKETBALL_STEAL',        CAT_CEL_BASKETBALL, 'Steal',         'Ball-snatch with speed lines + name',          'universal', Zap,               withMeasuredHeight(CelBasketballStealWidget),        { player: 'GILGEOUS', stealsTonight: 4 }),
+  W('CEL_BASKETBALL_ALLEYOOP',     CAT_CEL_BASKETBALL, 'Alley-Oop',     'Passer to dunker with an arcing trail',        'universal', MousePointerClick, withMeasuredHeight(CelBasketballAlleyOopWidget),     { passer: 'DONCIC', dunker: 'IRVING' }),
+  W('CEL_BASKETBALL_ANDONE',       CAT_CEL_BASKETBALL, 'And-One',       'Bucket + foul — free throw incoming',          'universal', MousePointerClick, withMeasuredHeight(CelBasketballAndOneWidget),       { player: 'TATUM' }),
+  W('CEL_BASKETBALL_TRIPLEDOUBLE', CAT_CEL_BASKETBALL, 'Triple-Double', 'Stat-line achievement — 10/10/10 locked',      'universal', Award,             withMeasuredHeight(CelBasketballTripleDoubleWidget), { player: 'JOKIC', line: '24 PTS · 12 REB · 13 AST', careerCount: 18 }),
+];
+
 /* ─── ALL ───────────────────────────────────────────────────────────── */
 export const ALL_V2_WIDGETS: RegisteredWidget[] = [
   ...CLOCK_WIDGETS, ...HEADLINE_WIDGETS, ...ANNOUNCEMENT_WIDGETS, ...CALENDAR_WIDGETS,
   ...STAFF_WIDGETS, ...COUNTDOWN_WIDGETS, ...LOGO_WIDGETS, ...TICKER_WIDGETS,
   ...WEATHER_WIDGETS, ...PHOTO_WIDGETS, ...RICHTEXT_WIDGETS, ...IMAGE_WIDGETS,
   ...LUNCH_WIDGETS, ...BELL_WIDGETS,
+  ...CEL_BASEBALL_WIDGETS, ...CEL_FOOTBALL_WIDGETS, ...CEL_BASKETBALL_WIDGETS,
 ];
 
 export const V2_BY_TYPE: Record<string, RegisteredWidget> = Object.fromEntries(

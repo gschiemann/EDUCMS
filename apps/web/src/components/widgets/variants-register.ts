@@ -754,6 +754,12 @@ const V2_CATEGORY_TO_CANONICAL: Record<string, WidgetType> = {
   'Images':         'IMAGE',
   'Lunch Menus':    'LUNCH_MENU',
   'Bell Schedules': 'BELL_SCHEDULE',
+  // VenueOS Sports — celebration ribbons (EDU CMS-10 batch). All three
+  // sport categories register under the one CELEBRATION canonical type
+  // so the picker shows a single "Celebration" chip.
+  'Celebrations · Baseball':   'CELEBRATION',
+  'Celebrations · Football':   'CELEBRATION',
+  'Celebrations · Basketball': 'CELEBRATION',
 };
 
 for (const w of ALL_V2_WIDGETS) {

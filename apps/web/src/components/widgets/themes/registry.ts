@@ -35,7 +35,11 @@ export type WidgetType =
   // kiosk-nav (home/back/next/close/menu/help/play) / comm (qr/info/
   // phone/email/share) / engagement (heart/star) / utility (search/
   // volume/print). All 25 variants registered in variants-register.
-  | 'TOUCH_POINT';
+  | 'TOUCH_POINT'
+  // VenueOS Sports — celebration ribbons (touchdown, slam dunk, home
+  // run, …). Registered as variants; this canonical type groups every
+  // celebration widget under one picker chip.
+  | 'CELEBRATION';
 
 export interface ThemeWidgetProps {
   config: any;
