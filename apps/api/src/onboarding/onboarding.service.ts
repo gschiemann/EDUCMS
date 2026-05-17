@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { EmailService } from '../email/email.service';
 import { AppRole } from '@cms/database';
+import { isVertical } from '@cms/api-types';
 
 export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;     // 1 hour
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;    // 7 days
@@ -67,15 +68,13 @@ export class OnboardingService {
     if (!isValidEmail(email)) throw new BadRequestException('A valid admin email is required.');
     validatePassword(input.password);
 
-    // 2026-05-03 — VenueOS multi-vertical signup. Default K12 preserves
-    // current EDU CMS pilot behavior; new VenueOS signups pass vertical
-    // explicitly via the picker. Allowlist mirrors PATCH /tenants/me.
+    // VenueOS multi-vertical signup. Default K12 preserves the original
+    // pilot behavior; new signups pass a vertical explicitly via the
+    // picker. Validated against the canonical VERTICALS list
+    // (packages/api-types/src/verticals.ts) — the single source of
+    // truth, so adding a vertical there is the only change required.
     const requestedVertical = (input.vertical || 'K12').toUpperCase();
-    const allowedVerticals = [
-      'K12', 'GYM', 'RETAIL', 'CORPORATE', 'QSR', 'FASHION',
-      'FITNESS', 'RESTAURANT', 'HEALTHCARE', 'OTHER',
-    ];
-    if (!allowedVerticals.includes(requestedVertical)) {
+    if (!isVertical(requestedVertical)) {
       throw new BadRequestException('Invalid vertical.');
     }
 

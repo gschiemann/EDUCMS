@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
+import { isVertical } from '@cms/api-types';
 import { randomBytes, createHash, createHmac, timingSafeEqual } from 'crypto';
 
 @Controller('api/v1/tenants')
@@ -247,17 +248,9 @@ export class TenantsController {
     const data: any = {};
     if (body.vertical) {
       const v = body.vertical.toUpperCase();
-      // 2026-05-03 — VenueOS launch verticals (per
-      // packages/api-types/src/verticals.ts). Legacy sprint-plan names
-      // (FITNESS, RESTAURANT, HEALTHCARE, OTHER) preserved as accepted
-      // values so any pre-existing tenants on those strings continue
-      // working without forced migration.
-      const allowed = [
-        'K12', 'GYM', 'RETAIL', 'CORPORATE', 'QSR', 'FASHION',
-        // Legacy / forward-compat
-        'FITNESS', 'RESTAURANT', 'HEALTHCARE', 'OTHER',
-      ];
-      if (!allowed.includes(v)) throw new HttpException('Invalid vertical', HttpStatus.BAD_REQUEST);
+      // Validated against the canonical VERTICALS list
+      // (packages/api-types/src/verticals.ts) — single source of truth.
+      if (!isVertical(v)) throw new HttpException('Invalid vertical', HttpStatus.BAD_REQUEST);
       data.vertical = v;
     }
     if (body.name && body.name.trim()) data.name = body.name.trim();

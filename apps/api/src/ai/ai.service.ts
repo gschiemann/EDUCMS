@@ -30,6 +30,7 @@ import { Injectable, Logger, BadRequestException, ServiceUnavailableException } 
 import { PrismaService } from '../prisma/prisma.service';
 import { dispatchAi, type AiProvider, coerceProvider } from './ai-providers';
 import { openAiKey } from './ai-key-cipher';
+import { isVertical } from '@cms/api-types';
 
 export type AiIntent =
   | 'announcement'
@@ -237,12 +238,11 @@ export class AiService {
     // `vertical` is interpolated into the user prompt — whitelist it
     // against the canonical VERTICALS so a malicious string can't
     // change the system prompt or pollute logs.
-    const ALLOWED_VERTICALS = new Set([
-      'K12', 'GYM', 'RETAIL', 'CORPORATE', 'QSR', 'FASHION', 'BAR', 'venue',
-      // Lower-case variants the frontend might send via tenantCopy.vertical
-      'k12', 'gym', 'retail', 'corporate', 'qsr', 'fashion', 'bar',
-    ]);
-    if (opts.vertical && !ALLOWED_VERTICALS.has(opts.vertical)) {
+    // Validated against the canonical VERTICALS list
+    // (packages/api-types/src/verticals.ts), case-insensitively — the
+    // single source of truth, so a malicious string can't change the
+    // system prompt or pollute logs.
+    if (opts.vertical && !isVertical(String(opts.vertical).toUpperCase())) {
       throw new BadRequestException('Invalid vertical.');
     }
     // Tone whitelist — same idea, prevents prompt injection via the
