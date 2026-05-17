@@ -37,6 +37,10 @@ export interface WidgetVariant {
   description?: string;
   /** Style category for the secondary filter (e.g. 'CLASSROOM', 'MODERN', 'PLAYFUL', 'MINIMAL') */
   category?: string;
+  /** Business-line scope — when set, this variant appears only in that
+   *  vertical's builder palette (e.g. 'SPORTS', 'HEALTHCARE'). Unset =
+   *  universal — shown to every vertical. */
+  vertical?: string;
   /** Renderer — used as the picker thumbnail AND, by default, as the
    *  canvas render when this variant is selected. For variants whose
    *  `render` is a thumbnail-only preview (no real widget logic, no

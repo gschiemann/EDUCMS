@@ -166,6 +166,12 @@ const K12_ONLY_CATEGORIES: ReadonlySet<string> = new Set([
   'SAFETY',
 ]);
 function variantVisibleForVertical(v: WidgetVariant, vertical: string): boolean {
+  // Business-line scoped widgets (EDU CMS-10/11/12 packs — celebrations,
+  // healthcare, corporate, hospitality, worship) show ONLY in their own
+  // vertical's palette. A healthcare widget never clutters a gym; a
+  // touchdown ribbon never lands in a restaurant's gallery. This is a
+  // strict match — it overrides the K-12 category logic below.
+  if (v.vertical) return v.vertical === vertical;
   if (vertical === 'K12') return true;
   if (!v.category) return true; // neutral / no metadata — keep
   return !K12_ONLY_CATEGORIES.has(v.category.toUpperCase());

@@ -24,4 +24,8 @@ export interface WidgetMeta {
   desc: string;        // short description
   level: SchoolLevel;
   defaults?: Record<string, unknown>;
+  /** Business-line scope. When set, the widget appears only in that
+   *  vertical's builder palette (e.g. 'SPORTS', 'HEALTHCARE'). Unset =
+   *  universal — shown to every vertical. */
+  vertical?: string;
 }

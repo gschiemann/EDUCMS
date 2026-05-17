@@ -60,6 +60,11 @@ export const VERTICALS = [
   // ribbon boards, celebrations) are tagged SPORTS so they never
   // bleed into other verticals' galleries.
   'SPORTS',
+  // 2026-05-17 — houses of worship: churches, ministries, temples.
+  // Worship widgets (service times, sermon cards, hymn board, giving
+  // thermometer) are tagged WORSHIP so they stay in this vertical's
+  // gallery only and never bleed into a school or restaurant palette.
+  'WORSHIP',
 ] as const;
 
 export type Vertical = (typeof VERTICALS)[number];
@@ -136,6 +141,12 @@ export const VERTICAL_LABELS: Record<Vertical, { singular: string; plural: strin
     emoji: '🏟️',
     tagline: 'Stadiums, arenas, gyms — scoreboards, ribbon boards, game day',
   },
+  WORSHIP: {
+    singular: 'Church',
+    plural: 'Churches',
+    emoji: '⛪',
+    tagline: 'Churches, ministries, houses of worship',
+  },
 };
 
 /**
@@ -155,6 +166,7 @@ export const VERTICAL_GROUP_NOUN: Record<Vertical, { singular: string; plural: s
   HOSPITALITY: { singular: 'Group',    plural: 'Groups' },
   RESTAURANT:  { singular: 'Group',    plural: 'Groups' },
   SPORTS:      { singular: 'League',   plural: 'Leagues' },
+  WORSHIP:     { singular: 'Ministry', plural: 'Ministries' },
 };
 
 /**
@@ -178,6 +190,7 @@ export const VERTICAL_EMERGENCY_TYPES: Record<Vertical, ReadonlyArray<'lockdown'
   // Sports venues are mass-gathering — severe weather (lightning) is
   // the load-bearing alert for outdoor games; full evac for stadiums.
   SPORTS:      ['evacuate', 'weather', 'medical', 'lockdown'],
+  WORSHIP:     ['evacuate', 'weather', 'medical'],
 };
 
 export function isVertical(v: unknown): v is Vertical {
@@ -271,6 +284,13 @@ export const VERTICAL_ROLE_LABELS: Record<Vertical, Record<string, string>> = {
     CONTRIBUTOR:        'Game-Day Operator',
     RESTRICTED_VIEWER:  'Viewer',
   },
+  WORSHIP: {
+    SUPER_ADMIN:        'Super Admin',
+    DISTRICT_ADMIN:     'Ministry Admin',
+    SCHOOL_ADMIN:       'Campus Admin',
+    CONTRIBUTOR:        'Volunteer',
+    RESTRICTED_VIEWER:  'Viewer',
+  },
 };
 
 export function getRoleLabel(role: string, vertical: Vertical = DEFAULT_VERTICAL): string {
@@ -299,6 +319,7 @@ export const VERTICAL_DEFAULT_BRAND: Record<Vertical, string> = {
   HOSPITALITY: 'VenueOS',
   RESTAURANT:  'VenueOS',
   SPORTS:      'VenueOS',
+  WORSHIP:     'VenueOS',
 };
 
 /**
@@ -381,5 +402,12 @@ export const VERTICAL_TEMPLATE_CATEGORIES: Record<Vertical, ReadonlyArray<{ key:
     { key: 'CELEBRATION',  label: 'Celebrations' },
     { key: 'SPONSOR',      label: 'Sponsors' },
     { key: 'GAMEDAY',      label: 'Game day' },
+  ],
+  WORSHIP: [
+    { key: '',        label: 'All' },
+    { key: 'SERVICE', label: 'Services' },
+    { key: 'SERMON',  label: 'Sermons' },
+    { key: 'EVENTS',  label: 'Events' },
+    { key: 'GIVING',  label: 'Giving' },
   ],
 };

@@ -132,6 +132,14 @@ const SIGNUP_VERTICALS: Record<Vertical, VerticalSignup> = {
     emailPlaceholder: 'you@yourvenue.com',
     heroWord: 'whole venue',
   },
+  WORSHIP: {
+    picker: 'Church, ministry, or house of worship',
+    nameLabel: 'Church or ministry name',
+    namePlaceholder: 'Grace Community Church',
+    slugPlaceholder: 'grace-community',
+    emailPlaceholder: 'you@yourchurch.org',
+    heroWord: 'whole ministry',
+  },
 };
 
 /** Neutral default — shown before the visitor picks an industry. */

@@ -39,7 +39,11 @@ export type WidgetType =
   // VenueOS Sports — celebration ribbons (touchdown, slam dunk, home
   // run, …). Registered as variants; this canonical type groups every
   // celebration widget under one picker chip.
-  | 'CELEBRATION';
+  | 'CELEBRATION'
+  // VenueOS multi-industry widget packs (EDU CMS-11/12). Each canonical
+  // type groups a vertical's widgets under one picker chip; all are
+  // variant-rendered.
+  | 'HEALTHCARE' | 'CORPORATE' | 'HOSPITALITY' | 'WORSHIP' | 'CHART';
 
 export interface ThemeWidgetProps {
   config: any;
