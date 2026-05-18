@@ -230,13 +230,13 @@ export type MediaAlertInput = z.infer<typeof MediaAlertInputSchema>;
 // NOT trimmed: leading/trailing whitespace can be part of the secret.
 // ─────────────────────────────────────────────────────────────
 
-const EmailString = z
+export const EmailString = z
   .string()
   .min(3)
   .max(254) // RFC 5321 envelope max
   .email({ message: 'Invalid email address' });
 
-const PasswordString = z
+export const PasswordString = z
   .string()
   .min(1)
   .max(256); // ≫ any real password; below the argon2 DoS threshold
@@ -285,6 +285,63 @@ export const PasswordResetCompleteSchema = z
   })
   .strict();
 export type PasswordResetComplete = z.infer<typeof PasswordResetCompleteSchema>;
+
+// ─────────────────────────────────────────────────────────────
+// Onboarding & user-management request bodies.
+//
+// Retrofit validation onto endpoints that previously accepted an
+// untyped `any` body. `.passthrough()` is deliberate: these
+// schemas validate the TYPE and BOUNDS of every known field (so a
+// 10 MB string can no longer reach argon2 / Prisma, and a non-
+// string can't reach the DB layer) but never reject an unexpected
+// extra key — so adding one can never break a live client. The
+// semantic checks (role-rank escalation, vertical enum, email-
+// already-exists, min password length) stay in OnboardingService.
+// Password fields use the loose PasswordString (1..256); the
+// service remains the authority on the 8-char minimum.
+// ─────────────────────────────────────────────────────────────
+
+const RoleNameString = BoundedText(40).min(1);
+const PersonNameString = BoundedText(80);
+
+export const SignupInputSchema = z
+  .object({
+    districtName: BoundedText(200).min(1),
+    slug: BoundedText(80).optional(),
+    adminEmail: EmailString,
+    password: PasswordString,
+    vertical: BoundedText(40).optional(),
+  })
+  .passthrough();
+export type SignupInput = z.infer<typeof SignupInputSchema>;
+
+export const CreateInviteInputSchema = z
+  .object({
+    email: EmailString,
+    role: RoleNameString,
+    firstName: PersonNameString.optional(),
+    lastName: PersonNameString.optional(),
+  })
+  .passthrough();
+export type CreateInviteInput = z.infer<typeof CreateInviteInputSchema>;
+
+export const CreateUserDirectInputSchema = z
+  .object({
+    email: EmailString,
+    role: RoleNameString,
+    password: PasswordString,
+    firstName: PersonNameString.optional(),
+    lastName: PersonNameString.optional(),
+  })
+  .passthrough();
+export type CreateUserDirectInput = z.infer<typeof CreateUserDirectInputSchema>;
+
+export const AcceptInviteInputSchema = z
+  .object({
+    password: PasswordString,
+  })
+  .passthrough();
+export type AcceptInviteInput = z.infer<typeof AcceptInviteInputSchema>;
 
 
 // VenueOS — multi-industry vertical taxonomy (2026-05-02).

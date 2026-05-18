@@ -59,7 +59,7 @@ export class OnboardingService {
   /**
    * District self-signup: creates a Tenant + first DISTRICT_ADMIN User, then auto-logs them in.
    */
-  async signup(input: { districtName: string; slug: string; adminEmail: string; password: string; vertical?: string }) {
+  async signup(input: { districtName: string; slug?: string; adminEmail: string; password: string; vertical?: string }) {
     const districtName = (input.districtName || '').trim();
     const rawSlug = slugify(input.slug || districtName);
     const email = (input.adminEmail || '').trim().toLowerCase();

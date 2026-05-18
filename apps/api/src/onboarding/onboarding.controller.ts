@@ -3,6 +3,10 @@ import { Throttle } from '@nestjs/throttler';
 import {
   PasswordResetRequestSchema, type PasswordResetRequest,
   PasswordResetCompleteSchema, type PasswordResetComplete,
+  SignupInputSchema, type SignupInput,
+  CreateInviteInputSchema, type CreateInviteInput,
+  CreateUserDirectInputSchema, type CreateUserDirectInput,
+  AcceptInviteInputSchema, type AcceptInviteInput,
 } from '@cms/api-types';
 import { OnboardingService } from './onboarding.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -19,7 +23,7 @@ export class OnboardingController {
   @Post('signup')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
-  async signup(@Body() body: { districtName: string; slug: string; adminEmail: string; password: string; vertical?: string }) {
+  async signup(@Body(new ZodValidationPipe(SignupInputSchema)) body: SignupInput) {
     // 2026-05-03 — VenueOS pivot: vertical is now part of signup so
     // a new tenant is created with the right industry context (drives
     // template library, terminology, default emergency types).
@@ -53,7 +57,7 @@ export class OnboardingController {
   @Post('invites')
   @UseGuards(JwtAuthGuard, RbacGuard)
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async createInvite(@Request() req: any, @Body() body: { email: string; role: string; firstName?: string; lastName?: string }) {
+  async createInvite(@Request() req: any, @Body(new ZodValidationPipe(CreateInviteInputSchema)) body: CreateInviteInput) {
     return this.onboarding.createInvite({
       inviterId: req.user.id,
       tenantId: req.user.tenantId,
@@ -75,7 +79,7 @@ export class OnboardingController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   async createUserDirect(
     @Request() req: any,
-    @Body() body: { email: string; role: string; password: string; firstName?: string; lastName?: string },
+    @Body(new ZodValidationPipe(CreateUserDirectInputSchema)) body: CreateUserDirectInput,
   ) {
     return this.onboarding.createUserDirect({
       inviterId: req.user.id,
@@ -98,7 +102,7 @@ export class OnboardingController {
   @Post('invites/:token/accept')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
-  async acceptInvite(@Param('token') token: string, @Body() body: { password: string }) {
+  async acceptInvite(@Param('token') token: string, @Body(new ZodValidationPipe(AcceptInviteInputSchema)) body: AcceptInviteInput) {
     return this.onboarding.acceptInvite({ token, password: body.password });
   }
 }
