@@ -6,6 +6,11 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
+import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import {
+  ScheduleCreateSchema, type ScheduleCreateInput,
+  ScheduleUpdateSchema, type ScheduleUpdateInput,
+} from '@cms/api-types';
 
 @Controller('api/v1/schedules')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -42,32 +47,7 @@ export class SchedulesController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async create(
     @Request() req: any,
-    @Body() body: {
-      playlistId: string;
-      screenGroupId?: string;
-      screenId?: string;
-      startTime: string;
-      endTime?: string;
-      daysOfWeek?: string;   // "Mon,Tue,Wed,Thu,Fri"
-      timeStart?: string;    // "08:00"
-      timeEnd?: string;      // "15:00"
-      priority?: number;
-      mode?: 'append' | 'replace';
-      // 2026-05-05 — per-publish audio override. Null = honor each
-      // PlaylistItem.muted (default behavior). True = force every
-      // video on this schedule muted. False = force every video
-      // unmuted. Lets the operator publish the same playlist to
-      // the lobby muted and the cafeteria with sound without
-      // editing per-item flags.
-      mutedOverride?: boolean | null;
-      // Save as a DRAFT (isActive = false). Lets operators stage
-      // a schedule ahead of time — e.g. build a "Friday pep rally"
-      // rotation on Monday — and flip it live with the on/off
-      // toggle on the playlist card when the day comes. Defaults
-      // to `true` (publish immediately) to preserve the old
-      // behavior for any caller not passing this flag.
-      isActive?: boolean;
-    },
+    @Body(new ZodValidationPipe(ScheduleCreateSchema)) body: ScheduleCreateInput,
   ) {
     if (!body.screenGroupId && !body.screenId) {
       throw new HttpException('Either screenGroupId or screenId must be specified', HttpStatus.BAD_REQUEST);
@@ -204,23 +184,7 @@ export class SchedulesController {
   async update(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: {
-      // CYCLE-4 auth-BUG-012: playlistId was missing from the body type,
-      // so callers trying to re-target a schedule to a different playlist
-      // saw a silent no-op (the property was dropped before reaching the
-      // update payload). Tenant-scoped findFirst validates the new id
-      // belongs to this tenant before writing — same pattern as create.
-      playlistId?: string;
-      screenGroupId?: string;
-      screenId?: string;
-      daysOfWeek?: string | null;
-      timeStart?: string | null;
-      timeEnd?: string | null;
-      priority?: number;
-      // 2026-05-05 — see create() for shape. Null clears the override
-      // and falls back to per-item PlaylistItem.muted.
-      mutedOverride?: boolean | null;
-    },
+    @Body(new ZodValidationPipe(ScheduleUpdateSchema)) body: ScheduleUpdateInput,
   ) {
     const schedule = await this.prisma.client.schedule.findFirst({
       where: { id, tenantId: req.user.tenantId },

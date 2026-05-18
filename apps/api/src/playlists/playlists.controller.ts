@@ -6,6 +6,13 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
+import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import {
+  PlaylistCreateSchema, type PlaylistCreateInput,
+  PlaylistUpdateSchema, type PlaylistUpdateInput,
+  PlaylistReorderItemsSchema, type PlaylistReorderItemsInput,
+  PlaylistSetActiveSchema, type PlaylistSetActiveInput,
+} from '@cms/api-types';
 
 @Controller('api/v1/playlists')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -65,7 +72,7 @@ export class PlaylistsController {
 
   @Post()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async create(@Request() req: any, @Body() body: { name: string; templateId?: string }) {
+  async create(@Request() req: any, @Body(new ZodValidationPipe(PlaylistCreateSchema)) body: PlaylistCreateInput) {
     await this.prisma.ensurePlaylistMetadataColumns();
 
     // auth-BUG-004: when the body provides a templateId, verify it's
@@ -112,7 +119,7 @@ export class PlaylistsController {
 
   @Put(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async update(@Request() req: any, @Param('id') id: string, @Body() body: { name: string }) {
+  async update(@Request() req: any, @Param('id') id: string, @Body(new ZodValidationPipe(PlaylistUpdateSchema)) body: PlaylistUpdateInput) {
     await this.prisma.ensurePlaylistMetadataColumns();
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
@@ -132,7 +139,7 @@ export class PlaylistsController {
   async reorderItems(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { items: Array<{ assetId: string; durationMs: number; sequenceOrder: number; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null; transitionType?: string | null; muted?: boolean }> },
+    @Body(new ZodValidationPipe(PlaylistReorderItemsSchema)) body: PlaylistReorderItemsInput,
   ) {
     await this.prisma.ensurePlaylistMetadataColumns();
     const playlist = await this.prisma.client.playlist.findFirst({
@@ -213,7 +220,7 @@ export class PlaylistsController {
   async setActive(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { active: boolean },
+    @Body(new ZodValidationPipe(PlaylistSetActiveSchema)) body: PlaylistSetActiveInput,
   ) {
     await this.prisma.ensurePlaylistMetadataColumns();
     const playlist = await this.prisma.client.playlist.findFirst({

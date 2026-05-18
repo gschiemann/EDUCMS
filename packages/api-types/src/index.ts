@@ -343,6 +343,97 @@ export const AcceptInviteInputSchema = z
   .passthrough();
 export type AcceptInviteInput = z.infer<typeof AcceptInviteInputSchema>;
 
+// ─────────────────────────────────────────────────────────────
+// Playlist & schedule request bodies. `.passthrough()` — same
+// retrofit contract as the onboarding schemas: type- and bound-
+// check every known field, never reject an unexpected extra key.
+// Tenant-ownership of every foreign id (playlistId / assetId /
+// screenId / screenGroupId / templateId) stays enforced in the
+// controllers. Optional id fields use BoundedText(128) rather
+// than `Id` so a client sending "" for "unset" is not rejected.
+// ─────────────────────────────────────────────────────────────
+
+const PlaylistName = BoundedText(200);
+const OptionalIdString = BoundedText(128);      // allows "" = unset
+const ScheduleDateTimeString = BoundedText(64); // controller does new Date()
+const TimeOfDayString = BoundedText(16);        // "08:00"
+const DaysOfWeekString = BoundedText(64);       // "Mon,Tue,Wed"
+
+export const PlaylistCreateSchema = z
+  .object({
+    name: PlaylistName,
+    templateId: OptionalIdString.optional(),
+  })
+  .passthrough();
+export type PlaylistCreateInput = z.infer<typeof PlaylistCreateSchema>;
+
+export const PlaylistUpdateSchema = z
+  .object({
+    name: PlaylistName,
+  })
+  .passthrough();
+export type PlaylistUpdateInput = z.infer<typeof PlaylistUpdateSchema>;
+
+export const PlaylistItemInputSchema = z
+  .object({
+    assetId: Id,
+    durationMs: z.number().int().nonnegative(),
+    sequenceOrder: z.number().int().nonnegative(),
+    daysOfWeek: DaysOfWeekString.nullish(),
+    timeStart: TimeOfDayString.nullish(),
+    timeEnd: TimeOfDayString.nullish(),
+    transitionType: BoundedText(32).nullish(),
+    muted: z.boolean().optional(),
+  })
+  .passthrough();
+export type PlaylistItemInput = z.infer<typeof PlaylistItemInputSchema>;
+
+export const PlaylistReorderItemsSchema = z
+  .object({
+    items: z.array(PlaylistItemInputSchema).max(5000),
+  })
+  .passthrough();
+export type PlaylistReorderItemsInput = z.infer<typeof PlaylistReorderItemsSchema>;
+
+export const PlaylistSetActiveSchema = z
+  .object({
+    active: z.boolean(),
+  })
+  .passthrough();
+export type PlaylistSetActiveInput = z.infer<typeof PlaylistSetActiveSchema>;
+
+export const ScheduleCreateSchema = z
+  .object({
+    playlistId: Id,
+    screenGroupId: OptionalIdString.optional(),
+    screenId: OptionalIdString.optional(),
+    startTime: ScheduleDateTimeString,
+    endTime: ScheduleDateTimeString.optional(),
+    daysOfWeek: DaysOfWeekString.optional(),
+    timeStart: TimeOfDayString.optional(),
+    timeEnd: TimeOfDayString.optional(),
+    priority: z.number().int().optional(),
+    mode: z.enum(['append', 'replace']).optional(),
+    mutedOverride: z.boolean().nullish(),
+    isActive: z.boolean().optional(),
+  })
+  .passthrough();
+export type ScheduleCreateInput = z.infer<typeof ScheduleCreateSchema>;
+
+export const ScheduleUpdateSchema = z
+  .object({
+    playlistId: OptionalIdString.optional(),
+    screenGroupId: OptionalIdString.optional(),
+    screenId: OptionalIdString.optional(),
+    daysOfWeek: DaysOfWeekString.nullish(),
+    timeStart: TimeOfDayString.nullish(),
+    timeEnd: TimeOfDayString.nullish(),
+    priority: z.number().int().optional(),
+    mutedOverride: z.boolean().nullish(),
+  })
+  .passthrough();
+export type ScheduleUpdateInput = z.infer<typeof ScheduleUpdateSchema>;
+
 
 // VenueOS — multi-industry vertical taxonomy (2026-05-02).
 // Drives Tenant.vertical, Template.vertical, terminology, defaults.
