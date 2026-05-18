@@ -33,9 +33,10 @@ import { useEffect, useState } from 'react';
 import {
   Siren, Plus, UploadCloud, MonitorPlay, ListMusic, CalendarClock,
   CheckCircle2, AlertTriangle, Activity, ArrowRight, ChevronRight,
-  Clock, FolderOpen, Sparkles, Hand,
+  Clock, FolderOpen, Sparkles, Hand, Trophy,
 } from 'lucide-react';
 import { useScreens, usePlaylists, useSchedules, useAssets, useSubmissions, useTenantStatus } from '@/hooks/use-api';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useAppStore } from '@/lib/store';
 import { firstName as userFirstName } from '@/lib/user-display';
 import { cn } from '@/lib/utils';
@@ -45,6 +46,10 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
   const role = user?.role;
   const isContributor = role === 'CONTRIBUTOR';
   const isViewer = role === 'RESTRICTED_VIEWER';
+  // Sports is a sports-vertical surface — surface a Game Day shortcut
+  // only for sports-vertical tenants, matching the desktop Sidebar.
+  const { vertical } = useTenantCopy();
+  const isSportsVertical = vertical === 'SPORTS';
   // 2026-05-14 — was `new Date().getHours()` during render which
   // caused a hydration mismatch (React #418). Server "now" hour vs
   // client "now" hour differ across timezones AND across the
@@ -135,6 +140,18 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
 
       {/* Quick-action chip grid (2x2) */}
       <div className="grid grid-cols-2 gap-3">
+        {/* Game day — the live scoreboard / ribbon / celebration
+            console. First chip for sports venues: running the game
+            from a phone IS the job, no laptop required. */}
+        {isSportsVertical && (
+          <QuickAction
+            href={`/${schoolId}/sports`}
+            icon={Trophy}
+            label="Game day"
+            sub="Scoreboard & cues"
+            color="amber"
+          />
+        )}
         {/* Terminology aligned with desktop: "Assets" (matches the
             sidebar nav + /assets route), "Playlists" (matches the
             sidebar's Playlists entry), "Screens" (matches Screens

@@ -1,29 +1,35 @@
 "use client";
 
+import { useState } from 'react';
 import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Home, FolderOpen, ListMusic, MonitorPlay, Siren, User } from 'lucide-react';
+import {
+  Home, FolderOpen, ListMusic, MonitorPlay, Siren,
+  LayoutGrid, Trophy, LayoutTemplate, Settings, ClipboardCheck, FileClock, User, X,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
 import { useNotifications } from '@/hooks/use-api';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
 /**
  * Bottom-tab navigation for mobile. Renders only when the viewport is
  * narrower than the `md` Tailwind breakpoint (768px). Replaces the
- * desktop sidebar on phones — operator gets 5 primary actions (Home,
- * Content, Playlists, Screens, Alerts) plus a self-explanatory icon.
+ * desktop sidebar on phones.
  *
- * The "Alerts" tab is the safety surface: from there an admin can
- * hit the emergency triggers. Highlighted indigo so it reads as the
- * always-available safety control. Per competitor research
- * (docs/research/MOBILE_COMPETITOR_REPORT.md, 2026-05-14):
+ * Five primary tabs (Home, Assets, Playlists, Screens, Alerts) plus a
+ * "More" tab that opens a sheet for everything else the desktop
+ * sidebar reaches — Sports, Templates, Reviews, Audit Log, Settings,
+ * Account. Without "More" those sections were UNREACHABLE on a phone:
+ * a sports-venue operator running the whole show from their phone
+ * (the product's "no laptop needed" promise) had no way to open the
+ * game-day console at all. The tab bar can only hold ~6 items, so the
+ * overflow sheet is the scalable fix.
  *
- *   "OptiSigns reviewers explicitly ask for emergency control on
- *    mobile. No competitor signage CMS ships this."
- *
- * Making panic-reach the most visible chrome on every page is the
- * cheapest way to materialize that differentiator while we build
- * the per-zone-trigger phase-3 features.
+ * The "Alerts" tab is the safety surface — an admin hits emergency
+ * triggers from there. Highlighted so it reads as the always-available
+ * safety control (OptiSigns reviewers explicitly ask for emergency
+ * control on mobile; no competitor signage CMS ships it).
  */
 export function MobileTabBar() {
   const pathname = usePathname() || '';
@@ -34,6 +40,10 @@ export function MobileTabBar() {
   // bell uses, so totals match what the operator sees on web.
   const { data: notifications } = useNotifications();
   const unreadCount = notifications?.unreadCount ?? 0;
+  // Sports is a sports-vertical surface — gate it exactly as the
+  // desktop Sidebar does so mobile + desktop nav stay consistent.
+  const { vertical } = useTenantCopy();
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // Hide the tab bar on:
   //   - the public marketing root (/)
@@ -53,27 +63,47 @@ export function MobileTabBar() {
     /\/templates\/builder\//.test(pathname);
   if (isHidden) return null;
 
-  // Tab definitions. Routes prefixed with the schoolId since most
-  // tenant-scoped pages live under /[schoolId]/...
+  // Routes prefixed with the schoolId since most tenant-scoped pages
+  // live under /[schoolId]/...
   const base = schoolId ? `/${schoolId}` : '';
   const isViewer = user?.role === 'RESTRICTED_VIEWER';
+  const isAdmin =
+    user?.role === 'SUPER_ADMIN' ||
+    user?.role === 'DISTRICT_ADMIN' ||
+    user?.role === 'SCHOOL_ADMIN';
+  const isSportsVertical = vertical === 'SPORTS';
+
   type Tab = { key: string; label: string; icon: typeof Home; href: string; badge?: number; danger?: boolean };
-  // 2026-05-14 — terminology aligned with desktop sidebar: "Assets"
-  // (not "Content"), "Playlists" (not "Lists"). Operator: "we say
-  // asset in the dashboard...lets just keep everything consisitent
-  // mobile and desktop app". Tab labels also match the desktop
-  // Sidebar's exact strings so muscle memory transfers between
-  // surfaces.
-  const tabs: Tab[] = [
+  // The five primary tabs. Labels match the desktop Sidebar's exact
+  // strings so muscle memory transfers between surfaces.
+  const primaryTabs: Tab[] = [
     { key: 'home',      label: 'Home',      icon: Home,        href: `${base}` || '/', badge: unreadCount },
     { key: 'assets',    label: 'Assets',    icon: FolderOpen,  href: `${base}/assets` },
     { key: 'playlists', label: 'Playlists', icon: ListMusic,   href: `${base}/playlists` },
     { key: 'screens',   label: 'Screens',  icon: MonitorPlay, href: `${base}/screens` },
-    // Alerts is the always-available safety surface. Even for viewers
-    // we link to /panic — the page itself enforces RBAC; viewers see
-    // a read-only "active alerts" list instead of trigger UI.
+    // Alerts is the always-available safety surface. The /panic page
+    // enforces RBAC itself, but viewers get no trigger UI so the tab
+    // is dropped for them entirely.
     { key: 'alerts',    label: 'Alerts',   icon: Siren,       href: `/panic${schoolId ? `?schoolId=${schoolId}` : ''}`, danger: true },
-    { key: 'account',   label: 'Account',  icon: User,        href: `${base}/account` },
+  ].filter((t) => !(isViewer && t.key === 'alerts'));
+
+  // The "More" sheet — everything the desktop sidebar reaches that is
+  // not a primary tab. RBAC-filtered; Sports follows the desktop's
+  // sports-vertical gate exactly.
+  type MoreItem = { key: string; label: string; icon: typeof Home; href: string };
+  const moreItems: MoreItem[] = [
+    ...(isSportsVertical
+      ? [{ key: 'sports', label: 'Sports', icon: Trophy, href: `${base}/sports` }]
+      : []),
+    { key: 'templates', label: 'Templates', icon: LayoutTemplate, href: `${base}/templates` },
+    ...(isAdmin
+      ? [
+          { key: 'reviews', label: 'Reviews', icon: ClipboardCheck, href: `${base}/reviews` },
+          { key: 'audit', label: 'Audit Log', icon: FileClock, href: `${base}/audit` },
+        ]
+      : []),
+    { key: 'settings', label: 'Settings', icon: Settings, href: `${base}/settings` },
+    { key: 'account', label: 'Account', icon: User, href: `${base}/account` },
   ];
 
   // Smart "active" detection — exact match for home + prefix match for
@@ -84,56 +114,137 @@ export function MobileTabBar() {
     if (href.startsWith('/panic')) return pathname.startsWith('/panic');
     return pathname.startsWith(href);
   };
+  // "More" reads as active whenever the current route is one of its
+  // sections, so the operator always sees where they are.
+  const moreActive = moreItems.some((m) => pathname.startsWith(m.href));
 
   return (
-    <nav
-      // Hidden above the md breakpoint where the sidebar takes over.
-      // pb-safe respects the iOS home indicator inset so the labels
-      // don't get cut off on iPhone X+ devices.
-      className="md:hidden fixed bottom-0 inset-x-0 z-[60] bg-white/95 backdrop-blur-md border-t border-slate-200 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.04)]"
-      aria-label="Primary"
-    >
-      <div className="flex items-stretch justify-around">
-        {tabs.filter((t) => !(isViewer && t.key === 'alerts')).map((tab) => {
-          const Icon = tab.icon;
-          const active = isActive(tab.href);
-          return (
-            <Link
-              key={tab.key}
-              href={tab.href}
-              className={cn(
-                'relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 px-1 min-h-[56px] active:bg-slate-50 transition-colors',
-                tab.danger && active && 'text-rose-600',
-                tab.danger && !active && 'text-rose-500 hover:text-rose-600',
-                !tab.danger && active && 'text-indigo-600',
-                !tab.danger && !active && 'text-slate-500 hover:text-slate-700'
-              )}
-              aria-current={active ? 'page' : undefined}
-            >
-              <span className="relative">
-                <Icon className={cn('w-5 h-5 transition-transform', active && 'scale-110')} aria-hidden />
-                {tab.badge && tab.badge > 0 ? (
-                  <span className="absolute -top-1 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
-                    {tab.badge > 99 ? '99+' : tab.badge}
-                  </span>
-                ) : null}
-              </span>
-              <span className={cn('text-[10px] font-bold tracking-wide leading-none', active && 'text-current')}>
-                {tab.label}
-              </span>
-              {active && (
-                <span
-                  className={cn(
-                    'absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full',
-                    tab.danger ? 'bg-rose-500' : 'bg-indigo-500'
-                  )}
-                  aria-hidden
-                />
-              )}
-            </Link>
-          );
-        })}
-      </div>
-    </nav>
+    <>
+      {/* "More" overflow sheet — slides up over the tab bar */}
+      {moreOpen && (
+        <div
+          className="md:hidden fixed top-0 right-0 bottom-0 left-0 z-[61]"
+          role="dialog"
+          aria-modal="true"
+          aria-label="More navigation"
+        >
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={() => setMoreOpen(false)}
+            className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/40 animate-in fade-in duration-150"
+          />
+          <div className="absolute bottom-0 right-0 left-0 bg-white rounded-t-2xl shadow-[0_-8px_30px_rgba(0,0,0,0.14)] pb-[calc(64px+env(safe-area-inset-bottom))] animate-in slide-in-from-bottom duration-200">
+            <div className="flex items-center justify-between px-5 pt-4 pb-1.5">
+              <span className="text-sm font-bold text-slate-800">More</span>
+              <button
+                type="button"
+                onClick={() => setMoreOpen(false)}
+                aria-label="Close"
+                className="p-1.5 -mr-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-2 pb-2">
+              {moreItems.map((item) => {
+                const Icon = item.icon;
+                const active = pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.key}
+                    href={item.href}
+                    onClick={() => setMoreOpen(false)}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-3 rounded-xl transition-colors active:bg-slate-50',
+                      active ? 'text-indigo-600 bg-indigo-50' : 'text-slate-600',
+                    )}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    <Icon className="w-5 h-5 shrink-0" aria-hidden />
+                    <span className="text-sm font-semibold">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <nav
+        // Hidden above the md breakpoint where the sidebar takes over.
+        // pb-safe respects the iOS home indicator inset so the labels
+        // don't get cut off on iPhone X+ devices.
+        className="md:hidden fixed bottom-0 right-0 left-0 z-[60] bg-white/95 backdrop-blur-md border-t border-slate-200 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.04)]"
+        aria-label="Primary"
+      >
+        <div className="flex items-stretch justify-around">
+          {primaryTabs.map((tab) => {
+            const Icon = tab.icon;
+            const active = isActive(tab.href);
+            return (
+              <Link
+                key={tab.key}
+                href={tab.href}
+                className={cn(
+                  'relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 px-1 min-h-[56px] active:bg-slate-50 transition-colors',
+                  tab.danger && active && 'text-rose-600',
+                  tab.danger && !active && 'text-rose-500 hover:text-rose-600',
+                  !tab.danger && active && 'text-indigo-600',
+                  !tab.danger && !active && 'text-slate-500 hover:text-slate-700',
+                )}
+                aria-current={active ? 'page' : undefined}
+              >
+                <span className="relative">
+                  <Icon className={cn('w-5 h-5 transition-transform', active && 'scale-110')} aria-hidden />
+                  {tab.badge && tab.badge > 0 ? (
+                    <span className="absolute -top-1 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
+                      {tab.badge > 99 ? '99+' : tab.badge}
+                    </span>
+                  ) : null}
+                </span>
+                <span className={cn('text-[10px] font-bold tracking-wide leading-none', active && 'text-current')}>
+                  {tab.label}
+                </span>
+                {active && (
+                  <span
+                    className={cn(
+                      'absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full',
+                      tab.danger ? 'bg-rose-500' : 'bg-indigo-500',
+                    )}
+                    aria-hidden
+                  />
+                )}
+              </Link>
+            );
+          })}
+
+          {/* "More" tab — opens the overflow sheet. A button, not a
+              Link: it toggles the sheet rather than navigating. */}
+          <button
+            type="button"
+            onClick={() => setMoreOpen((o) => !o)}
+            aria-haspopup="dialog"
+            aria-expanded={moreOpen}
+            className={cn(
+              'relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 px-1 min-h-[56px] active:bg-slate-50 transition-colors',
+              moreActive || moreOpen ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-700',
+            )}
+          >
+            <LayoutGrid
+              className={cn('w-5 h-5 transition-transform', (moreActive || moreOpen) && 'scale-110')}
+              aria-hidden
+            />
+            <span className="text-[10px] font-bold tracking-wide leading-none">More</span>
+            {moreActive && (
+              <span
+                className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-indigo-500"
+                aria-hidden
+              />
+            )}
+          </button>
+        </div>
+      </nav>
+    </>
   );
 }
