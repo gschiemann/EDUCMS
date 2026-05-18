@@ -3,6 +3,7 @@ import * as argon2 from 'argon2';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
+import { assertCallerCanAssignRole } from '../auth/role-assignment';
 import { EmailService } from '../email/email.service';
 import { AppRole } from '@cms/database';
 import { isVertical } from '@cms/api-types';
@@ -218,6 +219,12 @@ export class OnboardingService {
     const inviter = await this.prisma.client.user.findUnique({ where: { id: input.inviterId } });
     if (!inviter) throw new NotFoundException('Inviter not found.');
 
+    // auth audit — a caller may only invite a role strictly below their
+    // own rank. ALLOWED_INVITE_ROLES above is a coarse is-this-a-real-
+    // role gate; THIS is the privilege-escalation guard (a SCHOOL_ADMIN
+    // must not be able to invite a DISTRICT_ADMIN).
+    assertCallerCanAssignRole(inviter.role, role);
+
     const tenant = await this.prisma.client.tenant.findUnique({ where: { id: input.tenantId } });
     if (!tenant) throw new NotFoundException('Tenant not found.');
 
@@ -370,6 +377,8 @@ export class OnboardingService {
 
     const inviter = await this.prisma.client.user.findUnique({ where: { id: input.inviterId } });
     if (!inviter) throw new NotFoundException('Inviter not found.');
+    // auth audit — same role-rank escalation guard as createInvite.
+    assertCallerCanAssignRole(inviter.role, role);
     const tenant = await this.prisma.client.tenant.findUnique({ where: { id: input.tenantId } });
     if (!tenant) throw new NotFoundException('Tenant not found.');
 

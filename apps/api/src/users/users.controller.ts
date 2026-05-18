@@ -5,37 +5,10 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import * as argon2 from 'argon2';
-
-// CYCLE-1 auth-002 / BUG-005: role escalation hardening.
-// Mirrors the pattern in onboarding.service.ts (ALLOWED_INVITE_ROLES + isValidEmail
-// + validatePassword). Roles are validated against a per-caller allowlist so a
-// DISTRICT_ADMIN cannot post role: 'SUPER_ADMIN' into Prisma directly.
-const ASSIGNABLE_ROLES_BY_CALLER: Record<string, string[]> = {
-  [AppRole.SUPER_ADMIN]: [
-    AppRole.DISTRICT_ADMIN,
-    AppRole.SCHOOL_ADMIN,
-    AppRole.CONTRIBUTOR,
-    AppRole.RESTRICTED_VIEWER,
-  ],
-  [AppRole.DISTRICT_ADMIN]: [
-    AppRole.SCHOOL_ADMIN,
-    AppRole.CONTRIBUTOR,
-    AppRole.RESTRICTED_VIEWER,
-  ],
-  [AppRole.SCHOOL_ADMIN]: [
-    AppRole.CONTRIBUTOR,
-    AppRole.RESTRICTED_VIEWER,
-  ],
-};
-
-function assertCallerCanAssignRole(callerRole: string, targetRole: string): void {
-  const allowed = ASSIGNABLE_ROLES_BY_CALLER[callerRole] || [];
-  if (!allowed.includes(targetRole)) {
-    throw new ForbiddenException(
-      `Your role (${callerRole}) cannot assign role '${targetRole}'. Allowed: ${allowed.join(', ') || 'none'}`,
-    );
-  }
-}
+// auth-002 / BUG-005: role-escalation hardening. A caller can only
+// assign roles strictly below their own rank. Shared with the
+// onboarding invite / direct-create paths so the two cannot drift.
+import { assertCallerCanAssignRole } from '../auth/role-assignment';
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);

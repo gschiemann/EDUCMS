@@ -29,8 +29,7 @@
  */
 
 import { Controller, Get, Query, HttpException, HttpStatus, Logger } from '@nestjs/common';
-import * as https from 'https';
-import * as http from 'http';
+import { safeFetch } from '../branding/safe-fetch';
 
 // ─── In-memory cache ──────────────────────────────────────────────────────────
 
@@ -162,77 +161,25 @@ export class YoutubeLiveController {
   }
 
   /**
-   * Fetch HTML from a URL, following up to 3 redirects.
-   * Sets a realistic browser UA so YouTube doesn't return a captcha page.
-   * Times out after 10 seconds.
+   * Fetch HTML via the SSRF-safe fetcher. `safeFetch` resolves the host,
+   * rejects private / loopback / link-local addresses, and re-validates
+   * EVERY redirect target the same way — so a YouTube URL can never be
+   * used to chase a 30x hop into a 169.254.* cloud-metadata endpoint
+   * (the hand-rolled fetcher this replaced followed redirects blind).
+   * 8 MB cap (ytInitialData sits in the first 1-2 MB), 10 s timeout,
+   * realistic browser UA so YouTube doesn't serve a captcha page.
    */
-  private fetchHtml(url: string, redirectsLeft = 3): Promise<string> {
-    return new Promise((resolve, reject) => {
-      if (redirectsLeft < 0) { reject(new Error('Too many redirects')); return; }
-
-      const parsed = new URL(url);
-      const lib = parsed.protocol === 'https:' ? https : http;
-
-      const req = lib.get(
-        url,
-        {
-          headers: {
-            'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-              '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          },
-        },
-        (res) => {
-          // Follow redirects (YouTube /live sometimes 301s to a video)
-          if (
-            res.statusCode &&
-            res.statusCode >= 300 &&
-            res.statusCode < 400 &&
-            res.headers.location
-          ) {
-            const next = new URL(res.headers.location, url).toString();
-            res.resume(); // drain to free the socket
-            this.fetchHtml(next, redirectsLeft - 1).then(resolve, reject);
-            return;
-          }
-
-          if (res.statusCode !== 200) {
-            res.resume();
-            reject(new Error(`HTTP ${res.statusCode ?? 'unknown'}`));
-            return;
-          }
-
-          const chunks: Buffer[] = [];
-          let totalBytes = 0;
-          const MAX_BYTES = 4 * 1024 * 1024; // 4 MB cap — ytInitialData is in <head>
-
-          res.on('data', (chunk: Buffer) => {
-            totalBytes += chunk.length;
-            if (totalBytes > MAX_BYTES) {
-              // We've seen enough — ytInitialData is always in the first 1-2 MB
-              req.destroy();
-              resolve(Buffer.concat(chunks).toString('utf-8'));
-            } else {
-              chunks.push(chunk);
-            }
-          });
-
-          res.on('end', () => {
-            resolve(Buffer.concat(chunks).toString('utf-8'));
-          });
-
-          res.on('error', reject);
-        },
-      );
-
-      req.setTimeout(10_000, () => {
-        req.destroy(new Error('Request timed out'));
-      });
-
-      req.on('error', reject);
+  private async fetchHtml(url: string): Promise<string> {
+    const { body, status } = await safeFetch(url, {
+      maxBytes: 8 * 1024 * 1024,
+      timeoutMs: 10_000,
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     });
+    if (status !== 200) throw new Error(`HTTP ${status}`);
+    return body.toString('utf-8');
   }
 
   /**

@@ -1101,6 +1101,13 @@ export class ScreensController {
     });
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
+    // Cap the address — it is interpolated into a Nominatim query string
+    // and persisted to a DB column; an unbounded value bloats both.
+    // Real postal addresses are short.
+    if (typeof body.address === 'string' && body.address.length > 300) {
+      throw new HttpException('Address is too long (max 300 characters).', HttpStatus.BAD_REQUEST);
+    }
+
     let lat = body.latitude ?? screen.latitude ?? null;
     let lng = body.longitude ?? screen.longitude ?? null;
     const addressChanged = body.address !== undefined && body.address !== screen.address;
@@ -1109,10 +1116,13 @@ export class ScreensController {
     // coordinates. Use OSM Nominatim (free, no key). Polite single
     // request with a descriptive User-Agent (their ToS).
     if (addressChanged && body.address && body.latitude === undefined && body.longitude === undefined) {
+      const geoAbort = new AbortController();
+      const geoTimeout = setTimeout(() => geoAbort.abort(), 5000);
       try {
         const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(body.address)}`;
         const r = await fetch(url, {
           headers: { 'User-Agent': 'EduCMS/1.0 (+https://educms.app)' },
+          signal: geoAbort.signal,
         });
         if (r.ok) {
           const arr = (await r.json()) as Array<{ lat: string; lon: string }>;
@@ -1122,7 +1132,10 @@ export class ScreensController {
           }
         }
       } catch {
-        // Geocode failure is non-fatal — admin can manually set lat/lng.
+        // Geocode failure (including the 5s timeout) is non-fatal — the
+        // admin can still set lat/lng manually.
+      } finally {
+        clearTimeout(geoTimeout);
       }
     }
 
