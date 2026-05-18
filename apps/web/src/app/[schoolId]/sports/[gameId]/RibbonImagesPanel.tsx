@@ -4,14 +4,14 @@
  * VenueOS Sports — ribbon image slides.
  *
  * The operator uploads full-bleed images — sponsor banners, promos,
- * "Welcome" graphics — and each one rides the ribbon reel filling the
+ * "Welcome" graphics — and each rides the ribbon reel filling the
  * board edge-to-edge (full ribbon height), instead of the small
  * logo-and-text sponsor card.
  *
- * Upload reuses the hardened /assets/upload chain via AssetPicker.
- * Saved through the ribbon-slides endpoint; the ribbon picks the
- * list up within ~1s (it polls the same board feed every 750ms).
- * Tip: upload WIDE, ribbon-shaped art so it reads well on the strip.
+ * Every change AUTO-SAVES — adding or removing an image persists
+ * immediately through the ribbon-slides endpoint; the ribbon picks
+ * it up within ~1s. Upload reuses the hardened /assets/upload chain
+ * via AssetPicker. Tip: upload WIDE, ribbon-shaped art.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -26,8 +26,7 @@ export function RibbonImagesPanel({ gameId }: { gameId: string }) {
   const { data: game } = useGame(gameId);
   const ctl = useGameControl(gameId);
 
-  // Local slide list, seeded once from the game — don't re-seed on
-  // later polls or an in-progress edit gets yanked.
+  // Local slide list, seeded once — don't re-seed on later polls.
   const [slides, setSlides] = useState<string[]>([]);
   const seeded = useRef(false);
   useEffect(() => {
@@ -38,33 +37,28 @@ export function RibbonImagesPanel({ gameId }: { gameId: string }) {
   }, [game]);
 
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (savedTimer.current) clearTimeout(savedTimer.current); }, []);
 
+  // Every change auto-saves immediately — no Save button.
+  const persist = (next: string[]) => {
+    setSlides(next);
+    ctl.ribbonSlides.mutate({ slides: next });
+  };
   const addSlide = (url: string) => {
-    setSaved(false);
-    setSlides((prev) => (prev.length >= MAX_SLIDES ? prev : [...prev, url]));
     setPickerOpen(false);
+    if (slides.length >= MAX_SLIDES) return;
+    persist([...slides, url]);
   };
   const removeSlide = (index: number) => {
-    setSaved(false);
-    setSlides((prev) => prev.filter((_, i) => i !== index));
+    persist(slides.filter((_, i) => i !== index));
   };
 
-  const save = async () => {
-    await ctl.ribbonSlides.mutateAsync({ slides });
-    setSaved(true);
-    if (savedTimer.current) clearTimeout(savedTimer.current);
-    savedTimer.current = setTimeout(() => setSaved(false), 2400);
-  };
+  const saving = ctl.ribbonSlides.isPending;
 
   return (
     <div>
-      <p className="mb-3 text-xs text-slate-400">
-        Full-bleed images that fill the whole ribbon as they scroll past — sponsor
-        banners, promos, welcome graphics. Upload wide, ribbon-shaped art for the
-        best fit. They rotate with the rest of the reel.
+      <p className="mb-2.5 text-xs text-slate-400">
+        Full-bleed images that fill the whole ribbon as they scroll — sponsor banners,
+        promos, welcome art. Upload wide, ribbon-shaped art for the best fit.
       </p>
 
       {slides.length === 0 ? (
@@ -102,16 +96,16 @@ export function RibbonImagesPanel({ gameId }: { gameId: string }) {
         >
           <Plus className="h-3.5 w-3.5" /> Add image
         </Button>
-        <Button onClick={save} disabled={ctl.ribbonSlides.isPending} className="gap-1.5">
-          {ctl.ribbonSlides.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : saved ? (
-            <Check className="h-4 w-4" />
-          ) : null}
-          {saved ? 'Saved' : 'Save ribbon images'}
-        </Button>
-        <span className="text-xs text-slate-400">
-          {slides.length} of {MAX_SLIDES}
+        <span className="flex items-center gap-1 text-xs text-slate-400">
+          {saving ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" /> Saving…
+            </>
+          ) : (
+            <>
+              <Check className="h-3 w-3 text-green-500" /> {slides.length} of {MAX_SLIDES} · saved
+            </>
+          )}
         </span>
       </div>
 

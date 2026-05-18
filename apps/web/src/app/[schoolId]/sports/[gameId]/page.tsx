@@ -50,6 +50,7 @@ import { SponsorPanel } from './SponsorPanel';
 import { RibbonPanel } from './RibbonPanel';
 import { RibbonPresetsPanel } from './RibbonPresetsPanel';
 import { RibbonImagesPanel } from './RibbonImagesPanel';
+import { SurfacePreview } from './SurfacePreview';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 
 const GAME_STATUSES: { key: string; label: string }[] = [
@@ -319,6 +320,11 @@ function GameControl() {
           grid, with a per-fire target picker (scoreboard / ribbon / all) */}
       <Section title="Cues">
         <CueLaunchpad gameId={gameId} def={def} />
+      </Section>
+
+      {/* live preview — a real iframe of each surface, updating live */}
+      <Section title="Live preview">
+        <SurfacePreview gameId={gameId} />
       </Section>
 
       {/* ribbon content — sport-aware presets the operator toggles on/off */}
