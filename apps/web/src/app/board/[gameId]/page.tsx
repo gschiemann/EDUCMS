@@ -77,7 +77,10 @@ interface BoardData {
 
 const DEFAULT_HOME = '#4f46e5';
 const DEFAULT_AWAY = '#dc2626';
-const POLL_MS = 2000;
+// 750ms — sub-second sync. A score / clock / cue change reaches every
+// surface (board, ribbon, scorebug) within ~0.75s and they stay near
+// lockstep, instead of the up-to-2s lag + drift of slow polling.
+const POLL_MS = 750;
 
 // ── formatting helpers ─────────────────────────────────────────
 

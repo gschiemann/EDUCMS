@@ -223,7 +223,8 @@ export function SportsScoreboardWidget({
       }
     };
     load();
-    const t = setInterval(load, 2000);
+    // 750ms — sub-second sync, in step with the standalone surfaces.
+    const t = setInterval(load, 750);
     return () => {
       alive = false;
       clearInterval(t);

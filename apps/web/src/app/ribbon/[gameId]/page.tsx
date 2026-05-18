@@ -64,7 +64,8 @@ interface BoardData {
   serverTime: number;
 }
 
-const POLL_MS = 2000;
+// 750ms — sub-second sync, kept in step with the board + scorebug.
+const POLL_MS = 750;
 const DEFAULT_HOME = '#4f46e5';
 const DEFAULT_AWAY = '#dc2626';
 

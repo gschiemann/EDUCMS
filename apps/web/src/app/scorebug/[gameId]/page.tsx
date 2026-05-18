@@ -55,7 +55,8 @@ interface BoardData {
 
 const DEFAULT_HOME = '#4f46e5';
 const DEFAULT_AWAY = '#dc2626';
-const POLL_MS = 2000;
+// 750ms — sub-second sync, kept in step with the board + ribbon.
+const POLL_MS = 750;
 
 const POS: Record<
   string,
