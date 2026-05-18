@@ -1,57 +1,87 @@
 'use client';
 
 /**
- * /[schoolId]/settings/billing — Tenant-facing billing.
+ * /[schoolId]/settings/billing — the admin billing dashboard.
  *
- * 2026-05-03 — Simplified pricing: FREE_TRIAL / MONTHLY ($15/screen/mo)
- * / ANNUAL ($150/screen/yr). No vertical filtering, no add-ons.
+ * Screens metered, current plan + status, monthly cost, billing
+ * period, invoice history, and one-click "Manage billing" into the
+ * Stripe Customer Portal. "Choose a plan" hands off to Stripe-hosted
+ * Checkout — a card number never touches our UI (PCI-SAQ-A).
  *
- * Includes the full credit-card workflow (Stripe Elements form,
- * client-side validation, save-card UX) — STOPS just before actually
- * charging because Stripe isn't live yet. The "Subscribe" click hands
- * off to a stub endpoint that records the intent so we can pick up
- * exactly where the user left off when Stripe goes live.
+ * Degrades gracefully when Stripe isn't configured on the deploy: the
+ * page still shows usage + plan from the License, and the pay actions
+ * explain that online payments aren't set up yet.
  */
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { apiFetch } from '@/lib/api-client';
-import { useTenantCopy } from '@/hooks/use-tenant-copy';
-import { CreditCard, CheckCircle2, Loader2, Star, Lock, X, AlertCircle } from 'lucide-react';
+import {
+  CreditCard,
+  CheckCircle2,
+  Loader2,
+  Star,
+  ExternalLink,
+  FileText,
+  Monitor,
+  AlertCircle,
+} from 'lucide-react';
 import { appAlert } from '@/components/ui/app-dialog';
 
 interface CurrentLicense {
-  id: string;
   tier: string;
   tierName?: string;
   seatLimit: number | null;
+  seatsUsed?: number;
   currentSeats?: number;
   status: string;
   monthlyPriceCents?: number | null;
-  currentPeriodEnd?: string;
-  expiresAt?: string;
-  billingMode: 'CARD' | 'INVOICE' | 'PURCHASE_ORDER' | 'COMP';
+  currentPeriodEnd?: string | null;
+  expiresAt?: string | null;
+  isPilot?: boolean;
 }
-
 interface TierCard {
   id: string;
   name: string;
   blurb: string;
   monthlyPriceCents: number | null;
   annualPriceCents: number | null;
-  seatLimit: number | null;
   features: string[];
-  selfServe: boolean;
   recommended: boolean;
 }
-
-function fmtPrice(cents: number | null): string {
-  if (cents == null) return 'Custom';
-  if (cents === 0) return 'Free';
-  return `$${(cents / 100).toFixed(0)}`;
+interface Invoice {
+  id: string;
+  number: string | null;
+  status: string | null;
+  amountDueCents: number;
+  amountPaidCents: number;
+  currency: string;
+  created: number;
+  hostedInvoiceUrl: string | null;
+  invoicePdf: string | null;
 }
 
+const fmtCents = (c: number | null | undefined) =>
+  c == null
+    ? '—'
+    : `$${(c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmtWhole = (c: number | null) =>
+  c == null ? 'Custom' : c === 0 ? 'Free' : `$${Math.round(c / 100)}`;
+const fmtDate = (d: string | number | null | undefined) => {
+  if (d == null) return '—';
+  const date = typeof d === 'number' ? new Date(d * 1000) : new Date(d);
+  return Number.isNaN(date.getTime())
+    ? '—'
+    : date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+};
+
 export default function BillingPage() {
-  const tenantCopy = useTenantCopy();
+  // Post-Checkout return flag — read client-side so the page needs no
+  // useSearchParams Suspense boundary.
+  const [checkoutResult, setCheckoutResult] = useState<string | null>(null);
+  useEffect(() => {
+    setCheckoutResult(new URLSearchParams(window.location.search).get('checkout'));
+  }, []);
+
   const license = useQuery<CurrentLicense | null>({
     queryKey: ['license', 'current'],
     queryFn: () => apiFetch<CurrentLicense | null>('/license/current').catch(() => null),
@@ -60,66 +90,162 @@ export default function BillingPage() {
     queryKey: ['license', 'tiers'],
     queryFn: () => apiFetch<TierCard[]>('/license/tiers').catch(() => []),
   });
+  const invoices = useQuery<{ stripeEnabled: boolean; invoices: Invoice[] }>({
+    queryKey: ['billing', 'invoices'],
+    queryFn: () =>
+      apiFetch<{ stripeEnabled: boolean; invoices: Invoice[] }>('/billing/invoices').catch(() => ({
+        stripeEnabled: false,
+        invoices: [],
+      })),
+  });
 
-  const [checkoutTier, setCheckoutTier] = useState<TierCard | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const startCheckout = async (period: 'monthly' | 'annual') => {
+    setBusy(period);
+    try {
+      const res: any = await apiFetch('/billing/checkout', {
+        method: 'POST',
+        body: JSON.stringify({ billingPeriod: period }),
+      });
+      if (res?.url) {
+        window.location.href = res.url;
+        return;
+      }
+      if (res?.enabled === false) {
+        await appAlert({
+          title: 'Online payments not set up',
+          message:
+            res.message ||
+            'Card billing is not configured on this deployment yet. Contact sales@venueos.app.',
+          tone: 'info',
+          confirmLabel: 'OK',
+        });
+      }
+    } catch (e) {
+      await appAlert({
+        title: "Couldn't start checkout",
+        message: e instanceof Error ? e.message : String(e),
+        tone: 'danger',
+        confirmLabel: 'OK',
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const manageBilling = async () => {
+    setBusy('portal');
+    try {
+      const res: any = await apiFetch('/billing/portal', { method: 'POST' });
+      if (res?.url) {
+        window.location.href = res.url;
+        return;
+      }
+      if (res?.noSubscription) {
+        await appAlert({
+          title: 'No subscription yet',
+          message: 'Choose a plan below to start a subscription, then come back to manage it.',
+          tone: 'info',
+          confirmLabel: 'OK',
+        });
+      } else if (res?.enabled === false) {
+        await appAlert({
+          title: 'Online payments not set up',
+          message: res.message || 'Contact sales@venueos.app to manage billing.',
+          tone: 'info',
+          confirmLabel: 'OK',
+        });
+      }
+    } catch (e) {
+      await appAlert({
+        title: "Couldn't open billing",
+        message: e instanceof Error ? e.message : String(e),
+        tone: 'danger',
+        confirmLabel: 'OK',
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const lic = license.data;
+  const screens = lic?.seatsUsed ?? lic?.currentSeats ?? 0;
+  const hasPaidPlan = !!lic && !lic.isPilot && lic.tier !== 'PILOT';
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-6 max-w-5xl">
       <div className="rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-sky-600 p-6 text-white">
         <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
-          <CreditCard className="w-6 h-6" /> Billing & plan
+          <CreditCard className="w-6 h-6" /> Billing &amp; usage
         </h1>
         <p className="text-emerald-50 mt-1.5 text-sm max-w-xl">
-          Simple per-screen pricing. Pick monthly or save 17% with annual. Cancel anytime.
+          Your plan, your screens, your monthly cost, and every invoice — in one place.
         </p>
       </div>
 
-      {/* Current license */}
+      {checkoutResult === 'success' && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 flex items-start gap-2">
+          <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>
+            <strong>Subscription started.</strong> Your plan updates here within a few seconds —
+            refresh if it hasn&apos;t yet.
+          </span>
+        </div>
+      )}
+      {checkoutResult === 'cancelled' && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>Checkout was cancelled — no charge was made. Pick a plan below whenever you&apos;re ready.</span>
+        </div>
+      )}
+
+      {/* Current plan + usage */}
       <section>
-        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Current plan</h2>
+        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+          Current plan &amp; usage
+        </h2>
         {license.isLoading ? (
-          <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>
-        ) : license.data ? (
-          <CurrentPlanCard license={license.data} />
+          <CardSpinner />
         ) : (
-          <div className="rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-700">
-            You're on the <strong>Free trial</strong>. Pick a plan below to keep using {tenantCopy.defaultBrandName} after the trial ends.
-          </div>
+          <CurrentPlanCard
+            license={lic}
+            screens={screens}
+            onManage={manageBilling}
+            managing={busy === 'portal'}
+            hasPaidPlan={hasPaidPlan}
+          />
         )}
       </section>
 
-      {/* Available tiers — three cards across */}
+      {/* Invoices */}
       <section>
-        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Plans</h2>
+        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+          Invoices
+        </h2>
+        {invoices.isLoading ? (
+          <CardSpinner />
+        ) : (
+          <InvoicesCard data={invoices.data} />
+        )}
+      </section>
+
+      {/* Plans */}
+      <section>
+        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+          {hasPaidPlan ? 'Change plan' : 'Plans'}
+        </h2>
         {tiers.isLoading ? (
-          <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>
+          <CardSpinner />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {(tiers.data || []).map((tier) => (
               <TierTile
                 key={tier.id}
                 tier={tier}
-                currentTier={license.data?.tier}
-                onSelect={() => {
-                  if (tier.id === 'FREE_TRIAL') {
-                    // Free trial activation goes through a different path — no card.
-                    // 2026-05-08 — replaced native alert() (most unprofessional
-                    // failure mode in the audit; OS dialog with the URL prefix
-                    // shown to billing buyers) with the styled appAlert modal.
-                    apiFetch('/billing/activate-trial', { method: 'POST' })
-                      .then(() => window.location.reload())
-                      .catch((e) => {
-                        appAlert({
-                          title: "Couldn't activate trial",
-                          message: e instanceof Error ? e.message : String(e),
-                          tone: 'danger',
-                          confirmLabel: 'OK',
-                        });
-                      });
-                  } else {
-                    setCheckoutTier(tier);
-                  }
-                }}
+                currentTier={lic?.tier}
+                busy={busy}
+                onChoose={startCheckout}
               />
             ))}
           </div>
@@ -127,76 +253,267 @@ export default function BillingPage() {
       </section>
 
       <div className="text-[11px] text-slate-400 leading-relaxed pt-4 border-t border-slate-100">
-        Per-screen pricing. The number of screens you have determines your monthly bill — add or remove screens any time.
-        Self-serve checkout via Stripe; questions? <a href="mailto:sales@venueos.app" className="text-indigo-600 hover:underline">sales@venueos.app</a>.
+        Per-screen pricing — your monthly bill follows the number of screens you have. Checkout and
+        billing management are handled securely by Stripe; a card number never touches VenueOS.
+        Questions? <a href="mailto:sales@venueos.app" className="text-indigo-600 hover:underline">sales@venueos.app</a>.
       </div>
-
-      {checkoutTier && (
-        <CheckoutModal tier={checkoutTier} onClose={() => setCheckoutTier(null)} />
-      )}
     </div>
   );
 }
 
-function CurrentPlanCard({ license }: { license: CurrentLicense }) {
-  const seatPct = license.seatLimit && license.currentSeats != null
-    ? Math.min(100, (license.currentSeats / license.seatLimit) * 100)
-    : null;
-  const statusColor =
-    license.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-    license.status === 'PAST_DUE' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-    'bg-rose-50 text-rose-700 border-rose-200';
-  const screens = license.currentSeats ?? 0;
-  const monthlyEstimate = license.monthlyPriceCents != null
-    ? screens * license.monthlyPriceCents
-    : null;
+function CardSpinner() {
   return (
-    <div className="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
+    <div className="flex justify-center py-6">
+      <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+    </div>
+  );
+}
+
+function CurrentPlanCard({
+  license,
+  screens,
+  onManage,
+  managing,
+  hasPaidPlan,
+}: {
+  license: CurrentLicense | null | undefined;
+  screens: number;
+  onManage: () => void;
+  managing: boolean;
+  hasPaidPlan: boolean;
+}) {
+  const status = license?.status || 'ACTIVE';
+  const statusColor =
+    status === 'ACTIVE'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      : status === 'PAST_DUE'
+        ? 'bg-amber-50 text-amber-700 border-amber-200'
+        : 'bg-rose-50 text-rose-700 border-rose-200';
+  const perScreen = license?.monthlyPriceCents ?? null;
+  const monthlyCost = perScreen != null ? screens * perScreen : null;
+  const seatLimit = license?.seatLimit ?? null;
+  const seatPct =
+    seatLimit && seatLimit > 0 ? Math.min(100, (screens / seatLimit) * 100) : null;
+  const renews = license?.currentPeriodEnd || license?.expiresAt || null;
+
+  return (
+    <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
+      <div className="p-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-lg font-bold text-slate-800">{license.tierName || license.tier}</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${statusColor}`}>{license.status}</span>
+            <span className="text-lg font-bold text-slate-800">
+              {license?.tierName || license?.tier || 'Free pilot'}
+            </span>
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${statusColor}`}
+            >
+              {status}
+            </span>
           </div>
-          {monthlyEstimate != null && (
-            <div className="text-sm text-slate-500">
-              <strong className="text-slate-700">${(monthlyEstimate / 100).toFixed(2)}</strong> / month
-              <span className="text-slate-400"> &nbsp;·&nbsp; {screens} screen{screens === 1 ? '' : 's'} × ${(license.monthlyPriceCents! / 100).toFixed(0)}</span>
-            </div>
-          )}
-        </div>
-        {license.seatLimit && (
-          <div className="text-right">
-            <div className="text-xs font-bold text-slate-700">{screens} / {license.seatLimit} screens</div>
-            {seatPct != null && (
-              <div className="w-32 h-1.5 bg-slate-100 rounded-full mt-1.5 overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${seatPct}%` }} />
-              </div>
+          <div className="text-sm text-slate-500">
+            {monthlyCost != null ? (
+              <>
+                <strong className="text-slate-700">{fmtCents(monthlyCost)}</strong> / month
+                <span className="text-slate-400">
+                  {' '}
+                  · {screens} screen{screens === 1 ? '' : 's'} × {fmtCents(perScreen)}
+                </span>
+              </>
+            ) : (
+              <>No charge — you&apos;re on the free pilot.</>
             )}
           </div>
+        </div>
+        {hasPaidPlan && (
+          <button
+            onClick={onManage}
+            disabled={managing}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-bold rounded-lg bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-50"
+          >
+            {managing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
+            Manage billing
+          </button>
         )}
       </div>
-      {license.currentPeriodEnd && (
-        <div className="text-[11px] text-slate-400 mt-3 pt-3 border-t border-slate-100">
-          Renews {new Date(license.currentPeriodEnd).toLocaleDateString()}.
-        </div>
-      )}
+
+      {/* metrics strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 border-t border-slate-100 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+        <Metric
+          icon={<Monitor className="w-4 h-4 text-indigo-500" />}
+          label="Screens in use"
+          value={
+            seatLimit ? (
+              <>
+                {screens} <span className="text-slate-400 font-medium">/ {seatLimit}</span>
+              </>
+            ) : (
+              <>{screens}</>
+            )
+          }
+          sub={
+            seatPct != null ? (
+              <div className="w-full h-1.5 bg-slate-100 rounded-full mt-1.5 overflow-hidden">
+                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${seatPct}%` }} />
+              </div>
+            ) : (
+              <span className="text-[11px] text-slate-400">Paired displays</span>
+            )
+          }
+        />
+        <Metric
+          icon={<CreditCard className="w-4 h-4 text-emerald-500" />}
+          label="This month"
+          value={monthlyCost != null ? fmtCents(monthlyCost) : 'Free'}
+          sub={<span className="text-[11px] text-slate-400">Billed per screen</span>}
+        />
+        <Metric
+          icon={<Star className="w-4 h-4 text-amber-500" />}
+          label={status === 'ACTIVE' ? 'Renews' : 'Period ends'}
+          value={<span className="text-base">{fmtDate(renews)}</span>}
+          sub={<span className="text-[11px] text-slate-400">{hasPaidPlan ? 'Auto-renews' : 'No billing date'}</span>}
+        />
+      </div>
     </div>
   );
 }
 
-function TierTile({ tier, currentTier, onSelect }: { tier: TierCard; currentTier?: string; onSelect: () => void }) {
-  const isCurrent = currentTier === tier.id;
-  const price = tier.id === 'ANNUAL'
-    ? fmtPrice(tier.annualPriceCents)
-    : fmtPrice(tier.monthlyPriceCents);
-  const cadence = tier.id === 'FREE_TRIAL' ? '14 days' : tier.id === 'ANNUAL' ? '/ screen / year' : '/ screen / month';
+function Metric({
+  icon,
+  label,
+  value,
+  sub,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: ReactNode;
+  sub: ReactNode;
+}) {
   return (
-    <div className={`relative rounded-2xl border-2 p-5 transition-all flex flex-col ${
-      isCurrent ? 'border-emerald-400 bg-emerald-50/50 shadow-lg'
-                : tier.recommended ? 'border-indigo-400 bg-white shadow-md hover:shadow-lg'
-                : 'border-slate-200 bg-white hover:border-indigo-200 hover:shadow-md'
-    }`}>
+    <div className="p-4">
+      <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+        {icon}
+        {label}
+      </div>
+      <div className="text-xl font-extrabold text-slate-800 mt-1 tabular-nums">{value}</div>
+      {sub}
+    </div>
+  );
+}
+
+function InvoicesCard({ data }: { data?: { stripeEnabled: boolean; invoices: Invoice[] } }) {
+  const list = data?.invoices || [];
+  if (list.length === 0) {
+    return (
+      <div className="rounded-2xl bg-white border border-slate-200 p-6 text-center">
+        <FileText className="w-6 h-6 text-slate-300 mx-auto mb-2" />
+        <p className="text-sm text-slate-500">
+          No invoices yet.
+          <span className="text-slate-400">
+            {' '}
+            Invoices appear here automatically once you&apos;re on a paid plan.
+          </span>
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+            <th className="text-left px-4 py-2.5">Date</th>
+            <th className="text-left px-4 py-2.5">Invoice</th>
+            <th className="text-right px-4 py-2.5">Amount</th>
+            <th className="text-left px-4 py-2.5">Status</th>
+            <th className="text-right px-4 py-2.5">Download</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((inv) => {
+            const amount = inv.amountPaidCents || inv.amountDueCents;
+            const paid = (inv.status || '').toLowerCase() === 'paid';
+            return (
+              <tr key={inv.id} className="border-b border-slate-50 last:border-0">
+                <td className="px-4 py-2.5 text-slate-600">{fmtDate(inv.created)}</td>
+                <td className="px-4 py-2.5 font-medium text-slate-700">{inv.number || inv.id}</td>
+                <td className="px-4 py-2.5 text-right font-bold text-slate-800 tabular-nums">
+                  {fmtCents(amount)}
+                </td>
+                <td className="px-4 py-2.5">
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${
+                      paid
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }`}
+                  >
+                    {inv.status || 'open'}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                  {inv.hostedInvoiceUrl && (
+                    <a
+                      href={inv.hostedInvoiceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-600 hover:underline font-semibold mr-3"
+                    >
+                      View
+                    </a>
+                  )}
+                  {inv.invoicePdf && (
+                    <a
+                      href={inv.invoicePdf}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-600 hover:underline font-semibold"
+                    >
+                      PDF
+                    </a>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TierTile({
+  tier,
+  currentTier,
+  busy,
+  onChoose,
+}: {
+  tier: TierCard;
+  currentTier?: string;
+  busy: string | null;
+  onChoose: (period: 'monthly' | 'annual') => void;
+}) {
+  const isCurrent = currentTier === tier.id;
+  const isPaid = tier.id === 'MONTHLY' || tier.id === 'ANNUAL';
+  const period: 'monthly' | 'annual' = tier.id === 'ANNUAL' ? 'annual' : 'monthly';
+  const price =
+    tier.id === 'ANNUAL' ? fmtWhole(tier.annualPriceCents) : fmtWhole(tier.monthlyPriceCents);
+  const cadence =
+    tier.id === 'FREE_TRIAL'
+      ? '14 days'
+      : tier.id === 'ANNUAL'
+        ? '/ screen / year'
+        : '/ screen / month';
+
+  return (
+    <div
+      className={`relative rounded-2xl border-2 p-5 transition-all flex flex-col ${
+        isCurrent
+          ? 'border-emerald-400 bg-emerald-50/50 shadow-lg'
+          : tier.recommended
+            ? 'border-indigo-400 bg-white shadow-md'
+            : 'border-slate-200 bg-white'
+      }`}
+    >
       {tier.recommended && !isCurrent && (
         <div className="absolute -top-2.5 left-4 px-2 py-0.5 bg-indigo-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-full inline-flex items-center gap-1">
           <Star className="w-2.5 h-2.5" /> Best value
@@ -220,240 +537,28 @@ function TierTile({ tier, currentTier, onSelect }: { tier: TierCard; currentTier
           </li>
         ))}
       </ul>
-      {!isCurrent && (
+      {isCurrent ? (
+        <div className="w-full py-2 text-sm font-bold rounded-lg bg-emerald-100 text-emerald-700 text-center">
+          Current plan
+        </div>
+      ) : isPaid ? (
         <button
-          onClick={onSelect}
-          className={`w-full py-2 text-sm font-bold rounded-lg transition-colors ${
+          onClick={() => onChoose(period)}
+          disabled={busy !== null}
+          className={`w-full py-2 text-sm font-bold rounded-lg transition-colors inline-flex items-center justify-center gap-1.5 disabled:opacity-50 ${
             tier.recommended
               ? 'bg-indigo-600 text-white hover:bg-indigo-700'
               : 'bg-slate-800 text-white hover:bg-slate-900'
           }`}
         >
-          {tier.id === 'FREE_TRIAL' ? 'Start free trial' : 'Choose this plan'}
+          {busy === period && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          Choose {tier.name}
         </button>
+      ) : (
+        <div className="w-full py-2 text-xs font-medium rounded-lg bg-slate-50 text-slate-400 text-center">
+          Default — no card needed
+        </div>
       )}
     </div>
   );
-}
-
-// ─── Checkout modal — full Stripe Elements flow, no real charge ────────
-function CheckoutModal({ tier, onClose }: { tier: TierCard; onClose: () => void }) {
-  const [step, setStep] = useState<'card' | 'review' | 'submitted'>('card');
-  const [cardName, setCardName] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvc, setCardCvc] = useState('');
-  const [cardZip, setCardZip] = useState('');
-  const [billingEmail, setBillingEmail] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const isAnnual = tier.id === 'ANNUAL';
-  const unitPriceCents = isAnnual ? tier.annualPriceCents! : tier.monthlyPriceCents!;
-  const cadence = isAnnual ? 'year' : 'month';
-  const screens = 1; // For first-time checkout we pre-fill 1 screen; metering kicks in once they pair more.
-
-  const cardOk = isLuhnValid(cardNumber.replace(/\s/g, ''))
-    && /^\d\d\s?\/\s?\d\d$/.test(cardExpiry)
-    && /^\d{3,4}$/.test(cardCvc)
-    && cardName.trim().length >= 2
-    && cardZip.trim().length >= 3
-    && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(billingEmail);
-
-  const submit = async () => {
-    setSubmitting(true);
-    setErr(null);
-    try {
-      // Stripe NOT yet live — endpoint records the intent + returns
-      // a stub. Once STRIPE_SECRET_KEY is set the same endpoint
-      // returns a Stripe Checkout / Setup Intent URL.
-      const res: any = await apiFetch('/billing/checkout', {
-        method: 'POST',
-        body: JSON.stringify({
-          tier: tier.id,
-          billingPeriod: isAnnual ? 'annual' : 'monthly',
-          // Card fields aren't sent to the server — Stripe Elements
-          // will tokenize them client-side once Stripe is live. We
-          // include billingEmail because the server uses it as the
-          // Stripe Customer.email when creating the subscription.
-          billingEmail,
-        }),
-      });
-      if (res?.checkoutUrl) {
-        // Stripe IS live — redirect to Stripe-hosted Checkout.
-        window.location.href = res.checkoutUrl;
-        return;
-      }
-      // Stripe not yet live — show the friendly success state.
-      setStep('submitted');
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">Subscribe to {tier.name}</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              ${(unitPriceCents / 100).toFixed(0)} per screen / {cadence} · cancel anytime
-            </p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
-        </div>
-
-        {step === 'card' && (
-          <>
-            <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-xs text-slate-600 flex items-start gap-2">
-              <Lock className="w-4 h-4 flex-shrink-0 mt-0.5 text-emerald-600" />
-              <span>Card details are encrypted and tokenized by Stripe — they never touch our servers. We don&apos;t store your full card number.</span>
-            </div>
-
-            <div className="space-y-3">
-              <Field label="Cardholder name" value={cardName} onChange={setCardName} placeholder="Greg Schiemann" />
-              <Field
-                label="Card number"
-                value={cardNumber}
-                onChange={(v) => setCardNumber(formatCardNumber(v))}
-                placeholder="4242 4242 4242 4242"
-                inputMode="numeric"
-              />
-              <div className="grid grid-cols-3 gap-3">
-                <Field label="Expiry" value={cardExpiry} onChange={(v) => setCardExpiry(formatExpiry(v))} placeholder="MM/YY" inputMode="numeric" />
-                <Field label="CVC" value={cardCvc} onChange={(v) => setCardCvc(v.replace(/\D/g, '').slice(0, 4))} placeholder="123" inputMode="numeric" />
-                <Field label="ZIP" value={cardZip} onChange={(v) => setCardZip(v.slice(0, 10))} placeholder="94110" />
-              </div>
-              <Field label="Billing email" value={billingEmail} onChange={setBillingEmail} placeholder="you@yourcompany.com" inputMode="email" />
-            </div>
-
-            {err && (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" /> {err}
-              </div>
-            )}
-
-            <button
-              onClick={() => setStep('review')}
-              disabled={!cardOk}
-              className="w-full py-3 text-sm font-bold rounded-lg bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Continue to review
-            </button>
-          </>
-        )}
-
-        {step === 'review' && (
-          <>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Plan</span>
-                <span className="font-bold text-slate-800">{tier.name}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Screens</span>
-                <span className="font-bold text-slate-800">{screens}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Per screen / {cadence}</span>
-                <span className="font-bold text-slate-800">${(unitPriceCents / 100).toFixed(2)}</span>
-              </div>
-              <div className="border-t border-slate-100 pt-2 flex justify-between">
-                <span className="font-bold text-slate-800">Charged today</span>
-                <span className="text-xl font-extrabold text-slate-800">${((screens * unitPriceCents) / 100).toFixed(2)}</span>
-              </div>
-              <div className="text-[11px] text-slate-400 leading-snug">
-                Subscription auto-renews each {cadence}. We bill in advance; cancel any time and you keep access through the period you paid for.
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Payment</span>
-                <button onClick={() => setStep('card')} className="text-xs font-bold text-indigo-600 hover:underline">Edit</button>
-              </div>
-              <div className="text-sm text-slate-700">
-                <div>•••• •••• •••• {cardNumber.replace(/\s/g, '').slice(-4)}</div>
-                <div className="text-xs text-slate-500 mt-0.5">{cardName} · {billingEmail}</div>
-              </div>
-            </div>
-
-            {err && (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" /> {err}
-              </div>
-            )}
-
-            <button
-              onClick={submit}
-              disabled={submitting}
-              className="w-full py-3 text-sm font-bold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 inline-flex items-center justify-center gap-2"
-            >
-              {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
-              <Lock className="w-3 h-3" />
-              Subscribe — ${((screens * unitPriceCents) / 100).toFixed(2)} now
-            </button>
-          </>
-        )}
-
-        {step === 'submitted' && (
-          <>
-            <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 flex items-start gap-3">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-emerald-900">
-                <div className="font-bold">Card details accepted</div>
-                <div className="text-xs mt-1 leading-relaxed">
-                  We&apos;ve recorded your subscription intent. Payment processing isn&apos;t live yet on this deployment, so your card was NOT charged. As soon as Stripe is configured we&apos;ll process the subscription and email you the receipt at <strong>{billingEmail}</strong>.
-                </div>
-              </div>
-            </div>
-            <button onClick={onClose} className="w-full py-3 text-sm font-bold rounded-lg bg-slate-800 text-white hover:bg-slate-900">
-              Got it
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, value, onChange, placeholder, inputMode }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; inputMode?: 'text' | 'numeric' | 'email' }) {
-  return (
-    <label className="block">
-      <span className="text-xs font-bold text-slate-600">{label}</span>
-      <input
-        type="text"
-        inputMode={inputMode}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-300"
-      />
-    </label>
-  );
-}
-
-// ─── Card formatters / validators ──────────────────────────────────────
-function formatCardNumber(raw: string): string {
-  const digits = raw.replace(/\D/g, '').slice(0, 19);
-  return digits.replace(/(\d{4})(?=\d)/g, '$1 ');
-}
-function formatExpiry(raw: string): string {
-  const digits = raw.replace(/\D/g, '').slice(0, 4);
-  if (digits.length < 3) return digits;
-  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-}
-function isLuhnValid(num: string): boolean {
-  if (!/^\d{12,19}$/.test(num)) return false;
-  let sum = 0, alt = false;
-  for (let i = num.length - 1; i >= 0; i--) {
-    let d = num.charCodeAt(i) - 48;
-    if (alt) { d *= 2; if (d > 9) d -= 9; }
-    sum += d;
-    alt = !alt;
-  }
-  return sum % 10 === 0;
 }
