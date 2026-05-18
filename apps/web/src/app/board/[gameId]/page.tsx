@@ -738,6 +738,33 @@ function SpotlightBand({ spot }: { spot: Spotlight }) {
 
 // ── celebration overlay ────────────────────────────────────────
 
+/** A hex color (#rgb / #rrggbb) as an rgba() string at the given
+ *  alpha. Falls back to broadcast gold if the input isn't clean hex,
+ *  so a malformed team color can never break a celebration render. */
+function hexA(color: string | null | undefined, alpha: number): string {
+  let hex = String(color || '').trim();
+  if (hex[0] === '#') hex = hex.slice(1);
+  if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('');
+  if (hex.length !== 6 || /[^0-9a-f]/i.test(hex)) return `rgba(251,191,36,${alpha})`;
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Marquee scoring plays — touchdowns, home runs, the game-winner —
+// earn a bigger celebration: a wider glow, an extra shockwave ring,
+// more confetti. Everything else still gets the full broadcast look.
+const BIG_CUE_RE =
+  /touchdown|home.?run|grand.?slam|hat.?trick|\bpin\b|buzzer|walk.?off|game.?winner|champ/i;
+
+/**
+ * A broadcast-grade scoring celebration. A layered, phased animation:
+ * ENTER (~0.6s — shockwave rings, energy glow, a diagonal light sweep,
+ * an emoji pop + text-slam), HOLD (~2.8s — falling confetti + the
+ * live-score lower-third), EXIT (~0.5s fade). Every layer animates
+ * transform/opacity only — Chromium-83 (NovaStar Taurus) + WebKit safe.
+ */
 function CueOverlay({ cue }: { cue: Cue }) {
   // Custom cue — a full-screen takeover of the operator's uploaded
   // content (a sponsor graphic, a promo, a hype card).
@@ -755,6 +782,7 @@ function CueOverlay({ cue }: { cue: Cue }) {
           justifyContent: 'center',
           background: cue.color || '#05070d',
           zIndex: 50,
+          animation: 'venueCelebScrim 0.4s ease-out',
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -766,6 +794,27 @@ function CueOverlay({ cue }: { cue: Cue }) {
       </div>
     );
   }
+
+  const snap = cue.snapshot;
+  const big = BIG_CUE_RE.test(cue.key || '') || BIG_CUE_RE.test(cue.label || '');
+  // Energy color — the operator's cue color when set, else broadcast
+  // gold. Confetti also mixes in both team colors so the moment is
+  // venue-branded even with no cue color set.
+  const energy = cue.color || '#fbbf24';
+  const confetti = [
+    energy,
+    '#ffffff',
+    snap?.homeColor || '#38bdf8',
+    snap?.awayColor || '#f472b6',
+    '#fde047',
+  ];
+  const rings = big ? 4 : 3;
+  const confettiCount = big ? 26 : 16;
+  const glow = big ? 1520 : 1200;
+  const emojiSize = big ? 432 : 360;
+  // glow + rings centre on the emoji stack (which centres in y 0–830)
+  const cy = 415;
+
   return (
     <div
       style={{
@@ -774,119 +823,214 @@ function CueOverlay({ cue }: { cue: Cue }) {
         right: 0,
         bottom: 0,
         left: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'rgba(5,7,13,0.8)',
-        animation: 'venueCueFade 3.8s ease-in-out forwards',
+        overflow: 'hidden',
         zIndex: 50,
       }}
     >
+      {/* dark scrim */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          background: 'rgba(5,7,13,0.85)',
+          animation: 'venueCelebScrim 3.9s ease-in-out forwards',
+        }}
+      />
+      {/* team-energy radial glow */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 960 - glow / 2,
+          top: cy - glow / 2,
+          width: glow,
+          height: glow,
+          borderRadius: 999,
+          background: `radial-gradient(circle, ${hexA(energy, 0.5)} 0%, ${hexA(
+            energy,
+            0.15,
+          )} 42%, rgba(5,7,13,0) 66%)`,
+          animation: 'venueCelebGlow 3.9s ease-in-out forwards',
+        }}
+      />
       {/* expanding shockwave rings */}
-      {[0, 1, 2].map((i) => (
+      {Array.from({ length: rings }, (_, i) => (
         <div
           key={i}
           style={{
             position: 'absolute',
-            left: '50%',
-            top: '50%',
+            left: 960 - 220,
+            top: cy - 220,
             width: 440,
             height: 440,
             borderRadius: 999,
-            border: '7px solid rgba(251,191,36,0.8)',
-            animation: `venueCueRing 3.8s ${(0.04 + i * 0.22).toFixed(2)}s cubic-bezier(.15,.7,.3,1) forwards`,
+            border: `9px solid ${hexA(energy, 0.85)}`,
+            animation: `venueCelebRing 3.9s ${(i * 0.16).toFixed(
+              2,
+            )}s cubic-bezier(.15,.7,.3,1) forwards`,
           }}
         />
       ))}
-      {/* warm glow */}
+      {/* diagonal light sweep — one fast pass on entrance */}
       <div
         style={{
           position: 'absolute',
-          left: '50%',
-          top: '50%',
-          width: 1040,
-          height: 1040,
-          borderRadius: 999,
-          background: 'radial-gradient(circle, rgba(251,191,36,0.55), transparent 64%)',
-          animation: 'venueCueGlow 3.8s ease-in-out forwards',
+          left: 770,
+          top: -610,
+          width: 380,
+          height: 2300,
+          background:
+            'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 50%, rgba(255,255,255,0) 100%)',
+          animation: 'venueCelebSweep 3.9s ease-out forwards',
         }}
       />
+      {/* confetti */}
+      {Array.from({ length: confettiCount }, (_, i) => {
+        const tall = i % 3 === 0;
+        const size = 13 + ((i * 11) % 17);
+        return (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              left: `${(i * 61) % 100}%`,
+              top: -70,
+              width: size,
+              height: tall ? size * 2.6 : size,
+              background: confetti[i % confetti.length],
+              borderRadius: tall ? 2 : 999,
+              opacity: 0,
+              animation: `${
+                i % 2 ? 'venueCelebFallB' : 'venueCelebFallA'
+              } ${(2.7 + (i % 5) * 0.28).toFixed(2)}s ${(
+                0.08 +
+                (i % 7) * 0.11
+              ).toFixed(2)}s ease-in forwards`,
+            }}
+          />
+        );
+      })}
+      {/* center stack — emoji + slammed label */}
       <div
         style={{
-          position: 'relative',
-          fontSize: 430,
-          lineHeight: 1,
-          animation: 'venueCuePop 3.8s cubic-bezier(.2,.9,.2,1) forwards',
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: 250,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
       >
-        {cue.emoji || '🎉'}
-      </div>
-      <div
-        style={{
-          position: 'relative',
-          fontSize: 134,
-          fontWeight: 900,
-          letterSpacing: 5,
-          color: '#fff',
-          marginTop: 6,
-          textShadow: '0 8px 44px rgba(0,0,0,0.85)',
-          animation: 'venueCuePop 3.8s cubic-bezier(.2,.9,.2,1) forwards',
-        }}
-      >
-        {(cue.label || cue.key || 'NICE!').toUpperCase()}
-      </div>
-
-      {/* Live snapshot — the exact score + game clock, frozen at the
-          moment the cue fired (server-captured in cueSnapshot). This is
-          what makes a celebration dynamic instead of a static card. */}
-      {cue.snapshot && (
         <div
           style={{
-            position: 'relative',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            marginTop: 20,
-            animation: 'venueCuePop 3.8s cubic-bezier(.2,.9,.2,1) forwards',
+            fontSize: emojiSize,
+            lineHeight: 1,
+            filter: `drop-shadow(0 22px 50px ${hexA(energy, 0.7)})`,
+            animation: 'venueCelebEmoji 3.9s cubic-bezier(.2,.9,.2,1) forwards',
           }}
         >
+          {cue.emoji || '🎉'}
+        </div>
+        <div
+          style={{
+            fontSize: big ? 172 : 138,
+            fontWeight: 900,
+            letterSpacing: 6,
+            color: '#fff',
+            marginTop: 10,
+            textAlign: 'center',
+            textShadow: `0 12px 52px rgba(0,0,0,0.9), 0 0 64px ${hexA(energy, 0.55)}`,
+            animation: 'venueCelebSlam 3.9s cubic-bezier(.2,.9,.2,1) forwards',
+          }}
+        >
+          {(cue.label || cue.key || 'NICE!').toUpperCase()}
+        </div>
+      </div>
+
+      {/* live-score lower-third — the EXACT score + clock frozen at
+          cue-fire time. A mask-wipe bar reveals it. */}
+      {snap && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 960 - 600,
+            bottom: 92,
+            width: 1200,
+            height: 156,
+          }}
+        >
+          {/* the bar wipes in — scaleX from center */}
           <div
             style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              background:
+                'linear-gradient(180deg, rgba(15,20,33,0.97), rgba(8,11,19,0.97))',
+              borderRadius: 20,
+              border: `2px solid ${hexA(energy, 0.5)}`,
+              boxShadow: '0 26px 72px rgba(0,0,0,0.65)',
+              animation: 'venueCelebLower 3.9s cubic-bezier(.2,.9,.2,1) forwards',
+            }}
+          />
+          {/* score content fades + rises in after the wipe */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
               display: 'flex',
               alignItems: 'center',
-              fontSize: 92,
-              fontWeight: 900,
-              color: '#fff',
-              fontVariantNumeric: 'tabular-nums',
-              textShadow: '0 6px 32px rgba(0,0,0,0.85)',
+              justifyContent: 'center',
+              animation: 'venueCelebLowerText 3.9s ease-out forwards',
             }}
           >
-            <span style={{ color: cue.snapshot.homeColor || '#fff', letterSpacing: 2 }}>
-              {teamCode(cue.snapshot.homeTeam)}
-            </span>
-            <span style={{ margin: '0 26px' }}>{cue.snapshot.homeScore}</span>
-            <span style={{ color: '#475569', fontSize: 62 }}>–</span>
-            <span style={{ margin: '0 26px' }}>{cue.snapshot.awayScore}</span>
-            <span style={{ color: cue.snapshot.awayColor || '#fff', letterSpacing: 2 }}>
-              {teamCode(cue.snapshot.awayTeam)}
-            </span>
-          </div>
-          {(cue.snapshot.segmentLabel || cue.snapshot.clockText) && (
             <div
               style={{
-                fontSize: 48,
-                fontWeight: 800,
-                letterSpacing: 5,
-                color: '#fbbf24',
-                marginTop: 10,
+                display: 'flex',
+                alignItems: 'center',
+                fontSize: 84,
+                fontWeight: 900,
+                color: '#fff',
+                fontVariantNumeric: 'tabular-nums',
               }}
             >
-              {[cue.snapshot.segmentLabel, cue.snapshot.clockText]
-                .filter(Boolean)
-                .join('   ·   ')}
+              <span style={{ color: snap.homeColor || '#fff', letterSpacing: 2 }}>
+                {teamCode(snap.homeTeam)}
+              </span>
+              <span style={{ margin: '0 20px' }}>{snap.homeScore}</span>
+              <span style={{ color: '#475569', fontSize: 52 }}>–</span>
+              <span style={{ margin: '0 20px' }}>{snap.awayScore}</span>
+              <span style={{ color: snap.awayColor || '#fff', letterSpacing: 2 }}>
+                {teamCode(snap.awayTeam)}
+              </span>
             </div>
-          )}
+            {(snap.segmentLabel || snap.clockText) && (
+              <div
+                style={{
+                  marginLeft: 28,
+                  paddingLeft: 28,
+                  borderLeft: '2px solid #1e2638',
+                  fontSize: 42,
+                  fontWeight: 800,
+                  letterSpacing: 4,
+                  color: energy,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {[snap.segmentLabel, snap.clockText].filter(Boolean).join('  ·  ')}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -991,23 +1135,68 @@ export default function ScoreboardPage() {
     <style>{`
       @keyframes venuePulse { 0%,100%{opacity:1} 50%{opacity:0.55} }
       @keyframes venueFooterFade { 0%{opacity:0} 100%{opacity:1} }
-      @keyframes venueCueFade { 0%{opacity:0} 8%{opacity:1} 82%{opacity:1} 100%{opacity:0} }
-      @keyframes venueCueGlow {
-        0%{opacity:0;transform:translate(-50%,-50%) scale(0.4)}
-        20%{opacity:1;transform:translate(-50%,-50%) scale(1)}
-        100%{opacity:0;transform:translate(-50%,-50%) scale(1.2)}
+      @keyframes venueCelebScrim { 0%{opacity:0} 7%{opacity:1} 90%{opacity:1} 100%{opacity:0} }
+      @keyframes venueCelebGlow {
+        0%{opacity:0;transform:scale(0.35)}
+        16%{opacity:1;transform:scale(1)}
+        86%{opacity:0.92;transform:scale(1.05)}
+        100%{opacity:0;transform:scale(1.12)}
       }
-      @keyframes venueCueRing {
-        0%{opacity:0;transform:translate(-50%,-50%) scale(0.25)}
-        10%{opacity:0.95}
-        100%{opacity:0;transform:translate(-50%,-50%) scale(3.4)}
+      @keyframes venueCelebRing {
+        0%{opacity:0;transform:scale(0.2)}
+        7%{opacity:0.9}
+        46%{opacity:0}
+        100%{opacity:0;transform:scale(3.7)}
       }
-      @keyframes venueCuePop {
-        0%{opacity:0;transform:scale(0.3)}
-        12%{opacity:1;transform:scale(1.12)}
-        20%{transform:scale(1)}
-        82%{opacity:1;transform:scale(1)}
+      @keyframes venueCelebSweep {
+        0%{opacity:0;transform:translateX(-1500px) rotate(18deg)}
+        4%{opacity:0.9}
+        20%{opacity:0.9}
+        30%{opacity:0;transform:translateX(1500px) rotate(18deg)}
+        100%{opacity:0;transform:translateX(1500px) rotate(18deg)}
+      }
+      @keyframes venueCelebEmoji {
+        0%{opacity:0;transform:scale(0)}
+        7%{opacity:1;transform:scale(1.3)}
+        13%{transform:scale(0.9)}
+        18%{transform:scale(1.08)}
+        23%{transform:scale(1)}
+        90%{opacity:1;transform:scale(1)}
+        100%{opacity:0;transform:scale(1.16)}
+      }
+      @keyframes venueCelebSlam {
+        0%{opacity:0;transform:scale(1.75)}
+        9%{opacity:1;transform:scale(0.9)}
+        15%{transform:scale(1.07)}
+        21%{transform:scale(1)}
+        90%{opacity:1;transform:scale(1)}
         100%{opacity:0;transform:scale(1.05)}
+      }
+      @keyframes venueCelebLower {
+        0%{opacity:0;transform:scaleX(0)}
+        11%{opacity:1}
+        22%{opacity:1;transform:scaleX(1)}
+        89%{opacity:1;transform:scaleX(1)}
+        100%{opacity:0;transform:scaleX(1)}
+      }
+      @keyframes venueCelebLowerText {
+        0%{opacity:0;transform:translateY(16px)}
+        20%{opacity:0;transform:translateY(16px)}
+        30%{opacity:1;transform:translateY(0)}
+        89%{opacity:1;transform:translateY(0)}
+        100%{opacity:0;transform:translateY(0)}
+      }
+      @keyframes venueCelebFallA {
+        0%{opacity:0;transform:translate(0,0) rotate(0deg)}
+        6%{opacity:1}
+        84%{opacity:1}
+        100%{opacity:0;transform:translate(-90px,1200px) rotate(560deg)}
+      }
+      @keyframes venueCelebFallB {
+        0%{opacity:0;transform:translate(0,0) rotate(0deg)}
+        6%{opacity:1}
+        84%{opacity:1}
+        100%{opacity:0;transform:translate(95px,1230px) rotate(-640deg)}
       }
     `}</style>
   );
