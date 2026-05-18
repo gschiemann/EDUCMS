@@ -17,7 +17,7 @@
  * renders a representative sample game so the tile always looks alive.
  */
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { findSport } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import type { WidgetProps } from './_shared/types';
@@ -174,7 +174,7 @@ function segmentLabel(def: SportDefinition, b: BoardData): string {
 const STATUS: Record<string, { label: string; bg: string }> = {
   SCHEDULED: { label: 'SCHEDULED', bg: '#475569' },
   PRE_GAME: { label: 'PRE-GAME', bg: '#d97706' },
-  LIVE: { label: '● LIVE', bg: '#dc2626' },
+  LIVE: { label: 'LIVE', bg: '#dc2626' },
   HALFTIME: { label: 'HALFTIME', bg: '#2563eb' },
   FINAL: { label: 'FINAL', bg: '#1e293b' },
 };
@@ -199,12 +199,18 @@ export function SportsScoreboardWidget({
   };
   const gameId = (c.gameId || '').trim();
 
+  // Preview = no real game bound. The sample game self-plays so a
+  // scoreboard tile in the builder / picker is genuinely alive, and
+  // the score-pop + clock-urgency treatments read true.
+  const preview = !live || !gameId;
+
   const [data, setData] = useState<BoardData | null>(null);
+  const [simBoard, setSimBoard] = useState<BoardData>(SAMPLE);
   const [, setTick] = useState(0);
 
   // Poll the public board feed — only on a real screen with a game bound.
   useEffect(() => {
-    if (!live || !gameId) return;
+    if (preview) return;
     let alive = true;
     // Cold-boot: paint the last cached frame instantly so a player
     // power-cycle mid-game never shows an empty scoreboard.
@@ -229,17 +235,55 @@ export function SportsScoreboardWidget({
       alive = false;
       clearInterval(t);
     };
-  }, [live, gameId]);
+  }, [preview, gameId]);
 
-  // Clock tick — re-render a few times a second while the clock runs.
-  const board = data || SAMPLE;
+  // Preview self-play — the sample game ticks down and scores so a
+  // scoreboard tile in the builder looks alive, not frozen. Starts
+  // late in a period so the tile reads tense + the final-minute
+  // urgency treatment shows.
+  useEffect(() => {
+    if (!preview) return;
+    let b: BoardData = { ...SAMPLE, clockMs: 108_000, clockRunning: true };
+    let n = 0;
+    const id = setInterval(() => {
+      n++;
+      let ms = b.clockMs - 1000;
+      let seg = b.segment;
+      if (ms <= 0) { ms = 144_000; seg = seg >= 4 ? 1 : seg + 1; }
+      b = { ...b, clockMs: ms, segment: seg };
+      if (n % 6 === 0) {
+        b = n % 12 === 0
+          ? { ...b, homeScore: b.homeScore + 2 }
+          : { ...b, awayScore: b.awayScore + 3 };
+      }
+      setSimBoard(b);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [preview]);
+
+  const board: BoardData = preview ? simBoard : (data || SAMPLE);
   const def = findSport(board.sport);
-  const tickClock = live && !!data && board.clockRunning && !!def && def.clock.type !== 'none';
+  // Clock tick — re-render a few times a second while a live clock runs.
+  const tickClock = !preview && !!data && board.clockRunning && !!def && def.clock.type !== 'none';
   useEffect(() => {
     if (!tickClock) return;
     const t = setInterval(() => setTick((n) => n + 1), 250);
     return () => clearInterval(t);
   }, [tickClock]);
+
+  // Score-pop — replay the score's pop animation whenever it rises.
+  const prevHome = useRef(board.homeScore);
+  const prevAway = useRef(board.awayScore);
+  const [popHome, setPopHome] = useState(0);
+  const [popAway, setPopAway] = useState(0);
+  useEffect(() => {
+    if (board.homeScore > prevHome.current) setPopHome((x) => x + 1);
+    prevHome.current = board.homeScore;
+  }, [board.homeScore]);
+  useEffect(() => {
+    if (board.awayScore > prevAway.current) setPopAway((x) => x + 1);
+    prevAway.current = board.awayScore;
+  }, [board.awayScore]);
 
   if (!def) {
     return (
@@ -250,7 +294,11 @@ export function SportsScoreboardWidget({
   const homeColor = board.homeColor || '#4f46e5';
   const awayColor = board.awayColor || '#dc2626';
   const status = STATUS[board.status] || STATUS.SCHEDULED;
-  const clockStr = fmtClock(liveClockMs(board, def, tickClock));
+  const liveMs = liveClockMs(board, def, tickClock);
+  const clockStr = fmtClock(liveMs);
+  // Final-minute urgency — the clock tenses up: red + a soft pulse.
+  const clockUrgent =
+    def.clock.type !== 'none' && board.clockRunning && liveMs > 0 && liveMs < 60_000;
 
   const pad = px(height, 0.06);
 
@@ -273,6 +321,11 @@ export function SportsScoreboardWidget({
         overflow: 'hidden',
       }}
     >
+      <style>{`
+        @keyframes venueScorePop { 0% { transform: scale(1); } 28% { transform: scale(1.32); } 100% { transform: scale(1); } }
+        @keyframes venueLivePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+        @keyframes venueClockPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+      `}</style>
       {/* top strip — status + segment/clock */}
       <div
         style={{
@@ -294,6 +347,17 @@ export function SportsScoreboardWidget({
             marginRight: px(height, 0.06),
           }}
         >
+          {board.status === 'LIVE' && (
+            <span
+              style={{
+                display: 'inline-block',
+                marginRight: px(height, 0.022),
+                animation: 'venueLivePulse 1.3s ease-in-out infinite',
+              }}
+            >
+              ●
+            </span>
+          )}
           {status.label}
         </span>
         <span
@@ -313,7 +377,8 @@ export function SportsScoreboardWidget({
               fontWeight: 900,
               marginLeft: px(height, 0.06),
               fontVariantNumeric: 'tabular-nums',
-              color: board.clockRunning ? tier.accent : tier.ink,
+              color: clockUrgent ? '#ef4444' : board.clockRunning ? tier.accent : tier.ink,
+              animation: clockUrgent ? 'venueClockPulse 1s ease-in-out infinite' : undefined,
             }}
           >
             {clockStr}
@@ -338,6 +403,7 @@ export function SportsScoreboardWidget({
           tier={tier}
           h={height}
           align="left"
+          pop={popHome}
         />
         <div
           style={{
@@ -357,6 +423,7 @@ export function SportsScoreboardWidget({
           tier={tier}
           h={height}
           align="right"
+          pop={popAway}
         />
       </div>
 
@@ -566,6 +633,7 @@ function TeamBlock({
   tier,
   h,
   align,
+  pop,
 }: {
   name: string;
   score: number;
@@ -574,6 +642,9 @@ function TeamBlock({
   tier: TierStyle;
   h: number;
   align: 'left' | 'right';
+  /** Increments on every score rise — `key`s the score span so its
+   *  pop animation replays. */
+  pop: number;
 }) {
   const code = String(name || '—').trim().toUpperCase().slice(0, 14);
   return (
@@ -629,6 +700,7 @@ function TeamBlock({
         </span>
       </div>
       <span
+        key={pop}
         style={{
           fontSize: px(h, 0.34),
           fontWeight: 900,
@@ -636,6 +708,8 @@ function TeamBlock({
           color: tier.scoreInk,
           fontVariantNumeric: 'tabular-nums',
           textShadow: `0 0 ${px(h, 0.06)}px ${color}66`,
+          animation: 'venueScorePop 0.6s cubic-bezier(.2,1.4,.4,1) both',
+          transformOrigin: align === 'left' ? 'left center' : 'right center',
         }}
       >
         {score}
