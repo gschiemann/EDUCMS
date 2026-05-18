@@ -69,6 +69,11 @@ export class SponsorsController {
       tier?: string | null;
       weight?: number;
       active?: boolean;
+      /** ISO-8601 string; null = no start bound. */
+      flightStartAt?: string | null;
+      flightEndAt?: string | null;
+      /** Max airings per hour; omit or null = uncapped. */
+      frequencyCapPerHour?: number | null;
     },
   ) {
     return this.sponsors.create(req.user.tenantId, body);
@@ -88,6 +93,9 @@ export class SponsorsController {
       tier?: string | null;
       weight?: number;
       active?: boolean;
+      flightStartAt?: string | null;
+      flightEndAt?: string | null;
+      frequencyCapPerHour?: number | null;
     },
   ) {
     return this.sponsors.update(req.user.tenantId, id, body);

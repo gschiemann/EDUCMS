@@ -20,6 +20,11 @@ interface SponsorInput {
   tier?: string | null;
   weight?: number;
   active?: boolean;
+  /** ISO-8601 string or Date — null clears the bound. */
+  flightStartAt?: string | Date | null;
+  flightEndAt?: string | Date | null;
+  /** Max airings per hour; null or undefined = uncapped. */
+  frequencyCapPerHour?: number | null;
 }
 
 @Injectable()
@@ -48,6 +53,31 @@ export class SponsorsService {
     return sponsor;
   }
 
+  // ── helpers ──────────────────────────────────────────────────
+
+  /**
+   * Parse a flight boundary input — accepts an ISO string, a Date, or
+   * null/undefined. Returns a Date for Prisma (null when clearing).
+   */
+  private cleanFlightDate(value: unknown): Date | null {
+    if (value === null || value === undefined) return null;
+    if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+    if (typeof value === 'string') {
+      const d = new Date(value);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+  }
+
+  /** Clamp frequencyCapPerHour to a valid positive integer, or null. */
+  private cleanFreqCap(value: unknown): number | null {
+    if (value === null || value === undefined) return null;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    const clamped = Math.max(1, Math.min(9999, Math.round(n)));
+    return clamped;
+  }
+
   // ── CRUD ─────────────────────────────────────────────────────
 
   /** Every sponsor for a tenant — heaviest rotation weight first. */
@@ -55,6 +85,39 @@ export class SponsorsService {
     return this.prisma.client.sponsor.findMany({
       where: { tenantId },
       orderBy: [{ weight: 'desc' }, { name: 'asc' }],
+    });
+  }
+
+  /**
+   * Active sponsors at the current moment — used by the public board
+   * response so the scoreboard banner only ever shows in-flight ads.
+   * A sponsor is active when:
+   *   - `active` is true (or the column defaults to true), AND
+   *   - flightStartAt is null OR <= now, AND
+   *   - flightEndAt   is null OR >= now.
+   */
+  listActive(tenantId: string) {
+    const now = new Date();
+    return this.prisma.client.sponsor.findMany({
+      where: {
+        tenantId,
+        active: true,
+        OR: [{ flightStartAt: null }, { flightStartAt: { lte: now } }],
+        AND: [
+          {
+            OR: [{ flightEndAt: null }, { flightEndAt: { gte: now } }],
+          },
+        ],
+      },
+      orderBy: [{ weight: 'desc' }, { name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        logoUrl: true,
+        tagline: true,
+        color: true,
+        weight: true,
+      },
     });
   }
 
@@ -72,6 +135,9 @@ export class SponsorsService {
         tier: this.clean(dto.tier, 40),
         weight: this.clampWeight(dto.weight),
         active: dto.active === undefined ? true : !!dto.active,
+        flightStartAt: dto.flightStartAt !== undefined ? this.cleanFlightDate(dto.flightStartAt) : null,
+        flightEndAt: dto.flightEndAt !== undefined ? this.cleanFlightDate(dto.flightEndAt) : null,
+        frequencyCapPerHour: dto.frequencyCapPerHour !== undefined ? this.cleanFreqCap(dto.frequencyCapPerHour) : null,
       },
     });
   }
@@ -91,6 +157,9 @@ export class SponsorsService {
     if (dto.tier !== undefined) data.tier = this.clean(dto.tier, 40);
     if (dto.weight !== undefined) data.weight = this.clampWeight(dto.weight, current.weight);
     if (dto.active !== undefined) data.active = !!dto.active;
+    if (dto.flightStartAt !== undefined) data.flightStartAt = this.cleanFlightDate(dto.flightStartAt);
+    if (dto.flightEndAt !== undefined) data.flightEndAt = this.cleanFlightDate(dto.flightEndAt);
+    if (dto.frequencyCapPerHour !== undefined) data.frequencyCapPerHour = this.cleanFreqCap(dto.frequencyCapPerHour);
 
     return this.prisma.client.sponsor.update({ where: { id }, data });
   }

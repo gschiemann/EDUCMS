@@ -1,7 +1,8 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, forwardRef, Inject } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
+import { SponsorsService } from './sponsors.service';
 import {
   findSport,
   SPORTS,
@@ -46,6 +47,8 @@ export class SportsService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly signer: WebsocketSignerService,
+    @Inject(forwardRef(() => SponsorsService))
+    private readonly sponsorsService: SponsorsService,
   ) {}
 
   // ── helpers ──────────────────────────────────────────────────
@@ -231,13 +234,11 @@ export class SportsService {
         where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
         orderBy: { createdAt: 'asc' },
       }),
-      // Active sponsors rotate through the board's banner slot. Public
-      // by design — they exist to be shown on the scoreboard.
-      this.prisma.client.sponsor.findMany({
-        where: { tenantId: game.tenantId, active: true },
-        orderBy: [{ weight: 'desc' }, { name: 'asc' }],
-        select: { id: true, name: true, logoUrl: true, tagline: true, color: true, weight: true },
-      }),
+      // Active, in-flight sponsors for the board's banner slot — routed
+      // through SponsorsService.listActive so flight-window filtering
+      // (flightStartAt / flightEndAt) is always applied consistently.
+      // Public by design — sponsors exist to be shown on the scoreboard.
+      this.sponsorsService.listActive(game.tenantId),
       // The roster — drives player cards on the ribbon + scoreboard.
       this.prisma.client.rosterPlayer.findMany({
         where: { gameId: id },
@@ -275,11 +276,19 @@ export class SportsService {
       clockUpdatedAt: game.clockUpdatedAt,
       stats: game.stats,
       spotlight: game.spotlight,
-      cues: cues.map((c) => ({
-        id: c.id,
-        ...(c.payload as Record<string, unknown>),
-        createdAt: c.createdAt,
-      })),
+      cues: cues.map((c) => {
+        const p = (c.payload as Record<string, unknown>) ?? {};
+        return {
+          id: c.id,
+          ...p,
+          // Explicit contract fields — always present, null when absent so
+          // the frontend never has to guard against `undefined`.
+          audioUrl: (p.audioUrl as string | null) ?? null,
+          sponsorName: (p.sponsorName as string | null) ?? null,
+          sponsorLogoUrl: (p.sponsorLogoUrl as string | null) ?? null,
+          createdAt: c.createdAt,
+        };
+      }),
       sponsors,
       roster,
       ribbonMessages,
@@ -1222,14 +1231,31 @@ export class SportsService {
    * `target` scopes which surfaces play it (scoreboard / ribbon / all).
    * Both land as a CUE GameEvent that every surface playing the game
    * polls; a surface plays the cue only when the target includes it.
+   *
+   * Optional co-branding: `audioUrl` plays a sound clip on every surface
+   * that receives the cue; `sponsorName` + `sponsorLogoUrl` overlay a
+   * co-branded attribution line ("This touchdown brought to you by …").
+   * All three are optional — existing cues without them are unaffected.
    */
   async fireCue(
     tenantId: string,
     id: string,
-    dto: { key?: string; cueId?: string; target?: string },
+    dto: {
+      key?: string;
+      cueId?: string;
+      target?: string;
+      audioUrl?: string;
+      sponsorName?: string;
+      sponsorLogoUrl?: string;
+    },
   ) {
     const game = await this.owned(tenantId, id);
     const target = this.cleanCueTarget(dto.target);
+
+    // Sanitize the three new optional co-branding / audio fields.
+    const audioUrl = this.cleanText(dto.audioUrl, 2048);
+    const sponsorName = this.cleanText(dto.sponsorName, 120);
+    const sponsorLogoUrl = this.cleanText(dto.sponsorLogoUrl, 2048);
 
     // Custom cue — operator-defined trigger from the cue deck.
     if (dto.cueId) {
@@ -1245,6 +1271,9 @@ export class SportsService {
         durationMs: cc.durationMs,
         custom: true,
         target,
+        audioUrl,
+        sponsorName,
+        sponsorLogoUrl,
         snapshot: this.cueSnapshot(game),
       });
       return { fired: true, cueId: cc.id, target, eventId: event.id };
@@ -1260,6 +1289,9 @@ export class SportsService {
       label: cue.label,
       emoji: cue.emoji,
       target,
+      audioUrl,
+      sponsorName,
+      sponsorLogoUrl,
       snapshot: this.cueSnapshot(game),
     });
     return { fired: true, cue, target, eventId: event.id };

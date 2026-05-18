@@ -243,7 +243,9 @@ export class SportsController {
   }
 
   /** Fire a cue — a sport celebration (`key`) or a custom cue
-   *  (`cueId`). Every surface playing this game plays it. */
+   *  (`cueId`). Every surface playing this game plays it.
+   *  Optional: `audioUrl` plays a sound; `sponsorName` + `sponsorLogoUrl`
+   *  overlay a co-branded attribution line ("brought to you by …"). */
   @Post('games/:id/cue')
   @RequireRoles(
     AppRole.SUPER_ADMIN,
@@ -254,7 +256,15 @@ export class SportsController {
   cue(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { key?: string; cueId?: string; target?: string },
+    @Body()
+    body: {
+      key?: string;
+      cueId?: string;
+      target?: string;
+      audioUrl?: string;
+      sponsorName?: string;
+      sponsorLogoUrl?: string;
+    },
   ) {
     return this.sports.fireCue(req.user.tenantId, id, body);
   }

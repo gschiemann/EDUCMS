@@ -1514,17 +1514,21 @@ model GameEvent {
 // Additive — one new table, safe for live pilot tenants.
 // ─────────────────────────────────────────────────────────────
 model Sponsor {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  name      String
-  logoUrl   String?  @map("logo_url")
-  tagline   String?
-  color     String?                                  // brand hex for the banner accent
-  tier      String?                                  // freeform label: Title | Gold | Community …
-  weight    Int      @default(1)                     // rotation slots per cycle
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  id                String    @id @default(uuid())
+  tenantId          String    @map("tenant_id")
+  name              String
+  logoUrl           String?   @map("logo_url")
+  tagline           String?
+  color             String?                                  // brand hex for the banner accent
+  tier              String?                                  // freeform label: Title | Gold | Community …
+  weight            Int       @default(1)                    // rotation slots per cycle
+  active            Boolean   @default(true)
+  // Ad-ops flight window — null = no bound on that side.
+  flightStartAt     DateTime? @map("flight_start_at")       // inclusive; null = always started
+  flightEndAt       DateTime? @map("flight_end_at")         // exclusive; null = never expires
+  frequencyCapPerHour Int?    @map("frequency_cap_per_hour") // max airings / hr; null = uncapped
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

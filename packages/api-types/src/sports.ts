@@ -40,6 +40,31 @@ export interface SportCelebration {
   emoji: string;
 }
 
+/**
+ * A fired cue as it appears in the board's `cues[]` poll feed.
+ * All three ad-ops fields are always present (null when not supplied
+ * at fire time) so surfaces can check them without `undefined` guards.
+ */
+export interface FiredCue {
+  id: string;
+  key: string;
+  label: string;
+  emoji?: string;
+  color?: string | null;
+  mediaUrl?: string | null;
+  durationMs?: number;
+  custom?: boolean;
+  target: 'BOARD' | 'RIBBON' | 'ALL';
+  snapshot?: Record<string, unknown>;
+  /** URL of a sound clip to play when this cue fires. */
+  audioUrl: string | null;
+  /** Sponsor display name for co-branded celebration overlays. */
+  sponsorName: string | null;
+  /** Sponsor logo URL for co-branded celebration overlays. */
+  sponsorLogoUrl: string | null;
+  createdAt: string | Date;
+}
+
 export interface SportDefinition {
   key: string;
   name: string;
