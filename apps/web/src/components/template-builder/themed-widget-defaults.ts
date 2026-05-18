@@ -307,6 +307,37 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
 };
 
 /**
+ * Portrait companions of themed widgets. A portrait widget is a
+ * layout-only port of its landscape sibling and reads the IDENTICAL
+ * config keys (verified: e.g. AnimatedBusBoard{,Portrait}Widget read
+ * the same `cfg.*`). It therefore reuses the landscape field set
+ * verbatim — aliased here rather than duplicated so the two stay in
+ * sync. Without this, selecting one of these portrait widgets in the
+ * builder showed an EMPTY properties panel ("template not editable").
+ * The portrait keys already declared explicitly above are left as-is.
+ */
+const PORTRAIT_OF: Record<string, string> = {
+  ANIMATED_ACHIEVEMENT_SHOWCASE_PORTRAIT: 'ANIMATED_ACHIEVEMENT_SHOWCASE',
+  ANIMATED_BUS_BOARD_PORTRAIT:            'ANIMATED_BUS_BOARD',
+  ANIMATED_MAIN_ENTRANCE_PORTRAIT:        'ANIMATED_MAIN_ENTRANCE',
+  ANIMATED_MORNING_NEWS_PORTRAIT:         'ANIMATED_MORNING_NEWS',
+  ANIMATED_CAFETERIA_HS_PORTRAIT:         'ANIMATED_CAFETERIA_HS',
+  ANIMATED_CAFETERIA_MS_PORTRAIT:         'ANIMATED_CAFETERIA_MS',
+  ANIMATED_CAFETERIA_CHALKBOARD_PORTRAIT: 'ANIMATED_CAFETERIA_CHALKBOARD',
+  BULLETIN_HALLWAY_PORTRAIT:              'BULLETIN_HALLWAY',
+  BULLETIN_CAFETERIA_PORTRAIT:            'BULLETIN_CAFETERIA',
+  SCRAPBOOK_HALLWAY_PORTRAIT:             'SCRAPBOOK_HALLWAY',
+  SCRAPBOOK_CAFETERIA_PORTRAIT:           'SCRAPBOOK_CAFETERIA',
+  STORYBOOK_HALLWAY_PORTRAIT:             'STORYBOOK_HALLWAY',
+  STORYBOOK_CAFETERIA_PORTRAIT:           'STORYBOOK_CAFETERIA',
+};
+for (const [portrait, landscape] of Object.entries(PORTRAIT_OF)) {
+  if (THEMED_WIDGET_FIELDS[landscape] && !THEMED_WIDGET_FIELDS[portrait]) {
+    THEMED_WIDGET_FIELDS[portrait] = THEMED_WIDGET_FIELDS[landscape];
+  }
+}
+
+/**
  * True if a widgetType has a defaults entry — PropertiesPanel uses this
  * to know whether to dispatch to the auto-form case for themed widgets.
  */

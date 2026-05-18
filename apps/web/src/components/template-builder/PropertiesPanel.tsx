@@ -2551,12 +2551,15 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       break;
     }
     case 'ANIMATED_WELCOME_MS':
+    case 'ANIMATED_WELCOME_MS_PORTRAIT':
     case 'ANIMATED_WELCOME_HS':
+    case 'ANIMATED_WELCOME_HS_PORTRAIT':
     case 'ANIMATED_WELCOME': {
-      // All 3 ANIMATED_WELCOME variants share the same config shape —
-      // Elementary / Middle / High School — so the editor + hotspot
-      // section IDs can be reused verbatim. The widget component
-      // picks the theme; the fields are identical.
+      // All ANIMATED_WELCOME variants share the same config shape —
+      // Elementary / Middle / High School, landscape AND portrait — so
+      // the editor + hotspot section IDs are reused verbatim. The widget
+      // component picks the theme + orientation; the fields are identical.
+      // (Portrait widgets are layout-only ports — same config keys.)
       // Section headings double as scroll-into-view targets so when the
       // user clicks a hotspot in the rendered preview, the panel jumps
       // to the matching section. Each header carries an id like
@@ -2675,11 +2678,13 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TickerSpeedField key="tickerSpeed" value={cfg.tickerSpeed} onChange={(v) => setField({ tickerSpeed: v })} />);
       break;
     }
+    case 'ANIMATED_CAFETERIA_PORTRAIT':
     case 'ANIMATED_CAFETERIA': {
       // Cafeteria template editor. Same hotspot scroll-into-view
       // contract as ANIMATED_WELCOME (aw-section-* ids + flash on
       // activation) but with cafeteria-specific sections: Special,
       // Menu (5 day tabs, unlimited items per day), Chef, etc.
+      // Portrait shares the identical config shape — layout-only port.
       const SH = (key: string, label: string) => (
         <div
           key={`sh-${key}`}
