@@ -955,6 +955,18 @@ export class AssetsController {
     if (!body.name?.trim()) {
       throw new HttpException('Folder name is required', HttpStatus.BAD_REQUEST);
     }
+    // Validate parentId belongs to THIS tenant — without this a caller
+    // could nest a folder under another tenant's folder id (the rename
+    // / move / resolveFolderId paths all do this check; create did not).
+    if (body.parentId) {
+      const parent = await this.prisma.client.assetFolder.findFirst({
+        where: { id: body.parentId, tenantId: req.user.tenantId },
+        select: { id: true },
+      });
+      if (!parent) {
+        throw new HttpException('Parent folder not found', HttpStatus.BAD_REQUEST);
+      }
+    }
     return this.prisma.client.assetFolder.create({
       data: {
         tenantId: req.user.tenantId,

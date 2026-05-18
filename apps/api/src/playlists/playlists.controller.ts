@@ -220,6 +220,19 @@ export class PlaylistsController {
       where: { id, tenantId: req.user.tenantId },
     });
     if (!playlist) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    // Protected (emergency / panic) playlists must not have their
+    // schedules toggled from this generic operator endpoint — that
+    // would silently disable a panic trigger. Same guard as `remove`
+    // and `update`; managed from Settings → Panic Button Integrations.
+    if (playlist.isProtected) {
+      throw new HttpException(
+        {
+          code: 'PLAYLIST_PROTECTED',
+          message: `This playlist holds ${playlist.protectedKind || 'emergency'} content — its schedules can't be toggled from here. Manage it from Settings → Panic Button Integrations.`,
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
     const result = await this.prisma.client.schedule.updateMany({
       where: { playlistId: id, tenantId: req.user.tenantId },
       data: { isActive: !!body.active },
