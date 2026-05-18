@@ -1118,6 +1118,77 @@ export class SportsService {
     return updated;
   }
 
+  /**
+   * Atomic state push from an external score source — a console tap-off
+   * box or a league-feed adapter. Any subset of fields may be provided;
+   * only the fields present in the dto are written. Clock fields are
+   * re-anchored (clockUpdatedAt = now) whenever clockMs or clockRunning
+   * is supplied, exactly as the 'set' clock action does. A GAME_EVENT
+   * of type 'INGEST' is appended for the audit trail, and the update is
+   * broadcast via the signed pub/sub fan-out so every board surface
+   * picks it up without polling.
+   */
+  async ingest(
+    tenantId: string,
+    id: string,
+    dto: {
+      homeScore?: number;
+      awayScore?: number;
+      clockMs?: number;
+      clockRunning?: boolean;
+      segment?: number;
+    },
+  ) {
+    const game = await this.owned(tenantId, id);
+    const data: Record<string, unknown> = {};
+    const applied: Record<string, unknown> = {};
+
+    // Scores — clamp to non-negative integers; ignore non-numeric values.
+    if (dto.homeScore !== undefined) {
+      const v = Math.max(0, Math.round(Number(dto.homeScore)));
+      if (Number.isFinite(v)) { data.homeScore = v; applied.homeScore = v; }
+    }
+    if (dto.awayScore !== undefined) {
+      const v = Math.max(0, Math.round(Number(dto.awayScore)));
+      if (Number.isFinite(v)) { data.awayScore = v; applied.awayScore = v; }
+    }
+
+    // Segment — clamp to >= 1.
+    if (dto.segment !== undefined) {
+      const v = Math.max(1, Math.round(Number(dto.segment)));
+      if (Number.isFinite(v)) { data.segment = v; applied.segment = v; }
+    }
+
+    // Clock — re-anchor clockUpdatedAt = now whenever either clock field
+    // is provided, exactly mirroring what the 'set' clock action does.
+    const clockChanged = dto.clockMs !== undefined || dto.clockRunning !== undefined;
+    if (clockChanged) {
+      const now = new Date();
+      if (dto.clockMs !== undefined) {
+        const v = Math.max(0, Math.round(Number(dto.clockMs)));
+        if (Number.isFinite(v)) { data.clockMs = v; applied.clockMs = v; }
+      }
+      if (dto.clockRunning !== undefined) {
+        data.clockRunning = Boolean(dto.clockRunning);
+        applied.clockRunning = data.clockRunning;
+      }
+      // Always update the anchor timestamp when any clock field changes,
+      // so the board can derive the live clock correctly from the new
+      // (clockMs, clockRunning, clockUpdatedAt) triple.
+      data.clockUpdatedAt = now;
+      applied.clockUpdatedAt = now;
+    }
+
+    if (Object.keys(data).length === 0) {
+      // Nothing to apply — return the current game without a write.
+      return game;
+    }
+
+    const updated = await this.prisma.client.game.update({ where: { id }, data });
+    await this.record(id, 'INGEST', applied);
+    return updated;
+  }
+
   /** Change the game status (SCHEDULED → LIVE → HALFTIME → FINAL …). */
   async setStatus(tenantId: string, id: string, dto: { status?: string }) {
     const game = await this.owned(tenantId, id);

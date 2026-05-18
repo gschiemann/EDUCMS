@@ -242,6 +242,35 @@ export class SportsController {
     return this.sports.setStatus(req.user.tenantId, id, body);
   }
 
+  /**
+   * External score ingestion — accepts a pushed game state from a
+   * console tap-off box or a league-feed adapter. Any subset of fields
+   * may be provided; omitted fields are left unchanged. Clock fields
+   * are re-anchored automatically. An INGEST GameEvent is appended for
+   * the audit trail and broadcast via signed pub/sub to all surfaces.
+   */
+  @Post('games/:id/ingest')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  ingest(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      homeScore?: number;
+      awayScore?: number;
+      clockMs?: number;
+      clockRunning?: boolean;
+      segment?: number;
+    },
+  ) {
+    return this.sports.ingest(req.user.tenantId, id, body || {});
+  }
+
   /** Fire a cue — a sport celebration (`key`) or a custom cue
    *  (`cueId`). Every surface playing this game plays it.
    *  Optional: `audioUrl` plays a sound; `sponsorName` + `sponsorLogoUrl`
