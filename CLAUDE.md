@@ -94,8 +94,27 @@ All required env vars for `.env` (gitignored):
 | `DEV_WS_ALLOW` | Dev-only: `true` enables unsigned `dev_` WebSocket tokens. **Never set in production.** | `true` |
 | `ANTHROPIC_API_KEY` | Claude API key for the AI content-generator feature (sparkle button next to text fields in the template editor). When unset, the button surfaces "AI not configured for this deploy" — feature degrades gracefully, app keeps working. Cost-capped at 30 generations/hr/tenant via in-memory rate limit; claude-3-5-haiku at 300 max_tokens caps spend at ~$0.005/call. | `sk-ant-api03-...` |
 | `CANVA_CLIENT_ID` / `CANVA_CLIENT_SECRET` | OAuth client for Canva Connect (Stage-2 design imports). Pending partner approval at canva.dev/docs/connect — when set, the `/[schoolId]/settings/imports` page lights up the live "Sign in with Canva" flow. Stage-1 PDF/PPTX uploads work without these. | (from canva.dev developer portal) |
+| `STRIPE_SECRET_KEY` | Stripe API key. When set, billing goes live — `/billing/checkout`, `/billing/portal`, `/billing/invoices`, and the webhook all work. When unset, `StripeService.enabled()` is false and every billing endpoint degrades gracefully (checkout/portal return `{enabled:false}`, invoices `[]`), so a deploy with no billing is unaffected. | `sk_test_…` / `sk_live_…` |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret for the Stripe webhook (`POST /api/v1/billing/webhook`). Every event is verified against it; without it the webhook 400s. From the Stripe dashboard webhook config (or `stripe listen`). | `whsec_…` |
+| `STRIPE_PRICE_MONTHLY` | Stripe recurring Price id for the $15/screen/month plan. | `price_…` |
+| `STRIPE_PRICE_ANNUAL` | Stripe recurring Price id for the $150/screen/year plan. | `price_…` |
 
 Never commit `.env`. Use `.env.example` as a template.
+
+**Stripe billing setup.** Billing (Settings → Billing) is fully built
+but dormant until Stripe is configured. To turn it on: (1) create a
+free Stripe account; (2) in Stripe, create two recurring
+Products/Prices — $15 per screen / month and $150 per screen / year;
+(3) set `STRIPE_SECRET_KEY`, `STRIPE_PRICE_MONTHLY`,
+`STRIPE_PRICE_ANNUAL` in the API env (test keys first); (4) add a
+Stripe webhook endpoint pointing at `POST /api/v1/billing/webhook`
+subscribed to `checkout.session.completed`, `customer.subscription.*`
+and `invoice.payment_failed`, and set its signing secret as
+`STRIPE_WEBHOOK_SECRET`; (5) test end-to-end with Stripe test cards;
+(6) swap in live keys at go-live. All Stripe code lives in
+`apps/api/src/billing/` — checkout / portal / invoices, plus the
+webhook that syncs each tenant's `License` row. Card entry is on
+Stripe-hosted pages only (PCI-SAQ-A).
 
 **Secret boot-time validation (sec-fix wave1 #2).** In production
 (`NODE_ENV=production`) the API refuses to start if any of these are
