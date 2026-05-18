@@ -19,6 +19,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
+import { SituationalRow } from '@/components/widgets/v2/_shared/sports-situational';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import { findSport } from '@cms/api-types';
@@ -487,29 +488,20 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
               {data.homeTeam.toUpperCase()} vs {data.awayTeam.toUpperCase()}
             </div>
           ) : (
-            statChips.map((s) => (
-              <div
-                key={s.key}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  background: '#0e1424',
-                  border: '2px solid #1e2638',
-                  borderRadius: 16,
-                  padding: '16px 30px',
-                  margin: '0 12px',
-                  minWidth: 130,
-                }}
-              >
-                <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: 2, color: '#64748b' }}>
-                  {s.label.toUpperCase()}
-                </div>
-                <div style={{ fontSize: 46, fontWeight: 900, color: '#fff', marginTop: 4 }}>
-                  {String(s.value)}
-                </div>
-              </div>
-            ))
+            /* Broadcast situational graphics — the same shared renderer
+               the scoreboard widget uses: base diamond + B/S/O for
+               baseball, down & distance + possession for football,
+               bonus + timeout pips for basketball, etc. One source of
+               truth so the venue board and the template widget match. */
+            <SituationalRow
+              def={def}
+              stats={data.stats || {}}
+              h={620}
+              accent="#fbbf24"
+              ink="#ffffff"
+              dim="#64748b"
+              hairline="transparent"
+            />
           )}
         </div>
       </div>
