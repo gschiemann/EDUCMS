@@ -116,7 +116,10 @@ export function FitnessWorkoutTimerWidget({
   };
 
   // ─── Computed display values ───
-  const phaseSec   = phase === 'work' ? workSec : restSec;
+  // Floor at 1 — an operator can set workSeconds/restSeconds to 0,
+  // which would make `remaining / phaseSec` divide by zero and push
+  // progress (and the SVG strokeDashoffset) to ±Infinity.
+  const phaseSec   = Math.max(1, phase === 'work' ? workSec : restSec);
   const progress   = phase === 'done' ? 1 : 1 - remaining / phaseSec;
   const dashOffset = RING_CIRC * (1 - progress);
   const accent     = phase === 'rest' ? restColor : workColor;

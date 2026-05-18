@@ -1498,7 +1498,7 @@ export default function ScreensPage() {
                             grey by default; only turns red on hover, so
                             an accidental tap is one explicit step away
                             from triggering the mutate. */}
-                        <button onClick={() => deleteScreen.mutate(screen.id)}
+                        <button onClick={async () => { if (await appConfirm({ title: 'Delete screen?', message: `"${screen.name}" will be removed and unpaired — this cannot be undone.`, tone: 'danger', confirmLabel: 'Delete' })) deleteScreen.mutate(screen.id); }}
                           className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all shadow-sm"
                           title="Delete screen">
                           <Trash2 className="w-4 h-4" />
@@ -1649,7 +1649,7 @@ export default function ScreensPage() {
                         {timeAgo(screen.lastPingAt)}
                       </span>
                     )}
-                    <button onClick={() => deleteScreen.mutate(screen.id)}
+                    <button onClick={async () => { if (await appConfirm({ title: 'Delete screen?', message: `"${screen.name}" will be removed and unpaired — this cannot be undone.`, tone: 'danger', confirmLabel: 'Delete' })) deleteScreen.mutate(screen.id); }}
                       className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all shadow-sm"
                       title="Delete screen">
                       <Trash2 className="w-4 h-4" />

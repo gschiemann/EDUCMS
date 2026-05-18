@@ -596,6 +596,31 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'RETAIL_LOYALTY_QR':             return <RetailLoyaltyQRWidget config={cfg} live={live} />;
     case 'RETAIL_LOOKBOOK_CAROUSEL':      return <RetailLookbookCarouselWidget config={cfg} live={live} />;
     case 'RETAIL_STOREFRONT_HOURS':       return <RetailStorefrontHoursWidget config={cfg} live={live} />;
+    // v2 canonical-only types — these have no single default renderer;
+    // they ALWAYS render through the `cfg.variant` path at the top of
+    // this function. Reaching the switch means the variant was lost
+    // (config sanitized, variant id renamed). Show a visible "pick a
+    // style" placeholder rather than `default: return null` — a silent
+    // blank widget is the worse failure (the operator sees nothing and
+    // can't tell the zone simply needs a variant chosen).
+    case 'CELEBRATION':
+    case 'HEALTHCARE':
+    case 'CORPORATE':
+    case 'HOSPITALITY':
+    case 'WORSHIP':
+    case 'CHART':
+    case 'BACKGROUND':
+    case 'LIVE_DATA':
+      return (
+        <div style={{
+          width: '100%', height: '100%', display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          background: '#0f172a', color: '#94a3b8', fontSize: 13,
+          fontFamily: 'system-ui, sans-serif', textAlign: 'center', padding: 16,
+        }}>
+          Pick a {String(widgetType).toLowerCase().replace(/_/g, ' ')} style
+        </div>
+      );
     default:             return null;
   }
 }

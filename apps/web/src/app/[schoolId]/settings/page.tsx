@@ -549,7 +549,13 @@ export default function SettingsPage() {
                       onChange={(e) => updateRole.mutate({ id: user.id, role: e.target.value })}
                       className={`px-2.5 py-1 text-[10px] font-bold border rounded-lg cursor-pointer ${ROLE_COLORS[user.role] || 'bg-slate-50 text-slate-600'}`}
                     >
-                      {ROLES.map(r => <option key={r} value={r}>{tenantCopy.roleLabel(r)}</option>)}
+                      {/* SUPER_ADMIN is never an assignable option — a
+                          district/school admin must not be able to promote
+                          a user to super-admin from this dropdown (the
+                          invite form already filters it). It only appears
+                          when the row IS already a super-admin, so the
+                          select still renders that user's role correctly. */}
+                      {ROLES.filter(r => r !== 'SUPER_ADMIN' || user.role === 'SUPER_ADMIN').map(r => <option key={r} value={r}>{tenantCopy.roleLabel(r)}</option>)}
                     </select>
                     <button
                       onClick={async () => {

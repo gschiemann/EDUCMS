@@ -50,6 +50,18 @@ const WIDGET_TYPE_LABELS: Record<string, string> = {
   // config.variant. The picker chip says "Touch" so operators can
   // filter to just the interactive set.
   TOUCH_POINT:     'Touch',
+  // v2 canonical types — without a friendly label the picker chip +
+  // locked-filter badge show the raw SCREAMING_SNAKE widgetType.
+  SCOREBOARD:      'Scoreboards',
+  CELEBRATION:     'Celebrations',
+  CHART:           'Charts',
+  BACKGROUND:      'Backgrounds',
+  LIVE_DATA:       'Live Data',
+  EXTERNAL_HTML:   'HTML Templates',
+  HEALTHCARE:      'Healthcare',
+  CORPORATE:       'Corporate',
+  HOSPITALITY:     'Hospitality',
+  WORSHIP:         'Worship',
 };
 
 // 2026-05-10 — operator iteration 3: "leave the image, videos,

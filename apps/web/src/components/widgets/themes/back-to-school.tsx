@@ -426,7 +426,10 @@ export function BackToSchoolLogo({ config }: { config: any }) {
 // PAPER BANNER TICKER — letters on hanging triangular pennants
 // ═══════════════════════════════════════════════════════════════════════
 export function BackToSchoolTicker({ config }: { config: any }) {
-  const messages: string[] = config.messages && config.messages.length ? config.messages : ['Welcome back, students!'];
+  // Guard with Array.isArray — a legacy editor can serialize `messages`
+  // as a newline-delimited STRING; a bare `.length` check passes for a
+  // string and then `.join()` throws (strings have no join).
+  const messages: string[] = Array.isArray(config.messages) && config.messages.length ? config.messages : ['Welcome back, students!'];
   const text = messages.join('  ★  ');
   return (
     <div className="absolute inset-0 overflow-hidden flex items-center" style={{

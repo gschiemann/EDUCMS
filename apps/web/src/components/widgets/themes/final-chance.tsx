@@ -447,7 +447,7 @@ export function FinalChanceImageCarousel({ config }: { config: any }) {
 // TICKER — gradient bar
 // ═══════════════════════════════════════════════════════════════════════
 export function FinalChanceTicker({ config }: { config: any }) {
-  const messages: string[] = config.messages && config.messages.length ? config.messages : [
+  const messages: string[] = Array.isArray(config.messages) && config.messages.length ? config.messages : [
     'Welcome to a new year!',
     'Picture day is Friday',
     'Spring Concert next Tuesday',

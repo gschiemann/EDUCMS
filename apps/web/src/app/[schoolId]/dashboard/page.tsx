@@ -170,16 +170,23 @@ export default function DashboardPage() {
   // schedules until the client populates `now` ~16ms later.
   const today = now ? now.getDay() : -1;
   const nowHM = now ? `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}` : '';
+  // Schedule.daysOfWeek is a comma-joined string of day tokens
+  // ('Mon,Wed,Fri') — NOT a number[]. Map JS getDay() (Sun=0) to the
+  // matching token so the filter actually narrows to today's schedules.
+  // During SSR/hydration `today` is -1 → token '' → no filter applies
+  // (every active schedule passes), matching the prior neutral default.
+  const todayTok = today >= 0 ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][today] : '';
   const todaysSchedules = useMemo(() => {
     return (schedules || [])
       .filter((s: any) => {
         if (s.isActive === false) return false;
-        const dow: number[] | undefined = s.daysOfWeek;
-        if (Array.isArray(dow) && dow.length > 0 && !dow.includes(today)) return false;
+        const days = String(s.daysOfWeek || '')
+          .split(',').map((d: string) => d.trim()).filter(Boolean);
+        if (days.length > 0 && todayTok && !days.includes(todayTok)) return false;
         return true;
       })
       .sort((a: any, b: any) => String(a.timeStart || '').localeCompare(String(b.timeStart || '')));
-  }, [schedules, today]);
+  }, [schedules, todayTok]);
 
   const liveNowCount = useMemo(() => {
     return todaysSchedules.filter((s: any) => {
@@ -403,7 +410,7 @@ export default function DashboardPage() {
           mutedWhenZero
         />
         <KpiCard
-          href={`${tenantBase}/schedules`}
+          href={`${tenantBase}/playlists`}
           label="Playing Now"
           bigValue={liveNowCount.toLocaleString()}
           sub={`${todaysSchedules.length} scheduled today`}
@@ -524,7 +531,7 @@ export default function DashboardPage() {
                 </span>
               )}
             </div>
-            <Link href={`${tenantBase}/schedules`} className="dash-link text-[11px] font-semibold">
+            <Link href={`${tenantBase}/playlists`} className="dash-link text-[11px] font-semibold">
               Manage →
             </Link>
           </div>
@@ -533,7 +540,7 @@ export default function DashboardPage() {
               <div className="p-8 text-center">
                 <Calendar className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                 <p className="text-sm text-slate-500">Nothing scheduled for today.</p>
-                <Link href={`${tenantBase}/schedules`} className="dash-link text-xs font-semibold mt-2 inline-flex items-center gap-1">
+                <Link href={`${tenantBase}/playlists`} className="dash-link text-xs font-semibold mt-2 inline-flex items-center gap-1">
                   Create schedule <ArrowRight className="w-3 h-3" />
                 </Link>
               </div>
@@ -567,7 +574,7 @@ export default function DashboardPage() {
             )}
             {todaysSchedules.length > 6 && (
               <div className="px-5 py-3 text-center bg-slate-50/30">
-                <Link href={`${tenantBase}/schedules`} className="dash-link text-xs font-semibold">
+                <Link href={`${tenantBase}/playlists`} className="dash-link text-xs font-semibold">
                   View remaining {todaysSchedules.length - 6} →
                 </Link>
               </div>
@@ -744,7 +751,7 @@ export default function DashboardPage() {
             <QuickLink href={`${tenantBase}/playlists`} Icon={Plus} label="New Playlist" tone="indigo" />
             <QuickLink href={`${tenantBase}/templates`} Icon={ListVideo} label="Pick a Template" tone="violet" />
             <QuickLink href={`${tenantBase}/screens`} Icon={MonitorPlay} label="Pair a Screen" tone="emerald" />
-            <QuickLink href={`${tenantBase}/users`} Icon={UsersIcon} label="Invite Teammate" tone="slate" />
+            <QuickLink href={`${tenantBase}/settings`} Icon={UsersIcon} label="Invite Teammate" tone="slate" />
           </div>
         </div>
       </div>

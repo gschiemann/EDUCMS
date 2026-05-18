@@ -12,7 +12,9 @@ export default function SchedulesRedirect() {
     if (!user) {
       router.replace('/login');
     } else {
-      router.replace(`/${user.tenantSlug || user.tenantId}/schedules`);
+      // Scheduling lives inside the Playlists page — there is no
+      // standalone /[schoolId]/schedules route, so redirecting there 404s.
+      router.replace(`/${user.tenantSlug || user.tenantId}/playlists`);
     }
   }, [user, router]);
 

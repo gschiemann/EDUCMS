@@ -1674,7 +1674,7 @@ export default function PlaylistsPage() {
                               <Power className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => deleteSchedule.mutate(sched.id)}
+                              onClick={async () => { if (await appConfirm({ title: 'Delete schedule?', message: 'This schedule will be removed — its playlist stops running on the assigned screens at these times.', tone: 'danger', confirmLabel: 'Delete' })) deleteSchedule.mutate(sched.id); }}
                               disabled={isViewer}
                               title={isViewer ? 'Read-only — viewer role' : undefined}
                               className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
