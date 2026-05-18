@@ -232,6 +232,16 @@ function GameControl() {
         <TeamReadout name={g.awayTeam} score={g.awayScore} color={awayColor} align="right" />
       </div>
 
+      {/* LIVE GAME CONTROL — every control the operator touches
+          mid-game is grouped here, contiguous, so a live game is run
+          from one place with no scrolling. Setup lives below. */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-extrabold uppercase tracking-widest text-indigo-500">
+          Live game control
+        </span>
+        <div className="h-px flex-1 bg-slate-200" />
+      </div>
+
       {/* status */}
       <Section title="Game status">
         <div className="flex flex-wrap gap-2">
@@ -249,11 +259,6 @@ function GameControl() {
             </button>
           ))}
         </div>
-      </Section>
-
-      {/* push a surface (scoreboard / ribbon) to the venue's screens */}
-      <Section title="Put it on your screens">
-        <ScreenPushPanel gameId={gameId} />
       </Section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -316,39 +321,8 @@ function GameControl() {
         </Section>
       </div>
 
-      {/* cue launchpad — built-in celebrations + custom cues in one
-          grid, with a per-fire target picker (scoreboard / ribbon / all) */}
-      <Section title="Cues">
-        <CueLaunchpad gameId={gameId} def={def} />
-      </Section>
-
-      {/* live preview — a real iframe of each surface, updating live */}
-      <Section title="Live preview">
-        <SurfacePreview gameId={gameId} />
-      </Section>
-
-      {/* ribbon content — sport-aware presets the operator toggles on/off */}
-      <Section title="Ribbon content">
-        <RibbonPresetsPanel gameId={gameId} />
-      </Section>
-
-      {/* ribbon messages — operator-typed lines that scroll on the ribbon */}
-      <Section title="Ribbon messages">
-        <RibbonPanel gameId={gameId} />
-      </Section>
-
-      {/* ribbon images — full-bleed images that fill the whole ribbon */}
-      <Section title="Ribbon images">
-        <RibbonImagesPanel gameId={gameId} />
-      </Section>
-
-      {/* ribbon sponsors — uploaded brand logos that scroll on the ribbon */}
-      <Section title="Ribbon sponsors">
-        <SponsorPanel />
-      </Section>
-
-      {/* stats — baseball/softball get a real count engine; every
-          other sport gets the generic stat grid */}
+      {/* stats — kept inside the live-control group: down & distance,
+          the count, shots, fouls, etc. change constantly during play */}
       {def.key === 'baseball' || def.key === 'softball' ? (
         <Section title="The count">
           <CountControl
@@ -378,6 +352,51 @@ function GameControl() {
           </div>
         </Section>
       ) : null}
+
+      {/* cue launchpad — built-in celebrations + custom cues in one
+          grid, with a per-fire target picker (scoreboard / ribbon / all) */}
+      <Section title="Cues">
+        <CueLaunchpad gameId={gameId} def={def} />
+      </Section>
+
+      {/* GAME SETUP — configured before the game; rarely touched once
+          it is live. Kept below the live-control group on purpose. */}
+      <div className="flex items-center gap-3 pt-2">
+        <span className="text-sm font-extrabold uppercase tracking-widest text-slate-400">
+          Game setup
+        </span>
+        <div className="h-px flex-1 bg-slate-200" />
+      </div>
+
+      {/* push a surface (scoreboard / ribbon) to the venue's screens */}
+      <Section title="Put it on your screens">
+        <ScreenPushPanel gameId={gameId} />
+      </Section>
+
+      {/* live preview — a real iframe of each surface, updating live */}
+      <Section title="Live preview">
+        <SurfacePreview gameId={gameId} />
+      </Section>
+
+      {/* ribbon content — sport-aware presets the operator toggles on/off */}
+      <Section title="Ribbon content">
+        <RibbonPresetsPanel gameId={gameId} />
+      </Section>
+
+      {/* ribbon messages — operator-typed lines that scroll on the ribbon */}
+      <Section title="Ribbon messages">
+        <RibbonPanel gameId={gameId} />
+      </Section>
+
+      {/* ribbon images — full-bleed images that fill the whole ribbon */}
+      <Section title="Ribbon images">
+        <RibbonImagesPanel gameId={gameId} />
+      </Section>
+
+      {/* ribbon sponsors — uploaded brand logos that scroll on the ribbon */}
+      <Section title="Ribbon sponsors">
+        <SponsorPanel />
+      </Section>
 
       {/* team rosters — players, headshots, stats */}
       <Section title="Team rosters">
