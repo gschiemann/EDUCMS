@@ -656,6 +656,19 @@ function ClockControls({
     }
   };
 
+  // Clock adjuster — nudge the clock with +/-, then Apply to push it
+  // to the game clock. pendingMs is the draft; null means "not
+  // adjusting" so the readout tracks the live clock.
+  const [pendingMs, setPendingMs] = useState<number | null>(null);
+  const nudge = (deltaMs: number) =>
+    setPendingMs((prev) => Math.max(0, (prev ?? liveMs) + deltaMs));
+  const applyAdjust = () => {
+    if (pendingMs !== null) {
+      onAction('set', pendingMs);
+      setPendingMs(null);
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center gap-3">
@@ -684,25 +697,49 @@ function ClockControls({
           </Button>
         </div>
       </div>
-      {/* quick adjust — fix a timeout or a mistake without retyping
-          the whole clock; works while the clock is running or paused */}
-      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+      {/* clock adjust — nudge with +/-, then Apply to push it to the
+          game clock. Works while the clock is running or paused. */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
           Adjust
         </span>
-        {[-60000, -10000, 10000, 60000].map((delta) => (
-          <button
-            key={delta}
-            type="button"
-            onClick={() => onAction('set', Math.max(0, liveMs + delta))}
-            className="rounded-md border border-slate-200 px-2.5 py-1 text-sm font-bold tabular-nums text-slate-600 transition-colors hover:border-indigo-400 hover:text-indigo-600"
-          >
-            {delta > 0 ? '+' : '−'}
-            {Math.abs(delta) >= 60000
-              ? `${Math.abs(delta) / 60000}m`
-              : `${Math.abs(delta) / 1000}s`}
-          </button>
-        ))}
+        <button
+          type="button"
+          onClick={() => nudge(-1000)}
+          aria-label="Subtract a second"
+          className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:border-indigo-400 hover:text-indigo-600"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+        <div
+          className={`min-w-[78px] text-center text-xl font-black tabular-nums ${
+            pendingMs !== null ? 'text-indigo-600' : 'text-slate-400'
+          }`}
+        >
+          {fmtClock(pendingMs ?? liveMs)}
+        </div>
+        <button
+          type="button"
+          onClick={() => nudge(1000)}
+          aria-label="Add a second"
+          className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:border-indigo-400 hover:text-indigo-600"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+        {pendingMs !== null && (
+          <>
+            <Button size="sm" onClick={applyAdjust}>
+              Apply
+            </Button>
+            <button
+              type="button"
+              onClick={() => setPendingMs(null)}
+              className="text-xs font-semibold text-slate-400 hover:text-slate-600"
+            >
+              Cancel
+            </button>
+          </>
+        )}
       </div>
       <div className="mt-3 flex items-center gap-2">
         <Input
