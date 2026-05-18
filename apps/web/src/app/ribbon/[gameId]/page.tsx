@@ -450,6 +450,7 @@ export default function RibbonPage() {
         key={`${copyKey}-${i}`}
         cell={cell}
         h={h}
+        vw={vp.w}
         homeColor={homeColor}
         awayColor={awayColor}
         data={data!}
@@ -519,12 +520,14 @@ export default function RibbonPage() {
 function RibbonCell({
   cell,
   h,
+  vw,
   homeColor,
   awayColor,
   data,
 }: {
   cell: Cell;
   h: number;
+  vw: number;
   homeColor: string;
   awayColor: string;
   data: BoardData;
@@ -621,13 +624,15 @@ function RibbonCell({
   }
 
   if (cell.kind === 'slide') {
-    // A full-bleed image slide — fills the ribbon top-to-bottom, its
-    // width set by the image's own aspect (no crop, no letterbox).
+    // A full-bleed image slide — one full viewport wide so it fills
+    // the whole ribbon as it scrolls past. The cell width is FIXED to
+    // the viewport, NOT the image's natural width: the scrolling reel
+    // needs deterministic cell widths or the seamless-loop math drifts
+    // and the reel scrolls into black. objectFit:cover fills it.
     return (
       <div
         style={{
-          display: 'flex',
-          alignItems: 'center',
+          width: vw,
           height: '100%',
           borderRight: '1px solid rgba(255,255,255,0.09)',
           flex: 'none',
@@ -637,7 +642,7 @@ function RibbonCell({
         <img
           src={cell.url}
           alt=""
-          style={{ height: '100%', width: 'auto', display: 'block' }}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
           onError={(e) => {
             (e.currentTarget as HTMLImageElement).style.display = 'none';
           }}
@@ -753,12 +758,13 @@ function RibbonCell({
           src={sp.logoUrl}
           alt=""
           style={{
-            // Natural aspect + taller so the logo fills the ribbon and
-            // reads as part of it — no boxed-in, shrunken square, no
-            // backdrop behind it.
-            height: h * 0.74,
-            width: 'auto',
-            maxWidth: h * 2.6,
+            // FIXED-size box (NOT natural width): a scrolling reel
+            // needs deterministic cell widths or the seamless loop
+            // drifts into black. The box is wide, not square, so a
+            // logo shows full and uncrushed; objectFit:contain never
+            // crops; no backdrop, so it sits on the dark ribbon.
+            height: h * 0.66,
+            width: h * 1.85,
             objectFit: 'contain',
             marginRight: h * 0.22,
           }}
