@@ -21,6 +21,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
+import { SituationalRow, hasSituational } from '@/components/widgets/v2/_shared/sports-situational';
 import { useParams, useSearchParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import { findSport } from '@cms/api-types';
@@ -230,6 +231,8 @@ export default function ScorebugPage() {
   const awayColor = data.awayColor || DEFAULT_AWAY;
   const hasClock = def.clock.type !== 'none';
   const cueAbove = pos.v === 'bottom';
+  const sit = data.stats || {};
+  const showSit = hasSituational(def, sit);
 
   return (
     <>
@@ -351,6 +354,33 @@ export default function ScorebugPage() {
               side="away"
             />
           </div>
+
+          {/* situational strip — down & distance, base / ball / strike,
+              timeout pips. Same shared renderer the in-venue board and
+              the scoreboard widget use, in a compact pill below the bug
+              so a broadcast viewer gets the full live game state. */}
+          {showSit && (
+            <div
+              style={{
+                marginTop: 6,
+                background: 'linear-gradient(135deg, #1e2638, #0b0f1a)',
+                border: '1.5px solid #2a3650',
+                borderRadius: 10,
+                overflow: 'hidden',
+                boxShadow: '0 6px 26px rgba(0,0,0,0.6)',
+              }}
+            >
+              <SituationalRow
+                def={def}
+                stats={sit}
+                h={230}
+                accent="#fbbf24"
+                ink="#ffffff"
+                dim="#64748b"
+                hairline="transparent"
+              />
+            </div>
+          )}
         </div>
       </div>
     </>

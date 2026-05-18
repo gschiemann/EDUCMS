@@ -96,8 +96,41 @@ function Count({ label, n, filled, accent, dim, h }: { label: string; n: number;
 
 type RowProps = { def: SportDefinition; stats: Record<string, unknown>; h: number } & SituationalColors;
 
+/**
+ * Does this sport + state actually have a broadcast situational graphic
+ * worth drawing? A compact surface (the scorebug) calls this to decide
+ * whether to render the strip's frame at all; `SituationalRow` itself
+ * uses it as the empty-guard, so the predicate and the renderer can
+ * never disagree about whether there is anything to show.
+ */
+export function hasSituational(def: SportDefinition, stats: Record<string, unknown>): boolean {
+  // Baseball / softball always have a live count worth showing.
+  if (def.segment.name === 'Inning') return true;
+  // Football — only once a down is set, the ball has a spot, or
+  // possession is known.
+  if (def.key === 'football') {
+    return (
+      num(stats.down) > 0 ||
+      side(stats.possession) !== null ||
+      (stats.ballOn !== undefined && stats.ballOn !== null && stats.ballOn !== '')
+    );
+  }
+  // Basketball — timeout pips are always meaningful.
+  if (def.key === 'basketball') return true;
+  // Rally sports show a serve indicator when a server is set.
+  if ((def.key === 'volleyball' || def.key === 'pickleball') && String(stats.serving || '').trim()) {
+    return true;
+  }
+  // Everything else — only if at least one SportDefinition stat has a value.
+  return def.stats.some((s) => {
+    const raw = stats[s.key];
+    return raw !== undefined && raw !== null && raw !== '';
+  });
+}
+
 /** The broadcast situational strip — dispatches on sport. */
 export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: RowProps) {
+  if (!hasSituational(def, stats)) return null;
   const rowStyle: CSSProperties = {
     display: 'flex',
     alignItems: 'center',
