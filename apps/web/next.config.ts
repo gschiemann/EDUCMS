@@ -24,6 +24,24 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Security headers on every route. Closes the clickjacking gap
+        // (no X-Frame-Options / frame-ancestors existed before),
+        // enforces HTTPS, and blocks MIME-sniffing. A full content CSP
+        // (script-src / style-src) is deliberately NOT set here: the
+        // widget system renders pervasive inline styles and inline
+        // <style> blocks, so an enforcing content CSP needs a
+        // nonce-based rollout verified across every player + widget
+        // surface. These five headers carry zero rendering risk.
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+        ],
+      },
+      {
         source: '/player',
         headers: [
           { key: 'Cache-Control', value: 'no-store, must-revalidate, max-age=0' },
