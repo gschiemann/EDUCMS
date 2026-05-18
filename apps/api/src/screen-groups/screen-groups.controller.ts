@@ -4,6 +4,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
+import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import {
+  ScreenGroupCreateSchema, type ScreenGroupCreateInput,
+  ScreenGroupUpdateSchema, type ScreenGroupUpdateInput,
+  ScreenGroupAssignScreensSchema, type ScreenGroupAssignScreensInput,
+} from '@cms/api-types';
 
 // Same staleness threshold as screens.controller.ts list() — keep in
 // sync. Source of truth is the screens controller; this duplicate
@@ -104,7 +110,7 @@ export class ScreenGroupsController {
 
   @Post()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async create(@Request() req: any, @Body() body: { name: string; description?: string }) {
+  async create(@Request() req: any, @Body(new ZodValidationPipe(ScreenGroupCreateSchema)) body: ScreenGroupCreateInput) {
     return this.prisma.client.screenGroup.create({
       data: {
         tenantId: req.user.tenantId,
@@ -116,7 +122,7 @@ export class ScreenGroupsController {
 
   @Put(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async update(@Request() req: any, @Param('id') id: string, @Body() body: { name?: string; description?: string }) {
+  async update(@Request() req: any, @Param('id') id: string, @Body(new ZodValidationPipe(ScreenGroupUpdateSchema)) body: ScreenGroupUpdateInput) {
     const group = await this.prisma.client.screenGroup.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
@@ -130,7 +136,7 @@ export class ScreenGroupsController {
 
   @Put(':id/screens')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async assignScreens(@Request() req: any, @Param('id') id: string, @Body() body: { screenIds: string[] }) {
+  async assignScreens(@Request() req: any, @Param('id') id: string, @Body(new ZodValidationPipe(ScreenGroupAssignScreensSchema)) body: ScreenGroupAssignScreensInput) {
     const group = await this.prisma.client.screenGroup.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });

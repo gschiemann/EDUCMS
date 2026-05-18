@@ -434,6 +434,54 @@ export const ScheduleUpdateSchema = z
   .passthrough();
 export type ScheduleUpdateInput = z.infer<typeof ScheduleUpdateSchema>;
 
+// ─────────────────────────────────────────────────────────────
+// Screen-group & submission request bodies. `.passthrough()` —
+// same retrofit contract as the schemas above.
+// ─────────────────────────────────────────────────────────────
+
+const IdArray = z.array(Id).max(5000);
+
+export const ScreenGroupCreateSchema = z
+  .object({
+    name: BoundedText(200),
+    description: BoundedText(2000).optional(),
+  })
+  .passthrough();
+export type ScreenGroupCreateInput = z.infer<typeof ScreenGroupCreateSchema>;
+
+export const ScreenGroupUpdateSchema = z
+  .object({
+    name: BoundedText(200).optional(),
+    description: BoundedText(2000).optional(),
+  })
+  .passthrough();
+export type ScreenGroupUpdateInput = z.infer<typeof ScreenGroupUpdateSchema>;
+
+export const ScreenGroupAssignScreensSchema = z
+  .object({
+    screenIds: IdArray,
+  })
+  .passthrough();
+export type ScreenGroupAssignScreensInput = z.infer<typeof ScreenGroupAssignScreensSchema>;
+
+export const SubmissionCreateSchema = z
+  .object({
+    note: BoundedText(5000).optional(),
+    notifyUserIds: IdArray.optional(),
+    assetIds: IdArray.optional(),
+    playlistIds: IdArray.optional(),
+    scheduleIds: IdArray.optional(),
+  })
+  .passthrough();
+export type SubmissionCreateInput = z.infer<typeof SubmissionCreateSchema>;
+
+export const SubmissionDecisionSchema = z
+  .object({
+    reviewerNote: BoundedText(5000).optional(),
+  })
+  .passthrough();
+export type SubmissionDecisionInput = z.infer<typeof SubmissionDecisionSchema>;
+
 
 // VenueOS — multi-industry vertical taxonomy (2026-05-02).
 // Drives Tenant.vertical, Template.vertical, terminology, defaults.

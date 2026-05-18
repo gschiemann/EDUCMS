@@ -30,6 +30,11 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import {
+  SubmissionCreateSchema, type SubmissionCreateInput,
+  SubmissionDecisionSchema, type SubmissionDecisionInput,
+} from '@cms/api-types';
 
 /** Comma-separated CSV → string[] (filtered to non-empty). */
 const fromCsv = (s: string | null | undefined): string[] =>
@@ -54,13 +59,7 @@ export class SubmissionsController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async create(
     @Request() req: any,
-    @Body() body: {
-      note?: string;
-      notifyUserIds?: string[];
-      assetIds?: string[];
-      playlistIds?: string[];
-      scheduleIds?: string[];
-    },
+    @Body(new ZodValidationPipe(SubmissionCreateSchema)) body: SubmissionCreateInput,
   ) {
     const tenantId = req.user.tenantId as string;
     const userId = req.user.id as string;
@@ -238,14 +237,14 @@ export class SubmissionsController {
   /** Approve a pending submission. Publishes bundled content + audits. */
   @Post(':id/approve')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async approve(@Request() req: any, @Param('id') id: string, @Body() body: { reviewerNote?: string }) {
+  async approve(@Request() req: any, @Param('id') id: string, @Body(new ZodValidationPipe(SubmissionDecisionSchema)) body: SubmissionDecisionInput) {
     return this.decide(req, id, 'APPROVED', body?.reviewerNote);
   }
 
   /** Reject a pending submission. Records reviewer feedback + audits. */
   @Post(':id/reject')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async reject(@Request() req: any, @Param('id') id: string, @Body() body: { reviewerNote?: string }) {
+  async reject(@Request() req: any, @Param('id') id: string, @Body(new ZodValidationPipe(SubmissionDecisionSchema)) body: SubmissionDecisionInput) {
     return this.decide(req, id, 'REJECTED', body?.reviewerNote);
   }
 
