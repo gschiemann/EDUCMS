@@ -36,6 +36,8 @@ interface Cue {
   mediaUrl?: string | null;
   color?: string | null;
   durationMs?: number;
+  // Which surfaces play this cue — BOARD / RIBBON / ALL (default ALL).
+  target?: string;
   // Frozen live-game snapshot, captured server-side at cue-fire time —
   // so a celebration shows the EXACT score + clock of the moment.
   snapshot?: {
@@ -90,6 +92,12 @@ interface BoardData {
 
 const DEFAULT_HOME = '#4f46e5';
 const DEFAULT_AWAY = '#dc2626';
+
+/** This is the scoreboard surface — it plays BOARD- and ALL-targeted
+ *  cues (and legacy untargeted ones); a RIBBON-only cue is skipped. */
+function cuePlaysHere(target?: string): boolean {
+  return target !== 'RIBBON';
+}
 // 750ms — sub-second sync. A score / clock / cue change reaches every
 // surface (board, ribbon, scorebug) within ~0.75s and they stay near
 // lockstep, instead of the up-to-2s lag + drift of slow polling.
@@ -956,7 +964,8 @@ export default function ScoreboardPage() {
           seenCues.current.add(c.id);
           // The very first poll's cues already happened before the
           // board opened — record them as seen but don't replay.
-          if (!firstLoad.current) cueQueue.current.push(c);
+          // Skip cues targeted only at the ribbon.
+          if (!firstLoad.current && cuePlaysHere(c.target)) cueQueue.current.push(c);
         }
         firstLoad.current = false;
         pumpCues();

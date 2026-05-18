@@ -32,6 +32,15 @@ interface Cue {
   key?: string;
   label?: string;
   emoji?: string;
+  // Which surfaces play this cue — BOARD / RIBBON / ALL (default ALL).
+  target?: string;
+}
+
+/** The scorebug is a scoreboard surface — it plays BOARD- and
+ *  ALL-targeted cues (and legacy untargeted ones); a RIBBON-only
+ *  cue is skipped. */
+function cuePlaysHere(target?: string): boolean {
+  return target !== 'RIBBON';
 }
 interface BoardData {
   id: string;
@@ -195,7 +204,8 @@ export default function ScorebugPage() {
         for (const c of json.cues || []) {
           if (seenCues.current.has(c.id)) continue;
           seenCues.current.add(c.id);
-          if (!firstLoad.current) cueQueue.current.push(c);
+          // Skip cues targeted only at the ribbon.
+          if (!firstLoad.current && cuePlaysHere(c.target)) cueQueue.current.push(c);
         }
         firstLoad.current = false;
         pumpCues();

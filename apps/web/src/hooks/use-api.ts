@@ -2094,8 +2094,9 @@ export function useGameControl(gameId: string) {
     onSuccess: writeBack,
   });
   const cue = useMutation({
-    // key → a built-in sport celebration; cueId → an operator cue-deck cue.
-    mutationFn: (body: { key?: string; cueId?: string }) =>
+    // key → a built-in sport celebration; cueId → an operator cue-deck
+    // cue. target → which surfaces play it (BOARD / RIBBON / ALL).
+    mutationFn: (body: { key?: string; cueId?: string; target?: string }) =>
       apiFetch(`/sports/games/${gameId}/cue`, { method: 'POST', body: JSON.stringify(body) }),
   });
   const spotlight = useMutation({

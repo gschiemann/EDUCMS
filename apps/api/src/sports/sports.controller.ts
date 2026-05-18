@@ -254,7 +254,7 @@ export class SportsController {
   cue(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { key?: string; cueId?: string },
+    @Body() body: { key?: string; cueId?: string; target?: string },
   ) {
     return this.sports.fireCue(req.user.tenantId, id, body);
   }

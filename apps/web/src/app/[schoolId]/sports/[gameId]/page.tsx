@@ -45,7 +45,7 @@ import {
 import { findSport, PLAYER_STATS } from '@cms/api-types';
 import type { SportDefinition, SportStatField } from '@cms/api-types';
 import { RosterPanel } from './RosterPanel';
-import { CueDeckPanel } from './CueDeckPanel';
+import { CueLaunchpad } from './CueLaunchpad';
 import { SponsorPanel } from './SponsorPanel';
 import { RibbonPanel } from './RibbonPanel';
 import { RibbonPresetsPanel } from './RibbonPresetsPanel';
@@ -314,21 +314,10 @@ function GameControl() {
         </Section>
       </div>
 
-      {/* celebrations */}
-      <Section title="Celebration cues">
-        <p className="text-xs text-slate-400 mb-3">
-          Tap a cue — every scoreboard playing this game fires the animation.
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-          {def.celebrations.map((c) => (
-            <CueButton key={c.key} cue={c} onFire={() => ctl.cue.mutate({ key: c.key })} />
-          ))}
-        </div>
-      </Section>
-
-      {/* cue deck — operator-built triggers with uploaded takeover content */}
-      <Section title="Cue deck">
-        <CueDeckPanel gameId={gameId} />
+      {/* cue launchpad — built-in celebrations + custom cues in one
+          grid, with a per-fire target picker (scoreboard / ribbon / all) */}
+      <Section title="Cues">
+        <CueLaunchpad gameId={gameId} def={def} />
       </Section>
 
       {/* ribbon content — sport-aware presets the operator toggles on/off */}
@@ -680,41 +669,6 @@ function ClockControls({
         </span>
       </div>
     </div>
-  );
-}
-
-function CueButton({
-  cue,
-  onFire,
-}: {
-  cue: { key: string; label: string; emoji: string };
-  onFire: () => void;
-}) {
-  const [fired, setFired] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-
-  const fire = () => {
-    onFire();
-    setFired(true);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setFired(false), 1400);
-  };
-
-  return (
-    <button
-      onClick={fire}
-      className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 px-2 transition-all ${
-        fired
-          ? 'border-green-500 bg-green-50 scale-95'
-          : 'border-slate-200 hover:border-indigo-300 hover:bg-indigo-50'
-      }`}
-    >
-      <span className="text-3xl">{cue.emoji}</span>
-      <span className="text-xs font-semibold text-slate-700 text-center leading-tight">
-        {fired ? 'Fired!' : cue.label}
-      </span>
-    </button>
   );
 }
 

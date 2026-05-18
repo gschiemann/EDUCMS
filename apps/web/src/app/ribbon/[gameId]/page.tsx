@@ -42,6 +42,31 @@ interface Player {
   photoUrl: string | null;
   stats: Record<string, string>;
 }
+/** A fired celebration cue — the ribbon plays the ones targeted at it. */
+interface Cue {
+  id: string;
+  key?: string;
+  label?: string;
+  emoji?: string;
+  // Custom cue-deck fields — a full-ribbon takeover of uploaded art.
+  custom?: boolean;
+  mediaUrl?: string | null;
+  color?: string | null;
+  durationMs?: number;
+  // Which surfaces play this cue — BOARD / RIBBON / ALL (default ALL).
+  target?: string;
+  // The score frozen at cue-fire time, captured server-side.
+  snapshot?: {
+    homeTeam: string;
+    awayTeam: string;
+    homeScore: number;
+    awayScore: number;
+    homeColor?: string | null;
+    awayColor?: string | null;
+    segmentLabel?: string;
+    clockText?: string;
+  };
+}
 interface BoardData {
   id: string;
   sport: string;
@@ -65,6 +90,8 @@ interface BoardData {
   /** Which content presets ride the reel — resolved server-side
    *  (stored config, or the sport's full default-on set). */
   ribbonPresets?: string[];
+  /** Recent celebration cues — the board feed's 20s cue window. */
+  cues?: Cue[];
   serverTime: number;
 }
 
@@ -72,6 +99,13 @@ interface BoardData {
 const POLL_MS = 750;
 const DEFAULT_HOME = '#4f46e5';
 const DEFAULT_AWAY = '#dc2626';
+
+/** This is the ribbon surface — it plays RIBBON- and ALL-targeted
+ *  cues (and legacy untargeted ones); a scoreboard-only cue is
+ *  skipped, so a cue fired "to the scoreboard" never hits the ribbon. */
+function cuePlaysHere(target?: string): boolean {
+  return target !== 'BOARD';
+}
 
 // ── helpers ────────────────────────────────────────────────────
 
@@ -284,6 +318,36 @@ export default function RibbonPage() {
   const [baseW, setBaseW] = useState(0);
   const measureRef = useRef<HTMLDivElement>(null);
 
+  // cue playback — celebrations the operator fired at the ribbon (or ALL)
+  const [activeCue, setActiveCue] = useState<Cue | null>(null);
+  const seenCues = useRef<Set<string>>(new Set());
+  const cueQueue = useRef<Cue[]>([]);
+  const firstLoad = useRef(true);
+  const playing = useRef(false);
+  const cueTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pumpCues = () => {
+    if (playing.current) return;
+    const next = cueQueue.current.shift();
+    if (!next) return;
+    playing.current = true;
+    setActiveCue(next);
+    // A custom cue holds for its own duration; a sport celebration
+    // matches the 3.9s celebration animation.
+    const holdMs =
+      next.mediaUrl && next.durationMs && next.durationMs > 0 ? next.durationMs : 3900;
+    cueTimer.current = setTimeout(() => {
+      setActiveCue(null);
+      playing.current = false;
+      pumpCues();
+    }, holdMs);
+  };
+
+  // Cancel a pending cue timer on unmount (kiosk route reloads).
+  useEffect(() => () => {
+    if (cueTimer.current) clearTimeout(cueTimer.current);
+  }, []);
+
   // viewport measure
   useEffect(() => {
     const measure = () =>
@@ -306,7 +370,19 @@ export default function RibbonPage() {
         const res = await fetch(`${API_URL}/sports/board/${gameId}`, { cache: 'no-store' });
         if (!res.ok) return;
         const json: BoardData = await res.json();
-        if (alive) { setData(json); writeBoardCache(gameId, json); }
+        if (!alive) return;
+        setData(json);
+        writeBoardCache(gameId, json);
+        // Queue new celebration cues targeted at the ribbon. The first
+        // poll's cues already happened before the ribbon opened —
+        // record them as seen but don't replay.
+        for (const c of json.cues || []) {
+          if (seenCues.current.has(c.id)) continue;
+          seenCues.current.add(c.id);
+          if (!firstLoad.current && cuePlaysHere(c.target)) cueQueue.current.push(c);
+        }
+        firstLoad.current = false;
+        pumpCues();
       } catch {
         /* keep the last good frame */
       }
@@ -373,7 +449,7 @@ export default function RibbonPage() {
         fontFamily: 'Inter, system-ui, sans-serif',
       }}
     >
-      <style>{`@keyframes ribbonScroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}`}</style>
+      <style>{`@keyframes ribbonScroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}@keyframes ribbonCueShow{0%{opacity:0}8%{opacity:1}90%{opacity:1}100%{opacity:0}}@keyframes ribbonCuePop{0%{transform:scale(0.7)}14%{transform:scale(1.06)}24%{transform:scale(1)}100%{transform:scale(1)}}@keyframes ribbonCueIn{from{opacity:0}to{opacity:1}}`}</style>
 
       {/* hidden measurer — one reel copy */}
       <div
@@ -407,6 +483,9 @@ export default function RibbonPage() {
           </div>
         ))}
       </div>
+
+      {/* celebration cue overlay — a fired cue takes over the ribbon */}
+      {activeCue && <RibbonCueOverlay cue={activeCue} h={h} />}
     </div>
   );
 }
@@ -697,6 +776,113 @@ function TeamMark({
       >
         {teamCode(name)}
       </span>
+    </div>
+  );
+}
+
+// ── celebration cue overlay ────────────────────────────────────
+
+/**
+ * A fired cue takes over the whole ribbon for its hold window. A
+ * custom cue shows the operator's uploaded art; a sport celebration
+ * shows the emoji + label + the score frozen at fire time.
+ *
+ * Chromium-83 safe (NovaStar Taurus): long-hand insets, no flex
+ * `gap` (per-child margin), animation is opacity / transform only.
+ */
+function RibbonCueOverlay({ cue, h }: { cue: Cue; h: number }) {
+  // Custom cue — a full-ribbon takeover of the operator's uploaded art.
+  if (cue.mediaUrl) {
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: cue.color || '#05070d',
+          zIndex: 60,
+          animation: 'ribbonCueIn 0.45s ease-out',
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={cue.mediaUrl}
+          alt=""
+          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+        />
+      </div>
+    );
+  }
+
+  // Sport celebration — emoji + label + the frozen score snapshot.
+  const snap = cue.snapshot;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(5,7,13,0.94)',
+        overflow: 'hidden',
+        zIndex: 60,
+        animation: 'ribbonCueShow 3.9s ease-in-out forwards',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          animation: 'ribbonCuePop 3.9s cubic-bezier(.2,.9,.2,1) forwards',
+        }}
+      >
+        <span style={{ fontSize: h * 0.62, lineHeight: 1, marginRight: h * 0.16 }}>
+          {cue.emoji || '🎉'}
+        </span>
+        <span
+          style={{
+            fontSize: h * 0.4,
+            fontWeight: 900,
+            letterSpacing: 4,
+            color: '#fff',
+            whiteSpace: 'nowrap',
+            textShadow: '0 6px 30px rgba(0,0,0,0.85)',
+          }}
+        >
+          {(cue.label || cue.key || 'NICE!').toUpperCase()}
+        </span>
+        {snap && (
+          <span
+            style={{
+              marginLeft: h * 0.22,
+              fontSize: h * 0.34,
+              fontWeight: 900,
+              color: '#fff',
+              whiteSpace: 'nowrap',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            <span style={{ color: snap.homeColor || '#fff', letterSpacing: 1 }}>
+              {teamCode(snap.homeTeam)}
+            </span>
+            <span style={{ margin: `0 ${Math.round(h * 0.07)}px` }}>{snap.homeScore}</span>
+            <span style={{ color: '#475569' }}>–</span>
+            <span style={{ margin: `0 ${Math.round(h * 0.07)}px` }}>{snap.awayScore}</span>
+            <span style={{ color: snap.awayColor || '#fff', letterSpacing: 1 }}>
+              {teamCode(snap.awayTeam)}
+            </span>
+          </span>
+        )}
+      </div>
     </div>
   );
 }

@@ -1104,14 +1104,34 @@ export class SportsService {
   }
 
   /**
+   * Normalize an untrusted cue target — which surfaces play the cue:
+   *   BOARD  — scoreboards + broadcast scorebugs
+   *   RIBBON — ribbon / fascia boards
+   *   ALL    — every surface showing this game
+   * Defaults to ALL. The target rides in the CUE payload; each
+   * surface checks it before playing, so one tap can light up the
+   * ribbon, the scoreboards, or every screen showing the game.
+   */
+  private cleanCueTarget(v: unknown): 'BOARD' | 'RIBBON' | 'ALL' {
+    const s = String(v || 'ALL').toUpperCase();
+    return s === 'BOARD' || s === 'RIBBON' ? s : 'ALL';
+  }
+
+  /**
    * Fire a cue. Either a built-in sport celebration (`key` — "Touchdown",
    * "GOAL!", validated against the sport) OR an operator-built custom
    * cue (`cueId` — a named trigger with uploaded takeover content).
+   * `target` scopes which surfaces play it (scoreboard / ribbon / all).
    * Both land as a CUE GameEvent that every surface playing the game
-   * polls and plays.
+   * polls; a surface plays the cue only when the target includes it.
    */
-  async fireCue(tenantId: string, id: string, dto: { key?: string; cueId?: string }) {
+  async fireCue(
+    tenantId: string,
+    id: string,
+    dto: { key?: string; cueId?: string; target?: string },
+  ) {
     const game = await this.owned(tenantId, id);
+    const target = this.cleanCueTarget(dto.target);
 
     // Custom cue — operator-defined trigger from the cue deck.
     if (dto.cueId) {
@@ -1126,9 +1146,10 @@ export class SportsService {
         color: cc.color || null,
         durationMs: cc.durationMs,
         custom: true,
+        target,
         snapshot: this.cueSnapshot(game),
       });
-      return { fired: true, cueId: cc.id, eventId: event.id };
+      return { fired: true, cueId: cc.id, target, eventId: event.id };
     }
 
     const def = this.sportOf(game.sport);
@@ -1140,9 +1161,10 @@ export class SportsService {
       key: cue.key,
       label: cue.label,
       emoji: cue.emoji,
+      target,
       snapshot: this.cueSnapshot(game),
     });
-    return { fired: true, cue, eventId: event.id };
+    return { fired: true, cue, target, eventId: event.id };
   }
 
   /**
