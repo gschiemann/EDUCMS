@@ -10,6 +10,16 @@ import { AppRole } from '@cms/database';
 import { SYSTEM_TEMPLATE_PRESETS } from './system-presets';
 import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
 import { AiService } from '../ai/ai.service';
+import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import {
+  TemplateNameOnlySchema, type TemplateNameOnlyInput,
+  TemplateSceneUpdateSchema, type TemplateSceneUpdateInput,
+  TemplateCreateSchema, type TemplateCreateInput,
+  TemplateGenerateTouchSchema, type TemplateGenerateTouchInput,
+  TemplateDuplicateSchema, type TemplateDuplicateInput,
+  TemplateUpdateSchema, type TemplateUpdateInput,
+  TemplateReplaceZonesSchema, type TemplateReplaceZonesInput,
+} from '@cms/api-types';
 
 @Controller('api/v1/templates')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -518,7 +528,7 @@ export class TemplatesController {
   async createScene(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { name?: string },
+    @Body(new ZodValidationPipe(TemplateNameOnlySchema)) body: TemplateNameOnlyInput,
   ) {
     const tpl = await this.assertOwnedTemplate(id, req.user.tenantId);
     const name = (body?.name || 'Untitled scene').trim().slice(0, 80);
@@ -548,7 +558,7 @@ export class TemplatesController {
     @Request() req: any,
     @Param('id') id: string,
     @Param('sceneId') sceneId: string,
-    @Body() body: { name?: string; sortOrder?: number; isDefault?: boolean },
+    @Body(new ZodValidationPipe(TemplateSceneUpdateSchema)) body: TemplateSceneUpdateInput,
   ) {
     const tpl = await this.assertOwnedTemplate(id, req.user.tenantId);
     const scene = await (this.prisma.client as any).templateScene.findFirst({
@@ -671,28 +681,7 @@ export class TemplatesController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async create(
     @Request() req: any,
-    @Body() body: {
-      name: string;
-      description?: string;
-      category?: string;
-      orientation?: string;
-      screenWidth?: number;
-      screenHeight?: number;
-      bgColor?: string;
-      bgImage?: string;
-      bgGradient?: string;
-      zones?: Array<{
-        name: string;
-        widgetType: string;
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-        zIndex?: number;
-        sortOrder?: number;
-        defaultConfig?: any;
-      }>;
-    },
+    @Body(new ZodValidationPipe(TemplateCreateSchema)) body: TemplateCreateInput,
   ) {
     if (!body.name?.trim()) {
       throw new HttpException('Template name is required', HttpStatus.BAD_REQUEST);
@@ -772,12 +761,7 @@ export class TemplatesController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async generateTouchTemplate(
     @Request() req: any,
-    @Body() body: {
-      prompt: string;
-      screenWidth?: number;
-      screenHeight?: number;
-      vertical?: string;
-    },
+    @Body(new ZodValidationPipe(TemplateGenerateTouchSchema)) body: TemplateGenerateTouchInput,
   ) {
     const result = await this.ai.generateTouchTemplate({
       tenantId: req.user.tenantId,
@@ -911,7 +895,7 @@ export class TemplatesController {
   async createFromPreset(
     @Request() req: any,
     @Param('presetId') presetId: string,
-    @Body() body: { name?: string },
+    @Body(new ZodValidationPipe(TemplateNameOnlySchema)) body: TemplateNameOnlyInput,
   ) {
     // Try database first (seeded system templates)
     let source = await this.prisma.client.template.findFirst({
@@ -1023,18 +1007,7 @@ export class TemplatesController {
   async duplicate(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: {
-      name?: string;
-      // 2026-05-13 — "Adapt for LED" flow: operator-picked canvas size
-      // override. When provided, the duplicate keeps every zone's
-      // %-based position but rerenders at a different canvas aspect.
-      // Widgets scale themselves to their new zone dimensions via their
-      // internal useScaleToFit hooks, so the design is preserved without
-      // stretching. Operator then drag-adjusts in the builder to taste.
-      screenWidth?: number;
-      screenHeight?: number;
-      orientation?: string;
-    },
+    @Body(new ZodValidationPipe(TemplateDuplicateSchema)) body: TemplateDuplicateInput,
   ) {
     const source = await this.prisma.client.template.findFirst({
       where: {
@@ -1121,24 +1094,7 @@ export class TemplatesController {
   async update(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: {
-      name?: string;
-      description?: string;
-      category?: string;
-      orientation?: string;
-      screenWidth?: number;
-      screenHeight?: number;
-      status?: string;
-      bgColor?: string | null;
-      bgImage?: string | null;
-      bgGradient?: string | null;
-      // Phase D — touch toggle + idle-reset now persist. The builder's
-      // BuilderShell.handleSave sends these on every save; before this,
-      // toggling touch mode in the toolbar was a purely local state
-      // change that vanished on the next refresh (Functional audit #2).
-      isTouchEnabled?: boolean;
-      idleResetMs?: number;
-    },
+    @Body(new ZodValidationPipe(TemplateUpdateSchema)) body: TemplateUpdateInput,
   ) {
     const template = await this.prisma.client.template.findFirst({
       where: { id, tenantId: req.user.tenantId },
@@ -1186,26 +1142,7 @@ export class TemplatesController {
   async replaceZones(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: {
-      zones: Array<{
-        name: string;
-        widgetType: string;
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-        zIndex?: number;
-        sortOrder?: number;
-        defaultConfig?: any;
-        /** Phase D1 — TouchActionConfig JSON. Null clears it. */
-        touchAction?: any;
-        /** Phase D2.5 — TemplateScene.id this zone belongs to, or null
-         *  for a "shared" zone that renders in every scene. Validated
-         *  against scenes belonging to THIS template — passing a scene
-         *  id from a different template returns 400. */
-        sceneId?: string | null;
-      }>;
-    },
+    @Body(new ZodValidationPipe(TemplateReplaceZonesSchema)) body: TemplateReplaceZonesInput,
   ) {
     const template = await this.prisma.client.template.findFirst({
       where: { id, tenantId: req.user.tenantId },

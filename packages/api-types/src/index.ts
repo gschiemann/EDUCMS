@@ -482,6 +482,104 @@ export const SubmissionDecisionSchema = z
   .passthrough();
 export type SubmissionDecisionInput = z.infer<typeof SubmissionDecisionSchema>;
 
+// ─────────────────────────────────────────────────────────────
+// Template request bodies. `.passthrough()` — same retrofit
+// contract. Zone defaultConfig / touchAction are arbitrary
+// widget JSON, kept verbatim (z.any()); the controllers still
+// run validateZoneBounds() and the brand-merge on every zone.
+// ─────────────────────────────────────────────────────────────
+
+const TemplateZoneBodySchema = z
+  .object({
+    name: BoundedText(200),
+    widgetType: BoundedText(64),
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+    zIndex: z.number().int().optional(),
+    sortOrder: z.number().int().optional(),
+    defaultConfig: z.any().optional(),
+    touchAction: z.any().optional(),
+    sceneId: BoundedText(128).nullish(),
+  })
+  .passthrough();
+
+export const TemplateNameOnlySchema = z
+  .object({ name: BoundedText(200).optional() })
+  .passthrough();
+export type TemplateNameOnlyInput = z.infer<typeof TemplateNameOnlySchema>;
+
+export const TemplateSceneUpdateSchema = z
+  .object({
+    name: BoundedText(200).optional(),
+    sortOrder: z.number().int().optional(),
+    isDefault: z.boolean().optional(),
+  })
+  .passthrough();
+export type TemplateSceneUpdateInput = z.infer<typeof TemplateSceneUpdateSchema>;
+
+export const TemplateCreateSchema = z
+  .object({
+    name: BoundedText(200).min(1),
+    description: BoundedText(2000).optional(),
+    category: BoundedText(64).optional(),
+    orientation: BoundedText(32).optional(),
+    screenWidth: z.number().optional(),
+    screenHeight: z.number().optional(),
+    bgColor: BoundedText(256).optional(),
+    bgImage: BoundedText(2048).optional(),
+    bgGradient: BoundedText(1024).optional(),
+    zones: z.array(TemplateZoneBodySchema).max(500).optional(),
+  })
+  .passthrough();
+export type TemplateCreateInput = z.infer<typeof TemplateCreateSchema>;
+
+export const TemplateGenerateTouchSchema = z
+  .object({
+    prompt: BoundedText(8000),
+    screenWidth: z.number().optional(),
+    screenHeight: z.number().optional(),
+    vertical: BoundedText(40).optional(),
+  })
+  .passthrough();
+export type TemplateGenerateTouchInput = z.infer<typeof TemplateGenerateTouchSchema>;
+
+export const TemplateDuplicateSchema = z
+  .object({
+    name: BoundedText(200).optional(),
+    screenWidth: z.number().optional(),
+    screenHeight: z.number().optional(),
+    orientation: BoundedText(32).optional(),
+  })
+  .passthrough();
+export type TemplateDuplicateInput = z.infer<typeof TemplateDuplicateSchema>;
+
+export const TemplateUpdateSchema = z
+  .object({
+    name: BoundedText(200).optional(),
+    description: BoundedText(2000).optional(),
+    category: BoundedText(64).optional(),
+    orientation: BoundedText(32).optional(),
+    screenWidth: z.number().optional(),
+    screenHeight: z.number().optional(),
+    status: BoundedText(32).optional(),
+    bgColor: BoundedText(256).nullish(),
+    bgImage: BoundedText(2048).nullish(),
+    bgGradient: BoundedText(1024).nullish(),
+    isTouchEnabled: z.boolean().optional(),
+    idleResetMs: z.number().optional(),
+  })
+  .passthrough();
+export type TemplateUpdateInput = z.infer<typeof TemplateUpdateSchema>;
+
+export const TemplateReplaceZonesSchema = z
+  .object({
+    zones: z.array(TemplateZoneBodySchema).max(500),
+  })
+  .passthrough();
+export type TemplateReplaceZonesInput = z.infer<typeof TemplateReplaceZonesSchema>;
+
 
 // VenueOS — multi-industry vertical taxonomy (2026-05-02).
 // Drives Tenant.vertical, Template.vertical, terminology, defaults.
