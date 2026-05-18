@@ -12,6 +12,7 @@ import * as jwt from 'jsonwebtoken';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { LicenseService } from '../license/license.service';
+import { StripeService } from '../billing/stripe.service';
 import { requireSecret } from '../security/required-secret';
 import {
   getTenantState,
@@ -117,6 +118,7 @@ export class ScreensController {
     private readonly redisService: RedisService,
     private readonly signer: WebsocketSignerService,
     private readonly license: LicenseService,
+    private readonly stripe: StripeService,
   ) {}
 
   private async notifySync(tenantId: string) {
@@ -947,6 +949,14 @@ export class ScreensController {
     }
 
     this.notifySync(req.user.tenantId);
+    // Keep the tenant's Stripe subscription quantity in lockstep with
+    // live paired-screen usage (Stripe auto-prorates). Fire-and-forget
+    // — a Stripe hiccup must never block pairing. A cross-tenant
+    // re-pair also re-syncs the tenant that just lost the screen.
+    this.stripe.syncSubscriptionQuantity(req.user.tenantId).catch(() => {});
+    if (previousTenantId && previousTenantId !== req.user.tenantId) {
+      this.stripe.syncSubscriptionQuantity(previousTenantId).catch(() => {});
+    }
     return updated;
   }
 
@@ -1047,6 +1057,8 @@ export class ScreensController {
     // Notify the prior tenant's dashboard so the screen list refreshes.
     if (previousTenantId) {
       try { this.notifySync(previousTenantId); } catch { /* ignore */ }
+      // The prior tenant just freed a seat — re-sync its Stripe quantity.
+      this.stripe.syncSubscriptionQuantity(previousTenantId).catch(() => {});
     }
 
     return { ok: true, screenId: screen.id, newPairingCode };
@@ -1547,6 +1559,8 @@ export class ScreensController {
     await this.prisma.client.schedule.deleteMany({ where: { screenId: id } });
     await this.prisma.client.screen.delete({ where: { id } });
     this.notifySync(req.user.tenantId);
+    // Deleting a paired screen frees a seat — re-sync Stripe quantity.
+    this.stripe.syncSubscriptionQuantity(req.user.tenantId).catch(() => {});
     return { deleted: true };
   }
 

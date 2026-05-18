@@ -100,6 +100,11 @@ export class BillingController {
   @Get('invoices')
   @RequireRoles(...BILLING_ROLES)
   async invoices(@Request() req: any) {
+    // Self-healing backstop: each time the operator opens billing,
+    // reconcile the Stripe subscription quantity with live screen
+    // usage in case a pair/unpair sync was ever missed. Fire-and-
+    // forget — it never blocks the invoice list.
+    this.stripe.syncSubscriptionQuantity(req.user.tenantId).catch(() => {});
     const invoices = await this.stripe.invoicesForTenant(req.user.tenantId);
     return { stripeEnabled: this.stripe.enabled(), invoices };
   }

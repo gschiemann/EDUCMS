@@ -94,6 +94,57 @@ export class StripeService {
   }
 
   /**
+   * Re-sync a tenant's Stripe subscription quantity to its live
+   * paired-screen count. Stripe prorates the change automatically, so
+   * the bill always tracks real usage — add a screen, the next
+   * invoice reflects it; unpair one, a proration credit lands.
+   *
+   * Best-effort and idempotent. It is a NO-OP when:
+   *   - Stripe is unconfigured on this deploy,
+   *   - the tenant has no card subscription yet,
+   *   - the License is INVOICE / PURCHASE_ORDER billed (those are a
+   *     contracted seat count — never auto-adjusted),
+   *   - the subscription is cancelled,
+   *   - the quantity already matches (no Stripe write at all).
+   *
+   * Callers fire this AFTER a screen is paired / unpaired / deleted
+   * and MUST NOT await it — a Stripe hiccup can never block pairing.
+   */
+  async syncSubscriptionQuantity(tenantId: string): Promise<void> {
+    const stripe = this.getClient();
+    if (!stripe) return;
+    const license = await this.prisma.client.license.findUnique({ where: { tenantId } });
+    if (!license?.stripeSubscriptionId) return;
+    // Invoice / PO tenants are billed on a contracted seat count — the
+    // operator tops them up by hand; never auto-adjust their plan.
+    if (license.billingMode && license.billingMode !== 'CARD') return;
+    if (license.status === 'CANCELLED') return;
+
+    let sub: Record<string, any>;
+    try {
+      sub = await stripe.subscriptions.retrieve(license.stripeSubscriptionId);
+    } catch (e) {
+      this.logger.warn(
+        `quantity sync skipped: subscription ${license.stripeSubscriptionId} ` +
+          `not retrievable — ${(e as Error).message}`,
+      );
+      return;
+    }
+    const item = sub.items?.data?.[0];
+    if (!item?.id) return;
+    const quantity = Math.max(1, await this.seatCount(tenantId));
+    if (item.quantity === quantity) return; // already in lockstep
+
+    await stripe.subscriptionItems.update(item.id, {
+      quantity,
+      proration_behavior: 'create_prorations',
+    });
+    this.logger.log(
+      `billing: tenant ${tenantId} subscription quantity ${item.quantity} → ${quantity}`,
+    );
+  }
+
+  /**
    * Create a Stripe-hosted Checkout Session for a per-screen
    * subscription. Quantity = the tenant's current paired-screen count.
    * Reuses the existing Stripe customer if the License row already
