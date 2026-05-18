@@ -4130,6 +4130,41 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
     }
   }
 
+  // ── Universal "make it your brand" text-style section ─────────────
+  // Every text-bearing widget gets Font + Text color + B/I/U/S — even
+  // the themed / MS / fitness widgets whose auto-form previously
+  // exposed CONTENT fields only. These write the zone-wide
+  // cfg.fontFamily / cfg.color / cfg.bold keys, which BuilderZone AND
+  // the player both inject as [data-zone-id]-scoped CSS — so the
+  // override renders identically in the editor and on the live screen.
+  // Skipped when: the widget already has a Font control (rich text —
+  // already fully styleable), it is a v2 widget (its own Style
+  // section covers this), or it is a pure-media widget with no text.
+  {
+    const MEDIA_ONLY = new Set(['IMAGE', 'IMAGE_CAROUSEL', 'VIDEO', 'VIDEO_CAROUSEL', 'LOGO', 'EXTERNAL_HTML']);
+    const isV2Widget = !!(cfg.variant && V2_BY_VARIANT_ID[String(cfg.variant)]);
+    const alreadyStyleable = fields.some((f: any) => f && f.key === 'fontFamily');
+    if (!alreadyStyleable && !isV2Widget && !MEDIA_ONLY.has(zone.widgetType)) {
+      fields.push(
+        <div key="_uts-hdr" className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">
+          Text style — make it your brand
+        </div>,
+      );
+      fields.push(<FontFamilyField key="_uts-font" label="Font" value={cfg.fontFamily || ''} onChange={(v) => setField({ fontFamily: v })} />);
+      fields.push(<ColorField key="_uts-color" label="Text color" value={cfg.color || ''} onChange={(v) => setField({ color: v })} allowTransparent />);
+      fields.push(
+        <FormatToggles
+          key="_uts-format"
+          bold={cfg.bold === true}
+          italic={cfg.italic === true}
+          underline={cfg.underline === true}
+          strikethrough={cfg.strikethrough === true}
+          onChange={(patch) => setField(patch)}
+        />,
+      );
+    }
+  }
+
   return (
     <section className="space-y-3">
       <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Content</h3>
