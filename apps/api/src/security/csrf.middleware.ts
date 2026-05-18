@@ -81,6 +81,12 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // call IS the legitimate caller; there's no ambient-cookie attack
   // surface to exploit.
   (p) => p === '/api/v1/notifications/help',
+  // Stripe billing webhook — Stripe's servers POST here with no
+  // cookies and no session, so a CSRF token round-trip is impossible.
+  // Authenticity is the Stripe signature, verified against
+  // STRIPE_WEBHOOK_SECRET in StripeService.constructWebhookEvent —
+  // CSRF's ambient-cookie threat model does not apply.
+  (p) => p === '/api/v1/billing/webhook',
 ];
 
 export function isCsrfExempt(method: string, path: string): boolean {

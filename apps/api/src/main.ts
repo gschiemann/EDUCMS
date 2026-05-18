@@ -35,7 +35,10 @@ const cookieParser = require('cookie-parser');
 const session = require('express-session');
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: true exposes req.rawBody (a Buffer) alongside the parsed
+  // body — required for Stripe webhook signature verification. Purely
+  // additive; req.body is unchanged for every other route.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   app.useWebSocketAdapter(new WsAdapter(app));
 
   // 2026-04-28 (Server audit P0) — trust the Railway edge proxy so
