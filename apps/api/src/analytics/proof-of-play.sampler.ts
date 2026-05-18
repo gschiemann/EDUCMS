@@ -37,6 +37,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ProofOfPlaySampler implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ProofOfPlaySampler.name);
   private timer: NodeJS.Timeout | null = null;
+  private firstRun: NodeJS.Timeout | null = null;
   private running = false;
 
   /** A screen counts as "online" if it pinged within this window. */
@@ -52,14 +53,24 @@ export class ProofOfPlaySampler implements OnModuleInit, OnModuleDestroy {
     const intervalMs = Number(process.env.PROOF_OF_PLAY_SAMPLE_INTERVAL_MS) || 600_000;
     this.logger.log(`ProofOfPlaySampler starting (interval=${intervalMs}ms)`);
     this.timer = setInterval(() => void this.tick(), intervalMs);
+    // First pass ~30s after boot — long enough for the DB pool to
+    // warm, then a deploy starts sampling right away instead of
+    // losing a whole interval (and the feature is testable in seconds
+    // once the migration is applied).
+    this.firstRun = setTimeout(() => void this.tick(), 30_000);
     // Don't keep the Node event loop alive on shutdown.
     this.timer.unref?.();
+    this.firstRun.unref?.();
   }
 
   onModuleDestroy() {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+    if (this.firstRun) {
+      clearTimeout(this.firstRun);
+      this.firstRun = null;
     }
   }
 

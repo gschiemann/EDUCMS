@@ -6,8 +6,13 @@
 -- history must survive a later playlist / screen delete. Purely
 -- additive — a new table only, no existing table is altered, so this
 -- is safe to apply to the live pilot.
+--
+-- Idempotent (IF NOT EXISTS): safe to run by hand (e.g. pasted into
+-- the Supabase SQL editor) AND safe to re-run / let `prisma db push`
+-- or `prisma migrate deploy` apply it later — it never errors on an
+-- already-created table.
 
-CREATE TABLE "playback_samples" (
+CREATE TABLE IF NOT EXISTS "playback_samples" (
   "id" TEXT NOT NULL,
   "tenant_id" TEXT NOT NULL,
   "screen_id" TEXT NOT NULL,
@@ -17,6 +22,6 @@ CREATE TABLE "playback_samples" (
   CONSTRAINT "playback_samples_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "playback_samples_tenant_id_sampled_at_idx" ON "playback_samples"("tenant_id", "sampled_at");
-CREATE INDEX "playback_samples_playlist_id_sampled_at_idx" ON "playback_samples"("playlist_id", "sampled_at");
-CREATE INDEX "playback_samples_screen_id_sampled_at_idx" ON "playback_samples"("screen_id", "sampled_at");
+CREATE INDEX IF NOT EXISTS "playback_samples_tenant_id_sampled_at_idx" ON "playback_samples"("tenant_id", "sampled_at");
+CREATE INDEX IF NOT EXISTS "playback_samples_playlist_id_sampled_at_idx" ON "playback_samples"("playlist_id", "sampled_at");
+CREATE INDEX IF NOT EXISTS "playback_samples_screen_id_sampled_at_idx" ON "playback_samples"("screen_id", "sampled_at");
