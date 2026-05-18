@@ -713,7 +713,7 @@ export function JumbotronProCountdown({ config, compact, onConfigChange }: { con
                 background: `${LED_SCANLINES}`,
                 pointerEvents: 'none', zIndex: 2,
               }} />
-              <div style={{ position: 'absolute', inset: '4% 6%' }}>
+              <div style={{ position: 'absolute', top: '4%', right: '6%', bottom: '4%', left: '6%' }}>
                 <FitText max={400} min={28} wrap={false}
                   style={{
                     fontFamily: JP_FONT_DISPLAY, fontWeight: 800,

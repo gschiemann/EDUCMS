@@ -668,7 +668,7 @@ const CSS_CAFE = `
   filter: drop-shadow(0 10px 18px rgba(0,0,0,.3));
 }
 .cafe-burstCenter {
-  position: absolute; inset: 30px; border-radius: 50%;
+  position: absolute; top: 30px; right: 30px; bottom: 30px; left: 30px; border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #fff, #fef3c7 70%);
   border: 5px solid #1f2937;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -714,7 +714,7 @@ const CSS_CAFE = `
 }
 @keyframes cafe-ringSpin { to { transform: rotate(360deg); } }
 .cafe-ring::before {
-  content: ''; position: absolute; inset: -18px; border-radius: 50%;
+  content: ''; position: absolute; top: -18px; right: -18px; bottom: -18px; left: -18px; border-radius: 50%;
   background:
     radial-gradient(circle at 50% 0, #ec4899 0 8px, transparent 9px),
     radial-gradient(circle at 100% 50%, #06b6d4 0 8px, transparent 9px),

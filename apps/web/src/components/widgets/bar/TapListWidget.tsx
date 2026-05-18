@@ -187,7 +187,7 @@ const CSS = `
     linear-gradient(160deg, #0a0a0a 0%, #0f0f10 50%, #0a0a0a 100%);
 }
 .btl-glow {
-  position: absolute; inset: -20%; z-index: 1;
+  position: absolute; top: -20%; right: -20%; bottom: -20%; left: -20%; z-index: 1;
   pointer-events: none;
   background: radial-gradient(900px 500px at 50% 50%, var(--btl-accent, #f59e0b), transparent 70%);
   opacity: 0.05;

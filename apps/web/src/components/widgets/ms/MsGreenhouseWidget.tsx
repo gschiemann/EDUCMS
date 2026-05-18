@@ -1007,10 +1007,10 @@ const CSS = `
     6px 8px 0 #345e3a;
 }
 .ms-gh-seal::before {
-  content: ''; position: absolute; inset: 24px; border-radius: 50%;
+  content: ''; position: absolute; top: 24px; right: 24px; bottom: 24px; left: 24px; border-radius: 50%;
   border: 1.5px dashed rgba(31,42,28,.5);
 }
-.ms-gh-seal svg { position: absolute; inset: 32px; width: calc(100% - 64px); height: calc(100% - 64px); }
+.ms-gh-seal svg { position: absolute; top: 32px; right: 32px; bottom: 32px; left: 32px; width: calc(100% - 64px); height: calc(100% - 64px); }
 .ms-gh-est {
   position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
   background: #345e3a; color: #f6eed9;
@@ -1107,12 +1107,12 @@ const CSS = `
 }
 /* Inner double-rule frame typical of herbarium sheets */
 .ms-gh-plate::before {
-  content: ''; position: absolute; inset: 34px;
+  content: ''; position: absolute; top: 34px; right: 34px; bottom: 34px; left: 34px;
   border: 1.5px solid #1f2a1c;
   pointer-events: none;
 }
 .ms-gh-plate::after {
-  content: ''; position: absolute; inset: 42px;
+  content: ''; position: absolute; top: 42px; right: 42px; bottom: 42px; left: 42px;
   border: 0.5px solid #8a6122;
   pointer-events: none;
 }
@@ -1436,7 +1436,7 @@ const CSS = `
   position: relative;
 }
 .ms-gh-day::before {
-  content: ''; position: absolute; inset: 14px; border-radius: 50%;
+  content: ''; position: absolute; top: 14px; right: 14px; bottom: 14px; left: 14px; border-radius: 50%;
   border: 1px dashed rgba(31,42,28,.35);
 }
 .ms-gh-day .ms-gh-n {

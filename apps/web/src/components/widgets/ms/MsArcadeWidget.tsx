@@ -578,7 +578,7 @@ const CSS = `
   box-shadow: inset 0 -14px 0 rgba(0,0,0,.25);
 }
 .ms-arc-xp-fill::after {
-  content: ''; position: absolute; inset: 10px 8px;
+  content: ''; position: absolute; top: 10px; right: 8px; bottom: 10px; left: 8px;
   background: repeating-linear-gradient(90deg, transparent 0 24px, rgba(255,255,255,.15) 24px 28px);
 }
 .ms-arc-xp-pct {

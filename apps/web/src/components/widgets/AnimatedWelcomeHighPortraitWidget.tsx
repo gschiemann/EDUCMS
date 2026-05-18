@@ -659,7 +659,7 @@ const CSS_HSP = `
   display: flex; align-items: center; justify-content: center;
 }
 .hsp-sunMini::before {
-  content: ''; position: absolute; inset: -50px; border-radius: 50%;
+  content: ''; position: absolute; top: -50px; right: -50px; bottom: -50px; left: -50px; border-radius: 50%;
   background: conic-gradient(from 0deg,
     transparent 0 18deg, #fbbf24 18deg 24deg,
     transparent 24deg 48deg, #f59e0b 48deg 54deg,

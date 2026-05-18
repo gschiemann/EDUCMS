@@ -127,7 +127,7 @@ export function SpiritRallyText({
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Megaphone-shaped SVG banner */}
         <svg viewBox="0 0 3200 400" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ filter: 'drop-shadow(0 14px 22px rgba(0,0,0,0.45))', position: 'absolute', inset: 0 }}>
+          style={{ filter: 'drop-shadow(0 14px 22px rgba(0,0,0,0.45))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Megaphone cone on left — wide mouth */}
           <polygon points="0,200 220,60 220,340" fill={SR.red} stroke={SR.ink} strokeWidth="8" />
           {/* Megaphone handle box */}
@@ -476,7 +476,7 @@ export function SpiritRallyCountdown({
         {/* Text stack centered in the starburst: inset ~22% all sides */}
         <div style={{
           position: 'absolute',
-          inset: '26% 16% 20% 16%',
+          top: '26%', right: '16%', bottom: '20%', left: '16%',
           display: 'flex', flexDirection: 'column',
           fontFamily: SR_FONT_DISPLAY,
           color: SR.gold,

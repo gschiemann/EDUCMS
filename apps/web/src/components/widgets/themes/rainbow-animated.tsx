@@ -231,7 +231,7 @@ export function RainbowAnimatedWeather({ config }: { config: any }) {
       }}>
         <div style={{ position: 'relative', width: 260, height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{
-            position: 'absolute', inset: -50, borderRadius: '50%',
+            position: 'absolute', top: -50, right: -50, bottom: -50, left: -50, borderRadius: '50%',
             background: 'conic-gradient(from 0deg, transparent 0 18deg, #fcd34d 18deg 24deg, transparent 24deg 48deg, #fcd34d 48deg 54deg, transparent 54deg 78deg, #fcd34d 78deg 84deg, transparent 84deg 108deg, #fcd34d 108deg 114deg, transparent 114deg 138deg, #fcd34d 138deg 144deg, transparent 144deg 168deg, #fcd34d 168deg 174deg, transparent 174deg 198deg, #fcd34d 198deg 204deg, transparent 204deg 228deg, #fcd34d 228deg 234deg, transparent 234deg 258deg, #fcd34d 258deg 264deg, transparent 264deg 288deg, #fcd34d 288deg 294deg, transparent 294deg 318deg, #fcd34d 318deg 324deg, transparent 324deg 348deg, #fcd34d 348deg 354deg, transparent 354deg 360deg)',
             WebkitMask: 'radial-gradient(circle, transparent 130px, #000 130px, #000 165px, transparent 165px)',
             mask: 'radial-gradient(circle, transparent 130px, #000 130px, #000 165px, transparent 165px)',

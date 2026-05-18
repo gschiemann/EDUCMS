@@ -304,7 +304,7 @@ const CSS_AS = `
   50%      { filter: drop-shadow(0 0 40px rgba(251,191,36,.9)); }
 }
 .as-medal::before {
-  content: ''; position: absolute; inset: 30px; border-radius: 50%;
+  content: ''; position: absolute; top: 30px; right: 30px; bottom: 30px; left: 30px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #fde68a, #fbbf24 70%, #b45309);
   border: 4px solid #92400e;
 }

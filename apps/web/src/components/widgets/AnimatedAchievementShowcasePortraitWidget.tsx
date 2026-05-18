@@ -396,7 +396,7 @@ const CSS_ASP = `
   50%      { filter: drop-shadow(0 0 56px rgba(251,191,36,.95)); }
 }
 .asp-mGold::before {
-  content: ''; position: absolute; inset: 36px; border-radius: 50%;
+  content: ''; position: absolute; top: 36px; right: 36px; bottom: 36px; left: 36px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #fde68a, #fbbf24 70%, #b45309);
   border: 6px solid #92400e;
 }
@@ -413,7 +413,7 @@ const CSS_ASP = `
   animation: asp-medalSpinSide 5s ease-in-out infinite;
 }
 .asp-mSilver::before {
-  content: ''; position: absolute; inset: 30px; border-radius: 50%;
+  content: ''; position: absolute; top: 30px; right: 30px; bottom: 30px; left: 30px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #f8fafc, #cbd5e1 70%, #475569);
   border: 5px solid #475569;
 }
@@ -430,7 +430,7 @@ const CSS_ASP = `
   animation: asp-medalSpinSide 5s ease-in-out infinite .7s reverse;
 }
 .asp-mBronze::before {
-  content: ''; position: absolute; inset: 30px; border-radius: 50%;
+  content: ''; position: absolute; top: 30px; right: 30px; bottom: 30px; left: 30px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #fcd34d, #d97706 70%, #78350f);
   border: 5px solid #78350f;
 }
@@ -486,7 +486,7 @@ const CSS_ASP = `
 }
 @keyframes asp-portraitRingSpin { to { transform: rotate(360deg); } }
 .asp-portrait::after {
-  content: ''; position: absolute; inset: 16px;
+  content: ''; position: absolute; top: 16px; right: 16px; bottom: 16px; left: 16px;
   border-radius: 26px;
   background: linear-gradient(180deg, #93c5fd 0%, #3b82f6 60%, #1e3a8a 100%);
   box-shadow: inset 0 0 60px rgba(0,0,0,.3);
@@ -507,7 +507,7 @@ const CSS_ASP = `
 }
 .asp-pHead::before {
   content: '';
-  position: absolute; inset: -10px -10px 65% -10px;
+  position: absolute; top: -10px; right: -10px; bottom: 65%; left: -10px;
   border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
   background: linear-gradient(180deg, #1e293b 0%, #334155 100%);
   box-shadow: 0 8px 14px rgba(0,0,0,.35);

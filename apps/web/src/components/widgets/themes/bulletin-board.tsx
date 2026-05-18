@@ -260,7 +260,7 @@ export function BulletinBoardClock({ config, compact }: { config: any; compact?:
             border, just ink on the clock face below the hands' pivot. */}
         <div style={{
           position: 'absolute',
-          inset: '70% 18% 14% 18%',
+          top: '70%', right: '18%', bottom: '14%', left: '18%',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontFamily: BB_FONT_DISPLAY,
           pointerEvents: 'none',
@@ -443,7 +443,7 @@ export function BulletinBoardCountdown({ config, compact, onConfigChange }: { co
         {/* Text content — label + big number + unit */}
         <div style={{
           position: 'absolute',
-          inset: '22% 14% 28% 14%',
+          top: '22%', right: '14%', bottom: '28%', left: '14%',
           display: 'flex', flexDirection: 'column',
           fontFamily: BB_FONT_DISPLAY, color: BB.ink,
           textAlign: 'center',
@@ -823,7 +823,7 @@ export function BulletinBoardTicker({ config, compact }: { config: any; compact?
       {/* Message overlay */}
       <div style={{
         position: 'absolute',
-        inset: '18% 8% 18% 8%',
+        top: '18%', right: '8%', bottom: '18%', left: '8%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontFamily: BB_FONT_DISPLAY,
       }}>

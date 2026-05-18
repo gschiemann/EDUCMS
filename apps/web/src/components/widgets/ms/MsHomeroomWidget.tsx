@@ -803,7 +803,7 @@ const CSS = `
   background-position: 0 0, 5px 7px;
   mix-blend-mode: screen;
 }
-.ms-hr-face { position: absolute; inset: 24px; display: grid; place-items: center; }
+.ms-hr-face { position: absolute; top: 24px; right: 24px; bottom: 24px; left: 24px; display: grid; place-items: center; }
 .ms-hr-face::before {
   content: ''; width: 130px; height: 110px; border-radius: 60% 60% 50% 50%;
   border: 4px solid var(--chalk);

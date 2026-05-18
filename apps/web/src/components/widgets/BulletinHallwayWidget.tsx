@@ -269,7 +269,7 @@ const CSS_BH = `
 }
 
 .bh-frame {
-  position: absolute; inset: 14px;
+  position: absolute; top: 14px; right: 14px; bottom: 14px; left: 14px;
   border: 22px solid;
   border-image: linear-gradient(135deg, #6b3a14 0%, #8b5a2b 30%, #5a3010 70%, #3d2010 100%) 1;
   box-shadow: inset 0 0 0 3px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.4);

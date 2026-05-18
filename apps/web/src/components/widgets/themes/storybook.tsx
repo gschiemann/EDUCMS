@@ -286,7 +286,7 @@ export function StorybookClock({ config, compact }: { config: any; compact?: boo
         {/* Digital ribbon under the pivot, inside the face */}
         <div style={{
           position: 'absolute',
-          inset: '68% 22% 16% 22%',
+          top: '68%', right: '22%', bottom: '16%', left: '22%',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontFamily: SB_FONT_DISPLAY,
           pointerEvents: 'none',
@@ -387,7 +387,7 @@ export function StorybookWeather({ config, compact }: { config: any; compact?: b
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 500" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ filter: PAPER_SHADOW, position: 'absolute', inset: 0 }}>
+          style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Parchment page with torn top edge */}
           <defs>
             <linearGradient id="sb-wx-wash" x1="0" x2="0" y1="0" y2="1">
@@ -488,7 +488,7 @@ export function StorybookCountdown({ config, compact, onConfigChange }: { config
         {/* Text */}
         <div style={{
           position: 'absolute',
-          inset: '10% 26% 32% 26%',
+          top: '10%', right: '26%', bottom: '32%', left: '26%',
           display: 'flex', flexDirection: 'column',
           fontFamily: SB_FONT_DISPLAY, color: SB.parchmentLight,
           textAlign: 'center',
@@ -705,7 +705,7 @@ export function StorybookStaffSpotlight({ config, onConfigChange }: { config: an
         {/* Book page base (behind the pop-up) */}
         <div style={{
           position: 'absolute',
-          inset: '58% 4% 2% 4%',
+          top: '58%', right: '4%', bottom: '2%', left: '4%',
           background: `linear-gradient(180deg, ${SB.parchment}, ${SB.parchmentDark})`,
           border: `2px solid ${SB.ink}`,
           borderRadius: 3,
@@ -821,7 +821,7 @@ export function StorybookImageCarousel({ config }: { config: any; compact?: bool
           {/* Inner ornate gold frame */}
           <div style={{
             position: 'absolute',
-            inset: '6%',
+            top: '6%', right: '6%', bottom: '6%', left: '6%',
             border: `4px solid ${SB.gold}`,
             borderRadius: '50% / 50%',
             boxShadow: `inset 0 0 12px ${SB.gold}`,
@@ -830,7 +830,7 @@ export function StorybookImageCarousel({ config }: { config: any; compact?: bool
             {/* Inner thin ink line */}
             <div style={{
               position: 'absolute',
-              inset: '3%',
+              top: '3%', right: '3%', bottom: '3%', left: '3%',
               border: `1.5px solid ${SB.ink}`,
               borderRadius: '50% / 50%',
               overflow: 'hidden',
@@ -948,7 +948,7 @@ export function StorybookTicker({ config, compact }: { config: any; compact?: bo
       {/* Message overlay */}
       <div style={{
         position: 'absolute',
-        inset: '18% 8% 18% 8%',
+        top: '18%', right: '8%', bottom: '18%', left: '8%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontFamily: SB_FONT_DISPLAY,
       }}>

@@ -579,7 +579,7 @@ const CSS_HS = `
 .hs-weather { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
 .hs-sunDisc { position: relative; width: 240px; height: 240px; display: flex; align-items: center; justify-content: center; }
 .hs-sunDisc::before {
-  content: ''; position: absolute; inset: -40px; border-radius: 50%;
+  content: ''; position: absolute; top: -40px; right: -40px; bottom: -40px; left: -40px; border-radius: 50%;
   background: conic-gradient(from 0deg,
     transparent 0 18deg, #fbbf24 18deg 24deg,
     transparent 24deg 48deg, #f59e0b 48deg 54deg,
@@ -722,7 +722,7 @@ const CSS_HS = `
 .hs-burst { position: relative; width: 200px; height: 160px; animation: hs-burstSpin 10.8s linear infinite; }
 @keyframes hs-burstSpin { from { transform: rotate(-5deg); } 50% { transform: rotate(5deg); } to { transform: rotate(-5deg); } }
 .hs-burst::before {
-  content: ''; position: absolute; inset: -30px;
+  content: ''; position: absolute; top: -30px; right: -30px; bottom: -30px; left: -30px;
   background: conic-gradient(from 0deg,
     #fbbf24 0 12deg, transparent 12deg 30deg,
     #ec4899 30deg 42deg, transparent 42deg 60deg,

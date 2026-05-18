@@ -657,7 +657,7 @@ const CSS = `
   box-shadow: 8px 8px 0 #0b1220;
 }
 .ms-atl-compass::before {
-  content: ''; position: absolute; inset: 20px; border-radius: 50%;
+  content: ''; position: absolute; top: 20px; right: 20px; bottom: 20px; left: 20px; border-radius: 50%;
   border: 2px dashed rgba(11,18,32,.45);
 }
 .ms-atl-compass::after {
@@ -759,7 +759,7 @@ const CSS = `
   position: relative; overflow: hidden;
 }
 .ms-atl-poster::before {
-  content: ''; position: absolute; inset: 20px;
+  content: ''; position: absolute; top: 20px; right: 20px; bottom: 20px; left: 20px;
   border: 2px solid #0b1220; pointer-events: none;
 }
 .ms-atl-poster::after {

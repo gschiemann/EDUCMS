@@ -936,7 +936,7 @@ export function AchievementHallImageCarousel({ config }: { config: any; compact?
 
         {/* Image / placeholder inside the frame */}
         <div style={{
-          position: 'absolute', inset: '10%',
+          position: 'absolute', top: '10%', right: '10%', bottom: '10%', left: '10%',
           background: AH.velvet,
           overflow: 'hidden',
         }}>
@@ -1020,7 +1020,7 @@ export function AchievementHallTicker({ config, compact }: { config: any; compac
 
       {/* Message text */}
       <div style={{
-        position: 'absolute', inset: '10% 4% 10% 4%',
+        position: 'absolute', top: '10%', right: '4%', bottom: '10%', left: '4%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden',
       }}>

@@ -362,7 +362,7 @@ const CSS_MS = `
   overflow: hidden;
 }
 .ms-stage::before {
-  content: ''; position: absolute; inset: -10%;
+  content: ''; position: absolute; top: -10%; right: -10%; bottom: -10%; left: -10%;
   background: repeating-linear-gradient(135deg,
     transparent 0 80px, rgba(251,191,36,.04) 80px 90px,
     transparent 90px 200px, rgba(220,38,38,.04) 200px 210px);
@@ -398,7 +398,7 @@ const CSS_MS = `
 }
 @keyframes ms-shieldPulse { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 .ms-shield::before {
-  content: ''; position: absolute; inset: 14px;
+  content: ''; position: absolute; top: 14px; right: 14px; bottom: 14px; left: 14px;
   clip-path: polygon(50% 0%, 100% 12%, 100% 60%, 50% 100%, 0 60%, 0 12%);
   box-shadow: inset 0 0 0 4px #92400e;
 }
@@ -628,7 +628,7 @@ const CSS_MS = `
 }
 @keyframes ms-patch { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
 .ms-patch::before {
-  content: ''; position: absolute; inset: 10px;
+  content: ''; position: absolute; top: 10px; right: 10px; bottom: 10px; left: 10px;
   clip-path: polygon(20% 0, 80% 0, 100% 50%, 80% 100%, 20% 100%, 0 50%);
   box-shadow: inset 0 0 0 4px #dc2626;
 }

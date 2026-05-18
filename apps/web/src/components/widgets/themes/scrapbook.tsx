@@ -123,7 +123,7 @@ export function ScrapbookLogo({ config }: { config: any; compact?: boolean }) {
 
         {/* Main paper crest circle */}
         <svg viewBox="0 0 260 260" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ filter: `drop-shadow(0 6px 12px ${SC.shadow})`, position: 'absolute', inset: 0 }}>
+          style={{ filter: `drop-shadow(0 6px 12px ${SC.shadow})`, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Outer doodle frame — hand-drawn style with offset strokes */}
           <circle cx="130" cy="130" r="118" fill={SC.paperBlush} stroke={SC.ink} strokeWidth="5" strokeDasharray="8 3" />
           <circle cx="130" cy="130" r="108" fill={SC.paper}      stroke={SC.pencil} strokeWidth="2" />

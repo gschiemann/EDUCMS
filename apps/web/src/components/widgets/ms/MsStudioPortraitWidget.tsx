@@ -889,7 +889,7 @@ const CSS = `
   border-top-right-radius: 290px;
 }
 .ms-st-p-vu-ticks {
-  position: absolute; inset: 14px;
+  position: absolute; top: 14px; right: 14px; bottom: 14px; left: 14px;
   background:
     conic-gradient(from 270deg at 50% 100%,
       transparent 0deg, transparent 8deg,
@@ -1049,7 +1049,7 @@ const CSS = `
 }
 @keyframes msStPReelSpin { to { transform: rotate(360deg); } }
 .ms-st-p-reel::before {
-  content: ''; position: absolute; inset: 16px; border-radius: 50%;
+  content: ''; position: absolute; top: 16px; right: 16px; bottom: 16px; left: 16px; border-radius: 50%;
   background:
     conic-gradient(#4a4744 0deg 12deg, transparent 12deg 60deg,
                    #4a4744 60deg 72deg, transparent 72deg 120deg,
@@ -1192,7 +1192,7 @@ const CSS = `
   overflow: hidden;
 }
 .ms-st-p-ticker::before {
-  content: ''; position: absolute; inset: 4px;
+  content: ''; position: absolute; top: 4px; right: 4px; bottom: 4px; left: 4px;
   background:
     repeating-linear-gradient(90deg, transparent 0 2px, rgba(255,235,180,.04) 2px 3px),
     linear-gradient(180deg, rgba(255,235,180,.04), transparent 50%);

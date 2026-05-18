@@ -421,7 +421,7 @@ const CSS_MS = `
   overflow: hidden;
 }
 .ms-stripes {
-  position: absolute; inset: -10%; pointer-events: none;
+  position: absolute; top: -10%; right: -10%; bottom: -10%; left: -10%; pointer-events: none;
   background: repeating-linear-gradient(135deg,
     transparent 0 80px, rgba(251, 191, 36, .04) 80px 90px,
     transparent 90px 200px, rgba(220, 38, 38, .04) 200px 210px);
@@ -461,7 +461,7 @@ const CSS_MS = `
   overflow: hidden;
 }
 .ms-logo::before {
-  content: ''; position: absolute; inset: 14px;
+  content: ''; position: absolute; top: 14px; right: 14px; bottom: 14px; left: 14px;
   clip-path: polygon(50% 0%, 100% 12%, 100% 60%, 50% 100%, 0 60%, 0 12%);
   box-shadow: inset 0 0 0 4px #92400e;
 }
@@ -610,7 +610,7 @@ const CSS_MS = `
 }
 @keyframes ms-stopwatchTick { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
 .ms-ring::before {
-  content: ''; position: absolute; inset: 12px; border-radius: 50%;
+  content: ''; position: absolute; top: 12px; right: 12px; bottom: 12px; left: 12px; border-radius: 50%;
   background: conic-gradient(from 0deg,
     transparent 0 8deg, #1e293b 8deg 10deg, transparent 10deg 38deg,
     transparent 38deg 70deg, #1e293b 70deg 72deg, transparent 72deg 100deg,
@@ -640,7 +640,7 @@ const CSS_MS = `
 }
 @keyframes ms-patchSwing { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
 .ms-patch::before {
-  content: ''; position: absolute; inset: 12px;
+  content: ''; position: absolute; top: 12px; right: 12px; bottom: 12px; left: 12px;
   clip-path: polygon(20% 0, 80% 0, 100% 50%, 80% 100%, 20% 100%, 0 50%);
   box-shadow: inset 0 0 0 4px #dc2626;
 }

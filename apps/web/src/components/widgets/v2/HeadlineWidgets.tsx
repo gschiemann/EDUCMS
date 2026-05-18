@@ -37,7 +37,7 @@ export function HeadlineNeonMarqueeWidget({ config }: WidgetProps<HeadlineCfg>) 
   return (
     <div style={frameStyle(r)}>
       {r.anim.on && <style>{`@keyframes hl-bulb-${r.accent.primary.replace(/[^a-z0-9]/gi,'')} { 50% { opacity: 0.4; } }`}</style>}
-      <div style={{ position: 'absolute', inset: 16, border: `4px solid ${r.accent.highlight}`, borderRadius: 12, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: 16, right: 16, bottom: 16, left: 16, border: `4px solid ${r.accent.highlight}`, borderRadius: 12, pointerEvents: 'none' }} />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16, position: 'relative' }}>
         {[0,1,2,3,4,5,6,7].map(i => (
           <span key={i} aria-hidden style={{ position: 'absolute', width: 14, height: 14, borderRadius: '50%', background: r.accent.highlight, top: i < 4 ? 24 : undefined, bottom: i >= 4 ? 24 : undefined, left: `${10 + (i % 4) * 26}%`, boxShadow: `0 0 12px ${r.accent.highlight}`, animation: r.anim.on ? `hl-bulb-${r.accent.primary.replace(/[^a-z0-9]/gi,'')} ${dur}s ease-in-out ${i*0.15}s infinite` : 'none' }} />

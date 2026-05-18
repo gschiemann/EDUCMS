@@ -321,7 +321,7 @@ const CSS_MEP = `
 }
 @keyframes mep-signSway { 0%, 100% { transform: rotate(-1deg); } 50% { transform: rotate(1deg); } }
 .mep-sign::before {
-  content: ''; position: absolute; inset: -8px; border-radius: 48px;
+  content: ''; position: absolute; top: -8px; right: -8px; bottom: -8px; left: -8px; border-radius: 48px;
   background:
     radial-gradient(circle at 0% 0%, #fbbf24 0 18px, transparent 18px),
     radial-gradient(circle at 16% 0%, #fbbf24 0 18px, transparent 18px),
@@ -443,7 +443,7 @@ const CSS_MEP = `
   position: relative;
 }
 .mep-crest::before {
-  content: ''; position: absolute; inset: 28px;
+  content: ''; position: absolute; top: 28px; right: 28px; bottom: 28px; left: 28px;
   clip-path: polygon(50% 0%, 100% 12%, 100% 60%, 50% 100%, 0 60%, 0 12%);
   box-shadow: inset 0 0 0 10px #92400e;
 }

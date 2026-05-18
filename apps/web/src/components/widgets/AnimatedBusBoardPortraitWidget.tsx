@@ -290,7 +290,7 @@ const CSS_BBP = `
 }
 @keyframes bbp-sunBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-18px); } }
 .bbp-sun::before {
-  content: ''; position: absolute; inset: -54px; border-radius: 50%;
+  content: ''; position: absolute; top: -54px; right: -54px; bottom: -54px; left: -54px; border-radius: 50%;
   background: conic-gradient(from 0deg,
     transparent 0 18deg, #fbbf24 18deg 22deg,
     transparent 22deg 40deg, #fbbf24 40deg 44deg,

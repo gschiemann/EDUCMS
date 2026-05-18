@@ -672,7 +672,7 @@ const CSS = `
   position: relative;
 }
 .ms-pl-p-mark::before {
-  content: ''; position: absolute; inset: 24px;
+  content: ''; position: absolute; top: 24px; right: 24px; bottom: 24px; left: 24px;
   background:
     radial-gradient(circle at 40% 100%, transparent 30px, #000 30px, #000 35px, transparent 35px),
     radial-gradient(circle at 40% 100%, transparent 48px, #000 48px, #000 53px, transparent 53px),

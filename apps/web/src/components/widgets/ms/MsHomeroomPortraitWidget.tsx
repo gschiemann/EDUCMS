@@ -940,7 +940,7 @@ const CSS = `
   background-position: 0 0, 5px 7px;
   mix-blend-mode: screen;
 }
-.ms-hr-p-face { position: absolute; inset: 28px; display: grid; place-items: center; }
+.ms-hr-p-face { position: absolute; top: 28px; right: 28px; bottom: 28px; left: 28px; display: grid; place-items: center; }
 .ms-hr-p-face::before {
   content: ''; width: 156px; height: 132px; border-radius: 60% 60% 50% 50%;
   border: 5px solid var(--chalk);

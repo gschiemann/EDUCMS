@@ -157,7 +157,7 @@ const CSS = `
   mix-blend-mode: overlay;
 }
 .bcm-edge {
-  position: absolute; inset: clamp(8px, 1.5cqh, 18px); z-index: 2;
+  position: absolute; top: clamp(8px, 1.5cqh, 18px); right: clamp(8px, 1.5cqh, 18px); bottom: clamp(8px, 1.5cqh, 18px); left: clamp(8px, 1.5cqh, 18px); z-index: 2;
   pointer-events: none;
   border: 2px solid rgba(254, 243, 199, 0.18);
   border-radius: 4px;

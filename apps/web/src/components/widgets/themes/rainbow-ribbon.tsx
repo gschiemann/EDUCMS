@@ -134,7 +134,7 @@ export function RainbowRibbonText({ config, compact, onConfigChange }: { config:
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2% 1%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 3200 360" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ filter: 'drop-shadow(0 12px 20px rgba(0,0,0,0.25))', position: 'absolute', inset: 0 }}>
+          style={{ filter: 'drop-shadow(0 12px 20px rgba(0,0,0,0.25))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Left tail */}
           <polygon points="0,180 120,60 240,180 120,300" fill={RR.pinkDk} />
           <polygon points="0,180 120,120 240,180 120,240" fill={RR.pink} />
@@ -207,7 +207,7 @@ export function RainbowRibbonClock({ config, compact }: { config: any; compact?:
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 520" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ filter: 'drop-shadow(0 16px 24px rgba(0,0,0,0.25))', position: 'absolute', inset: 0 }}>
+          style={{ filter: 'drop-shadow(0 16px 24px rgba(0,0,0,0.25))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Speech bubble body with tail pointing down-left */}
           <path d="M60 60 Q60 20 140 20 L620 20 Q680 20 680 80 L680 360 Q680 420 620 420 L280 420 L180 500 L210 420 L140 420 Q60 420 60 360 Z"
             fill={RR.white} stroke={RR.ink} strokeWidth="10" />
@@ -347,7 +347,7 @@ export function RainbowRibbonWeather({ config, compact }: { config: any; compact
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 520" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ filter: 'drop-shadow(0 16px 24px rgba(0,0,0,0.2))', position: 'absolute', inset: 0 }}>
+          style={{ filter: 'drop-shadow(0 16px 24px rgba(0,0,0,0.2))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {isClear && BigSun}
           {isPartly && (<>{SmallSunPeek}{CloudShape}</>)}
           {isOvercast && (<>{DarkerCloud}</>)}
@@ -406,7 +406,7 @@ export function RainbowRibbonCountdown({ config, compact, onConfigChange }: { co
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 700" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ filter: 'drop-shadow(0 20px 28px rgba(0,0,0,0.3))', position: 'absolute', inset: 0 }}>
+          style={{ filter: 'drop-shadow(0 20px 28px rgba(0,0,0,0.3))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           <g transform="translate(350 350)">
             {/* Outer yellow starburst — 12 points */}
             <polygon
@@ -425,7 +425,7 @@ export function RainbowRibbonCountdown({ config, compact, onConfigChange }: { co
             further than the top point in this 12-pt starburst). */}
         <div style={{
           position: 'absolute',
-          inset: '32% 14% 24% 14%',
+          top: '32%', right: '14%', bottom: '24%', left: '14%',
           display: 'flex', flexDirection: 'column',
           fontFamily: RR_FONT_DISPLAY, color: RR.white,
           textAlign: 'center',
@@ -486,7 +486,7 @@ export function RainbowRibbonAnnouncement({ config, compact, onConfigChange }: {
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 1800 500" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ filter: 'drop-shadow(0 18px 32px rgba(0,0,0,0.25))', position: 'absolute', inset: 0 }}>
+          style={{ filter: 'drop-shadow(0 18px 32px rgba(0,0,0,0.25))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Speech bubble stretches to fill the zone so text overlay
               bounds always match the visible bubble. Slight tail
               distortion at extreme aspect ratios is acceptable — the

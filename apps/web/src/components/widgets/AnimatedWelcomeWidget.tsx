@@ -684,7 +684,7 @@ const CSS = `
 .aw-weather { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 12px; }
 .aw-sunDisc { position: relative; width: 260px; height: 260px; display: flex; align-items: center; justify-content: center; }
 .aw-sunDisc::before {
-  content: ''; position: absolute; inset: -50px; border-radius: 50%;
+  content: ''; position: absolute; top: -50px; right: -50px; bottom: -50px; left: -50px; border-radius: 50%;
   background:
     conic-gradient(from 0deg,
       transparent 0 18deg, #fcd34d 18deg 24deg,

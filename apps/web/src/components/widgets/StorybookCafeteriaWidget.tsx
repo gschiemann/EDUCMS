@@ -301,11 +301,11 @@ const CSS_BOOK = `
   box-shadow: inset 0 0 80px rgba(120,53,15,.35);
 }
 
-.book-pageFrames { position: absolute; inset: 28px; pointer-events: none; }
+.book-pageFrames { position: absolute; top: 28px; right: 28px; bottom: 28px; left: 28px; pointer-events: none; }
 .book-pfL, .book-pfR { position: absolute; top: 0; bottom: 0; width: calc(50% - 24px); border: 2px solid #8b5a2b; }
 .book-pfL { left: 0; }
 .book-pfR { right: 0; }
-.book-pfL::after, .book-pfR::after { content: ''; position: absolute; inset: 8px; border: 1px solid #8b5a2b; }
+.book-pfL::after, .book-pfR::after { content: ''; position: absolute; top: 8px; right: 8px; bottom: 8px; left: 8px; border: 1px solid #8b5a2b; }
 
 .book-corner { position: absolute; width: 70px; height: 70px; pointer-events: none; }
 .book-corner svg { width: 100%; height: 100%; fill: none; stroke: #8b5a2b; stroke-width: 2; opacity: .8; }
@@ -370,7 +370,7 @@ const CSS_BOOK = `
   position: relative; overflow: hidden;
 }
 .book-frame::before {
-  content: ''; position: absolute; inset: -50%;
+  content: ''; position: absolute; top: -50%; right: -50%; bottom: -50%; left: -50%;
   background: repeating-conic-gradient(from 0deg, rgba(255,255,255,.18) 0 6deg, transparent 6deg 18deg);
 }
 .book-hero {

@@ -242,7 +242,7 @@ const CSS = `
   transition: background 600ms ease, opacity 600ms ease;
 }
 .fwtw-glow {
-  position: absolute; inset: -20%; z-index: 2; pointer-events: none;
+  position: absolute; top: -20%; right: -20%; bottom: -20%; left: -20%; z-index: 2; pointer-events: none;
   background: radial-gradient(600px 400px at 50% 40%, var(--fwtw-accent, #ff2a4d), transparent 65%);
   opacity: 0.1;
   filter: blur(60px);

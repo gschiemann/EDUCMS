@@ -122,7 +122,7 @@ export function TrackDayText({ config, compact, onConfigChange }: { config: any;
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '1%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 3200 360" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ filter: `drop-shadow(0 10px 16px ${TD.shadow})`, position: 'absolute', inset: 0 }}>
+          style={{ filter: `drop-shadow(0 10px 16px ${TD.shadow})`, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Chalk ribbon body — hand-drawn wiggle */}
           <path d="M60 70 Q200 40 500 60 T1200 55 T2000 65 T2800 50 Q3080 55 3140 80
                    L3140 280 Q3080 300 2800 295 T2000 290 T1200 300 T500 295 Q200 310 60 285 Z"
@@ -607,7 +607,7 @@ export function TrackDayStaffSpotlight({ config, onConfigChange }: { config: any
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '5%', containerType: 'size' }}>
       {/* Cork backing */}
       <div style={{
-        position: 'absolute', inset: '2%',
+        position: 'absolute', top: '2%', right: '2%', bottom: '2%', left: '2%',
         background: `radial-gradient(circle at 20% 20%, #D4A574 0%, #B8894F 100%)`,
         borderRadius: 10,
         boxShadow: `inset 0 0 60px rgba(0,0,0,0.3)`,

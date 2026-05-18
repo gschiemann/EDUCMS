@@ -466,7 +466,7 @@ const CSS_MSP = `
   overflow: hidden;
 }
 .msp-stripes {
-  position: absolute; inset: -10%; pointer-events: none;
+  position: absolute; top: -10%; right: -10%; bottom: -10%; left: -10%; pointer-events: none;
   background: repeating-linear-gradient(135deg,
     transparent 0 140px, rgba(251, 191, 36, .05) 140px 160px,
     transparent 160px 360px, rgba(220, 38, 38, .05) 360px 380px);
@@ -506,7 +506,7 @@ const CSS_MSP = `
   overflow: hidden;
 }
 .msp-logo::before {
-  content: ''; position: absolute; inset: 22px;
+  content: ''; position: absolute; top: 22px; right: 22px; bottom: 22px; left: 22px;
   clip-path: polygon(50% 0%, 100% 12%, 100% 60%, 50% 100%, 0 60%, 0 12%);
   box-shadow: inset 0 0 0 8px #92400e;
 }
@@ -574,7 +574,7 @@ const CSS_MSP = `
 }
 @keyframes msp-scoreboardSway { 0%, 100% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } }
 .msp-bulbs {
-  position: absolute; inset: 18px; pointer-events: none;
+  position: absolute; top: 18px; right: 18px; bottom: 18px; left: 18px; pointer-events: none;
   border: 4px dashed transparent;
 }
 .msp-bulb {
@@ -652,7 +652,7 @@ ${(() => {
 }
 @keyframes msp-patchSwing { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
 .msp-patch::before {
-  content: ''; position: absolute; inset: 24px;
+  content: ''; position: absolute; top: 24px; right: 24px; bottom: 24px; left: 24px;
   clip-path: polygon(20% 0, 80% 0, 100% 50%, 80% 100%, 20% 100%, 0 50%);
   box-shadow: inset 0 0 0 8px #dc2626;
 }
@@ -756,7 +756,7 @@ ${(() => {
 }
 @keyframes msp-stopwatchTick { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
 .msp-ring::before {
-  content: ''; position: absolute; inset: 28px; border-radius: 50%;
+  content: ''; position: absolute; top: 28px; right: 28px; bottom: 28px; left: 28px; border-radius: 50%;
   background: conic-gradient(from 0deg,
     transparent 0 8deg, #1e293b 8deg 10deg, transparent 10deg 38deg,
     transparent 38deg 70deg, #1e293b 70deg 72deg, transparent 72deg 100deg,

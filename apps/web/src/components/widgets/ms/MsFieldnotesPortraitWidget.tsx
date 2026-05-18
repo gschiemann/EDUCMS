@@ -933,7 +933,7 @@ const CSS = `
     0 8px 32px rgba(0,0,0,.4);
 }
 .ms-fn-p-compass::before {
-  content: ''; position: absolute; inset: 46px;
+  content: ''; position: absolute; top: 46px; right: 46px; bottom: 46px; left: 46px;
   border-radius: 50%;
   background:
     repeating-conic-gradient(from -90deg, var(--ms-fn-p-ink) 0 1.5deg, transparent 1.5deg 30deg),
@@ -1013,7 +1013,7 @@ const CSS = `
   position: relative;
 }
 .ms-fn-p-disc::before {
-  content: ''; position: absolute; inset: 22px; border-radius: 50%;
+  content: ''; position: absolute; top: 22px; right: 22px; bottom: 22px; left: 22px; border-radius: 50%;
   border: 3px dashed rgba(255,236,196,.5);
 }
 .ms-fn-p-vol {

@@ -239,7 +239,7 @@ const CSS = `
   background: linear-gradient(145deg, #07070c 0%, #0a0a0f 60%, #0b0b10 100%);
 }
 .ftvw-glow {
-  position: absolute; inset: -20%; z-index: 1;
+  position: absolute; top: -20%; right: -20%; bottom: -20%; left: -20%; z-index: 1;
   pointer-events: none;
   background: radial-gradient(600px 500px at 65% 80%, var(--ftvw-accent, #39ff14), transparent 65%);
   opacity: 0.08;

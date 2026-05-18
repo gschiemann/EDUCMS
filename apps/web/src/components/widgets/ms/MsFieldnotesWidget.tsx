@@ -794,7 +794,7 @@ const CSS = `
     0 6px 24px rgba(0,0,0,.4);
 }
 .ms-fn-compass::before {
-  content: ''; position: absolute; inset: 34px;
+  content: ''; position: absolute; top: 34px; right: 34px; bottom: 34px; left: 34px;
   border-radius: 50%;
   background:
     repeating-conic-gradient(from -90deg, var(--ms-fn-ink) 0 1.5deg, transparent 1.5deg 30deg),
@@ -870,7 +870,7 @@ const CSS = `
   border: 4px solid var(--ms-fn-stamp-dk);
 }
 .ms-fn-disc::before {
-  content: ''; position: absolute; inset: 18px; border-radius: 50%;
+  content: ''; position: absolute; top: 18px; right: 18px; bottom: 18px; left: 18px; border-radius: 50%;
   border: 2px dashed rgba(255,236,196,.5);
 }
 .ms-fn-vol {
@@ -969,7 +969,7 @@ const CSS = `
 
 /* ─── LEFT PAGE — botanical specimen + hero copy ───────── */
 .ms-fn-left .ms-fn-inner {
-  position: absolute; inset: 64px 64px 64px 150px;
+  position: absolute; top: 64px; right: 64px; bottom: 64px; left: 150px;
   z-index: 1;
 }
 .ms-fn-left .ms-fn-pageno {
@@ -1110,7 +1110,7 @@ const CSS = `
 
 /* ─── RIGHT PAGE — polaroid + countdown + agenda ─────── */
 .ms-fn-right .ms-fn-inner-right {
-  position: absolute; inset: 56px 60px 56px 100px;
+  position: absolute; top: 56px; right: 60px; bottom: 56px; left: 100px;
   display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr;
   gap: 30px; z-index: 1;
 }

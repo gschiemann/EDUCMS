@@ -140,7 +140,7 @@ const CSS = `
   background: linear-gradient(160deg, #1a1714 0%, #2a211c 60%, #1a1714 100%);
 }
 .rwt-glow {
-  position: absolute; inset: -10%; z-index: 1;
+  position: absolute; top: -10%; right: -10%; bottom: -10%; left: -10%; z-index: 1;
   background: radial-gradient(700px 500px at 50% 25%, var(--rwt-status, #e8b94a), transparent 60%);
   opacity: 0.2;
   filter: blur(80px);

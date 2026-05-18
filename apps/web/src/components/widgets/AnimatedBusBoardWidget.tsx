@@ -259,7 +259,7 @@ const CSS_BB = `
 }
 @keyframes bb-sunBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 .bb-sun::before {
-  content: ''; position: absolute; inset: -30px; border-radius: 50%;
+  content: ''; position: absolute; top: -30px; right: -30px; bottom: -30px; left: -30px; border-radius: 50%;
   background: conic-gradient(from 0deg,
     transparent 0 18deg, #fbbf24 18deg 22deg,
     transparent 22deg 40deg, #fbbf24 40deg 44deg,

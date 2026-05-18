@@ -585,7 +585,7 @@ const CSS = `
   display: flex; align-items: center; justify-content: center;
 }
 .awp-sunDisc::before {
-  content: ''; position: absolute; inset: -50px; border-radius: 50%;
+  content: ''; position: absolute; top: -50px; right: -50px; bottom: -50px; left: -50px; border-radius: 50%;
   background:
     conic-gradient(from 0deg,
       transparent 0 18deg, #fcd34d 18deg 24deg,

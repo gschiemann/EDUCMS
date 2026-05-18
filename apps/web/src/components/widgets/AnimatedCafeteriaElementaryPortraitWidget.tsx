@@ -679,7 +679,7 @@ const CSS_CAFE_PORTRAIT = `
   filter: drop-shadow(0 18px 30px rgba(0,0,0,.3));
 }
 .cep-burstCenter {
-  position: absolute; inset: 50px; border-radius: 50%;
+  position: absolute; top: 50px; right: 50px; bottom: 50px; left: 50px; border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #fff, #fef3c7 70%);
   border: 10px solid #1f2937;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -711,7 +711,7 @@ const CSS_CAFE_PORTRAIT = `
 }
 @keyframes cep-ringSpin { to { transform: rotate(360deg); } }
 .cep-ring::before {
-  content: ''; position: absolute; inset: -16px; border-radius: 50%;
+  content: ''; position: absolute; top: -16px; right: -16px; bottom: -16px; left: -16px; border-radius: 50%;
   background:
     radial-gradient(circle at 50% 0, #ec4899 0 9px, transparent 10px),
     radial-gradient(circle at 100% 50%, #06b6d4 0 9px, transparent 10px),

@@ -288,14 +288,14 @@ const CSS_SH = `
   box-shadow: inset 0 0 80px rgba(120,53,15,.35);
 }
 
-.sh-pageFrames { position: absolute; inset: 28px; pointer-events: none; }
+.sh-pageFrames { position: absolute; top: 28px; right: 28px; bottom: 28px; left: 28px; pointer-events: none; }
 .sh-pageFrames .sh-left, .sh-pageFrames .sh-right {
   position: absolute; top: 0; bottom: 0; width: calc(50% - 24px); border: 2px solid #8b5a2b;
 }
 .sh-pageFrames .sh-left { left: 0; }
 .sh-pageFrames .sh-right { right: 0; }
 .sh-pageFrames .sh-left::after, .sh-pageFrames .sh-right::after {
-  content: ''; position: absolute; inset: 8px; border: 1px solid #8b5a2b;
+  content: ''; position: absolute; top: 8px; right: 8px; bottom: 8px; left: 8px; border: 1px solid #8b5a2b;
 }
 
 .sh-corner { position: absolute; width: 70px; height: 70px; pointer-events: none; }
@@ -306,7 +306,7 @@ const CSS_SH = `
 .sh-corner.sh-br { bottom: 36px; right: 36px; transform: scale(-1,-1); }
 
 .sh-pages {
-  position: absolute; inset: 70px 80px 70px;
+  position: absolute; top: 70px; right: 80px; bottom: 70px; left: 80px;
   display: grid;
   grid-template-columns: 1.55fr 80px 1fr;
   grid-template-rows: auto 1fr auto;

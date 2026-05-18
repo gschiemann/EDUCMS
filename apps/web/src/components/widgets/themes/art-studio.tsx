@@ -213,7 +213,7 @@ export function ArtStudioClock({ config, compact }: { config: any; compact?: boo
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 300 300" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0 }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Outer bezel with canvas texture look */}
           <circle cx="150" cy="150" r="140" fill={AS.kraft} stroke={AS.charcoal} strokeWidth="6" />
           {/* Clock face */}
@@ -325,7 +325,7 @@ export function ArtStudioWeather({ config, compact }: { config: any; compact?: b
     <div className="absolute inset-0" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 340 260" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0 }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           <defs>
             <radialGradient id="as-wash" cx="35%" cy="30%" r="80%">
               <stop offset="0%" stopColor={wash2} stopOpacity="0.9" />
@@ -447,7 +447,7 @@ export function ArtStudioCountdown({ config, compact, onConfigChange }: { config
     <div className="absolute inset-0" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 400 320" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ position: 'absolute', inset: 0 }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Brick wall pattern */}
           {Array.from({ length: 8 }).map((_, row) =>
             Array.from({ length: 5 }).map((_, col) => {
@@ -477,7 +477,7 @@ export function ArtStudioCountdown({ config, compact, onConfigChange }: { config
         </svg>
         {/* Stencil text overlay */}
         <div style={{
-          position: 'absolute', inset: '16% 8% 10% 8%',
+          position: 'absolute', top: '16%', right: '8%', bottom: '10%', left: '8%',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           fontFamily: AS_FONT_DISPLAY, color: AS.paintYellow, textAlign: 'center',
         }}>
@@ -529,7 +529,7 @@ export function ArtStudioAnnouncement({ config, compact, onConfigChange }: { con
     <div className="absolute inset-0" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 500 380" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0 }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Sketchbook page — slight cream tint, ruled lines */}
           <rect x="6" y="6" width="488" height="368" rx="4"
             fill="#F5F0E8" stroke={AS.kraft} strokeWidth="4" />
@@ -620,7 +620,7 @@ export function ArtStudioCalendar({ config }: { config: any; compact?: boolean }
             position: 'relative',
           }}>
             <svg viewBox="0 0 50 100" width="100%" height="100%" preserveAspectRatio="none"
-              style={{ position: 'absolute', inset: 0 }}>
+              style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
               <path d="M0,0 L40,0 Q55,20 48,50 Q55,80 40,100 L0,100 Z"
                 fill="rgba(255,255,255,0.25)" />
             </svg>
@@ -823,7 +823,7 @@ export function ArtStudioTicker({ config, compact }: { config: any; compact?: bo
     <div className="absolute inset-0 overflow-hidden">
       {/* Scroll shape background */}
       <svg viewBox="0 0 1920 160" width="100%" height="100%" preserveAspectRatio="none"
-        style={{ position: 'absolute', inset: 0 }}>
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
         <defs>
           <linearGradient id="as-scroll" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%"   stopColor="#DBBF8C" />

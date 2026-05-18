@@ -126,7 +126,7 @@ export function FieldDayText({ config, compact, onConfigChange }: { config: any;
         filter: 'drop-shadow(0 10px 16px rgba(0,0,0,0.35))',
         transform: 'rotate(-1.2deg)' }}>
         <svg viewBox="0 0 2800 400" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0 }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           <path d="M60 40 Q20 40 20 100 L20 300 Q20 360 80 360 L160 360 L140 400 L260 360 L2540 360 L2660 400 L2640 360 L2720 360 Q2780 360 2780 300 L2780 100 Q2780 40 2740 40 Z"
             fill={FD.red} stroke={FD.ink} strokeWidth="12" />
           <path d="M80 80 L2720 80 L2720 120 L80 120 Z" fill={FD.ink} />
@@ -135,7 +135,7 @@ export function FieldDayText({ config, compact, onConfigChange }: { config: any;
           <path d="M80 300 L2720 300 L2720 320 L80 320 Z" fill={FD.gold} />
         </svg>
         <div style={{
-          position: 'absolute', inset: '12% 14%',
+          position: 'absolute', top: '12%', right: '14%', bottom: '12%', left: '14%',
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
           textAlign: 'center',
@@ -426,7 +426,7 @@ export function FieldDayAnnouncement({ config, compact, onConfigChange }: { conf
         filter: 'drop-shadow(0 14px 22px rgba(0,0,0,0.35))',
         transform: 'rotate(-0.8deg)' }}>
         <svg viewBox="0 0 1900 600" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0 }}>
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* trophy cup on left */}
           <g transform="translate(80 80)">
             <path d="M40 40 L240 40 L230 160 Q230 240 140 260 Q50 240 50 160 Z"
@@ -506,11 +506,11 @@ export function FieldDayCalendar({ config, compact }: { config: any; compact?: b
             filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.3))',
             transform: `rotate(${i % 2 === 0 ? -1 : 1}deg)` }}>
             <svg viewBox="0 0 390 200" width="100%" height="100%" preserveAspectRatio="none"
-              style={{ position: 'absolute', inset: 0 }}>
+              style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
               <path d="M60 20 Q40 20 40 60 L40 160 Q40 180 70 180 L320 180 Q350 180 350 160 L350 60 Q350 20 330 20 L260 20 L260 50 L130 50 L130 20 Z"
                 fill={bg} stroke={FD.ink} strokeWidth="10" />
             </svg>
-            <div style={{ position: 'absolute', inset: '15% 10%',
+            <div style={{ position: 'absolute', top: '15%', right: '10%', bottom: '15%', left: '10%',
               display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center',
               textAlign: 'center', fontFamily: FD_FONT_BODY }}>
@@ -675,7 +675,7 @@ export function FieldDayImageCarousel({ config }: { config: any; compact?: boole
         ))}
         {/* inner screen */}
         <div style={{
-          position: 'absolute', inset: '13% 6%',
+          position: 'absolute', top: '13%', right: '6%', bottom: '13%', left: '6%',
           borderRadius: 8,
           overflow: 'hidden',
           background: FD.navy,

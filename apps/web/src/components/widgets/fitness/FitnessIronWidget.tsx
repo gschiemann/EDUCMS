@@ -254,7 +254,7 @@ const CSS = `
   transform: rotate(-.6deg); transform-origin: 0 50%;
 }
 .fi-tape::after {
-  content: ''; position: absolute; inset: -2px 0;
+  content: ''; position: absolute; top: -2px; right: 0; bottom: -2px; left: 0;
   border-top: 3px solid #000; border-bottom: 3px solid #000;
 }
 

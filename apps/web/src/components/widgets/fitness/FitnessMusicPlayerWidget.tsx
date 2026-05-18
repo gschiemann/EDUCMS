@@ -225,7 +225,7 @@ const CSS = `
     linear-gradient(135deg, #0b0b10 0%, #141419 50%, #0b0b10 100%);
 }
 .fmpw-glow {
-  position: absolute; inset: -20%; z-index: 1;
+  position: absolute; top: -20%; right: -20%; bottom: -20%; left: -20%; z-index: 1;
   pointer-events: none;
   background:
     radial-gradient(800px 500px at 75% 30%, var(--fmpw-accent, #39ff14), transparent 60%);
@@ -283,7 +283,7 @@ const CSS = `
   flex-shrink: 0;
 }
 .fmpw-art-pulse {
-  position: absolute; inset: -10px;
+  position: absolute; top: -10px; right: -10px; bottom: -10px; left: -10px;
   border-radius: 16px;
   border: 2px solid var(--fmpw-accent, #39ff14);
   opacity: 0.5;

@@ -324,16 +324,16 @@ const CSS_SHP = `
 
 /* Single-page double-border frame (no center spine). */
 .shp-pageFrame {
-  position: absolute; inset: 56px;
+  position: absolute; top: 56px; right: 56px; bottom: 56px; left: 56px;
   border: 5px solid #8b5a2b;
   pointer-events: none;
 }
 .shp-pageFrame::before {
-  content: ''; position: absolute; inset: 18px;
+  content: ''; position: absolute; top: 18px; right: 18px; bottom: 18px; left: 18px;
   border: 2px solid #b78551;
 }
 .shp-pageFrame::after {
-  content: ''; position: absolute; inset: 30px;
+  content: ''; position: absolute; top: 30px; right: 30px; bottom: 30px; left: 30px;
   border: 1px solid #8b5a2b;
   opacity: .55;
 }

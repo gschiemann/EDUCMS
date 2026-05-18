@@ -654,7 +654,7 @@ const CSS = `
 }
 .ms-pl-mark::before {
   /* Three sound-wave arcs */
-  content: ''; position: absolute; inset: 28px;
+  content: ''; position: absolute; top: 28px; right: 28px; bottom: 28px; left: 28px;
   background:
     radial-gradient(circle at 40% 100%, transparent 36px, #000 36px, #000 41px, transparent 41px),
     radial-gradient(circle at 40% 100%, transparent 56px, #000 56px, #000 61px, transparent 61px),

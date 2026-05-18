@@ -187,7 +187,7 @@ const CSS = `
     linear-gradient(160deg, #0a0a0a 0%, #0c0a14 50%, #0a0a0a 100%);
 }
 .bgds-glow {
-  position: absolute; inset: -10%; z-index: 1;
+  position: absolute; top: -10%; right: -10%; bottom: -10%; left: -10%; z-index: 1;
   pointer-events: none;
   background: radial-gradient(900px 500px at 50% 0%, var(--bgds-accent, #ef4444), transparent 65%);
   opacity: 0.07;

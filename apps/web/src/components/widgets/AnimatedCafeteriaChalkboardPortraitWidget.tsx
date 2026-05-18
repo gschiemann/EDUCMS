@@ -451,7 +451,7 @@ const CSS_CHP = `
 
 /* WOODEN FRAME BORDER — radial wood grain + box-shadow inset */
 .chp-frame {
-  position: absolute; inset: 32px;
+  position: absolute; top: 32px; right: 32px; bottom: 32px; left: 32px;
   border-radius: 24px;
   background:
     repeating-linear-gradient(90deg,
@@ -466,7 +466,7 @@ const CSS_CHP = `
   z-index: 0;
 }
 .chp-frame::before {
-  content: ''; position: absolute; inset: 14px; border-radius: 16px;
+  content: ''; position: absolute; top: 14px; right: 14px; bottom: 14px; left: 14px; border-radius: 16px;
   background: repeating-linear-gradient(180deg,
     rgba(0,0,0,.18) 0 1px, transparent 1px 5px,
     rgba(255,255,255,.05) 5px 6px, transparent 6px 14px);
@@ -475,7 +475,7 @@ const CSS_CHP = `
 
 /* CHALKBOARD SLATE — inner */
 .chp-board {
-  position: absolute; inset: 80px; border-radius: 8px;
+  position: absolute; top: 80px; right: 80px; bottom: 80px; left: 80px; border-radius: 8px;
   background:
     radial-gradient(ellipse at 22% 18%, rgba(255,255,255,.08), transparent 42%),
     radial-gradient(ellipse at 80% 82%, rgba(255,255,255,.05), transparent 50%),
@@ -803,7 +803,7 @@ const CSS_CHP = `
   display: flex; align-items: center; justify-content: center;
 }
 .chp-nutritionEraser {
-  position: absolute; inset: 8px;
+  position: absolute; top: 8px; right: 8px; bottom: 8px; left: 8px;
   background:
     radial-gradient(ellipse 60% 70% at 20% 50%, rgba(254,243,199,.16), transparent 70%),
     radial-gradient(ellipse 60% 70% at 80% 50%, rgba(254,243,199,.14), transparent 70%),
@@ -845,7 +845,7 @@ const CSS_CHP = `
   box-shadow: 0 -16px 40px rgba(0,0,0,.5);
 }
 .chp-tickerStreaks {
-  position: absolute; inset: 18px; border-radius: 8px;
+  position: absolute; top: 18px; right: 18px; bottom: 18px; left: 18px; border-radius: 8px;
   background:
     radial-gradient(ellipse 220px 20px at 18% 50%, rgba(254,243,199,.18), transparent 75%),
     radial-gradient(ellipse 280px 18px at 62% 50%, rgba(254,243,199,.12), transparent 75%),

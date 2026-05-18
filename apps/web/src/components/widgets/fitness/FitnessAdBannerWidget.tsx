@@ -275,7 +275,7 @@ const CSS = `
   overflow: hidden;
 }
 .fabw-synth-beams {
-  position: absolute; inset: -50%;
+  position: absolute; top: -50%; right: -50%; bottom: -50%; left: -50%;
   pointer-events: none;
 }
 .fabw-synth-beams span {

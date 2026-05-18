@@ -199,7 +199,7 @@ const CSS = `
     linear-gradient(160deg, #18012a 0%, #0a0a0a 60%, #1a0a05 100%);
 }
 .bhh-glow {
-  position: absolute; inset: -10%; z-index: 1;
+  position: absolute; top: -10%; right: -10%; bottom: -10%; left: -10%; z-index: 1;
   pointer-events: none;
   background: radial-gradient(700px 700px at 50% 40%, var(--bhh-accent, #ec4899), transparent 65%);
   opacity: 0.18;

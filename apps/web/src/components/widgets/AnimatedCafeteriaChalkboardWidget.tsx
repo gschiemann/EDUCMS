@@ -353,7 +353,7 @@ const CSS_CHALK = `
 }
 
 .ch-frame {
-  position: absolute; inset: 20px; border-radius: 14px;
+  position: absolute; top: 20px; right: 20px; bottom: 20px; left: 20px; border-radius: 14px;
   background:
     repeating-linear-gradient(90deg,
       #78350f 0 12px, #92400e 12px 16px, #78350f 16px 28px, #a16207 28px 32px);
@@ -363,7 +363,7 @@ const CSS_CHALK = `
   z-index: 0;
 }
 .ch-board {
-  position: absolute; inset: 52px; border-radius: 4px;
+  position: absolute; top: 52px; right: 52px; bottom: 52px; left: 52px; border-radius: 4px;
   background:
     radial-gradient(ellipse at 20% 30%, rgba(255,255,255,.06), transparent 40%),
     radial-gradient(ellipse at 80% 70%, rgba(255,255,255,.04), transparent 50%),
@@ -467,7 +467,7 @@ const CSS_CHALK = `
   filter: blur(.3px);
 }
 .ch-clock::after {
-  content: ''; position: absolute; inset: 20px;
+  content: ''; position: absolute; top: 20px; right: 20px; bottom: 20px; left: 20px;
   border-radius: 50%;
   background: radial-gradient(ellipse at 35% 35%, rgba(255,255,255,.12), transparent 70%);
   box-shadow: inset 0 0 20px rgba(0,0,0,.4);
@@ -567,7 +567,7 @@ const CSS_CHALK = `
   filter: blur(.2px);
 }
 .ch-menu::after {
-  content: ''; position: absolute; inset: 10px;
+  content: ''; position: absolute; top: 10px; right: 10px; bottom: 10px; left: 10px;
   border: 2px solid rgba(254,243,199,.25);
   border-radius: 14px;
   filter: blur(.3px);
@@ -785,7 +785,7 @@ const CSS_CHALK = `
   box-shadow: 0 -8px 20px rgba(0,0,0,.4);
 }
 .ch-tickerInner {
-  position: absolute; inset: 14px; border-radius: 4px;
+  position: absolute; top: 14px; right: 14px; bottom: 14px; left: 14px; border-radius: 4px;
   background: linear-gradient(180deg, #14532d 0%, #0f3d2b 100%);
   box-shadow: inset 0 0 20px rgba(0,0,0,.5);
   display: flex; align-items: center; overflow: hidden;

@@ -291,7 +291,7 @@ export function VarsityAthleticClock({ config, compact }: { config: any; compact
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 460" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ filter: 'drop-shadow(0 8px 24px rgba(5,16,31,0.8))', position: 'absolute', inset: 0 }}>
+          style={{ filter: 'drop-shadow(0 8px 24px rgba(5,16,31,0.8))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           <defs>
             <radialGradient id="clockBezel" cx="35%" cy="30%" r="70%">
               <stop offset="0%" stopColor={VA.white} />
@@ -484,7 +484,7 @@ export function VarsityAthleticWeather({ config, compact }: { config: any; compa
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 460" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ filter: 'drop-shadow(0 6px 20px rgba(5,16,31,0.7))', position: 'absolute', inset: 0 }}>
+          style={{ filter: 'drop-shadow(0 6px 20px rgba(5,16,31,0.7))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           <defs>
             <linearGradient id="forecastBg" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#0A1A0A" />
@@ -957,7 +957,7 @@ export function VarsityAthleticImageCarousel({ config }: { config: any; compact?
         ))}
 
         {/* Image / placeholder */}
-        <div style={{ position: 'absolute', inset: '18px 5px', overflow: 'hidden', borderRadius: 4 }}>
+        <div style={{ position: 'absolute', top: '18px', right: '5px', bottom: '18px', left: '5px', overflow: 'hidden', borderRadius: 4 }}>
           {hasImage ? (
             <img src={resolveUrl(urls[idx])} alt="Athletic Gallery"
               className="transition-opacity duration-700"

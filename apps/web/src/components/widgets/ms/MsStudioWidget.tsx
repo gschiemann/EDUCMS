@@ -676,7 +676,7 @@ const CSS = `
 }
 .ms-st-onair::before {
   /* glass face highlight */
-  content:''; position: absolute; inset: 14px;
+  content:''; position: absolute; top: 14px; right: 14px; bottom: 14px; left: 14px;
   border-radius: 8px;
   background:
     linear-gradient(180deg, rgba(255,255,255,.07), transparent 28%),
@@ -769,7 +769,7 @@ const CSS = `
 }
 .ms-st-mt::before {
   /* glow tint per tile */
-  content: ''; position: absolute; inset: 6px; border-radius: 4px;
+  content: ''; position: absolute; top: 6px; right: 6px; bottom: 6px; left: 6px; border-radius: 4px;
   background: radial-gradient(ellipse 80% 60% at 50% 30%, rgba(244,185,66,.08), transparent 70%);
   pointer-events: none;
 }
@@ -983,7 +983,7 @@ const CSS = `
 }
 .ms-st-platter::after {
   /* center label */
-  content: ''; position: absolute; inset: 30%; border-radius: 50%;
+  content: ''; position: absolute; top: 30%; right: 30%; bottom: 30%; left: 30%; border-radius: 50%;
   background: radial-gradient(circle, #c8901c 0 60%, #f4b942 60% 100%);
   box-shadow: inset 0 0 14px rgba(0,0,0,.4);
 }
@@ -994,7 +994,7 @@ const CSS = `
   z-index: 4;
 }
 .ms-st-label-art {
-  position: absolute; inset: 30%; border-radius: 50%; z-index: 3;
+  position: absolute; top: 30%; right: 30%; bottom: 30%; left: 30%; border-radius: 50%; z-index: 3;
   display: grid; place-items: center; text-align: center;
   color: #1a0e08;
   padding: 12px;
@@ -1098,7 +1098,7 @@ const CSS = `
 }
 .ms-st-vu-face::before {
   /* arc + scale */
-  content: ''; position: absolute; inset: 14px 14px 8px;
+  content: ''; position: absolute; top: 14px; right: 14px; bottom: 8px; left: 14px;
   border-radius: 8px 8px 100% 100% / 8px 8px 70% 70%;
   background: repeating-conic-gradient(from 180deg at 50% 100%,
     transparent 0 5deg, rgba(0,0,0,.5) 5deg 5.4deg);
@@ -1107,7 +1107,7 @@ const CSS = `
 }
 .ms-st-vu-face::after {
   /* red overload zone */
-  content: ''; position: absolute; inset: 14px 14px 8px;
+  content: ''; position: absolute; top: 14px; right: 14px; bottom: 8px; left: 14px;
   border-radius: 8px 8px 100% 100% / 8px 8px 70% 70%;
   background: conic-gradient(from 200deg at 50% 100%,
     transparent 0deg 60deg, rgba(230,57,70,.5) 60deg 90deg, transparent 90deg 360deg);
@@ -1205,7 +1205,7 @@ const CSS = `
 }
 .ms-st-fader::before {
   /* fader scale */
-  content: ''; position: absolute; inset: 6px 0;
+  content: ''; position: absolute; top: 6px; right: 0; bottom: 6px; left: 0;
   background: repeating-linear-gradient(0deg, transparent 0 8px, rgba(255,255,255,.08) 8px 9px);
 }
 .ms-st-cap {
@@ -1528,7 +1528,7 @@ const CSS = `
 }
 .ms-st-ticker::before {
   /* brushed-aluminum streaks */
-  content: ''; position: absolute; inset: 4px;
+  content: ''; position: absolute; top: 4px; right: 4px; bottom: 4px; left: 4px;
   background:
     repeating-linear-gradient(90deg, transparent 0 2px, rgba(255,235,180,.04) 2px 3px),
     linear-gradient(180deg, rgba(255,235,180,.04), transparent 50%);

@@ -264,7 +264,7 @@ const CSS_ME = `
 }
 @keyframes me-signSway { 0%, 100% { transform: rotate(-1deg); } 50% { transform: rotate(1deg); } }
 .me-sign::before {
-  content: ''; position: absolute; inset: -4px; border-radius: 24px;
+  content: ''; position: absolute; top: -4px; right: -4px; bottom: -4px; left: -4px; border-radius: 24px;
   background:
     radial-gradient(circle at 0% 0%, #fbbf24 0 10px, transparent 10px),
     radial-gradient(circle at 25% 0%, #fbbf24 0 10px, transparent 10px),
@@ -318,7 +318,7 @@ const CSS_ME = `
   position: relative;
 }
 .me-crest::before {
-  content: ''; position: absolute; inset: 12px;
+  content: ''; position: absolute; top: 12px; right: 12px; bottom: 12px; left: 12px;
   clip-path: polygon(50% 0%, 100% 12%, 100% 60%, 50% 100%, 0 60%, 0 12%);
   box-shadow: inset 0 0 0 4px #92400e;
 }

@@ -502,7 +502,7 @@ const CSS_FT = `
   50%      { transform: rotate(3deg); }
 }
 .ft-clock::before {
-  content: ''; position: absolute; inset: 10px; border-radius: 50%;
+  content: ''; position: absolute; top: 10px; right: 10px; bottom: 10px; left: 10px; border-radius: 50%;
   background: conic-gradient(from 0deg,
     #1f2937 0 2deg, transparent 2deg 30deg,
     #1f2937 30deg 32deg, transparent 32deg 60deg,
@@ -684,7 +684,7 @@ const CSS_FT = `
   filter: drop-shadow(0 12px 20px rgba(0,0,0,.3));
 }
 .ft-center {
-  position: absolute; inset: 34px; border-radius: 50%;
+  position: absolute; top: 34px; right: 34px; bottom: 34px; left: 34px; border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #fafafa, #fde68a 70%);
   border: 5px solid #1f2937;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -759,7 +759,7 @@ const CSS_FT = `
 }
 @keyframes ft-ringSpin { to { transform: rotate(360deg); } }
 .ft-ring::before {
-  content: ''; position: absolute; inset: -20px; border-radius: 50%;
+  content: ''; position: absolute; top: -20px; right: -20px; bottom: -20px; left: -20px; border-radius: 50%;
   background:
     radial-gradient(circle at 50% 0, #ec4899 0 8px, transparent 9px),
     radial-gradient(circle at 100% 50%, #06b6d4 0 8px, transparent 9px),

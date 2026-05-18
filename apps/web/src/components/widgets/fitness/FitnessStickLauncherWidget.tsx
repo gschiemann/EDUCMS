@@ -40,7 +40,7 @@
  *   absent or the request fails (network / auth).
  *
  * Visual DNA matches FitnessMusicPlayerWidget:
- *   • position:absolute; inset:0 root
+ *   • position:absolute; top/right/bottom/left:0 root
  *   • container-type:size for cq* units
  *   • @import Outfit + Inter via Google Fonts inside the <style> tag
  *   • charcoal + radial accent glow + grain-texture overlay
@@ -534,7 +534,7 @@ const CSS = `
   box-shadow: 0 12px 36px rgba(0,0,0,0.4);
 }
 .fsl-ready-logo-pulse {
-  position: absolute; inset: -8px;
+  position: absolute; top: -8px; right: -8px; bottom: -8px; left: -8px;
   border-radius: clamp(16px, 3cqh, 28px);
   border: 1.5px solid var(--fsl-accent, #6366f1);
   opacity: 0.35;

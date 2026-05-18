@@ -358,7 +358,7 @@ const CSS_CORK_PORTRAIT = `
 }
 
 .bcp-frame {
-  position: absolute; inset: 28px;
+  position: absolute; top: 28px; right: 28px; bottom: 28px; left: 28px;
   border: 38px solid;
   border-image: linear-gradient(135deg, #6b3a14 0%, #8b5a2b 30%, #5a3010 70%, #3d2010 100%) 1;
   box-shadow: inset 0 0 0 6px rgba(0,0,0,.3), 0 14px 44px rgba(0,0,0,.4);

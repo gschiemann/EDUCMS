@@ -188,7 +188,7 @@ export function StemScienceImageCarousel({ config, compact }: { config: any; com
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           position: 'relative', overflow: 'hidden'
         }}>
-          <div style={{ position: 'absolute', inset: '2cqi', border: '1px solid rgba(6,182,212,0.2)', borderRadius: '4px', pointerEvents: 'none', zIndex: 20 }} />
+          <div style={{ position: 'absolute', top: '2cqi', right: '2cqi', bottom: '2cqi', left: '2cqi', border: '1px solid rgba(6,182,212,0.2)', borderRadius: '4px', pointerEvents: 'none', zIndex: 20 }} />
           
           <div style={{ color: '#0369a1', fontFamily: '"Share Tech Mono", monospace', fontSize: 'clamp(1.2rem, 5cqi, 2.5rem)', letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: '2cqi' }}>
             <span style={{ animation: 'spin 2s linear infinite', display: 'inline-block' }}>⚙️</span>

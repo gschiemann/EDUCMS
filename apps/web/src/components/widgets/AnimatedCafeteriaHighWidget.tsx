@@ -516,7 +516,7 @@ const CSS_HS = `
 .hs-special { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; position: relative; }
 .hs-sunDisc { position: relative; width: 220px; height: 220px; display: flex; align-items: center; justify-content: center; }
 .hs-sunDisc::before {
-  content: ''; position: absolute; inset: -32px; border-radius: 50%;
+  content: ''; position: absolute; top: -32px; right: -32px; bottom: -32px; left: -32px; border-radius: 50%;
   background: conic-gradient(from 0deg,
     transparent 0 18deg, #fbbf24 18deg 24deg,
     transparent 24deg 48deg, #f59e0b 48deg 54deg,
@@ -646,7 +646,7 @@ const CSS_HS = `
 .hs-burst { position: relative; width: 170px; height: 140px; animation: hs-burst 10s linear infinite; }
 @keyframes hs-burst { from { transform: rotate(-5deg); } 50% { transform: rotate(5deg); } to { transform: rotate(-5deg); } }
 .hs-burst::before {
-  content: ''; position: absolute; inset: -24px;
+  content: ''; position: absolute; top: -24px; right: -24px; bottom: -24px; left: -24px;
   background: conic-gradient(from 0deg,
     #fbbf24 0 12deg, transparent 12deg 30deg,
     #ec4899 30deg 42deg, transparent 42deg 60deg,

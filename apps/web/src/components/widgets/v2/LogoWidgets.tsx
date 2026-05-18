@@ -33,7 +33,7 @@ export function LogoVarsityPatchWidget({ config }: WidgetProps<LogoCfg>) {
   const c = { ...FALLBACK, ...(config || {}) }; const r = resolveStyle({ fontFamily: "'Bebas Neue', sans-serif", fontSize: 36, textColor: '#fff', bgColor: '#7c1d1d', bgGradient: 'radial-gradient(circle at 30% 30%, #991b1b, #7c1d1d 70%)', padding: 20, borderRadius: 16, borderWidth: 6, borderStyle: 'solid', borderColor: '#fef3c7', shadow: '0 12px 24px rgba(0,0,0,0.3)', accentColor: '#fbbf24', ...(config?.style || {}) });
   return (
     <div style={frameStyle(r)}>
-      <div style={{ position: 'absolute', inset: 12, border: `3px solid ${r.accent.primary}`, borderRadius: 8, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: 12, right: 12, bottom: 12, left: 12, border: `3px solid ${r.accent.primary}`, borderRadius: 8, pointerEvents: 'none' }} />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8 }}>
         <div style={{ fontSize: '0.5em', letterSpacing: '0.4em', color: r.accent.primary, fontWeight: 700 }}>★ {c.established} ★</div>
         <div style={{ fontSize: 96, lineHeight: 1, filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.4))' }}>{c.logoUrl ? <img src={c.logoUrl} alt="" style={{ width: 100, height: 100, objectFit: 'contain' }} /> : c.mascot}</div>
@@ -58,7 +58,7 @@ export function LogoCrayonSunWidget({ config }: WidgetProps<LogoCfg>) {
               <rect key={i} x="86" y="6" width="8" height="32" rx="4" fill={[r.accent.primary, r.accent.secondary, r.accent.highlight][i % 3]} transform={`rotate(${i * 30} 90 90)`} />
             ))}
           </svg>
-          <div style={{ position: 'absolute', inset: 32, background: r.accent.highlight, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 56, boxShadow: '0 8px 0 rgba(0,0,0,0.15)' }}>{c.logoUrl ? <img src={c.logoUrl} alt="" style={{ width: '70%', height: '70%' }} /> : c.mascot}</div>
+          <div style={{ position: 'absolute', top: 32, right: 32, bottom: 32, left: 32, background: r.accent.highlight, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 56, boxShadow: '0 8px 0 rgba(0,0,0,0.15)' }}>{c.logoUrl ? <img src={c.logoUrl} alt="" style={{ width: '70%', height: '70%' }} /> : c.mascot}</div>
         </div>
         <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: 800, textAlign: 'center', textShadow: '3px 3px 0 #fff' }}>{c.schoolName}</h2>
         <div style={{ fontSize: '0.55em', fontWeight: 700, color: r.accent.primary }}>♥ {c.tagline} ♥</div>

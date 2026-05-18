@@ -239,7 +239,7 @@ const CSS = `
   background: linear-gradient(160deg, #07070c 0%, #0a0a0f 55%, #0b0b10 100%);
 }
 .fcsw-glow {
-  position: absolute; inset: -20%; z-index: 1;
+  position: absolute; top: -20%; right: -20%; bottom: -20%; left: -20%; z-index: 1;
   pointer-events: none;
   background: radial-gradient(700px 400px at 15% 10%, var(--fcsw-accent, #00d4ff), transparent 65%);
   opacity: 0.09;

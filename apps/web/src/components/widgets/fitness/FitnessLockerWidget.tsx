@@ -311,7 +311,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=JetBrains+Mono:wght@500;700&family=Outfit:wght@400;700;900&family=Bebas+Neue&display=swap');
 
 .fl-paper {
-  position: absolute; inset: 80px;
+  position: absolute; top: 80px; right: 80px; bottom: 80px; left: 80px;
   background: #f3ead4;
   background-image:
     radial-gradient(circle at 20% 30%, rgba(184,48,42,.04) 0, transparent 30%),

@@ -404,8 +404,8 @@ const CSS_BOOK_PORTRAIT = `
 .bkp-edgeShadowR { position: absolute; top: 0; bottom: 0; right: 0; width: 60px; background: linear-gradient(270deg, rgba(70,40,15,.45), transparent); pointer-events: none; z-index: 2; }
 .bkp-edgeShadowT { position: absolute; top: 0; left: 0; right: 0; height: 50px; background: linear-gradient(180deg, rgba(70,40,15,.35), transparent); pointer-events: none; z-index: 2; }
 
-.bkp-pageFrame { position: absolute; inset: 50px; border: 4px solid #8b5a2b; pointer-events: none; z-index: 2; }
-.bkp-pageFrameInner { position: absolute; inset: 70px; border: 1px solid #8b5a2b; pointer-events: none; z-index: 2; }
+.bkp-pageFrame { position: absolute; top: 50px; right: 50px; bottom: 50px; left: 50px; border: 4px solid #8b5a2b; pointer-events: none; z-index: 2; }
+.bkp-pageFrameInner { position: absolute; top: 70px; right: 70px; bottom: 70px; left: 70px; border: 1px solid #8b5a2b; pointer-events: none; z-index: 2; }
 
 .bkp-corner { position: absolute; width: 120px; height: 120px; pointer-events: none; z-index: 3; }
 .bkp-corner svg { width: 100%; height: 100%; fill: none; stroke: #8b5a2b; stroke-width: 2.5; opacity: .85; }
@@ -427,7 +427,7 @@ const CSS_BOOK_PORTRAIT = `
   border-right: 3px solid rgba(0,0,0,.20);
 }
 .bkp-ribbonBody::after {
-  content: ''; position: absolute; inset: 12px 14px;
+  content: ''; position: absolute; top: 12px; right: 14px; bottom: 12px; left: 14px;
   border-left: 1px dashed rgba(250,236,198,.45);
   border-right: 1px dashed rgba(250,236,198,.45);
 }
@@ -508,7 +508,7 @@ const CSS_BOOK_PORTRAIT = `
   overflow: hidden;
 }
 .bkp-featuredFrame::before {
-  content: ''; position: absolute; inset: 24px;
+  content: ''; position: absolute; top: 24px; right: 24px; bottom: 24px; left: 24px;
   background: repeating-conic-gradient(from 0deg, rgba(255,255,255,.12) 0 6deg, transparent 6deg 18deg);
   pointer-events: none;
 }
@@ -526,7 +526,7 @@ const CSS_BOOK_PORTRAIT = `
   padding: 20px;
 }
 .bkp-featuredHero::before {
-  content: ''; position: absolute; inset: -50%;
+  content: ''; position: absolute; top: -50%; right: -50%; bottom: -50%; left: -50%;
   background: repeating-conic-gradient(from 0deg, rgba(255,255,255,.20) 0 6deg, transparent 6deg 18deg);
 }
 .bkp-featuredEmoji {
@@ -698,7 +698,7 @@ const CSS_BOOK_PORTRAIT = `
   display: flex; align-items: center; justify-content: center;
 }
 .bkp-noteSeal::before {
-  content: ''; position: absolute; inset: 14px;
+  content: ''; position: absolute; top: 14px; right: 14px; bottom: 14px; left: 14px;
   border: 2px dashed rgba(250,236,198,.55);
   border-radius: 50%;
 }

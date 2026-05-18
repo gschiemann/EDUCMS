@@ -676,7 +676,7 @@ const CSS = `
   box-shadow: 14px 14px 0 #0b1220;
 }
 .ms-atl-p-compass::before {                    /* dashed inner ring */
-  content: ''; position: absolute; inset: 32px; border-radius: 50%;
+  content: ''; position: absolute; top: 32px; right: 32px; bottom: 32px; left: 32px; border-radius: 50%;
   border: 3px dashed rgba(11,18,32,.45);
 }
 .ms-atl-p-compass::after {                     /* north needle */
@@ -782,7 +782,7 @@ const CSS = `
   display: flex; flex-direction: column; justify-content: center;
 }
 .ms-atl-p-poster::before {
-  content: ''; position: absolute; inset: 24px;
+  content: ''; position: absolute; top: 24px; right: 24px; bottom: 24px; left: 24px;
   border: 3px solid #0b1220; pointer-events: none;
 }
 .ms-atl-p-poster::after {

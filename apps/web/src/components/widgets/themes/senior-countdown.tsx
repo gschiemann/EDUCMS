@@ -132,7 +132,7 @@ export function SeniorCountdownText({ config, compact, onConfigChange }: { confi
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* SVG ribbon banner */}
         <svg viewBox="0 0 3200 380" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ filter: `drop-shadow(0 14px 24px ${SCD.shadow})`, position: 'absolute', inset: 0 }}>
+          style={{ filter: `drop-shadow(0 14px 24px ${SCD.shadow})`, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Forked tail — left */}
           <polygon points="0,190 130,80 250,190 130,300" fill={SCD.navyDark} />
           {/* Forked tail — right */}
@@ -363,7 +363,7 @@ export function SeniorCountdownWeather({ config, compact }: { config: any; compa
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 400 500" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ filter: `drop-shadow(0 10px 22px ${SCD.shadow})`, position: 'absolute', inset: 0 }}>
+          style={{ filter: `drop-shadow(0 10px 22px ${SCD.shadow})`, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Parchment card */}
           <rect x="10" y="10" width="380" height="480" rx="16"
             fill={SCD.parchment} stroke={SCD.parchmentDark} strokeWidth="3" />
@@ -438,7 +438,7 @@ export function SeniorCountdownCountdown({ config, compact, onConfigChange }: { 
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 900 560" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-          style={{ filter: `drop-shadow(0 18px 36px ${SCD.shadow})`, position: 'absolute', inset: 0 }}>
+          style={{ filter: `drop-shadow(0 18px 36px ${SCD.shadow})`, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Dark banner with gold border */}
           <rect x="10" y="30" width="880" height="500" rx="18"
             fill={SCD.navyDark} stroke={SCD.gold} strokeWidth="8" />
@@ -451,7 +451,7 @@ export function SeniorCountdownCountdown({ config, compact, onConfigChange }: { 
         {/* Text — label / number / unit */}
         <div style={{
           position: 'absolute',
-          inset: '8% 8% 10% 8%',
+          top: '8%', right: '8%', bottom: '10%', left: '8%',
           display: 'flex', flexDirection: 'column',
           fontFamily: SCD_FONT_DISPLAY, color: SCD.goldLight,
           textAlign: 'center',
@@ -504,7 +504,7 @@ export function SeniorCountdownAnnouncement({ config, compact, onConfigChange }:
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 1800 520" width="100%" height="100%" preserveAspectRatio="none"
-          style={{ filter: `drop-shadow(0 16px 30px ${SCD.shadow})`, position: 'absolute', inset: 0 }}>
+          style={{ filter: `drop-shadow(0 16px 30px ${SCD.shadow})`, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
           {/* Scroll end-caps (rolled tube) */}
           <ellipse cx="50" cy="260" rx="50" ry="255" fill={SCD.parchmentDark} stroke={SCD.gold} strokeWidth="5" />
           <ellipse cx="50" cy="260" rx="35" ry="240" fill={SCD.parchment} />
@@ -792,7 +792,7 @@ export function SeniorCountdownTicker({ config, compact }: { config: any; compac
     <div className="absolute inset-0" style={{ overflow: 'hidden' }}>
       {/* Parchment banner SVG */}
       <svg viewBox="0 0 3200 180" width="100%" height="100%" preserveAspectRatio="none"
-        style={{ position: 'absolute', inset: 0 }}>
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
         {/* Main parchment strip */}
         <rect x="0" y="20" width="3200" height="140" fill={SCD.parchment} />
         {/* Top gold rule */}

@@ -313,7 +313,7 @@ const CSS_BHP = `
 }
 
 .bhp-frame {
-  position: absolute; inset: 24px;
+  position: absolute; top: 24px; right: 24px; bottom: 24px; left: 24px;
   border: 36px solid;
   border-image: linear-gradient(135deg, #6b3a14 0%, #8b5a2b 30%, #5a3010 70%, #3d2010 100%) 1;
   box-shadow: inset 0 0 0 5px rgba(0,0,0,.3), 0 10px 32px rgba(0,0,0,.5);
