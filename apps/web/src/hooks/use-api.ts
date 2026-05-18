@@ -2114,7 +2114,13 @@ export function useGameControl(gameId: string) {
     onSuccess: writeBack,
   });
 
-  return { score, clock, segment, stats, status, cue, spotlight };
+  const ribbon = useMutation({
+    // Operator's custom ribbon messages — scroll on the stadium ribbon.
+    mutationFn: (body: { messages: string[] }) =>
+      apiFetch(`/sports/games/${gameId}/ribbon`, { method: 'PATCH', body: JSON.stringify(body) }),
+  });
+
+  return { score, clock, segment, stats, status, cue, spotlight, ribbon };
 }
 
 // ─── VenueOS Sports — Sprint 13 Phase 2: Sponsorship ────────────

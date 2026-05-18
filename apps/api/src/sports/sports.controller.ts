@@ -259,6 +259,23 @@ export class SportsController {
     return this.sports.fireCue(req.user.tenantId, id, body);
   }
 
+  /** Set the stadium ribbon's custom message reel — operator-typed
+   *  lines that scroll on the ribbon in place of the default prompts. */
+  @Patch('games/:id/ribbon')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  ribbon(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { messages?: string[] },
+  ) {
+    return this.sports.setRibbon(req.user.tenantId, id, body);
+  }
+
   // ── cue deck (custom triggers) ───────────────────────────────
 
   /** The tenant's reusable cue deck. */

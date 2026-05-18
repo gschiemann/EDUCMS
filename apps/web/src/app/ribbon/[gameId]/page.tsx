@@ -61,6 +61,7 @@ interface BoardData {
   stats: Record<string, unknown>;
   sponsors?: Sponsor[];
   roster?: Player[];
+  ribbonMessages?: string[];
   serverTime: number;
 }
 
@@ -122,7 +123,11 @@ function buildCells(data: BoardData, def: SportDefinition): Cell[] {
     { kind: 'score' },
     { kind: 'status', text: statusText, live: data.status === 'LIVE' },
   ];
-  const prompts = ['LET’S GO!', `GO ${homeCode}!`, 'MAKE SOME NOISE', 'DEFENSE!', `${homeCode} PRIDE`];
+  // Operator-set ribbon messages win; otherwise the default crowd prompts.
+  const custom = (data.ribbonMessages || []).map((m) => m.trim()).filter(Boolean);
+  const prompts = custom.length
+    ? custom
+    : ['LET’S GO!', `GO ${homeCode}!`, 'MAKE SOME NOISE', 'DEFENSE!', `${homeCode} PRIDE`];
   const sponsors = data.sponsors || [];
   const players = data.roster || [];
   let pi = 0;

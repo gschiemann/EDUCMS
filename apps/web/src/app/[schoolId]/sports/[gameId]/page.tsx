@@ -47,6 +47,7 @@ import type { SportDefinition, SportStatField } from '@cms/api-types';
 import { RosterPanel } from './RosterPanel';
 import { CueDeckPanel } from './CueDeckPanel';
 import { SponsorPanel } from './SponsorPanel';
+import { RibbonPanel } from './RibbonPanel';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 
 const GAME_STATUSES: { key: string; label: string }[] = [
@@ -327,6 +328,11 @@ function GameControl() {
       {/* cue deck — operator-built triggers with uploaded takeover content */}
       <Section title="Cue deck">
         <CueDeckPanel gameId={gameId} />
+      </Section>
+
+      {/* ribbon messages — operator-typed lines that scroll on the ribbon */}
+      <Section title="Ribbon messages">
+        <RibbonPanel gameId={gameId} />
       </Section>
 
       {/* ribbon sponsors — uploaded brand logos that scroll on the ribbon */}

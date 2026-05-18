@@ -122,9 +122,29 @@ export class SportsService {
     });
   }
 
-  /** One game, tenant-scoped — for the operator control surface. */
+  /**
+   * The current operator-set ribbon messages — the payload of the most
+   * recent RIBBON GameEvent. The ribbon scrolls these in place of the
+   * default crowd prompts. No new table: RIBBON rides the generic
+   * GameEvent log, latest-event-wins.
+   */
+  private async latestRibbonMessages(gameId: string): Promise<string[]> {
+    const ev = await this.prisma.client.gameEvent.findFirst({
+      where: { gameId, type: 'RIBBON' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const raw = (ev?.payload as Record<string, unknown> | undefined)?.messages;
+    return Array.isArray(raw) ? raw.filter((m): m is string => typeof m === 'string') : [];
+  }
+
+  /**
+   * One game, tenant-scoped — for the operator control surface.
+   * Includes the current custom ribbon messages so the ribbon panel
+   * can pre-fill.
+   */
   async getGame(tenantId: string, id: string) {
-    return this.owned(tenantId, id);
+    const game = await this.owned(tenantId, id);
+    return { ...game, ribbonMessages: await this.latestRibbonMessages(id) };
   }
 
   /**
@@ -139,7 +159,7 @@ export class SportsService {
     if (!game) throw new NotFoundException('Game not found');
 
     const since = new Date(Date.now() - CUE_FEED_WINDOW_MS);
-    const [cues, sponsors, roster] = await Promise.all([
+    const [cues, sponsors, roster, ribbonMessages] = await Promise.all([
       this.prisma.client.gameEvent.findMany({
         where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
         orderBy: { createdAt: 'asc' },
@@ -160,6 +180,8 @@ export class SportsService {
           position: true, photoUrl: true, stats: true,
         },
       }),
+      // Operator-set ribbon messages — the latest RIBBON event wins.
+      this.latestRibbonMessages(id),
     ]);
 
     return {
@@ -187,6 +209,7 @@ export class SportsService {
       })),
       sponsors,
       roster,
+      ribbonMessages,
       sponsorSpotSeconds: SPONSOR_SPOT_SECONDS,
       serverTime: Date.now(),
     };
@@ -1084,6 +1107,24 @@ export class SportsService {
       snapshot: this.cueSnapshot(game),
     });
     return { fired: true, cue, eventId: event.id };
+  }
+
+  /**
+   * Set the stadium ribbon's custom message reel. Each line scrolls on
+   * the ribbon in place of the default crowd prompts; an empty list
+   * clears back to the auto prompts. Stored as a RIBBON GameEvent
+   * (latest wins) — no new table, no migration.
+   */
+  async setRibbon(tenantId: string, id: string, dto: { messages?: unknown }) {
+    await this.owned(tenantId, id);
+    const messages = Array.isArray(dto.messages)
+      ? dto.messages
+          .map((m) => this.cleanText(m, 120))
+          .filter((m): m is string => m !== null)
+          .slice(0, 30)
+      : [];
+    await this.record(id, 'RIBBON', { messages });
+    return { messages };
   }
 
   // ── cue deck (custom triggers) ───────────────────────────────
