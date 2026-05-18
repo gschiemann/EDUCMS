@@ -19,6 +19,7 @@
  */
 
 import { HsStage } from '../hs/HsStage';
+import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 export interface FitnessLobbyConfig {
   // Header
@@ -278,7 +279,7 @@ export function FitnessLobbyWidget({ config }: { config?: FitnessLobbyConfig }) 
         <div
           className="fb-greet-body"
           data-field="greet.body"
-          dangerouslySetInnerHTML={{ __html: pick(config, 'greet.body') }}
+          dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(pick(config, 'greet.body')) }}
         />
         <div className="fb-stats">
           <div className="fb-s">
@@ -320,7 +321,7 @@ export function FitnessLobbyWidget({ config }: { config?: FitnessLobbyConfig }) 
             <span data-field="news.t1">{pick(config, 'news.t1')}</span>
             <em data-field="news.t2">{pick(config, 'news.t2')}</em>
           </h3>
-          <div className="fb-body" data-field="news.body" dangerouslySetInnerHTML={{ __html: pick(config, 'news.body') }} />
+          <div className="fb-body" data-field="news.body" dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(pick(config, 'news.body')) }} />
           <div className="fb-meta" data-field="news.meta">{pick(config, 'news.meta')}</div>
         </div>
         <div className="fb-card">
@@ -329,7 +330,7 @@ export function FitnessLobbyWidget({ config }: { config?: FitnessLobbyConfig }) 
             <span data-field="event.t1">{pick(config, 'event.t1')}</span>
             <em data-field="event.t2">{pick(config, 'event.t2')}</em>
           </h3>
-          <div className="fb-body" data-field="event.body" dangerouslySetInnerHTML={{ __html: pick(config, 'event.body') }} />
+          <div className="fb-body" data-field="event.body" dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(pick(config, 'event.body')) }} />
           <div className="fb-meta" data-field="event.meta">{pick(config, 'event.meta')}</div>
         </div>
         <div className="fb-card">
@@ -338,22 +339,22 @@ export function FitnessLobbyWidget({ config }: { config?: FitnessLobbyConfig }) 
             <span data-field="valet.t1">{pick(config, 'valet.t1')}</span>
             <em data-field="valet.t2">{pick(config, 'valet.t2')}</em>
           </h3>
-          <div className="fb-body" data-field="valet.body" dangerouslySetInnerHTML={{ __html: pick(config, 'valet.body') }} />
+          <div className="fb-body" data-field="valet.body" dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(pick(config, 'valet.body')) }} />
           <div className="fb-meta" data-field="valet.meta">{pick(config, 'valet.meta')}</div>
         </div>
       </div>
 
       {/* Foot */}
       <div className="fb-foot">
-        <div data-field="foot.l1" dangerouslySetInnerHTML={{ __html: pick(config, 'foot.l1') }} />
+        <div data-field="foot.l1" dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(pick(config, 'foot.l1')) }} />
         <div className="fb-foot-div" />
-        <div data-field="foot.l2" dangerouslySetInnerHTML={{ __html: pick(config, 'foot.l2') }} />
+        <div data-field="foot.l2" dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(pick(config, 'foot.l2')) }} />
         <div className="fb-foot-div" />
-        <div data-field="foot.l3" dangerouslySetInnerHTML={{ __html: pick(config, 'foot.l3') }} />
+        <div data-field="foot.l3" dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(pick(config, 'foot.l3')) }} />
         <div className="fb-foot-div" />
-        <div data-field="foot.l4" dangerouslySetInnerHTML={{ __html: pick(config, 'foot.l4') }} />
+        <div data-field="foot.l4" dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(pick(config, 'foot.l4')) }} />
         <div className="fb-foot-div" />
-        <div data-field="foot.l5" dangerouslySetInnerHTML={{ __html: pick(config, 'foot.l5') }} />
+        <div data-field="foot.l5" dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(pick(config, 'foot.l5')) }} />
       </div>
     </HsStage>
   );

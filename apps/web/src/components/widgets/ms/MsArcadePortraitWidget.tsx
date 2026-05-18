@@ -26,6 +26,7 @@
 import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
 import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
+import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 export interface MsArcadePortraitConfig {
   // HUD — school identity
@@ -309,7 +310,7 @@ export function MsArcadePortraitWidget({
           className="ms-arc-p-quest-h1"
           data-field="greeting.headline"
           style={{ whiteSpace: 'pre-wrap' }}
-          dangerouslySetInnerHTML={{ __html: pick('greeting.headline') }}
+          dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(pick('greeting.headline')) }}
         />
         <p className="ms-arc-p-quest-sub" data-field="greeting.subtitle" style={{ whiteSpace: 'pre-wrap' }}>
           {pick('greeting.subtitle')}

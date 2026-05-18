@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Bell } from 'lucide-react';
+import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PRINCIPAL'S OFFICE THEME - Premium Mahogany & Gold Brass Plaque Aesthetic
@@ -180,7 +181,7 @@ export function PrincipalsOfficeRichText({ config }: { config: any }) {
       <div className="prose prose-lg max-w-none flex-grow" style={{ 
         color: '#e2e8f0',
         fontSize: 'clamp(1rem, 5cqi, 2rem)'
-      }} dangerouslySetInnerHTML={{ __html: content }} />
+      }} dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(content) }} />
     </div>
   );
 }

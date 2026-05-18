@@ -20,6 +20,7 @@
  */
 
 import { HsStage } from '../hs/HsStage';
+import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 export interface FitnessVaultConfig {
   // Header
@@ -154,7 +155,7 @@ export function FitnessVaultWidget({ config }: { config?: FitnessVaultConfig }) 
           <span data-field="head.t1">{pick(config, 'head.t1')}</span>
           <em data-field="head.t2">{pick(config, 'head.t2')}</em>
         </div>
-        <div className="fv-num" data-field="head.num" dangerouslySetInnerHTML={{ __html: headNum }} />
+        <div className="fv-num" data-field="head.num" dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(headNum) }} />
       </div>
 
       {/* Whiteboard */}
@@ -165,7 +166,7 @@ export function FitnessVaultWidget({ config }: { config?: FitnessVaultConfig }) 
             <span data-field="left.t1">{pick(config, 'left.t1')}</span>
             <em data-field="left.t2">{pick(config, 'left.t2')}</em>
           </div>
-          <div className="fv-body" data-field="left.body" dangerouslySetInnerHTML={{ __html: pick(config, 'left.body') }} />
+          <div className="fv-body" data-field="left.body" dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(pick(config, 'left.body')) }} />
           <div className="fv-scale">
             <b data-field="left.scaleLab">{pick(config, 'left.scaleLab')}</b>
             <div className="fv-body" data-field="left.scaleBody">{pick(config, 'left.scaleBody')}</div>

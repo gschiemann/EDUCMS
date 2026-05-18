@@ -33,6 +33,7 @@
  */
 
 import { HsStage } from '../hs/HsStage';
+import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 export interface FitnessLockerConfig {
   // Banner
@@ -299,7 +300,7 @@ export function FitnessLockerWidget({ config }: { config?: FitnessLockerConfig }
         <div className="fl-foot">
           <div data-field="foot.l">{pick(config, 'foot.l')}</div>
           <div data-field="foot.c">{pick(config, 'foot.c')}</div>
-          <div className="fl-foot-r" data-field="foot.r" dangerouslySetInnerHTML={{ __html: pick(config, 'foot.r') }} />
+          <div className="fl-foot-r" data-field="foot.r" dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(pick(config, 'foot.r')) }} />
         </div>
 
       </div>

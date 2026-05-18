@@ -6,6 +6,7 @@
 import { resolveStyle, frameStyle } from './_shared/styleSystem';
 import type { WidgetStyle } from './_shared/styleSystem';
 import type { WidgetProps } from './_shared/types';
+import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 interface RTCfg { style?: WidgetStyle; title?: string; eyebrow?: string; signature?: string; body?: string; }
 const FALLBACK = 'Welcome to a brand new term. We are thrilled to share the great things our students and staff have been working on. Read on for the latest from every corner of campus.';
@@ -17,7 +18,9 @@ function renderRich(body: string, accent: string) {
     const t = b.trim();
     if (t === '---') return <hr key={i} style={{ border: 0, borderTop: `1px dashed ${accent}66`, margin: '12px 0' }} />;
     if (t.startsWith('> ')) return <blockquote key={i} style={{ margin: '8px 0', padding: '6px 14px', borderLeft: `3px solid ${accent}`, fontStyle: 'italic', color: accent }}>{t.slice(2)}</blockquote>;
-    const html = t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<i>$1</i>');
+    const html = sanitizeWidgetHtml(
+      t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<i>$1</i>'),
+    );
     return <p key={i} style={{ margin: '0 0 10px 0' }} dangerouslySetInnerHTML={{ __html: html }} />;
   });
 }

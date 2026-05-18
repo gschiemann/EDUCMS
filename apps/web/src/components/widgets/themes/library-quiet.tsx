@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LIBRARY QUIET THEME - Elegant Wood, Brass & Leather
@@ -123,7 +124,7 @@ export function LibraryQuietRichText({ config, compact }: { config: any; compact
       <div 
         className="prose prose-stone max-w-none font-serif flex-1"
         style={{ color: '#2a1610', fontSize: 'clamp(1rem, 5cqi, 2.5rem)' }}
-        dangerouslySetInnerHTML={{ __html: config.html || '<h3>Library Hours</h3><p>Quiet Study: 8:00 — 11:00 AM</p>' }}
+        dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(config.html || '<h3>Library Hours</h3><p>Quiet Study: 8:00 — 11:00 AM</p>') }}
       />
     </div>
   );

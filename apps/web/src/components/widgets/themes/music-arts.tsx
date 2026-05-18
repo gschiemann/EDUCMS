@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MUSIC & ARTS THEME - Velvet Curtain, Spotlight, Elegant Neons
@@ -132,7 +133,7 @@ export function MusicArtsRichText({ config, compact }: { config: any; compact?: 
         <div 
           className="prose prose-invert max-w-none flex-1 overflow-hidden"
           style={{ fontSize: 'clamp(1.2rem, 5cqi, 2.5rem)', color: '#f3e8ff' }}
-          dangerouslySetInnerHTML={{ __html: config.html || '<h3 style="color:#e879f9">Rehearsal Schedule</h3><p>Update with current schedule</p>' }}
+          dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(config.html || '<h3 style="color:#e879f9">Rehearsal Schedule</h3><p>Update with current schedule</p>') }}
         />
       </div>
     </div>

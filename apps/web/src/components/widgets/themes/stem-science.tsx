@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STEM SCIENCE THEME - Cyberpunk / Futuristic Lab
@@ -153,7 +154,7 @@ export function StemScienceRichText({ config, compact }: { config: any; compact?
           <div 
             className="prose prose-invert max-w-none prose-headings:font-mono prose-headings:text-cyan-300 prose-p:text-slate-300 prose-p:font-sans"
             style={{ fontSize: 'clamp(1rem, 4cqi, 2rem)' }}
-            dangerouslySetInnerHTML={{ __html: config.html || '<h2>Fact of the Day</h2><p>Data loading...</p>' }}
+            dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(config.html || '<h2>Fact of the Day</h2><p>Data loading...</p>') }}
           />
         </div>
       </div>
