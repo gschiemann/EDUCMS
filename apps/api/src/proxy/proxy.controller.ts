@@ -191,7 +191,12 @@ export class ProxyController {
       // mostly-static — if a customer wants a JS-driven dashboard
       // embedded, the right answer is interactive=true.
       if (!interactive) {
-        html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+        // ReDoS-safe script strip. The previous pattern nested an
+        // unbounded quantifier inside another — catastrophic
+        // backtracking on crafted upstream HTML (this runs on
+        // attacker-controlled pages, up to 10 MB). A lazy [\s\S]*?
+        // scans linearly for the closing tag instead.
+        html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '');
         html = html.replace(/\s(on\w+)\s*=\s*["'][^"']*["']/gi, '');
         html = html.replace(/<\/?noscript[^>]*>/gi, '');
       }

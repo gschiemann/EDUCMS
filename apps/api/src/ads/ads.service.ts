@@ -221,8 +221,13 @@ export class AdsService {
     cpmCents: number;
   }) {
     const revenueCents = Math.floor(opts.cpmCents / 1000);
-    const conn = await (this.prisma.client as any).adNetworkConnection.findUnique({
-      where: { id: opts.connectionId },
+    // Tenant-scoped lookup — never trust a connectionId in isolation;
+    // confirm it belongs to opts.tenantId before recording revenue
+    // against it. findFirst (not findUnique) to allow the compound
+    // where clause; the subsequent update-by-id is then safe because
+    // this check already proved the row belongs to the tenant.
+    const conn = await (this.prisma.client as any).adNetworkConnection.findFirst({
+      where: { id: opts.connectionId, tenantId: opts.tenantId },
     });
     if (!conn) return;
     const takeRateBps = conn.takeRateBps ?? getAdNetwork(conn.networkId)?.takeRateBps ?? 1500;
