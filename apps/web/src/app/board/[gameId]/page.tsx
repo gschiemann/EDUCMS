@@ -36,6 +36,18 @@ interface Cue {
   mediaUrl?: string | null;
   color?: string | null;
   durationMs?: number;
+  // Frozen live-game snapshot, captured server-side at cue-fire time —
+  // so a celebration shows the EXACT score + clock of the moment.
+  snapshot?: {
+    homeTeam: string;
+    awayTeam: string;
+    homeScore: number;
+    awayScore: number;
+    homeColor?: string | null;
+    awayColor?: string | null;
+    segmentLabel?: string;
+    clockText?: string;
+  };
 }
 interface Sponsor {
   id: string;
@@ -95,6 +107,13 @@ function fmtClock(ms: number): string {
   const s = Math.floor(safe / 1000);
   const tenths = Math.floor((safe % 1000) / 100);
   return `${s}.${tenths}`;
+}
+
+/** First word of a team name, upper-cased, capped — a clean short
+ *  code for the celebration score line. */
+function teamCode(name: string): string {
+  const first = String(name || '').trim().split(/\s+/)[0] || '';
+  return first.toUpperCase().slice(0, 14);
 }
 
 function ordinal(n: number): string {
@@ -806,6 +825,59 @@ function CueOverlay({ cue }: { cue: Cue }) {
       >
         {(cue.label || cue.key || 'NICE!').toUpperCase()}
       </div>
+
+      {/* Live snapshot — the exact score + game clock, frozen at the
+          moment the cue fired (server-captured in cueSnapshot). This is
+          what makes a celebration dynamic instead of a static card. */}
+      {cue.snapshot && (
+        <div
+          style={{
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            marginTop: 20,
+            animation: 'venueCuePop 3.8s cubic-bezier(.2,.9,.2,1) forwards',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              fontSize: 92,
+              fontWeight: 900,
+              color: '#fff',
+              fontVariantNumeric: 'tabular-nums',
+              textShadow: '0 6px 32px rgba(0,0,0,0.85)',
+            }}
+          >
+            <span style={{ color: cue.snapshot.homeColor || '#fff', letterSpacing: 2 }}>
+              {teamCode(cue.snapshot.homeTeam)}
+            </span>
+            <span style={{ margin: '0 26px' }}>{cue.snapshot.homeScore}</span>
+            <span style={{ color: '#475569', fontSize: 62 }}>–</span>
+            <span style={{ margin: '0 26px' }}>{cue.snapshot.awayScore}</span>
+            <span style={{ color: cue.snapshot.awayColor || '#fff', letterSpacing: 2 }}>
+              {teamCode(cue.snapshot.awayTeam)}
+            </span>
+          </div>
+          {(cue.snapshot.segmentLabel || cue.snapshot.clockText) && (
+            <div
+              style={{
+                fontSize: 48,
+                fontWeight: 800,
+                letterSpacing: 5,
+                color: '#fbbf24',
+                marginTop: 10,
+              }}
+            >
+              {[cue.snapshot.segmentLabel, cue.snapshot.clockText]
+                .filter(Boolean)
+                .join('   ·   ')}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -972,6 +972,79 @@ export class SportsService {
   }
 
   /**
+   * A frozen snapshot of the live game state at cue-fire time. Embedded
+   * in the CUE event so a celebration overlay can show the EXACT score
+   * and clock of the moment — even if the operator bumps the score a
+   * second later. The board reads ready-to-display strings; there is no
+   * client-side projection (a celebration is a frozen instant, not a
+   * ticking clock).
+   */
+  private cueSnapshot(game: {
+    sport: string;
+    homeTeam: string;
+    awayTeam: string;
+    homeScore: number;
+    awayScore: number;
+    homeColor: string | null;
+    awayColor: string | null;
+    segment: number;
+    clockMs: number;
+    clockRunning: boolean;
+    clockUpdatedAt: Date;
+  }): Record<string, unknown> {
+    let segmentLabel = '';
+    let clockText = '';
+    try {
+      const def = this.sportOf(game.sport);
+      segmentLabel = this.segmentLabelOf(def, game.segment);
+      if (def.clock.type !== 'none') {
+        clockText = this.fmtClockText(this.liveClockMs(game));
+      }
+    } catch {
+      // Unknown sport — the score still snapshots; clock/segment stay blank.
+    }
+    return {
+      homeTeam: game.homeTeam,
+      awayTeam: game.awayTeam,
+      homeScore: game.homeScore,
+      awayScore: game.awayScore,
+      homeColor: game.homeColor,
+      awayColor: game.awayColor,
+      segmentLabel,
+      clockText,
+    };
+  }
+
+  /** "M:SS" — celebration clock readout. */
+  private fmtClockText(ms: number): string {
+    const safe = Math.max(0, Math.round(ms));
+    const m = Math.floor(safe / 60_000);
+    const s = Math.floor((safe % 60_000) / 1000);
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  /** Short segment label — "Q3", "3RD INN", "SET 2", "OT". */
+  private segmentLabelOf(def: SportDefinition, n: number): string {
+    if (n > def.segment.count) {
+      const ot = n - def.segment.count;
+      return ot > 1 ? `OT${ot}` : 'OT';
+    }
+    const name = def.segment.name;
+    if (name === 'Quarter') return `Q${n}`;
+    if (name === 'Period') return `P${n}`;
+    if (name === 'Inning') return `${this.ordinal(n)} INN`;
+    if (name === 'Set') return `SET ${n}`;
+    if (name === 'Half') return `${this.ordinal(n)} HALF`;
+    return `${name.toUpperCase()} ${n}`;
+  }
+
+  private ordinal(n: number): string {
+    const suf = ['TH', 'ST', 'ND', 'RD'];
+    const v = n % 100;
+    return `${n}${suf[(v - 20) % 10] || suf[v] || suf[0]}`;
+  }
+
+  /**
    * Fire a cue. Either a built-in sport celebration (`key` — "Touchdown",
    * "GOAL!", validated against the sport) OR an operator-built custom
    * cue (`cueId` — a named trigger with uploaded takeover content).
@@ -994,6 +1067,7 @@ export class SportsService {
         color: cc.color || null,
         durationMs: cc.durationMs,
         custom: true,
+        snapshot: this.cueSnapshot(game),
       });
       return { fired: true, cueId: cc.id, eventId: event.id };
     }
@@ -1007,6 +1081,7 @@ export class SportsService {
       key: cue.key,
       label: cue.label,
       emoji: cue.emoji,
+      snapshot: this.cueSnapshot(game),
     });
     return { fired: true, cue, eventId: event.id };
   }
