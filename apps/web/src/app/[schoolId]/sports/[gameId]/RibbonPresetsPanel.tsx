@@ -21,8 +21,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useGame, useGameControl } from '@/hooks/use-api';
-import { findSport, ribbonPresetCatalog } from '@cms/api-types';
-import type { RibbonPreset } from '@cms/api-types';
+import { findSport, ribbonPresetCatalog, RIBBON_SPEEDS } from '@cms/api-types';
+import type { RibbonPreset, RibbonSpeed } from '@cms/api-types';
 
 /** A pill switch — on = indigo, off = slate. */
 function Toggle({ on }: { on: boolean }) {
@@ -82,12 +82,14 @@ export function RibbonPresetsPanel({ gameId }: { gameId: string }) {
   // Local enabled set, seeded once from the game's resolved presets —
   // don't re-seed on later polls or an in-progress edit gets yanked.
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
+  const [speed, setSpeed] = useState<RibbonSpeed>('normal');
   const seeded = useRef(false);
   useEffect(() => {
     if (!seeded.current && game) {
       seeded.current = true;
-      const saved = (game as { ribbonPresets?: string[] }).ribbonPresets || [];
-      setEnabled(new Set(saved));
+      const g = game as { ribbonPresets?: string[]; ribbonSpeed?: string };
+      setEnabled(new Set(g.ribbonPresets || []));
+      if (g.ribbonSpeed) setSpeed(g.ribbonSpeed as RibbonSpeed);
     }
   }, [game]);
 
@@ -110,14 +112,18 @@ export function RibbonPresetsPanel({ gameId }: { gameId: string }) {
   };
 
   const save = async () => {
-    // Persist in catalog order for a stable, predictable reel.
+    // Persist presets in catalog order for a stable, predictable reel.
     const presets = catalog.map((p) => p.key).filter((k) => enabled.has(k));
-    await ctl.ribbonPresets.mutateAsync({ presets });
+    await Promise.all([
+      ctl.ribbonPresets.mutateAsync({ presets }),
+      ctl.ribbonSpeed.mutateAsync({ speed }),
+    ]);
     setSaved(true);
     if (savedTimer.current) clearTimeout(savedTimer.current);
     savedTimer.current = setTimeout(() => setSaved(false), 2400);
   };
 
+  const pending = ctl.ribbonPresets.isPending || ctl.ribbonSpeed.isPending;
   const onCount = catalog.filter((p) => enabled.has(p.key)).length;
   const core = catalog.filter((p) => p.group === 'core');
   const engagement = catalog.filter((p) => p.group === 'engagement');
@@ -155,14 +161,42 @@ export function RibbonPresetsPanel({ gameId }: { gameId: string }) {
         ))}
       </div>
 
+      <div className="mt-3">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          Scroll speed
+        </p>
+        <div className="mt-1.5 flex gap-1.5">
+          {RIBBON_SPEEDS.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => {
+                setSaved(false);
+                setSpeed(s.key);
+              }}
+              className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors ${
+                speed === s.key
+                  ? 'border-indigo-600 bg-indigo-600 text-white'
+                  : 'border-slate-200 text-slate-600 hover:border-indigo-300'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1.5 text-xs text-slate-400">
+          How fast the reel scrolls — slower lets a sponsor image dwell on screen longer.
+        </p>
+      </div>
+
       <div className="mt-3 flex items-center gap-3">
-        <Button onClick={save} disabled={ctl.ribbonPresets.isPending} className="gap-1.5">
-          {ctl.ribbonPresets.isPending ? (
+        <Button onClick={save} disabled={pending} className="gap-1.5">
+          {pending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : saved ? (
             <Check className="h-4 w-4" />
           ) : null}
-          {saved ? 'Saved' : 'Save ribbon presets'}
+          {saved ? 'Saved' : 'Save ribbon settings'}
         </Button>
         <span className="text-xs text-slate-400">
           {onCount} of {catalog.length} tile{catalog.length === 1 ? '' : 's'} on

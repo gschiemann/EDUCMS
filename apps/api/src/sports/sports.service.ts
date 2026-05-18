@@ -2,7 +2,13 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
-import { findSport, SPORTS, resolveRibbonPresets, sanitizeRibbonPresets } from '@cms/api-types';
+import {
+  findSport,
+  SPORTS,
+  resolveRibbonPresets,
+  sanitizeRibbonPresets,
+  sanitizeRibbonSpeed,
+} from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
 
@@ -166,17 +172,46 @@ export class SportsService {
   }
 
   /**
+   * The ribbon's scroll speed — the latest RIBBON_SPEED event,
+   * normalized to a known speed, defaulting to 'normal'.
+   */
+  private async latestRibbonSpeed(gameId: string): Promise<string> {
+    const ev = await this.prisma.client.gameEvent.findFirst({
+      where: { gameId, type: 'RIBBON_SPEED' },
+      orderBy: { createdAt: 'desc' },
+    });
+    return sanitizeRibbonSpeed((ev?.payload as Record<string, unknown> | undefined)?.speed);
+  }
+
+  /**
+   * The operator's full-bleed ribbon image slides — the URL list
+   * from the latest RIBBON_SLIDES event. Rides the generic
+   * GameEvent log, latest-event-wins.
+   */
+  private async latestRibbonSlides(gameId: string): Promise<string[]> {
+    const ev = await this.prisma.client.gameEvent.findFirst({
+      where: { gameId, type: 'RIBBON_SLIDES' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const raw = (ev?.payload as Record<string, unknown> | undefined)?.slides;
+    return Array.isArray(raw) ? raw.filter((m): m is string => typeof m === 'string') : [];
+  }
+
+  /**
    * One game, tenant-scoped — for the operator control surface.
-   * Includes the current custom ribbon messages + the effective
-   * ribbon preset config so both ribbon panels can pre-fill.
+   * Includes the current custom ribbon messages, the effective
+   * preset config, the scroll speed, and the image slides so every
+   * ribbon panel can pre-fill.
    */
   async getGame(tenantId: string, id: string) {
     const game = await this.owned(tenantId, id);
-    const [ribbonMessages, ribbonPresets] = await Promise.all([
+    const [ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides] = await Promise.all([
       this.latestRibbonMessages(id),
       this.ribbonPresetsFor(id, game.sport),
+      this.latestRibbonSpeed(id),
+      this.latestRibbonSlides(id),
     ]);
-    return { ...game, ribbonMessages, ribbonPresets };
+    return { ...game, ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides };
   }
 
   /**
@@ -191,7 +226,7 @@ export class SportsService {
     if (!game) throw new NotFoundException('Game not found');
 
     const since = new Date(Date.now() - CUE_FEED_WINDOW_MS);
-    const [cues, sponsors, roster, ribbonMessages, ribbonPresets] = await Promise.all([
+    const [cues, sponsors, roster, ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides] = await Promise.all([
       this.prisma.client.gameEvent.findMany({
         where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
         orderBy: { createdAt: 'asc' },
@@ -217,6 +252,9 @@ export class SportsService {
       // Which content presets ride the ribbon reel (resolved — stored
       // config, or the sport's full default-on set).
       this.ribbonPresetsFor(id, game.sport),
+      // Ribbon scroll speed + the operator's full-bleed image slides.
+      this.latestRibbonSpeed(id),
+      this.latestRibbonSlides(id),
     ]);
 
     return {
@@ -246,6 +284,8 @@ export class SportsService {
       roster,
       ribbonMessages,
       ribbonPresets,
+      ribbonSpeed,
+      ribbonSlides,
       sponsorSpotSeconds: SPONSOR_SPOT_SECONDS,
       serverTime: Date.now(),
     };
@@ -1199,6 +1239,36 @@ export class SportsService {
     const presets = sanitizeRibbonPresets(def, dto.presets);
     await this.record(id, 'RIBBON_PRESETS', { presets });
     return { presets };
+  }
+
+  /**
+   * Set how fast the ribbon reel scrolls. The value is normalized to
+   * a known speed (slow / normal / fast / very fast). Stored as a
+   * RIBBON_SPEED GameEvent, latest-wins — no table, no migration.
+   */
+  async setRibbonSpeed(tenantId: string, id: string, dto: { speed?: unknown }) {
+    await this.owned(tenantId, id);
+    const speed = sanitizeRibbonSpeed(dto.speed);
+    await this.record(id, 'RIBBON_SPEED', { speed });
+    return { speed };
+  }
+
+  /**
+   * Set the ribbon's full-bleed image slides — a list of image URLs
+   * the operator uploaded (sponsor banners, promos, welcome art).
+   * Each fills the ribbon edge-to-edge as it scrolls past. Stored as
+   * a RIBBON_SLIDES GameEvent, latest-wins — no table, no migration.
+   */
+  async setRibbonSlides(tenantId: string, id: string, dto: { slides?: unknown }) {
+    await this.owned(tenantId, id);
+    const slides = Array.isArray(dto.slides)
+      ? dto.slides
+          .map((s) => this.cleanText(s, 2048))
+          .filter((s): s is string => s !== null)
+          .slice(0, 20)
+      : [];
+    await this.record(id, 'RIBBON_SLIDES', { slides });
+    return { slides };
   }
 
   // ── cue deck (custom triggers) ───────────────────────────────

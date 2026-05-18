@@ -2132,7 +2132,39 @@ export function useGameControl(gameId: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-game', gameId] }),
   });
 
-  return { score, clock, segment, stats, status, cue, spotlight, ribbon, ribbonPresets };
+  const ribbonSpeed = useMutation({
+    // How fast the ribbon reel scrolls.
+    mutationFn: (body: { speed: string }) =>
+      apiFetch(`/sports/games/${gameId}/ribbon-speed`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-game', gameId] }),
+  });
+
+  const ribbonSlides = useMutation({
+    // The operator's full-bleed ribbon image slides.
+    mutationFn: (body: { slides: string[] }) =>
+      apiFetch(`/sports/games/${gameId}/ribbon-slides`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-game', gameId] }),
+  });
+
+  return {
+    score,
+    clock,
+    segment,
+    stats,
+    status,
+    cue,
+    spotlight,
+    ribbon,
+    ribbonPresets,
+    ribbonSpeed,
+    ribbonSlides,
+  };
 }
 
 // ─── VenueOS Sports — Sprint 13 Phase 2: Sponsorship ────────────

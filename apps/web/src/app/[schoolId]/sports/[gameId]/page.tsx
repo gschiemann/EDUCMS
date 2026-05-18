@@ -49,6 +49,7 @@ import { CueLaunchpad } from './CueLaunchpad';
 import { SponsorPanel } from './SponsorPanel';
 import { RibbonPanel } from './RibbonPanel';
 import { RibbonPresetsPanel } from './RibbonPresetsPanel';
+import { RibbonImagesPanel } from './RibbonImagesPanel';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 
 const GAME_STATUSES: { key: string; label: string }[] = [
@@ -328,6 +329,11 @@ function GameControl() {
       {/* ribbon messages — operator-typed lines that scroll on the ribbon */}
       <Section title="Ribbon messages">
         <RibbonPanel gameId={gameId} />
+      </Section>
+
+      {/* ribbon images — full-bleed images that fill the whole ribbon */}
+      <Section title="Ribbon images">
+        <RibbonImagesPanel gameId={gameId} />
       </Section>
 
       {/* ribbon sponsors — uploaded brand logos that scroll on the ribbon */}

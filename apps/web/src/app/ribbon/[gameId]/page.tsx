@@ -23,7 +23,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
-import { findSport, defaultRibbonPresets } from '@cms/api-types';
+import { findSport, defaultRibbonPresets, ribbonSpeedMultiplier } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 
 interface Sponsor {
@@ -90,6 +90,10 @@ interface BoardData {
   /** Which content presets ride the reel — resolved server-side
    *  (stored config, or the sport's full default-on set). */
   ribbonPresets?: string[];
+  /** Operator-set scroll speed — slow / normal / fast / veryfast. */
+  ribbonSpeed?: string;
+  /** Full-bleed image slides the operator uploaded — image URLs. */
+  ribbonSlides?: string[];
   /** Recent celebration cues — the board feed's 20s cue window. */
   cues?: Cue[];
   serverTime: number;
@@ -149,7 +153,8 @@ type Cell =
   | { kind: 'situational'; text: string }
   | { kind: 'prompt'; text: string }
   | { kind: 'sponsor'; sponsor: Sponsor }
-  | { kind: 'player'; player: Player };
+  | { kind: 'player'; player: Player }
+  | { kind: 'slide'; url: string };
 
 /**
  * A single punchy line of the sport's LIVE game situation, sized for
@@ -287,13 +292,22 @@ function buildCells(data: BoardData, def: SportDefinition): Cell[] {
       : ['LET’S GO!', `GO ${homeCode}!`, 'MAKE SOME NOISE', 'DEFENSE!', `${homeCode} PRIDE`];
   const sponsors = enabled.has('sponsors') ? data.sponsors || [] : [];
   const players = enabled.has('roster') ? data.roster || [] : [];
+  const slides = enabled.has('slides') ? data.ribbonSlides || [] : [];
   let pi = 0;
   let si = 0;
   let pl = 0;
-  // Interleave roster players (weighted — two per pass), sponsors, and
-  // crowd prompts so the loop is a rich mix, never a wall of one kind.
-  while (pi < prompts.length || si < sponsors.length || pl < players.length) {
+  let sl = 0;
+  // Interleave roster players (weighted — two per pass), full-bleed
+  // image slides, sponsors, and crowd prompts so the loop is a rich
+  // mix, never a wall of one kind.
+  while (
+    pi < prompts.length ||
+    si < sponsors.length ||
+    pl < players.length ||
+    sl < slides.length
+  ) {
     if (pl < players.length) cells.push({ kind: 'player', player: players[pl++] });
+    if (sl < slides.length) cells.push({ kind: 'slide', url: slides[sl++] });
     if (si < sponsors.length) cells.push({ kind: 'sponsor', sponsor: sponsors[si++] });
     if (pl < players.length) cells.push({ kind: 'player', player: players[pl++] });
     if (pi < prompts.length) cells.push({ kind: 'prompt', text: prompts[pi++] });
@@ -401,12 +415,20 @@ export default function RibbonPage() {
     [data, def],
   );
 
-  // measure one reel's width so the loop is seamless at any board width
+  // measure one reel's width so the loop is seamless at any board
+  // width; a ResizeObserver re-measures when slide / sponsor / player
+  // images finish loading and change the reel's natural width.
   useEffect(() => {
-    if (measureRef.current) {
-      const w = measureRef.current.offsetWidth;
+    const el = measureRef.current;
+    if (!el) return;
+    const sync = () => {
+      const w = el.offsetWidth;
       if (w > 0) setBaseW(w);
-    }
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [cells, vp.h]);
 
   const h = vp.h;
@@ -417,7 +439,9 @@ export default function RibbonPage() {
   // then double it — translateX 0→-50% is then a seamless jump.
   const loopCopies = baseW > 0 ? Math.max(1, Math.ceil(vp.w / baseW)) : 1;
   const repeat = loopCopies * 2;
-  const pxPerSec = Math.max(60, h * 0.55);
+  // Operator-set scroll speed — a higher multiplier scrolls faster.
+  const speedMult = ribbonSpeedMultiplier(data?.ribbonSpeed);
+  const pxPerSec = Math.max(60, h * 0.55) * speedMult;
   const duration = baseW > 0 ? (loopCopies * baseW) / pxPerSec : 40;
 
   const renderReel = (copyKey: number) =>
@@ -592,6 +616,32 @@ function RibbonCell({
         >
           {cell.text}
         </span>
+      </div>
+    );
+  }
+
+  if (cell.kind === 'slide') {
+    // A full-bleed image slide — fills the ribbon top-to-bottom, its
+    // width set by the image's own aspect (no crop, no letterbox).
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          height: '100%',
+          borderRight: '1px solid rgba(255,255,255,0.09)',
+          flex: 'none',
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={cell.url}
+          alt=""
+          style={{ height: '100%', width: 'auto', display: 'block' }}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = 'none';
+          }}
+        />
       </div>
     );
   }

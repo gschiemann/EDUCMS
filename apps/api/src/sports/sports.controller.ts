@@ -293,6 +293,39 @@ export class SportsController {
     return this.sports.setRibbonPresets(req.user.tenantId, id, body);
   }
 
+  /** Set how fast the stadium ribbon reel scrolls. */
+  @Patch('games/:id/ribbon-speed')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  ribbonSpeed(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { speed?: string },
+  ) {
+    return this.sports.setRibbonSpeed(req.user.tenantId, id, body);
+  }
+
+  /** Set the ribbon's full-bleed image slides — operator-uploaded
+   *  images (sponsor banners, promos) that fill the whole ribbon. */
+  @Patch('games/:id/ribbon-slides')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  ribbonSlides(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { slides?: string[] },
+  ) {
+    return this.sports.setRibbonSlides(req.user.tenantId, id, body);
+  }
+
   // ── cue deck (custom triggers) ───────────────────────────────
 
   /** The tenant's reusable cue deck. */

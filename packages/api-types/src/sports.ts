@@ -399,7 +399,8 @@ export type RibbonPresetKey =
   | 'situation'
   | 'prompts'
   | 'roster'
-  | 'sponsors';
+  | 'sponsors'
+  | 'slides';
 
 export interface RibbonPreset {
   key: RibbonPresetKey;
@@ -502,6 +503,12 @@ export function ribbonPresetCatalog(def: SportDefinition): RibbonPreset[] {
       hint: 'Sponsor logos in weighted rotation',
       group: 'engagement',
     },
+    {
+      key: 'slides',
+      label: 'Image slides',
+      hint: 'Full-bleed images you upload — sponsor banners, promos, welcome art',
+      group: 'engagement',
+    },
   );
   return presets;
 }
@@ -546,4 +553,43 @@ export function resolveRibbonPresets(
 ): RibbonPresetKey[] {
   if (stored === null || stored === undefined) return defaultRibbonPresets(def);
   return sanitizeRibbonPresets(def, stored);
+}
+
+// ── Ribbon scroll speed ────────────────────────────────────────
+/**
+ * How fast the ribbon reel scrolls. The operator picks one of these
+ * named speeds; the ribbon divides its loop duration by the
+ * multiplier — a higher multiplier scrolls faster. "Slow" lets a
+ * sponsor image dwell on screen far longer than the default.
+ */
+export type RibbonSpeed = 'slow' | 'normal' | 'fast' | 'veryfast';
+
+export interface RibbonSpeedOption {
+  key: RibbonSpeed;
+  label: string;
+  /** Scroll-rate multiplier — higher scrolls faster. */
+  multiplier: number;
+}
+
+export const RIBBON_SPEEDS: RibbonSpeedOption[] = [
+  { key: 'slow', label: 'Slow', multiplier: 0.45 },
+  { key: 'normal', label: 'Normal', multiplier: 1 },
+  { key: 'fast', label: 'Fast', multiplier: 1.8 },
+  { key: 'veryfast', label: 'Very fast', multiplier: 2.8 },
+];
+
+export const DEFAULT_RIBBON_SPEED: RibbonSpeed = 'normal';
+
+/** Normalize an untrusted speed value to a known RibbonSpeed. */
+export function sanitizeRibbonSpeed(v: unknown): RibbonSpeed {
+  const s = String(v || '').toLowerCase();
+  return RIBBON_SPEEDS.some((o) => o.key === s)
+    ? (s as RibbonSpeed)
+    : DEFAULT_RIBBON_SPEED;
+}
+
+/** The scroll-rate multiplier for a speed value (defaults to 1×). */
+export function ribbonSpeedMultiplier(v: unknown): number {
+  const key = sanitizeRibbonSpeed(v);
+  return RIBBON_SPEEDS.find((o) => o.key === key)?.multiplier ?? 1;
 }
