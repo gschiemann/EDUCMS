@@ -2125,7 +2125,15 @@ export function useGameControl(gameId: string) {
   const cue = useMutation({
     // key → a built-in sport celebration; cueId → an operator cue-deck
     // cue. target → which surfaces play it (BOARD / RIBBON / ALL).
-    mutationFn: (body: { key?: string; cueId?: string; target?: string }) =>
+    mutationFn: (body: {
+      key?: string;
+      cueId?: string;
+      target?: string;
+      // Optional co-branding — a sound clip + a sponsor attribution.
+      audioUrl?: string;
+      sponsorName?: string;
+      sponsorLogoUrl?: string;
+    }) =>
       apiFetch(`/sports/games/${gameId}/cue`, { method: 'POST', body: JSON.stringify(body) }),
   });
   const spotlight = useMutation({
@@ -2215,7 +2223,7 @@ export function useSponsorReport() {
   });
 }
 
-type SponsorInput = {
+export type SponsorInput = {
   name?: string;
   logoUrl?: string | null;
   tagline?: string | null;
@@ -2223,6 +2231,10 @@ type SponsorInput = {
   tier?: string | null;
   weight?: number;
   active?: boolean;
+  // Ad-ops scheduling — flight window + per-hour frequency cap.
+  flightStartAt?: string | null;
+  flightEndAt?: string | null;
+  frequencyCapPerHour?: number | null;
 };
 
 export function useCreateSponsor() {

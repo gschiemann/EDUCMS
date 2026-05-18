@@ -38,6 +38,12 @@ interface Cue {
   durationMs?: number;
   // Which surfaces play this cue — BOARD / RIBBON / ALL (default ALL).
   target?: string;
+  // Audio to play alongside a sport-celebration cue. Best-effort —
+  // failure never interrupts the visual celebration.
+  audioUrl?: string | null;
+  // Co-branded celebration attribution — shown below the cue label.
+  sponsorName?: string | null;
+  sponsorLogoUrl?: string | null;
   // Frozen live-game snapshot, captured server-side at cue-fire time —
   // so a celebration shows the EXACT score + clock of the moment.
   snapshot?: {
@@ -736,6 +742,623 @@ function SpotlightBand({ spot }: { spot: Spotlight }) {
   );
 }
 
+// ── non-LIVE status presentation scenes ────────────────────────
+// These render for PRE_GAME/SCHEDULED, HALFTIME, and FINAL.
+// The LIVE path (BoardScene) is untouched — zero regression risk.
+
+/** A large team logo block with name and optional score — shared by all
+ *  three non-live scenes. */
+function BigTeamBlock({
+  name,
+  score,
+  logoUrl,
+  color,
+  showScore,
+  accent,
+}: {
+  name: string;
+  score?: number;
+  logoUrl: string | null;
+  color: string;
+  showScore?: boolean;
+  accent?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: 1,
+      }}
+    >
+      {/* logo or monogram */}
+      <div
+        style={{
+          position: 'relative',
+          width: 280,
+          height: 280,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 24,
+        }}
+      >
+        {/* team-color halo */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            background: `radial-gradient(circle at 50% 50%, ${color}55, transparent 68%)`,
+            borderRadius: 999,
+          }}
+        />
+        {accent && (
+          <div
+            style={{
+              position: 'absolute',
+              top: -6,
+              right: -6,
+              bottom: -6,
+              left: -6,
+              borderRadius: 999,
+              border: `5px solid ${color}`,
+              boxShadow: `0 0 48px ${color}88`,
+            }}
+          />
+        )}
+        {logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logoUrl}
+            alt=""
+            style={{
+              position: 'relative',
+              width: 240,
+              height: 240,
+              objectFit: 'contain',
+              filter: 'drop-shadow(0 12px 32px rgba(0,0,0,0.6))',
+            }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              position: 'relative',
+              width: 180,
+              height: 180,
+              borderRadius: '50%',
+              background: color,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 88,
+              fontWeight: 900,
+              color: '#fff',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.55)',
+            }}
+          >
+            {(name.trim()[0] || '?').toUpperCase()}
+          </div>
+        )}
+      </div>
+      {/* name */}
+      <div
+        style={{
+          fontSize: 52,
+          fontWeight: 900,
+          color: '#fff',
+          textAlign: 'center',
+          maxWidth: 580,
+          lineHeight: 1.05,
+          letterSpacing: 1,
+          textShadow: '0 4px 16px rgba(0,0,0,0.55)',
+        }}
+      >
+        {name}
+      </div>
+      {/* score — only when showScore */}
+      {showScore && score !== undefined && (
+        <div
+          style={{
+            fontSize: 220,
+            fontWeight: 900,
+            lineHeight: 1,
+            marginTop: 8,
+            fontVariantNumeric: 'tabular-nums',
+            color: '#fff',
+            textShadow: accent ? `0 0 72px ${color}` : '0 8px 30px rgba(0,0,0,0.7)',
+          }}
+        >
+          {score}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** PRE_GAME / SCHEDULED — matchup graphic.
+ *  No scores yet; focus is on team identity + anticipation framing. */
+function PreGameScene({ data, def }: { data: BoardData; def: SportDefinition }) {
+  const homeColor = data.homeColor || DEFAULT_HOME;
+  const awayColor = data.awayColor || DEFAULT_AWAY;
+  const pill = STATUS_STYLE[data.status] || STATUS_STYLE.PRE_GAME;
+  return (
+    <div
+      style={{
+        width: 1920,
+        height: 1080,
+        background: 'radial-gradient(ellipse at 50% 0%, #131a2e, #05070d 75%)',
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        color: '#fff',
+        overflow: 'hidden',
+      }}
+    >
+      {/* header */}
+      <div
+        style={{
+          height: 92,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 44px',
+          background: '#05070d',
+          borderBottom: '2px solid #1e2638',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', fontSize: 40, fontWeight: 800, letterSpacing: 1 }}>
+          <span style={{ fontSize: 48, marginRight: 16 }}>{def.emoji}</span>
+          {def.name.toUpperCase()}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: pill.bg,
+            padding: '12px 28px',
+            borderRadius: 999,
+            fontSize: 30,
+            fontWeight: 900,
+            letterSpacing: 3,
+          }}
+        >
+          {pill.label}
+        </div>
+      </div>
+
+      {/* matchup body */}
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
+        }}
+      >
+        {/* left team gradient wash */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            bottom: 0,
+            width: '48%',
+            background: `linear-gradient(135deg, ${homeColor}22, transparent 72%)`,
+            borderTop: `6px solid ${homeColor}`,
+          }}
+        />
+        {/* right team gradient wash */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: '48%',
+            background: `linear-gradient(225deg, ${awayColor}22, transparent 72%)`,
+            borderTop: `6px solid ${awayColor}`,
+          }}
+        />
+
+        {/* home team */}
+        <BigTeamBlock
+          name={data.homeTeam}
+          logoUrl={data.homeLogoUrl}
+          color={homeColor}
+          showScore={false}
+        />
+
+        {/* VS divider */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 200,
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 100,
+              fontWeight: 900,
+              color: '#1e2638',
+              lineHeight: 1,
+              letterSpacing: 4,
+            }}
+          >
+            VS
+          </div>
+          <div
+            style={{
+              marginTop: 16,
+              fontSize: 22,
+              fontWeight: 800,
+              letterSpacing: 5,
+              color: '#334155',
+            }}
+          >
+            TONIGHT
+          </div>
+        </div>
+
+        {/* away team */}
+        <BigTeamBlock
+          name={data.awayTeam}
+          logoUrl={data.awayLogoUrl}
+          color={awayColor}
+          showScore={false}
+        />
+      </div>
+
+      {/* footer */}
+      <div
+        style={{
+          height: 80,
+          background: '#05070d',
+          borderTop: '2px solid #1e2638',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 24,
+          fontWeight: 700,
+          letterSpacing: 5,
+          color: '#334155',
+        }}
+      >
+        VENUEOS
+      </div>
+    </div>
+  );
+}
+
+/** HALFTIME — the score with a prominent HALFTIME treatment. */
+function HalftimeScene({ data, def }: { data: BoardData; def: SportDefinition }) {
+  const homeColor = data.homeColor || DEFAULT_HOME;
+  const awayColor = data.awayColor || DEFAULT_AWAY;
+  return (
+    <div
+      style={{
+        width: 1920,
+        height: 1080,
+        background: 'radial-gradient(ellipse at 50% 0%, #131a2e, #05070d 75%)',
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        color: '#fff',
+        overflow: 'hidden',
+      }}
+    >
+      {/* header */}
+      <div
+        style={{
+          height: 92,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 44px',
+          background: '#05070d',
+          borderBottom: '2px solid #1e2638',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', fontSize: 40, fontWeight: 800, letterSpacing: 1 }}>
+          <span style={{ fontSize: 48, marginRight: 16 }}>{def.emoji}</span>
+          {def.name.toUpperCase()}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: STATUS_STYLE.HALFTIME.bg,
+            padding: '12px 28px',
+            borderRadius: 999,
+            fontSize: 30,
+            fontWeight: 900,
+            letterSpacing: 3,
+          }}
+        >
+          HALFTIME
+        </div>
+      </div>
+
+      {/* body — scores */}
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
+        }}
+      >
+        {/* left gradient */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            bottom: 0,
+            width: '45%',
+            background: `linear-gradient(135deg, ${homeColor}1a, transparent 68%)`,
+            borderTop: `4px solid ${homeColor}`,
+          }}
+        />
+        {/* right gradient */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: '45%',
+            background: `linear-gradient(225deg, ${awayColor}1a, transparent 68%)`,
+            borderTop: `4px solid ${awayColor}`,
+          }}
+        />
+
+        <BigTeamBlock
+          name={data.homeTeam}
+          score={data.homeScore}
+          logoUrl={data.homeLogoUrl}
+          color={homeColor}
+          showScore
+        />
+
+        {/* center divider */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 180,
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 26,
+              fontWeight: 900,
+              letterSpacing: 5,
+              color: '#2563eb',
+              marginBottom: 12,
+            }}
+          >
+            HALFTIME
+          </div>
+          <div style={{ fontSize: 80, fontWeight: 900, color: '#1e2638', lineHeight: 1 }}>–</div>
+        </div>
+
+        <BigTeamBlock
+          name={data.awayTeam}
+          score={data.awayScore}
+          logoUrl={data.awayLogoUrl}
+          color={awayColor}
+          showScore
+        />
+      </div>
+
+      {/* footer */}
+      <div
+        style={{
+          height: 80,
+          background: '#05070d',
+          borderTop: '2px solid #1e2638',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 24,
+          fontWeight: 700,
+          letterSpacing: 5,
+          color: '#334155',
+        }}
+      >
+        VENUEOS
+      </div>
+    </div>
+  );
+}
+
+/** FINAL — score with winner emphasis; tie = no winner accent. */
+function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
+  const homeColor = data.homeColor || DEFAULT_HOME;
+  const awayColor = data.awayColor || DEFAULT_AWAY;
+  const tie = data.homeScore === data.awayScore;
+  const homeWins = !tie && data.homeScore > data.awayScore;
+  const awayWins = !tie && data.awayScore > data.homeScore;
+  return (
+    <div
+      style={{
+        width: 1920,
+        height: 1080,
+        background: 'radial-gradient(ellipse at 50% 0%, #131a2e, #05070d 75%)',
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        color: '#fff',
+        overflow: 'hidden',
+      }}
+    >
+      {/* header */}
+      <div
+        style={{
+          height: 92,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 44px',
+          background: '#05070d',
+          borderBottom: '2px solid #1e2638',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', fontSize: 40, fontWeight: 800, letterSpacing: 1 }}>
+          <span style={{ fontSize: 48, marginRight: 16 }}>{def.emoji}</span>
+          {def.name.toUpperCase()}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: STATUS_STYLE.FINAL.bg,
+            padding: '12px 28px',
+            borderRadius: 999,
+            fontSize: 30,
+            fontWeight: 900,
+            letterSpacing: 3,
+          }}
+        >
+          FINAL
+        </div>
+      </div>
+
+      {/* body — final scores */}
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
+        }}
+      >
+        {/* left gradient — brighter when home wins */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            bottom: 0,
+            width: '45%',
+            background: homeWins
+              ? `linear-gradient(135deg, ${homeColor}2e, transparent 68%)`
+              : `linear-gradient(135deg, ${homeColor}10, transparent 68%)`,
+            borderTop: `${homeWins ? 7 : 3}px solid ${homeColor}`,
+          }}
+        />
+        {/* right gradient — brighter when away wins */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: '45%',
+            background: awayWins
+              ? `linear-gradient(225deg, ${awayColor}2e, transparent 68%)`
+              : `linear-gradient(225deg, ${awayColor}10, transparent 68%)`,
+            borderTop: `${awayWins ? 7 : 3}px solid ${awayColor}`,
+          }}
+        />
+
+        <BigTeamBlock
+          name={data.homeTeam}
+          score={data.homeScore}
+          logoUrl={data.homeLogoUrl}
+          color={homeColor}
+          showScore
+          accent={homeWins}
+        />
+
+        {/* center divider */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 180,
+            flexShrink: 0,
+          }}
+        >
+          {tie ? (
+            <div
+              style={{
+                fontSize: 26,
+                fontWeight: 900,
+                letterSpacing: 4,
+                color: '#64748b',
+                marginBottom: 12,
+              }}
+            >
+              TIE
+            </div>
+          ) : (
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 900,
+                letterSpacing: 4,
+                color: '#64748b',
+                marginBottom: 12,
+              }}
+            >
+              FINAL
+            </div>
+          )}
+          <div style={{ fontSize: 80, fontWeight: 900, color: '#1e2638', lineHeight: 1 }}>–</div>
+        </div>
+
+        <BigTeamBlock
+          name={data.awayTeam}
+          score={data.awayScore}
+          logoUrl={data.awayLogoUrl}
+          color={awayColor}
+          showScore
+          accent={awayWins}
+        />
+      </div>
+
+      {/* footer */}
+      <div
+        style={{
+          height: 80,
+          background: '#05070d',
+          borderTop: '2px solid #1e2638',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 24,
+          fontWeight: 700,
+          letterSpacing: 5,
+          color: '#334155',
+        }}
+      >
+        VENUEOS
+      </div>
+    </div>
+  );
+}
+
 // ── celebration overlay ────────────────────────────────────────
 
 /** A hex color (#rgb / #rrggbb) as an rgba() string at the given
@@ -952,6 +1575,74 @@ function CueOverlay({ cue }: { cue: Cue }) {
         </div>
       </div>
 
+      {/* co-branded attribution — "BROUGHT TO YOU BY" + sponsor logo/name.
+          Understated: small caps, dimmed, uses the energy accent colour.
+          Animates in with the lower-third — transform/opacity only
+          (Chromium-83 + WebKit safe). Rendered only when the cue carries
+          a sponsorName so the visual is never affected on unsponsored cues. */}
+      {cue.sponsorName && !cue.mediaUrl && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: snap ? 268 : 108,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            animation: 'venueCelebLowerText 3.9s ease-out forwards',
+          }}
+        >
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 800,
+              letterSpacing: 5,
+              color: hexA(energy, 0.7),
+              textTransform: 'uppercase',
+              marginBottom: 8,
+            }}
+          >
+            BROUGHT TO YOU BY
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            {cue.sponsorLogoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={cue.sponsorLogoUrl}
+                alt=""
+                style={{
+                  height: 52,
+                  width: 'auto',
+                  maxWidth: 220,
+                  objectFit: 'contain',
+                  marginRight: 16,
+                  filter: 'brightness(0.9)',
+                }}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            )}
+            <div
+              style={{
+                fontSize: 36,
+                fontWeight: 900,
+                letterSpacing: 2,
+                color: '#cbd5e1',
+              }}
+            >
+              {cue.sponsorName}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* live-score lower-third — the EXACT score + clock frozen at
           cue-fire time. A mask-wipe bar reveals it. */}
       {snap && (
@@ -1054,6 +1745,16 @@ export default function ScoreboardPage() {
   const firstLoad = useRef(true);
   const playing = useRef(false);
   const cueTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Audio ref for celebration sounds — holds the current Audio object
+  // so we can pause + release it when the cue ends or on unmount.
+  const cueAudio = useRef<HTMLAudioElement | null>(null);
+
+  const stopCueAudio = () => {
+    if (cueAudio.current) {
+      cueAudio.current.pause();
+      cueAudio.current = null;
+    }
+  };
 
   const pumpCues = () => {
     if (playing.current) return;
@@ -1061,20 +1762,33 @@ export default function ScoreboardPage() {
     if (!next) return;
     playing.current = true;
     setActiveCue(next);
+    // Start audio best-effort — never let a failure interrupt playback.
+    if (next.audioUrl && !next.mediaUrl) {
+      stopCueAudio();
+      try {
+        const a = new Audio(next.audioUrl);
+        cueAudio.current = a;
+        a.play().catch(() => {});
+      } catch (_) {
+        // Audio API unavailable — silent fallback.
+      }
+    }
     // A custom cue holds for its own duration; a sport celebration
     // matches the 3.8s celebration animation.
     const holdMs =
       next.mediaUrl && next.durationMs && next.durationMs > 0 ? next.durationMs : 3900;
     cueTimer.current = setTimeout(() => {
+      stopCueAudio();
       setActiveCue(null);
       playing.current = false;
       pumpCues();
     }, holdMs);
   };
 
-  // Cancel a pending cue timer on unmount (kiosk route reloads).
+  // Cancel a pending cue timer + audio on unmount (kiosk route reloads).
   useEffect(() => () => {
     if (cueTimer.current) clearTimeout(cueTimer.current);
+    stopCueAudio();
   }, []);
 
   // viewport measure → transform:scale fit
@@ -1249,6 +1963,15 @@ export default function ScoreboardPage() {
     );
   }
 
+  // Select the scene component. LIVE always renders BoardScene (zero
+  // regression on the working scoreboard). All other statuses get a
+  // dedicated presentation scene.
+  const status = data.status;
+  const isLive = status === 'LIVE';
+  const isPreGame = status === 'PRE_GAME' || status === 'SCHEDULED';
+  const isHalftime = status === 'HALFTIME';
+  const isFinal = status === 'FINAL';
+
   return (
     <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
       {keyframes}
@@ -1263,7 +1986,14 @@ export default function ScoreboardPage() {
           transformOrigin: 'center center',
         }}
       >
-        <BoardScene data={data} def={def} />
+        {isLive && <BoardScene data={data} def={def} />}
+        {isPreGame && <PreGameScene data={data} def={def} />}
+        {isHalftime && <HalftimeScene data={data} def={def} />}
+        {isFinal && <FinalScene data={data} def={def} />}
+        {/* Fallback for any unexpected status — use the live board */}
+        {!isLive && !isPreGame && !isHalftime && !isFinal && (
+          <BoardScene data={data} def={def} />
+        )}
         {activeCue && <CueOverlay cue={activeCue} />}
       </div>
     </div>

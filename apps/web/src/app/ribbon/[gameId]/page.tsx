@@ -64,6 +64,14 @@ interface Cue {
   durationMs?: number;
   // Which surfaces play this cue — BOARD / RIBBON / ALL (default ALL).
   target?: string;
+  // Audio URL — server emits this for video-board use; ribbon boards
+  // have no speakers so audioUrl is carried for type-completeness only
+  // and is intentionally never played here.
+  audioUrl?: string | null;
+  // Co-branded celebration attribution — when set, "BROUGHT TO YOU BY"
+  // attribution renders in the overlay (tasteful, energy-color accent).
+  sponsorName?: string | null;
+  sponsorLogoUrl?: string | null;
   // The score frozen at cue-fire time, captured server-side.
   snapshot?: {
     homeTeam: string;
@@ -280,7 +288,9 @@ type Look =
   | { kind: 'slide'; id: string; url: string; dwellMs: number }
   | { kind: 'sponsor'; id: string; sponsor: Sponsor; dwellMs: number }
   | { kind: 'player'; id: string; player: Player; dwellMs: number }
-  | { kind: 'prompt'; id: string; text: string; dwellMs: number };
+  | { kind: 'prompt'; id: string; text: string; dwellMs: number }
+  | { kind: 'final'; id: string; dwellMs: number }
+  | { kind: 'pregame'; id: string; dwellMs: number };
 
 /**
  * Build the content-zone playlist from the operator's presets. Each
@@ -355,6 +365,17 @@ function buildLooks(data: BoardData, def: SportDefinition): Look[] {
   if (looks.length === 0) {
     looks.push({ kind: 'prompt', id: 'prompt:fallback', text: `GO ${homeCode}!`, dwellMs: 6000 });
   }
+
+  // Game-state-specific looks — prepended so they lead the rotation.
+  // Only ONE state-specific look is injected per game state, and only
+  // for FINAL and PRE_GAME/SCHEDULED. LIVE and HALFTIME are left as-is
+  // (the regular rotation is appropriate — fans are watching the action).
+  if (data.status === 'FINAL') {
+    looks.unshift({ kind: 'final', id: 'state:final', dwellMs: 10000 });
+  } else if (data.status === 'PRE_GAME' || data.status === 'SCHEDULED') {
+    looks.unshift({ kind: 'pregame', id: 'state:pregame', dwellMs: 9000 });
+  }
+
   return looks;
 }
 
@@ -995,6 +1016,141 @@ function LookUnit({
     );
   }
 
+  // FINAL look — emphasis: "FINAL" word + the two scores so fans know
+  // the result at a glance from anywhere in the venue. Style follows the
+  // prompt/situational look: same font weight, ribbon-height sizing,
+  // accent gold on the result label, team colors on the scores.
+  if (look.kind === 'final') {
+    const homeColor = data.homeColor || DEFAULT_HOME;
+    const awayColor = data.awayColor || DEFAULT_AWAY;
+    const homeWon = data.homeScore > data.awayScore;
+    const awayWon = data.awayScore > data.homeScore;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+        <span
+          style={{
+            fontSize: cu * 0.28,
+            fontWeight: 900,
+            letterSpacing: 6,
+            color: '#fbbf24',
+            marginRight: cu * 0.18,
+          }}
+        >
+          FINAL
+        </span>
+        <span
+          style={{
+            fontSize: cu * 0.42,
+            fontWeight: 900,
+            color: homeWon ? homeColor : '#fff',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {teamCode(data.homeTeam)}
+        </span>
+        <span
+          style={{
+            fontSize: cu * 0.42,
+            fontWeight: 900,
+            color: homeWon ? homeColor : '#cbd5e1',
+            fontVariantNumeric: 'tabular-nums',
+            marginLeft: cu * 0.12,
+          }}
+        >
+          {data.homeScore}
+        </span>
+        <span
+          style={{
+            fontSize: cu * 0.28,
+            fontWeight: 800,
+            color: '#475569',
+            marginLeft: cu * 0.1,
+            marginRight: cu * 0.1,
+          }}
+        >
+          –
+        </span>
+        <span
+          style={{
+            fontSize: cu * 0.42,
+            fontWeight: 900,
+            color: awayWon ? awayColor : '#cbd5e1',
+            fontVariantNumeric: 'tabular-nums',
+            marginRight: cu * 0.12,
+          }}
+        >
+          {data.awayScore}
+        </span>
+        <span
+          style={{
+            fontSize: cu * 0.42,
+            fontWeight: 900,
+            color: awayWon ? awayColor : '#fff',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {teamCode(data.awayTeam)}
+        </span>
+      </div>
+    );
+  }
+
+  // PRE_GAME / SCHEDULED look — matchup framing: "HOME vs AWAY" +
+  // "WELCOME" eyebrow. Style: same font scale as prompt; accent gold
+  // eyebrow, white team names, team colors on the team codes.
+  if (look.kind === 'pregame') {
+    const homeColor = data.homeColor || DEFAULT_HOME;
+    const awayColor = data.awayColor || DEFAULT_AWAY;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', whiteSpace: 'nowrap' }}>
+        <span
+          style={{
+            fontSize: cu * 0.18,
+            fontWeight: 900,
+            letterSpacing: 6,
+            color: '#fbbf24',
+            marginBottom: cu * 0.06,
+          }}
+        >
+          WELCOME
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <span
+            style={{
+              fontSize: cu * 0.38,
+              fontWeight: 900,
+              color: homeColor,
+              letterSpacing: 2,
+            }}
+          >
+            {teamCode(data.homeTeam)}
+          </span>
+          <span
+            style={{
+              fontSize: cu * 0.22,
+              fontWeight: 800,
+              color: '#475569',
+              marginLeft: cu * 0.12,
+              marginRight: cu * 0.12,
+            }}
+          >
+            VS
+          </span>
+          <span
+            style={{
+              fontSize: cu * 0.38,
+              fontWeight: 900,
+              color: awayColor,
+              letterSpacing: 2,
+            }}
+          >
+            {teamCode(data.awayTeam)}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   // sponsor
   const sp = look.sponsor;
   const color = sp.color || '#6366f1';
@@ -1207,6 +1363,65 @@ function RibbonCueOverlay({ cue, w, h }: { cue: Cue; w: number; h: number }) {
           </span>
         )}
       </div>
+
+      {/* Co-branded sponsor attribution — "BROUGHT TO YOU BY [logo] NAME".
+          Only renders when the server emits sponsorName on the cue.
+          Ribbon boards have no speakers; audioUrl is NOT played here. */}
+      {cue.sponsorName && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: Math.round(ch * 0.08),
+            left: 0,
+            right: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: 'rbnSlam 3.9s cubic-bezier(.2,.9,.2,1) forwards',
+          }}
+        >
+          <span
+            style={{
+              fontSize: Math.round(ch * 0.13),
+              fontWeight: 700,
+              letterSpacing: 3,
+              color: hexA(energy, 0.75),
+              whiteSpace: 'nowrap',
+              marginRight: Math.round(ch * 0.1),
+            }}
+          >
+            BROUGHT TO YOU BY
+          </span>
+          {cue.sponsorLogoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={cue.sponsorLogoUrl}
+              alt=""
+              style={{
+                height: Math.round(ch * 0.22),
+                maxWidth: Math.round(ch * 0.9),
+                objectFit: 'contain',
+                marginRight: Math.round(ch * 0.1),
+              }}
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          )}
+          <span
+            style={{
+              fontSize: Math.round(ch * 0.18),
+              fontWeight: 900,
+              letterSpacing: 2,
+              color: '#fff',
+              whiteSpace: 'nowrap',
+              textShadow: `0 4px 20px rgba(0,0,0,0.8), 0 0 28px ${hexA(energy, 0.4)}`,
+            }}
+          >
+            {cue.sponsorName}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

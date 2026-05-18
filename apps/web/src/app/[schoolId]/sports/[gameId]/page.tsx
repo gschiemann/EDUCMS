@@ -30,6 +30,7 @@ import {
   RectangleHorizontal,
   ImageIcon,
   Loader2,
+  Volume2,
 } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
@@ -41,6 +42,9 @@ import {
   useShowGameOnScreens,
   useHideGameFromScreens,
   useGameRoster,
+  useSponsors,
+  useUpdateSponsor,
+  type SponsorInput,
 } from '@/hooks/use-api';
 import { findSport, PLAYER_STATS } from '@cms/api-types';
 import type { SportDefinition, SportStatField } from '@cms/api-types';
@@ -353,9 +357,16 @@ function GameControl() {
         </Section>
       ) : null}
 
+      {/* presentation settings — sound + co-brand for every fired cue */}
+      <PresentationSettingsSection
+        gameId={gameId}
+        def={def}
+        ctl={ctl}
+      />
+
       {/* cue launchpad — built-in celebrations + custom cues in one
           grid, with a per-fire target picker (scoreboard / ribbon / all) */}
-      <Section title="Cues">
+      <Section title="Custom cues">
         <CueLaunchpad gameId={gameId} def={def} />
       </Section>
 
@@ -398,6 +409,10 @@ function GameControl() {
         <SponsorPanel />
       </Section>
 
+      {/* sponsor scheduling — flight dates, frequency cap, weight & active
+          for ad-ops control without touching the cue settings UI */}
+      <SponsorSchedulingSection />
+
       {/* team rosters — players, headshots, stats */}
       <Section title="Team rosters">
         <RosterPanel
@@ -429,6 +444,373 @@ function segmentText(def: SportDefinition, g: any): string {
     return `${half ? half + ' ' : ''}#${n}`;
   }
   return `${def.segment.name} ${n}`;
+}
+
+// ── Game-day Presentation Settings ────────────────────────────
+//
+// The operator sets a celebration sound URL and picks a co-brand
+// sponsor here. Every built-in celebration cue fired from this
+// section carries audioUrl + sponsorName/sponsorLogoUrl in the
+// POST /sports/games/:id/cue request body.
+
+/** Minimal sponsor shape — only what we need for the co-brand picker. */
+interface PresentationSponsor {
+  id: string;
+  name: string;
+  logoUrl?: string | null;
+  active: boolean;
+}
+
+function PresentationSettingsSection({
+  gameId,
+  def,
+  ctl,
+}: {
+  gameId: string;
+  def: SportDefinition;
+  ctl: ReturnType<typeof useGameControl>;
+}) {
+  const { data: sponsorsData } = useSponsors();
+  const sponsors: PresentationSponsor[] = Array.isArray(sponsorsData)
+    ? (sponsorsData as PresentationSponsor[]).filter((s) => s.active)
+    : [];
+
+  const [audioUrl, setAudioUrl] = useState('');
+  const [sponsorId, setSponsorId] = useState('');
+  const [target, setTarget] = useState<'ALL' | 'BOARD' | 'RIBBON'>('ALL');
+  const [fired, setFired] = useState<string | null>(null);
+  const firedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const selectedSponsor = sponsors.find((s) => s.id === sponsorId) ?? null;
+
+  const fire = (key: string) => {
+    // Build an enriched body — audioUrl + co-brand sponsor fields —
+    // alongside the standard key + target fields.
+    const body: {
+      key: string;
+      target: string;
+      audioUrl?: string;
+      sponsorName?: string;
+      sponsorLogoUrl?: string;
+    } = { key, target };
+    if (audioUrl.trim()) body.audioUrl = audioUrl.trim();
+    if (selectedSponsor) {
+      body.sponsorName = selectedSponsor.name;
+      if (selectedSponsor.logoUrl) body.sponsorLogoUrl = selectedSponsor.logoUrl;
+    }
+    ctl.cue.mutate(body);
+    setFired(`builtin:${key}`);
+    if (firedTimer.current) clearTimeout(firedTimer.current);
+    firedTimer.current = setTimeout(() => setFired(null), 1500);
+  };
+
+  const TARGETS: { key: 'ALL' | 'BOARD' | 'RIBBON'; label: string }[] = [
+    { key: 'ALL', label: 'Everywhere' },
+    { key: 'BOARD', label: 'Scoreboard' },
+    { key: 'RIBBON', label: 'Ribbon' },
+  ];
+
+  return (
+    <Section title="Celebrations">
+      <p className="text-xs text-slate-400 mb-3">
+        Tap a celebration to fire it. The sound clip and co-brand sponsor below are
+        included in every cue sent from here.
+      </p>
+
+      {/* fire-to target */}
+      <div className="mb-3">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">
+          Fire to
+        </p>
+        <div className="flex gap-1.5">
+          {TARGETS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTarget(t.key)}
+              className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors ${
+                target === t.key
+                  ? 'border-indigo-600 bg-indigo-600 text-white'
+                  : 'border-slate-200 text-slate-600 hover:border-indigo-300'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* celebration tiles */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 mb-4">
+        {def.celebrations.map((c) => {
+          const tileId = `builtin:${c.key}`;
+          const isFired = fired === tileId;
+          return (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => fire(c.key)}
+              className={`overflow-hidden rounded-xl border-2 transition-all ${
+                isFired
+                  ? 'border-green-500 scale-95'
+                  : 'border-slate-200 hover:border-indigo-300 hover:bg-indigo-50'
+              }`}
+            >
+              <div className="flex h-16 items-center justify-center bg-slate-100">
+                <span className="text-3xl">{c.emoji}</span>
+              </div>
+              <div className="truncate px-2 py-1.5 text-center text-xs font-semibold text-slate-700">
+                {isFired ? 'Fired!' : c.label}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* presentation settings */}
+      <div className="rounded-xl border border-slate-200 p-3 space-y-3">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          Celebration settings
+        </p>
+
+        {/* celebration sound */}
+        <div>
+          <label className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
+            <Volume2 className="h-3.5 w-3.5" />
+            Celebration sound URL
+          </label>
+          <Input
+            className="mt-1"
+            value={audioUrl}
+            onChange={(e) => setAudioUrl(e.target.value)}
+            placeholder="https://example.com/airhorn.mp3"
+            maxLength={2048}
+          />
+          <p className="text-[11px] text-slate-400 mt-1">
+            A sound clip URL (mp3/ogg). Played on every fired celebration — leave blank
+            for no sound.
+          </p>
+        </div>
+
+        {/* co-brand sponsor */}
+        <div>
+          <label className="text-xs font-semibold text-slate-500">
+            Co-brand celebrations with
+          </label>
+          <select
+            value={sponsorId}
+            onChange={(e) => setSponsorId(e.target.value)}
+            className="mt-1 w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+          >
+            <option value="">None — no sponsor overlay</option>
+            {sponsors.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          {selectedSponsor && (
+            <p className="text-[11px] text-slate-400 mt-1">
+              &ldquo;{selectedSponsor.name}&rdquo; name
+              {selectedSponsor.logoUrl ? ' and logo' : ''} included in every fired cue.
+            </p>
+          )}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+// ── Sponsor Scheduling ─────────────────────────────────────────
+//
+// Ad-ops fields: flight start/end, frequency cap, active toggle,
+// and rotation weight — per sponsor. Wired to the existing
+// PATCH /sports/sponsors/:id endpoint which now accepts
+// flightStartAt, flightEndAt, frequencyCapPerHour, active, weight.
+
+/** Extended sponsor shape with the new ad-ops fields. */
+interface ScheduledSponsor {
+  id: string;
+  name: string;
+  logoUrl?: string | null;
+  active: boolean;
+  weight: number;
+  flightStartAt?: string | null;
+  flightEndAt?: string | null;
+  frequencyCapPerHour?: number | null;
+}
+
+function SponsorSchedulingSection() {
+  const { data, isLoading } = useSponsors();
+  const update = useUpdateSponsor();
+  const sponsors: ScheduledSponsor[] = Array.isArray(data)
+    ? (data as ScheduledSponsor[])
+    : [];
+
+  if (isLoading) return null;
+  if (sponsors.length === 0) return null;
+
+  return (
+    <Section title="Sponsor ad scheduling">
+      <p className="text-xs text-slate-400 mb-3">
+        Set flight windows and per-hour frequency caps for each sponsor. Higher rotation
+        weight means the brand comes around more often per loop.
+      </p>
+      <div className="space-y-2">
+        {sponsors.map((s) => (
+          <SponsorScheduleRow key={s.id} sponsor={s} onSave={(vals) => update.mutate({ id: s.id, data: vals })} />
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function SponsorScheduleRow({
+  sponsor,
+  onSave,
+}: {
+  sponsor: ScheduledSponsor;
+  onSave: (vals: SponsorInput) => void;
+}) {
+  // Normalise ISO → date-input format (YYYY-MM-DD) and back.
+  const toDateValue = (iso?: string | null) =>
+    iso ? iso.slice(0, 10) : '';
+  const toIso = (dateVal: string) => (dateVal ? new Date(dateVal).toISOString() : null);
+
+  const [active, setActive] = useState(sponsor.active);
+  const [weight, setWeight] = useState(sponsor.weight ?? 1);
+  const [flightStart, setFlightStart] = useState(toDateValue(sponsor.flightStartAt));
+  const [flightEnd, setFlightEnd] = useState(toDateValue(sponsor.flightEndAt));
+  const [freqCap, setFreqCap] = useState<string>(
+    sponsor.frequencyCapPerHour != null ? String(sponsor.frequencyCapPerHour) : '',
+  );
+  const [dirty, setDirty] = useState(false);
+
+  const mark = () => setDirty(true);
+
+  const save = () => {
+    const capNum = freqCap.trim() === '' ? null : Number(freqCap);
+    onSave({
+      active,
+      weight,
+      flightStartAt: toIso(flightStart),
+      flightEndAt: toIso(flightEnd),
+      frequencyCapPerHour: capNum != null && Number.isFinite(capNum) ? capNum : null,
+    });
+    setDirty(false);
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200 p-3">
+      <div className="flex items-center gap-2 mb-2.5">
+        {sponsor.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={sponsor.logoUrl}
+            alt=""
+            className="h-8 w-8 rounded object-contain bg-slate-50 ring-1 ring-slate-100 shrink-0"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
+            }}
+          />
+        ) : null}
+        <span className="text-sm font-semibold text-slate-800 flex-1 truncate">
+          {sponsor.name}
+        </span>
+        <label className="flex items-center gap-1.5 cursor-pointer shrink-0">
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(e) => { setActive(e.target.checked); mark(); }}
+            className="h-4 w-4 accent-indigo-600 cursor-pointer"
+          />
+          <span className="text-xs font-medium text-slate-600">Active</span>
+        </label>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+        {/* weight */}
+        <div>
+          <label className="font-semibold text-slate-500">
+            Rotation weight — {weight}
+          </label>
+          <input
+            type="range"
+            min={1}
+            max={10}
+            step={1}
+            value={weight}
+            onChange={(e) => { setWeight(Number(e.target.value)); mark(); }}
+            className="w-full mt-1 accent-indigo-600 cursor-pointer"
+          />
+        </div>
+
+        {/* frequency cap */}
+        <div>
+          <label className="font-semibold text-slate-500">Max per hour</label>
+          <Input
+            type="number"
+            className="mt-1"
+            value={freqCap}
+            min={1}
+            placeholder="Uncapped"
+            onChange={(e) => { setFreqCap(e.target.value); mark(); }}
+          />
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Leave blank for uncapped.
+          </p>
+        </div>
+
+        {/* flight start */}
+        <div>
+          <label className="font-semibold text-slate-500">Flight start</label>
+          <input
+            type="date"
+            value={flightStart}
+            onChange={(e) => { setFlightStart(e.target.value); mark(); }}
+            className="mt-1 w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+          />
+        </div>
+
+        {/* flight end */}
+        <div>
+          <label className="font-semibold text-slate-500">Flight end</label>
+          <input
+            type="date"
+            value={flightEnd}
+            onChange={(e) => { setFlightEnd(e.target.value); mark(); }}
+            className="mt-1 w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+          />
+        </div>
+      </div>
+
+      {dirty && (
+        <div className="mt-2.5 flex gap-2">
+          <Button size="sm" onClick={save}>
+            Save
+          </Button>
+          <button
+            type="button"
+            className="text-xs text-slate-400 hover:text-slate-600 font-semibold"
+            onClick={() => {
+              setActive(sponsor.active);
+              setWeight(sponsor.weight ?? 1);
+              setFlightStart(toDateValue(sponsor.flightStartAt));
+              setFlightEnd(toDateValue(sponsor.flightEndAt));
+              setFreqCap(
+                sponsor.frequencyCapPerHour != null
+                  ? String(sponsor.frequencyCapPerHour)
+                  : '',
+              );
+              setDirty(false);
+            }}
+          >
+            Discard
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── sub-components ─────────────────────────────────────────────
