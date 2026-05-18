@@ -102,7 +102,7 @@ const FOOTBALL: SportDefinition = {
   ],
   celebrations: [
     { key: 'touchdown', label: 'Touchdown', emoji: '🏈' },
-    { key: 'fieldGoal', label: 'Field Goal', emoji: '🥅' },
+    { key: 'fieldGoal', label: 'Field Goal', emoji: '🏈' },
     { key: 'firstDown', label: 'First Down', emoji: '📍' },
     { key: 'sack', label: 'Sack', emoji: '💥' },
     { key: 'turnover', label: 'Turnover', emoji: '🔄' },
@@ -169,6 +169,15 @@ const SOFTBALL: SportDefinition = {
   emoji: '🥎',
   // NCAA / high-school softball regulation is 7 innings (not 9).
   segment: { name: 'Inning', count: 7, overtime: true },
+  // Own celebration set — softball spreads BASEBALL, whose Home Run
+  // cue carries a baseball ⚾. Override so a softball home run shows
+  // a softball, not a baseball.
+  celebrations: [
+    { key: 'homeRun', label: 'Home Run', emoji: '🥎' },
+    { key: 'grandSlam', label: 'Grand Slam', emoji: '💎' },
+    { key: 'strikeout', label: 'Strikeout', emoji: '🔥' },
+    { key: 'doublePlay', label: 'Double Play', emoji: '⚡' },
+  ],
 };
 
 const SOCCER: SportDefinition = {
@@ -258,7 +267,7 @@ const HOCKEY: SportDefinition = {
     { key: 'powerPlay', label: 'Power Play', emoji: '⚡' },
     { key: 'penaltyKill', label: 'Penalty Kill', emoji: '🛡️' },
     { key: 'hatTrick', label: 'Hat Trick', emoji: '🎩' },
-    { key: 'save', label: 'Big Save', emoji: '🥅' },
+    { key: 'save', label: 'Big Save', emoji: '🧤' },
   ],
 };
 
@@ -278,7 +287,7 @@ const LACROSSE: SportDefinition = {
   ],
   celebrations: [
     { key: 'goal', label: 'GOAL!', emoji: '🥍' },
-    { key: 'save', label: 'Save', emoji: '🥅' },
+    { key: 'save', label: 'Save', emoji: '🧤' },
     { key: 'groundBall', label: 'Ground Ball', emoji: '🔄' },
     { key: 'manUp', label: 'Man Up', emoji: '⚡' },
   ],
@@ -300,7 +309,7 @@ const FIELD_HOCKEY: SportDefinition = {
   ],
   celebrations: [
     { key: 'goal', label: 'GOAL!', emoji: '🏑' },
-    { key: 'save', label: 'Save', emoji: '🥅' },
+    { key: 'save', label: 'Save', emoji: '🧤' },
     { key: 'penaltyCorner', label: 'Penalty Corner', emoji: '📐' },
     { key: 'greenCard', label: 'Green Card', emoji: '🟩' },
   ],
@@ -322,7 +331,7 @@ const WATER_POLO: SportDefinition = {
   ],
   celebrations: [
     { key: 'goal', label: 'GOAL!', emoji: '🤽' },
-    { key: 'save', label: 'Save', emoji: '🥅' },
+    { key: 'save', label: 'Save', emoji: '🧤' },
     { key: 'exclusion', label: 'Exclusion', emoji: '✋' },
     { key: 'powerPlay', label: 'Power Play', emoji: '⚡' },
   ],
@@ -420,7 +429,7 @@ const CROSS_COUNTRY: SportDefinition = {
     { key: 'leadRunner', label: 'Lead Runner', scope: 'game', type: 'text' },
   ],
   celebrations: [
-    { key: 'firstFinisher', label: 'First Finisher!', emoji: '🌲' },
+    { key: 'firstFinisher', label: 'First Finisher!', emoji: '🥇' },
     { key: 'newCourseRecord', label: 'Course Record', emoji: '📋' },
     { key: 'personalBest', label: 'Personal Best', emoji: '⭐' },
     { key: 'teamLead', label: 'Team Takes Lead', emoji: '🏃' },
