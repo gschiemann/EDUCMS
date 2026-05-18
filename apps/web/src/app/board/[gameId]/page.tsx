@@ -557,28 +557,31 @@ function SponsorBanner({ sponsor }: { sponsor: Sponsor }) {
           src={sponsor.logoUrl}
           alt=""
           style={{
-            height: 92,
-            width: 92,
+            // Transparent — the logo sits straight on the banner so it
+            // reads as part of the board, not a white sticker. Natural
+            // aspect (width auto) so a wide logo isn't crushed into a
+            // square, and taller so the sponsor is actually legible.
+            height: 104,
+            width: 'auto',
+            maxWidth: 460,
             objectFit: 'contain',
-            background: '#fff',
-            borderRadius: 14,
-            marginRight: 26,
+            marginRight: 30,
           }}
         />
       ) : (
         <div
           style={{
-            height: 92,
-            width: 92,
+            height: 104,
+            width: 104,
             borderRadius: 14,
             background: color,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 52,
+            fontSize: 58,
             fontWeight: 900,
             color: '#fff',
-            marginRight: 26,
+            marginRight: 30,
           }}
         >
           {sponsor.name.charAt(0).toUpperCase()}

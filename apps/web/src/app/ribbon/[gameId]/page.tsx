@@ -753,8 +753,12 @@ function RibbonCell({
           src={sp.logoUrl}
           alt=""
           style={{
-            height: h * 0.6,
-            width: h * 0.6,
+            // Natural aspect + taller so the logo fills the ribbon and
+            // reads as part of it — no boxed-in, shrunken square, no
+            // backdrop behind it.
+            height: h * 0.74,
+            width: 'auto',
+            maxWidth: h * 2.6,
             objectFit: 'contain',
             marginRight: h * 0.22,
           }}
