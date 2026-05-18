@@ -17,7 +17,7 @@
  * renders a representative sample game so the tile always looks alive.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { findSport } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import type { WidgetProps } from './_shared/types';
@@ -242,16 +242,6 @@ export function SportsScoreboardWidget({
   const status = STATUS[board.status] || STATUS.SCHEDULED;
   const clockStr = fmtClock(liveClockMs(board, def, tickClock));
 
-  // Stat row — driven entirely by the SportDefinition. Game-wide first.
-  const statChips = def.stats
-    .map((s) => {
-      const raw = (board.stats || {})[s.key];
-      if (raw === undefined || raw === null || raw === '') return null;
-      return { label: s.label.toUpperCase(), value: String(raw) };
-    })
-    .filter((x): x is { label: string; value: string } => x !== null)
-    .slice(0, 6);
-
   const pad = px(height, 0.06);
 
   return (
@@ -360,37 +350,200 @@ export function SportsScoreboardWidget({
         />
       </div>
 
-      {/* stat strip — SportDefinition-driven */}
-      {statChips.length > 0 && (
-        <div
+      {/* situational graphics strip — real broadcast-style state,
+          per-sport: base diamond + B/S/O for baseball, down & distance
+          + possession for football, bonus + timeout pips for
+          basketball, serve indicator for rally sports, clean stat
+          chips for everything else. */}
+      <SituationalRow def={def} board={board} tier={tier} h={height} />
+    </div>
+  );
+}
+
+// ── situational graphics ───────────────────────────────────────────
+
+const num = (v: unknown): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+const side = (v: unknown): 'home' | 'away' | null => {
+  const s = String(v || '').trim().toLowerCase();
+  if (s === 'home' || s === 'h') return 'home';
+  if (s === 'away' || s === 'a') return 'away';
+  return null;
+};
+
+/** A row of N pips, `filled` of them solid — the iconic count display. */
+function Pips({ n, filled, color, dim, size }: { n: number; filled: number; color: string; dim: string; size: number }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+      {Array.from({ length: n }).map((_, i) => (
+        <span
+          key={i}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexWrap: 'wrap',
-            height: px(height, 0.16),
-            borderTop: `1px solid ${tier.hairline}`,
-            paddingTop: px(height, 0.03),
+            width: size,
+            height: size,
+            borderRadius: '50%',
+            background: i < filled ? color : 'transparent',
+            border: `${Math.max(1, Math.round(size * 0.16))}px solid ${i < filled ? color : dim}`,
+            marginLeft: i === 0 ? 0 : Math.round(size * 0.45),
+            boxSizing: 'border-box',
+            display: 'inline-block',
           }}
-        >
-          {statChips.map((s, i) => (
-            <span
-              key={s.label}
-              style={{
-                fontSize: px(height, 0.055),
-                fontWeight: 700,
-                color: tier.inkDim,
-                marginLeft: i === 0 ? 0 : px(height, 0.05),
-              }}
-            >
-              {s.label}{' '}
-              <strong style={{ color: tier.ink, fontVariantNumeric: 'tabular-nums' }}>
-                {s.value}
-              </strong>
-            </span>
-          ))}
-        </div>
-      )}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** Baseball base diamond — 2B top, 1B right, 3B left; lit when occupied. */
+function BaseDiamond({ on1, on2, on3, accent, dim, h }: { on1: boolean; on2: boolean; on3: boolean; accent: string; dim: string; h: number }) {
+  const s = px(h, 0.15);
+  const fill = (on: boolean) => (on ? accent : 'none');
+  const stroke = (on: boolean) => (on ? accent : dim);
+  return (
+    <svg width={s * 1.7} height={s} viewBox="0 0 85 50" aria-hidden>
+      {/* 3B left */}
+      <rect x="11" y="23" width="14" height="14" transform="rotate(45 18 30)" fill={fill(on3)} stroke={stroke(on3)} strokeWidth="2.6" />
+      {/* 2B top */}
+      <rect x="35.5" y="6" width="14" height="14" transform="rotate(45 42.5 13)" fill={fill(on2)} stroke={stroke(on2)} strokeWidth="2.6" />
+      {/* 1B right */}
+      <rect x="60" y="23" width="14" height="14" transform="rotate(45 67 30)" fill={fill(on1)} stroke={stroke(on1)} strokeWidth="2.6" />
+    </svg>
+  );
+}
+
+/** A labelled count cluster — "B ●●○". */
+function Count({ label, n, filled, accent, dim, h }: { label: string; n: number; filled: number; accent: string; dim: string; h: number }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: px(h, 0.02) }}>
+      <span style={{ fontSize: px(h, 0.055), fontWeight: 900, color: dim, letterSpacing: 1 }}>{label}</span>
+      <Pips n={n} filled={Math.max(0, Math.min(n, filled))} color={accent} dim={dim} size={px(h, 0.045)} />
+    </span>
+  );
+}
+
+function SituationalRow({ def, board, tier, h }: { def: SportDefinition; board: BoardData; tier: TierStyle; h: number }) {
+  const stats = (board.stats || {}) as Record<string, unknown>;
+  const rowStyle: CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: px(h, 0.06),
+    height: px(h, 0.17),
+    borderTop: `1px solid ${tier.hairline}`,
+    paddingTop: px(h, 0.02),
+  };
+
+  // ── Baseball / softball — base diamond + B/S/O ──
+  if (def.segment.name === 'Inning') {
+    return (
+      <div style={rowStyle}>
+        <BaseDiamond
+          on1={num(stats.on1B) > 0}
+          on2={num(stats.on2B) > 0}
+          on3={num(stats.on3B) > 0}
+          accent={tier.accent}
+          dim={tier.inkDim}
+          h={h}
+        />
+        <Count label="B" n={3} filled={num(stats.balls)} accent={tier.accent} dim={tier.inkDim} h={h} />
+        <Count label="S" n={2} filled={num(stats.strikes)} accent={tier.accent} dim={tier.inkDim} h={h} />
+        <Count label="O" n={2} filled={num(stats.outs)} accent="#dc2626" dim={tier.inkDim} h={h} />
+      </div>
+    );
+  }
+
+  // ── Football — down & distance + ball-on + possession ──
+  if (def.key === 'football') {
+    const down = num(stats.down);
+    const dist = num(stats.distance);
+    const ballOn = stats.ballOn;
+    const poss = side(stats.possession);
+    return (
+      <div style={rowStyle}>
+        {poss && (
+          <span style={{ fontSize: px(h, 0.06), fontWeight: 900, color: tier.accent }}>
+            {poss === 'home' ? '◀' : ''} {poss.toUpperCase()} BALL {poss === 'away' ? '▶' : ''}
+          </span>
+        )}
+        {down > 0 && (
+          <span style={{ fontSize: px(h, 0.07), fontWeight: 900, color: tier.ink, letterSpacing: 1 }}>
+            {ordinal(down)} &amp; {dist === 0 ? 'GOAL' : dist}
+          </span>
+        )}
+        {ballOn !== undefined && ballOn !== null && ballOn !== '' && (
+          <span style={{ fontSize: px(h, 0.055), fontWeight: 800, color: tier.inkDim, letterSpacing: 1 }}>
+            BALL ON {String(ballOn)}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  // ── Basketball — per-team timeouts + bonus, possession arrow ──
+  if (def.key === 'basketball') {
+    const hFouls = num(stats.homeFouls);
+    const aFouls = num(stats.awayFouls);
+    const poss = side(stats.possession);
+    const bonus = (f: number) =>
+      f >= 10 ? 'DOUBLE BONUS' : f >= 7 ? 'BONUS' : null;
+    const TeamSit = ({ to, b, alignR }: { to: number; b: string | null; alignR?: boolean }) => (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: px(h, 0.03), flexDirection: alignR ? 'row-reverse' : 'row' }}>
+        <Pips n={5} filled={to} color={tier.accent} dim={tier.inkDim} size={px(h, 0.04)} />
+        {b && (
+          <span style={{ fontSize: px(h, 0.05), fontWeight: 900, color: '#f59e0b', letterSpacing: 1 }}>{b}</span>
+        )}
+      </span>
+    );
+    return (
+      <div style={rowStyle}>
+        <TeamSit to={num(stats.homeTimeouts)} b={bonus(hFouls)} />
+        <span style={{ fontSize: px(h, 0.055), fontWeight: 900, color: tier.accent, letterSpacing: 1 }}>
+          {poss === 'home' ? '◀ ' : ''}POSS{poss === 'away' ? ' ▶' : ''}
+        </span>
+        <TeamSit to={num(stats.awayTimeouts)} b={bonus(aFouls)} alignR />
+      </div>
+    );
+  }
+
+  // ── Rally sports — serve indicator ──
+  if (def.key === 'volleyball' || def.key === 'pickleball') {
+    const serving = String(stats.serving || '').trim();
+    if (!serving) return <ChipRow def={def} board={board} tier={tier} h={h} rowStyle={rowStyle} />;
+    return (
+      <div style={rowStyle}>
+        <span style={{ fontSize: px(h, 0.06), fontWeight: 900, color: tier.accent, letterSpacing: 1 }}>
+          🏐 SERVING — {serving.toUpperCase()}
+        </span>
+      </div>
+    );
+  }
+
+  // ── Everything else — clean stat chips ──
+  return <ChipRow def={def} board={board} tier={tier} h={h} rowStyle={rowStyle} />;
+}
+
+/** Fallback — the SportDefinition-driven chip row, for sports with no
+ *  dedicated situational graphic. */
+function ChipRow({ def, board, tier, h, rowStyle }: { def: SportDefinition; board: BoardData; tier: TierStyle; h: number; rowStyle: CSSProperties }) {
+  const chips = def.stats
+    .map((s) => {
+      const raw = (board.stats || {})[s.key];
+      if (raw === undefined || raw === null || raw === '') return null;
+      return { label: s.label.toUpperCase(), value: String(raw) };
+    })
+    .filter((x): x is { label: string; value: string } => x !== null)
+    .slice(0, 6);
+  if (chips.length === 0) return null;
+  return (
+    <div style={{ ...rowStyle, flexWrap: 'wrap' }}>
+      {chips.map((s) => (
+        <span key={s.label} style={{ fontSize: px(h, 0.055), fontWeight: 700, color: tier.inkDim }}>
+          {s.label}{' '}
+          <strong style={{ color: tier.ink, fontVariantNumeric: 'tabular-nums' }}>{s.value}</strong>
+        </span>
+      ))}
     </div>
   );
 }

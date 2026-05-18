@@ -72,6 +72,8 @@ const FOOTBALL: SportDefinition = {
     { key: 'ballOn', label: 'Ball On', scope: 'game', type: 'number', min: 0, max: 50 },
     { key: 'homeTimeouts', label: 'Home Timeouts', scope: 'home', type: 'number', min: 0, max: 3 },
     { key: 'awayTimeouts', label: 'Away Timeouts', scope: 'away', type: 'number', min: 0, max: 3 },
+    // Possession — 'home' / 'away'. Drives the scoreboard possession marker.
+    { key: 'possession', label: 'Possession (home / away)', scope: 'game', type: 'text' },
   ],
   celebrations: [
     { key: 'touchdown', label: 'Touchdown', emoji: '🏈' },
@@ -95,6 +97,8 @@ const BASKETBALL: SportDefinition = {
     { key: 'awayFouls', label: 'Away Fouls', scope: 'away', type: 'number', min: 0, max: 30 },
     { key: 'homeTimeouts', label: 'Home Timeouts', scope: 'home', type: 'number', min: 0, max: 5 },
     { key: 'awayTimeouts', label: 'Away Timeouts', scope: 'away', type: 'number', min: 0, max: 5 },
+    // Possession arrow — 'home' / 'away'.
+    { key: 'possession', label: 'Possession (home / away)', scope: 'game', type: 'text' },
   ],
   celebrations: [
     { key: 'threePointer', label: 'Three!', emoji: '🎯' },
@@ -120,6 +124,10 @@ const BASEBALL: SportDefinition = {
     { key: 'strikes', label: 'Strikes', scope: 'game', type: 'number', min: 0, max: 2 },
     { key: 'outs', label: 'Outs', scope: 'game', type: 'number', min: 0, max: 2 },
     { key: 'half', label: 'Inning Half', scope: 'game', type: 'text' },
+    // Base runners — drive the scoreboard's lit base diamond. 0/1 each.
+    { key: 'on1B', label: 'Runner on 1st', scope: 'game', type: 'number', min: 0, max: 1 },
+    { key: 'on2B', label: 'Runner on 2nd', scope: 'game', type: 'number', min: 0, max: 1 },
+    { key: 'on3B', label: 'Runner on 3rd', scope: 'game', type: 'number', min: 0, max: 1 },
   ],
   celebrations: [
     { key: 'homeRun', label: 'Home Run', emoji: '⚾' },
