@@ -2,7 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
-import { findSport, SPORTS } from '@cms/api-types';
+import { findSport, SPORTS, resolveRibbonPresets, sanitizeRibbonPresets } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
 
@@ -138,13 +138,45 @@ export class SportsService {
   }
 
   /**
+   * The operator's stored ribbon preset config — the payload of the
+   * most recent RIBBON_PRESETS GameEvent, or null when the reel has
+   * never been configured. Rides the generic GameEvent log,
+   * latest-event-wins — same pattern as RIBBON messages.
+   */
+  private async latestRibbonPresets(gameId: string): Promise<string[] | null> {
+    const ev = await this.prisma.client.gameEvent.findFirst({
+      where: { gameId, type: 'RIBBON_PRESETS' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!ev) return null;
+    const raw = (ev.payload as Record<string, unknown> | undefined)?.presets;
+    return Array.isArray(raw) ? raw.filter((m): m is string => typeof m === 'string') : [];
+  }
+
+  /**
+   * The EFFECTIVE ribbon preset list for a game — the stored config,
+   * or the sport's full default-on set when the reel was never
+   * configured. The ribbon page and the control panel both consume
+   * this resolved array, so neither has to special-case "no config".
+   */
+  private async ribbonPresetsFor(gameId: string, sportKey: string): Promise<string[]> {
+    const def = findSport(sportKey);
+    if (!def) return [];
+    return resolveRibbonPresets(def, await this.latestRibbonPresets(gameId));
+  }
+
+  /**
    * One game, tenant-scoped — for the operator control surface.
-   * Includes the current custom ribbon messages so the ribbon panel
-   * can pre-fill.
+   * Includes the current custom ribbon messages + the effective
+   * ribbon preset config so both ribbon panels can pre-fill.
    */
   async getGame(tenantId: string, id: string) {
     const game = await this.owned(tenantId, id);
-    return { ...game, ribbonMessages: await this.latestRibbonMessages(id) };
+    const [ribbonMessages, ribbonPresets] = await Promise.all([
+      this.latestRibbonMessages(id),
+      this.ribbonPresetsFor(id, game.sport),
+    ]);
+    return { ...game, ribbonMessages, ribbonPresets };
   }
 
   /**
@@ -159,7 +191,7 @@ export class SportsService {
     if (!game) throw new NotFoundException('Game not found');
 
     const since = new Date(Date.now() - CUE_FEED_WINDOW_MS);
-    const [cues, sponsors, roster, ribbonMessages] = await Promise.all([
+    const [cues, sponsors, roster, ribbonMessages, ribbonPresets] = await Promise.all([
       this.prisma.client.gameEvent.findMany({
         where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
         orderBy: { createdAt: 'asc' },
@@ -182,6 +214,9 @@ export class SportsService {
       }),
       // Operator-set ribbon messages — the latest RIBBON event wins.
       this.latestRibbonMessages(id),
+      // Which content presets ride the ribbon reel (resolved — stored
+      // config, or the sport's full default-on set).
+      this.ribbonPresetsFor(id, game.sport),
     ]);
 
     return {
@@ -210,6 +245,7 @@ export class SportsService {
       sponsors,
       roster,
       ribbonMessages,
+      ribbonPresets,
       sponsorSpotSeconds: SPONSOR_SPOT_SECONDS,
       serverTime: Date.now(),
     };
@@ -1125,6 +1161,22 @@ export class SportsService {
       : [];
     await this.record(id, 'RIBBON', { messages });
     return { messages };
+  }
+
+  /**
+   * Set which content presets ride the stadium ribbon reel — the
+   * score, clock, period, sport-specific game situation, crowd
+   * messages, player spotlights, sponsors. The list is validated
+   * against the game's sport catalog (a `clock` preset can't be set
+   * on a clockless sport like baseball). Stored as a RIBBON_PRESETS
+   * GameEvent (latest wins) — no new table, no migration.
+   */
+  async setRibbonPresets(tenantId: string, id: string, dto: { presets?: unknown }) {
+    const game = await this.owned(tenantId, id);
+    const def = this.sportOf(game.sport);
+    const presets = sanitizeRibbonPresets(def, dto.presets);
+    await this.record(id, 'RIBBON_PRESETS', { presets });
+    return { presets };
   }
 
   // ── cue deck (custom triggers) ───────────────────────────────

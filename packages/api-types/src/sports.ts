@@ -371,3 +371,179 @@ export const PLAYER_STATS: Record<string, string[]> = {
   water_polo: ['G', 'A', 'ST', 'EXC'],
   pickleball: ['W', 'L', 'PTS'],
 };
+
+// ── Ribbon content presets ─────────────────────────────────────
+/**
+ * VenueOS Sports — stadium ribbon content presets.
+ *
+ * The ribbon board (the long LED strip wrapping a venue) scrolls a
+ * reel of content tiles. These presets are the operator's on/off
+ * switches for what rides the reel: the score, the game clock, the
+ * period, the sport-specific game situation, plus the engagement
+ * tiles (crowd messages, player spotlights, sponsors).
+ *
+ * The catalog is SPORT-AWARE — `clock` only exists for sports that
+ * have a game clock, `situation` only for sports with stat fields,
+ * and every label adapts to the sport (baseball shows "Inning",
+ * football "Quarter"; baseball's situation is "Count & bases",
+ * football's is "Down & distance").
+ *
+ * Stored per game as a RIBBON_PRESETS GameEvent (latest-wins) — no
+ * table, no migration. A game with no stored config shows every
+ * applicable preset, so the ribbon "just works" untouched.
+ */
+export type RibbonPresetKey =
+  | 'score'
+  | 'segment'
+  | 'clock'
+  | 'situation'
+  | 'prompts'
+  | 'roster'
+  | 'sponsors';
+
+export interface RibbonPreset {
+  key: RibbonPresetKey;
+  /** Operator-facing name — adapts to the sport. */
+  label: string;
+  /** One-line hint shown beneath the toggle. */
+  hint: string;
+  /** Toggle grouping in the control panel. */
+  group: 'core' | 'engagement';
+}
+
+/** The sport-specific label for the `situation` tile. */
+function ribbonSituationLabel(def: SportDefinition): string {
+  switch (def.key) {
+    case 'football':
+      return 'Down & distance';
+    case 'baseball':
+    case 'softball':
+      return 'Count & bases';
+    case 'basketball':
+      return 'Fouls & possession';
+    case 'soccer':
+      return 'Shots & added time';
+    case 'volleyball':
+      return 'Sets & serve';
+    case 'pickleball':
+      return 'Games & serve';
+    case 'wrestling':
+      return 'Ride time';
+    case 'hockey':
+      return 'Shots & penalties';
+    case 'lacrosse':
+      return 'Shots & ground balls';
+    case 'field_hockey':
+      return 'Shots & corners';
+    case 'water_polo':
+      return 'Shots & exclusions';
+    default:
+      return 'Game situation';
+  }
+}
+
+/**
+ * The ribbon preset catalog for a sport — the toggles the operator
+ * sees, in display order. `clock` is omitted for clockless sports
+ * (baseball, volleyball, pickleball); `situation` is omitted for a
+ * sport with no stat fields.
+ */
+export function ribbonPresetCatalog(def: SportDefinition): RibbonPreset[] {
+  const noun = def.segment.name; // "Quarter" / "Inning" / "Set" / …
+  const presets: RibbonPreset[] = [
+    {
+      key: 'score',
+      label: 'Score',
+      hint: 'Live team scoreline with logos',
+      group: 'core',
+    },
+    {
+      key: 'segment',
+      label: noun,
+      hint: `Current ${noun.toLowerCase()}`,
+      group: 'core',
+    },
+  ];
+  if (def.clock.type !== 'none') {
+    presets.push({
+      key: 'clock',
+      label: def.clock.type === 'countup' ? 'Game clock' : 'Time remaining',
+      hint:
+        def.clock.type === 'countup'
+          ? 'Live count-up game clock'
+          : 'Live count-down game clock',
+      group: 'core',
+    });
+  }
+  if (def.stats.length > 0) {
+    presets.push({
+      key: 'situation',
+      label: ribbonSituationLabel(def),
+      hint: 'Sport-specific live game situation',
+      group: 'core',
+    });
+  }
+  presets.push(
+    {
+      key: 'prompts',
+      label: 'Crowd messages',
+      hint: 'Your custom ribbon messages, or default crowd chants',
+      group: 'engagement',
+    },
+    {
+      key: 'roster',
+      label: 'Player spotlights',
+      hint: 'Roster cards — photo, number, stat line',
+      group: 'engagement',
+    },
+    {
+      key: 'sponsors',
+      label: 'Sponsor banners',
+      hint: 'Sponsor logos in weighted rotation',
+      group: 'engagement',
+    },
+  );
+  return presets;
+}
+
+/**
+ * Every applicable preset key for a sport — the default-on set used
+ * when a game has no stored ribbon config (the ribbon shows it all).
+ */
+export function defaultRibbonPresets(def: SportDefinition): RibbonPresetKey[] {
+  return ribbonPresetCatalog(def).map((p) => p.key);
+}
+
+/**
+ * Validate an untrusted preset list against a sport's catalog: keep
+ * only keys that exist for THIS sport, de-duplicate, and return them
+ * in catalog order for a stable, predictable reel. An all-empty
+ * result is allowed — the operator cleared the reel; the ribbon then
+ * falls back to the score alone so a board is never blank.
+ */
+export function sanitizeRibbonPresets(
+  def: SportDefinition,
+  input: unknown,
+): RibbonPresetKey[] {
+  const picked = new Set<string>();
+  if (Array.isArray(input)) {
+    for (const raw of input) picked.add(String(raw));
+  }
+  return ribbonPresetCatalog(def)
+    .map((p) => p.key)
+    .filter((k) => picked.has(k));
+}
+
+/**
+ * Resolve the EFFECTIVE preset list for a game: the stored config if
+ * one exists, otherwise every applicable preset (the "just works"
+ * default). `stored` is the raw payload of the latest RIBBON_PRESETS
+ * event — null/undefined when the reel has never been configured.
+ */
+export function resolveRibbonPresets(
+  def: SportDefinition,
+  stored: unknown,
+): RibbonPresetKey[] {
+  if (stored === null || stored === undefined) return defaultRibbonPresets(def);
+  return sanitizeRibbonPresets(def, stored);
+}

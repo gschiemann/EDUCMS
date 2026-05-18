@@ -23,7 +23,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
-import { findSport } from '@cms/api-types';
+import { findSport, defaultRibbonPresets } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 
 interface Sponsor {
@@ -62,6 +62,9 @@ interface BoardData {
   sponsors?: Sponsor[];
   roster?: Player[];
   ribbonMessages?: string[];
+  /** Which content presets ride the reel — resolved server-side
+   *  (stored config, or the sport's full default-on set). */
+  ribbonPresets?: string[];
   serverTime: number;
 }
 
@@ -109,27 +112,147 @@ function liveClockMs(data: BoardData, def: SportDefinition): number {
 type Cell =
   | { kind: 'score' }
   | { kind: 'status'; text: string; live: boolean }
+  | { kind: 'situational'; text: string }
   | { kind: 'prompt'; text: string }
   | { kind: 'sponsor'; sponsor: Sponsor }
   | { kind: 'player'; player: Player };
 
+/**
+ * A single punchy line of the sport's LIVE game situation, sized for
+ * the ribbon reel — down & distance, the baseball count, the serve,
+ * the basketball bonus. Returns null when nothing is live to show
+ * (no down set yet, no server picked) so the situational tile is
+ * skipped. Reads the SAME Game.stats keys the scoreboard's
+ * situational strip uses, so the two surfaces never disagree.
+ */
+function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>): string | null {
+  const num = (v: unknown): number => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const side = (v: unknown): 'home' | 'away' | null => {
+    const s = String(v || '').trim().toLowerCase();
+    if (s === 'home' || s === 'h') return 'home';
+    if (s === 'away' || s === 'a') return 'away';
+    return null;
+  };
+  const SEP = '  ·  ';
+
+  // Baseball / softball — the live count + base runners.
+  if (def.segment.name === 'Inning') {
+    const parts: string[] = [];
+    const half = String(stats.half || '').trim();
+    if (half) parts.push(half.toUpperCase());
+    parts.push(`${num(stats.balls)}-${num(stats.strikes)}`);
+    parts.push(`${num(stats.outs)} OUT`);
+    const bases: string[] = [];
+    if (num(stats.on1B) > 0) bases.push('1ST');
+    if (num(stats.on2B) > 0) bases.push('2ND');
+    if (num(stats.on3B) > 0) bases.push('3RD');
+    parts.push(
+      bases.length === 3
+        ? '◆ BASES LOADED'
+        : bases.length
+          ? `◆ ${bases.join(' & ')}`
+          : '◇ BASES EMPTY',
+    );
+    return parts.join(SEP);
+  }
+
+  // Football — possession + down & distance + ball-on.
+  if (def.key === 'football') {
+    const down = num(stats.down);
+    const poss = side(stats.possession);
+    const ballOn = stats.ballOn;
+    const hasBallOn = ballOn !== undefined && ballOn !== null && ballOn !== '';
+    if (down <= 0 && !poss && !hasBallOn) return null;
+    const parts: string[] = [];
+    if (poss) parts.push(`${poss.toUpperCase()} BALL`);
+    if (down > 0) {
+      const dist = num(stats.distance);
+      parts.push(`${ordinal(down)} & ${dist === 0 ? 'GOAL' : dist}`);
+    }
+    if (hasBallOn) parts.push(`BALL ON ${String(ballOn)}`);
+    return parts.length ? parts.join(SEP) : null;
+  }
+
+  // Basketball — team bonus + possession arrow.
+  if (def.key === 'basketball') {
+    const bonus = (f: number) => (f >= 10 ? 'DOUBLE BONUS' : f >= 7 ? 'BONUS' : null);
+    const parts: string[] = [];
+    const hb = bonus(num(stats.homeFouls));
+    const ab = bonus(num(stats.awayFouls));
+    if (hb) parts.push(`HOME ${hb}`);
+    if (ab) parts.push(`AWAY ${ab}`);
+    const poss = side(stats.possession);
+    if (poss) parts.push(`POSS ${poss.toUpperCase()}`);
+    return parts.length ? parts.join(SEP) : null;
+  }
+
+  // Rally sports — the serve.
+  if (def.key === 'volleyball' || def.key === 'pickleball') {
+    const serving = String(stats.serving || '').trim();
+    return serving ? `SERVING — ${serving.toUpperCase()}` : null;
+  }
+
+  // Everything else — the SportDefinition stat chips that have a value.
+  const chips = def.stats
+    .map((s) => {
+      const raw = stats[s.key];
+      if (raw === undefined || raw === null || raw === '') return null;
+      return `${s.label.toUpperCase()} ${String(raw)}`;
+    })
+    .filter((x): x is string => x !== null)
+    .slice(0, 4);
+  return chips.length ? chips.join(SEP) : null;
+}
+
+/**
+ * Build the ribbon reel from the operator's content presets. Each
+ * preset is a content tile the operator toggled on in the control
+ * panel; `data.ribbonPresets` is the resolved list (server falls
+ * back to every applicable preset when the reel was never
+ * configured, so an unconfigured ribbon shows everything).
+ */
 function buildCells(data: BoardData, def: SportDefinition): Cell[] {
   const homeCode = teamCode(data.homeTeam);
-  const statusText =
-    def.clock.type === 'none'
-      ? segmentLabel(def, data)
-      : `${segmentLabel(def, data)} · ${fmtClock(liveClockMs(data, def))}`;
-  const cells: Cell[] = [
-    { kind: 'score' },
-    { kind: 'status', text: statusText, live: data.status === 'LIVE' },
-  ];
-  // Operator-set ribbon messages win; otherwise the default crowd prompts.
-  const custom = (data.ribbonMessages || []).map((m) => m.trim()).filter(Boolean);
-  const prompts = custom.length
-    ? custom
-    : ['LET’S GO!', `GO ${homeCode}!`, 'MAKE SOME NOISE', 'DEFENSE!', `${homeCode} PRIDE`];
-  const sponsors = data.sponsors || [];
-  const players = data.roster || [];
+  const enabled = new Set<string>(
+    Array.isArray(data.ribbonPresets) ? data.ribbonPresets : defaultRibbonPresets(def),
+  );
+  const cells: Cell[] = [];
+
+  // Score.
+  if (enabled.has('score')) cells.push({ kind: 'score' });
+
+  // Period + clock — one combined status tile when both are on, so
+  // "Q2 · 5:30" reads as a unit; either alone shows just that part.
+  const showSeg = enabled.has('segment');
+  const showClk = enabled.has('clock') && def.clock.type !== 'none';
+  if (showSeg || showClk) {
+    const seg = segmentLabel(def, data);
+    const clk = fmtClock(liveClockMs(data, def));
+    const text = showSeg && showClk ? `${seg} · ${clk}` : showSeg ? seg : clk;
+    cells.push({ kind: 'status', text, live: data.status === 'LIVE' });
+  }
+
+  // Sport-specific game situation — only when there's something live.
+  if (enabled.has('situation')) {
+    const sit = ribbonSituational(def, (data.stats || {}) as Record<string, unknown>);
+    if (sit) cells.push({ kind: 'situational', text: sit });
+  }
+
+  // Engagement tiles. Operator-set ribbon messages win; otherwise the
+  // default crowd prompts. Each tile type is gated on its preset.
+  const custom = enabled.has('prompts')
+    ? (data.ribbonMessages || []).map((m) => m.trim()).filter(Boolean)
+    : [];
+  const prompts = !enabled.has('prompts')
+    ? []
+    : custom.length
+      ? custom
+      : ['LET’S GO!', `GO ${homeCode}!`, 'MAKE SOME NOISE', 'DEFENSE!', `${homeCode} PRIDE`];
+  const sponsors = enabled.has('sponsors') ? data.sponsors || [] : [];
+  const players = enabled.has('roster') ? data.roster || [] : [];
   let pi = 0;
   let si = 0;
   let pl = 0;
@@ -142,7 +265,11 @@ function buildCells(data: BoardData, def: SportDefinition): Cell[] {
     if (pi < prompts.length) cells.push({ kind: 'prompt', text: prompts[pi++] });
   }
   // Re-insert the score mid-reel so it comes around twice per loop.
-  cells.splice(Math.ceil(cells.length / 2), 0, { kind: 'score' });
+  if (enabled.has('score') && cells.length > 1) {
+    cells.splice(Math.ceil(cells.length / 2), 0, { kind: 'score' });
+  }
+  // A board is never blank — if every preset is off, still show the score.
+  if (cells.length === 0) cells.push({ kind: 'score' });
   return cells;
 }
 
@@ -362,6 +489,25 @@ function RibbonCell({
             fontWeight: 800,
             letterSpacing: 3,
             color: '#fbbf24',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {cell.text}
+        </span>
+      </div>
+    );
+  }
+
+  if (cell.kind === 'situational') {
+    return (
+      <div style={wrap}>
+        <span
+          style={{
+            fontSize: h * 0.32,
+            fontWeight: 900,
+            letterSpacing: 2,
+            color: '#38bdf8',
+            whiteSpace: 'nowrap',
             fontVariantNumeric: 'tabular-nums',
           }}
         >

@@ -48,6 +48,7 @@ import { RosterPanel } from './RosterPanel';
 import { CueDeckPanel } from './CueDeckPanel';
 import { SponsorPanel } from './SponsorPanel';
 import { RibbonPanel } from './RibbonPanel';
+import { RibbonPresetsPanel } from './RibbonPresetsPanel';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 
 const GAME_STATUSES: { key: string; label: string }[] = [
@@ -328,6 +329,11 @@ function GameControl() {
       {/* cue deck — operator-built triggers with uploaded takeover content */}
       <Section title="Cue deck">
         <CueDeckPanel gameId={gameId} />
+      </Section>
+
+      {/* ribbon content — sport-aware presets the operator toggles on/off */}
+      <Section title="Ribbon content">
+        <RibbonPresetsPanel gameId={gameId} />
       </Section>
 
       {/* ribbon messages — operator-typed lines that scroll on the ribbon */}

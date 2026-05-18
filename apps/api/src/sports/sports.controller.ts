@@ -276,6 +276,23 @@ export class SportsController {
     return this.sports.setRibbon(req.user.tenantId, id, body);
   }
 
+  /** Set which content presets ride the stadium ribbon reel — score,
+   *  clock, period, game situation, crowd messages, roster, sponsors. */
+  @Patch('games/:id/ribbon-presets')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  ribbonPresets(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { presets?: string[] },
+  ) {
+    return this.sports.setRibbonPresets(req.user.tenantId, id, body);
+  }
+
   // ── cue deck (custom triggers) ───────────────────────────────
 
   /** The tenant's reusable cue deck. */
