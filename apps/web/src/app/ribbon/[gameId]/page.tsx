@@ -605,6 +605,10 @@ function RibbonCell({
   }
 
   if (cell.kind === 'situational') {
+    // Split on digit runs so the NUMBERS render in a bright accent and
+    // pop out of the label text instead of blending into it (e.g.
+    // "HOME SHOTS 12" — the 12 reads as a distinct figure).
+    const parts = cell.text.split(/(\d+)/);
     return (
       <div style={wrap}>
         <span
@@ -612,12 +616,15 @@ function RibbonCell({
             fontSize: h * 0.32,
             fontWeight: 900,
             letterSpacing: 2,
-            color: '#38bdf8',
             whiteSpace: 'nowrap',
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          {cell.text}
+          {parts.map((part, i) => (
+            <span key={i} style={{ color: /^\d+$/.test(part) ? '#fde047' : '#38bdf8' }}>
+              {part}
+            </span>
+          ))}
         </span>
       </div>
     );
@@ -628,7 +635,9 @@ function RibbonCell({
     // the whole ribbon as it scrolls past. The cell width is FIXED to
     // the viewport, NOT the image's natural width: the scrolling reel
     // needs deterministic cell widths or the seamless-loop math drifts
-    // and the reel scrolls into black. objectFit:cover fills it.
+    // and the reel scrolls into black. objectFit:contain shows the
+    // WHOLE image scaled to fit — an uploaded logo is never cropped
+    // top or bottom.
     return (
       <div
         style={{
@@ -642,7 +651,7 @@ function RibbonCell({
         <img
           src={cell.url}
           alt=""
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
           onError={(e) => {
             (e.currentTarget as HTMLImageElement).style.display = 'none';
           }}
