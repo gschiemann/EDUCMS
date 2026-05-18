@@ -349,6 +349,159 @@ const PICKLEBALL: SportDefinition = {
   ],
 };
 
+// ── Sprint 13 Phase 2 — leaderboard / meet sports ─────────────
+// Six meet sports: no running game clock, team score is cumulative
+// points earned across events. Mode is LEADERBOARD — scoreboard
+// and control surface render a points tally rather than a
+// head-to-head segment clock. Purely additive; no existing sports
+// are modified.
+
+const TRACK_AND_FIELD: SportDefinition = {
+  key: 'track_and_field',
+  name: 'Track & Field',
+  emoji: '🏃',
+  mode: 'LEADERBOARD',
+  clock: { type: 'none' },
+  // A track meet is structured as a series of events, not timed
+  // periods. "Event" count is nominal — meets vary widely; 1
+  // represents "continuous meet" so the segment counter stays
+  // meaningful without implying a fixed event count.
+  segment: { name: 'Event', count: 1, overtime: false },
+  score: { unit: 'points', increments: [1, 2, 3, 5, 8, 10] },
+  stats: [
+    { key: 'currentEvent', label: 'Current Event', scope: 'game', type: 'text' },
+    { key: 'homeAthletes', label: 'Home Competitors', scope: 'home', type: 'number', min: 0, max: 999 },
+    { key: 'awayAthletes', label: 'Away Competitors', scope: 'away', type: 'number', min: 0, max: 999 },
+  ],
+  celebrations: [
+    { key: 'firstPlace', label: 'First Place!', emoji: '🥇' },
+    { key: 'newRecord', label: 'New Record', emoji: '📋' },
+    { key: 'personalBest', label: 'Personal Best', emoji: '⭐' },
+    { key: 'teamLead', label: 'Team Takes Lead', emoji: '🏃' },
+  ],
+};
+
+const SWIMMING_DIVING: SportDefinition = {
+  key: 'swimming_diving',
+  name: 'Swimming & Diving',
+  emoji: '🏊',
+  mode: 'LEADERBOARD',
+  clock: { type: 'none' },
+  segment: { name: 'Event', count: 1, overtime: false },
+  score: { unit: 'points', increments: [1, 2, 3, 5, 8, 9] },
+  stats: [
+    { key: 'currentEvent', label: 'Current Event', scope: 'game', type: 'text' },
+    { key: 'homeAthletes', label: 'Home Competitors', scope: 'home', type: 'number', min: 0, max: 999 },
+    { key: 'awayAthletes', label: 'Away Competitors', scope: 'away', type: 'number', min: 0, max: 999 },
+  ],
+  celebrations: [
+    { key: 'firstPlace', label: 'First Place!', emoji: '🥇' },
+    { key: 'newRecord', label: 'New Record', emoji: '📋' },
+    { key: 'personalBest', label: 'Personal Best', emoji: '⭐' },
+    { key: 'perfectDive', label: 'Perfect Dive', emoji: '🏊' },
+  ],
+};
+
+const CROSS_COUNTRY: SportDefinition = {
+  key: 'cross_country',
+  name: 'Cross Country',
+  emoji: '🌲',
+  mode: 'LEADERBOARD',
+  clock: { type: 'none' },
+  // Cross country is a single race; one "Race" segment is the
+  // natural representation.
+  segment: { name: 'Race', count: 1, overtime: false },
+  // Points are awarded by finish position (1st = 1 pt, low score
+  // wins — but the scoreboard shows accumulated points). Increments
+  // reflect typical scoring: positions 1-5 score for the team.
+  score: { unit: 'points', increments: [1, 2, 3, 4, 5] },
+  stats: [
+    { key: 'finishers', label: 'Finishers', scope: 'game', type: 'number', min: 0, max: 999 },
+    { key: 'leadRunner', label: 'Lead Runner', scope: 'game', type: 'text' },
+  ],
+  celebrations: [
+    { key: 'firstFinisher', label: 'First Finisher!', emoji: '🌲' },
+    { key: 'newCourseRecord', label: 'Course Record', emoji: '📋' },
+    { key: 'personalBest', label: 'Personal Best', emoji: '⭐' },
+    { key: 'teamLead', label: 'Team Takes Lead', emoji: '🏃' },
+  ],
+};
+
+const GYMNASTICS: SportDefinition = {
+  key: 'gymnastics',
+  name: 'Gymnastics',
+  emoji: '🤸',
+  mode: 'LEADERBOARD',
+  clock: { type: 'none' },
+  // A gymnastics meet rotates through apparatus events (vault, bars,
+  // beam, floor). "Rotation" is the standard meet term.
+  segment: { name: 'Rotation', count: 4, overtime: false },
+  // Team score accumulates across all apparatus; increments reflect
+  // typical deduction-based scoring deltas per routine.
+  score: { unit: 'points', increments: [1, 5, 10] },
+  stats: [
+    { key: 'currentApparatus', label: 'Current Apparatus', scope: 'game', type: 'text' },
+    { key: 'homeAthletes', label: 'Home Competitors', scope: 'home', type: 'number', min: 0, max: 50 },
+    { key: 'awayAthletes', label: 'Away Competitors', scope: 'away', type: 'number', min: 0, max: 50 },
+  ],
+  celebrations: [
+    { key: 'perfectScore', label: 'Perfect Score', emoji: '🤸' },
+    { key: 'newRecord', label: 'New Record', emoji: '📋' },
+    { key: 'allAround', label: 'All-Around Lead', emoji: '🏆' },
+    { key: 'stickLanding', label: 'Stuck the Landing', emoji: '⭐' },
+  ],
+};
+
+const GOLF: SportDefinition = {
+  key: 'golf',
+  name: 'Golf',
+  emoji: '⛳',
+  mode: 'LEADERBOARD',
+  clock: { type: 'none' },
+  // HS / college matches are typically 9 or 18 holes. 18 is the
+  // standard; count covers the full round.
+  segment: { name: 'Hole', count: 18, overtime: false },
+  // Golf scoring: strokes relative to par. Increments represent
+  // single-stroke changes as players report in.
+  score: { unit: 'strokes', increments: [1] },
+  stats: [
+    { key: 'currentHole', label: 'Current Hole', scope: 'game', type: 'number', min: 1, max: 18 },
+    { key: 'homePar', label: 'Home vs Par', scope: 'home', type: 'text' },
+    { key: 'awayPar', label: 'Away vs Par', scope: 'away', type: 'text' },
+  ],
+  celebrations: [
+    { key: 'eagle', label: 'Eagle', emoji: '🦅' },
+    { key: 'birdie', label: 'Birdie', emoji: '🐦' },
+    { key: 'holeInOne', label: 'Hole in One!', emoji: '⛳' },
+    { key: 'teamLead', label: 'Team Takes Lead', emoji: '🏆' },
+  ],
+};
+
+const COMPETITIVE_CHEER: SportDefinition = {
+  key: 'competitive_cheer',
+  name: 'Competitive Cheer',
+  emoji: '📣',
+  mode: 'LEADERBOARD',
+  clock: { type: 'none' },
+  // Cheer competitions are judged across routine divisions / rounds;
+  // "Round" is the common term at invitational and state-level meets.
+  segment: { name: 'Round', count: 2, overtime: false },
+  // Score is a judge-assigned decimal — increments reflect typical
+  // score deltas entered after each routine.
+  score: { unit: 'points', increments: [1, 5, 10] },
+  stats: [
+    { key: 'division', label: 'Division', scope: 'game', type: 'text' },
+    { key: 'homeRoutine', label: 'Home Routine', scope: 'home', type: 'text' },
+    { key: 'awayRoutine', label: 'Away Routine', scope: 'away', type: 'text' },
+  ],
+  celebrations: [
+    { key: 'fullOut', label: 'Full Out!', emoji: '📣' },
+    { key: 'perfectStunt', label: 'Perfect Stunt', emoji: '⭐' },
+    { key: 'newRecord', label: 'New Record', emoji: '📋' },
+    { key: 'roundWin', label: 'Round Win', emoji: '🏆' },
+  ],
+};
+
 /** All shipped sport definitions, keyed by `key`. */
 export const SPORT_DEFINITIONS: Record<string, SportDefinition> = {
   football: FOOTBALL,
@@ -363,12 +516,19 @@ export const SPORT_DEFINITIONS: Record<string, SportDefinition> = {
   field_hockey: FIELD_HOCKEY,
   water_polo: WATER_POLO,
   pickleball: PICKLEBALL,
+  track_and_field: TRACK_AND_FIELD,
+  swimming_diving: SWIMMING_DIVING,
+  cross_country: CROSS_COUNTRY,
+  gymnastics: GYMNASTICS,
+  golf: GOLF,
+  competitive_cheer: COMPETITIVE_CHEER,
 };
 
 /** Ordered list for pickers. */
 export const SPORTS: SportDefinition[] = [
   FOOTBALL, BASKETBALL, BASEBALL, SOFTBALL, SOCCER, VOLLEYBALL, WRESTLING,
   HOCKEY, LACROSSE, FIELD_HOCKEY, WATER_POLO, PICKLEBALL,
+  TRACK_AND_FIELD, SWIMMING_DIVING, CROSS_COUNTRY, GYMNASTICS, GOLF, COMPETITIVE_CHEER,
 ];
 
 /** Look up a sport definition by key; undefined if unknown. */
@@ -395,6 +555,12 @@ export const PLAYER_STATS: Record<string, string[]> = {
   field_hockey: ['G', 'A', 'SH', 'SV'],
   water_polo: ['G', 'A', 'ST', 'EXC'],
   pickleball: ['W', 'L', 'PTS'],
+  track_and_field: ['PTS', 'PL', 'PR', 'MK'],
+  swimming_diving: ['PTS', 'PL', 'PR', 'MK'],
+  cross_country: ['PTS', 'PL', 'TIME', 'PR'],
+  gymnastics: ['PTS', 'VT', 'UB', 'BB', 'FX'],
+  golf: ['STR', 'PAR', 'HOLE', 'W'],
+  competitive_cheer: ['PTS', 'PL', 'RND'],
 };
 
 // ── Ribbon content presets ─────────────────────────────────────
@@ -463,6 +629,17 @@ function ribbonSituationLabel(def: SportDefinition): string {
       return 'Shots & corners';
     case 'water_polo':
       return 'Shots & exclusions';
+    case 'track_and_field':
+    case 'swimming_diving':
+      return 'Current event';
+    case 'cross_country':
+      return 'Finishers & lead';
+    case 'gymnastics':
+      return 'Current apparatus';
+    case 'golf':
+      return 'Hole & par';
+    case 'competitive_cheer':
+      return 'Division & round';
     default:
       return 'Game situation';
   }
