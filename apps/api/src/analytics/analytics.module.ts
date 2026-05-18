@@ -1,15 +1,18 @@
 import { Module } from '@nestjs/common';
 import { AnalyticsController } from './analytics.controller';
+import { ProofOfPlaySampler } from './proof-of-play.sampler';
 
 /**
  * AnalyticsModule — Phase D5 (2026-05-12).
  *
- * Hosts the touch-event ingest + aggregate endpoints. Uses the global
- * PrismaService (no providers entry needed). Adding new analytics
- * surfaces (e.g. screen heartbeats, asset-view dwell time) goes here
- * so the dashboard has ONE module to talk to.
+ * Hosts the touch-event ingest + aggregate endpoints and the
+ * proof-of-play analytics surface (the ProofOfPlaySampler background
+ * service + the /analytics/proof-of-play report). Uses the global
+ * PrismaService. Adding new analytics surfaces goes here so the
+ * dashboard has ONE module to talk to.
  */
 @Module({
   controllers: [AnalyticsController],
+  providers: [ProofOfPlaySampler],
 })
 export class AnalyticsModule {}

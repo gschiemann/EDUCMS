@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { LayoutDashboard, MonitorPlay, ListVideo, Settings2, LogOut, Upload } from "lucide-react"
+import { LayoutDashboard, MonitorPlay, ListVideo, Settings2, LogOut, Upload, BarChart3 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useUIStore } from "@/store/ui-store"
@@ -38,6 +38,7 @@ export function AppSidebar() {
     { title: "Screens", url: `${base}/screens`, icon: MonitorPlay },
     { title: "Assets", url: `${base}/assets`, icon: Upload },
     { title: "Playlists", url: `${base}/playlists`, icon: ListVideo },
+    { title: "Analytics", url: `${base}/analytics`, icon: BarChart3 },
     { title: "Reviews", url: `${base}/reviews`, icon: ListVideo, badge: isAdmin ? (pendingSubmissionsCount || null) : null },
     { title: "Settings", url: `${base}/settings`, icon: Settings2 },
   ]

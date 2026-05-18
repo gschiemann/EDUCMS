@@ -845,6 +845,35 @@ export function useTouchAggregate(templateId: string, opts?: { sinceDays?: numbe
   });
 }
 
+// ─── Proof-of-play analytics ────────────────────────────────────
+
+export interface ProofOfPlayEntry {
+  name: string;
+  samples: number;
+  estimatedHours: number;
+}
+export interface ProofOfPlayResponse {
+  /** false when the playback_samples migration has not been applied. */
+  ready: boolean;
+  sinceDays: number;
+  sampleMinutes: number;
+  totalSamples: number;
+  estimatedScreenHours: number;
+  playlists: Array<ProofOfPlayEntry & { playlistId: string }>;
+  assets: Array<ProofOfPlayEntry & { assetId: string; mimeType: string | null }>;
+  screens: Array<ProofOfPlayEntry & { screenId: string }>;
+}
+
+/** Proof-of-play report — content / sponsor display time over `days`. */
+export function useProofOfPlay(days: number) {
+  return useQuery<ProofOfPlayResponse>({
+    queryKey: ['analytics', 'proof-of-play', days],
+    queryFn: () => apiFetch<ProofOfPlayResponse>(`/analytics/proof-of-play?days=${days}`),
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
 // ─── Template AI generate (Phase D3) ────────────────────────────
 //
 // POST /templates/generate-touch — operator types a prompt, AI returns

@@ -934,6 +934,30 @@ model TouchEvent {
   @@map("touch_events")
 }
 
+// Proof-of-play analytics — append-only playback samples.
+//
+// A background sampler (ProofOfPlaySampler) writes one row per online
+// screen every ~10 minutes, capturing the playlist effectively
+// scheduled to it. The dashboard aggregates these into content /
+// sponsor display-time reports ("playlist X was live on N screens for
+// M hours"). NO foreign keys — same rationale as Submission: proof-of-
+// play is a permanent record that must survive a later playlist /
+// screen delete. Purely additive — a new table, no other model touched.
+model PlaybackSample {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  screenId   String   @map("screen_id")
+  playlistId String   @map("playlist_id")
+  sampledAt  DateTime @default(now()) @map("sampled_at")
+
+  // Hot path: "display time per playlist / screen for this tenant
+  // over the last N days".
+  @@index([tenantId, sampledAt])
+  @@index([playlistId, sampledAt])
+  @@index([screenId, sampledAt])
+  @@map("playback_samples")
+}
+
 // Sprint 1.5 — submit-for-review workflow.
 //
 // CONTRIBUTOR creates draft assets/playlists/schedules, bundles them
