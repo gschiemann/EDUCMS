@@ -2056,15 +2056,26 @@ export class ScreensController {
     }
 
     const now = new Date();
+    // SECURITY (multi-tenant isolation): a schedule targets exactly
+    // ONE thing — a specific screen (screenId) or a group
+    // (screenGroupId); schedule creation enforces one or the other.
+    // The group clause must ONLY be added when this screen is actually
+    // in a group: Prisma treats `{ screenGroupId: null }` as "match
+    // every row whose screenGroupId IS NULL", and EVERY screen-pinned
+    // schedule carries screenGroupId = null — so a groupless screen
+    // matching `{ screenGroupId: screen.screenGroupId }` with a null
+    // group would inherit every screen-pinned schedule, in EVERY
+    // tenant (a freshly-added screen would auto-play another account's
+    // content). The query is tenant-scoped too, as defense in depth.
+    const scheduleTargetOr: any[] = [{ screenId: screen.id }];
+    if (screen.screenGroupId) {
+      scheduleTargetOr.push({ screenGroupId: screen.screenGroupId });
+    }
     const schedules = await this.prisma.client.schedule.findMany({
       where: {
         AND: [
-          {
-            OR: [
-              { screenGroupId: screen.screenGroupId },
-              { screenId: screen.id }
-            ]
-          },
+          ...(screen.tenantId ? [{ tenantId: screen.tenantId }] : []),
+          { OR: scheduleTargetOr },
           { startTime: { lte: now } },
           { OR: [{ endTime: { gte: now } }, { endTime: null }] },
           { isActive: true },
