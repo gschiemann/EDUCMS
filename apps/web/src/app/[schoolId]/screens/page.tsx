@@ -530,16 +530,38 @@ function ScreenSettingsMenu({
   // Viewport-anchored position for the portalled popover. Recomputed
   // on open + scroll + resize so the menu stays glued to the gear even
   // if the list scrolls behind it.
-  const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
+  const [anchor, setAnchor] = useState<{
+    top: number | null;
+    bottom: number | null;
+    right: number;
+    maxHeight: number;
+  } | null>(null);
 
   const updateAnchor = () => {
     const btn = buttonRef.current;
     if (!btn) return;
     const r = btn.getBoundingClientRect();
-    // Right-align the menu with the button's right edge, pinned 8px
-    // below it. `right` is measured from the viewport's right edge
-    // so CSS `right` px works cleanly.
-    setAnchor({ top: r.bottom + 8, right: window.innerWidth - r.right });
+    // Right-align the menu with the button's right edge. `right` is
+    // measured from the viewport's right edge so CSS `right` px works.
+    const right = window.innerWidth - r.right;
+    const GAP = 8;
+    const MARGIN = 12; // keep the menu this far off the viewport edge
+    const spaceBelow = window.innerHeight - r.bottom - GAP - MARGIN;
+    const spaceAbove = r.top - GAP - MARGIN;
+    // Open on whichever side has more room, and cap the height to that
+    // space so the menu ALWAYS fits on screen (it scrolls internally
+    // past the cap). Fixes the gear menu dropping off the bottom of
+    // the page when the screen row sits near the viewport's lower edge.
+    if (spaceBelow >= spaceAbove) {
+      setAnchor({ top: r.bottom + GAP, bottom: null, right, maxHeight: Math.max(180, spaceBelow) });
+    } else {
+      setAnchor({
+        top: null,
+        bottom: window.innerHeight - r.top + GAP,
+        right,
+        maxHeight: Math.max(180, spaceAbove),
+      });
+    }
   };
 
   useEffect(() => {
@@ -654,8 +676,17 @@ function ScreenSettingsMenu({
     // portal boundary.
     <div
       ref={menuRef}
-      className="fixed w-64 rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.18)] overflow-hidden z-[9999]"
-      style={anchor ? { top: anchor.top, right: anchor.right } : { top: -9999, right: 0 }}
+      className="fixed w-64 rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.18)] overflow-y-auto overflow-x-hidden z-[9999]"
+      style={
+        anchor
+          ? {
+              ...(anchor.top != null ? { top: anchor.top } : {}),
+              ...(anchor.bottom != null ? { bottom: anchor.bottom } : {}),
+              right: anchor.right,
+              maxHeight: anchor.maxHeight,
+            }
+          : { top: -9999, right: 0 }
+      }
     >
           {/* Menu — action rows only, no chunky header. The old
               header repeated the screen name + version that's
