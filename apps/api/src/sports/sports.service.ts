@@ -901,6 +901,64 @@ export class SportsService {
   }
 
   /**
+   * Auto-advance any LIVE game whose running game-clock has expired —
+   * a countdown clock that hit 0:00, or a count-up clock that reached
+   * the segment length. Called every second by ClockAdvanceService so
+   * the scoreboard rolls to the next quarter / period on its own, with
+   * a fresh stopped clock, instead of the operator doing it by hand.
+   *
+   * At the final regulation segment the clock just stops — overtime is
+   * the operator's call; we never auto-force a team into OT. Clockless
+   * sports (baseball, volleyball, pickleball) advance by their own
+   * rules and are skipped. Returns how many games changed.
+   */
+  async autoAdvanceExpiredClocks(): Promise<number> {
+    const games = await this.prisma.client.game.findMany({
+      where: { status: 'LIVE', clockRunning: true },
+    });
+    let changed = 0;
+    for (const game of games) {
+      const def = findSport(game.sport);
+      if (!def || def.clock.type === 'none') continue;
+      const segMs = def.clock.segmentMs ?? 0;
+      const live = this.liveClockMs(game);
+      const expired = def.clock.type === 'countdown' ? live <= 0 : live >= segMs;
+      if (!expired) continue;
+
+      const now = new Date();
+      if (game.segment >= def.segment.count) {
+        // Final regulation segment ended — stop the clock and let the
+        // operator decide overtime / final. Never auto-force OT.
+        await this.prisma.client.game.update({
+          where: { id: game.id },
+          data: {
+            clockRunning: false,
+            clockMs: def.clock.type === 'countdown' ? 0 : segMs,
+            clockUpdatedAt: now,
+          },
+        });
+        await this.record(game.id, 'CLOCK', { action: 'expired', clockRunning: false });
+      } else {
+        // Roll to the next segment with a fresh, stopped clock.
+        const segment = game.segment + 1;
+        await this.prisma.client.game.update({
+          where: { id: game.id },
+          data: {
+            segment,
+            clockMs: this.segmentStartMs(def),
+            clockRunning: false,
+            clockUpdatedAt: now,
+          },
+        });
+        await this.record(game.id, 'SEGMENT', { segment, auto: true });
+        await this.record(game.id, 'CLOCK', { action: 'auto-advance', clockRunning: false });
+      }
+      changed += 1;
+    }
+    return changed;
+  }
+
+  /**
    * Merge sport-specific stat values into the game's stats JSON.
    *
    * For baseball / softball the ball–strike–out count is a real rules

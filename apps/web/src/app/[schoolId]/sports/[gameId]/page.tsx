@@ -665,6 +665,26 @@ function ClockControls({
           </Button>
         </div>
       </div>
+      {/* quick adjust — fix a timeout or a mistake without retyping
+          the whole clock; works while the clock is running or paused */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Adjust
+        </span>
+        {[-60000, -10000, 10000, 60000].map((delta) => (
+          <button
+            key={delta}
+            type="button"
+            onClick={() => onAction('set', Math.max(0, liveMs + delta))}
+            className="rounded-md border border-slate-200 px-2.5 py-1 text-sm font-bold tabular-nums text-slate-600 transition-colors hover:border-indigo-400 hover:text-indigo-600"
+          >
+            {delta > 0 ? '+' : '−'}
+            {Math.abs(delta) >= 60000
+              ? `${Math.abs(delta) / 60000}m`
+              : `${Math.abs(delta) / 1000}s`}
+          </button>
+        ))}
+      </div>
       <div className="mt-3 flex items-center gap-2">
         <Input
           value={setText}
