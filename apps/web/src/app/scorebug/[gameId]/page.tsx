@@ -20,6 +20,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { useParams, useSearchParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import { findSport } from '@cms/api-types';
@@ -177,6 +178,10 @@ export default function ScorebugPage() {
   useEffect(() => {
     if (!gameId) return;
     let alive = true;
+    // Cold-boot: seed from the last cached frame so a power-cycle
+    // mid-broadcast restores the overlay instantly.
+    const cached = readBoardCache<BoardData>(gameId);
+    if (cached) setData(cached);
     const load = async () => {
       try {
         const res = await fetch(`${API_URL}/sports/board/${gameId}`, { cache: 'no-store' });
@@ -184,6 +189,7 @@ export default function ScorebugPage() {
         const json: BoardData = await res.json();
         if (!alive) return;
         setData(json);
+        writeBoardCache(gameId, json);
         for (const c of json.cues || []) {
           if (seenCues.current.has(c.id)) continue;
           seenCues.current.add(c.id);

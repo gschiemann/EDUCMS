@@ -20,6 +20,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import { findSport } from '@cms/api-types';
@@ -163,12 +164,16 @@ export default function RibbonPage() {
   useEffect(() => {
     if (!gameId) return;
     let alive = true;
+    // Cold-boot: instant paint from the last cached frame so a
+    // power-cycle / Wi-Fi blip never blanks the ribbon.
+    const cached = readBoardCache<BoardData>(gameId);
+    if (cached) setData(cached);
     const load = async () => {
       try {
         const res = await fetch(`${API_URL}/sports/board/${gameId}`, { cache: 'no-store' });
         if (!res.ok) return;
         const json: BoardData = await res.json();
-        if (alive) setData(json);
+        if (alive) { setData(json); writeBoardCache(gameId, json); }
       } catch {
         /* keep the last good frame */
       }

@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import { findSport } from '@cms/api-types';
@@ -867,6 +868,10 @@ export default function ScoreboardPage() {
   useEffect(() => {
     if (!gameId) return;
     let alive = true;
+    // Cold-boot: paint the last cached frame instantly (clock frozen)
+    // so a power-cycle mid-game never shows a blank or error board.
+    const cached = readBoardCache<BoardData>(gameId);
+    if (cached) { setData(cached); setError(null); }
     const load = async () => {
       try {
         const res = await fetch(`${API_URL}/sports/board/${gameId}`, {
@@ -877,6 +882,7 @@ export default function ScoreboardPage() {
         if (!alive) return;
         setData(json);
         setError(null);
+        writeBoardCache(gameId, json);
 
         for (const c of json.cues || []) {
           if (seenCues.current.has(c.id)) continue;

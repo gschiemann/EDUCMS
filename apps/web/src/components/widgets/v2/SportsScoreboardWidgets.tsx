@@ -23,6 +23,7 @@ import type { SportDefinition } from '@cms/api-types';
 import type { WidgetProps } from './_shared/types';
 import type { WidgetStyle } from './_shared/styleSystem';
 import { API_URL } from '@/lib/api-url';
+import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 
 type Tier = 'hs' | 'college' | 'pro';
 
@@ -205,10 +206,18 @@ export function SportsScoreboardWidget({
   useEffect(() => {
     if (!live || !gameId) return;
     let alive = true;
+    // Cold-boot: paint the last cached frame instantly so a player
+    // power-cycle mid-game never shows an empty scoreboard.
+    const cached = readBoardCache<BoardData>(gameId);
+    if (cached) setData(cached);
     const load = async () => {
       try {
         const res = await fetch(`${API_URL}/sports/board/${gameId}`, { cache: 'no-store' });
-        if (res.ok && alive) setData((await res.json()) as BoardData);
+        if (res.ok && alive) {
+          const json = (await res.json()) as BoardData;
+          setData(json);
+          writeBoardCache(gameId, json);
+        }
       } catch {
         /* keep the last good frame */
       }
