@@ -4,22 +4,31 @@
  * VenueOS Sports — Sprint 13. The stadium ribbon / fascia board.
  *
  * A ribbon board is a long, short LED strip wrapping a stadium
- * (≈1000mm tall × 40+ feet wide). This page renders a seamless,
- * infinitely-looping horizontal scroll of game content — score,
- * team branding, segment/clock, rotating sponsor messages, and
- * crowd prompts — sized to whatever extreme aspect ratio it lands on.
+ * (≈1000mm tall × 40+ feet wide). This page renders a PUBLIC ribbon
+ * surface off the same /sports/board/:id endpoint the scoreboard uses.
  *
- * It's a PUBLIC route reading the same /sports/board/:id endpoint the
- * scoreboard uses — set the game up once (teams, colors, logos,
- * sponsors) and the ribbon just works. No extra configuration.
+ * Presentation model (researched against real arena ribbon practice —
+ * Daktronics / ScoreVision / ANC / Nevco / Watchfire):
  *
- * Seamless loop: the reel is rendered an even number of times in a
- * flex track; the track translateX-animates 0 → -50%, so the second
- * half lands exactly where the first began. Chromium-83 safe — only
- * transform/opacity animation, long-hand insets, margin (no flex gap).
+ *   A ribbon is NOT one nonstop scroll of everything. That looks
+ *   amateur — the score drifts off-edge so fans can never glance it,
+ *   and constant motion reads as noise. Real ribbons are TWO layers:
+ *
+ *     • a fixed SCORE ZONE pinned to one end — score, clock, segment.
+ *       It never moves; the digits just update in place.
+ *     • a CONTENT ZONE that runs a rotating playlist of held-static
+ *       "looks" (sponsor, crowd prompt, player, stat) — each holds
+ *       6–8s, then a fast crossfade to the next. Looks tile across
+ *       the ribbon's extreme width so every seat sees them.
+ *
+ *   A fired celebration cue takes the whole ribbon over for its hold.
+ *
+ * Chromium-83 safe (NovaStar Taurus): long-hand top/right/bottom/left
+ * (no `inset`), per-child margin (no flex `gap`), animation is
+ * transform/opacity only, plain CSS opacity transitions.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
@@ -90,7 +99,7 @@ interface BoardData {
   /** Which content presets ride the reel — resolved server-side
    *  (stored config, or the sport's full default-on set). */
   ribbonPresets?: string[];
-  /** Operator-set scroll speed — slow / normal / fast / veryfast. */
+  /** Operator-set rotation speed — slow / normal / fast / veryfast. */
   ribbonSpeed?: string;
   /** Full-bleed image slides the operator uploaded — image URLs. */
   ribbonSlides?: string[];
@@ -101,6 +110,8 @@ interface BoardData {
 
 // 750ms — sub-second sync, kept in step with the board + scorebug.
 const POLL_MS = 750;
+// 250ms — a smooth score-zone clock tick between polls.
+const TICK_MS = 250;
 const DEFAULT_HOME = '#4f46e5';
 const DEFAULT_AWAY = '#dc2626';
 
@@ -123,6 +134,25 @@ function fmtClock(ms: number): string {
 function teamCode(name: string): string {
   const first = String(name || '').trim().split(/\s+/)[0] || '—';
   return first.toUpperCase().slice(0, 12);
+}
+/** A tight 4-char abbreviation — for the score zone's status line,
+ *  where a long name would crowd out the clock. */
+function teamAbbr(name: string): string {
+  return teamCode(name).slice(0, 4);
+}
+
+/** A hex color (#rgb / #rrggbb) as an rgba() string at the given
+ *  alpha. Falls back to broadcast gold if the input isn't clean hex,
+ *  so a malformed team color can never break a celebration render. */
+function hexA(color: string | null | undefined, alpha: number): string {
+  let hex = String(color || '').trim();
+  if (hex[0] === '#') hex = hex.slice(1);
+  if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('');
+  if (hex.length !== 6 || /[^0-9a-f]/i.test(hex)) return `rgba(251,191,36,${alpha})`;
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 function segmentLabel(def: SportDefinition, data: BoardData): string {
@@ -147,22 +177,13 @@ function liveClockMs(data: BoardData, def: SportDefinition): number {
   return Math.max(0, data.clockMs - elapsed);
 }
 
-type Cell =
-  | { kind: 'score' }
-  | { kind: 'status'; text: string; live: boolean }
-  | { kind: 'situational'; text: string }
-  | { kind: 'prompt'; text: string }
-  | { kind: 'sponsor'; sponsor: Sponsor }
-  | { kind: 'player'; player: Player }
-  | { kind: 'slide'; url: string };
-
 /**
  * A single punchy line of the sport's LIVE game situation, sized for
- * the ribbon reel — down & distance, the baseball count, the serve,
- * the basketball bonus. Returns null when nothing is live to show
- * (no down set yet, no server picked) so the situational tile is
- * skipped. Reads the SAME Game.stats keys the scoreboard's
- * situational strip uses, so the two surfaces never disagree.
+ * the ribbon — down & distance, the baseball count, the serve, the
+ * basketball bonus. Returns null when nothing is live to show (no
+ * down set yet, no server picked) so the situational look is skipped.
+ * Reads the SAME Game.stats keys the scoreboard's situational strip
+ * uses, so the two surfaces never disagree.
  */
 function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>): string | null {
   const num = (v: unknown): number => {
@@ -246,79 +267,95 @@ function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>)
   return chips.length ? chips.join(SEP) : null;
 }
 
+// ── content looks ──────────────────────────────────────────────
+
 /**
- * Build the ribbon reel from the operator's content presets. Each
- * preset is a content tile the operator toggled on in the control
- * panel; `data.ribbonPresets` is the resolved list (server falls
- * back to every applicable preset when the reel was never
- * configured, so an unconfigured ribbon shows everything).
+ * A "look" is one held-static graphic the content zone rotates
+ * through. The score / clock are NOT looks — they live in the fixed
+ * score zone. Each look carries a dwell time; the operator's ribbon
+ * speed scales it (faster speed → shorter dwell).
  */
-function buildCells(data: BoardData, def: SportDefinition): Cell[] {
+type Look =
+  | { kind: 'situational'; id: string; dwellMs: number }
+  | { kind: 'slide'; id: string; url: string; dwellMs: number }
+  | { kind: 'sponsor'; id: string; sponsor: Sponsor; dwellMs: number }
+  | { kind: 'player'; id: string; player: Player; dwellMs: number }
+  | { kind: 'prompt'; id: string; text: string; dwellMs: number };
+
+/**
+ * Build the content-zone playlist from the operator's presets. Each
+ * preset is a content type the operator toggled on; `ribbonPresets`
+ * is the resolved list (server falls back to every applicable preset
+ * when the reel was never configured). Buckets are round-robined so
+ * the rotation always mixes types — never three sponsors in a row.
+ */
+function buildLooks(data: BoardData, def: SportDefinition): Look[] {
   const homeCode = teamCode(data.homeTeam);
   const enabled = new Set<string>(
     Array.isArray(data.ribbonPresets) ? data.ribbonPresets : defaultRibbonPresets(def),
   );
-  const cells: Cell[] = [];
 
-  // Score.
-  if (enabled.has('score')) cells.push({ kind: 'score' });
-
-  // Period + clock — one combined status tile when both are on, so
-  // "Q2 · 5:30" reads as a unit; either alone shows just that part.
-  const showSeg = enabled.has('segment');
-  const showClk = enabled.has('clock') && def.clock.type !== 'none';
-  if (showSeg || showClk) {
-    const seg = segmentLabel(def, data);
-    const clk = fmtClock(liveClockMs(data, def));
-    const text = showSeg && showClk ? `${seg} · ${clk}` : showSeg ? seg : clk;
-    cells.push({ kind: 'status', text, live: data.status === 'LIVE' });
-  }
-
-  // Sport-specific game situation — only when there's something live.
+  const situational: Look[] = [];
   if (enabled.has('situation')) {
     const sit = ribbonSituational(def, (data.stats || {}) as Record<string, unknown>);
-    if (sit) cells.push({ kind: 'situational', text: sit });
+    if (sit) situational.push({ kind: 'situational', id: 'situational', dwellMs: 8000 });
   }
-
-  // Engagement tiles. Operator-set ribbon messages win; otherwise the
-  // default crowd prompts. Each tile type is gated on its preset.
-  const custom = enabled.has('prompts')
-    ? (data.ribbonMessages || []).map((m) => m.trim()).filter(Boolean)
+  const slides: Look[] = enabled.has('slides')
+    ? (data.ribbonSlides || []).map((url) => ({
+        kind: 'slide' as const,
+        id: `slide:${url}`,
+        url,
+        dwellMs: 8500,
+      }))
     : [];
-  const prompts = !enabled.has('prompts')
-    ? []
-    : custom.length
+  const sponsors: Look[] = enabled.has('sponsors')
+    ? (data.sponsors || []).map((sp) => ({
+        kind: 'sponsor' as const,
+        id: `sponsor:${sp.id}`,
+        sponsor: sp,
+        dwellMs: 7000,
+      }))
+    : [];
+  const players: Look[] = enabled.has('roster')
+    ? (data.roster || []).map((p) => ({
+        kind: 'player' as const,
+        id: `player:${p.id}`,
+        player: p,
+        dwellMs: 7500,
+      }))
+    : [];
+  let prompts: Look[] = [];
+  if (enabled.has('prompts')) {
+    const custom = (data.ribbonMessages || []).map((m) => m.trim()).filter(Boolean);
+    const list = custom.length
       ? custom
       : ['LET’S GO!', `GO ${homeCode}!`, 'MAKE SOME NOISE', 'DEFENSE!', `${homeCode} PRIDE`];
-  const sponsors = enabled.has('sponsors') ? data.sponsors || [] : [];
-  const players = enabled.has('roster') ? data.roster || [] : [];
-  const slides = enabled.has('slides') ? data.ribbonSlides || [] : [];
-  let pi = 0;
-  let si = 0;
-  let pl = 0;
-  let sl = 0;
-  // Interleave roster players (weighted — two per pass), full-bleed
-  // image slides, sponsors, and crowd prompts so the loop is a rich
-  // mix, never a wall of one kind.
-  while (
-    pi < prompts.length ||
-    si < sponsors.length ||
-    pl < players.length ||
-    sl < slides.length
-  ) {
-    if (pl < players.length) cells.push({ kind: 'player', player: players[pl++] });
-    if (sl < slides.length) cells.push({ kind: 'slide', url: slides[sl++] });
-    if (si < sponsors.length) cells.push({ kind: 'sponsor', sponsor: sponsors[si++] });
-    if (pl < players.length) cells.push({ kind: 'player', player: players[pl++] });
-    if (pi < prompts.length) cells.push({ kind: 'prompt', text: prompts[pi++] });
+    prompts = list.map((text, i) => ({
+      kind: 'prompt' as const,
+      id: `prompt:${i}:${text}`,
+      text,
+      dwellMs: 6000,
+    }));
   }
-  // Re-insert the score mid-reel so it comes around twice per loop.
-  if (enabled.has('score') && cells.length > 1) {
-    cells.splice(Math.ceil(cells.length / 2), 0, { kind: 'score' });
+
+  const buckets = [situational, slides, sponsors, players, prompts].filter((b) => b.length);
+  const looks: Look[] = [];
+  for (let round = 0; ; round++) {
+    let added = false;
+    for (const b of buckets) {
+      if (round < b.length) {
+        looks.push(b[round]);
+        added = true;
+      }
+    }
+    if (!added) break;
   }
-  // A board is never blank — if every preset is off, still show the score.
-  if (cells.length === 0) cells.push({ kind: 'score' });
-  return cells;
+
+  // A ribbon is never blank — fall back to a single crowd prompt.
+  if (looks.length === 0) {
+    looks.push({ kind: 'prompt', id: 'prompt:fallback', text: `GO ${homeCode}!`, dwellMs: 6000 });
+  }
+  return looks;
 }
 
 // ── page ───────────────────────────────────────────────────────
@@ -329,8 +366,10 @@ export default function RibbonPage() {
 
   const [data, setData] = useState<BoardData | null>(null);
   const [vp, setVp] = useState({ w: 1920, h: 240 });
-  const [baseW, setBaseW] = useState(0);
-  const measureRef = useRef<HTMLDivElement>(null);
+  // a re-render tick so the score-zone clock counts smoothly between polls
+  const [, setTick] = useState(0);
+  // which content look is showing
+  const [lookIdx, setLookIdx] = useState(0);
 
   // cue playback — celebrations the operator fired at the ribbon (or ALL)
   const [activeCue, setActiveCue] = useState<Cue | null>(null);
@@ -369,6 +408,13 @@ export default function RibbonPage() {
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
+  }, []);
+
+  // smooth clock tick — the score zone derives the clock from the
+  // anchor each render; this just forces re-renders between polls.
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => (n + 1) % 1_000_000), TICK_MS);
+    return () => clearInterval(t);
   }, []);
 
   // poll the public board endpoint
@@ -410,56 +456,67 @@ export default function RibbonPage() {
   }, [gameId]);
 
   const def = useMemo(() => (data ? findSport(data.sport) : undefined), [data]);
-  const cells = useMemo(
-    () => (data && def ? buildCells(data, def) : []),
-    [data, def],
+
+  // A stable key over every input buildLooks reads. `looks` is rebuilt
+  // ONLY when this changes — so a clock-tick / score-change re-render
+  // keeps the same `looks` array identity and never resets the
+  // rotation timer mid-dwell.
+  const looksKey = useMemo(() => {
+    if (!data || !def) return '';
+    const sit = !!ribbonSituational(def, (data.stats || {}) as Record<string, unknown>);
+    return JSON.stringify({
+      presets: data.ribbonPresets ?? null,
+      sponsors: (data.sponsors || []).map((s) => s.id),
+      roster: (data.roster || []).map((p) => p.id),
+      messages: data.ribbonMessages ?? null,
+      slides: data.ribbonSlides ?? null,
+      sport: data.sport,
+      home: data.homeTeam,
+      sit,
+    });
+  }, [data, def]);
+
+  const looks = useMemo(
+    () => (data && def ? buildLooks(data, def) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [looksKey],
   );
 
-  // measure one reel's width so the loop is seamless at any board
-  // width; a ResizeObserver re-measures when slide / sponsor / player
-  // images finish loading and change the reel's natural width.
+  // keep the rotation index in range when the playlist shrinks
   useEffect(() => {
-    const el = measureRef.current;
-    if (!el) return;
-    const sync = () => {
-      const w = el.offsetWidth;
-      if (w > 0) setBaseW(w);
-    };
-    sync();
-    const ro = new ResizeObserver(sync);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [cells, vp.h]);
+    if (looks.length > 0 && lookIdx >= looks.length) setLookIdx(0);
+  }, [looks, lookIdx]);
 
-  const h = vp.h;
-  const homeColor = data?.homeColor || DEFAULT_HOME;
-  const awayColor = data?.awayColor || DEFAULT_AWAY;
+  // rotation engine — hold each look for its dwell, then advance.
+  // Pauses while a celebration cue is taking the ribbon over.
+  useEffect(() => {
+    if (looks.length <= 1 || activeCue) return;
+    const look = looks[lookIdx] || looks[0];
+    const speed = ribbonSpeedMultiplier(data?.ribbonSpeed) || 1;
+    const dwell = Math.max(3200, (look?.dwellMs ?? 7000) / speed);
+    const t = setTimeout(() => setLookIdx((i) => (i + 1) % looks.length), dwell);
+    return () => clearTimeout(t);
+  }, [looks, lookIdx, activeCue, data?.ribbonSpeed]);
 
-  // how many reel copies make one loop-unit wider than the viewport,
-  // then double it — translateX 0→-50% is then a seamless jump.
-  const loopCopies = baseW > 0 ? Math.max(1, Math.ceil(vp.w / baseW)) : 1;
-  const repeat = loopCopies * 2;
-  // Operator-set scroll speed — a higher multiplier scrolls faster.
-  const speedMult = ribbonSpeedMultiplier(data?.ribbonSpeed);
-  const pxPerSec = Math.max(60, h * 0.55) * speedMult;
-  const duration = baseW > 0 ? (loopCopies * baseW) / pxPerSec : 40;
-
-  const renderReel = (copyKey: number) =>
-    cells.map((cell, i) => (
-      <RibbonCell
-        key={`${copyKey}-${i}`}
-        cell={cell}
-        h={h}
-        vw={vp.w}
-        homeColor={homeColor}
-        awayColor={awayColor}
-        data={data!}
+  if (!data || !def) {
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          background: '#05070d',
+        }}
       />
-    ));
-
-  if (!data || !def || cells.length === 0) {
-    return <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: '#05070d' }} />;
+    );
   }
+
+  // The score zone is anchored to one end — ~20–30% of the ribbon,
+  // wide enough for the scorebug, never wider than the height allows.
+  const scoreZoneW = Math.round(Math.max(360, Math.min(vp.w * 0.4, vp.h * 4.4)));
+  const contentW = Math.max(0, vp.w - scoreZoneW);
 
   return (
     <div
@@ -474,219 +531,401 @@ export default function RibbonPage() {
         fontFamily: 'Inter, system-ui, sans-serif',
       }}
     >
-      <style>{`@keyframes ribbonScroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}@keyframes ribbonCueShow{0%{opacity:0}8%{opacity:1}90%{opacity:1}100%{opacity:0}}@keyframes ribbonCuePop{0%{transform:scale(0.7)}14%{transform:scale(1.06)}24%{transform:scale(1)}100%{transform:scale(1)}}@keyframes ribbonCueIn{from{opacity:0}to{opacity:1}}`}</style>
+      <style>{`
+@keyframes rbnPulse{0%,100%{opacity:1}50%{opacity:0.3}}
+@keyframes rbnFade{from{opacity:0}to{opacity:1}}
+@keyframes rbnScrim{0%{opacity:0}10%{opacity:1}90%{opacity:1}100%{opacity:0}}
+@keyframes rbnGlow{0%{opacity:0;transform:scale(0.4)}18%{opacity:1;transform:scale(1)}86%{opacity:0.9;transform:scale(1.06)}100%{opacity:0;transform:scale(1.12)}}
+@keyframes rbnRing{0%{opacity:0;transform:scale(0.2)}9%{opacity:0.9}52%{opacity:0}100%{opacity:0;transform:scale(3.6)}}
+@keyframes rbnSweep{0%{opacity:0;transform:translateX(-1600px) skewX(-14deg)}5%{opacity:0.85}24%{opacity:0.85}34%{opacity:0;transform:translateX(1600px) skewX(-14deg)}100%{opacity:0;transform:translateX(1600px) skewX(-14deg)}}
+@keyframes rbnSlam{0%{opacity:0;transform:scale(1.5)}10%{opacity:1;transform:scale(0.93)}16%{transform:scale(1.05)}22%{transform:scale(1)}90%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.03)}}
+      `}</style>
 
-      {/* hidden measurer — one reel copy */}
-      <div
-        ref={measureRef}
-        aria-hidden
-        style={{
-          position: 'absolute',
-          visibility: 'hidden',
-          display: 'flex',
-          height: h,
-          top: 0,
-          left: 0,
-        }}
-      >
-        {renderReel(-1)}
-      </div>
+      {/* fixed score / clock zone — pinned, never moves */}
+      <ScoreZone data={data} def={def} w={scoreZoneW} h={vp.h} />
 
-      {/* scrolling track — `repeat` copies, animate 0 → -50% */}
-      <div
-        style={{
-          display: 'flex',
-          height: '100%',
-          width: 'max-content',
-          animation: `ribbonScroll ${duration}s linear infinite`,
-          willChange: 'transform',
-        }}
-      >
-        {Array.from({ length: repeat }, (_, c) => (
-          <div key={c} style={{ display: 'flex', height: '100%' }}>
-            {renderReel(c)}
-          </div>
-        ))}
-      </div>
+      {/* rotating content zone — held-static looks, fast crossfades */}
+      <ContentZone
+        looks={looks}
+        idx={Math.min(lookIdx, Math.max(0, looks.length - 1))}
+        left={scoreZoneW}
+        w={contentW}
+        h={vp.h}
+        data={data}
+        def={def}
+      />
 
-      {/* celebration cue overlay — a fired cue takes over the ribbon */}
-      {activeCue && <RibbonCueOverlay cue={activeCue} h={h} />}
+      {/* celebration cue overlay — a fired cue takes the ribbon over */}
+      {activeCue && <RibbonCueOverlay cue={activeCue} w={vp.w} h={vp.h} />}
     </div>
   );
 }
 
-// ── one ribbon cell ────────────────────────────────────────────
+// ── score zone ─────────────────────────────────────────────────
 
-function RibbonCell({
-  cell,
-  h,
-  vw,
-  homeColor,
-  awayColor,
+/**
+ * The persistent scorebug — score, segment, clock — pinned to one end
+ * of the ribbon. It never participates in the content rotation; the
+ * digits just update in place as the game runs.
+ */
+function ScoreZone({
   data,
+  def,
+  w,
+  h,
 }: {
-  cell: Cell;
-  h: number;
-  vw: number;
-  homeColor: string;
-  awayColor: string;
   data: BoardData;
+  def: SportDefinition;
+  w: number;
+  h: number;
 }) {
-  const pad = Math.round(h * 0.42);
-  const wrap: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    height: '100%',
-    padding: `0 ${pad}px`,
-    borderRight: '1px solid rgba(255,255,255,0.09)',
-    flex: 'none',
-  };
+  const homeColor = data.homeColor || DEFAULT_HOME;
+  const awayColor = data.awayColor || DEFAULT_AWAY;
+  const live = data.status === 'LIVE';
+  const seg = segmentLabel(def, data);
+  const hasClock = def.clock.type !== 'none';
+  const clk = fmtClock(liveClockMs(data, def));
+  const statusText = live
+    ? hasClock
+      ? `${seg} · ${clk}`
+      : seg
+    : data.status === 'FINAL'
+      ? 'FINAL'
+      : data.status === 'HALFTIME'
+        ? 'HALFTIME'
+        : data.status === 'PRE_GAME'
+          ? 'PRE-GAME'
+          : (data.status || 'SCHEDULED').replace(/_/g, ' ');
 
-  if (cell.kind === 'score') {
-    return (
-      <div style={wrap}>
-        <TeamMark name={data.homeTeam} logo={data.homeLogoUrl} color={homeColor} h={h} />
+  // size the scorebug off the zone so it fits any ribbon height
+  const u = Math.min(h * 0.9, w * 0.46);
+  const score = Math.round(u * 0.4);
+  const logo = Math.round(u * 0.28);
+  const dash = Math.round(u * 0.24);
+  const code = Math.round(u * 0.13);
+  const status = Math.round(u * 0.15);
+  const dot = Math.round(u * 0.1);
+
+  const mark = (url: string | null, color: string) =>
+    url ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt=""
+        style={{ height: logo, width: logo, objectFit: 'contain' }}
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).style.display = 'none';
+        }}
+      />
+    ) : (
+      <span
+        style={{
+          width: Math.round(logo * 0.34),
+          height: logo,
+          background: color,
+          borderRadius: 5,
+          display: 'inline-block',
+        }}
+      />
+    );
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: w,
+        background: 'linear-gradient(180deg, #0c1322 0%, #070b14 100%)',
+        borderRight: '2px solid rgba(255,255,255,0.07)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+      }}
+    >
+      {/* score line */}
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        {mark(data.homeLogoUrl, homeColor)}
         <span
           style={{
-            fontSize: h * 0.5,
+            fontSize: score,
             fontWeight: 900,
             color: '#fff',
-            margin: `0 ${Math.round(h * 0.16)}px`,
+            margin: `0 ${Math.round(u * 0.06)}px 0 ${Math.round(u * 0.1)}px`,
             fontVariantNumeric: 'tabular-nums',
+            lineHeight: 1,
           }}
         >
           {data.homeScore}
         </span>
-        <span style={{ fontSize: h * 0.34, fontWeight: 800, color: '#475569' }}>–</span>
+        <span style={{ fontSize: dash, fontWeight: 800, color: '#475569' }}>–</span>
         <span
           style={{
-            fontSize: h * 0.5,
+            fontSize: score,
             fontWeight: 900,
             color: '#fff',
-            margin: `0 ${Math.round(h * 0.16)}px`,
+            margin: `0 ${Math.round(u * 0.1)}px 0 ${Math.round(u * 0.06)}px`,
             fontVariantNumeric: 'tabular-nums',
+            lineHeight: 1,
           }}
         >
           {data.awayScore}
         </span>
-        <TeamMark name={data.awayTeam} logo={data.awayLogoUrl} color={awayColor} h={h} />
+        {mark(data.awayLogoUrl, awayColor)}
       </div>
-    );
-  }
 
-  if (cell.kind === 'status') {
-    return (
-      <div style={wrap}>
-        {cell.live && (
+      {/* status line — team codes flank the segment / clock */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          marginTop: Math.round(u * 0.11),
+        }}
+      >
+        <span
+          style={{
+            fontSize: code,
+            fontWeight: 900,
+            letterSpacing: 1,
+            color: homeColor,
+          }}
+        >
+          {teamAbbr(data.homeTeam)}
+        </span>
+        {live && (
           <span
             style={{
-              width: h * 0.16,
-              height: h * 0.16,
+              width: dot,
+              height: dot,
               borderRadius: 999,
               background: '#ef4444',
-              marginRight: h * 0.18,
+              margin: `0 ${Math.round(u * 0.06)}px 0 ${Math.round(u * 0.1)}px`,
               display: 'inline-block',
+              animation: 'rbnPulse 1.6s ease-in-out infinite',
             }}
           />
         )}
         <span
           style={{
-            fontSize: h * 0.34,
+            fontSize: status,
             fontWeight: 800,
-            letterSpacing: 3,
+            letterSpacing: 2,
             color: '#fbbf24',
+            margin: `0 ${Math.round(u * (live ? 0.08 : 0.12))}px`,
             fontVariantNumeric: 'tabular-nums',
+            whiteSpace: 'nowrap',
           }}
         >
-          {cell.text}
+          {statusText}
         </span>
-      </div>
-    );
-  }
-
-  if (cell.kind === 'situational') {
-    // Split on digit runs so the NUMBERS render in a bright accent and
-    // pop out of the label text instead of blending into it (e.g.
-    // "HOME SHOTS 12" — the 12 reads as a distinct figure).
-    const parts = cell.text.split(/(\d+)/);
-    return (
-      <div style={wrap}>
         <span
           style={{
-            fontSize: h * 0.32,
+            fontSize: code,
             fontWeight: 900,
-            letterSpacing: 2,
-            whiteSpace: 'nowrap',
-            fontVariantNumeric: 'tabular-nums',
+            letterSpacing: 1,
+            color: awayColor,
           }}
         >
-          {parts.map((part, i) => (
-            <span key={i} style={{ color: /^\d+$/.test(part) ? '#fde047' : '#38bdf8' }}>
-              {part}
-            </span>
-          ))}
+          {teamAbbr(data.awayTeam)}
         </span>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
-  if (cell.kind === 'slide') {
-    // A full-bleed image slide — one full viewport wide so it fills
-    // the whole ribbon as it scrolls past. The cell width is FIXED to
-    // the viewport, NOT the image's natural width: the scrolling reel
-    // needs deterministic cell widths or the seamless-loop math drifts
-    // and the reel scrolls into black. objectFit:contain shows the
-    // WHOLE image scaled to fit — an uploaded logo is never cropped
-    // top or bottom.
+// ── content zone ───────────────────────────────────────────────
+
+/**
+ * The rotating playlist host. Every look is rendered, stacked; only
+ * the active index is opaque. Advancing the index crossfades — a
+ * fast, clean transition, never a slow constant scroll.
+ */
+function ContentZone({
+  looks,
+  idx,
+  left,
+  w,
+  h,
+  data,
+  def,
+}: {
+  looks: Look[];
+  idx: number;
+  left: number;
+  w: number;
+  h: number;
+  data: BoardData;
+  def: SportDefinition;
+}) {
+  return (
+    <div style={{ position: 'absolute', left, top: 0, bottom: 0, width: w, overflow: 'hidden' }}>
+      {looks.map((look, i) => (
+        <div
+          key={look.id}
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            opacity: i === idx ? 1 : 0,
+            transition: 'opacity 420ms ease-in-out',
+          }}
+        >
+          <LookView look={look} w={w} h={h} data={data} def={def} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One look, tiled across the content zone. A ribbon is so wide that a
+ * single graphic floating in the middle wastes the surface and reads
+ * from only the centre seats — so a look repeats across the width
+ * (Daktronics "tile the content so fans enjoy it from every seat").
+ * A full-bleed slide is the one exception: it spans as a single image.
+ */
+function LookView({
+  look,
+  w,
+  h,
+  data,
+  def,
+}: {
+  look: Look;
+  w: number;
+  h: number;
+  data: BoardData;
+  def: SportDefinition;
+}) {
+  const unit =
+    look.kind === 'slide'
+      ? w
+      : look.kind === 'player' || look.kind === 'situational'
+        ? Math.min(w, h * 6)
+        : look.kind === 'sponsor'
+          ? Math.min(w, h * 5)
+          : Math.min(w, h * 4.4); // prompt
+  const copies = Math.max(1, Math.round(w / Math.max(1, unit)));
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-around',
+      }}
+    >
+      {Array.from({ length: copies }, (_, i) => (
+        <LookUnit key={i} look={look} h={h} data={data} def={def} />
+      ))}
+    </div>
+  );
+}
+
+/** A single instance of a look — sized off the ribbon height. */
+function LookUnit({
+  look,
+  h,
+  data,
+  def,
+}: {
+  look: Look;
+  h: number;
+  data: BoardData;
+  def: SportDefinition;
+}) {
+  // a capped design height so text stays sane on a tall test window
+  const cu = Math.min(h * 0.9, 540);
+  const onImgError = (e: SyntheticEvent<HTMLImageElement>) => {
+    (e.currentTarget as HTMLImageElement).style.display = 'none';
+  };
+
+  if (look.kind === 'slide') {
+    // A full-bleed image — objectFit:contain so an uploaded logo is
+    // never cropped top or bottom.
     return (
       <div
         style={{
-          width: vw,
+          width: '100%',
           height: '100%',
-          borderRight: '1px solid rgba(255,255,255,0.09)',
-          flex: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={cell.url}
+          src={look.url}
           alt=""
-          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = 'none';
-          }}
+          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
+          onError={onImgError}
         />
       </div>
     );
   }
 
-  if (cell.kind === 'prompt') {
+  if (look.kind === 'prompt') {
     return (
-      <div style={wrap}>
-        <span
-          style={{
-            fontSize: h * 0.46,
-            fontWeight: 900,
-            letterSpacing: 4,
-            color: '#fff',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {cell.text}
+      <div style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+        <span style={{ color: '#fbbf24', fontSize: cu * 0.34, fontWeight: 900, marginRight: cu * 0.14 }}>
+          ‹
+        </span>
+        <span style={{ fontSize: cu * 0.42, fontWeight: 900, letterSpacing: 4, color: '#fff' }}>
+          {look.text}
+        </span>
+        <span style={{ color: '#fbbf24', fontSize: cu * 0.34, fontWeight: 900, marginLeft: cu * 0.14 }}>
+          ›
         </span>
       </div>
     );
   }
 
-  if (cell.kind === 'player') {
-    const p = cell.player;
+  if (look.kind === 'situational') {
+    // Split on digit runs so NUMBERS render in a bright accent and pop
+    // out of the label text (e.g. "HOME SHOTS 12" — the 12 reads as a
+    // distinct figure).
+    const sit = ribbonSituational(def, (data.stats || {}) as Record<string, unknown>) || '';
+    const parts = sit.split(/(\d+)/);
+    return (
+      <div
+        style={{
+          whiteSpace: 'nowrap',
+          fontSize: cu * 0.34,
+          fontWeight: 900,
+          letterSpacing: 2,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {parts.map((part, i) => (
+          <span key={i} style={{ color: /^\d+$/.test(part) ? '#fde047' : '#38bdf8' }}>
+            {part}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  if (look.kind === 'player') {
+    const p = look.player;
+    const homeColor = data.homeColor || DEFAULT_HOME;
+    const awayColor = data.awayColor || DEFAULT_AWAY;
     const color = p.team === 'away' ? awayColor : homeColor;
     const statKeys = Object.keys(p.stats || {});
     const topStat = statKeys[0] ? `${statKeys[0]} ${p.stats[statKeys[0]]}` : null;
     const initials = p.name
       .trim()
       .split(/\s+/)
-      .map((w) => w[0])
+      .map((x) => x[0])
       .slice(0, 2)
       .join('')
       .toUpperCase();
@@ -694,54 +933,54 @@ function RibbonCell({
       [p.number ? `#${p.number}` : null, p.position].filter(Boolean).join(' · ').toUpperCase() ||
       'PLAYER';
     return (
-      <div style={wrap}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
         {p.photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={p.photoUrl}
             alt=""
             style={{
-              height: h * 0.74,
-              width: h * 0.74,
+              height: cu * 0.74,
+              width: cu * 0.74,
               borderRadius: 999,
               objectFit: 'cover',
-              border: `${Math.max(2, Math.round(h * 0.03))}px solid ${color}`,
-              marginRight: h * 0.22,
+              border: `${Math.max(2, Math.round(cu * 0.03))}px solid ${color}`,
+              marginRight: cu * 0.2,
             }}
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = 'none';
-            }}
+            onError={onImgError}
           />
         ) : (
           <div
             style={{
-              height: h * 0.74,
-              width: h * 0.74,
+              height: cu * 0.74,
+              width: cu * 0.74,
               borderRadius: 999,
               background: color,
               color: '#fff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: h * 0.3,
+              fontSize: cu * 0.3,
               fontWeight: 900,
-              marginRight: h * 0.22,
+              marginRight: cu * 0.2,
             }}
           >
             {initials || '—'}
           </div>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <span style={{ fontSize: h * 0.15, fontWeight: 800, letterSpacing: 3, color }}>
+          <span style={{ fontSize: cu * 0.15, fontWeight: 800, letterSpacing: 3, color }}>
             {eyebrow}
           </span>
-          <span style={{ fontSize: h * 0.32, fontWeight: 900, color: '#fff', whiteSpace: 'nowrap' }}>
+          <span
+            style={{ fontSize: cu * 0.34, fontWeight: 900, color: '#fff', whiteSpace: 'nowrap' }}
+          >
             {p.name}
           </span>
           {topStat ? (
             <span
               style={{
-                fontSize: h * 0.18,
+                fontSize: cu * 0.17,
                 fontWeight: 700,
                 color: '#94a3b8',
                 whiteSpace: 'nowrap',
@@ -757,94 +996,41 @@ function RibbonCell({
   }
 
   // sponsor
-  const sp = cell.sponsor;
-  const color = sp.color || '#4f46e5';
+  const sp = look.sponsor;
+  const color = sp.color || '#6366f1';
   return (
-    <div style={wrap}>
+    <div style={{ display: 'flex', alignItems: 'center' }}>
       {sp.logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
+        // FIXED-size box, objectFit:contain, no backdrop — a logo
+        // shows full and uncropped on the dark ribbon.
         <img
           src={sp.logoUrl}
           alt=""
           style={{
-            // FIXED-size box (NOT natural width): a scrolling reel
-            // needs deterministic cell widths or the seamless loop
-            // drifts into black. The box is wide, not square, so a
-            // logo shows full and uncrushed; objectFit:contain never
-            // crops; no backdrop, so it sits on the dark ribbon.
-            height: h * 0.66,
-            width: h * 1.85,
+            height: cu * 0.66,
+            width: cu * 1.7,
             objectFit: 'contain',
-            marginRight: h * 0.22,
+            marginRight: cu * 0.22,
           }}
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = 'none';
-          }}
+          onError={onImgError}
         />
       ) : null}
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <span style={{ fontSize: h * 0.15, fontWeight: 800, letterSpacing: 3, color }}>
+        <span style={{ fontSize: cu * 0.15, fontWeight: 800, letterSpacing: 3, color }}>
           PROUD SPONSOR
         </span>
-        <span style={{ fontSize: h * 0.32, fontWeight: 900, color: '#fff', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: cu * 0.34, fontWeight: 900, color: '#fff', whiteSpace: 'nowrap' }}>
           {sp.name}
         </span>
         {sp.tagline ? (
-          <span style={{ fontSize: h * 0.16, fontWeight: 600, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+          <span
+            style={{ fontSize: cu * 0.16, fontWeight: 600, color: '#94a3b8', whiteSpace: 'nowrap' }}
+          >
             {sp.tagline}
           </span>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-function TeamMark({
-  name,
-  logo,
-  color,
-  h,
-}: {
-  name: string;
-  logo: string | null;
-  color: string;
-  h: number;
-}) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center' }}>
-      {logo ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={logo}
-          alt=""
-          style={{ height: h * 0.62, width: h * 0.62, objectFit: 'contain', marginRight: h * 0.16 }}
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = 'none';
-          }}
-        />
-      ) : (
-        <span
-          style={{
-            width: h * 0.14,
-            height: h * 0.52,
-            background: color,
-            borderRadius: 4,
-            marginRight: h * 0.16,
-            display: 'inline-block',
-          }}
-        />
-      )}
-      <span
-        style={{
-          fontSize: h * 0.32,
-          fontWeight: 900,
-          letterSpacing: 1,
-          color: '#fff',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {teamCode(name)}
-      </span>
     </div>
   );
 }
@@ -854,12 +1040,13 @@ function TeamMark({
 /**
  * A fired cue takes over the whole ribbon for its hold window. A
  * custom cue shows the operator's uploaded art; a sport celebration
- * shows the emoji + label + the score frozen at fire time.
+ * is a broadcast-grade burst — energy glow, shockwave rings, a light
+ * sweep, an emoji + slammed label + the score frozen at fire time.
  *
- * Chromium-83 safe (NovaStar Taurus): long-hand insets, no flex
- * `gap` (per-child margin), animation is opacity / transform only.
+ * Chromium-83 safe (NovaStar Taurus): long-hand insets, per-child
+ * margin (no flex `gap`), animation is transform / opacity only.
  */
-function RibbonCueOverlay({ cue, h }: { cue: Cue; h: number }) {
+function RibbonCueOverlay({ cue, w, h }: { cue: Cue; w: number; h: number }) {
   // Custom cue — a full-ribbon takeover of the operator's uploaded art.
   if (cue.mediaUrl) {
     return (
@@ -875,7 +1062,7 @@ function RibbonCueOverlay({ cue, h }: { cue: Cue; h: number }) {
           justifyContent: 'center',
           background: cue.color || '#05070d',
           zIndex: 60,
-          animation: 'ribbonCueIn 0.45s ease-out',
+          animation: 'rbnFade 0.4s ease-out',
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -888,8 +1075,12 @@ function RibbonCueOverlay({ cue, h }: { cue: Cue; h: number }) {
     );
   }
 
-  // Sport celebration — emoji + label + the frozen score snapshot.
   const snap = cue.snapshot;
+  const energy = cue.color || '#fbbf24';
+  const ch = Math.min(h * 0.86, 540);
+  const glow = ch * 3.4;
+  const ring = ch * 1.4;
+
   return (
     <div
       style={{
@@ -898,33 +1089,99 @@ function RibbonCueOverlay({ cue, h }: { cue: Cue; h: number }) {
         right: 0,
         bottom: 0,
         left: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'rgba(5,7,13,0.94)',
         overflow: 'hidden',
         zIndex: 60,
-        animation: 'ribbonCueShow 3.9s ease-in-out forwards',
       }}
     >
+      {/* dark scrim */}
       <div
         style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          background: 'rgba(5,7,13,0.93)',
+          animation: 'rbnScrim 3.9s ease-in-out forwards',
+        }}
+      />
+      {/* energy radial glow */}
+      <div
+        style={{
+          position: 'absolute',
+          left: w / 2 - glow / 2,
+          top: h / 2 - glow / 2,
+          width: glow,
+          height: glow,
+          borderRadius: 999,
+          background: `radial-gradient(circle, ${hexA(energy, 0.5)} 0%, ${hexA(
+            energy,
+            0.14,
+          )} 42%, rgba(5,7,13,0) 66%)`,
+          animation: 'rbnGlow 3.9s ease-in-out forwards',
+        }}
+      />
+      {/* shockwave rings */}
+      {[0, 1].map((i) => (
+        <div
+          key={i}
+          style={{
+            position: 'absolute',
+            left: w / 2 - ring / 2,
+            top: h / 2 - ring / 2,
+            width: ring,
+            height: ring,
+            borderRadius: 999,
+            border: `${Math.max(4, Math.round(ch * 0.03))}px solid ${hexA(energy, 0.85)}`,
+            animation: `rbnRing 3.9s ${(i * 0.2).toFixed(2)}s cubic-bezier(.15,.7,.3,1) forwards`,
+          }}
+        />
+      ))}
+      {/* diagonal light sweep */}
+      <div
+        style={{
+          position: 'absolute',
+          left: w / 2 - ch * 0.5,
+          top: h / 2 - ch * 1.6,
+          width: ch,
+          height: ch * 3.2,
+          background:
+            'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 50%, rgba(255,255,255,0) 100%)',
+          animation: 'rbnSweep 3.9s ease-out forwards',
+        }}
+      />
+      {/* emoji + slammed label + the frozen score */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
           display: 'flex',
           alignItems: 'center',
-          animation: 'ribbonCuePop 3.9s cubic-bezier(.2,.9,.2,1) forwards',
+          justifyContent: 'center',
+          animation: 'rbnSlam 3.9s cubic-bezier(.2,.9,.2,1) forwards',
         }}
       >
-        <span style={{ fontSize: h * 0.62, lineHeight: 1, marginRight: h * 0.16 }}>
+        <span
+          style={{
+            fontSize: ch * 0.5,
+            lineHeight: 1,
+            marginRight: ch * 0.16,
+            filter: `drop-shadow(0 ${ch * 0.04}px ${ch * 0.1}px ${hexA(energy, 0.7)})`,
+          }}
+        >
           {cue.emoji || '🎉'}
         </span>
         <span
           style={{
-            fontSize: h * 0.4,
+            fontSize: ch * 0.3,
             fontWeight: 900,
             letterSpacing: 4,
             color: '#fff',
             whiteSpace: 'nowrap',
-            textShadow: '0 6px 30px rgba(0,0,0,0.85)',
+            textShadow: `0 8px 36px rgba(0,0,0,0.9), 0 0 44px ${hexA(energy, 0.5)}`,
           }}
         >
           {(cue.label || cue.key || 'NICE!').toUpperCase()}
@@ -932,23 +1189,21 @@ function RibbonCueOverlay({ cue, h }: { cue: Cue; h: number }) {
         {snap && (
           <span
             style={{
-              marginLeft: h * 0.22,
-              fontSize: h * 0.34,
+              marginLeft: ch * 0.22,
+              paddingLeft: ch * 0.22,
+              borderLeft: `2px solid ${hexA(energy, 0.4)}`,
+              fontSize: ch * 0.26,
               fontWeight: 900,
               color: '#fff',
               whiteSpace: 'nowrap',
               fontVariantNumeric: 'tabular-nums',
             }}
           >
-            <span style={{ color: snap.homeColor || '#fff', letterSpacing: 1 }}>
-              {teamCode(snap.homeTeam)}
-            </span>
-            <span style={{ margin: `0 ${Math.round(h * 0.07)}px` }}>{snap.homeScore}</span>
+            <span style={{ color: snap.homeColor || '#fff' }}>{teamCode(snap.homeTeam)}</span>
+            <span style={{ margin: `0 ${ch * 0.08}px` }}>{snap.homeScore}</span>
             <span style={{ color: '#475569' }}>–</span>
-            <span style={{ margin: `0 ${Math.round(h * 0.07)}px` }}>{snap.awayScore}</span>
-            <span style={{ color: snap.awayColor || '#fff', letterSpacing: 1 }}>
-              {teamCode(snap.awayTeam)}
-            </span>
+            <span style={{ margin: `0 ${ch * 0.08}px` }}>{snap.awayScore}</span>
+            <span style={{ color: snap.awayColor || '#fff' }}>{teamCode(snap.awayTeam)}</span>
           </span>
         )}
       </div>
