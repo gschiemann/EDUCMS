@@ -1473,6 +1473,13 @@ function PlayerPage() {
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [screenName, setScreenName] = useState<string>('');
   const [playlist, setPlaylist] = useState<any>(null);
+  // playlistRef mirrors `playlist` so fetchContent can read the current
+  // playlist WITHOUT taking it as a dependency. setPlaylist() builds a
+  // fresh object every content sync; if fetchContent depended on
+  // `playlist` its identity would change each sync, churning the
+  // WebSocket + emergency-poll effects that depend on fetchContent.
+  const playlistRef = useRef<any>(null);
+  useEffect(() => { playlistRef.current = playlist; }, [playlist]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
@@ -2733,7 +2740,7 @@ function PlayerPage() {
         // wipes the splash AND has a broken retry loop. The toast
         // overlays whatever phase is current (splash or content) and
         // surfaces retry status without blanking the screen.
-        const reason = playlist
+        const reason = playlistRef.current
           ? `Reconnecting… (${fetchFailCountRef.current})`
           : (e?.message || 'Network error — retrying');
         setError(reason);
@@ -2821,7 +2828,7 @@ function PlayerPage() {
         }, Math.max(2_000, retryDelay));
       }
     }
-  }, [screenId, playlist]);
+  }, [screenId]);
 
   useEffect(() => {
     if (phase === 'connecting') fetchContent();
