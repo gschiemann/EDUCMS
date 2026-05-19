@@ -1640,7 +1640,11 @@ export class ScreensController {
     const screen = await withDbRetry(
       () => this.prisma.client.screen.findUnique({
         where: { id },
-        include: { screenGroup: true }
+        // 2026-05-19 — also pull the tenant name so the manifest can
+        // surface "paired with: <tenant>" on the player info card.
+        // Operator: "i do so much testing i cant remember where i
+        // paired them anymore."
+        include: { screenGroup: true, tenant: { select: { name: true } } }
       }),
       { label: 'screen.findUnique[manifest]' },
     );
@@ -2035,6 +2039,7 @@ export class ScreensController {
           version: '1.0',
           screenId: id,
           tenantId: screen.tenantId,
+          tenantName: (screen as any).tenant?.name || null,
           generatedAt: new Date().toISOString(),
           playlists: this.buildScoreboardManifest(
             screen,
@@ -2123,6 +2128,7 @@ export class ScreensController {
       return res.status(200).json({
         screenId: screen.id,
         tenantId: screen.tenantId,
+        tenantName: (screen as any).tenant?.name || null,
         playlists: [],
         emergencyStatus: 'INACTIVE',
         emptyReason: 'NO_SCHEDULE',
@@ -2242,6 +2248,7 @@ export class ScreensController {
       version: "1.0",
       screenId: id,
       tenantId: screen.tenantId,
+      tenantName: (screen as any).tenant?.name || null,
       generatedAt: now.toISOString(),
       playlists: dynamicPlaylists
     };

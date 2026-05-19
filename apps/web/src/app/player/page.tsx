@@ -1506,6 +1506,10 @@ function PlayerPage() {
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [screenId, setScreenId] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  // Operator-facing tenant/account name — pulled from the manifest so
+  // the player info overlay can show "paired with: <tenant>". The ID
+  // is a UUID; the name is what the operator actually recognises.
+  const [tenantName, setTenantName] = useState<string | null>(null);
   // tenantIdRef mirrors tenantId so the WebSocket effect can read it
   // without listing it as a dependency — applyManifest calls
   // setTenantId on every content sync, and a direct dep re-subscribes
@@ -2466,6 +2470,7 @@ function PlayerPage() {
     // from cache when offline.
     const applyManifest = (manifest: any) => {
       if (manifest.tenantId) setTenantId(manifest.tenantId);
+      if (manifest.tenantName !== undefined) setTenantName(manifest.tenantName);
 
       // Push every asset URL to the offline-cache Service Worker. Safe no-op
       // when SW isn't available. HIGH-5 fix: short-circuit when the URL set
@@ -4812,6 +4817,11 @@ function PlayerPage() {
                   <span className="text-sm text-emerald-400 font-medium">Connected</span>
                 </div>
               </div>
+              {tenantName && (
+                <div className="text-xs text-indigo-300 font-medium -mt-1">
+                  Paired with <span className="text-indigo-200">{tenantName}</span>
+                </div>
+              )}
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-slate-400">Template</span><span className="text-white font-medium">{tpl.name}</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Zones</span><span className="text-white font-medium">{zones.length} live widgets</span></div>
@@ -6086,6 +6096,11 @@ function PlayerPage() {
                 <span className="text-sm text-emerald-400 font-medium">Connected</span>
               </div>
             </div>
+            {tenantName && (
+              <div className="text-xs text-indigo-300 font-medium -mt-1">
+                Paired with <span className="text-indigo-200">{tenantName}</span>
+              </div>
+            )}
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-slate-400">Playlist</span><span className="text-white font-medium">{playlist?.name || 'None'}</span></div>
               <div className="flex justify-between"><span className="text-slate-400">Slide</span><span className="text-white font-medium">{(currentIndex % (sorted.length || 1)) + 1} / {sorted.length}</span></div>
