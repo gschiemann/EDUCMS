@@ -1471,6 +1471,12 @@ function PlayerPage() {
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [screenId, setScreenId] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  // tenantIdRef mirrors tenantId so the WebSocket effect can read it
+  // without listing it as a dependency — applyManifest calls
+  // setTenantId on every content sync, and a direct dep re-subscribes
+  // the socket (the second WS-churn vector, after the 130fea1 fix).
+  const tenantIdRef = useRef<string | null>(null);
+  useEffect(() => { tenantIdRef.current = tenantId; }, [tenantId]);
   const [screenName, setScreenName] = useState<string>('');
   const [playlist, setPlaylist] = useState<any>(null);
   // playlistRef mirrors `playlist` so fetchContent can read the current
@@ -3131,7 +3137,7 @@ function PlayerPage() {
           // a clear "kiosk needs re-pairing" prompt instead of guessing
           // why their drill went 8s slower than expected.
           const signedToken = getDeviceToken();
-          const tok = signedToken || (tenantId ? `dev_${screenId}_${tenantId}` : `dev_${screenId}_unknown`);
+          const tok = signedToken || (tenantIdRef.current ? `dev_${screenId}_${tenantIdRef.current}` : `dev_${screenId}_unknown`);
           const devWsAllow = process.env.NEXT_PUBLIC_DEV_WS_ALLOW === 'true';
           if (!signedToken && !devWsAllow) {
             console.warn('[Player WS] No signed device JWT available — server will reject dev_ token in prod. Banner surfaced.');
@@ -3418,7 +3424,7 @@ function PlayerPage() {
         wsRef.current = null;
       }
     };
-  }, [phase, screenId, tenantId, fetchContent]);
+  }, [phase, screenId, fetchContent]);
 
   // ─── CRITICAL: Emergency polling fallback ───
   // WebSocket is the primary channel, but for life-safety alerts we CANNOT
