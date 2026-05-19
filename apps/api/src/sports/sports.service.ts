@@ -358,6 +358,16 @@ export class SportsService {
     }
     const status = dto.status && GAME_STATUSES.includes(dto.status) ? dto.status : 'SCHEDULED';
 
+    // Seed per-team timeout counts to their max so the broadcast
+    // timeout pips read full from the opening whistle — an unset
+    // count renders as zero filled pips ("no timeouts left"), which
+    // is wrong before a single timeout has been called.
+    const initialStats: Record<string, number> = {};
+    for (const key of ['homeTimeouts', 'awayTimeouts']) {
+      const field = def.stats.find((s) => s.key === key);
+      if (field && typeof field.max === 'number') initialStats[key] = field.max;
+    }
+
     return this.prisma.client.game.create({
       data: {
         tenantId,
@@ -374,7 +384,7 @@ export class SportsService {
         clockMs: this.segmentStartMs(def),
         clockRunning: false,
         clockUpdatedAt: new Date(),
-        stats: {},
+        stats: initialStats,
       },
     });
   }
