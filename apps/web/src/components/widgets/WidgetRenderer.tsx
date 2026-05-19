@@ -51,6 +51,11 @@ import { JumbotronProLogo, JumbotronProText, JumbotronProClock, JumbotronProWeat
 import { QuoteWidget, StatsWidget, MenuItemWidget, ScoreboardWidget, ScheduleGridWidget, AttendanceWidget, BirthdaysWidget, HonorRollWidget } from './themes/GenericWidgets';
 import { AnimatedWelcomeWidget } from './AnimatedWelcomeWidget';
 import { AnimatedWelcomePortraitWidget } from './AnimatedWelcomePortraitWidget';
+// Sprint 13 — sport-bound widget primitives. These read live Game
+// state from <GameStateProvider gameId> wrapped around the template
+// render on /board /ribbon /scorebug; in the builder canvas (no
+// provider) they render the config's `placeholder` instead.
+import { ScoreHomeWidget, ScoreAwayWidget, GameClockWidget, GameSegmentWidget, GameStatWidget } from './sports/SportWidgets';
 // ── Fitness vertical (Phase 1) — these are the first widgets for a
 // non-EDU vertical. Kept in a dedicated /fitness subdir so the EDU
 // import list up top stays readable + so we can fan these into
@@ -454,6 +459,12 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'STATS':        return <StatsWidget config={cfg} />;
     case 'MENU_ITEM':    return <MenuItemWidget config={cfg} onConfigChange={onConfigChange} />;
     case 'SCOREBOARD':   return <ScoreboardWidget config={cfg} onConfigChange={onConfigChange} />;
+    // ── Sprint 13 sport-bound primitives (live game state) ──
+    case 'SCORE_HOME':    return <ScoreHomeWidget config={cfg} />;
+    case 'SCORE_AWAY':    return <ScoreAwayWidget config={cfg} />;
+    case 'GAME_CLOCK':    return <GameClockWidget config={cfg} />;
+    case 'GAME_SEGMENT':  return <GameSegmentWidget config={cfg} />;
+    case 'GAME_STAT':     return <GameStatWidget config={cfg} />;
     case 'SCHEDULE_GRID': return <ScheduleGridWidget config={cfg} />;
     case 'ATTENDANCE':   return <AttendanceWidget config={cfg} />;
     case 'BIRTHDAYS':    return cfg.theme === 'rainbow-animated' ? <RainbowAnimatedBirthdays config={cfg} /> : <BirthdaysWidget config={cfg} />;

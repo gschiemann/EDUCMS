@@ -24,6 +24,10 @@ import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import { findSport } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
+// Sprint 13 — custom-template scoreboard renderer. Used iff
+// Game.scoreboardTemplateId is non-null; otherwise the legacy
+// BoardScene + status-aware scenes below render unchanged.
+import { CustomScoreboardScene } from './CustomScoreboardScene';
 
 interface Cue {
   id: string;
@@ -94,6 +98,12 @@ interface BoardData {
   sponsors?: Sponsor[];
   sponsorSpotSeconds?: number;
   serverTime: number;
+  // Sprint 13 — operator-picked custom-template IDs. NULL → fall back
+  // to the hardcoded BoardScene below; non-NULL → render
+  // CustomScoreboardScene (template-driven) instead.
+  scoreboardTemplateId?: string | null;
+  ribbonTemplateId?: string | null;
+  scorebugTemplateId?: string | null;
 }
 
 const DEFAULT_HOME = '#4f46e5';
@@ -2258,6 +2268,26 @@ export default function ScoreboardPage() {
       >
         {keyframes}
         {data && !def ? `UNKNOWN SPORT: ${data.sport}` : 'LOADING SCOREBOARD…'}
+      </div>
+    );
+  }
+
+  // Sprint 13 — operator picked a custom scoreboard template for this
+  // game. Hand off to CustomScoreboardScene; it fetches the template,
+  // wraps the render in <GameStateProvider> so the embedded sport
+  // primitives (SCORE_HOME / GAME_CLOCK / etc.) read live game state,
+  // and scales the template's NATIVE canvas (e.g. 960×1080 narrow LED)
+  // to fit the viewport. NULL → legacy hardcoded scenes below render
+  // unchanged (zero regression).
+  if (data.scoreboardTemplateId) {
+    return (
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
+        {keyframes}
+        <CustomScoreboardScene
+          templateId={data.scoreboardTemplateId}
+          gameId={gameId}
+          initial={data as any}
+        />
       </div>
     );
   }

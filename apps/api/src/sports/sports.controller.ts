@@ -102,6 +102,12 @@ export class SportsController {
       awayLogoUrl?: string;
       screenGroupId?: string;
       status?: string;
+      // Sprint 13 — operator-picked scoreboard / ribbon / scorebug
+      // template IDs. Each is optional; null falls back to the
+      // hardcoded legacy layout in apps/web/src/app/board|ribbon|scorebug.
+      scoreboardTemplateId?: string | null;
+      ribbonTemplateId?: string | null;
+      scorebugTemplateId?: string | null;
     },
   ) {
     return this.sports.createGame(req.user.tenantId, body);
@@ -126,6 +132,10 @@ export class SportsController {
       awayColor?: string;
       homeLogoUrl?: string | null;
       awayLogoUrl?: string | null;
+      // Sprint 13 — template re-assignment is editable any time.
+      scoreboardTemplateId?: string | null;
+      ribbonTemplateId?: string | null;
+      scorebugTemplateId?: string | null;
     },
   ) {
     return this.sports.updateGameDetails(req.user.tenantId, id, body);

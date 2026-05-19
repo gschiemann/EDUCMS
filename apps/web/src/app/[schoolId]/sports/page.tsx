@@ -17,7 +17,7 @@ import {
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useGames, useCreateGame, useDeleteGame, useScrapeBranding } from '@/hooks/use-api';
+import { useGames, useCreateGame, useDeleteGame, useScrapeBranding, useTemplates } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { SPORTS, findSport } from '@cms/api-types';
 import { AssetPicker } from '@/components/assets/AssetPicker';
@@ -228,6 +228,13 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
   const [homeLogoUrl, setHomeLogoUrl] = useState(() => readSavedHomeTeam(schoolId)?.logoUrl || '');
   const [awayLogoUrl, setAwayLogoUrl] = useState('');
   const [homeRemembered, setHomeRemembered] = useState(() => !!readSavedHomeTeam(schoolId)?.name);
+  // Sprint 13 — operator-picked custom layouts. Each defaults to ''
+  // ("Default — built-in layout") which sends null to the API and
+  // falls back to the hardcoded /board, /ribbon, /scorebug.
+  const [scoreboardTemplateId, setScoreboardTemplateId] = useState('');
+  const [ribbonTemplateId, setRibbonTemplateId] = useState('');
+  const [scorebugTemplateId, setScorebugTemplateId] = useState('');
+  const { data: templates } = useTemplates();
   const [err, setErr] = useState('');
 
   /** Forget the saved home team and reset the home fields to blank. */
@@ -259,6 +266,10 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
         awayColor,
         homeLogoUrl: homeLogoUrl.trim() || undefined,
         awayLogoUrl: awayLogoUrl.trim() || undefined,
+        // Empty string → null (use the default hardcoded layout).
+        scoreboardTemplateId: scoreboardTemplateId || null,
+        ribbonTemplateId: ribbonTemplateId || null,
+        scorebugTemplateId: scorebugTemplateId || null,
       });
       // Remember this home team so the next New Game pre-fills it.
       try {
@@ -370,6 +381,68 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
               onColor={setAwayColor}
               onLogo={setAwayLogoUrl}
             />
+          </div>
+        </div>
+
+        {/* Sprint 13 — layout pickers. Each surface picks its own
+            template; leaving any on "Default" falls back to the
+            built-in layout for that surface. */}
+        <div className="mt-5">
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            Layouts
+          </label>
+          <p className="mt-1 text-[11px] text-slate-400">
+            Pick a custom template per surface, or leave on Default to use the built-in layout.
+          </p>
+          <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-[11px] font-medium text-slate-600">Scoreboard</label>
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
+                value={scoreboardTemplateId}
+                onChange={(e) => setScoreboardTemplateId(e.target.value)}
+              >
+                <option value="">Default — built-in layout</option>
+                {Array.isArray(templates) &&
+                  templates.map((t: any) => (
+                    <option key={t.id} value={t.id}>
+                      {t.isSystem ? '★ ' : ''}{t.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-slate-600">Ribbon</label>
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
+                value={ribbonTemplateId}
+                onChange={(e) => setRibbonTemplateId(e.target.value)}
+              >
+                <option value="">Default — built-in layout</option>
+                {Array.isArray(templates) &&
+                  templates.map((t: any) => (
+                    <option key={t.id} value={t.id}>
+                      {t.isSystem ? '★ ' : ''}{t.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-slate-600">Scorebug</label>
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
+                value={scorebugTemplateId}
+                onChange={(e) => setScorebugTemplateId(e.target.value)}
+              >
+                <option value="">Default — built-in layout</option>
+                {Array.isArray(templates) &&
+                  templates.map((t: any) => (
+                    <option key={t.id} value={t.id}>
+                      {t.isSystem ? '★ ' : ''}{t.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
           </div>
         </div>
 

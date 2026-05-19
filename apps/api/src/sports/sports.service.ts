@@ -324,6 +324,13 @@ export class SportsService {
       ribbonScoreRepeat,
       sponsorSpotSeconds: SPONSOR_SPOT_SECONDS,
       serverTime: Date.now(),
+      // Sprint 13 — operator-picked custom layout IDs. Each route
+      // (/board /ribbon /scorebug) checks the matching field and,
+      // if non-null, fetches + renders that Template (wrapped in
+      // GameStateProvider) instead of the legacy hardcoded layout.
+      scoreboardTemplateId: game.scoreboardTemplateId,
+      ribbonTemplateId: game.ribbonTemplateId,
+      scorebugTemplateId: game.scorebugTemplateId,
     };
   }
 
@@ -348,6 +355,10 @@ export class SportsService {
       awayLogoUrl?: string;
       screenGroupId?: string;
       status?: string;
+      // Sprint 13 — operator-picked custom layouts.
+      scoreboardTemplateId?: string | null;
+      ribbonTemplateId?: string | null;
+      scorebugTemplateId?: string | null;
     },
   ) {
     const def = this.sportOf(String(dto.sport || ''));
@@ -385,6 +396,9 @@ export class SportsService {
         clockRunning: false,
         clockUpdatedAt: new Date(),
         stats: initialStats,
+        scoreboardTemplateId: dto.scoreboardTemplateId || null,
+        ribbonTemplateId: dto.ribbonTemplateId || null,
+        scorebugTemplateId: dto.scorebugTemplateId || null,
       },
     });
   }
@@ -404,6 +418,10 @@ export class SportsService {
       awayColor?: string;
       homeLogoUrl?: string | null;
       awayLogoUrl?: string | null;
+      // Sprint 13 — template reassignment.
+      scoreboardTemplateId?: string | null;
+      ribbonTemplateId?: string | null;
+      scorebugTemplateId?: string | null;
     },
   ) {
     await this.owned(tenantId, id);
@@ -422,6 +440,13 @@ export class SportsService {
     if (dto.awayColor !== undefined) data.awayColor = dto.awayColor?.slice(0, 32) || null;
     if (dto.homeLogoUrl !== undefined) data.homeLogoUrl = this.cleanLogo(dto.homeLogoUrl);
     if (dto.awayLogoUrl !== undefined) data.awayLogoUrl = this.cleanLogo(dto.awayLogoUrl);
+    // Sprint 13 — template reassignment. Empty string → clear (null).
+    if (dto.scoreboardTemplateId !== undefined)
+      data.scoreboardTemplateId = dto.scoreboardTemplateId || null;
+    if (dto.ribbonTemplateId !== undefined)
+      data.ribbonTemplateId = dto.ribbonTemplateId || null;
+    if (dto.scorebugTemplateId !== undefined)
+      data.scorebugTemplateId = dto.scorebugTemplateId || null;
     return this.prisma.client.game.update({ where: { id }, data });
   }
 

@@ -46,6 +46,17 @@ export type WidgetType =
   | 'HEALTHCARE' | 'CORPORATE' | 'HOSPITALITY' | 'WORSHIP' | 'CHART'
   // VenueOS Sports — the live, engine-driven scoreboard widget.
   | 'SCOREBOARD'
+  // Sprint 13 — sport-bound widget primitives. Each binds to live
+  // Game state (home/away score, clock, segment, sport-specific
+  // stats) when the operator drops it into a Scoreboard / Ribbon
+  // / Scorebug template. In the builder canvas (no GameStateProvider
+  // wrapping) the widget falls back to its `placeholder` config so
+  // the operator can still see + position the element. The /board
+  // /ribbon /scorebug routes mount a GameStateProvider that polls
+  // `GET /sports/board/:id` at 750ms — same cadence as the
+  // hardcoded layout — so a custom template stays in lockstep with
+  // score / clock / cue changes.
+  | 'SCORE_HOME' | 'SCORE_AWAY' | 'GAME_CLOCK' | 'GAME_SEGMENT' | 'GAME_STAT'
   // VenueOS universal packs — drop-in template backgrounds and live
   // data feeds (markets, news, weather, transit). Variant-rendered;
   // each canonical type groups its pack under one picker chip.

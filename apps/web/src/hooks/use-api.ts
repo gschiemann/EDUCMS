@@ -2098,6 +2098,10 @@ export function useCreateGame() {
       homeLogoUrl?: string;
       awayLogoUrl?: string;
       screenGroupId?: string;
+      // Sprint 13 — operator-picked custom layouts per surface.
+      scoreboardTemplateId?: string | null;
+      ribbonTemplateId?: string | null;
+      scorebugTemplateId?: string | null;
     }) => apiFetch('/sports/games', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-games'] }),
   });

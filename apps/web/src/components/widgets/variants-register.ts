@@ -895,3 +895,97 @@ for (const tv of TOUCH_VARIANTS) {
     previewOnly: true,
   });
 }
+
+// ════════════════════════════════════════════════════════════════════
+// Sprint 13 — sport-bound widget primitives. Each binds to live Game
+// state (home/away score, clock, segment, sport-specific stats) when
+// the operator drops it into a Scoreboard / Ribbon / Scorebug template
+// and the resulting template renders on /board /ribbon /scorebug. In
+// the builder canvas (no GameStateProvider) they render placeholder
+// values so the operator can lay out the board against realistic
+// dummy numbers.
+// ════════════════════════════════════════════════════════════════════
+import {
+  ScoreHomeWidget,
+  ScoreAwayWidget,
+  GameClockWidget,
+  GameSegmentWidget,
+  GameStatWidget,
+} from './sports/SportWidgets';
+
+registerVariant({
+  id: 'score-home',
+  widgetType: 'SCORE_HOME',
+  name: 'Home Score',
+  description: 'Live home-team score. Big digits; auto-binds to the game.',
+  category: 'SPORTS',
+  render: ScoreHomeWidget,
+  defaultConfig: {
+    color: '#ffffff',
+    fontWeight: 900,
+    align: 'center',
+    placeholder: '24',
+  },
+});
+
+registerVariant({
+  id: 'score-away',
+  widgetType: 'SCORE_AWAY',
+  name: 'Away Score',
+  description: 'Live away-team score. Big digits; auto-binds to the game.',
+  category: 'SPORTS',
+  render: ScoreAwayWidget,
+  defaultConfig: {
+    color: '#ffffff',
+    fontWeight: 900,
+    align: 'center',
+    placeholder: '21',
+  },
+});
+
+registerVariant({
+  id: 'game-clock',
+  widgetType: 'GAME_CLOCK',
+  name: 'Game Clock',
+  description: 'Live MM:SS game clock. Counts down/up from the sport definition.',
+  category: 'SPORTS',
+  render: GameClockWidget,
+  defaultConfig: {
+    color: '#ffffff',
+    fontWeight: 800,
+    align: 'center',
+    placeholder: '07:42',
+  },
+});
+
+registerVariant({
+  id: 'game-segment',
+  widgetType: 'GAME_SEGMENT',
+  name: 'Period / Quarter',
+  description: 'Sport-aware label — "Q3", "Inning 5", "Set 2", etc.',
+  category: 'SPORTS',
+  render: GameSegmentWidget,
+  defaultConfig: {
+    color: '#ffffff',
+    fontWeight: 700,
+    align: 'center',
+    placeholder: 'Q3',
+  },
+});
+
+registerVariant({
+  id: 'game-stat',
+  widgetType: 'GAME_STAT',
+  name: 'Game Stat',
+  description: 'Pick a sport stat in Properties — down/distance, balls/strikes, sets, etc.',
+  category: 'SPORTS',
+  render: GameStatWidget,
+  defaultConfig: {
+    color: '#ffffff',
+    fontWeight: 700,
+    align: 'center',
+    statKey: 'down',
+    label: 'Down',
+    placeholder: '2',
+  },
+});

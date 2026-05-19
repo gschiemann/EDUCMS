@@ -543,6 +543,47 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0e1a',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/ath-standings.html' } }],
   },
+  // ── Sprint 13 — Standard Scoreboard. The first multi-zone sports
+  // preset: each element (home score, clock, segment, etc.) is its own
+  // zone, so the operator clicks Customize, adds their actual LED
+  // resolution, and rearranges every widget individually. The /board
+  // route reads Game.scoreboardTemplateId — when set, it renders THIS
+  // template (wrapped in GameStateProvider for live binding) instead
+  // of the legacy hardcoded layout in apps/web/src/app/board/[gameId].
+  //
+  // Canvas: 1920×1080 — works on every common LED wall via the
+  // transform:scale wrapper. Operator picks Customize → enters real
+  // pixel dimensions (e.g. 960×1080 narrow gym LED, or 3840×1080
+  // ultra-wide) → the editor rescales and they re-lay-out for the
+  // target wall.
+  {
+    id: 'preset-std-scoreboard',
+    name: '🏟️ Standard Scoreboard',
+    description: 'Live scoreboard: home + away scores, game clock, period/quarter, sport stat. Each widget is its own zone — click Customize to set your LED resolution and lay out the board.',
+    category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#0a0e1a',
+    zones: [
+      // Home team header (logo + name) — top-left band.
+      { name: 'Home Team', widgetType: 'SCORE_HOME', x: 4, y: 6, width: 30, height: 14, zIndex: 2, sortOrder: 0,
+        defaultConfig: { showLogo: true, showName: true, color: '#ffffff', fontWeight: 800, fontSize: 56, align: 'center', placeholder: '24' } },
+      // Home score — huge digits, left half.
+      { name: 'Home Score', widgetType: 'SCORE_HOME', x: 4, y: 24, width: 30, height: 56, zIndex: 2, sortOrder: 1,
+        defaultConfig: { color: '#ffffff', fontWeight: 900, fontSize: 360, align: 'center', placeholder: '24' } },
+      // Center column — clock, segment, situational stat stacked.
+      { name: 'Game Clock', widgetType: 'GAME_CLOCK', x: 36, y: 18, width: 28, height: 36, zIndex: 2, sortOrder: 2,
+        defaultConfig: { color: '#fbbf24', fontWeight: 900, fontSize: 220, align: 'center', placeholder: '07:42' } },
+      { name: 'Period', widgetType: 'GAME_SEGMENT', x: 36, y: 56, width: 28, height: 12, zIndex: 2, sortOrder: 3,
+        defaultConfig: { color: '#ffffff', fontWeight: 700, fontSize: 96, align: 'center', placeholder: 'Q3' } },
+      { name: 'Stat', widgetType: 'GAME_STAT', x: 36, y: 70, width: 28, height: 12, zIndex: 2, sortOrder: 4,
+        defaultConfig: { color: '#94a3b8', fontWeight: 700, fontSize: 64, align: 'center', statKey: 'down', label: 'Down', placeholder: '2' } },
+      // Away team header — top-right band.
+      { name: 'Away Team', widgetType: 'SCORE_AWAY', x: 66, y: 6, width: 30, height: 14, zIndex: 2, sortOrder: 5,
+        defaultConfig: { showLogo: true, showName: true, color: '#ffffff', fontWeight: 800, fontSize: 56, align: 'center', placeholder: '21' } },
+      // Away score — huge digits, right half.
+      { name: 'Away Score', widgetType: 'SCORE_AWAY', x: 66, y: 24, width: 30, height: 56, zIndex: 2, sortOrder: 6,
+        defaultConfig: { color: '#ffffff', fontWeight: 900, fontSize: 360, align: 'center', placeholder: '21' } },
+    ],
+  },
   {
     id: 'preset-hs-caf-counter',
     name: '🍽️ Cafeteria — Counter Plate',
