@@ -330,6 +330,35 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
     return () => clearInterval(t);
   }, [data.clockMs, data.clockRunning, data.clockUpdatedAt, data.serverTime, def]);
 
+  // Basketball shot clock — a second countdown, projected from its own
+  // anchor in stats.shotClock the same way as the game clock.
+  const [shotMs, setShotMs] = useState(0);
+  const scRaw = (data.stats as Record<string, unknown> | undefined)?.shotClock;
+  const sc = scRaw && typeof scRaw === 'object' ? (scRaw as Record<string, unknown>) : null;
+  const shotLen = Number(sc?.len) || 0;
+  const shotAnchorMs = Math.max(0, Number(sc?.ms) || 0);
+  const shotAnchorAt = String(sc?.at || '');
+  const shotRunning = !!sc?.running;
+  useEffect(() => {
+    if (shotLen <= 0) {
+      setShotMs(0);
+      return;
+    }
+    const skew = data.serverTime - Date.now();
+    const at = new Date(shotAnchorAt).getTime();
+    const project = () => {
+      if (!shotRunning || !Number.isFinite(at)) {
+        setShotMs(shotAnchorMs);
+        return;
+      }
+      setShotMs(Math.max(0, shotAnchorMs - (Date.now() + skew - at)));
+    };
+    project();
+    if (!shotRunning) return;
+    const t = setInterval(project, 100);
+    return () => clearInterval(t);
+  }, [shotAnchorMs, shotAnchorAt, shotRunning, shotLen, data.serverTime]);
+
   const status = STATUS_STYLE[data.status] || STATUS_STYLE.SCHEDULED;
   const homeColor = data.homeColor || DEFAULT_HOME;
   const awayColor = data.awayColor || DEFAULT_AWAY;
@@ -500,6 +529,32 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
               }}
             >
               {def.emoji}
+            </div>
+          )}
+          {def.key === 'basketball' && shotLen > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                marginTop: 14,
+              }}
+            >
+              <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: 4, color: '#64748b' }}>
+                SHOT
+              </span>
+              <span
+                style={{
+                  fontSize: 88,
+                  fontWeight: 900,
+                  lineHeight: 1,
+                  marginTop: 2,
+                  fontVariantNumeric: 'tabular-nums',
+                  color: shotMs <= 5000 ? '#ef4444' : '#e2e8f0',
+                }}
+              >
+                {shotMs <= 5000 ? (shotMs / 1000).toFixed(1) : Math.ceil(shotMs / 1000)}
+              </span>
             </div>
           )}
           <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 3, color: '#475569', marginTop: 18 }}>

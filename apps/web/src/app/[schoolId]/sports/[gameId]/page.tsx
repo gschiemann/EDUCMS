@@ -358,6 +358,12 @@ function GameControl() {
               <SponsorPanel />
             </Section>
 
+            {def.key === 'basketball' && (
+              <Section title="Shot clock">
+                <ShotClockSetup gameId={gameId} current={(g.stats || {}) as Record<string, unknown>} />
+              </Section>
+            )}
+
             <SponsorSchedulingSection />
 
             {/* Cue / celebration presentation — configured here before
@@ -620,6 +626,14 @@ function RunMode({
               <Plus className="h-4 w-4" />
             </Button>
           </div>
+        )}
+
+        {/* basketball shot clock — a second countdown */}
+        {def.key === 'basketball' && (
+          <ShotClockBtn
+            stats={stats}
+            onAction={(a, v) => ctl.shotClock.mutate({ action: a, value: v })}
+          />
         )}
 
         {/* undo — reverses the last score change */}
@@ -1115,6 +1129,135 @@ function BaseTrayBall({
         <span className="text-[9px] text-slate-400">{outs} out</span>
       </div>
     </>
+  );
+}
+
+// ── ShotClockBtn ───────────────────────────────────────────────
+// Basketball shot-clock tray control — the live value + start/stop and
+// reset-to-full / reset-to-short (14 for a 24s clock, 20 for a 30s).
+function ShotClockBtn({
+  stats,
+  onAction,
+}: {
+  stats: Record<string, unknown>;
+  onAction: (action: string, value?: number) => void;
+}) {
+  const sc =
+    stats && typeof stats.shotClock === 'object' && stats.shotClock
+      ? (stats.shotClock as Record<string, unknown>)
+      : {};
+  const len = Number(sc.len) || 0;
+  const anchorMs = Math.max(0, Number(sc.ms) || 0);
+  const anchorAt = String(sc.at || '');
+  const running = !!sc.running;
+  const [ms, setMs] = useState(0);
+  useEffect(() => {
+    const at = new Date(anchorAt).getTime();
+    const project = () => {
+      if (!running || !Number.isFinite(at)) {
+        setMs(anchorMs);
+        return;
+      }
+      setMs(Math.max(0, anchorMs - (Date.now() - at)));
+    };
+    project();
+    if (!running) return;
+    const t = setInterval(project, 200);
+    return () => clearInterval(t);
+  }, [anchorMs, anchorAt, running]);
+  if (len <= 0) return null;
+
+  const short = len === 24 ? 14 : len === 30 ? 20 : len;
+  const secs = ms <= 5000 ? (ms / 1000).toFixed(1) : String(Math.ceil(ms / 1000));
+  return (
+    <div className="flex items-stretch gap-1.5 shrink-0">
+      <div className="flex flex-col items-center justify-center px-2.5 h-14 rounded-xl bg-white border border-slate-200">
+        <span className="text-[9px] font-black tracking-widest text-slate-400">SHOT</span>
+        <span
+          className={`text-xl font-black tabular-nums leading-tight ${
+            ms <= 5000 ? 'text-red-600' : 'text-slate-900'
+          }`}
+        >
+          {secs}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={() => onAction(running ? 'stop' : 'start')}
+        aria-label={running ? 'Stop shot clock' : 'Start shot clock'}
+        className="h-14 w-11 rounded-xl bg-white border border-slate-200 text-slate-700 flex items-center justify-center hover:bg-slate-100 transition-colors"
+      >
+        {running ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+      </button>
+      <button
+        type="button"
+        onClick={() => onAction('reset', len)}
+        className="h-14 px-3 rounded-xl bg-indigo-600 text-white font-black text-base hover:bg-indigo-700 transition-colors"
+      >
+        {len}
+      </button>
+      {short !== len && (
+        <button
+          type="button"
+          onClick={() => onAction('reset', short)}
+          className="h-14 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-base hover:bg-slate-100 transition-colors"
+        >
+          {short}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── ShotClockSetup ─────────────────────────────────────────────
+// Set-up picker for the shot-clock length — Pro 24 / College 30 /
+// HS 35 / Off. Pro, college, and HS differ; many HS states run none.
+function ShotClockSetup({
+  gameId,
+  current,
+}: {
+  gameId: string;
+  current: Record<string, unknown>;
+}) {
+  const ctl = useGameControl(gameId);
+  const sc =
+    current && typeof current.shotClock === 'object' && current.shotClock
+      ? (current.shotClock as Record<string, unknown>)
+      : {};
+  const len = Number(sc.len) || 0;
+  const OPTS: { v: number; label: string; hint: string }[] = [
+    { v: 0, label: 'Off', hint: 'No shot clock — many high-school states.' },
+    { v: 24, label: '24s', hint: 'Pro — NBA / WNBA / FIBA.' },
+    { v: 30, label: '30s', hint: 'College — NCAA men’s & women’s.' },
+    { v: 35, label: '35s', hint: 'High school — where the state has adopted it.' },
+  ];
+  return (
+    <div>
+      <p className="text-xs text-slate-400 mb-2">
+        Shot-clock length for this game. Pro, college, and high school each
+        differ — and many HS states run none at all.
+      </p>
+      <div className="flex gap-1.5">
+        {OPTS.map((o) => (
+          <button
+            key={o.v}
+            type="button"
+            title={o.hint}
+            onClick={() => ctl.shotClock.mutate({ action: 'configure', value: o.v })}
+            className={`flex-1 rounded-md border px-2 py-2 text-sm font-bold transition-colors ${
+              len === o.v
+                ? 'border-indigo-600 bg-indigo-600 text-white'
+                : 'border-slate-200 text-slate-600 hover:border-indigo-300'
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-[11px] text-slate-400">
+        {OPTS.find((o) => o.v === len)?.hint}
+      </p>
+    </div>
   );
 }
 
