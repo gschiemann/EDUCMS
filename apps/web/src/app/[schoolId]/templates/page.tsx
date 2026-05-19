@@ -12,7 +12,7 @@ import {
   Grid3X3, Pencil, X, Monitor, Smartphone, Settings2, Eye,
   Play, Image as ImageIcon, Globe, Type, Bell, Clock, Cloud,
   Timer, CalendarDays, Megaphone, UtensilsCrossed, Users, Rss,
-  Share2, Shield, ArrowRight, Square, FileText, ListVideo,
+  Share2, Shield, ArrowRight, Square, FileText, ListVideo, Download, Upload,
   AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical,
   Layers, ChevronUp, ChevronDown, Lock, Unlock, GripVertical,
   ZoomIn, ZoomOut, Maximize2, RotateCcw, RotateCw, Palette, MousePointer,
@@ -23,7 +23,7 @@ import {
   useDuplicateTemplate, useUpdateTemplate, useUpdateTemplateZones,
   useAssets, usePlaylists, useAssetFolders,
   useTenantBranding, useApplyBrandToTemplates,
-  useGenerateTouchTemplate,
+  useGenerateTouchTemplate, useExportTemplate, useImportTemplate,
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
@@ -416,6 +416,8 @@ export default function TemplatesPage() {
   const duplicateTemplate = useDuplicateTemplate();
   const deleteTemplate = useDeleteTemplate();
   const generateTouch = useGenerateTouchTemplate();
+  const exportTemplate = useExportTemplate();
+  const importTemplate = useImportTemplate();
 
   const q = searchQuery.trim().toLowerCase();
   const filtered = (templates || []).filter((t: Template) => {
@@ -527,6 +529,59 @@ export default function TemplatesPage() {
     openInBuilder(result);
   }
 
+  // ── Cross-account export / import ──
+  // Export downloads the template as a portable .educms-template.json
+  // file; import reads such a file and creates a fresh template in the
+  // CURRENT account. Lets an operator move a design between their own
+  // accounts. The file carries only design data — no ids, no tenant.
+  async function handleExport(template: Template) {
+    try {
+      const envelope = await exportTemplate.mutateAsync(template.id);
+      const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(template.name || 'template').replace(/[^\w.-]+/g, '-')}.educms-template.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      await appAlert({ title: 'Export failed', message: err?.message || 'Could not export this template.' });
+    }
+  }
+
+  async function handleImportFile(file: File) {
+    let envelope: any;
+    try {
+      envelope = JSON.parse(await file.text());
+    } catch {
+      await appAlert({
+        title: 'Import failed',
+        message: `"${file.name}" is not valid JSON. Pick a .educms-template.json file exported from a template.`,
+      });
+      return;
+    }
+    try {
+      const created = await importTemplate.mutateAsync(envelope);
+      openInBuilder(created);
+    } catch (err: any) {
+      await appAlert({ title: 'Import failed', message: err?.message || 'Could not import that template file.' });
+    }
+  }
+
+  function handleImportClick() {
+    // Build the file picker on the fly — no hidden <input> / ref needed.
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (file) void handleImportFile(file);
+    };
+    input.click();
+  }
+
   if (editingTemplate) {
     return createPortal(
       <TemplateBuilder template={editingTemplate} onBack={() => setEditingTemplate(null)} onSaved={(u) => setEditingTemplate(u)} />,
@@ -570,6 +625,16 @@ export default function TemplatesPage() {
           </div>
           <div className="flex items-center gap-2">
             <ApplyBrandButton disabled={isViewer} />
+            {/* Import a template exported from another account. Subdued
+                outline style so it doesn't compete with the primary CTAs. */}
+            <button
+              onClick={handleImportClick}
+              disabled={isViewer}
+              title={isViewer ? 'Read-only — viewer role' : 'Import a template from a .educms-template.json file'}
+              className="px-4 py-3 bg-white/10 text-white font-bold text-sm rounded-xl border border-white/30 hover:bg-white/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Upload className="w-5 h-5" /> Import
+            </button>
             {/* Phase D3 — AI generate button. Sits next to "New Template"
                 so operators discover it without it stealing the primary
                 CTA. The platform/BYOK key check happens server-side; if
@@ -1042,6 +1107,7 @@ export default function TemplatesPage() {
                     portraitSibling={portraitSiblingFor(t)}
                     onEdit={() => openTemplate(t)}
                     onDuplicate={() => handleDuplicate(t)}
+                    onExport={() => handleExport(t)}
                     onAdaptForLED={() => setAdaptTemplate(t)}
                     onDelete={async () => {
                       const ok = await appConfirm({
@@ -1463,7 +1529,7 @@ function AdaptForLedModal({
 // GALLERY CARD — premium hover preview
 // ═════════════════════════════════════════════════════
 
-function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, onDuplicate, onAdaptForLED, onDelete, onPreview, isViewerDisabled = false }: {
+function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, onDuplicate, onExport, onAdaptForLED, onDelete, onPreview, isViewerDisabled = false }: {
   template: Template;
   /** If this template has a portrait sibling preset, pass it here; the
    *  card shows a Landscape | Portrait toggle and renders the active
@@ -1473,6 +1539,8 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
   onUsePortrait?: () => void;
   onEdit?: () => void;
   onDuplicate?: () => void;
+  /** Export this template to a portable .educms-template.json file. */
+  onExport?: () => void;
   /** "Adapt for LED" — duplicate the template at a different canvas
    *  resolution so the operator can re-layout for a 1-6 panel LED
    *  setup (320×1080 → 1920×1080). */
@@ -1652,6 +1720,11 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
           {onDuplicate && (
             <button onClick={onDuplicate} disabled={isViewerDisabled} title={isViewerDisabled ? 'Read-only — viewer role' : 'Duplicate'} className="py-2 px-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               <Copy className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {onExport && (
+            <button onClick={onExport} disabled={isViewerDisabled} title={isViewerDisabled ? 'Read-only — viewer role' : 'Export to a file (to move to another account)'} className="py-2 px-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              <Download className="w-3.5 h-3.5" />
             </button>
           )}
           {/* 2026-05-13 — Maximize2 "Adapt for LED" icon removed per

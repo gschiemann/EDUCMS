@@ -827,6 +827,25 @@ export function useDeleteTemplate() {
   });
 }
 
+// Cross-account template export / import. Export returns a portable
+// JSON envelope (modelled as a mutation so the button gets isPending);
+// import POSTs that envelope and the API creates a fresh tenant-owned
+// template, so the gallery list is invalidated on success.
+export function useExportTemplate() {
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/templates/${id}/export`),
+  });
+}
+
+export function useImportTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (envelope: any) =>
+      apiFetch('/templates/import', { method: 'POST', body: JSON.stringify(envelope) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['templates'] }),
+  });
+}
+
 // ─── Touch analytics (Phase D5) ─────────────────────────────────
 
 export interface TouchAggregateResponse {

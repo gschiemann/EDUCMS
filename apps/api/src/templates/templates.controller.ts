@@ -1086,6 +1086,103 @@ export class TemplatesController {
   }
 
   // ───────────────────────────────────────────────────────
+  // EXPORT — download a template as a portable JSON file
+  // ───────────────────────────────────────────────────────
+  // Cross-account move: an operator can export a template from one
+  // tenant and import it into another (e.g. their own second account).
+  // The envelope deliberately carries ONLY portable design data — no
+  // id / tenantId / isSystem / createdBy / timestamps — so an import
+  // always lands as a fresh, tenant-owned template.
+
+  @Get(':id/export')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async exportTemplate(@Request() req: any, @Param('id') id: string) {
+    // Same read gate as duplicate: the caller's own tenant templates,
+    // plus system presets (which every tenant may read).
+    const tpl = await this.prisma.client.template.findFirst({
+      where: { id, OR: [{ tenantId: req.user.tenantId }, { isSystem: true }] },
+      include: { zones: { orderBy: { sortOrder: 'asc' } } },
+    });
+    if (!tpl) throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+
+    const parseCfg = (s: string | null): any => {
+      if (!s) return undefined;
+      try { return JSON.parse(s); } catch { return undefined; }
+    };
+
+    const template: any = {
+      name: tpl.name,
+      category: tpl.category,
+      orientation: tpl.orientation,
+      screenWidth: tpl.screenWidth,
+      screenHeight: tpl.screenHeight,
+      zones: tpl.zones.map((z) => {
+        const cfg = parseCfg(z.defaultConfig);
+        return {
+          name: z.name,
+          widgetType: z.widgetType,
+          x: z.x, y: z.y, width: z.width, height: z.height,
+          zIndex: z.zIndex,
+          sortOrder: z.sortOrder,
+          ...(cfg !== undefined ? { defaultConfig: cfg } : {}),
+        };
+      }),
+    };
+    // Optional fields — only include when set so the import schema's
+    // .optional() checks pass cleanly (no explicit nulls in the file).
+    if (tpl.description) template.description = tpl.description;
+    if (tpl.bgColor) template.bgColor = tpl.bgColor;
+    if (tpl.bgImage) template.bgImage = tpl.bgImage;
+    if (tpl.bgGradient) template.bgGradient = tpl.bgGradient;
+
+    return {
+      _format: 'educms.template',
+      _version: 1,
+      exportedAt: new Date().toISOString(),
+      template,
+    };
+  }
+
+  // ───────────────────────────────────────────────────────
+  // IMPORT — create a template from an exported JSON file
+  // ───────────────────────────────────────────────────────
+  // Accepts the envelope produced by GET :id/export. The template
+  // always lands in the CALLER's tenant as a fresh, non-system
+  // template — this is a create, so it carries the same admin RBAC as
+  // POST /. The file is fully untrusted input: the envelope is
+  // shape-checked, then the inner template runs through the exact same
+  // Zod schema + create path as a hand-built template.
+
+  @Post('import')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async importTemplate(@Request() req: any, @Body() body: any) {
+    if (!body || typeof body !== 'object' || body._format !== 'educms.template') {
+      throw new HttpException(
+        'That file is not an EduCMS template export.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (body._version !== 1) {
+      throw new HttpException(
+        `Unsupported template file version (${body._version}). This server expects version 1.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const parsed = TemplateCreateSchema.safeParse(body.template);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      const where = first?.path?.length ? ` (${first.path.join('.')})` : '';
+      throw new HttpException(
+        `Template file is malformed${where}: ${first?.message || 'invalid'}`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    // Reuse the standard create path verbatim — zone-bounds validation,
+    // orientation derivation, tenant-brand inheritance, mapTemplate.
+    return this.create(req, parsed.data);
+  }
+
+  // ───────────────────────────────────────────────────────
   // UPDATE — template metadata (name, description, status)
   // ───────────────────────────────────────────────────────
 
