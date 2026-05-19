@@ -98,7 +98,7 @@ export function LockerHallwayLogo({
   const photoUrl = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '8%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '8%' }}>
       <svg viewBox="0 0 300 300" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: `drop-shadow(0 6px 14px ${LH.shadow})`, overflow: 'visible' }}>
         {/* Locker door backdrop */}
@@ -163,7 +163,7 @@ export function LockerHallwayText({
   const tileColors = [LH.magnet, LH.magnetAlt, LH.sticker, LH.rule, LH.magnet, LH.magnetAlt];
 
   return (
-    <div className="absolute inset-0 flex flex-col" style={{ padding: '2%', gap: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col" style={{ padding: '2%', gap: '3%' }}>
       {/* Main locker strip */}
       <div style={{ flex: !compact && subtitle ? '0 0 62%' : '0 0 100%', minHeight: 0, position: 'relative' }}>
         {/* Brushed-steel horizontal strip */}
@@ -278,7 +278,7 @@ export function LockerHallwayClock({
   const majorAt = new Set([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 600 600" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 10px 24px ${LH.shadow})` }}>
@@ -472,7 +472,7 @@ export function LockerHallwayWeather({
   };
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Locker door with paper taped inside */}
         <svg viewBox="0 0 600 540" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
@@ -547,7 +547,7 @@ export function LockerHallwayCountdown({
   const unit     = days > 0 ? (days === 1 ? 'DAY' : 'DAYS') : (hours === 1 ? 'HR' : 'HRS');
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 540" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 10px 22px ${LH.shadow})` }}>
@@ -615,7 +615,7 @@ export function LockerHallwayAnnouncement({
   const date    = config.date    || '';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 1600 500" width="100%" height="100%" preserveAspectRatio="none"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 10px 22px ${LH.shadow})` }}>
@@ -705,7 +705,7 @@ export function LockerHallwayCalendar({
   const headerColors = [LH.magnet, LH.magnetAlt, LH.sticker, LH.rule, LH.red, LH.magnet, LH.magnetAlt, LH.sticker];
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-center"
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center"
       style={{ padding: '3%', gap: '3%', fontFamily: LH_FONT_DISPLAY }}>
       {events.map((e: any, i: number) => {
         const hdrColor = headerColors[i % headerColors.length];
@@ -764,7 +764,7 @@ export function LockerHallwayStaffSpotlight({
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 640 580" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: `drop-shadow(0 8px 20px ${LH.shadow})` }}>
@@ -858,7 +858,7 @@ export function LockerHallwayImageCarousel({
   const magnetColors = [LH.magnet, LH.sticker, LH.magnetAlt, LH.rule];
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '5%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Locker-steel background plate */}
         <svg viewBox="0 0 700 560" width="100%" height="100%" preserveAspectRatio="none"
@@ -962,7 +962,7 @@ export function LockerHallwayTicker({
   const dots = Array.from({ length: 28 }, (_, i) => i);
 
   return (
-    <div className="absolute inset-0" style={{ overflow: 'hidden' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'hidden' }}>
       <svg viewBox="0 0 3200 120" width="100%" height="100%" preserveAspectRatio="none"
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
         <defs>

@@ -17,7 +17,7 @@ import { Play as PlayIcon, Image as ImageIcon, Globe as GlobeIcon, LayoutTemplat
 export function VideoBasicTile() {
   return (
     <div
-      className="absolute inset-0 flex flex-col items-center justify-center gap-1.5"
+      className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center gap-1.5"
       style={{ background: 'linear-gradient(135deg, #1e1b4b, #312e81)' }}
     >
       <div
@@ -39,7 +39,7 @@ export function VideoBasicTile() {
 export function VideoCarouselTile() {
   return (
     <div
-      className="absolute inset-0 flex flex-col items-center justify-center gap-1.5"
+      className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center gap-1.5"
       style={{ background: 'linear-gradient(135deg, #4c1d95, #6d28d9)' }}
     >
       <div style={{ display: 'flex', gap: 4 }}>
@@ -57,7 +57,7 @@ export function VideoCarouselTile() {
 export function WebpageTile() {
   return (
     <div
-      className="absolute inset-0 flex flex-col items-center justify-center gap-1"
+      className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center gap-1"
       style={{ background: 'linear-gradient(135deg, #f1f5f9, #e2e8f0)', padding: '0.4em' }}
     >
       <div style={{ width: '70%', height: '0.4em', borderRadius: 2, background: 'rgba(99,102,241,0.6)' }} />
@@ -72,7 +72,7 @@ export function WebpageTile() {
 export function ExternalHtmlTile() {
   return (
     <div
-      className="absolute inset-0 flex flex-col items-center justify-center gap-1.5"
+      className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center gap-1.5"
       style={{ background: 'linear-gradient(135deg, #1e1b4b, #312e81)' }}
     >
       <div
@@ -94,7 +94,7 @@ export function ExternalHtmlTile() {
 export function ImageBasicTile() {
   return (
     <div
-      className="absolute inset-0 flex flex-col items-center justify-center gap-1.5"
+      className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center gap-1.5"
       style={{ background: 'linear-gradient(135deg, #ecfdf5, #d1fae5)' }}
     >
       <div
@@ -116,7 +116,7 @@ export function ImageBasicTile() {
 export function ImageCarouselBasicTile() {
   return (
     <div
-      className="absolute inset-0 flex flex-col items-center justify-center gap-1.5"
+      className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center gap-1.5"
       style={{ background: 'linear-gradient(135deg, #fef3c7, #fde68a)' }}
     >
       <div style={{ display: 'flex', gap: 4 }}>

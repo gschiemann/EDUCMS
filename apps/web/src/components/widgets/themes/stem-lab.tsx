@@ -68,7 +68,7 @@ export function StemLabLogo({ config }: { config: any; compact?: boolean }) {
   const photoUrl = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <svg viewBox="0 0 260 260" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: neonFilter(SL.neonGreen, 6), overflow: 'visible' }}>
         {/* Outer hexagon badge */}
@@ -122,7 +122,7 @@ export function StemLabText({
   const subtitle = config.subtitle || '// where curiosity becomes discovery';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* PCB card background */}
         <svg viewBox="0 0 1800 340" width="100%" height="100%" preserveAspectRatio="none"
@@ -216,7 +216,7 @@ export function StemLabClock({ config, compact }: { config: any; compact?: boole
   const handY = (angle: number, r: number) => 130 + r * Math.sin(angle * Math.PI / 180);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 560" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: neonFilter(SL.neonBlue, 4) }}>
@@ -323,7 +323,7 @@ export function StemLabWeather({ config, compact }: { config: any; compact?: boo
     : { symbol: 'Ar',  name: cond, num: '18', color: SL.neonPurple };
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{
         width: '100%', height: '100%',
         background: SL.deepSpace,
@@ -397,7 +397,7 @@ export function StemLabCountdown({
   const flicker  = (now.getSeconds() % 2 === 0);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 600 700" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: neonFilter(SL.amber, 6) }}>
@@ -494,7 +494,7 @@ export function StemLabAnnouncement({
   useEffect(() => { const t = setInterval(() => setCursor(c => !c), 600); return () => clearInterval(t); }, []);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         width: '100%', height: '100%',
         background: SL.deepSpace,
@@ -590,7 +590,7 @@ export function StemLabCalendar({ config }: { config: any; compact?: boolean }) 
   const fillPcts   = [75, 55, 85, 60, 70, 45];
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-center" style={{ padding: '3%', gap: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '3%', gap: '2%' }}>
       {events.map((e: any, i: number) => {
         const color = tubeColors[i % tubeColors.length];
         const fill  = fillPcts[i % fillPcts.length];
@@ -654,7 +654,7 @@ export function StemLabStaffSpotlight({
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         width: '100%', height: '100%',
         background: `linear-gradient(135deg, ${SL.deepSpace} 0%, ${SL.grid} 100%)`,
@@ -759,7 +759,7 @@ export function StemLabImageCarousel({ config }: { config: any; compact?: boolea
   }, [urls.length, config.intervalMs]);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Microscope frame SVG */}
         <svg viewBox="0 0 700 700" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
@@ -850,7 +850,7 @@ export function StemLabTicker({ config, compact }: { config: any; compact?: bool
   }).join(' ');
 
   return (
-    <div className="absolute inset-0 overflow-hidden"
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden"
       style={{ background: SL.deepSpace, borderTop: `2px solid ${SL.neonGreen}44` }}>
       {/* Oscilloscope grid */}
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="55%"

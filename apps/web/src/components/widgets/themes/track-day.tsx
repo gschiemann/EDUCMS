@@ -59,7 +59,7 @@ export function TrackDayLogo({ config }: { config: any; compact?: boolean }) {
   const photoUrl = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '8%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '8%' }}>
       <svg viewBox="0 0 260 260" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: `drop-shadow(0 6px 10px ${TD.shadow})`, overflow: 'visible' }}>
         {/* Gold olympic-ring accents behind shield */}
@@ -119,7 +119,7 @@ export function TrackDayText({ config, compact, onConfigChange }: { config: any;
   const content = config.content || "LET'S RUN!";
   const subtitle = config.subtitle || '~ welcome back, team ~';
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '1%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '1%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 3200 360" width="100%" height="100%" preserveAspectRatio="none"
           style={{ filter: `drop-shadow(0 10px 16px ${TD.shadow})`, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -194,7 +194,7 @@ export function TrackDayClock({ config, compact }: { config: any; compact?: bool
   const secAngle = (seconds * 6) - 90;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <svg viewBox="0 0 300 360" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: `drop-shadow(0 10px 14px ${TD.shadow})`, overflow: 'visible' }}>
         {/* Top button */}
@@ -263,7 +263,7 @@ export function TrackDayWeather({ config, compact }: { config: any; compact?: bo
   const isPartly = !isClear && !isOvercast && !isRain && !isSnow && !isStorm;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <svg viewBox="0 0 300 360" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: `drop-shadow(0 10px 14px ${TD.shadow})`, overflow: 'visible' }}>
         {/* Lanyard cord */}
@@ -377,7 +377,7 @@ export function TrackDayCountdown({ config, compact, onConfigChange }: { config:
   const rows = 24;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%',
         filter: `drop-shadow(0 10px 16px ${TD.shadow})` }}>
         {/* Top flagpole finial */}
@@ -451,7 +451,7 @@ export function TrackDayAnnouncement({ config, compact, onConfigChange }: { conf
   const message = config.message || config.body || 'Field Day is Friday! Wear your school colors.';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         transform: 'rotate(-1.5deg)',
@@ -534,7 +534,7 @@ export function TrackDayCalendar({ config }: { config: any; compact?: boolean })
   const laneColors = [TD.track, TD.sun, TD.grassDark, TD.gold];
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-center" style={{ padding: '3%', gap: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '3%', gap: '2%' }}>
       {events.map((e: any, i: number) => {
         const bg = laneColors[i % laneColors.length];
         const laneNum = i + 1;
@@ -604,7 +604,7 @@ export function TrackDayStaffSpotlight({ config, onConfigChange }: { config: any
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '5%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%', containerType: 'size' }}>
       {/* Cork backing */}
       <div style={{
         position: 'absolute', top: '2%', right: '2%', bottom: '2%', left: '2%',
@@ -702,7 +702,7 @@ export function TrackDayImageCarousel({ config }: { config: any; compact?: boole
   const hasImage = urls.length > 0;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: `linear-gradient(145deg, ${TD.gold} 0%, #D4A817 50%, ${TD.gold} 100%)`,
@@ -787,7 +787,7 @@ export function TrackDayTicker({ config, compact }: { config: any; compact?: boo
   const checkers = 48;
 
   return (
-    <div className="absolute inset-0" style={{ overflow: 'hidden' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'hidden' }}>
       {/* Top checkered band */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, height: '22%',

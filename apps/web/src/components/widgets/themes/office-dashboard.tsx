@@ -7,7 +7,7 @@ import { LayoutDashboard, Users, Calendar, AlertTriangle, Building, CheckCircle2
 
 export function OfficeDashboardLogo({ config, compact }: { config: any; compact?: boolean }) {
   return (
-    <div className="absolute inset-0 flex items-center p-6" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center p-6" style={{
       background: 'rgba(255, 255, 255, 0.85)',
       backdropFilter: 'blur(20px)',
       borderRadius: '16px',
@@ -39,7 +39,7 @@ export function OfficeDashboardLogo({ config, compact }: { config: any; compact?
 export function OfficeDashboardText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'Welcome to the Central Office';
   return (
-    <div className="absolute inset-0 flex items-center p-8 overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center p-8 overflow-hidden" style={{
       background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)',
       borderRadius: '16px',
       boxShadow: '0 15px 30px rgba(30,58,138,0.3), inset 0 0 0 1px rgba(255,255,255,0.1)',
@@ -73,7 +73,7 @@ export function OfficeDashboardClock({ config, compact }: { config: any; compact
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
   
   return (
-    <div className="absolute inset-0 flex flex-col justify-center p-6" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center p-6" style={{
       background: 'rgba(255, 255, 255, 0.95)',
       backdropFilter: 'blur(20px)',
       borderRadius: '16px',
@@ -106,7 +106,7 @@ export function OfficeDashboardAnnouncement({ config, compact }: { config: any; 
   const Icon = s.icon;
 
   return (
-    <div className="absolute inset-0 flex flex-col p-6" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-6" style={{
       background: 'rgba(255,255,255,0.95)',
       borderRadius: '16px',
       boxShadow: `0 10px 40px rgba(15,23,42,0.08), inset 0 0 0 1px ${s.border}`,
@@ -132,7 +132,7 @@ export function OfficeDashboardStaff({ config, compact }: { config: any; compact
   const role = config.role || 'Superintendent';
   
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center p-6 text-center" style={{
       background: 'rgba(255,255,255,0.95)',
       borderRadius: '16px',
       boxShadow: '0 10px 40px rgba(15,23,42,0.08)',
@@ -164,7 +164,7 @@ export function OfficeDashboardStaff({ config, compact }: { config: any; compact
 export function OfficeDashboardCalendar({ config, compact }: { config: any; compact?: boolean }) {
   const events = config.events || ['Board Meeting - 3:00 PM', 'Budget Review - 4:30 PM'];
   return (
-    <div className="absolute inset-0 flex flex-col p-6" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-6" style={{
       background: 'rgba(255,255,255,0.95)',
       borderRadius: '16px',
       boxShadow: '0 10px 40px rgba(15,23,42,0.08)',
@@ -199,7 +199,7 @@ export function OfficeDashboardTicker({ config, compact }: { config: any; compac
   const messages = config.messages?.length ? config.messages : ['All systems operational.', 'Quarterly reports due Friday.', 'Staff meeting at 9AM.'];
   const text = messages.join('   •   ');
   return (
-    <div className="absolute inset-0 flex items-center overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden" style={{
       background: '#0f172a',
       color: '#f8fafc',
       boxShadow: 'inset 0 4px 10px rgba(0,0,0,0.5)',

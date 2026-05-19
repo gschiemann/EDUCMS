@@ -70,7 +70,7 @@ export function SeniorCountdownLogo({ config }: { config: any; compact?: boolean
   const photoUrl = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <svg viewBox="0 0 300 300" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: `drop-shadow(0 6px 16px ${SCD.shadow})`, overflow: 'visible' }}>
         {/* Outer gold ring */}
@@ -128,7 +128,7 @@ export function SeniorCountdownText({ config, compact, onConfigChange }: { confi
   const subtitle = config.subtitle || 'making memories that last a lifetime…';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2% 1%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2% 1%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* SVG ribbon banner */}
         <svg viewBox="0 0 3200 380" width="100%" height="100%" preserveAspectRatio="none"
@@ -208,7 +208,7 @@ export function SeniorCountdownClock({ config, compact }: { config: any; compact
   const cx = 200, cy = 200, r = 178;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <svg viewBox="0 0 400 460" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: `drop-shadow(0 12px 28px ${SCD.shadow})`, overflow: 'visible' }}>
         {/* Case / pediment */}
@@ -360,7 +360,7 @@ export function SeniorCountdownWeather({ config, compact }: { config: any; compa
   const icon = isSnow ? SnowIcon : isStorm ? StormIcon : isRain ? RainIcon : isOvercast ? CloudIcon : isClear ? SunIcon : PartlyIcon;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 400 500" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ filter: `drop-shadow(0 10px 22px ${SCD.shadow})`, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -435,7 +435,7 @@ export function SeniorCountdownCountdown({ config, compact, onConfigChange }: { 
   };
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 900 560" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ filter: `drop-shadow(0 18px 36px ${SCD.shadow})`, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -501,7 +501,7 @@ export function SeniorCountdownAnnouncement({ config, compact, onConfigChange }:
   const date    = config.date || '';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 1800 520" width="100%" height="100%" preserveAspectRatio="none"
           style={{ filter: `drop-shadow(0 16px 30px ${SCD.shadow})`, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -565,7 +565,7 @@ export function SeniorCountdownCalendar({ config }: { config: any; compact?: boo
   ]).slice(0, Math.max(1, Math.min(6, config.maxEvents ?? 3)));
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
       {events.map((e: any, i: number) => (
         <div key={i} style={{
           position: 'relative',
@@ -631,7 +631,7 @@ export function SeniorCountdownStaffSpotlight({ config, onConfigChange }: { conf
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '5%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: SCD.parchment,
@@ -718,7 +718,7 @@ export function SeniorCountdownImageCarousel({ config }: { config: any; compact?
   const hasImage = urls.length > 0;
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ padding: '4%' }}>
       {/* Frame */}
       <div style={{
         position: 'relative', flex: '1 1 85%', width: '100%', minHeight: 0,
@@ -789,7 +789,7 @@ export function SeniorCountdownTicker({ config, compact }: { config: any; compac
   const primary = messages[idx % messages.length];
 
   return (
-    <div className="absolute inset-0" style={{ overflow: 'hidden' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'hidden' }}>
       {/* Parchment banner SVG */}
       <svg viewBox="0 0 3200 180" width="100%" height="100%" preserveAspectRatio="none"
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>

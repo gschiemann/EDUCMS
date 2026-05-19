@@ -202,7 +202,7 @@ export function KioskSplash({
 
   return (
     <div
-      className="fixed inset-0 overflow-hidden kiosk-splash"
+      className="fixed top-0 right-0 bottom-0 left-0 overflow-hidden kiosk-splash"
       data-mode={mode}
       role="status"
       aria-live="polite"
@@ -389,7 +389,7 @@ const CSS = `
      The Player WebView on a Taurus controller was failing to load
      the global Tailwind CSS bundle (cert / cache / CDN reach — root
      cause varied per Taurus model), and the splash root was using
-     "fixed inset-0" Tailwind classes for positioning. With Tailwind
+     "fixed top-0 right-0 bottom-0 left-0" Tailwind classes for positioning. With Tailwind
      missing, the splash collapsed to inline-flow / zero height and
      the body's bg-slate-50 (#f8fafc) showed through as a "white"
      screen. Operator (2026-05-13) lost an evening to this.

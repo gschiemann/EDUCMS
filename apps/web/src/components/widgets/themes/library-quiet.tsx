@@ -8,7 +8,7 @@ import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 export function LibraryQuietText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'Media Center';
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-8" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-8" style={{
       background: 'linear-gradient(180deg, #f8f4eb 0%, #e8dec3 100%)',
       borderRadius: '8px',
       border: '4px solid #4a2818',
@@ -40,7 +40,7 @@ export function LibraryQuietClock({ config, compact }: { config: any; compact?: 
   }, []);
   
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-4" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-4" style={{
       background: '#2a1610',
       borderRadius: '8px',
       border: '3px solid #d4af37',
@@ -62,7 +62,7 @@ export function LibraryQuietClock({ config, compact }: { config: any; compact?: 
 
 export function LibraryQuietImage({ config, compact }: { config: any; compact?: boolean }) {
   return (
-    <div className="absolute inset-0 p-6 flex flex-col items-center justify-center" style={{ containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 p-6 flex flex-col items-center justify-center" style={{ containerType: 'size' }}>
       <div style={{
         background: '#fff',
         padding: '3cqh',
@@ -111,7 +111,7 @@ export function LibraryQuietImage({ config, compact }: { config: any; compact?: 
 
 export function LibraryQuietRichText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   return (
-    <div className="absolute inset-0 p-8 flex flex-col" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 p-8 flex flex-col" style={{
       background: 'rgba(248, 244, 235, 0.9)',
       backdropFilter: 'blur(10px)',
       borderRadius: '8px',
@@ -133,7 +133,7 @@ export function LibraryQuietRichText({ config, compact }: { config: any; compact
 export function LibraryQuietLunch({ config, compact }: { config: any; compact?: boolean }) {
   const meal = config.meals?.[0] || { label: 'Today', items: ['Chef Salad', 'Tomato Soup'] };
   return (
-    <div className="absolute inset-0 p-8 flex flex-col" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 p-8 flex flex-col" style={{
       background: 'rgba(42, 22, 16, 0.9)',
       backdropFilter: 'blur(10px)',
       borderRadius: '8px',
@@ -168,7 +168,7 @@ export function LibraryQuietTicker({ config, compact }: { config: any; compact?:
   const messages = config.messages || ['Please keep voices low.', 'Return books to the front desk.'];
   const text = messages.join('   ✦   ');
   return (
-    <div className="absolute inset-0 flex items-center overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden" style={{
       background: '#1f100a',
       color: '#d4af37',
       borderTop: '2px solid #4a2818',

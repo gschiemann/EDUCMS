@@ -8,7 +8,7 @@ import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 export function PrincipalsOfficeLogo({ config }: { config: any }) {
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center p-6" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center p-6" style={{
       background: 'rgba(20, 10, 5, 0.6)',
       backdropFilter: 'blur(16px)',
       border: '2px solid rgba(212, 175, 55, 0.4)',
@@ -58,7 +58,7 @@ export function PrincipalsOfficeLogo({ config }: { config: any }) {
 export function PrincipalsOfficeText({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'Welcome to the Main Office';
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center p-8 text-center" style={{
       background: 'linear-gradient(145deg, #e6cd82 0%, #c49e41 45%, #a67c1e 100%)',
       borderRadius: '6px',
       boxShadow: '0 20px 40px rgba(0,0,0,0.5), inset 0 2px 5px rgba(255,255,255,0.6), inset 0 -2px 10px rgba(0,0,0,0.4)',
@@ -66,7 +66,7 @@ export function PrincipalsOfficeText({ config }: { config: any } & { onConfigCha
       containerType: 'size'
     }}>
       {/* Inner engrave styling */}
-      <div className="absolute inset-2 border-2 border-dashed border-[#8a631c] opacity-40 rounded-sm pointer-events-none" />
+      <div className="absolute top-2 right-2 bottom-2 left-2 border-2 border-dashed border-[#8a631c] opacity-40 rounded-sm pointer-events-none" />
       
       <div data-field="content" style={{
         fontSize: 'clamp(2rem, 15cqi, 6rem)',
@@ -93,7 +93,7 @@ export function PrincipalsOfficeClock({ config, compact }: { config: any; compac
   const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
       background: 'rgba(20, 10, 5, 0.7)',
       backdropFilter: 'blur(12px)',
       borderRadius: '8px',
@@ -129,7 +129,7 @@ export function PrincipalsOfficeAnnouncement({ config, compact }: { config: any;
   const content = config.message || config.content || 'Please sign in at the front desk upon arrival.';
   
   return (
-    <div className="absolute inset-0 flex flex-col p-8" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-8" style={{
       background: '#fcfaf5', // Cream paper texture
       borderRadius: '4px',
       boxShadow: '0 20px 40px rgba(0,0,0,0.5), inset 0 0 60px rgba(212, 175, 55, 0.05)',
@@ -166,7 +166,7 @@ export function PrincipalsOfficeAnnouncement({ config, compact }: { config: any;
 export function PrincipalsOfficeRichText({ config }: { config: any }) {
   const content = config.html || '<h2>Office Hours</h2><p>Monday - Friday: 7:30 AM - 4:00 PM</p>';
   return (
-    <div className="absolute inset-0 p-8 flex flex-col" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 p-8 flex flex-col" style={{
       background: 'rgba(30, 18, 12, 0.85)',
       backdropFilter: 'blur(20px)',
       borderRadius: '8px',
@@ -190,7 +190,7 @@ export function PrincipalsOfficeTicker({ config }: { config: any }) {
   const messages = config.messages?.length ? config.messages : ['Welcome to Washington High School', 'Excellence in Education', 'Please Silence Your Cell Phones'];
   const text = messages.join('   ✦   ');
   return (
-    <div className="absolute inset-0 flex items-center overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden" style={{
       background: 'linear-gradient(90deg, #110906 0%, #2a180f 50%, #110906 100%)',
       color: '#FDE08B',
       borderTop: '3px solid #D4AF37',

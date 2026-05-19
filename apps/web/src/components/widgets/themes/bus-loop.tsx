@@ -20,7 +20,7 @@ const BL_DISPLAY = '"Arial Black", Impact, system-ui, sans-serif';
 export function BusLoopText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'BUS LOOP INFORMATION';
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-4" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-4" style={{
       background: 'linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%)',
       border: '4px solid #333',
       borderBottom: `8px solid ${BL.yellow}`,
@@ -53,7 +53,7 @@ export function BusLoopClock({ config, compact }: { config: any; compact?: boole
   const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{
       background: '#050505',
       border: '4px solid #222',
       borderBottom: `4px solid ${BL.yellow}`,
@@ -80,7 +80,7 @@ export function BusLoopTicker({ config, compact }: { config: any; compact?: bool
   const messages = config.messages || ['BUS 42: ARRIVED', 'BUS 18: 5 MINS AWAY'];
   const text = messages.join('   ||   ');
   return (
-    <div className="absolute inset-0 flex items-center overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden" style={{
       background: '#000',
       borderTop: '4px solid #222',
       borderBottom: '4px solid #222',
@@ -122,7 +122,7 @@ export function BusLoopWeather({ config, compact }: { config: any; compact?: boo
   else if (c.includes('snow')) { Icon = Snowflake; color = '#FFF'; }
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center p-4" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center p-4" style={{
       background: 'linear-gradient(135deg, #111 0%, #000 100%)',
       border: '2px solid #333',
       borderRadius: '12px',
@@ -144,7 +144,7 @@ export function BusLoopWeather({ config, compact }: { config: any; compact?: boo
 
 export function BusLoopAnnouncement({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col overflow-hidden" style={{
       background: '#1a0505',
       border: `4px solid ${BL.red}`,
       borderRadius: '12px',
@@ -180,7 +180,7 @@ export function BusLoopAnnouncement({ config, compact }: { config: any; compact?
 export function BusLoopCalendar({ config, compact }: { config: any; compact?: boolean }) {
   const events = config.events || [];
   return (
-    <div className="absolute inset-0 flex flex-col p-6" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-6" style={{
       background: 'linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%)',
       border: '2px solid #333',
       borderRadius: '12px',

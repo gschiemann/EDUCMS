@@ -56,7 +56,7 @@ export function BackToSchoolText({ config, onConfigChange }: { config: any; onCo
   const content = config.content || 'Back to School';
   const align = (config.alignment || 'center') as 'left' | 'center' | 'right';
   return (
-    <div className="absolute inset-0 overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{
       // Paint the actual chalkboard surface here so the widget reads as a real chalkboard
       // even when the scene SVG behind it is partially obscured.
       background: `
@@ -116,7 +116,7 @@ export function BackToSchoolClock({ config }: { config: any }) {
   const secDeg  = s * 6;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-visible">
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-visible">
       <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%' }}>
         {/* outer wood frame */}
         <circle cx="50" cy="50" r="48" fill={BTS.woodMid} stroke={BTS.woodLight} strokeWidth="1.5" />
@@ -157,7 +157,7 @@ export function BackToSchoolAnnouncement({ config, onConfigChange }: { config: a
   const title = config.title || 'Big news today!';
   const body  = config.message || config.body || 'Tap to edit. Write your announcement here.';
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-visible" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-visible" style={{ padding: '6%' }}>
       <div style={{
         position: 'relative',
         width: '100%', height: '100%',
@@ -223,7 +223,7 @@ export function BackToSchoolCalendar({ config }: { config: any }) {
     { date: 'Sat',      title: 'Field Trip' },
   ];
   return (
-    <div className="absolute inset-0 flex" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex" style={{ padding: '4%' }}>
       <div style={{
         width: '100%', height: '100%',
         background: `repeating-linear-gradient(180deg, transparent 0 22px, rgba(58,58,58,0.12) 22px 23px), ${BTS.wallCream}`,
@@ -309,7 +309,7 @@ export function BackToSchoolStaff({ config, onConfigChange }: { config: any; onC
   const bio  = config.bio || 'Inspires kids every day with kindness and a big smile!';
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '5%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%' }}>
       <div style={{
         position: 'relative',
         width: '100%', height: '100%',
@@ -388,7 +388,7 @@ export function BackToSchoolCountdown({ config }: { config: any } & { onConfigCh
   const label = config.label || resolved?.label || 'Field Trip in';
   const days = calendarDaysUntil(target, now);
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
       padding: '6%',
       fontFamily: BTS_FONT_HAND,
       color: BTS.chalk,
@@ -407,7 +407,7 @@ export function BackToSchoolCountdown({ config }: { config: any } & { onConfigCh
 export function BackToSchoolLogo({ config }: { config: any }) {
   const initials = (config.initials || (config.schoolName || 'School').split(/\s+/).filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()) || 'SE';
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '8%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '8%' }}>
       <div style={{
         width: '85%', aspectRatio: '1', borderRadius: '50%',
         background: `radial-gradient(circle at 30% 25%, #fff 0%, rgba(255,255,255,0) 50%), ${BTS.red}`,
@@ -432,7 +432,7 @@ export function BackToSchoolTicker({ config }: { config: any }) {
   const messages: string[] = Array.isArray(config.messages) && config.messages.length ? config.messages : ['Welcome back, students!'];
   const text = messages.join('  ★  ');
   return (
-    <div className="absolute inset-0 overflow-hidden flex items-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center" style={{
       background: `repeating-linear-gradient(135deg, ${BTS.paperPink} 0 24px, ${BTS.paperGreen} 24px 48px, ${BTS.paperYellow} 48px 72px)`,
       borderTop: `4px dashed ${BTS.red}`, borderBottom: `4px dashed ${BTS.red}`,
       fontFamily: BTS_FONT_HAND,
@@ -466,7 +466,7 @@ export function BackToSchoolWeather({ config }: { config: any }) {
   const cond = live.condition;
   const icon = live.icon;
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <div style={{
         width: '100%', height: '100%',
         background: `linear-gradient(180deg, ${BTS.woodLight} 0%, ${BTS.woodMid} 100%)`,
@@ -491,7 +491,7 @@ export function BackToSchoolWeather({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════════════════
 export function BackToSchoolImageCarousel({ config }: { config: any }) {
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '5%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%' }}>
       <div style={{
         position: 'relative',
         width: '100%', height: '100%',

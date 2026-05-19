@@ -63,7 +63,7 @@ export function MSHallClock({ config }: { config: any }) {
   const ampm = config.format !== '24h' ? hRaw.slice(-2) : '';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{
       containerType: 'size',
       background: `linear-gradient(180deg, #1A1A1A 0%, #050505 100%)`,
       borderRadius: '8px',
@@ -136,7 +136,7 @@ export function MSHallBellSchedule({ config }: { config: any }) {
   const lines = schedule.split('\n').filter(Boolean);
   
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: MSH.paperBg,
@@ -188,7 +188,7 @@ export function MSHallTicker({ config }: { config: any }) {
   const repeated = `${text}   ***   ${text}`;
   
   return (
-    <div className="absolute inset-0 overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{
       background: MSH.ledBg,
       borderTop: '2px solid #222', borderBottom: '2px solid #222',
       boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)',
@@ -230,7 +230,7 @@ export function MSHallAnnouncement({ config }: { config: any } & { onConfigChang
   const message = config.message || config.body || 'Important information posted here.';
   
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: MSH.flyerYellow,
@@ -281,7 +281,7 @@ export function MSHallImageCarousel({ config }: { config: any }) {
   }, [urls.length, interval]);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '5%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: '#FFF',
@@ -334,7 +334,7 @@ export function MSHallWeather({ config }: { config: any }) {
   const icon = cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : '☀️';
   
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '8%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '8%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: '#111',
@@ -372,7 +372,7 @@ export function MSHallWeather({ config }: { config: any }) {
 export function MSHallText({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'School Spirit!';
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: '#FFF',
@@ -411,7 +411,7 @@ export function MSHallCountdown({ config }: { config: any } & { onConfigChange?:
   const m = Math.floor((diff / 1000 / 60) % 60);
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
       background: '#1A1A1A', borderRadius: '6px', border: '2px solid #333',
       boxShadow: 'inset 0 0 15px rgba(0,0,0,0.8), 2px 4px 8px rgba(0,0,0,0.3)',
       padding: '4%', color: MSH.ledOrange, fontFamily: MSH_FONT_DIGITAL,
@@ -435,7 +435,7 @@ export function MSHallStaff({ config }: { config: any } & { onConfigChange?: (p:
   const role = config.role || 'Teacher of the Month';
   const photoUrl = config.photoUrl || config.assetUrl;
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: '#FFF',
@@ -470,7 +470,7 @@ export function MSHallStaff({ config }: { config: any } & { onConfigChange?: (p:
 export function MSHallLogo({ config }: { config: any }) {
   const initials = (config.schoolName || 'MS').split(/\s+/).filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '8%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '8%' }}>
       <div style={{
         width: '80%', aspectRatio: '1', borderRadius: '15%',
         background: `linear-gradient(135deg, ${MSH.flyerBlue} 0%, #2980B9 100%)`,

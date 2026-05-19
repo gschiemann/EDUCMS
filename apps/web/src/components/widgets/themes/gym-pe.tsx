@@ -14,7 +14,7 @@ import { formatTime12 } from '@/lib/format-time';
 export function GymPEText({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'PUSH YOUR LIMITS';
   return (
-    <div className="absolute inset-0 flex items-center justify-center text-center p-4" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center text-center p-4" style={{
       background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95))',
       border: '4px solid #3b82f6',
       borderRadius: '24px',
@@ -56,7 +56,7 @@ export function GymPEWeather({ config, compact }: { config: any; compact?: boole
   const Icon = wmo.icon;
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
       background: 'linear-gradient(180deg, #1e293b, #0f172a)',
       border: '3px solid #475569',
       borderRadius: compact ? '16px' : '32px',
@@ -106,7 +106,7 @@ export function GymPEBellSchedule({ config, compact }: { config: any; compact?: 
   const lines = scheduleText.split('\n').filter(Boolean).slice(0, 6); // Max 6 periods
   
   return (
-    <div className="absolute inset-0 flex flex-col p-6" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-6" style={{
       background: 'linear-gradient(180deg, #0f172a, #020617)',
       borderRadius: compact ? '16px' : '24px',
       border: '2px solid #334155',
@@ -153,7 +153,7 @@ export function GymPEAnnouncement({ config, compact }: { config: any; compact?: 
   const content = config.message || config.content || 'Please ensure all locks are secured before leaving for the weekend.';
   
   return (
-    <div className="absolute inset-0 flex flex-col p-8" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-8" style={{
       background: '#0f172a',
       backgroundImage: 'radial-gradient(rgba(239, 68, 68, 0.15) 2px, transparent 2px)',
       backgroundSize: '30px 30px',
@@ -200,7 +200,7 @@ export function GymPETicker({ config }: { config: any }) {
   const messages = config.messages?.length ? config.messages : ['FITNESSGRAM PACER TEST NEXT WEEK', 'DODGEBALL TOURNAMENT SIGNUPS OPEN', 'REMEMBER YOUR WATER BOTTLES'];
   const text = messages.join('   ///   ');
   return (
-    <div className="absolute inset-0 flex items-center overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden" style={{
       background: 'linear-gradient(90deg, #16a34a, #22c55e, #16a34a)',
       borderTop: '6px solid #14532d',
       borderBottom: '6px solid #14532d',

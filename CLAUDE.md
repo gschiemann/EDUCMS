@@ -1625,8 +1625,9 @@ new tables + nullable pointers, safe to ship to live pilot tenants.
    UI, always verify in the rendered DOM (manual click, screenshot,
    or browser-MCP eval) BEFORE telling the user it shipped.
 
-10. **NEVER use `inset: 0` (or any `inset` shorthand) in widget or
-    player styles.** NovaStar Taurus LED controllers — one of our
+10. **NEVER use the `inset` shorthand in widget or player styles —
+    neither the CSS `inset: 0` property NOR the Tailwind `inset-0`
+    utility class.** NovaStar Taurus LED controllers — one of our
     production targets — ship Chromium 83 (June 2020). The CSS `inset`
     shorthand was added in Chrome 87. On Chromium 83, `inset: 0` is
     silently dropped: in inline styles set via React's CSSOM (every
@@ -1648,6 +1649,17 @@ new tables + nullable pointers, safe to ship to live pilot tenants.
     forks (Android System WebView on locked-firmware controllers,
     Smart TVs, Tizen, WebOS) do not.
 
+    2026-05-19: the SAME bug, second variant. The 2026-05-13 sweep
+    only searched for the literal CSS property `inset: 0` — it never
+    caught the Tailwind **`inset-0` utility class**, which Tailwind v4
+    compiles to `inset: …` (and `inset-x-*` / `inset-y-*` to the
+    equally Chromium-83-incompatible `inset-inline:` / `inset-block:`).
+    391 such classes across 44 widget/player files were still
+    landmines; an operator's custom template with 3 IMAGE widgets
+    crash-looped a 960×1080 Taurus. Swept them all to physical
+    longhand classes (`top-0 right-0 bottom-0 left-0`). The grep
+    below now catches BOTH forms.
+
     **Rule:** always use the four long-hand sides:
     ```jsx
     style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
@@ -1655,6 +1667,10 @@ new tables + nullable pointers, safe to ship to live pilot tenants.
     Same in CSS:
     ```css
     .my-thing { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+    ```
+    And in Tailwind — physical longhand utilities, never `inset-*`:
+    ```jsx
+    className="absolute top-0 right-0 bottom-0 left-0"   // NOT inset-0
     ```
 
     The find/replace is mechanical and safe — `inset: 0` is defined in
@@ -1665,8 +1681,9 @@ new tables + nullable pointers, safe to ship to live pilot tenants.
 
     Catch leftover violations with:
     ```bash
-    grep -rn 'inset: 0' apps/web/src/components/widgets \
-      apps/web/src/app/player apps/web/src/components/player
+    grep -rnE 'inset:[[:space:]]*0|inset(-x|-y)?-[0-9]' \
+      apps/web/src/components/widgets apps/web/src/app/player \
+      apps/web/src/components/player
     ```
     Anything that returns a hit is a regression on Taurus. (The two
     intentional callsites — `KioskSplash.tsx` line 401 and the

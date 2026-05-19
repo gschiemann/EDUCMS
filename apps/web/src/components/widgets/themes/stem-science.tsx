@@ -8,7 +8,7 @@ import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 export function StemScienceText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'STEM Lab';
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-8" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-8" style={{
       background: 'rgba(2, 6, 23, 0.7)',
       backdropFilter: 'blur(12px)',
       border: '2px solid rgba(6, 182, 212, 0.3)',
@@ -64,7 +64,7 @@ export function StemScienceCountdown({ config, compact }: { config: any; compact
   }, [config.targetDate]);
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center p-8" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center p-8" style={{
       background: 'rgba(2, 6, 23, 0.7)',
       backdropFilter: 'blur(12px)',
       borderLeft: '4px solid #06b6d4',
@@ -124,7 +124,7 @@ export function StemScienceCountdown({ config, compact }: { config: any; compact
 
 export function StemScienceRichText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   return (
-    <div className="absolute inset-0 p-8 flex flex-col" style={{ containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 p-8 flex flex-col" style={{ containerType: 'size' }}>
       <div style={{
         background: 'rgba(2, 6, 23, 0.85)',
         backdropFilter: 'blur(20px)',
@@ -164,7 +164,7 @@ export function StemScienceRichText({ config, compact }: { config: any; compact?
 
 export function StemScienceImageCarousel({ config, compact }: { config: any; compact?: boolean }) {
   return (
-    <div className="absolute inset-0 p-8 flex flex-col" style={{ containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 p-8 flex flex-col" style={{ containerType: 'size' }}>
       <div style={{
         background: 'rgba(2, 6, 23, 0.85)',
         backdropFilter: 'blur(20px)',
@@ -205,7 +205,7 @@ export function StemScienceTicker({ config, compact }: { config: any; compact?: 
   const messages = config.messages || ['Safety goggles required beyond this point.'];
   const text = messages.join('   ||   ');
   return (
-    <div className="absolute inset-0 flex items-center overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden" style={{
       background: 'rgba(2, 6, 23, 0.95)',
       boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.8)',
       borderTop: '1px solid #164e63'

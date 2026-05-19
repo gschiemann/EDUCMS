@@ -192,7 +192,7 @@ export function TouchOverlay({
 
   return (
     <div
-      className="fixed inset-0 bg-black/90 z-[120] flex items-center justify-center"
+      className="fixed top-0 right-0 bottom-0 left-0 bg-black/90 z-[120] flex items-center justify-center"
       role="dialog"
       aria-modal="true"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -354,7 +354,7 @@ export function TouchNavOverlay({
   })();
 
   return (
-    <div className="fixed inset-0 bg-black z-[115] flex flex-col" role="dialog" aria-modal="true">
+    <div className="fixed top-0 right-0 bottom-0 left-0 bg-black z-[115] flex flex-col" role="dialog" aria-modal="true">
       {/* Back chip — sized for a kiosk display viewed from 6-10 ft.
           Dashboard-sized text (14px) was unreadable across a school
           lobby (UX audit H1, 2026-05-12). text-2xl + tall padding +
@@ -401,7 +401,7 @@ export function TouchNavOverlay({
           // visitor in a lobby, NOT an operator. They have no idea
           // what a "widget" is. "Nothing to show here" + Back is the
           // entire message they need (UX audit G4, 2026-05-12).
-          <div className="absolute inset-0 flex items-center justify-center text-white text-center px-8">
+          <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center text-white text-center px-8">
             <div>
               <h2 className="text-3xl font-black mb-3">Nothing to show here</h2>
               <p className="text-base text-white/60">Tap Back to return.</p>

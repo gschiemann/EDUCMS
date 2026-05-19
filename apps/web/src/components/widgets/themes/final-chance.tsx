@@ -140,7 +140,7 @@ function FloatingEmojis({ items, area = 'card' }: { items: Array<{ e: string; to
 function GlassCard({ children, padding = '6%', accent, emojis }: { children: React.ReactNode; padding?: string; accent?: string; emojis?: Array<{ e: string; top: string; left: string; size?: string; delay?: string; anim?: string }> }) {
   return (
     <div
-      className="absolute inset-0 overflow-hidden flex flex-col justify-center"
+      className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex flex-col justify-center"
       style={{
         background: FC.card,
         backdropFilter: 'blur(24px) saturate(140%)',
@@ -454,7 +454,7 @@ export function FinalChanceTicker({ config }: { config: any }) {
   ];
   const text = messages.join('   ★   ');
   return (
-    <div className="absolute inset-0 overflow-hidden flex items-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center" style={{
       background: `linear-gradient(90deg, ${FC.pink}, ${FC.coral}, ${FC.gold})`,
       borderRadius: 18,
       boxShadow: `0 10px 30px ${FC.pink}55`,

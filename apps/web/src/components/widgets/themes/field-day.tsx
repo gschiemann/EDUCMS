@@ -53,7 +53,7 @@ export function FieldDayLogo({ config }: { config: any; compact?: boolean }) {
   const label = (config?.initials || config?.mascotName || 'TIGERS').toString().toUpperCase().slice(0, 8);
   const photoUrl = config?.assetUrl || config?.photoUrl;
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <svg viewBox="0 0 340 340" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.35))' }}>
         {/* sunburst rays */}
@@ -121,7 +121,7 @@ export function FieldDayText({ config, compact, onConfigChange }: { config: any;
   const content = (config?.content || "LET'S GO TIGERS!").toString();
   const sub = config?.subtitle || '';
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%',
         filter: 'drop-shadow(0 10px 16px rgba(0,0,0,0.35))',
         transform: 'rotate(-1.2deg)' }}>
@@ -192,7 +192,7 @@ export function FieldDayClock({ config, compact }: { config: any; compact?: bool
   const secDeg  = secs * 6;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <svg viewBox="0 0 640 720" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: 'drop-shadow(0 12px 16px rgba(0,0,0,0.35))', transform: 'rotate(-3deg)' }}>
         {/* stem */}
@@ -258,7 +258,7 @@ export function FieldDayWeather({ config, compact }: { config: any; compact?: bo
   const isClear   = !isOvercast && !isRain && !isSnow && !isStorm && (low.includes('clear') || low.includes('sun') || low.includes('fair'));
   const isPartly  = !isClear && !isOvercast && !isRain && !isSnow && !isStorm;
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <svg viewBox="0 0 640 720" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: 'drop-shadow(0 12px 16px rgba(0,0,0,0.35))', transform: 'rotate(3deg)' }}>
         {/* shield outline */}
@@ -365,7 +365,7 @@ export function FieldDayCountdown({ config, compact, onConfigChange }: { config:
   const unit = showDays ? (days === 1 ? 'DAY' : 'DAYS') : (hours === 1 ? 'HR' : 'HRS');
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%', transform: 'rotate(-3deg)' }}>
         <svg viewBox="0 0 520 640" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: 'drop-shadow(0 12px 20px rgba(0,0,0,0.4))' }}>
@@ -421,7 +421,7 @@ export function FieldDayAnnouncement({ config, compact, onConfigChange }: { conf
   const body = (config?.message || config?.body || 'Exciting things happening at school today!').toString();
   const date = config?.date || '';
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%',
         filter: 'drop-shadow(0 14px 22px rgba(0,0,0,0.35))',
         transform: 'rotate(-0.8deg)' }}>
@@ -494,7 +494,7 @@ export function FieldDayCalendar({ config, compact }: { config: any; compact?: b
   const colors = [FD.red, FD.blue, FD.grass, FD.gold];
   const limit = compact ? 2 : 3;
   return (
-    <div className="absolute inset-0 flex flex-col items-stretch justify-center"
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-stretch justify-center"
       style={{ padding: '4%', gap: '3%', containerType: 'size' }}>
       {events.slice(0, limit).map((ev, i) => {
         const bg = colors[i % colors.length];
@@ -556,7 +556,7 @@ export function FieldDayStaffSpotlight({ config, compact, onConfigChange }: { co
   const photoUrl: string | undefined = config?.photoUrl || config?.assetUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: FD.gold,
@@ -651,7 +651,7 @@ export function FieldDayImageCarousel({ config }: { config: any; compact?: boole
   }, [urls.length, config?.intervalMs]);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: FD.ink,
@@ -724,7 +724,7 @@ export function FieldDayTicker({ config }: { config: any; compact?: boolean }) {
   const repeated = `${text}     ★     ${text}`;
 
   return (
-    <div className="absolute inset-0" style={{ padding: '1%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '1%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: FD.ink,

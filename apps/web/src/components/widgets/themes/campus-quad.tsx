@@ -101,7 +101,7 @@ export function CampusQuadLogo({
   const photoUrl = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ padding: '6%', gap: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ padding: '6%', gap: '4%' }}>
       {/* Photo or monogram block */}
       <div style={{
         flex: '0 0 62%',
@@ -161,7 +161,7 @@ export function CampusQuadText({
   const subtitle = config.subtitle || 'A place to grow, connect, and excel.';
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-center" style={{ padding: '5% 6%', gap: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '5% 6%', gap: '3%' }}>
       {/* Massive headline */}
       <div style={{ flex: !compact && subtitle ? '0 0 62%' : '0 0 90%', minHeight: 0 }}>
         <EditableText
@@ -248,7 +248,7 @@ export function CampusQuadClock({
   }
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ padding: '5%', gap: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ padding: '5%', gap: '3%' }}>
       {/* Analog face */}
       <div style={{ flex: '0 0 72%', minHeight: 0, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <svg viewBox="0 0 240 240" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
@@ -397,7 +397,7 @@ export function CampusQuadWeather({
   const cond = weather ? getWMO(weather.weatherCode).label : (config.condition || 'Loading…');
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ padding: '5% 6%', gap: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ padding: '5% 6%', gap: '3%' }}>
       {/* Icon — outline only, no fills */}
       <div style={{ flex: '0 0 38%', minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
         <WeatherIcon cond={cond} size={80} />
@@ -449,7 +449,7 @@ export function CampusQuadCountdown({
   const unit     = days > 0 ? (days === 1 ? 'DAY UNTIL' : 'DAYS UNTIL') : (hours === 1 ? 'HOUR UNTIL' : 'HOURS UNTIL');
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ padding: '5% 7%', gap: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ padding: '5% 7%', gap: '2%' }}>
       {/* Kicker in small-caps above */}
       {!compact && (
         <div style={{ flex: '0 0 14%', minHeight: 0, width: '100%' }}>
@@ -504,7 +504,7 @@ export function CampusQuadAnnouncement({
   const message = config.message || config.body  || 'Lead copy goes here. Keep it concise — one or two impactful sentences that students will read at a glance.';
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-center" style={{ padding: '6% 7%', gap: '4%', background: CQ.paper }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '6% 7%', gap: '4%', background: CQ.paper }}>
       {/* Kicker — small-caps accent-red */}
       <div style={{ flex: '0 0 10%', minHeight: 0 }}>
         <FitText max={40} min={6} wrap={false} center={false} style={{ fontFamily: CQ_FONT_BODY, fontWeight: 600, letterSpacing: '0.2em', textTransform: 'uppercase', color: CQ.accent }}>
@@ -567,7 +567,7 @@ export function CampusQuadCalendar({
   ).slice(0, Math.max(1, Math.min(6, config.maxEvents ?? 3)));
 
   return (
-    <div className="absolute inset-0 flex flex-col" style={{ padding: '5% 6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col" style={{ padding: '5% 6%' }}>
       {/* Header */}
       <div style={{ flex: '0 0 auto', marginBottom: '3%' }}>
         <SmallCaps style={{ color: CQ.accent, letterSpacing: '0.22em' }}>Upcoming</SmallCaps>
@@ -619,7 +619,7 @@ export function CampusQuadStaffSpotlight({
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
 
   return (
-    <div className="absolute inset-0 flex" style={{ padding: '5%', gap: '5%', alignItems: 'center', background: CQ.paper }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex" style={{ padding: '5%', gap: '5%', alignItems: 'center', background: CQ.paper }}>
       {/* Portrait — circle-cropped */}
       <div style={{
         flexShrink: 0,
@@ -707,7 +707,7 @@ export function CampusQuadImageCarousel({
   const caption = captions[idx] || config.caption || '';
 
   return (
-    <div className="absolute inset-0 flex flex-col" style={{ background: CQ.ink }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col" style={{ background: CQ.ink }}>
       {/* Full-bleed photo */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
         {urls.length > 0 ? (
@@ -776,7 +776,7 @@ export function CampusQuadTicker({
   const primary = messages[idx % messages.length];
 
   return (
-    <div className="absolute inset-0 flex items-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center" style={{
       background: CQ.paper,
       borderTop: `2px solid ${CQ.ink}`,
       borderBottom: `2px solid ${CQ.ink}`,

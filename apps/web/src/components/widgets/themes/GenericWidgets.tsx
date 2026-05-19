@@ -28,7 +28,7 @@ export function QuoteWidget({ config, onConfigChange }: { config: any; compact?:
   const text = config.quote || '"Believe you can and you\'re halfway there."';
   const author = config.author || '— Theodore Roosevelt';
   return (
-    <div className="absolute inset-0" style={{ padding: '5%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '5%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: 'rgba(255,255,255,0.95)',
@@ -78,7 +78,7 @@ export function StatsWidget({ config }: { config: any; compact?: boolean }) {
   const stats = Array.isArray(config.stats) && config.stats.length ? config.stats : defaultStats;
   const colors = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6'];
   return (
-    <div className="absolute inset-0 flex items-stretch" style={{ padding: '3%', gap: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-stretch" style={{ padding: '3%', gap: '3%' }}>
       {stats.slice(0, 5).map((s: any, i: number) => (
         <div key={i} style={{
           flex: 1, minWidth: 0,
@@ -115,7 +115,7 @@ export function MenuItemWidget({ config, onConfigChange }: { config: any; compac
   const allergens: string[] = Array.isArray(config.allergens) ? config.allergens : ['V', 'GF'];
   const price = config.price || '';
   return (
-    <div className="absolute inset-0" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: '#FFF9ED',
@@ -177,7 +177,7 @@ export function ScoreboardWidget({ config, onConfigChange }: { config: any; comp
   const period = config.period || '1ST · 8:42';
   const status = config.status || 'TONIGHT';
   return (
-    <div className="absolute inset-0" style={{ padding: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '2%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: 'linear-gradient(180deg,#0B1228,#050812)',
@@ -260,7 +260,7 @@ export function ScheduleGridWidget({ config }: { config: any; compact?: boolean 
   ];
   const periods = Array.isArray(config.periods) && config.periods.length ? config.periods : defaultPeriods;
   return (
-    <div className="absolute inset-0" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: 'rgba(255,255,255,0.96)',
@@ -318,7 +318,7 @@ export function AttendanceWidget({ config }: { config: any; compact?: boolean })
   const total = config.totalStudents ?? 624;
   const absent = Math.max(0, Math.round(total * (1 - present / 100)));
   return (
-    <div className="absolute inset-0" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: 'linear-gradient(135deg,#10b981,#059669)',
@@ -364,7 +364,7 @@ export function BirthdaysWidget({ config }: { config: any; compact?: boolean }) 
   const defaultNames: string[] = ['Morgan P.', 'Samir K.', 'Ava L.'];
   const names: string[] = Array.isArray(config.birthdays) && config.birthdays.length ? config.birthdays : defaultNames;
   return (
-    <div className="absolute inset-0" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: 'linear-gradient(135deg,#FBCFE8,#DDD6FE)',
@@ -404,7 +404,7 @@ export function HonorRollWidget({ config }: { config: any; compact?: boolean }) 
   ];
   const students = Array.isArray(config.students) && config.students.length ? config.students : defaultStudents;
   return (
-    <div className="absolute inset-0" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: 'linear-gradient(180deg,#1F2937,#111827)',

@@ -75,7 +75,7 @@ export function ScorebugLogo({ config }: { config: any; compact?: boolean }) {
   const photoUrl = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...glassStyle(),
@@ -152,7 +152,7 @@ export function ScorebugText({ config, compact, onConfigChange }: { config: any;
   const away = (m?.[2] || 'AWAY').trim();
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '1.5%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '1.5%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...glassStyle(),
@@ -302,7 +302,7 @@ export function ScorebugClock({ config, compact }: { config: any; compact?: bool
   const secAng  = s * 6;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...glassStyle(),
@@ -444,7 +444,7 @@ export function ScorebugWeather({ config, compact }: { config: any; compact?: bo
   );
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...glassStyle(),
@@ -508,7 +508,7 @@ export function ScorebugCountdown({ config, compact, onConfigChange }: { config:
     : `${String(mins).padStart(2, '0')}:${String(Math.floor((diff % 60000) / 1000)).padStart(2, '0')}`;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...glassStyle(),
@@ -584,7 +584,7 @@ export function ScorebugAnnouncement({ config, compact, onConfigChange }: { conf
   const message  = config.message || config.body || 'Pep rally moved to Friday at 2:30 PM in the gym.';
 
   return (
-    <div className="absolute inset-0 flex items-center" style={{ padding: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center" style={{ padding: '2%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         display: 'flex', overflow: 'hidden',
@@ -670,7 +670,7 @@ export function ScorebugCalendar({ config }: { config: any; compact?: boolean })
   const rows = standings.slice(0, Math.max(1, Math.min(8, config.maxEvents ?? 5)));
 
   return (
-    <div className="absolute inset-0 flex flex-col" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...glassStyle(),
@@ -780,7 +780,7 @@ export function ScorebugStaffSpotlight({ config, onConfigChange }: { config: any
         ];
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...glassStyle(),
@@ -935,7 +935,7 @@ export function ScorebugImageCarousel({ config }: { config: any; compact?: boole
         ];
 
   return (
-    <div className="absolute inset-0" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...glassStyle(),
@@ -1044,7 +1044,7 @@ export function ScorebugTicker({ config, compact }: { config: any; compact?: boo
   const reel = messages.join('   ◆   ');
 
   return (
-    <div className="absolute inset-0" style={{ overflow: 'hidden', background: SB.live }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'hidden', background: SB.live }}>
       {/* LIVE bug on the left */}
       <div style={{
         position: 'absolute', left: 0, top: 0, bottom: 0,

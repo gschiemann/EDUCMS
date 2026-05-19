@@ -66,7 +66,7 @@ export function RainbowRibbonLogo({ config }: { config: any; compact?: boolean }
     // the soft shadow never clip at the zone edge. Ancestors (zone
     // containers) apply `overflow:hidden`, so anything that overhangs
     // gets cut — we keep the whole composition well inside the box.
-    <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'transparent', padding: '8%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ background: 'transparent', padding: '8%' }}>
       <svg viewBox="0 0 260 260" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.2))', overflow: 'visible' }}>
         {/* Pleated ribbon rosette — 12 wedges */}
@@ -131,7 +131,7 @@ export function RainbowRibbonText({ config, compact, onConfigChange }: { config:
   const content = config.content || 'GOOD MORNING, STARS!';
   const subtitle = config.subtitle || '~ let\'s make today colorful ~';
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2% 1%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2% 1%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 3200 360" width="100%" height="100%" preserveAspectRatio="none"
           style={{ filter: 'drop-shadow(0 12px 20px rgba(0,0,0,0.25))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -204,7 +204,7 @@ export function RainbowRibbonClock({ config, compact }: { config: any; compact?:
   const greeting = hour < 12 ? 'good morning!' : hour < 17 ? 'good afternoon!' : 'good evening!';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 520" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ filter: 'drop-shadow(0 16px 24px rgba(0,0,0,0.25))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -344,7 +344,7 @@ export function RainbowRibbonWeather({ config, compact }: { config: any; compact
   );
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 520" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ filter: 'drop-shadow(0 16px 24px rgba(0,0,0,0.2))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -403,7 +403,7 @@ export function RainbowRibbonCountdown({ config, compact, onConfigChange }: { co
   const unit = days > 0 ? (days === 1 ? 'DAY!' : 'DAYS!') : (hours === 1 ? 'HR!' : 'HRS!');
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 700" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ filter: 'drop-shadow(0 20px 28px rgba(0,0,0,0.3))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -483,7 +483,7 @@ export function RainbowRibbonAnnouncement({ config, compact, onConfigChange }: {
   const date = config.date || '';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 1800 500" width="100%" height="100%" preserveAspectRatio="none"
           style={{ filter: 'drop-shadow(0 18px 32px rgba(0,0,0,0.25))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -542,7 +542,7 @@ export function RainbowRibbonCalendar({ config }: { config: any; compact?: boole
   const colors = [RR.sky, RR.yellow, RR.pinkLt, RR.mint];
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
       {events.map((e: any, i: number) => {
         const bg = colors[i % colors.length];
         // CSS-only pill — inherently resizable. No SVG viewBox to
@@ -625,7 +625,7 @@ export function RainbowRibbonStaffSpotlight({ config, onConfigChange }: { config
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: RR.white, borderRadius: 24,
@@ -719,7 +719,7 @@ export function RainbowRibbonImageCarousel({ config }: { config: any; compact?: 
   const hasImage = urls.length > 0;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: RR.white, borderRadius: 28,
@@ -807,7 +807,7 @@ export function RainbowRibbonTicker({ config, compact }: { config: any; compact?
   const pennantColors = [RR.pink, RR.yellow, RR.mint, RR.sky, RR.lavender, RR.peach, RR.pink, RR.lavender, RR.sky, RR.mint, RR.yellow, RR.pink];
 
   return (
-    <div className="absolute inset-0" style={{ overflow: 'hidden' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'hidden' }}>
       <svg viewBox="0 0 3760 180" width="100%" height="55%" preserveAspectRatio="none"
         style={{ position: 'absolute', left: 0, right: 0, top: '5%' }}>
         {/* String */}

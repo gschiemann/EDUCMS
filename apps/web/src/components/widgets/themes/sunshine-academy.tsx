@@ -14,7 +14,7 @@ export function SunshineAcademyClock({ config, compact }: { config: any; compact
   const ampm = config.format === '24h' ? '' : now.getHours() >= 12 ? 'PM' : 'AM';
   
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ color: '#3A2E2A' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ color: '#3A2E2A' }}>
       <div style={{ fontSize: compact ? '4em' : '8em', fontWeight: 900, lineHeight: 1, textShadow: '0 4px 12px rgba(255,255,255,0.6)' }}>
         {h}:{m}
       </div>
@@ -37,7 +37,7 @@ export function SunshineAcademyWeather({ config, compact }: { config: any; compa
   const Icon = wmo.icon;
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ color: '#3A2E2A', textShadow: '0 4px 12px rgba(255,255,255,0.6)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ color: '#3A2E2A', textShadow: '0 4px 12px rgba(255,255,255,0.6)' }}>
       <div className="flex items-center gap-4">
         <Icon style={{ width: compact ? '2em' : '4em', height: compact ? '2em' : '4em', color: wmo.iconColor, filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))' }} />
         <div style={{ fontSize: compact ? '3em' : '6em', fontWeight: 900, lineHeight: 1 }}>{weather.temp}°</div>
@@ -59,7 +59,7 @@ export function SunshineAcademyCountdown({ config, compact }: { config: any; com
   const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
       background: 'rgba(255,252,245,0.88)', backdropFilter: 'blur(8px)',
       borderRadius: compact ? '12px' : '24px', padding: compact ? '10%' : '15%',
       boxShadow: '0 6px 24px rgba(90,70,50,0.12)', border: '2px solid rgba(255,220,180,0.5)', textAlign: 'center'
@@ -74,7 +74,7 @@ export function SunshineAcademyCountdown({ config, compact }: { config: any; com
 export function SunshineAcademyText({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'Your text here';
   return (
-    <div className="absolute inset-0 flex items-center justify-center text-center p-4" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center text-center p-4" style={{
       color: '#3A2E2A', fontSize: '3em', fontWeight: 900, textShadow: '0 4px 12px rgba(255,255,255,0.8)'
     }}>
       <div data-field="content" style={{ whiteSpace: 'pre-wrap' as const }}>
@@ -89,7 +89,7 @@ export function SunshineAcademyAnnouncement({ config, compact }: { config: any; 
   const content = config.message || config.content || 'Content goes here...';
   
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-4">
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-4">
       <div style={{
         width: '100%', height: '100%', borderRadius: compact ? '12px' : '24px',
         background: 'rgba(255,252,245,0.92)', backdropFilter: 'blur(8px)',
@@ -109,7 +109,7 @@ export function SunshineAcademyTicker({ config }: { config: any }) {
   const messages = config.messages?.length ? config.messages : ['Welcome back, Sunshine Stars!', 'Picture day is this Friday!'];
   const text = messages.join('     *     ');
   return (
-    <div className="absolute inset-0 flex items-center overflow-hidden" style={{ background: 'linear-gradient(90deg, #FF9A76, #FFBE88, #FF9A76)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden" style={{ background: 'linear-gradient(90deg, #FF9A76, #FFBE88, #FF9A76)' }}>
       <div style={{ whiteSpace: 'nowrap', animation: 'tickerScroll 30s linear infinite', fontSize: '2em', fontWeight: 800, color: '#3A2E2A', paddingLeft: '100%' }}>
         {text}     *     {text}
       </div>
@@ -121,7 +121,7 @@ export function SunshineAcademyTicker({ config }: { config: any }) {
 export function SunshineAcademyCalendar({ config, compact }: { config: any; compact?: boolean }) {
   const events = ['Art Show - Friday', 'Spirit Week - Next Mon', 'Book Fair - Oct 15', 'Fall Break - Oct 20'];
   return (
-    <div className="absolute inset-0 flex flex-col p-4" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-4" style={{
       background: 'rgba(255,252,245,0.88)', backdropFilter: 'blur(8px)',
       borderRadius: compact ? '12px' : '24px', padding: compact ? '1rem' : '1.5rem',
       boxShadow: '0 6px 24px rgba(90,70,50,0.12)', border: '2px solid rgba(255,220,180,0.5)'
@@ -146,7 +146,7 @@ export function SunshineAcademyStaffSpotlight({ config, compact }: { config: any
   const role = config.role || 'Teacher of the Week';
   const bio = config.bio || 'Inspiring 3rd graders every day with creativity and kindness!';
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-4">
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-4">
       <div style={{
         width: '100%', height: '100%', background: 'white',
         borderRadius: compact ? '8px' : '16px', padding: compact ? '0.8rem' : '1.2rem',
@@ -178,7 +178,7 @@ export function SunshineAcademyStaffSpotlight({ config, compact }: { config: any
 
 export function SunshineAcademyImageCarousel({ config }: { config: any }) {
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-hidden" style={{
       borderRadius: '20px', background: 'linear-gradient(135deg, #E0F2FE, #DBEAFE, #EDE9FE)',
       boxShadow: '0 6px 24px rgba(90,70,50,0.12)', border: '4px solid white'
     }}>

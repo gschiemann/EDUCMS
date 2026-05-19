@@ -199,9 +199,9 @@ function RibbonVariant({ speed, colors }: { speed: number; colors?: string[] }) 
   const gradient = `linear-gradient(135deg, ${palette.join(', ')})`;
   // Two stacked ribbons so the slide loop never has a visible reset.
   return (
-    <div className="absolute inset-0 flex items-center justify-center">
-      <div className="absolute inset-x-0 h-[28%]" style={{ background: gradient, opacity: 0.85, animation: `dw-ribbonSlide ${10 / speed}s linear infinite` }} aria-hidden />
-      <div className="absolute inset-x-0 h-[28%]" style={{ background: gradient, opacity: 0.6, transform: 'translateX(-100%)', animation: `dw-ribbonSlide ${10 / speed}s linear ${5 / speed}s infinite` }} aria-hidden />
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center">
+      <div className="absolute left-0 right-0 h-[28%]" style={{ background: gradient, opacity: 0.85, animation: `dw-ribbonSlide ${10 / speed}s linear infinite` }} aria-hidden />
+      <div className="absolute left-0 right-0 h-[28%]" style={{ background: gradient, opacity: 0.6, transform: 'translateX(-100%)', animation: `dw-ribbonSlide ${10 / speed}s linear ${5 / speed}s infinite` }} aria-hidden />
     </div>
   );
 }
@@ -329,7 +329,7 @@ function TickerVariant({ speed, text, colors }: { speed: number; text?: string; 
   const display = text || 'Welcome to school! · Have a wonderful day · Stay curious · Be kind';
   const palette = colors?.length ? colors : ['#fff'];
   return (
-    <div className="absolute inset-0 flex items-center overflow-hidden">
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden">
       <div
         className="whitespace-nowrap text-[6vmin] font-black tracking-tight"
         data-inline-edit-pause
@@ -352,7 +352,7 @@ function NeonBuzzVariant({ text, glowColor }: { text?: string; glowColor?: strin
   const neon = glowColor || '#f0abfc';
   return (
     <div
-      className="absolute inset-0 flex items-center justify-center"
+      className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center"
       style={{ ['--neon' as any]: neon }}
       aria-hidden
     >
@@ -380,7 +380,7 @@ function PulseGlowVariant({ glowColor, speed }: { glowColor?: string; speed: num
   const glowBright = `${glow}66`;
   return (
     <div
-      className="absolute inset-0 rounded-3xl"
+      className="absolute top-0 right-0 bottom-0 left-0 rounded-3xl"
       style={{
         ['--glow' as any]: glowDim,
         background: `radial-gradient(ellipse at center, ${glowDim} 0%, transparent 70%)`,

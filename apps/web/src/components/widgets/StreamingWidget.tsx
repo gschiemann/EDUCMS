@@ -108,7 +108,7 @@ export function StreamingWidget({ config, live }: { config?: StreamingCfg; live?
     const caps = detectCapabilities();
     if (caps.chromiumMajor > 0 && caps.chromiumMajor < 51) {
       return (
-        <div className="absolute inset-0 flex items-center justify-center" style={{ background: '#0f172a', color: '#fbbf24', fontSize: '0.9em', textAlign: 'center', padding: 16 }}>
+        <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ background: '#0f172a', color: '#fbbf24', fontSize: '0.9em', textAlign: 'center', padding: 16 }}>
           <div>
             <div style={{ fontSize: '2em' }}>⚠️</div>
             <div style={{ fontWeight: 700 }}>This screen's Android version is too old for HLS streaming.</div>
@@ -121,7 +121,7 @@ export function StreamingWidget({ config, live }: { config?: StreamingCfg; live?
 
   if (!c.playbackUrl && !c.embedUrl) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center" style={{ background: '#0f172a', color: '#94a3b8', fontSize: '0.9em', textAlign: 'center', padding: 16 }}>
+      <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ background: '#0f172a', color: '#94a3b8', fontSize: '0.9em', textAlign: 'center', padding: 16 }}>
         <div>
           <div style={{ fontSize: '2em', marginBottom: 8 }}>📺</div>
           <div style={{ fontWeight: 700, color: '#e2e8f0' }}>{c.channelTitle || 'No channel selected'}</div>
@@ -133,7 +133,7 @@ export function StreamingWidget({ config, live }: { config?: StreamingCfg; live?
 
   if (playbackType === 'rtmp' || playbackType === 'rtsp') {
     return (
-      <div className="absolute inset-0 flex items-center justify-center" style={{ background: '#0f172a', color: '#fbbf24', fontSize: '0.9em', textAlign: 'center', padding: 16 }}>
+      <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ background: '#0f172a', color: '#fbbf24', fontSize: '0.9em', textAlign: 'center', padding: 16 }}>
         <div>
           <div style={{ fontSize: '2em' }}>⚠️</div>
           <div style={{ fontWeight: 700 }}>RTMP / RTSP requires a server-side transcode.</div>
@@ -144,7 +144,7 @@ export function StreamingWidget({ config, live }: { config?: StreamingCfg; live?
   }
 
   return (
-    <div className="absolute inset-0" style={{ overflow: 'hidden', background: '#000' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'hidden', background: '#000' }}>
       {playbackType === 'iframe' ? (
         <IframeStream url={c.embedUrl || resolvedPlaybackUrl} muted={c.muted ?? true} live={isLive} />
       ) : playbackType === 'dash' ? (
@@ -405,7 +405,7 @@ function AdOverlay({ slots }: { slots: AdSlotCfg[] }) {
 
   if (placement === 'full-bleed') {
     return (
-      <div className="absolute inset-0 z-10" style={{ background: '#000' }}>
+      <div className="absolute top-0 right-0 bottom-0 left-0 z-10" style={{ background: '#000' }}>
         {inner}
       </div>
     );

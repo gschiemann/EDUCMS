@@ -115,7 +115,7 @@ export function ScrapbookLogo({ config }: { config: any; compact?: boolean }) {
   const photoUrl = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Polaroid-tape strips across the top corners */}
         <WashiTape color={SC.washiPink}  width="28%" height="10%" left="4%"  top="-2%" rotate={-8} />
@@ -183,7 +183,7 @@ export function ScrapbookText({ config, compact, onConfigChange }: {
   const subtitle = config.subtitle || '';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4% 3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4% 3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
 
         {/* Torn paper strip background (SVG) */}
@@ -261,7 +261,7 @@ export function ScrapbookClock({ config, compact }: { config: any; compact?: boo
   const hdeg = h * 30;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -380,7 +380,7 @@ export function ScrapbookWeather({ config, compact }: { config: any; compact?: b
   const isPartly  = !isClear && !isOvercast && !isRain && !isSnow && !isStorm;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: SC.paperBlush,
@@ -519,7 +519,7 @@ export function ScrapbookCountdown({ config, compact, onConfigChange }: {
   const unit     = days > 0 ? 'DAYS' : 'HRS';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
 
         {/* Ticket stub SVG background */}
@@ -590,7 +590,7 @@ export function ScrapbookAnnouncement({ config, compact, onConfigChange }: {
   const date    = config.date || '';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: SC.paper,
@@ -686,7 +686,7 @@ export function ScrapbookCalendar({ config }: { config: any; compact?: boolean }
   const rotations   = [-3, 1, -1.5, 2, -2];
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-center" style={{ padding: '4% 3%', gap: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4% 3%', gap: '4%' }}>
       {events.map((e: any, i: number) => (
         <div key={i} style={{
           position: 'relative',
@@ -753,7 +753,7 @@ export function ScrapbookStaffSpotlight({ config, onConfigChange }: {
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '86%', height: '96%',
         display: 'flex', flexDirection: 'column',
@@ -860,7 +860,7 @@ export function ScrapbookImageCarousel({ config }: { config: any; compact?: bool
   const hasImage = urls.length > 0;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '5%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%' }}>
       <div style={{
         position: 'relative', width: '94%', height: '94%',
         background: SC.paper,
@@ -935,7 +935,7 @@ export function ScrapbookTicker({ config, compact }: { config: any; compact?: bo
   const primary = messages[idx % messages.length];
 
   return (
-    <div className="absolute inset-0 flex items-center" style={{ padding: '3% 6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center" style={{ padding: '3% 6%' }}>
       <div style={{ position: 'relative', width: '100%', height: '60%' }}>
         {/* Paper strip body */}
         <div style={{

@@ -61,7 +61,7 @@ export function StorybookLogo({ config }: { config: any; compact?: boolean }) {
   const photoUrl = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'transparent', padding: '8%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ background: 'transparent', padding: '8%' }}>
       <svg viewBox="0 0 260 260" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: `drop-shadow(0 4px 8px ${SB.shadow})`, overflow: 'visible' }}>
         <defs>
@@ -138,7 +138,7 @@ export function StorybookText({ config, compact, onConfigChange }: { config: any
   const rest = content.trim().slice(1);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3% 3%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3% 3%', containerType: 'size' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
         {/* Title row — drop cap + serif rest */}
         <div style={{
@@ -222,7 +222,7 @@ export function StorybookClock({ config, compact }: { config: any; compact?: boo
   const secDeg  = s * 6;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 520 620" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
@@ -384,7 +384,7 @@ export function StorybookWeather({ config, compact }: { config: any; compact?: b
   );
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 500" width="100%" height="100%" preserveAspectRatio="none"
           style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -455,7 +455,7 @@ export function StorybookCountdown({ config, compact, onConfigChange }: { config
   const unit = days > 0 ? (days === 1 ? 'DAY!' : 'DAYS!') : (hours === 1 ? 'HR!' : 'HRS!');
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 500 700" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
@@ -527,7 +527,7 @@ export function StorybookAnnouncement({ config, compact, onConfigChange }: { con
   const date = config.date || '';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 1800 500" width="100%" height="100%" preserveAspectRatio="none"
           style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
@@ -614,7 +614,7 @@ export function StorybookCalendar({ config }: { config: any; compact?: boolean }
   const accents = [SB.red, SB.blue, SB.moss, SB.gold];
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
       {events.map((e: any, i: number) => {
         const accent = accents[i % accents.length];
         return (
@@ -697,7 +697,7 @@ export function StorybookStaffSpotlight({ config, onConfigChange }: { config: an
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center"
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center"
       style={{ padding: '5%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
@@ -806,7 +806,7 @@ export function StorybookImageCarousel({ config }: { config: any; compact?: bool
   const hasImage = urls.length > 0;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center"
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center"
       style={{ padding: '5%', containerType: 'size' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Parchment plate backing */}
@@ -907,7 +907,7 @@ export function StorybookTicker({ config, compact }: { config: any; compact?: bo
   const primary = messages[idx % messages.length];
 
   return (
-    <div className="absolute inset-0" style={{ overflow: 'visible' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'visible' }}>
       <svg viewBox="0 0 2000 220" width="100%" height="100%" preserveAspectRatio="none"
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: PAPER_SHADOW, overflow: 'visible' }}>
         <defs>

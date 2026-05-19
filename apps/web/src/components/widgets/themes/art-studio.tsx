@@ -59,7 +59,7 @@ export function ArtStudioLogo({ config }: { config: any; compact?: boolean }) {
   const photoUrl: string | undefined = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <svg viewBox="0 0 280 280" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: `drop-shadow(0 6px 14px ${AS.shadow})`, overflow: 'visible' }}>
         {/* Palette body — kidney-bean shape */}
@@ -121,7 +121,7 @@ export function ArtStudioText({ config, compact, onConfigChange }: { config: any
   const subtitle = config.subtitle || 'express · create · inspire';
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ padding: '5% 6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ padding: '5% 6%' }}>
       {/* Title in handwriting font */}
       <div style={{ flex: !compact && subtitle ? '0 0 58%' : '0 0 100%', width: '100%', minHeight: 0, position: 'relative' }}>
         <EditableText
@@ -210,7 +210,7 @@ export function ArtStudioClock({ config, compact }: { config: any; compact?: boo
   ];
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 300 300" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -322,7 +322,7 @@ export function ArtStudioWeather({ config, compact }: { config: any; compact?: b
   const wash2     = isSnow ? '#E8F2FA' : isStorm ? '#6878A0' : isRain ? '#5590C8' : isCloud ? '#A0B4C4' : isClear ? '#FFF0A0' : '#BCDFFF';
 
   return (
-    <div className="absolute inset-0" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 340 260" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -444,7 +444,7 @@ export function ArtStudioCountdown({ config, compact, onConfigChange }: { config
   const sprayColors = [AS.paintRed, AS.paintBlue, AS.paintPurple];
 
   return (
-    <div className="absolute inset-0" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 400 320" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -526,7 +526,7 @@ export function ArtStudioAnnouncement({ config, compact, onConfigChange }: { con
   const date    = config.date    || '';
 
   return (
-    <div className="absolute inset-0" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 500 380" width="100%" height="100%" preserveAspectRatio="none"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -601,7 +601,7 @@ export function ArtStudioCalendar({ config }: { config: any; compact?: boolean }
   const splashColors = [AS.paintRed, AS.paintBlue, AS.paintGreen, AS.paintPurple, AS.paintYellow, AS.paintRed];
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-center" style={{ padding: '4%', gap: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4%', gap: '4%' }}>
       {events.map((e: any, i: number) => (
         <div key={i} style={{
           flex: 1, minHeight: 0,
@@ -660,7 +660,7 @@ export function ArtStudioStaffSpotlight({ config, onConfigChange }: { config: an
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 420 360" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
@@ -750,7 +750,7 @@ export function ArtStudioImageCarousel({ config }: { config: any; compact?: bool
   const hasImage = urls.length > 0;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 420 370" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
@@ -820,7 +820,7 @@ export function ArtStudioTicker({ config, compact }: { config: any; compact?: bo
   const primary = messages[idx % messages.length];
 
   return (
-    <div className="absolute inset-0 overflow-hidden">
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden">
       {/* Scroll shape background */}
       <svg viewBox="0 0 1920 160" width="100%" height="100%" preserveAspectRatio="none"
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>

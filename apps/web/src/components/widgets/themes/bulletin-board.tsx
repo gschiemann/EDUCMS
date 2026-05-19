@@ -82,7 +82,7 @@ export function BulletinBoardLogo({ config }: { config: any; compact?: boolean }
   const photoUrl = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'transparent', padding: '8%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ background: 'transparent', padding: '8%' }}>
       <svg viewBox="0 0 260 260" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: PAPER_SHADOW, overflow: 'visible' }}>
         {/* Paper backing disc — slightly torn ring */}
@@ -137,7 +137,7 @@ export function BulletinBoardText({ config, compact, onConfigChange }: { config:
   }));
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2% 2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2% 2%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
         {/* Jute string across top with pushpins at both ends */}
         <div style={{ position: 'relative', flex: !compact && subtitle ? '0 0 72%' : '1 1 100%', minHeight: 0 }}>
@@ -220,7 +220,7 @@ export function BulletinBoardClock({ config, compact }: { config: any; compact?:
     // LIVE analog hands (hour, minute, second), and the digital time
     // tucked into the lower-center of the face. Single pushpin at top.
     // Minimal padding so the clock fills the whole zone at any size.
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 520 520" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
@@ -357,7 +357,7 @@ export function BulletinBoardWeather({ config, compact }: { config: any; compact
   );
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 500" width="100%" height="100%" preserveAspectRatio="none"
           style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
@@ -420,7 +420,7 @@ export function BulletinBoardCountdown({ config, compact, onConfigChange }: { co
   const unit = days > 0 ? (days === 1 ? 'DAY!' : 'DAYS!') : (hours === 1 ? 'HR!' : 'HRS!');
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 700" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
@@ -481,7 +481,7 @@ export function BulletinBoardAnnouncement({ config, compact, onConfigChange }: {
   const date = config.date || '';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 1800 500" width="100%" height="100%" preserveAspectRatio="none"
           style={{ filter: PAPER_SHADOW, position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' }}>
@@ -557,7 +557,7 @@ export function BulletinBoardCalendar({ config }: { config: any; compact?: boole
     // vertical stack forced each note to a 10:1 aspect — at that shape,
     // any rotation clipped at the zone edge and the notes looked like
     // trapezoids. Side-by-side keeps them Post-it-proportioned.
-    <div className="absolute inset-0 flex items-stretch justify-center" style={{ padding: '6% 4%', gap: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-stretch justify-center" style={{ padding: '6% 4%', gap: '3%' }}>
       {events.map((e: any, i: number) => {
         const s = stickies[i % stickies.length];
         return (
@@ -619,7 +619,7 @@ export function BulletinBoardStaffSpotlight({ config, onConfigChange }: { config
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center"
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center"
       style={{ padding: '5%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '92%', height: '94%',
@@ -722,7 +722,7 @@ export function BulletinBoardImageCarousel({ config }: { config: any; compact?: 
   const hasImage = urls.length > 0;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center"
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center"
       style={{ padding: '5%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
@@ -801,7 +801,7 @@ export function BulletinBoardTicker({ config, compact }: { config: any; compact?
   const primary = messages[idx % messages.length];
 
   return (
-    <div className="absolute inset-0" style={{ overflow: 'visible' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'visible' }}>
       <svg viewBox="0 0 2000 220" width="100%" height="100%" preserveAspectRatio="none"
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: PAPER_SHADOW, overflow: 'visible' }}>
         {/* Scalloped paper strip — wavy top and bottom */}

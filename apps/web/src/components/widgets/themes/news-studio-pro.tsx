@@ -72,7 +72,7 @@ export function NewsStudioProLogo({ config }: { config: any; compact?: boolean }
   const photoUrl  = config.assetUrl  || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <div style={{
         position: 'relative',
         width: '100%', height: '100%',
@@ -143,7 +143,7 @@ export function NewsStudioProText({
   const subtitle = config.subtitle || 'Stay informed. Stay connected.';
 
   return (
-    <div className="absolute inset-0 flex items-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative',
         width: '100%', height: '100%',
@@ -246,7 +246,7 @@ export function NewsStudioProClock({ config, compact }: { config: any; compact?:
   const hourDeg = hour * 30 + min * 0.5;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative',
         width: '100%', height: '100%',
@@ -456,7 +456,7 @@ export function NewsStudioProWeather({ config, compact }: { config: any; compact
   };
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative',
         width: '100%', height: '100%',
@@ -588,7 +588,7 @@ export function NewsStudioProCountdown({
   const secs     = Math.floor((diff % 60000) / 1000);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative',
         width: '100%', height: '100%',
@@ -728,7 +728,7 @@ export function NewsStudioProAnnouncement({
   const subtitle = config.subtitle || config.date  || '';
 
   return (
-    <div className="absolute inset-0 flex items-end" style={{ padding: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-end" style={{ padding: '2%' }}>
       <div style={{
         width: '100%',
         display: 'flex',
@@ -820,7 +820,7 @@ export function NewsStudioProCalendar({ config }: { config: any; compact?: boole
   ).slice(0, Math.max(1, Math.min(10, config.maxEvents ?? 4)));
 
   return (
-    <div className="absolute inset-0 flex flex-col" style={{ padding: '3%', gap: 0 }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col" style={{ padding: '3%', gap: 0 }}>
       {/* Header */}
       <div style={{
         flexShrink: 0,
@@ -910,7 +910,7 @@ export function NewsStudioProStaffSpotlight({
   const photoUrl = config.photoUrl || config.assetUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative',
         width: '100%', height: '100%',
@@ -1049,7 +1049,7 @@ export function NewsStudioProImageCarousel({ config }: { config: any; compact?: 
   const caption = config.caption || '';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative',
         width: '100%', height: '100%',
@@ -1178,7 +1178,7 @@ export function NewsStudioProTicker({ config, compact }: { config: any; compact?
   const primary = messages[idx % messages.length];
 
   return (
-    <div className="absolute inset-0 flex items-end">
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-end">
       <div style={{
         width: '100%',
         height: compact ? '100%' : '42%',

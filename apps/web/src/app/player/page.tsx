@@ -6,6 +6,7 @@ import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCirc
 import { KioskSplash, type LoadProgress } from '@/components/player/KioskSplash';
 import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
+import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 import {
   registerOfflineCache,
   precachePlaylist,
@@ -1201,14 +1202,14 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
   static getDerivedStateFromError(err: any) { return { hasError: true, err }; }
   componentDidCatch(err: any, info: any) {
     console.error('[Player] FATAL render error', err, info);
-    // Bound the reload loop. If the widget keeps crashing on mount,
-    // a naked setTimeout(reload, 8s) becomes an infinite crash-reload
-    // loop that burns CPU and prevents operator intervention. After
-    // 3 reloads in a row we STOP auto-reloading and leave the
-    // "Player recovering…" screen up so someone can manually
-    // intervene. The counter resets when the app successfully
-    // mounts without hitting the boundary (Component instance gets
-    // discarded by React).
+    // Bound the reload CADENCE so a widget that crashes on every mount
+    // can't become a tight CPU-burning crash-reload loop — but NEVER
+    // stop retrying. The old behaviour parked on "Player recovering"
+    // after 3 strikes, which on an unattended kiosk meant a dead screen
+    // until someone physically rebooted the controller (operator hit
+    // this 2026-05-19). Now: 3 fast retries, then slow self-healing
+    // retries. The counter resets on a healthy unmount (React discards
+    // this instance).
     try {
       const k = '__edu_player_reloadcount';
       const prev = parseInt(sessionStorage.getItem(k) || '0', 10) || 0;
@@ -1216,16 +1217,20 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
       sessionStorage.setItem(k, String(this.reloadCount));
     } catch { /* sessionStorage unavailable */ }
 
-    if (this.reloadCount >= 3) {
-      console.warn('[Player] Error boundary hit >=3 times — pausing auto-reload for operator intervention');
-      return;
+    // 3 fast strikes (8s) clear a transient crash quickly. 4th onward:
+    // keep retrying SLOWLY (90s) — never park. A slow retry self-heals
+    // the moment the bad content is fixed or swapped server-side; 90s
+    // is gentle enough that a hard-crashing build won't burn the CPU.
+    const delayMs = this.reloadCount <= 3 ? 8_000 : 90_000;
+    if (this.reloadCount > 3) {
+      console.warn(`[Player] Error boundary hit ${this.reloadCount}x — slow self-heal retry every 90s`);
     }
 
     if (this.reloadTimer) clearTimeout(this.reloadTimer);
     this.reloadTimer = setTimeout(() => {
       if (isAndroidWebView()) nativeReload();
       else if (typeof window !== 'undefined') window.location.reload();
-    }, 8_000);
+    }, delayMs);
   }
   componentWillUnmount() {
     if (this.reloadTimer) { clearTimeout(this.reloadTimer); this.reloadTimer = null; }
@@ -1239,7 +1244,7 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
     if (cachedEm) {
       // Life-safety override survives the crash.
       return (
-        <div className="fixed inset-0 bg-red-700 text-white flex flex-col items-center justify-center p-12 text-center">
+        <div className="fixed top-0 right-0 bottom-0 left-0 bg-red-700 text-white flex flex-col items-center justify-center p-12 text-center">
           <AlertTriangle className="w-32 h-32 mb-8 animate-pulse" />
           <h1 className="text-7xl font-black uppercase tracking-wider mb-6">{cachedEm.type || cachedEm.title || 'Emergency'}</h1>
           {cachedEm.textBlob && <p className="text-3xl font-bold max-w-4xl">{cachedEm.textBlob}</p>}
@@ -1248,10 +1253,10 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
       );
     }
     return (
-      <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center">
+      <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center">
         <Loader2 className="w-12 h-12 text-amber-500 animate-spin mb-4" />
         <h2 className="text-xl font-bold mb-2">Player recovering…</h2>
-        <p className="text-slate-400 text-sm">Reloading in a few seconds</p>
+        <p className="text-slate-400 text-sm">Reloading automatically…</p>
       </div>
     );
   }
@@ -4215,12 +4220,12 @@ function PlayerPage() {
     // my toast sat at `bottom-6` (24px) ALSO centered — both fighting for
     // horizontal space at the same vertical band. Pulled the toast WAY up
     // (bottom-40 = 160px) so it has clean separation from the splash
-    // chips, and switched to `inset-x-0 mx-auto` for centering which
+    // chips, and switched to `left-0 right-0 mx-auto` for centering which
     // doesn't depend on `transform: translateX(-50%)` interacting with
     // any parent transforms.
     return (
       <div
-        className="fixed bottom-40 inset-x-4 mx-auto z-[9998] max-w-xl px-5 py-4 rounded-2xl bg-slate-900/95 text-white shadow-2xl border border-slate-700 backdrop-blur-md flex flex-wrap items-center justify-center gap-3"
+        className="fixed bottom-40 left-4 right-4 mx-auto z-[9998] max-w-xl px-5 py-4 rounded-2xl bg-slate-900/95 text-white shadow-2xl border border-slate-700 backdrop-blur-md flex flex-wrap items-center justify-center gap-3"
         role="status"
         aria-live="polite"
       >
@@ -4458,7 +4463,7 @@ function PlayerPage() {
     return (
       // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
       <div
-        className={`fixed inset-0 ${isInteractive ? '' : 'cursor-none'}`}
+        className={`fixed top-0 right-0 bottom-0 left-0 ${isInteractive ? '' : 'cursor-none'}`}
         // role / tabIndex / aria-label / onClick are conditional —
         // a static signage template needs role=button so a11y
         // tooling treats the whole canvas as the trigger for the
@@ -4485,7 +4490,7 @@ function PlayerPage() {
           // 2026-05-13 — Inline-style fallback. Operator reported
           // (Taurus LED) publishing the Rainbow Animated Portrait
           // template → screen went pure black. Root cause: the
-          // wrapper relied on Tailwind's `fixed inset-0` for
+          // wrapper relied on Tailwind's `fixed top-0 right-0 bottom-0 left-0` for
           // full-screen positioning. When Tailwind fails to load
           // on the Taurus WebView (cert/CDN/cache — see kiosk-splash
           // 2026-05-13 entry for the same class of bug), the
@@ -4658,13 +4663,18 @@ function PlayerPage() {
               cursor: zoneTouchAction ? 'pointer' : undefined,
             }}>
             {_cssChunks.length > 0 && <style>{_cssChunks.join('\n')}</style>}
-            <WidgetPreview
-              widgetType={zone.widgetType}
-              config={cfg}
-              width={zone.width}
-              height={zone.height}
-              live={true}
-            />
+            {/* Per-widget error boundary — one throwing widget can no
+                longer crash the whole player into the recovery loop.
+                `quiet` blanks just that zone on a live kiosk. */}
+            <WidgetErrorBoundary quiet resetKey={zone.id} widgetLabel={zone.widgetType}>
+              <WidgetPreview
+                widgetType={zone.widgetType}
+                config={cfg}
+                width={zone.width}
+                height={zone.height}
+                live={true}
+              />
+            </WidgetErrorBoundary>
           </div>
           );
         })}
@@ -4695,7 +4705,7 @@ function PlayerPage() {
             dashboard pushes CHECK_FOR_UPDATES. The operator clicks
             "Update now" and the rest runs itself (silent install +
             auto-relaunch under Device Owner). top/right/bottom/left
-            longhand, not `inset-0` — Chromium-83 Taurus, CLAUDE.md #10. */}
+            longhand, not `top-0 right-0 bottom-0 left-0` — Chromium-83 Taurus, CLAUDE.md #10. */}
         {showUpdatePrompt && (
           <div
             className="absolute bg-black/85 flex items-center justify-center z-[1000]"
@@ -4750,7 +4760,7 @@ function PlayerPage() {
 
         {/* Info overlay */}
         {showOverlay && (
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[999]">
+          <div className="absolute top-0 right-0 bottom-0 left-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[999]">
             <div className="bg-slate-900 rounded-2xl p-8 max-w-md w-full mx-4 border border-slate-700 space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold text-white">{screenName || 'Screen'}</h3>
@@ -4877,7 +4887,7 @@ function PlayerPage() {
   const isPlaylistInteractive = hasHtmlAsset;
   return (
     <div
-      className={`fixed inset-0 bg-black overflow-hidden ${isPlaylistInteractive ? '' : 'cursor-none'}`}
+      className={`fixed top-0 right-0 bottom-0 left-0 bg-black overflow-hidden ${isPlaylistInteractive ? '' : 'cursor-none'}`}
       // 2026-05-13 — inline-style fallback. Same reasoning as
       // /player/layout.tsx: if Tailwind doesn't apply (CDN reach,
       // WebView caching the old bundle, etc.), this wrapper still
@@ -4964,7 +4974,7 @@ function PlayerPage() {
 
             // Compute physics class limits
             const trans = item.transitionType || 'FADE';
-            let classes = "absolute inset-0 w-full h-full object-contain transition-all duration-[1000ms] ease-in-out ";
+            let classes = "absolute top-0 right-0 bottom-0 left-0 w-full h-full object-contain transition-all duration-[1000ms] ease-in-out ";
             if (trans === 'FADE') classes += isActive ? "opacity-100 z-10" : "opacity-0 z-0";
             else if (trans === 'SLIDE_LEFT') classes += isActive ? "translate-x-0 z-10" : "translate-x-full z-0";
             else if (trans === 'SLIDE_RIGHT') classes += isActive ? "translate-x-0 z-10" : "-translate-x-full z-0";
@@ -5103,7 +5113,7 @@ function PlayerPage() {
                 alt=""
                 className={classes}
                 // 2026-05-13 — inline-style fallback so the image renders
-                // even if Tailwind's `absolute inset-0 w-full h-full
+                // even if Tailwind's `absolute top-0 right-0 bottom-0 left-0 w-full h-full
                 // object-contain` utilities fail to apply. Operator was
                 // seeing a black screen on a Taurus WebView with the
                 // image downloaded but invisible — the parent flex
@@ -5131,7 +5141,7 @@ function PlayerPage() {
         </div>
       ) : (
         <div
-          className="absolute inset-0 bg-slate-50 flex items-stretch justify-center p-8 overflow-hidden cursor-default"
+          className="absolute top-0 right-0 bottom-0 left-0 bg-slate-50 flex items-stretch justify-center p-8 overflow-hidden cursor-default"
           onClick={(e) => e.stopPropagation()}
           role="presentation"
           // 2026-05-13 — Inline-style fallback for Taurus WebViews where
@@ -6024,7 +6034,7 @@ function PlayerPage() {
 
       {/* Overlay */}
       {showOverlay && (
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="absolute top-0 right-0 bottom-0 left-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-slate-900 rounded-2xl p-8 max-w-md w-full mx-4 border border-slate-700 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-white">{screenName || 'Screen'}</h3>

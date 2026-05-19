@@ -64,7 +64,7 @@ export function ClockGradientDigital({ config }: { config: any }) {
   const mins = fmtClock(now, { minute: '2-digit' }, tz).padStart(2, '0');
   const date = fmtClock(now, { weekday: 'short', month: 'short', day: 'numeric' }, tz);
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden" style={{ background: C.paper, borderRadius: 24, fontFamily: FONT_DISPLAY, padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center overflow-hidden" style={{ background: C.paper, borderRadius: 24, fontFamily: FONT_DISPLAY, padding: '6%' }}>
       <div style={{ fontSize: '0.85em', fontWeight: 600, color: C.inkMute, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.2em' }}>{date}</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.1em' }}>
         <span style={{ fontSize: '4.5em', fontWeight: 700, lineHeight: 0.9, letterSpacing: '-0.04em',
@@ -87,7 +87,7 @@ export function ClockDarkPill({ config }: { config: any }) {
   const hours = is24 ? rawHour : (rawHour % 12 || 12);
   const mins = fmtClock(now, { minute: '2-digit' }, tz).padStart(2, '0');
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-hidden" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-hidden" style={{ padding: '6%' }}>
       <div style={{
         background: `linear-gradient(135deg, ${C.navy}, ${C.navyMid})`,
         borderRadius: 9999, padding: '8% 14%',
@@ -111,7 +111,7 @@ export function ClockMinimalAnalog({ config }: { config: any }) {
   const m = parseInt(fmtClock(now, { minute: 'numeric' }, tz), 10);
   const s = parseInt(fmtClock(now, { second: 'numeric' }, tz), 10);
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '8%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '8%' }}>
       <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
         <circle cx="50" cy="50" r="46" fill="white" stroke={C.border} strokeWidth="1" />
         {[...Array(12)].map((_, i) => {
@@ -137,7 +137,7 @@ export function ClockStackedCard({ config }: { config: any }) {
   const date = fmtClock(now, { month: 'short', day: 'numeric' }, tz);
   const time = fmtClock(now, { hour: 'numeric', minute: '2-digit', hour12: config.format !== '24h' }, tz);
   return (
-    <div className="absolute inset-0 flex flex-col items-stretch justify-center overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-stretch justify-center overflow-hidden" style={{
       background: `linear-gradient(180deg, ${C.indigo} 0%, ${C.violet} 100%)`,
       borderRadius: 24, fontFamily: FONT_DISPLAY, color: 'white',
       padding: '6%',
@@ -159,7 +159,7 @@ export function TextBigBold({ config }: { config: any }) {
   const content = config.content || 'Welcome!';
   const align = (config.alignment || 'center') as 'left' | 'center' | 'right';
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-hidden" style={{ padding: '4% 6%', background: C.paper, borderRadius: 24 }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-hidden" style={{ padding: '4% 6%', background: C.paper, borderRadius: 24 }}>
       <p data-field="content" style={{
         fontFamily: FONT_DISPLAY,
         fontSize: '3.8em', fontWeight: 700,
@@ -177,7 +177,7 @@ export function TextGradient({ config }: { config: any }) {
   const content = config.content || 'Welcome to school';
   const align = (config.alignment || 'center') as 'left' | 'center' | 'right';
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-hidden" style={{ padding: '4% 6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-hidden" style={{ padding: '4% 6%' }}>
       <p data-field="content" style={{
         fontFamily: FONT_DISPLAY,
         fontSize: '3.6em', fontWeight: 800,
@@ -196,7 +196,7 @@ export function TextHighlight({ config }: { config: any }) {
   const content = config.content || 'Big news!';
   const align = (config.alignment || 'center') as 'left' | 'center' | 'right';
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-hidden" style={{ padding: '4% 6%', background: C.paper, borderRadius: 24 }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-hidden" style={{ padding: '4% 6%', background: C.paper, borderRadius: 24 }}>
       <p style={{
         fontFamily: FONT_DISPLAY,
         fontSize: '3em', fontWeight: 700,
@@ -218,7 +218,7 @@ export function TextOutlined({ config }: { config: any }) {
   const content = config.content || 'School Spirit';
   const align = (config.alignment || 'center') as 'left' | 'center' | 'right';
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-hidden" style={{ padding: '4% 6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-hidden" style={{ padding: '4% 6%' }}>
       <p data-field="content" style={{
         fontFamily: FONT_DISPLAY,
         fontSize: '4em', fontWeight: 800,
@@ -272,7 +272,7 @@ export function AnnouncementModernCard({ config }: { config: any }) {
   const fontFamily = config.fontFamily || FONT_BODY;
   const headingFamily = config.fontFamily || FONT_DISPLAY;
   return (
-    <div className="absolute inset-0 overflow-hidden flex" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex" style={{
       background: config.bgColor
         ? config.bgColor
         : `linear-gradient(135deg, #FFFFFF 0%, ${t.tint} 100%)`,
@@ -330,7 +330,7 @@ export function AnnouncementSpotlight({ config }: { config: any }) {
   const fontFamily = config.fontFamily || FONT_DISPLAY;
   const bodyFamily = config.fontFamily || FONT_BODY;
   return (
-    <div className="absolute inset-0 overflow-hidden flex flex-col justify-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex flex-col justify-center" style={{
       background: config.bgColor
         ? config.bgColor
         : config.color
@@ -377,7 +377,7 @@ export function AnnouncementGlass({ config }: { config: any }) {
   const fontFamily = config.fontFamily || FONT_DISPLAY;
   const bodyFamily = config.fontFamily || FONT_BODY;
   return (
-    <div className="absolute inset-0 overflow-hidden flex flex-col justify-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex flex-col justify-center" style={{
       background: config.bgColor || 'rgba(255,255,255,0.65)',
       backdropFilter: 'blur(20px) saturate(180%)',
       WebkitBackdropFilter: 'blur(20px) saturate(180%)',
@@ -422,7 +422,7 @@ export function TickerLed({ config }: { config: any }) {
   const messages: string[] = config.messages?.length ? config.messages : ['Welcome back!'];
   const text = messages.join('   ●   ');
   return (
-    <div className="absolute inset-0 overflow-hidden flex items-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center" style={{
       background: `linear-gradient(90deg, ${C.navy}, ${C.navyMid})`,
       borderRadius: 14,
       fontFamily: FONT_DISPLAY,
@@ -448,7 +448,7 @@ export function TickerPastel({ config }: { config: any }) {
   const messages: string[] = config.messages?.length ? config.messages : ['Welcome back!'];
   const text = messages.join('   ★   ');
   return (
-    <div className="absolute inset-0 overflow-hidden flex items-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center" style={{
       background: `linear-gradient(90deg, #E0E7FF, #FCE7F3, #FEF3C7)`,
       borderRadius: 14,
       fontFamily: FONT_DISPLAY,
@@ -472,7 +472,7 @@ export function TickerAlert({ config }: { config: any }) {
   const messages: string[] = config.messages?.length ? config.messages : ['Important update'];
   const text = messages.join('   ⚠   ');
   return (
-    <div className="absolute inset-0 overflow-hidden flex items-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center" style={{
       background: `repeating-linear-gradient(45deg, ${C.coral} 0 12px, #DC2626 12px 24px)`,
       borderRadius: 12,
       fontFamily: FONT_DISPLAY,
@@ -504,7 +504,7 @@ export function StaffModernCard({ config }: { config: any }) {
   const photoUrl = config.photoUrl;
   const initials = name.split(/\s+/).filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
   return (
-    <div className="absolute inset-0 overflow-hidden flex flex-col" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex flex-col" style={{
       background: C.paper, borderRadius: 24, padding: '6%',
       fontFamily: FONT_DISPLAY,
       boxShadow: `0 12px 32px rgba(15,23,42,0.10)`,
@@ -537,7 +537,7 @@ export function StaffHero({ config }: { config: any }) {
   const photoUrl = config.photoUrl;
   const initials = name.split(/\s+/).filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
   return (
-    <div className="absolute inset-0 overflow-hidden flex flex-col justify-end" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex flex-col justify-end" style={{
       background: photoUrl ? `url(${photoUrl}) center/cover` : `linear-gradient(135deg, ${C.violet}, ${C.indigo}, ${C.teal})`,
       borderRadius: 24,
       fontFamily: FONT_DISPLAY,
@@ -577,7 +577,7 @@ export function CountdownBigNumber({ config }: { config: any }) {
   const label = config.label || resolved?.label || 'Countdown';
   const days = calendarDaysUntil(target, now);
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center overflow-hidden" style={{
       background: C.paper, borderRadius: 24, fontFamily: FONT_DISPLAY,
       padding: '6%',
       boxShadow: `0 12px 32px rgba(15,23,42,0.08)`,
@@ -607,7 +607,7 @@ export function CountdownBlocks({ config }: { config: any }) {
   const hours = Math.floor((diff % 86400000) / 3600000);
   const mins = Math.floor((diff % 3600000) / 60000);
   return (
-    <div className="absolute inset-0 flex flex-col items-stretch justify-center overflow-hidden" style={{ padding: '6%', fontFamily: FONT_DISPLAY }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-stretch justify-center overflow-hidden" style={{ padding: '6%', fontFamily: FONT_DISPLAY }}>
       <div style={{ fontSize: '0.9em', fontWeight: 700, color: C.inkMute, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.5em', textAlign: 'center' }}>{label}</div>
       <div style={{ display: 'flex', gap: '3%', justifyContent: 'center' }}>
         {[['DAYS', days], ['HRS', hours], ['MIN', mins]].map(([l, v]) => (
@@ -637,7 +637,7 @@ export function CalendarModernList({ config }: { config: any }) {
     { date: 'Fri',      time: 'All day', title: 'Picture Day' },
   ];
   return (
-    <div className="absolute inset-0 overflow-hidden flex flex-col" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex flex-col" style={{
       background: C.paper, borderRadius: 24, padding: '6%',
       fontFamily: FONT_DISPLAY,
       boxShadow: `0 12px 32px rgba(15,23,42,0.08)`,
@@ -676,7 +676,7 @@ export function WeatherHero({ config }: { config: any }) {
   const loc = live.locationName || config.location || 'Springfield';
   const icon = live.icon;
   return (
-    <div className="absolute inset-0 overflow-hidden flex flex-col justify-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex flex-col justify-center" style={{
       background: `linear-gradient(135deg, ${C.blue}, ${C.indigo})`,
       borderRadius: 24, padding: '6%',
       fontFamily: FONT_DISPLAY, color: 'white',
@@ -704,7 +704,7 @@ export function WeatherGlass({ config }: { config: any }) {
   const loc = live.locationName || config.location || 'Springfield';
   const icon = live.icon;
   return (
-    <div className="absolute inset-0 overflow-hidden flex items-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center" style={{
       background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(20px) saturate(180%)',
       WebkitBackdropFilter: 'blur(20px) saturate(180%)',
       border: '1px solid rgba(255,255,255,0.6)',
@@ -731,7 +731,7 @@ export function WeatherGlass({ config }: { config: any }) {
 export function LogoCircle({ config }: { config: any }) {
   const initials = (config.initials || (config.schoolName || 'School').split(/\s+/).filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()) || 'SE';
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '8%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '8%' }}>
       <div style={{
         width: '85%', aspectRatio: '1', borderRadius: '50%',
         background: `radial-gradient(circle at 30% 25%, rgba(255,255,255,0.5) 0%, transparent 50%), linear-gradient(135deg, ${C.indigo}, ${C.pink})`,
@@ -748,7 +748,7 @@ export function LogoCircle({ config }: { config: any }) {
 export function LogoWordmark({ config }: { config: any }) {
   const name = config.schoolName || 'Sunnyside Elementary';
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%', fontFamily: FONT_DISPLAY }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%', fontFamily: FONT_DISPLAY }}>
       <div style={{
         fontSize: '1.4em', fontWeight: 800, color: C.ink, lineHeight: 1.05, letterSpacing: '-0.02em', textAlign: 'center',
       }}>
@@ -771,7 +771,7 @@ export function LogoWordmark({ config }: { config: any }) {
 // 1) Modern Gallery Frame
 export function GalleryModern({ config }: { config: any }) {
   return (
-    <div className="absolute inset-0 overflow-hidden flex flex-col" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex flex-col" style={{
       background: C.paper, borderRadius: 24, padding: '4%',
       fontFamily: FONT_DISPLAY,
       boxShadow: `0 12px 32px rgba(15,23,42,0.08)`,

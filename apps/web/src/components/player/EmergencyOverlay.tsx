@@ -127,10 +127,10 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000 }: 
     <div
       role="alert"
       aria-live="assertive"
-      className={`fixed inset-0 z-[9999] ${style.bg} ${style.text} ${style.animate} flex flex-col items-center justify-center p-12 backdrop-blur-sm`}
+      className={`fixed top-0 right-0 bottom-0 left-0 z-[9999] ${style.bg} ${style.text} ${style.animate} flex flex-col items-center justify-center p-12 backdrop-blur-sm`}
     >
       {active.severity === 'CRITICAL' && (
-        <div className="pointer-events-none absolute inset-0 border-[12px] border-red-500 animate-pulse" aria-hidden />
+        <div className="pointer-events-none absolute top-0 right-0 bottom-0 left-0 border-[12px] border-red-500 animate-pulse" aria-hidden />
       )}
 
       <div className="relative max-w-6xl w-full text-center">

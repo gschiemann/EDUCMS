@@ -60,7 +60,7 @@ export function DinerChalkboardText({ config }: { config: any } & { onConfigChan
   const content = config.content || "Today's Menu";
   const align = (config.alignment || 'center') as 'left' | 'center' | 'right';
   return (
-    <div className="absolute inset-0 overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{
       background: `
         radial-gradient(ellipse at 30% 40%, rgba(255,255,255,0.04) 0%, transparent 60%),
         radial-gradient(ellipse at 70% 70%, rgba(0,0,0,0.08) 0%, transparent 55%),
@@ -113,7 +113,7 @@ export function DinerChalkboardClock({ config }: { config: any }) {
   const secDeg  = s * 6;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-visible">
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-visible">
       <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%' }}>
         {/* Chrome outer ring */}
         <circle cx="50" cy="50" r="48" fill="#C0C0C0" stroke="#A0A0A0" strokeWidth="1" />
@@ -156,7 +156,7 @@ export function DinerChalkboardLunchMenu({ config }: { config: any }) {
   const lines = menu.split('\n').filter(Boolean);
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col overflow-hidden" style={{
       background: `
         radial-gradient(ellipse at 25% 30%, rgba(255,255,255,0.03) 0%, transparent 50%),
         linear-gradient(180deg, ${DC.board} 0%, ${DC.boardDk} 100%)`,
@@ -213,7 +213,7 @@ export function DinerChalkboardAnnouncement({ config }: { config: any } & { onCo
   const title = config.title || 'Daily Special!';
   const body = config.message || config.body || 'Ask about our featured dish today.';
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '5%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: `linear-gradient(180deg, ${DC.warmWhite} 0%, #F5E6C8 100%)`,
@@ -259,7 +259,7 @@ export function DinerChalkboardCountdown({ config }: { config: any } & { onConfi
   const hours = Math.floor(diff / 3600000);
   const mins = Math.floor((diff % 3600000) / 60000);
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
       fontFamily: DC_FONT_CHALK, color: DC.chalk, textAlign: 'center', padding: '6%',
     }}>
       <div data-field="label" style={{ fontSize: '1.3em', fontWeight: 600, opacity: 0.85, textShadow: `1px 1px 0 rgba(0,0,0,0.12)`, whiteSpace: 'pre-wrap' as const }}>{label}</div>
@@ -287,7 +287,7 @@ export function DinerChalkboardTicker({ config }: { config: any }) {
   const text = messages.join('     ★     ');
   const repeated = `${text}     ★     ${text}`;
   return (
-    <div className="absolute inset-0 overflow-hidden flex items-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center" style={{
       background: `linear-gradient(90deg, rgba(30,43,31,0.95), rgba(44,62,45,0.95))`,
       borderTop: `2px solid ${DC.neonRed}`,
       borderBottom: `2px solid ${DC.neonRed}`,
@@ -322,7 +322,7 @@ export function DinerChalkboardCalendar({ config }: { config: any }) {
     { date: 'Fri', title: 'Ice Cream Social' },
   ];
   return (
-    <div className="absolute inset-0 flex flex-col" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col" style={{
       background: `linear-gradient(180deg, ${DC.board} 0%, ${DC.boardDk} 100%)`,
       borderRadius: 8, boxShadow: 'inset 0 0 30px rgba(0,0,0,0.2)',
       padding: '5% 6%', fontFamily: DC_FONT_CHALK,
@@ -352,7 +352,7 @@ export function DinerChalkboardStaff({ config }: { config: any } & { onConfigCha
   const bio = config.bio || 'Making lunches everyone loves!';
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-[5%]" style={{ containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-[5%]" style={{ containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: DC.warmWhite,
@@ -394,7 +394,7 @@ export function DinerChalkboardLogo({ config }: { config: any }) {
   const initials = (config.initials || (config.schoolName || 'Cafe').split(/\s+/).filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()) || 'DC';
   const photoUrl = config.assetUrl || config.photoUrl;
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-[8%]" style={{ containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-[8%]" style={{ containerType: 'size' }}>
       <div style={{
         width: '85%', aspectRatio: '1', borderRadius: '50%', overflow: 'hidden',
         background: `radial-gradient(circle at 30% 25%, rgba(255,255,255,0.3) 0%, transparent 50%), ${DC.red}`,
@@ -423,7 +423,7 @@ export function DinerChalkboardWeather({ config }: { config: any }) {
   const cond = live.condition;
   const icon = cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : cond.toLowerCase().includes('snow') ? '❄️' : '☀️';
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <div style={{
         width: '100%', height: '100%',
         background: `linear-gradient(180deg, ${DC.board} 0%, ${DC.boardDk} 100%)`,
@@ -455,7 +455,7 @@ export function DinerChalkboardImageCarousel({ config }: { config: any }) {
   }, [urls.length, config.intervalMs]);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-[4%]" style={{ containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-[4%]" style={{ containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: DC.warmWhite,

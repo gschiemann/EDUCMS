@@ -102,7 +102,7 @@ export function AchievementHallLogo({ config }: { config: any; compact?: boolean
   const photoUrl = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <svg viewBox="0 0 280 280" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: `drop-shadow(0 6px 18px ${AH.shadow})`, overflow: 'visible' }}>
         <defs>
@@ -188,7 +188,7 @@ export function AchievementHallText({ config, compact, onConfigChange }: { confi
   const subtitle = config.subtitle || 'Est. 1962 · Excellence in Education';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Ivory plaque background */}
         <div style={{
@@ -288,7 +288,7 @@ export function AchievementHallClock({ config, compact }: { config: any; compact
   }).format(now);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <svg viewBox="0 0 320 320" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: `drop-shadow(0 8px 22px ${AH.shadow})`, overflow: 'visible' }}>
         <defs>
@@ -471,7 +471,7 @@ export function AchievementHallWeather({ config, compact }: { config: any; compa
   const icon = isClear ? SunIcon : isPartly ? PartlyIcon : isOvercast ? CloudIcon : isRain ? RainIcon : isSnow ? SnowIcon : StormIcon;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Dark iron backing */}
         <div style={{
@@ -535,7 +535,7 @@ export function AchievementHallCountdown({ config, compact, onConfigChange }: { 
   const unit     = days > 0 ? (days === 1 ? 'DAY' : 'DAYS') : (hours === 1 ? 'HOUR' : 'HOURS');
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Plaque background */}
         <div style={{
@@ -622,7 +622,7 @@ export function AchievementHallAnnouncement({ config, compact, onConfigChange }:
   const date    = config.date    || '';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Velvet backing */}
         <div style={{
@@ -710,7 +710,7 @@ export function AchievementHallCalendar({ config }: { config: any; compact?: boo
   ]).slice(0, Math.max(1, Math.min(5, config.maxEvents ?? 3)));
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
       {events.map((e: any, i: number) => (
         <div key={i} style={{
           position: 'relative',
@@ -779,7 +779,7 @@ export function AchievementHallStaffSpotlight({ config, onConfigChange }: { conf
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ padding: '4%', gap: '3%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ padding: '4%', gap: '3%', containerType: 'size' }}>
       {/* Gold oval portrait frame */}
       <div style={{ flex: '0 0 68%', width: '70%', position: 'relative', minHeight: 0 }}>
         <svg viewBox="0 0 280 340" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
@@ -896,7 +896,7 @@ export function AchievementHallImageCarousel({ config }: { config: any; compact?
   const hasImage = urls.length > 0;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '5%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Ornate frame SVG overlay */}
         <svg viewBox="0 0 400 300" preserveAspectRatio="none"
@@ -994,7 +994,7 @@ export function AchievementHallTicker({ config, compact }: { config: any; compac
   const primary = messages[idx % messages.length];
 
   return (
-    <div className="absolute inset-0" style={{ overflow: 'hidden' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'hidden' }}>
       {/* Brass strip background */}
       <div style={{
         position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,

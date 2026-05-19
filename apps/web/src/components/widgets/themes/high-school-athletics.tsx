@@ -25,10 +25,10 @@ export function AthleticsLogo({ config }: { config: any }) {
   const hasImage = !!config.assetUrl;
   
   return (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ padding: '2cqw', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center pointer-events-none" style={{ padding: '2cqw', containerType: 'size' }}>
       <div className="relative w-full h-full flex items-center justify-center">
         {/* Hexagonal glowing backplate */}
-        <div className="absolute inset-0" style={{
+        <div className="absolute top-0 right-0 bottom-0 left-0" style={{
           background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
           clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
           border: `4px solid ${ATHLETICS.neonBlue}`,
@@ -88,7 +88,7 @@ export function AthleticsCountdown({ config, compact }: { config: any; compact?:
   const showDays = config.showDays !== false;
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-between" style={{ padding: '2cqw', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-between" style={{ padding: '2cqw', containerType: 'size' }}>
       <div className="w-full flex justify-center mb-1">
         <div className="bg-red-600/20 px-6 py-1 rounded-sm border border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.3)] flex items-center justify-center">
           <span data-field="label" className="text-red-500 font-bold tracking-widest uppercase italic leading-none" style={{ fontSize: '15cqh', fontFamily: ATHLETICS.fontDisplay, whiteSpace: 'pre-wrap' as const }}>
@@ -99,7 +99,7 @@ export function AthleticsCountdown({ config, compact }: { config: any; compact?:
       
       <div className="flex-1 w-full bg-black border-4 border-slate-800 rounded-lg flex items-center justify-center p-2 relative overflow-hidden">
         {/* Subtle LED grid background */}
-        <div className="absolute inset-0" style={{
+        <div className="absolute top-0 right-0 bottom-0 left-0" style={{
           backgroundImage: 'radial-gradient(rgba(255,0,0,0.1) 1px, transparent 1px)',
           backgroundSize: '4px 4px'
         }} />
@@ -146,7 +146,7 @@ export function AthleticsAnnouncement({ config }: { config: any } & { onConfigCh
   const teamB = lines[1] || 'AWAY: 0';
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-between overflow-hidden rounded-xl border border-slate-700/50 shadow-2xl" style={{ 
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-between overflow-hidden rounded-xl border border-slate-700/50 shadow-2xl" style={{ 
       background: ATHLETICS.bgGlass,
       backdropFilter: 'blur(16px)',
       padding: '4cqw',
@@ -193,7 +193,7 @@ function ScoreRow({ text, isHome }: { text: string; isHome: boolean }) {
 export function AthleticsText({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'MAKE SOME NOISE!';
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-2 text-center overflow-hidden" style={{ containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-2 text-center overflow-hidden" style={{ containerType: 'size' }}>
       <h1 className="font-black uppercase italic leading-none whitespace-normal break-words" style={{
         fontSize: '25cqmin',
         fontFamily: ATHLETICS.fontDisplay,
@@ -218,13 +218,13 @@ export function AthleticsTicker({ config }: { config: any }) {
   const speed = config.speed === 'fast' ? 10 : config.speed === 'slow' ? 30 : 20;
   
   return (
-    <div className="absolute inset-0 bg-black border-y-4 border-[#111] overflow-hidden flex items-center" style={{ containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 bg-black border-y-4 border-[#111] overflow-hidden flex items-center" style={{ containerType: 'size' }}>
       {/* Matrix dots overlay */}
-      <div className="absolute inset-0 z-20 pointer-events-none mix-blend-multiply opacity-80" style={{
+      <div className="absolute top-0 right-0 bottom-0 left-0 z-20 pointer-events-none mix-blend-multiply opacity-80" style={{
         backgroundImage: 'radial-gradient(#000 1px, transparent 1px)',
         backgroundSize: '3px 3px'
       }} />
-      <div className="absolute inset-0 z-20 pointer-events-none mix-blend-screen opacity-10" style={{
+      <div className="absolute top-0 right-0 bottom-0 left-0 z-20 pointer-events-none mix-blend-screen opacity-10" style={{
         backgroundImage: 'linear-gradient(rgba(255,0,0,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(255,0,0,0.2) 1px, transparent 1px)',
         backgroundSize: '3px 3px'
       }} />

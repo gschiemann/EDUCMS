@@ -25,6 +25,12 @@ interface Props {
   resetKey?: string;
   /** Optional label used in the fallback ("Bell Schedule hit an error…"). */
   widgetLabel?: string;
+  /** Player / kiosk mode. The builder shows a verbose red debug card on a
+   *  widget crash so the operator can fix it; on a LIVE customer display
+   *  that card is unacceptable. `quiet` renders nothing instead — the zone
+   *  simply goes blank — so one throwing widget can neither crash the
+   *  player nor deface the wall. The error is still console.error'd. */
+  quiet?: boolean;
   children: React.ReactNode;
 }
 
@@ -57,6 +63,8 @@ export class WidgetErrorBoundary extends React.Component<Props, State> {
 
   render() {
     if (this.state.error) {
+      // Player / kiosk: blank the zone rather than show the debug card.
+      if (this.props.quiet) return null;
       const label = this.props.widgetLabel || 'Widget';
       const msg = this.state.error.message || String(this.state.error);
       // First two stack frames give the function + file:line that
@@ -71,7 +79,7 @@ export class WidgetErrorBoundary extends React.Component<Props, State> {
       return (
         <div
           role="alert"
-          className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center bg-rose-50/80 border-2 border-dashed border-rose-300 rounded-lg overflow-auto"
+          className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center gap-2 p-3 text-center bg-rose-50/80 border-2 border-dashed border-rose-300 rounded-lg overflow-auto"
         >
           <div className="text-[11px] font-bold text-rose-700">
             {label} hit an error

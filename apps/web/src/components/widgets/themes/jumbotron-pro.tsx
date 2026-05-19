@@ -81,7 +81,7 @@ export function JumbotronProLogo({ config }: { config: any; compact?: boolean })
   const photoUrl = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <svg viewBox="0 0 260 260" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.55))', overflow: 'visible' }}>
         <defs>
@@ -155,7 +155,7 @@ export function JumbotronProText({ config, compact, onConfigChange }: { config: 
   const clock = config.clockText || '04:27';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '1.2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '1.2%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         borderRadius: 14,
@@ -416,7 +416,7 @@ export function JumbotronProClock({ config, compact }: { config: any; compact?: 
   const [sx, sy] = polar(secA, 36);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...chromeBezel(12),
@@ -575,7 +575,7 @@ export function JumbotronProWeather({ config, compact }: { config: any; compact?
   );
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...chromeBezel(10),
@@ -659,7 +659,7 @@ export function JumbotronProCountdown({ config, compact, onConfigChange }: { con
   const numStr = String(bigNum).padStart(2, '0');
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...chromeBezel(10),
@@ -753,7 +753,7 @@ export function JumbotronProAnnouncement({ config, compact, onConfigChange }: { 
   const message = config.message || config.body || 'GO EAGLES. Play smart, play hard, play together.';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2.5%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2.5%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         borderRadius: 10,
@@ -852,7 +852,7 @@ export function JumbotronProCalendar({ config }: { config: any; compact?: boolea
   ]).slice(0, Math.max(1, Math.min(12, config.maxEvents ?? 6)));
 
   return (
-    <div className="absolute inset-0" style={{ padding: '4% 6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '4% 6%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...chromeBezel(8),
@@ -960,7 +960,7 @@ export function JumbotronProStaffSpotlight({ config, onConfigChange }: { config:
   const statItems = stats.split(/\s*[·•|]\s*/).filter(Boolean).slice(0, 3);
 
   return (
-    <div className="absolute inset-0" style={{ padding: '4% 6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ padding: '4% 6%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...chromeBezel(8),
@@ -1121,7 +1121,7 @@ export function JumbotronProImageCarousel({ config }: { config: any; compact?: b
   const hasImage = urls.length > 0;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         ...chromeBezel(8),
@@ -1219,7 +1219,7 @@ export function JumbotronProTicker({ config }: { config: any; compact?: boolean 
   const joined = list.join('   ◆   ') + '   ◆   ' + list.join('   ◆   ');
 
   return (
-    <div className="absolute inset-0" style={{ overflow: 'hidden' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'hidden' }}>
       <div style={{
         position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         background: `linear-gradient(180deg, ${JP.stadiumBlack} 0%, #020407 50%, ${JP.stadiumBlack} 100%)`,

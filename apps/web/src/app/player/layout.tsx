@@ -25,7 +25,7 @@ export default function PlayerLayout({
     // 2026-05-13 — Tailwind-fallback inline styles. The Player WebView
     // on a NovaStar Taurus controller was failing to load the global
     // Tailwind CSS bundle (root cause varied per device — cert/cache/
-    // CDN reach), and this wrapper's "fixed inset-0 bg-black" Tailwind
+    // CDN reach), and this wrapper's "fixed top-0 right-0 bottom-0 left-0 bg-black" Tailwind
     // classes were the ONLY thing keeping the body's bg-slate-50
     // (#f8fafc, near-white) from showing through behind the splash.
     // Without Tailwind: white screen, even though the page server-
@@ -152,7 +152,7 @@ export default function PlayerLayout({
         }
       `}</style>
       <div
-        className="fixed inset-0 bg-black overflow-hidden"
+        className="fixed top-0 right-0 bottom-0 left-0 bg-black overflow-hidden"
         style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,

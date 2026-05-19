@@ -80,7 +80,7 @@ export function VarsityAthleticLogo({ config }: { config: any; compact?: boolean
   const teamName = config.teamName || 'VARSITY';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <svg viewBox="0 0 280 280" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: 'drop-shadow(0 6px 18px rgba(5,16,31,0.7))', overflow: 'visible' }}>
         <defs>
@@ -170,7 +170,7 @@ export function VarsityAthleticText({ config, compact, onConfigChange }: { confi
   const subtitle = config.subtitle || 'HOME OF THE CHAMPIONS';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2% 1.5%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2% 1.5%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Jumbotron frame */}
         <svg viewBox="0 0 3200 400" width="100%" height="100%" preserveAspectRatio="none"
@@ -288,7 +288,7 @@ export function VarsityAthleticClock({ config, compact }: { config: any; compact
   const cx = 200, cy = 200, r = 165;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 460" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ filter: 'drop-shadow(0 8px 24px rgba(5,16,31,0.8))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -481,7 +481,7 @@ export function VarsityAthleticWeather({ config, compact }: { config: any; compa
   const iconX = 30, iconY = 60;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 460" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ filter: 'drop-shadow(0 6px 20px rgba(5,16,31,0.7))', position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -597,7 +597,7 @@ export function VarsityAthleticCountdown({ config, compact, onConfigChange }: { 
   );
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%', containerType: 'size' }}>
       <div style={{
         width: '100%', height: '100%',
         background: `linear-gradient(180deg, #0A1A0A 0%, ${VA.stadiumDark} 100%)`,
@@ -651,7 +651,7 @@ export function VarsityAthleticAnnouncement({ config, compact, onConfigChange }:
   const date    = config.date    || '';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: `linear-gradient(160deg, #112244 0%, ${VA.stadiumDark} 100%)`,
@@ -718,7 +718,7 @@ export function VarsityAthleticCalendar({ config }: { config: any; compact?: boo
   ]).slice(0, Math.max(1, Math.min(5, config.maxEvents ?? 3)));
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-center"
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center"
       style={{ padding: '3%', gap: '3%', containerType: 'size' }}>
       {events.map((e: any, i: number) => {
         const isHome = e.home !== false && !String(e.title || '').startsWith('@');
@@ -786,7 +786,7 @@ export function VarsityAthleticStaffSpotlight({ config, onConfigChange }: { conf
   const record  = config.record || '12-2';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: `linear-gradient(160deg, #1A3060 0%, ${VA.stadiumDark} 60%, ${VA.ink} 100%)`,
@@ -904,7 +904,7 @@ export function VarsityAthleticImageCarousel({ config }: { config: any; compact?
   const hasImage = urls.length > 0;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2%' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: '#050A05',
@@ -1042,7 +1042,7 @@ export function VarsityAthleticTicker({ config, compact }: { config: any; compac
   }, [speed, messages[idx]]);
 
   return (
-    <div className="absolute inset-0" style={{ overflow: 'hidden' }} ref={containerRef}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'hidden' }} ref={containerRef}>
       {/* Dark scoreboard bg */}
       <div style={{
         position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,

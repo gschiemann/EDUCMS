@@ -10,7 +10,7 @@ export function LobbyWelcomeLogo({ config }: { config: any }) {
   const url = config.url || '/placeholder.svg';
   
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center p-6" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center p-6" style={{
       background: 'rgba(255, 255, 255, 0.15)',
       backdropFilter: 'blur(20px)',
       WebkitBackdropFilter: 'blur(20px)',
@@ -40,7 +40,7 @@ export function LobbyWelcomeLogo({ config }: { config: any }) {
 export function LobbyWelcomeText({ config }: { config: any }) {
   const content = config.content || 'Welcome to our Campus';
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center p-8 text-center" style={{
       background: 'rgba(255, 255, 255, 0.25)',
       backdropFilter: 'blur(25px)',
       borderRadius: '24px',
@@ -71,7 +71,7 @@ export function LobbyWelcomeClock({ config, compact }: { config: any; compact?: 
   const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
       background: 'linear-gradient(135deg, rgba(30, 64, 175, 0.8) 0%, rgba(17, 24, 39, 0.9) 100%)',
       backdropFilter: 'blur(16px)',
       borderRadius: '24px',
@@ -116,7 +116,7 @@ export function LobbyWelcomeWeather({ config, compact }: { config: any; compact?
     : condLower.includes('cloud') ? '#94a3b8'
     : '#f59e0b';
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
       background: 'rgba(255, 255, 255, 0.2)',
       backdropFilter: 'blur(20px)',
       borderRadius: '24px',
@@ -144,7 +144,7 @@ export function LobbyWelcomeWeather({ config, compact }: { config: any; compact?
 
 export function LobbyWelcomeAnnouncement({ config, compact }: { config: any; compact?: boolean }) {
   return (
-    <div className="absolute inset-0 flex flex-col p-8" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-8" style={{
       background: 'rgba(255, 255, 255, 0.6)',
       backdropFilter: 'blur(30px)',
       borderRadius: '24px',
@@ -168,7 +168,7 @@ export function LobbyWelcomeAnnouncement({ config, compact }: { config: any; com
 
 export function LobbyWelcomeCalendar({ config }: { config: any }) {
   return (
-    <div className="absolute inset-0 flex flex-col p-8" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-8" style={{
       background: 'rgba(255, 255, 255, 0.15)',
       backdropFilter: 'blur(25px)',
       borderRadius: '24px',
@@ -203,7 +203,7 @@ export function LobbyWelcomeTicker({ config }: { config: any }) {
   const messages = config.messages?.length ? config.messages : ['Welcome to our Campus', 'Innovation starts here', 'Please sign in at the front desk'];
   const text = messages.join('   •   ');
   return (
-    <div className="absolute inset-0 flex items-center overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden" style={{
       background: 'rgba(15, 23, 42, 0.9)',
       backdropFilter: 'blur(20px)',
       color: 'white'

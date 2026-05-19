@@ -688,7 +688,7 @@ function ClockWidget({ config, compact }: { config: any; compact: boolean }) {
   const tzLabel = tz ? fmt({ timeZoneName: 'short' }).split(', ').pop() : null;
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center overflow-hidden" style={{ backgroundColor: bg }}>
       <div className="flex items-baseline gap-[0.1em] tabular-nums" style={{ color }}>
         <span style={{ fontSize: compact ? '1.8em' : '3.5em', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1 }}>
           {hours}:{mins}
@@ -901,7 +901,7 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
   // Loading / error state
   if (loading || !weather) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center overflow-hidden" style={{ background: gradient }}>
+      <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-hidden" style={{ background: gradient }}>
         <div className="absolute -top-6 -right-6 w-24 h-24 bg-white/10 rounded-full" />
         <div className="flex flex-col items-center gap-1">
           <Cloud style={{ width: '2em', height: '2em', color: 'rgba(255,255,255,0.4)', animation: 'pulse 2s ease-in-out infinite' }} />
@@ -915,7 +915,7 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
   }
 
   return (
-    <div className="absolute inset-0 flex overflow-hidden" style={{ background: gradient }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex overflow-hidden" style={{ background: gradient }}>
       {/* Decorative circles */}
       <div className="absolute -top-6 -right-6 w-24 h-24 bg-white/10 rounded-full" />
       <div className="absolute bottom-4 -left-4 w-16 h-16 bg-white/5 rounded-full" />
@@ -1071,7 +1071,7 @@ function CountdownWidget({ config, compact, onConfigChange }: { config: any; com
   );
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center overflow-hidden" style={{
       background: containerBg,
       fontFamily,
     }}>
@@ -1176,7 +1176,7 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
   const lineHeight = Math.max(0.5, Math.min(2.5, rawLh));
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-[5%] overflow-hidden" style={{ backgroundColor: bgColor }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-[5%] overflow-hidden" style={{ backgroundColor: bgColor }}>
       <p
         data-field="content"
         style={{
@@ -1267,7 +1267,7 @@ function AnnouncementWidget({ config, compact, onConfigChange }: { config: any; 
   const fontFamily = config.fontFamily || undefined;
 
   return (
-    <div className="absolute inset-0 flex overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex overflow-hidden" style={{
       background: config.bgColor || t.bg,
       fontFamily,
     }}>
@@ -1387,7 +1387,7 @@ function TickerWidget({ config }: { config: any }) {
   const animation = config.scrollEnabled === false ? 'none' : `ticker-scroll ${speed}s linear infinite`;
 
   return (
-    <div className="absolute inset-0 flex items-center overflow-hidden" style={{ background: 'linear-gradient(90deg, #1e293b, #334155)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden" style={{ background: 'linear-gradient(90deg, #1e293b, #334155)' }}>
       <div data-inline-edit-pause style={{
         display: 'flex', whiteSpace: 'nowrap' as const,
         animation,
@@ -1417,7 +1417,7 @@ function BellScheduleWidget({ config, compact }: { config: any; compact: boolean
   const currentHour = now.getHours();
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(180deg, #eef2ff, #e0e7ff)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(180deg, #eef2ff, #e0e7ff)' }}>
       <div style={{
         background: 'linear-gradient(135deg, #4f46e5, #6366f1)',
         padding: compact ? '3% 5%' : '4% 6%',
@@ -1478,7 +1478,7 @@ function LunchMenuWidget({ config, compact }: { config: any; compact: boolean })
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(180deg, #f0fdf4, #dcfce7)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(180deg, #f0fdf4, #dcfce7)' }}>
       <div style={{
         background: 'linear-gradient(135deg, #16a34a, #22c55e)',
         padding: compact ? '3% 5%' : '4% 6%',
@@ -1543,7 +1543,7 @@ function CalendarWidget({ config, compact }: { config: any; compact: boolean }) 
   const events = normalizeCalendarEvents(config.events, maxEvents);
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(180deg, #eff6ff, #dbeafe)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(180deg, #eff6ff, #dbeafe)' }}>
       <div style={{
         background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
         padding: compact ? '3% 5%' : '4% 6%',
@@ -1606,7 +1606,7 @@ function StaffSpotlightWidget({ config, compact, onConfigChange }: { config: any
   const bio = config.bio || 'Inspiring students every day with creativity and passion for learning.';
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden" style={{ background: 'linear-gradient(135deg, #fdf4ff, #fae8ff, #f5f3ff)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center overflow-hidden" style={{ background: 'linear-gradient(135deg, #fdf4ff, #fae8ff, #f5f3ff)' }}>
       <div style={{
         width: compact ? '2em' : '3.5em', height: compact ? '2em' : '3.5em',
         borderRadius: 999, background: 'linear-gradient(135deg, #a855f7, #6366f1)',
@@ -1683,7 +1683,7 @@ function ImageWidget({ config }: { config: any }) {
     const opacity = typeof config.opacity === 'number' ? Math.max(0, Math.min(1, config.opacity)) : 1;
     const radius = typeof config.borderRadius === 'number' ? Math.max(0, config.borderRadius) : 0;
     return (
-      <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: radius || undefined }}>
+      <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{ borderRadius: radius || undefined }}>
         <img
           src={resolveUrl(config.assetUrl)}
           alt=""
@@ -1694,7 +1694,7 @@ function ImageWidget({ config }: { config: any }) {
     );
   }
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #f0f9ff, #e0f2fe)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #f0f9ff, #e0f2fe)' }}>
       <ImageIcon style={{ width: '2em', height: '2em', color: '#93c5fd', opacity: 0.5 }} />
       <span style={{ fontSize: '0.5em', color: '#93c5fd', fontWeight: 600, marginTop: '0.3em' }}>Add Image</span>
     </div>
@@ -1774,7 +1774,7 @@ function CarouselSlide({
           to   { transform: scale(1);    opacity: 1; }
         }
       `}</style>
-      <div className="absolute inset-0" style={transitionStyle(transition)}>
+      <div className="absolute top-0 right-0 bottom-0 left-0" style={transitionStyle(transition)}>
         {mediaKind === 'image' ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={url} alt="" className="w-full h-full" style={{ objectFit: fitMode as any }} />
@@ -1830,7 +1830,7 @@ function ImageCarouselWidget({ config }: { config: any }) {
 
   if (urls.length > 0) {
     return (
-      <div className="absolute inset-0 overflow-hidden">
+      <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden">
         <CarouselSlide
           key={idx}
           mediaKind="image"
@@ -1850,7 +1850,7 @@ function ImageCarouselWidget({ config }: { config: any }) {
   }
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #f0f9ff, #e0f2fe)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #f0f9ff, #e0f2fe)' }}>
       <ImageIcon style={{ width: '2em', height: '2em', color: '#93c5fd', opacity: 0.5 }} />
       <span style={{ fontSize: '0.5em', color: '#93c5fd', fontWeight: 600, marginTop: '0.3em' }}>Add Photos</span>
     </div>
@@ -1878,7 +1878,7 @@ function VideoWidget({ config, live }: { config: any; live?: boolean }) {
 
   if (config.assetUrl) {
     return (
-      <div className="absolute inset-0 overflow-hidden bg-black">
+      <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden bg-black">
         <video
           ref={videoRef}
           src={resolveUrl(config.assetUrl)}
@@ -1892,7 +1892,7 @@ function VideoWidget({ config, live }: { config: any; live?: boolean }) {
         />
         {/* Play button overlay — only show in editor preview, not on live player */}
         {!live && (
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center">
             <div style={{
               width: '2.5em', height: '2.5em', borderRadius: 999,
               background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
@@ -1919,7 +1919,7 @@ function VideoWidget({ config, live }: { config: any; live?: boolean }) {
     );
   }
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #faf5ff, #f3e8ff)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #faf5ff, #f3e8ff)' }}>
       <div style={{ width: '2.5em', height: '2.5em', borderRadius: 999, background: 'linear-gradient(135deg, #8b5cf6, #a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 15px rgba(139,92,246,0.3)' }}>
         <Play style={{ width: '1em', height: '1em', color: 'white', marginLeft: '0.15em' }} />
       </div>
@@ -1987,7 +1987,7 @@ function VideoCarouselWidget({ config, live }: { config: any; live?: boolean }) 
 
   if (urls.length === 0) {
     return (
-      <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #faf5ff, #f3e8ff)' }}>
+      <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #faf5ff, #f3e8ff)' }}>
         <div style={{ width: '2.5em', height: '2.5em', borderRadius: 999, background: 'linear-gradient(135deg, #8b5cf6, #a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 15px rgba(139,92,246,0.3)' }}>
           <Play style={{ width: '1em', height: '1em', color: 'white', marginLeft: '0.15em' }} />
         </div>
@@ -2007,7 +2007,7 @@ function VideoCarouselWidget({ config, live }: { config: any; live?: boolean }) 
   };
 
   return (
-    <div className="absolute inset-0 overflow-hidden bg-black">
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden bg-black">
       <CarouselSlide
         // `key` forces React to UNMOUNT the old element on rotate so
         // the transition animation re-runs and stale frames don't
@@ -2097,13 +2097,13 @@ function LogoWidget({ config }: { config: any }) {
   if (config.theme === 'middle-school-hall') return <MSHallLogo config={config} />;
   if (config.assetUrl) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center p-[8%]">
+      <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-[8%]">
         <img src={resolveUrl(config.assetUrl)} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
       </div>
     );
   }
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)' }}>
       <Shield style={{ width: '2em', height: '2em', color: '#818cf8', opacity: 0.5 }} />
       <span style={{ fontSize: '0.5em', color: '#818cf8', fontWeight: 600, marginTop: '0.3em' }}>Add Logo</span>
     </div>
@@ -2776,7 +2776,7 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
 
   if (live && proxyUrl) {
     return (
-      <div className="absolute inset-0 overflow-hidden">
+      <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden">
         <iframe
           ref={iframeRef}
           src={proxyUrl}
@@ -2825,7 +2825,7 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
 
   // Editor preview — show browser mockup
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden" style={{ background: '#f8fafc' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col overflow-hidden" style={{ background: '#f8fafc' }}>
       {/* Browser chrome */}
       <div style={{ background: '#f1f5f9', padding: '2% 3%', display: 'flex', alignItems: 'center', gap: '2%', borderBottom: '1px solid #e2e8f0' }}>
         <div className="flex gap-[2px]">
@@ -2859,7 +2859,7 @@ function RSSWidget({ config, compact }: { config: any; compact: boolean }) {
   ].slice(0, maxItems);
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(180deg, #fff7ed, #ffedd5)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(180deg, #fff7ed, #ffedd5)' }}>
       <div style={{
         background: 'linear-gradient(135deg, #ea580c, #f97316)',
         padding: compact ? '3% 5%' : '4% 6%',
@@ -2882,7 +2882,7 @@ function RSSWidget({ config, compact }: { config: any; compact: boolean }) {
 
 function SocialWidget({ config }: { config: any }) {
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #fdf2f8, #fce7f3)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #fdf2f8, #fce7f3)' }}>
       <Share2 style={{ width: '1.5em', height: '1.5em', color: '#ec4899', opacity: 0.4 }} />
       <span style={{ fontSize: '0.45em', color: '#f472b6', fontWeight: 600, marginTop: '0.3em' }}>Social Feed</span>
       {config.embedUrl && <span style={{ fontSize: '0.35em', color: '#94a3b8', marginTop: '0.15em' }}>Connected</span>}
@@ -2892,7 +2892,7 @@ function SocialWidget({ config }: { config: any }) {
 
 function PlaylistWidget({ config }: { config: any }) {
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)' }}>
       <Play style={{ width: '2em', height: '2em', color: '#8b5cf6', opacity: 0.5 }} />
       <span style={{ fontSize: '0.5em', color: '#8b5cf6', fontWeight: 600, marginTop: '0.3em' }}>
         {config.playlistId ? 'Playlist Assigned' : 'Assign Playlist'}
@@ -3069,7 +3069,7 @@ function SunnyMeadowClock({ config, compact }: { config: any; compact: boolean }
   const greeting = greetings[weekday] || weekday;
 
   return (
-    <div className="absolute inset-0 overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{
       background: 'linear-gradient(180deg, #DBF0FF 0%, #FFF1B8 65%, #FFD8A8 100%)',
       fontFamily: SUNNY_FONT_DISPLAY,
     }}>
@@ -3248,7 +3248,7 @@ function SunnyMeadowWeather({ config, compact }: { config: any; compact: boolean
 
   if (loading || !weather) {
     return (
-      <div className="absolute inset-0 overflow-hidden flex items-center justify-center" style={{ background: bucketInfo.sky, fontFamily: SUNNY_FONT_DISPLAY }}>
+      <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center justify-center" style={{ background: bucketInfo.sky, fontFamily: SUNNY_FONT_DISPLAY }}>
         <style>{SUNNY_KEYFRAMES}</style>
         <div style={{ animation: 'sunny-bob 2.5s ease-in-out infinite', color: SUNNY.textSoft, fontSize: '0.6em', fontWeight: 600 }}>
           {loading ? 'Checking the sky...' : 'Location not found'}
@@ -3258,7 +3258,7 @@ function SunnyMeadowWeather({ config, compact }: { config: any; compact: boolean
   }
 
   return (
-    <div className="absolute inset-0 overflow-hidden" style={{ background: bucketInfo.sky, fontFamily: SUNNY_FONT_DISPLAY }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{ background: bucketInfo.sky, fontFamily: SUNNY_FONT_DISPLAY }}>
       <style>{SUNNY_KEYFRAMES}</style>
 
       {/* Twinkling stars on clear */}
@@ -3383,7 +3383,7 @@ function SunnyMeadowStaffSpotlight({ config, compact }: { config: any; compact: 
   const bio = config.bio || 'Inspiring young minds with curiosity and kindness every day.';
 
   return (
-    <div className="absolute inset-0 overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{
       background: 'linear-gradient(180deg, #FFF6D4 0%, #FFE6A7 60%, #FFD08A 100%)',
       fontFamily: SUNNY_FONT_DISPLAY,
     }}>
@@ -3616,7 +3616,7 @@ function TouchButtonWidget({ config }: { config: any }) {
   const radius = config.radius ?? 18;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-2">
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-2">
       <TouchPressable
         ariaLabel={label}
         testId="touch-button"
@@ -3645,7 +3645,7 @@ function TouchMenuWidget({ config }: { config: any }) {
 
   return (
     <div
-      className="absolute inset-0 p-3 flex"
+      className="absolute top-0 right-0 bottom-0 left-0 p-3 flex"
       style={{
         flexDirection: orientation === 'horizontal' ? 'row' : 'column',
         gap,
@@ -3739,7 +3739,7 @@ function OnScreenKeyboardWidget({ config }: { config: any }) {
   const [value, setValue] = useState('');
   const mode: 'qwerty' | 'numeric' = config.mode === 'numeric' ? 'numeric' : 'qwerty';
   return (
-    <div className="absolute inset-0 flex flex-col p-3 bg-slate-50 gap-3">
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-3 bg-slate-50 gap-3">
       <div
         className="w-full rounded-lg bg-white border-2 border-slate-300 px-4 py-3 text-lg font-mono min-h-[44px] shadow-inner"
         data-testid="keyboard-display"
@@ -3770,7 +3770,7 @@ function RoomFinderWidget({ config }: { config: any }) {
   }, [rooms, query]);
 
   return (
-    <div className="absolute inset-0 flex flex-col bg-white p-4 gap-3" data-testid="room-finder">
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col bg-white p-4 gap-3" data-testid="room-finder">
       <div className="flex items-center gap-2">
         <MapPin className="w-5 h-5 text-indigo-600" aria-hidden />
         <h3 data-field="title" className="text-lg font-bold text-slate-800" style={{ whiteSpace: 'pre-wrap' as const }}>{config.title ?? 'Find a room'}</h3>
@@ -3826,7 +3826,7 @@ function WayfindingMapWidget({ config }: { config: any }) {
   const dragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null);
 
   return (
-    <div className="absolute inset-0 overflow-hidden bg-slate-100" data-testid="wayfinding-map">
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden bg-slate-100" data-testid="wayfinding-map">
       <div
         className="relative w-full h-full touch-none"
         onPointerDown={(e) => {
@@ -3844,7 +3844,7 @@ function WayfindingMapWidget({ config }: { config: any }) {
         onPointerCancel={() => { dragRef.current = null; }}
       >
         <div
-          className="absolute inset-0"
+          className="absolute top-0 right-0 bottom-0 left-0"
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: '0 0',
@@ -3932,7 +3932,7 @@ function QuickPollWidget({ config }: { config: any }) {
   const total = options.reduce((s, o) => s + o.votes, 0) || 1;
 
   return (
-    <div className="absolute inset-0 flex flex-col bg-white p-5 gap-4" data-testid="quick-poll">
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col bg-white p-5 gap-4" data-testid="quick-poll">
       <h3 data-field="question" className="text-xl font-bold text-slate-800" style={{ whiteSpace: 'pre-wrap' as const }}>{question}</h3>
       <div className="flex-1 flex flex-col gap-3 overflow-auto">
         {options.length === 0 && (
@@ -3959,7 +3959,7 @@ function QuickPollWidget({ config }: { config: any }) {
             >
               {voted && (
                 <div
-                  className="absolute inset-y-0 left-0 bg-indigo-100"
+                  className="absolute top-0 bottom-0 left-0 bg-indigo-100"
                   style={{ width: `${pct}%` }}
                   aria-hidden
                 />

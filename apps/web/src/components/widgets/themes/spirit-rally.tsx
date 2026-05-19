@@ -60,7 +60,7 @@ export function SpiritRallyLogo({ config }: { config: any; compact?: boolean }) 
   const photoUrl = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'transparent', padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ background: 'transparent', padding: '6%' }}>
       <svg viewBox="0 0 320 320" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: 'drop-shadow(0 6px 14px rgba(0,0,0,0.45))', overflow: 'visible' }}>
         {/* Foam finger pointing up — left of shield */}
@@ -123,7 +123,7 @@ export function SpiritRallyText({
   const subtitle = config.subtitle || 'rally day · be loud · be proud';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2% 1%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2% 1%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Megaphone-shaped SVG banner */}
         <svg viewBox="0 0 3200 400" width="100%" height="100%" preserveAspectRatio="none"
@@ -220,7 +220,7 @@ export function SpiritRallyClock({ config, compact }: { config: any; compact?: b
   const hourDeg = h * 30 + m * 0.5;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* Scoreboard frame */}
         <svg viewBox="0 0 700 460" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
@@ -366,7 +366,7 @@ export function SpiritRallyWeather({ config, compact }: { config: any; compact?:
   );
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 400" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.4))' }}>
@@ -441,7 +441,7 @@ export function SpiritRallyCountdown({
   const unit     = days > 0 ? (days === 1 ? 'DAY' : 'DAYS') : (hours === 1 ? 'HR' : 'HRS');
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 700 700" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: 'drop-shadow(0 18px 28px rgba(0,0,0,0.45))' }}>
@@ -536,7 +536,7 @@ export function SpiritRallyAnnouncement({
   const date    = config.date    || '';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%' }}>
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <svg viewBox="0 0 1800 520" width="100%" height="100%" preserveAspectRatio="none"
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, filter: 'drop-shadow(0 16px 28px rgba(0,0,0,0.5))' }}>
@@ -617,7 +617,7 @@ export function SpiritRallyCalendar({ config }: { config: any; compact?: boolean
   const accentColors = [SR.gold, SR.red, '#4A90D9', '#6ABF69'];
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
       {events.map((e: any, i: number) => {
         const accent = accentColors[i % accentColors.length];
         const fringeCount = 7;
@@ -713,7 +713,7 @@ export function SpiritRallyStaffSpotlight({
   const number   = config.number    || '01';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: `linear-gradient(160deg, ${SR.navy} 0%, #0d1e36 60%, ${SR.ink} 100%)`,
@@ -836,7 +836,7 @@ export function SpiritRallyImageCarousel({ config }: { config: any; compact?: bo
   const ledColors = [SR.gold, SR.red, SR.white, SR.goldDark];
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '3%', containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '3%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: SR.ink,
@@ -962,7 +962,7 @@ export function SpiritRallyTicker({ config, compact }: { config: any; compact?: 
   const ledCount = compact ? 8 : 14;
 
   return (
-    <div className="absolute inset-0 flex flex-col" style={{ overflow: 'hidden', background: SR.ink }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col" style={{ overflow: 'hidden', background: SR.ink }}>
       {/* Scoreboard housing top rail */}
       <div style={{
         background: SR.navy,

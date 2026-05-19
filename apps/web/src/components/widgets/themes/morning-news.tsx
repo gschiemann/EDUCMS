@@ -63,7 +63,7 @@ export function MorningNewsLogo({ config }: { config: any; compact?: boolean }) 
   const photoUrl = config.assetUrl || config.photoUrl;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <svg viewBox="0 0 260 260" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ filter: `drop-shadow(0 4px 12px ${MN.shadow})`, overflow: 'visible' }}>
         {/* Outer navy ring */}
@@ -132,7 +132,7 @@ export function MorningNewsText({
   const subtitle = config.subtitle || 'Doors open at 6:30 PM — tickets available at the office';
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-end" style={{ padding: '0' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-end" style={{ padding: '0' }}>
       {/* Three-layer lower-third structure */}
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 0 }}>
         {/* Gold strip top */}
@@ -233,7 +233,7 @@ export function MorningNewsClock({ config, compact }: { config: any; compact?: b
   const hrAngle  = (now.getHours() % 12) * 30 + now.getMinutes() * 0.5;
 
   return (
-    <div className="absolute inset-0" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{
       background: MN.anchorBlue,
       display: 'flex',
       flexDirection: 'column',
@@ -403,7 +403,7 @@ export function MorningNewsWeather({ config, compact }: { config: any; compact?:
   };
 
   return (
-    <div className="absolute inset-0" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{
       background: MN.anchorBlue,
       display: 'flex',
       flexDirection: 'column',
@@ -483,7 +483,7 @@ export function MorningNewsCountdown({
   const unit     = days > 0 ? (days === 1 ? 'DAY' : 'DAYS') : hours > 0 ? (hours === 1 ? 'HOUR' : 'HOURS') : 'MIN';
 
   return (
-    <div className="absolute inset-0" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{
       background: MN.liveRed,
       display: 'flex',
       flexDirection: 'column',
@@ -550,7 +550,7 @@ export function MorningNewsAnnouncement({
   const message  = config.message || config.body     || 'Yearbook orders are due by the end of the month — visit the main office.';
 
   return (
-    <div className="absolute inset-0 flex flex-col justify-end" style={{ padding: 0 }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-end" style={{ padding: 0 }}>
       {/* Gold accent bar */}
       <div style={{ height: '6%', minHeight: 4, background: MN.gold, width: '100%' }} />
 
@@ -629,7 +629,7 @@ export function MorningNewsCalendar({ config }: { config: any; compact?: boolean
   const barColors = [MN.liveRed, MN.sky, MN.gold];
 
   return (
-    <div className="absolute inset-0" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{
       background: MN.anchorBlue,
       display: 'flex',
       flexDirection: 'column',
@@ -708,7 +708,7 @@ export function MorningNewsStaffSpotlight({
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
 
   return (
-    <div className="absolute inset-0" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{
       background: MN.anchorBlue,
       display: 'flex',
       alignItems: 'stretch',
@@ -814,7 +814,7 @@ export function MorningNewsImageCarousel({ config }: { config: any; compact?: bo
   const hasImage = urls.length > 0;
 
   return (
-    <div className="absolute inset-0" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{
       background: MN.ink,
       display: 'flex',
       alignItems: 'center',
@@ -934,7 +934,7 @@ export function MorningNewsTicker({ config, compact }: { config: any; compact?: 
   const primary = messages[idx % messages.length];
 
   return (
-    <div className="absolute inset-0" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{
       background: MN.tickerBg,
       display: 'flex',
       alignItems: 'center',

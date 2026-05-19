@@ -8,7 +8,7 @@ import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 export function MusicArtsText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'Music & Arts';
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-8" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-8" style={{
       background: 'rgba(0,0,0,0.4)',
       backdropFilter: 'blur(10px)',
       borderBottom: '4px solid rgba(168, 85, 247, 0.4)',
@@ -61,7 +61,7 @@ export function MusicArtsCountdown({ config, compact }: { config: any; compact?:
   }, [config.targetDate]);
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center p-8" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center p-8" style={{
       background: 'rgba(0,0,0,0.6)',
       backdropFilter: 'blur(10px)',
       borderLeft: '2px solid rgba(168, 85, 247, 0.3)',
@@ -110,7 +110,7 @@ export function MusicArtsCountdown({ config, compact }: { config: any; compact?:
 
 export function MusicArtsRichText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   return (
-    <div className="absolute inset-0 p-8 flex flex-col items-center justify-center" style={{ containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 p-8 flex flex-col items-center justify-center" style={{ containerType: 'size' }}>
       <div style={{
         position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         background: 'gradient(linear, left top, left bottom, from(rgba(88,28,135,0.4)), to(rgba(112,26,117,0.1)))',
@@ -142,7 +142,7 @@ export function MusicArtsRichText({ config, compact }: { config: any; compact?: 
 
 export function MusicArtsSpotlight({ config, compact }: { config: any; compact?: boolean }) {
   return (
-    <div className="absolute inset-0 p-8 flex items-center justify-center overflow-hidden" style={{ containerType: 'size' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 p-8 flex items-center justify-center overflow-hidden" style={{ containerType: 'size' }}>
       {/* Spotlight effect */}
       <div style={{ position: 'absolute', top: '-40%', left: '50%', transform: 'translateX(-50%) rotate(15deg)', width: '30%', height: '200%', background: 'rgba(255,255,255,0.05)', filter: 'blur(40px)', zIndex: 0, pointerEvents: 'none' }} />
       
@@ -210,7 +210,7 @@ export function MusicArtsTicker({ config, compact }: { config: any; compact?: bo
   const messages = config.messages || ['Arts Ticker'];
   const text = messages.join('   🎵   ');
   return (
-    <div className="absolute inset-0 flex items-center overflow-hidden" style={{
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden" style={{
       background: '#000',
       boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.5)',
       borderTop: '1px solid rgba(112,26,117,0.5)'
