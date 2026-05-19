@@ -423,7 +423,11 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
         {/* center column — clock + segment */}
         <div
           style={{
-            width: 520,
+            // 600 (was 520): a 5-char "MM:SS" clock at this size needs
+            // the room — a 520 column clipped the leading/trailing digit.
+            // Team panels stay ≥ 660px wide, comfortably over the 640
+            // team-name max-width.
+            width: 600,
             height: '100%',
             display: 'flex',
             flexDirection: 'column',
@@ -446,7 +450,9 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           {hasClock ? (
             <div
               style={{
-                fontSize: 200,
+                // 188 (was 200): sized so a 5-char "MM:SS" clock sits
+                // inside the 600px column with margin on both sides.
+                fontSize: 188,
                 fontWeight: 900,
                 lineHeight: 1,
                 marginTop: 18,
@@ -703,7 +709,10 @@ function SpotlightBand({ spot, expanded }: { spot: Spotlight; expanded?: boolean
             fontSize: titleSz,
             fontWeight: 900,
             color: '#fff',
-            lineHeight: 1.05,
+            // 1.3 (was 1.05): the line box must contain Inter's full
+            // glyph extent (~1.21em) or `overflow:hidden` clips the
+            // descenders — a name like "Greg" lost the tail of its g.
+            lineHeight: 1.3,
             marginTop: 4,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
