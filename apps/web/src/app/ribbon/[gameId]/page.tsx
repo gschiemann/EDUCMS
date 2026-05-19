@@ -156,14 +156,13 @@ function fmtClock(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function teamCode(name: string): string {
-  const first = String(name || '').trim().split(/\s+/)[0] || '—';
-  return first.toUpperCase().slice(0, 12);
-}
-/** A tight 4-char abbreviation — for the score zone's status line,
- *  where a long name would crowd out the clock. */
-function teamAbbr(name: string): string {
-  return teamCode(name).slice(0, 4);
+/** The team nickname for ribbon display — the LAST word of the team
+ *  name ("Cleveland Browns" → "BROWNS", "Las Vegas Raiders" →
+ *  "RAIDERS", single-word "Raiders" → "RAIDERS"). The ribbon shows the
+ *  short nickname; the full name (with city) stays on the scoreboard. */
+function teamNick(name: string): string {
+  const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return (words[words.length - 1] || '—').toUpperCase().slice(0, 14);
 }
 
 /** A hex color (#rgb / #rrggbb) as an rgba() string at the given
@@ -317,7 +316,7 @@ type Look =
  * the rotation always mixes types — never three sponsors in a row.
  */
 function buildLooks(data: BoardData, def: SportDefinition): Look[] {
-  const homeCode = teamCode(data.homeTeam);
+  const homeCode = teamNick(data.homeTeam);
   const enabled = new Set<string>(
     Array.isArray(data.ribbonPresets) ? data.ribbonPresets : defaultRibbonPresets(def),
   );
@@ -685,14 +684,27 @@ function ScoreZone({
           ? 'PRE-GAME'
           : (data.status || 'SCHEDULED').replace(/_/g, ' ');
 
-  // size the scorebug off the zone so it fits any ribbon height
-  const u = Math.min(h * 0.9, w * 0.46);
+  // The score is the hero — size it off the zone HEIGHT, with a width
+  // cap that widens with the score's digit count so a 3-digit
+  // basketball score never overflows the zone.
+  const digits = Math.max(1, String(Math.max(data.homeScore, data.awayScore, 0)).length);
+  const u = Math.min(h * 1.35, w / (1.02 + 0.51 * digits));
   const score = Math.round(u * 0.4);
   const logo = Math.round(u * 0.28);
   const dash = Math.round(u * 0.24);
-  const code = Math.round(u * 0.13);
-  const status = Math.round(u * 0.15);
-  const dot = Math.round(u * 0.1);
+  const gap = Math.round(u * 0.1);
+
+  // The status line (team nicknames + segment / clock) is sized
+  // SEPARATELY: `su` shrinks it to fit the zone width so a long
+  // nickname never clips — rather than forcing the score smaller.
+  const homeNick = teamNick(data.homeTeam);
+  const awayNick = teamNick(data.awayTeam);
+  const statusNeedU =
+    (homeNick.length + awayNick.length) * 0.092 + statusText.length * 0.095 + 0.7;
+  const su = Math.min(u, (w * 0.93) / statusNeedU);
+  const code = Math.round(su * 0.14);
+  const status = Math.round(su * 0.16);
+  const dot = Math.round(su * 0.1);
 
   const mark = (url: string | null, color: string) =>
     url ? (
@@ -765,12 +777,12 @@ function ScoreZone({
         {mark(data.awayLogoUrl, awayColor)}
       </div>
 
-      {/* status line — team codes flank the segment / clock */}
+      {/* status line — team nicknames flank the segment / clock */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          marginTop: Math.round(u * 0.11),
+          marginTop: gap,
         }}
       >
         <span
@@ -779,9 +791,10 @@ function ScoreZone({
             fontWeight: 900,
             letterSpacing: 1,
             color: homeColor,
+            whiteSpace: 'nowrap',
           }}
         >
-          {teamAbbr(data.homeTeam)}
+          {homeNick}
         </span>
         {live && (
           <span
@@ -790,7 +803,7 @@ function ScoreZone({
               height: dot,
               borderRadius: 999,
               background: '#ef4444',
-              margin: `0 ${Math.round(u * 0.06)}px 0 ${Math.round(u * 0.1)}px`,
+              margin: `0 ${Math.round(su * 0.07)}px`,
               display: 'inline-block',
               animation: 'rbnPulse 1.6s ease-in-out infinite',
             }}
@@ -800,9 +813,9 @@ function ScoreZone({
           style={{
             fontSize: status,
             fontWeight: 800,
-            letterSpacing: 2,
+            letterSpacing: 1,
             color: '#fbbf24',
-            margin: `0 ${Math.round(u * (live ? 0.08 : 0.12))}px`,
+            margin: `0 ${Math.round(su * (live ? 0.1 : 0.16))}px`,
             fontVariantNumeric: 'tabular-nums',
             whiteSpace: 'nowrap',
           }}
@@ -815,9 +828,10 @@ function ScoreZone({
             fontWeight: 900,
             letterSpacing: 1,
             color: awayColor,
+            whiteSpace: 'nowrap',
           }}
         >
-          {teamAbbr(data.awayTeam)}
+          {awayNick}
         </span>
       </div>
     </div>
@@ -1206,7 +1220,7 @@ function LookUnit({
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          {teamCode(data.homeTeam)}
+          {teamNick(data.homeTeam)}
         </span>
         <span
           style={{
@@ -1249,7 +1263,7 @@ function LookUnit({
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          {teamCode(data.awayTeam)}
+          {teamNick(data.awayTeam)}
         </span>
       </div>
     );
@@ -1283,7 +1297,7 @@ function LookUnit({
               letterSpacing: 2,
             }}
           >
-            {teamCode(data.homeTeam)}
+            {teamNick(data.homeTeam)}
           </span>
           <span
             style={{
@@ -1304,7 +1318,7 @@ function LookUnit({
               letterSpacing: 2,
             }}
           >
-            {teamCode(data.awayTeam)}
+            {teamNick(data.awayTeam)}
           </span>
         </div>
       </div>
@@ -1589,11 +1603,11 @@ function CueBurst({ cue, w, h }: { cue: Cue; w: number; h: number }) {
               fontVariantNumeric: 'tabular-nums',
             }}
           >
-            <span style={{ color: snap.homeColor || '#fff' }}>{teamCode(snap.homeTeam)}</span>
+            <span style={{ color: snap.homeColor || '#fff' }}>{teamNick(snap.homeTeam)}</span>
             <span style={{ margin: `0 ${ch * 0.08}px` }}>{snap.homeScore}</span>
             <span style={{ color: '#475569' }}>–</span>
             <span style={{ margin: `0 ${ch * 0.08}px` }}>{snap.awayScore}</span>
-            <span style={{ color: snap.awayColor || '#fff' }}>{teamCode(snap.awayTeam)}</span>
+            <span style={{ color: snap.awayColor || '#fff' }}>{teamNick(snap.awayTeam)}</span>
           </span>
         )}
       </div>
