@@ -61,6 +61,25 @@ jobs:
               echo "::error file=$gradle::$dir is at versionName=$vn but git tag '$tag' does NOT exist. CI only ships an OTA release on a $prefix-v* tag. Run:  git tag $tag && git push origin $tag"
               fail=1
             fi
+
+            # Hardening (the v1.0.66 incident): the checks above work
+            # FROM the gradle outward and cannot catch a tag cut on an
+            # un-bumped tree — player-v1.0.66 was tagged while the gradle
+            # still said 1.0.65, so the APK shipped mis-stamped and every
+            # kiosk looped on install. This check works FROM the tags:
+            # the newest $prefix-v* tag must point at a commit whose
+            # build.gradle.kts versionName equals the tag.
+            latest=$(git tag -l "${prefix}-v*" | sort -V | tail -1)
+            if [ -n "$latest" ]; then
+              tagver="${latest#${prefix}-v}"
+              tagvn=$(git show "$latest:$gradle" 2>/dev/null | grep -oE 'versionName = "[^"]+"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+              if [ "$tagvn" != "$tagver" ]; then
+                echo "::error file=$gradle::tag $latest points at a commit whose versionName is '$tagvn', not '$tagver' — a $prefix-v* tag was cut WITHOUT bumping the gradle. The APK ships mis-stamped and kiosks loop on install. Bump the gradle and re-tag (see release-apk.sh / feedback_player_release_tagging.md)."
+                fail=1
+              else
+                echo "OK  newest tag $latest matches its commit gradle ($tagvn)"
+              fi
+            fi
           done
           exit $fail
 
