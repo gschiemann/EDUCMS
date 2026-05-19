@@ -207,6 +207,33 @@ export class SportsController {
     return this.sports.setPlayClock(req.user.tenantId, id, body);
   }
 
+  /** Penalty box — hockey / lacrosse / field hockey / water polo.
+   *  add a timed penalty for a team, remove one early (power-play
+   *  goal), or clear the box. Penalties run / freeze with the game
+   *  clock. */
+  @Patch('games/:id/penalties')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  penalties(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      action?: string;
+      team?: string;
+      penaltyId?: string;
+      lenSec?: number;
+      label?: string;
+      player?: string;
+    },
+  ) {
+    return this.sports.setPenalties(req.user.tenantId, id, body);
+  }
+
   @Patch('games/:id/segment')
   @RequireRoles(
     AppRole.SUPER_ADMIN,

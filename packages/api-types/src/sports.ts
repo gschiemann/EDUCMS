@@ -65,6 +65,27 @@ export interface FiredCue {
   createdAt: string | Date;
 }
 
+/**
+ * One live penalty in a game's penalty box, stored in the array at
+ * Game.stats.penalties. Each penalty is its own anchor — projected
+ * down like the game clock — and runs / freezes WITH the game clock
+ * (a whistle stops play, the box, and the game clock together).
+ */
+export interface GamePenalty {
+  id: string;
+  team: 'home' | 'away';
+  /** infraction name — "Minor", "Major", … (from the sport's presets) */
+  label: string;
+  /** the penalized player's jersey number, or '' if not entered */
+  player: string;
+  /** remaining ms at the anchor instant `at` */
+  ms: number;
+  /** ISO timestamp the `ms` reading was taken */
+  at: string;
+  /** counting down (true) or frozen at a stoppage (false) */
+  running: boolean;
+}
+
 export interface SportDefinition {
   key: string;
   name: string;
@@ -79,6 +100,17 @@ export interface SportDefinition {
   score: { unit: string; increments: number[] };
   stats: SportStatField[];
   celebrations: SportCelebration[];
+  /** Sports with a timed penalty box — hockey, lacrosse, field
+   *  hockey, water polo. `presets` are the quick-pick infraction
+   *  durations the operator picks from; the penalty clock counts
+   *  that player out and runs / freezes with the game clock.
+   *  Omitted for sports with no timed penalty (football, basketball,
+   *  soccer — a soccer red card removes a player but starts no
+   *  timer). */
+  penaltyBox?: {
+    label: string;
+    presets: { label: string; sec: number }[];
+  };
 }
 
 export type GameStatus = 'SCHEDULED' | 'PRE_GAME' | 'LIVE' | 'HALFTIME' | 'FINAL';
@@ -269,6 +301,15 @@ const HOCKEY: SportDefinition = {
     { key: 'hatTrick', label: 'Hat Trick', emoji: '🎩' },
     { key: 'save', label: 'Big Save', emoji: '🧤' },
   ],
+  penaltyBox: {
+    label: 'Penalty box',
+    presets: [
+      { label: 'Minor', sec: 120 },
+      { label: 'Double minor', sec: 240 },
+      { label: 'Major', sec: 300 },
+      { label: 'Misconduct', sec: 600 },
+    ],
+  },
 };
 
 const LACROSSE: SportDefinition = {
@@ -291,6 +332,15 @@ const LACROSSE: SportDefinition = {
     { key: 'groundBall', label: 'Ground Ball', emoji: '🔄' },
     { key: 'manUp', label: 'Man Up', emoji: '⚡' },
   ],
+  penaltyBox: {
+    label: 'Penalty box',
+    presets: [
+      { label: 'Technical :30', sec: 30 },
+      { label: 'Personal 1:00', sec: 60 },
+      { label: 'Personal 2:00', sec: 120 },
+      { label: 'Personal 3:00', sec: 180 },
+    ],
+  },
 };
 
 const FIELD_HOCKEY: SportDefinition = {
@@ -313,6 +363,14 @@ const FIELD_HOCKEY: SportDefinition = {
     { key: 'penaltyCorner', label: 'Penalty Corner', emoji: '📐' },
     { key: 'greenCard', label: 'Green Card', emoji: '🟩' },
   ],
+  penaltyBox: {
+    label: 'Suspensions',
+    presets: [
+      { label: 'Green 2:00', sec: 120 },
+      { label: 'Yellow 5:00', sec: 300 },
+      { label: 'Yellow 10:00', sec: 600 },
+    ],
+  },
 };
 
 const WATER_POLO: SportDefinition = {
@@ -335,6 +393,13 @@ const WATER_POLO: SportDefinition = {
     { key: 'exclusion', label: 'Exclusion', emoji: '✋' },
     { key: 'powerPlay', label: 'Power Play', emoji: '⚡' },
   ],
+  penaltyBox: {
+    label: 'Exclusions',
+    presets: [
+      { label: 'Exclusion :20', sec: 20 },
+      { label: 'Misconduct 4:00', sec: 240 },
+    ],
+  },
 };
 
 const PICKLEBALL: SportDefinition = {

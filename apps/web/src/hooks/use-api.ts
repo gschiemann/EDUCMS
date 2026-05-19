@@ -2217,11 +2217,31 @@ export function useGameControl(gameId: string) {
       }),
   });
 
+  const penalties = useMutation({
+    // Penalty box — add / remove / clear a timed penalty. Writes the
+    // game back so the penalty popup list refreshes the instant the
+    // operator taps, instead of waiting for the next poll.
+    mutationFn: (body: {
+      action: string;
+      team?: string;
+      penaltyId?: string;
+      lenSec?: number;
+      label?: string;
+      player?: string;
+    }) =>
+      apiFetch(`/sports/games/${gameId}/penalties`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: writeBack,
+  });
+
   return {
     score,
     clock,
     shotClock,
     playClock,
+    penalties,
     segment,
     stats,
     status,

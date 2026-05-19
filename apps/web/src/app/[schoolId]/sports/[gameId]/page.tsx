@@ -141,6 +141,7 @@ function GameControl() {
   const [mode, setMode] = useState<ConsoleMode>('run');
   const [showCues, setShowCues] = useState(false);
   const [showHighlights, setShowHighlights] = useState(false);
+  const [showPenalties, setShowPenalties] = useState(false);
 
   // Stream overlay URL — copy to clipboard for OBS / vMix browser source.
   const [copied, setCopied] = useState(false);
@@ -251,7 +252,12 @@ function GameControl() {
         ).map((tab) => (
           <button
             key={tab.key}
-            onClick={() => { setMode(tab.key); setShowCues(false); setShowHighlights(false); }}
+            onClick={() => {
+              setMode(tab.key);
+              setShowCues(false);
+              setShowHighlights(false);
+              setShowPenalties(false);
+            }}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
               mode === tab.key
                 ? 'bg-indigo-50 text-indigo-600'
@@ -281,6 +287,7 @@ function GameControl() {
           ctl={ctl}
           onShowCues={() => setShowCues(true)}
           onHighlights={() => setShowHighlights(true)}
+          onPenalties={() => setShowPenalties(true)}
         />
       )}
 
@@ -419,6 +426,40 @@ function GameControl() {
           </div>
         </div>
       )}
+
+      {/* PENALTY BOX POPUP — send a player to the box / release one
+          without leaving the Run screen. Adding a penalty auto-closes
+          back to the game; the live box list stays one tap away. */}
+      {mode === 'run' && showPenalties && def.penaltyBox && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-3 sm:items-center sm:p-4"
+          onClick={() => setShowPenalties(false)}
+        >
+          <div
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900">{def.penaltyBox.label}</h2>
+              <button
+                onClick={() => setShowPenalties(false)}
+                className="rounded-md px-2 py-1 text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <PenaltyBoxControl
+              def={def}
+              g={g}
+              homeColor={homeColor}
+              awayColor={awayColor}
+              ctl={ctl}
+              onAdded={() => setShowPenalties(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -531,6 +572,7 @@ function RunMode({
   ctl,
   onShowCues,
   onHighlights,
+  onPenalties,
 }: {
   g: any;
   def: SportDefinition;
@@ -540,9 +582,13 @@ function RunMode({
   ctl: ReturnType<typeof useGameControl>;
   onShowCues: () => void;
   onHighlights: () => void;
+  onPenalties: () => void;
 }) {
   const isBaseballSoftball = def.key === 'baseball' || def.key === 'softball';
   const stats: Record<string, unknown> = g.stats || {};
+  // How many players are currently serving time — drives the tray
+  // badge for the penalty-box sports (hockey, lacrosse, …).
+  const penaltyCount = def.penaltyBox ? livePenalties(stats).length : 0;
 
   // Single-level undo for score changes — the #1 operator mis-tap.
   // We keep the exact last score mutation so Undo applies its inverse.
@@ -660,6 +706,25 @@ function RunMode({
           )}
         </button>
 
+        {/* penalty box — hockey / lacrosse / field hockey / water polo */}
+        {def.penaltyBox && (
+          <button
+            type="button"
+            onClick={onPenalties}
+            className="relative flex flex-col items-center justify-center gap-0.5 h-14 px-4 rounded-xl bg-rose-600 text-white font-black text-sm hover:bg-rose-700 transition-colors shrink-0"
+          >
+            <span>⏱ Penalties</span>
+            <span className="text-[10px] text-rose-200 font-semibold">
+              {def.penaltyBox.label.toLowerCase()}
+            </span>
+            {penaltyCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1 text-[11px] font-black text-rose-600">
+                {penaltyCount}
+              </span>
+            )}
+          </button>
+        )}
+
         {/* highlights */}
         <button
           type="button"
@@ -680,6 +745,233 @@ function RunMode({
           <span className="text-[10px] text-indigo-200 font-semibold">celebrations</span>
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── Penalty box ────────────────────────────────────────────────
+
+/** A penalty as the operator console sees it — projected live off
+ *  its stored anchor, expired ones dropped, soonest-out first. */
+type LivePenalty = {
+  id: string;
+  team: 'home' | 'away';
+  label: string;
+  player: string;
+  ms: number;
+};
+
+/** Project every penalty in a game's stats to its live remaining
+ *  time. Operator-side — no server-skew correction (a few hundred ms
+ *  is invisible on a control surface; the scoreboard projects with
+ *  skew correction for the crowd). */
+function livePenalties(stats: Record<string, unknown>): LivePenalty[] {
+  const raw = Array.isArray(stats.penalties) ? (stats.penalties as unknown[]) : [];
+  return raw
+    .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
+    .map((p) => {
+      let ms = Math.max(0, Number(p.ms) || 0);
+      if (p.running) {
+        const at = new Date(String(p.at || '')).getTime();
+        if (Number.isFinite(at)) ms = Math.max(0, ms - (Date.now() - at));
+      }
+      return {
+        id: String(p.id || ''),
+        team: p.team === 'away' ? ('away' as const) : ('home' as const),
+        label: String(p.label || ''),
+        player: String(p.player || ''),
+        ms,
+      };
+    })
+    .filter((p) => p.id && p.ms > 0)
+    .sort((a, b) => a.ms - b.ms);
+}
+
+/** MM:SS, ceil to the second — a penalty reads "0:01" right up to
+ *  the instant it clears. */
+function fmtBoxTime(ms: number): string {
+  const total = Math.ceil(Math.max(0, ms) / 1000);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/**
+ * PenaltyBoxControl — the popup body. Pick the team, optionally the
+ * player number, then tap a duration to send them to the box; that
+ * auto-closes back to the game. The active box lists everyone
+ * serving time with a live countdown and a Release button (a
+ * power-play goal ends a minor early).
+ */
+function PenaltyBoxControl({
+  def,
+  g,
+  homeColor,
+  awayColor,
+  ctl,
+  onAdded,
+}: {
+  def: SportDefinition;
+  g: any;
+  homeColor: string;
+  awayColor: string;
+  ctl: ReturnType<typeof useGameControl>;
+  onAdded: () => void;
+}) {
+  const box = def.penaltyBox!;
+  const [team, setTeam] = useState<'home' | 'away'>('home');
+  const [player, setPlayer] = useState('');
+
+  // Tick so the active-box countdowns stay live while the popup is open.
+  const [, force] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => force((n) => n + 1), 250);
+    return () => clearInterval(t);
+  }, []);
+
+  const stats: Record<string, unknown> = g.stats || {};
+  const live = livePenalties(stats);
+
+  const add = (preset: { label: string; sec: number }) => {
+    ctl.penalties.mutate({
+      action: 'add',
+      team,
+      lenSec: preset.sec,
+      label: preset.label,
+      player: player.trim(),
+    });
+    setPlayer('');
+    onAdded();
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* which team */}
+      <div>
+        <div className="mb-1.5 text-xs font-semibold text-slate-500">Penalty against</div>
+        <div className="grid grid-cols-2 gap-2">
+          {(['home', 'away'] as const).map((t) => {
+            const sel = team === t;
+            const c = t === 'home' ? homeColor : awayColor;
+            const nm = t === 'home' ? g.homeTeam : g.awayTeam;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTeam(t)}
+                className={`flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition-colors ${
+                  sel ? 'text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+                style={sel ? { background: c, borderColor: c } : { borderColor: '#e2e8f0' }}
+              >
+                <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: c }} />
+                <span className="truncate">{nm}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* player number */}
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold text-slate-500">
+          Player number <span className="font-normal text-slate-400">(optional)</span>
+        </label>
+        <Input
+          value={player}
+          onChange={(e) => setPlayer(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+          inputMode="numeric"
+          placeholder="e.g. 12"
+          className="w-28 text-center text-lg font-bold"
+        />
+      </div>
+
+      {/* duration → fires the add, then auto-closes */}
+      <div>
+        <div className="mb-1.5 text-xs font-semibold text-slate-500">
+          Tap a duration to send the player to the box
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {box.presets.map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => add(p)}
+              className="flex flex-col items-center justify-center rounded-xl bg-rose-600 px-2 py-3 text-white transition-colors hover:bg-rose-700"
+            >
+              <span className="text-base font-black tabular-nums">
+                {fmtBoxTime(p.sec * 1000)}
+              </span>
+              <span className="text-[11px] font-semibold text-rose-100">{p.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* the active box */}
+      <div>
+        <div className="mb-1.5 flex items-center justify-between">
+          <span className="text-xs font-semibold text-slate-500">
+            In the box ({live.length})
+          </span>
+          {live.length > 0 && (
+            <button
+              type="button"
+              onClick={() => ctl.penalties.mutate({ action: 'clear' })}
+              className="text-xs font-semibold text-slate-400 hover:text-rose-600"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+        {live.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">
+            The box is empty.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {live.map((p) => {
+              const c = p.team === 'home' ? homeColor : awayColor;
+              const nm = p.team === 'home' ? g.homeTeam : g.awayTeam;
+              return (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                >
+                  <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: c }} />
+                  <span className="min-w-0 flex-1 truncate text-sm text-slate-600">
+                    <span className="font-semibold text-slate-800">{nm}</span>
+                    {p.player ? (
+                      <span className="ml-1.5 font-black text-slate-900">#{p.player}</span>
+                    ) : null}
+                    {p.label ? <span className="ml-1.5 text-slate-400">{p.label}</span> : null}
+                  </span>
+                  <span
+                    className={`text-lg font-black tabular-nums ${
+                      p.ms <= 10_000 ? 'text-rose-600' : 'text-slate-900'
+                    }`}
+                  >
+                    {fmtBoxTime(p.ms)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      ctl.penalties.mutate({ action: 'remove', penaltyId: p.id })
+                    }
+                    className="shrink-0 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 hover:bg-rose-100 hover:text-rose-700"
+                  >
+                    Release
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <p className="text-[11px] leading-relaxed text-slate-400">
+        Penalty clocks run and freeze with the game clock — start the clock and
+        every penalty counts down with it. &ldquo;Release&rdquo; pulls a player
+        out early (a power-play goal ends a minor).
+      </p>
     </div>
   );
 }

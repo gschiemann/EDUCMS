@@ -942,10 +942,19 @@ export class SportsService {
         throw new BadRequestException('action must be start | pause | set | reset');
     }
 
-    const updated = await this.prisma.client.game.update({
-      where: { id },
-      data: { clockMs, clockRunning, clockUpdatedAt: now },
-    });
+    // Penalties slave to the game clock — a whistle that stops the
+    // game clock freezes the whole penalty box; a start resumes it.
+    // Re-anchor every penalty to the new running state (skipped when
+    // the box is empty, so non-penalty sports never touch stats).
+    const data: Record<string, unknown> = {
+      clockMs,
+      clockRunning,
+      clockUpdatedAt: now,
+    };
+    const syncedStats = this.syncPenaltiesToClock(game.stats, clockRunning, now);
+    if (syncedStats) data.stats = syncedStats as any;
+
+    const updated = await this.prisma.client.game.update({ where: { id }, data });
     await this.record(id, 'CLOCK', { action, clockMs, clockRunning });
     return updated;
   }
@@ -1077,6 +1086,145 @@ export class SportsService {
       where: { id },
       data: { stats: { ...stats, playClock } as any },
     });
+  }
+
+  /**
+   * Project one stored penalty anchor to its live remaining ms — the
+   * same anchor math the game clock uses. A frozen penalty reads its
+   * stored ms; a running one subtracts elapsed wall time.
+   */
+  private projectPenaltyMs(p: Record<string, unknown>, nowMs: number): number {
+    const ms = Math.max(0, Number(p.ms) || 0);
+    if (!p.running) return ms;
+    const at = new Date(String(p.at || '')).getTime();
+    if (!Number.isFinite(at)) return ms;
+    return Math.max(0, ms - (nowMs - at));
+  }
+
+  /**
+   * Re-anchor every penalty in a game's stats to a new running state,
+   * projecting each to its live remaining time and dropping any that
+   * already expired (a player whose box time ran out is back on the
+   * ice). Returns the updated stats object, or null when the game has
+   * no penalties — so callers can skip the stats write entirely for
+   * the 14 sports with no penalty box.
+   */
+  private syncPenaltiesToClock(
+    rawStats: unknown,
+    running: boolean,
+    now: Date,
+  ): Record<string, unknown> | null {
+    if (!rawStats || typeof rawStats !== 'object') return null;
+    const stats = { ...(rawStats as Record<string, unknown>) };
+    if (!Array.isArray(stats.penalties) || stats.penalties.length === 0) {
+      return null;
+    }
+    const nowMs = now.getTime();
+    const nowIso = now.toISOString();
+    stats.penalties = (stats.penalties as unknown[])
+      .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
+      .map((p) => ({
+        id: String(p.id || ''),
+        team: p.team === 'away' ? 'away' : 'home',
+        label: String(p.label || '').slice(0, 24),
+        player: String(p.player || '').slice(0, 4),
+        ms: this.projectPenaltyMs(p, nowMs),
+        at: nowIso,
+        running,
+      }))
+      .filter((p) => p.id && p.ms > 0);
+    return stats;
+  }
+
+  /**
+   * Penalty box — the timed penalties of hockey, lacrosse, field
+   * hockey and water polo. Each penalty counts a player out for a
+   * fixed duration; the box runs and freezes WITH the game clock.
+   * Stored as an array in Game.stats.penalties (no schema column);
+   * every surface projects each penalty from its own anchor.
+   *
+   *   add    — push a penalty for a team (lenSec + optional player #)
+   *   remove — pull one penalty early (a power-play goal ends a minor)
+   *   clear  — empty the box
+   *
+   * Every action re-anchors the surviving penalties to the game
+   * clock's current running state and prunes any that hit 0:00.
+   */
+  async setPenalties(
+    tenantId: string,
+    id: string,
+    dto: {
+      action?: string;
+      team?: string;
+      penaltyId?: string;
+      lenSec?: number;
+      label?: string;
+      player?: string;
+    },
+  ) {
+    const game = await this.owned(tenantId, id);
+    const action = String(dto.action || '');
+    const now = new Date();
+    // A penalty added while the clock runs starts counting at once;
+    // added during a stoppage it waits, frozen, for the next start.
+    const running = !!game.clockRunning;
+
+    // Start from the stored box, re-anchored live + pruned of expired.
+    const synced = this.syncPenaltiesToClock(game.stats, running, now);
+    const baseStats: Record<string, unknown> =
+      synced ??
+      (game.stats && typeof game.stats === 'object'
+        ? { ...(game.stats as Record<string, unknown>), penalties: [] }
+        : { penalties: [] });
+    let list = Array.isArray(baseStats.penalties)
+      ? (baseStats.penalties as Record<string, unknown>[])
+      : [];
+
+    switch (action) {
+      case 'add': {
+        const sec = Math.round(Number(dto.lenSec));
+        if (!Number.isFinite(sec) || sec < 5 || sec > 1800) {
+          throw new BadRequestException('lenSec must be 5–1800 seconds');
+        }
+        if (list.length >= 12) {
+          throw new BadRequestException('Penalty box is full (12 max)');
+        }
+        list = [
+          ...list,
+          {
+            id: `pen_${now.getTime().toString(36)}_${Math.random()
+              .toString(36)
+              .slice(2, 7)}`,
+            team: dto.team === 'away' ? 'away' : 'home',
+            label: String(dto.label || '').slice(0, 24),
+            // Jersey number — digits only, ≤ 3 (00–999 covers every code).
+            player: String(dto.player || '').replace(/[^0-9]/g, '').slice(0, 3),
+            ms: sec * 1000,
+            at: now.toISOString(),
+            running,
+          },
+        ];
+        break;
+      }
+      case 'remove': {
+        const pid = String(dto.penaltyId || '');
+        if (!pid) throw new BadRequestException('penaltyId required');
+        list = list.filter((p) => String(p.id) !== pid);
+        break;
+      }
+      case 'clear':
+        list = [];
+        break;
+      default:
+        throw new BadRequestException('action must be add | remove | clear');
+    }
+
+    const updated = await this.prisma.client.game.update({
+      where: { id },
+      data: { stats: { ...baseStats, penalties: list } as any },
+    });
+    await this.record(id, 'PENALTY', { action, count: list.length });
+    return updated;
   }
 
   /** Advance / set the segment (quarter, inning, set, period). */

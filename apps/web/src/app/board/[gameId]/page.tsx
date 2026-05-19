@@ -17,7 +17,7 @@
  *     (the pattern CLAUDE.md mandates for player surfaces)
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { SituationalRow } from '@/components/widgets/v2/_shared/sports-situational';
 import { useParams } from 'next/navigation';
@@ -123,6 +123,15 @@ function fmtClock(ms: number): string {
   return `${s}.${tenths}`;
 }
 
+/** Penalty-clock format — always MM:SS, ceil to the second so the
+ *  box still reads "0:01" right up to the instant it expires. */
+function fmtPenalty(ms: number): string {
+  const total = Math.ceil(Math.max(0, ms) / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 /** First word of a team name, upper-cased, capped — a clean short
  *  code for the celebration score line. */
 function teamCode(name: string): string {
@@ -159,6 +168,111 @@ const STATUS_STYLE: Record<string, { label: string; bg: string; pulse?: boolean 
 
 // ── the 1920×1080 scoreboard scene ─────────────────────────────
 
+/** A team's live penalty timers — the box for hockey / lacrosse /
+ *  field hockey / water polo. Each penalty is an anchor projected
+ *  locally (the same math as the game clock); an expired one drops
+ *  off on its own. Renders nothing when the box is empty, so the
+ *  14 sports with no penalty box show no panel. */
+function PenaltyTimers({
+  team,
+  stats,
+  serverTime,
+  color,
+}: {
+  team: 'home' | 'away';
+  stats: Record<string, unknown> | undefined;
+  serverTime: number;
+  color: string;
+}) {
+  const raw = stats && Array.isArray(stats.penalties) ? (stats.penalties as unknown[]) : [];
+  const mine = raw
+    .filter(
+      (p): p is Record<string, unknown> =>
+        !!p && typeof p === 'object' && (p as Record<string, unknown>).team === team,
+    )
+    .map((p) => ({
+      id: String(p.id || ''),
+      player: String(p.player || ''),
+      ms: Math.max(0, Number(p.ms) || 0),
+      at: String(p.at || ''),
+      running: !!p.running,
+    }))
+    .filter((p) => p.id);
+  // A stable key so the projection effect only re-subscribes when the
+  // penalty anchors actually change, not on every poll.
+  const key = JSON.stringify(mine.map((p) => [p.id, p.ms, p.at, p.running]));
+
+  const [live, setLive] = useState<{ id: string; player: string; ms: number }[]>([]);
+  useEffect(() => {
+    const skew = serverTime - Date.now(); // local + skew ≈ server
+    const project = () => {
+      setLive(
+        mine
+          .map((p) => {
+            let ms = p.ms;
+            if (p.running) {
+              const at = new Date(p.at).getTime();
+              if (Number.isFinite(at)) ms = Math.max(0, p.ms - (Date.now() + skew - at));
+            }
+            return { id: p.id, player: p.player, ms };
+          })
+          .filter((p) => p.ms > 0),
+      );
+    };
+    project();
+    if (!mine.some((p) => p.running)) return;
+    const t = setInterval(project, 100);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, serverTime]);
+
+  if (live.length === 0) return null;
+  return (
+    <div
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 16 }}
+    >
+      <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: 4, color: '#64748b' }}>
+        PENALTIES
+      </span>
+      <div
+        style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', marginTop: 8 }}
+      >
+        {live.slice(0, 4).map((p, i) => (
+          <div
+            key={p.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              background: '#0f172a',
+              border: `3px solid ${color}`,
+              borderRadius: 12,
+              padding: '8px 18px',
+              marginLeft: i ? 14 : 0,
+              marginBottom: 8,
+            }}
+          >
+            {p.player ? (
+              <span style={{ fontSize: 32, fontWeight: 900, color, marginRight: 12 }}>
+                #{p.player}
+              </span>
+            ) : null}
+            <span
+              style={{
+                fontSize: 38,
+                fontWeight: 900,
+                color: p.ms <= 10_000 ? '#f87171' : '#ffffff',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {fmtPenalty(p.ms)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TeamPanel({
   side,
   name,
@@ -167,6 +281,7 @@ function TeamPanel({
   logoUrl,
   winning,
   hasPossession,
+  penaltyNode,
 }: {
   side: 'home' | 'away';
   name: string;
@@ -175,6 +290,7 @@ function TeamPanel({
   logoUrl: string | null;
   winning: boolean;
   hasPossession?: boolean;
+  penaltyNode?: ReactNode;
 }) {
   return (
     <div
@@ -303,6 +419,7 @@ function TeamPanel({
       >
         {score}
       </div>
+      {penaltyNode}
     </div>
   );
 }
@@ -501,6 +618,14 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           logoUrl={data.homeLogoUrl}
           winning={data.homeScore > data.awayScore && data.status !== 'SCHEDULED'}
           hasPossession={ballSide === 'home'}
+          penaltyNode={
+            <PenaltyTimers
+              team="home"
+              stats={data.stats}
+              serverTime={data.serverTime}
+              color={homeColor}
+            />
+          }
         />
 
         {/* center column — clock + segment */}
@@ -629,6 +754,14 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           logoUrl={data.awayLogoUrl}
           winning={data.awayScore > data.homeScore && data.status !== 'SCHEDULED'}
           hasPossession={ballSide === 'away'}
+          penaltyNode={
+            <PenaltyTimers
+              team="away"
+              stats={data.stats}
+              serverTime={data.serverTime}
+              color={awayColor}
+            />
+          }
         />
       </div>
 
