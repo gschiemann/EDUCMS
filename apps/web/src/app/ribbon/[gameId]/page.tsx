@@ -560,6 +560,7 @@ export default function RibbonPage() {
 @keyframes rbnRing{0%{opacity:0;transform:scale(0.2)}9%{opacity:0.9}52%{opacity:0}100%{opacity:0;transform:scale(3.6)}}
 @keyframes rbnSweep{0%{opacity:0;transform:translateX(-1600px) skewX(-14deg)}5%{opacity:0.85}24%{opacity:0.85}34%{opacity:0;transform:translateX(1600px) skewX(-14deg)}100%{opacity:0;transform:translateX(1600px) skewX(-14deg)}}
 @keyframes rbnSlam{0%{opacity:0;transform:scale(1.5)}10%{opacity:1;transform:scale(0.93)}16%{transform:scale(1.05)}22%{transform:scale(1)}90%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.03)}}
+@keyframes rbnMarquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
       `}</style>
 
       {/* fixed score / clock zone — pinned, never moves */}
@@ -804,11 +805,13 @@ function ContentZone({
 }
 
 /**
- * One look, tiled across the content zone. A ribbon is so wide that a
- * single graphic floating in the middle wastes the surface and reads
- * from only the centre seats — so a look repeats across the width
- * (Daktronics "tile the content so fans enjoy it from every seat").
- * A full-bleed slide is the one exception: it spans as a single image.
+ * One look, rendered in the content zone.
+ *
+ * Most looks tile across the ribbon width so fans at every seat see
+ * them (Daktronics "tile the content" model). The SPONSOR look is the
+ * one exception: it scrolls as a seamless horizontal marquee — sponsor
+ * logo + name repeated and translateX-animated 0 → -50% so the loop
+ * has no seam. All other looks remain held-static.
  */
 function LookView({
   look,
@@ -823,14 +826,105 @@ function LookView({
   data: BoardData;
   def: SportDefinition;
 }) {
+  // ── Sponsor look — seamless horizontal marquee ────────────────
+  // Duplicate the strip so the second copy begins exactly where the
+  // first ends; animating the wrapper -50% produces a perfect loop.
+  if (look.kind === 'sponsor') {
+    const sp = look.sponsor;
+    const color = sp.color || '#6366f1';
+    const cu = Math.min(h * 0.9, 540);
+    // One sponsor card: logo + name + tagline — same visuals as the
+    // static version but wider so it reads as a scrolling banner.
+    const cardW = Math.round(cu * 3.2);
+    const SponsorCard = () => (
+      <div
+        style={{
+          width: cardW,
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          flexShrink: 0,
+        }}
+      >
+        {sp.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={sp.logoUrl}
+            alt=""
+            style={{
+              height: cu * 0.66,
+              width: cu * 1.7,
+              objectFit: 'contain',
+              marginRight: cu * 0.22,
+            }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : null}
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <span style={{ fontSize: cu * 0.15, fontWeight: 800, letterSpacing: 3, color }}>
+            PROUD SPONSOR
+          </span>
+          <span style={{ fontSize: cu * 0.34, fontWeight: 900, color: '#fff', whiteSpace: 'nowrap' }}>
+            {sp.name}
+          </span>
+          {sp.tagline ? (
+            <span
+              style={{ fontSize: cu * 0.16, fontWeight: 600, color: '#94a3b8', whiteSpace: 'nowrap' }}
+            >
+              {sp.tagline}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    );
+    // Fill the strip with copies to cover 2× the content width. The
+    // count MUST be even — the loop translates the strip exactly -50%
+    // (= copies/2 cards), so an odd count lands the loop point mid-card
+    // and the marquee visibly jumps every cycle. Round up to even.
+    const rawCopies = Math.max(2, Math.ceil((w * 2) / Math.max(1, cardW)));
+    const copies = rawCopies % 2 === 0 ? rawCopies : rawCopies + 1;
+    const scrollSecs = Math.max(8, (cardW * copies) / 120);
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          overflow: 'hidden',
+        }}
+      >
+        {/* the scrolling strip: 2× wide, translateX loops 0→-50% */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: 0,
+            width: cardW * copies,
+            display: 'flex',
+            alignItems: 'center',
+            animation: `rbnMarquee ${scrollSecs.toFixed(1)}s linear infinite`,
+          }}
+        >
+          {Array.from({ length: copies }, (_, i) => (
+            <SponsorCard key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── All other looks — static tiled copies ─────────────────────
   const unit =
     look.kind === 'slide'
       ? w
       : look.kind === 'player' || look.kind === 'situational'
         ? Math.min(w, h * 6)
-        : look.kind === 'sponsor'
-          ? Math.min(w, h * 5)
-          : Math.min(w, h * 4.4); // prompt
+        : Math.min(w, h * 4.4); // prompt / final / pregame
   const copies = Math.max(1, Math.round(w / Math.max(1, unit)));
 
   return (

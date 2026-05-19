@@ -430,6 +430,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
             alignItems: 'center',
             justifyContent: 'center',
             background: '#05070d',
+            overflow: 'visible',
           }}
         >
           <div
@@ -452,6 +453,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
                 fontVariantNumeric: 'tabular-nums',
                 color: data.clockRunning ? '#fbbf24' : '#e2e8f0',
                 textShadow: data.clockRunning ? '0 0 50px rgba(251,191,36,0.5)' : 'none',
+                whiteSpace: 'nowrap',
               }}
             >
               {fmtClock(clockMs)}
@@ -484,19 +486,23 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
         />
       </div>
 
-      {/* broadcast spotlight — featured player / promo panel */}
+      {/* broadcast spotlight — featured player / promo panel.
+          When the spotlight is active the footer is hidden so the
+          spotlight can use the freed vertical space. */}
       {data.spotlight && data.spotlight.visible && data.spotlight.title ? (
-        <SpotlightBand spot={data.spotlight} />
+        <SpotlightBand spot={data.spotlight} expanded />
       ) : null}
 
-      {/* footer strip — rotates between sport stats and sponsor banners */}
+      {/* footer strip — rotates between sport stats and sponsor banners.
+          Hidden while a player spotlight is showing so it can expand. */}
       <div
         style={{
-          height: 132,
-          background: '#05070d',
-          borderTop: '2px solid #1e2638',
-          position: 'relative',
+          height: data.spotlight && data.spotlight.visible ? 0 : 132,
           overflow: 'hidden',
+          background: '#05070d',
+          borderTop: data.spotlight && data.spotlight.visible ? 'none' : '2px solid #1e2638',
+          position: 'relative',
+          transition: 'height 0.35s ease-in-out',
         }}
       >
         <div
@@ -643,18 +649,29 @@ function SponsorBanner({ sponsor }: { sponsor: Sponsor }) {
 
 // ── spotlight band (featured player / promo) ───────────────────
 
-function SpotlightBand({ spot }: { spot: Spotlight }) {
+function SpotlightBand({ spot, expanded }: { spot: Spotlight; expanded?: boolean }) {
   const lines = (spot.lines || []).filter((l) => l && (l.label || l.value)).slice(0, 4);
+  // When the footer is hidden (expanded=true) we gain ~132px extra height.
+  // Use a taller band + bigger photo + bigger name so the spotlight fills it.
+  const bandH = expanded ? 316 : 184;
+  const photoSz = expanded ? 256 : 148;
+  const eyebrowSz = expanded ? 22 : 17;
+  const titleSz = expanded ? 76 : 52;
+  const subtitleSz = expanded ? 30 : 23;
+  const statValueSz = expanded ? 80 : 54;
+  const statLabelSz = expanded ? 19 : 15;
+  const statPad = expanded ? 36 : 26;
   return (
     <div
       style={{
-        height: 184,
+        height: bandH,
         background: '#0b1020',
         borderTop: '3px solid #4f46e5',
         display: 'flex',
         alignItems: 'center',
         padding: '0 48px',
         fontFamily: 'Inter, system-ui, sans-serif',
+        transition: 'height 0.35s ease-in-out',
       }}
     >
       {spot.photoUrl ? (
@@ -663,8 +680,8 @@ function SpotlightBand({ spot }: { spot: Spotlight }) {
           src={spot.photoUrl}
           alt=""
           style={{
-            width: 148,
-            height: 148,
+            width: photoSz,
+            height: photoSz,
             objectFit: 'cover',
             borderRadius: 16,
             border: '3px solid #1e2638',
@@ -678,12 +695,12 @@ function SpotlightBand({ spot }: { spot: Spotlight }) {
         />
       ) : null}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: 4, color: '#818cf8' }}>
+        <div style={{ fontSize: eyebrowSz, fontWeight: 800, letterSpacing: 4, color: '#818cf8' }}>
           SPOTLIGHT
         </div>
         <div
           style={{
-            fontSize: 52,
+            fontSize: titleSz,
             fontWeight: 900,
             color: '#fff',
             lineHeight: 1.05,
@@ -696,7 +713,7 @@ function SpotlightBand({ spot }: { spot: Spotlight }) {
           {spot.title}
         </div>
         {spot.subtitle ? (
-          <div style={{ fontSize: 23, fontWeight: 600, color: '#94a3b8', marginTop: 2 }}>
+          <div style={{ fontSize: subtitleSz, fontWeight: 600, color: '#94a3b8', marginTop: 2 }}>
             {spot.subtitle}
           </div>
         ) : null}
@@ -708,13 +725,13 @@ function SpotlightBand({ spot }: { spot: Spotlight }) {
               key={i}
               style={{
                 textAlign: 'center',
-                padding: '0 26px',
+                padding: `0 ${statPad}px`,
                 borderLeft: i > 0 ? '2px solid #1e2638' : undefined,
               }}
             >
               <div
                 style={{
-                  fontSize: 54,
+                  fontSize: statValueSz,
                   fontWeight: 900,
                   color: '#fff',
                   lineHeight: 1,
@@ -725,7 +742,7 @@ function SpotlightBand({ spot }: { spot: Spotlight }) {
               </div>
               <div
                 style={{
-                  fontSize: 15,
+                  fontSize: statLabelSz,
                   fontWeight: 700,
                   letterSpacing: 2,
                   color: '#64748b',
