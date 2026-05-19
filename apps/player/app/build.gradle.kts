@@ -63,13 +63,13 @@ android {
         // The `kioskHomeOptIn` pref keeps the alias enabled across
         // restarts. Alias still ships disabled so OEM-CMS boxes are
         // untouched unless the operator opts in.
-        versionCode = 10069
-        versionName = "1.0.69"
+        versionCode = 10070
+        versionName = "1.0.70"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
             ?: System.getenv("PLAYER_BASE_URL")
-            ?: "https://educms-five.vercel.app/player"
+            ?: "https://venue-os.app/player"
         buildConfigField("String", "PLAYER_BASE_URL", "\"$playerBaseUrl\"")
     }
 

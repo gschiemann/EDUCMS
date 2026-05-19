@@ -51,15 +51,15 @@ android {
         // canonical Android Enterprise dedicated-device pattern.
         // v1.0.20's watchdog relaunch stays as a belt-and-suspenders
         // backstop. See ManagerApp.pinPlayerAsHome().
-        versionCode = 10021 // 1*10000 + 0*100 + 21
-        versionName = "1.0.21"
+        versionCode = 10022 // 1*10000 + 0*100 + 22
+        versionName = "1.0.22"
 
         // Override at build time to point at a non-default API:
-        //   -PmanagerApiRoot="https://staging.educms-five.vercel.app"
+        //   -PmanagerApiRoot="https://staging.venue-os.app"
         // Same env-var fallback chain as Player keeps CI flexibility.
         val managerApiRoot: String = (project.findProperty("managerApiRoot") as? String)
             ?: System.getenv("MANAGER_API_ROOT")
-            ?: "https://educms-five.vercel.app"
+            ?: "https://venue-os.app"
         buildConfigField("String", "API_ROOT", "\"$managerApiRoot\"")
 
         // The package name we manage. Pinned so Manager refuses to

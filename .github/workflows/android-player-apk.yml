@@ -84,7 +84,7 @@ jobs:
 
       - name: Build debug APK
         env:
-          PLAYER_BASE_URL: ${{ github.event.inputs.playerBaseUrl != '' && github.event.inputs.playerBaseUrl || 'https://educms-five.vercel.app/player' }}
+          PLAYER_BASE_URL: ${{ github.event.inputs.playerBaseUrl != '' && github.event.inputs.playerBaseUrl || 'https://venue-os.app/player' }}
         run: |
           cd apps/player
           # Tee full build output so failures leave a readable artifact for
@@ -288,8 +288,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Download from the **Artifacts** section above (\`edu-cms-player-apk\`)." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Player base URL:** \`${PLAYER_BASE_URL:-https://educms-five.vercel.app/player}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Player base URL:** \`${PLAYER_BASE_URL:-https://venue-os.app/player}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Side-load on Android: Settings → Apps → Special access → Install unknown apps → enable for your file manager → tap the .apk." >> $GITHUB_STEP_SUMMARY
         env:
-          PLAYER_BASE_URL: ${{ github.event.inputs.playerBaseUrl != '' && github.event.inputs.playerBaseUrl || 'https://educms-five.vercel.app/player' }}
+          PLAYER_BASE_URL: ${{ github.event.inputs.playerBaseUrl != '' && github.event.inputs.playerBaseUrl || 'https://venue-os.app/player' }}
