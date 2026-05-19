@@ -784,31 +784,64 @@ function QuickStatChips({
     ) : null;
   }
 
-  // Every other sport: the first 3 shared stats as quick chips, home
-  // zone only (away stays clean for symmetric sports).
-  const sharedStats = def.stats.filter(
+  // Every other sport: the home zone shows each shared stat with the
+  // RIGHT control for its shape — a Home/Away toggle for possession &
+  // serve, a type-in for wide-range numbers (you never tap +1 thirty
+  // times), a +/- stepper only for genuinely small ranges.
+  if (side !== 'home') return null;
+  const fields = def.stats.filter(
     (s) => !s.key.startsWith('away_') && !s.key.startsWith('home_'),
   );
-  const visibleStats = side === 'home' ? sharedStats.slice(0, 3) : [];
-  if (visibleStats.length === 0) return null;
+  if (fields.length === 0) return null;
 
   return (
     <div className="flex flex-wrap gap-2 mt-auto">
-      {visibleStats.map((s) => (
-        <StatChip
-          key={s.key}
-          label={s.label}
-          value={stats[s.key]}
-          onAdd={() => {
-            const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
-            onStat({ [s.key]: Math.min(cur + 1, s.max ?? 9999) });
-          }}
-          onSub={() => {
-            const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
-            onStat({ [s.key]: Math.max(cur - 1, s.min ?? 0) });
-          }}
-        />
-      ))}
+      {fields.map((s) => {
+        // possession / serve — who has the ball or the serve.
+        if (s.key === 'possession' || s.key === 'serving') {
+          return (
+            <PossessionToggle
+              key={s.key}
+              label={s.key === 'serving' ? 'Serve' : 'Poss'}
+              value={stats[s.key]}
+              onSet={(v) => onStat({ [s.key]: v })}
+            />
+          );
+        }
+        // other free-text fields want a picker (a later pass) — skip
+        // rather than render a broken numeric stepper on them.
+        if (s.type === 'text') return null;
+        // wide-range number → type-in; the operator should never tap
+        // +1 dozens of times to reach a value.
+        if ((s.max ?? 0) - (s.min ?? 0) > 8) {
+          return (
+            <StatNumberField
+              key={s.key}
+              label={s.label}
+              value={stats[s.key]}
+              min={s.min ?? 0}
+              max={s.max ?? 999}
+              onCommit={(n) => onStat({ [s.key]: n })}
+            />
+          );
+        }
+        // small bounded range → +/- stepper chip.
+        return (
+          <StatChip
+            key={s.key}
+            label={s.label}
+            value={stats[s.key]}
+            onAdd={() => {
+              const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
+              onStat({ [s.key]: Math.min(cur + 1, s.max ?? 9999) });
+            }}
+            onSub={() => {
+              const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
+              onStat({ [s.key]: Math.max(cur - 1, s.min ?? 0) });
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -850,6 +883,7 @@ function FootballControls({
         onCommit={(n) => onStat({ ballOn: n })}
       />
       <PossessionToggle
+        label="Ball"
         value={stats.possession}
         onSet={(v) => onStat({ possession: v })}
       />
@@ -920,14 +954,16 @@ function StatNumberField({
 // Home / Away segmented control for who has the ball. Sets the
 // `possession` stat, which lights the 🏈 marker on the scoreboard.
 function PossessionToggle({
+  label,
   value,
   onSet,
 }: {
+  label: string;
   value: unknown;
   onSet: (v: string) => void;
 }) {
   const v = String(value || '').trim().toLowerCase();
-  const opt = (key: 'home' | 'away', label: string) => (
+  const opt = (key: 'home' | 'away', lbl: string) => (
     <button
       type="button"
       onClick={() => onSet(key)}
@@ -936,13 +972,13 @@ function PossessionToggle({
         v === key ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'
       }`}
     >
-      {label}
+      {lbl}
     </button>
   );
   return (
     <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1.5">
       <span className="text-[9px] font-black tracking-widest text-slate-400 mr-1">
-        🏈 BALL
+        {label.toUpperCase()}
       </span>
       {opt('home', 'Home')}
       {opt('away', 'Away')}
