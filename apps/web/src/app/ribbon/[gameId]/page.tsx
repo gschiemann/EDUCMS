@@ -41,6 +41,11 @@ import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
+// Sprint 13 — when Game.ribbonTemplateId is set, hand off the entire
+// ribbon render to the same custom-template renderer the /board route
+// uses; the template's canvas size differentiates ribbon from
+// scoreboard (operator picks 11520×192 or similar for the ribbon).
+import { CustomScoreboardScene } from '../../board/[gameId]/CustomScoreboardScene';
 import {
   findSport,
   defaultRibbonPresets,
@@ -131,6 +136,14 @@ interface BoardData {
   /** Recent celebration cues — the board feed's 20s cue window. */
   cues?: Cue[];
   serverTime: number;
+  // Sprint 13 — operator-picked custom layouts. NULL → hardcoded
+  // ribbon scene below; non-NULL → CustomScoreboardScene rendered
+  // here. The same custom-template renderer works for any surface;
+  // the operator differentiates by picking a template at the correct
+  // aspect ratio (e.g. 11520×192 for a panel-chained ribbon).
+  scoreboardTemplateId?: string | null;
+  ribbonTemplateId?: string | null;
+  scorebugTemplateId?: string | null;
 }
 
 // 750ms — sub-second sync, kept in step with the board + scorebug.
@@ -600,6 +613,23 @@ export default function RibbonPage() {
           background: '#05070d',
         }}
       />
+    );
+  }
+
+  // Sprint 13 — operator picked a custom ribbon template. Hand off to
+  // CustomScoreboardScene (same renderer; the template's canvas size
+  // is what differentiates a scoreboard layout from a ribbon layout —
+  // an operator picks a long-and-thin template, e.g. 11520×192, when
+  // configuring a perimeter ribbon panel chain).
+  if (data.ribbonTemplateId) {
+    return (
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: '#05070d' }}>
+        <CustomScoreboardScene
+          templateId={data.ribbonTemplateId}
+          gameId={gameId}
+          initial={data as any}
+        />
+      </div>
     );
   }
 

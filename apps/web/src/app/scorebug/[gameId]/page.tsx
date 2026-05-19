@@ -26,6 +26,10 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import { findSport } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
+// Sprint 13 — when Game.scorebugTemplateId is set, hand the entire
+// scorebug overlay off to the custom-template renderer. The operator
+// picks a template at a tight aspect ratio (e.g. 800×120 OBS-overlay).
+import { CustomScoreboardScene } from '../../board/[gameId]/CustomScoreboardScene';
 
 interface Cue {
   id: string;
@@ -61,6 +65,10 @@ interface BoardData {
   stats: Record<string, unknown>;
   cues: Cue[];
   serverTime: number;
+  // Sprint 13 — operator-picked custom layouts.
+  scoreboardTemplateId?: string | null;
+  ribbonTemplateId?: string | null;
+  scorebugTemplateId?: string | null;
 }
 
 const DEFAULT_HOME = '#4f46e5';
@@ -236,6 +244,23 @@ export default function ScorebugPage() {
   // Pre-data / unknown sport → render nothing. An OBS overlay must
   // never flash a loading or error box onto a live broadcast.
   if (!data || !def) return transparentCss;
+
+  // Sprint 13 — operator picked a custom scorebug template. The
+  // template canvas can be any aspect ratio; the broadcast operator
+  // typically picks a small (e.g. 800×120) overlay. Same renderer
+  // as /board /ribbon; the canvas size differentiates the surface.
+  if (data.scorebugTemplateId) {
+    return (
+      <>
+        {transparentCss}
+        <CustomScoreboardScene
+          templateId={data.scorebugTemplateId}
+          gameId={gameId}
+          initial={data as any}
+        />
+      </>
+    );
+  }
 
   const homeColor = data.homeColor || DEFAULT_HOME;
   const awayColor = data.awayColor || DEFAULT_AWAY;
