@@ -15,7 +15,7 @@
  * Surface-agnostic: the caller passes plain colors (accent / ink / dim
  * / hairline) and a height `h` that the situational sizing scales off.
  */
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { SportDefinition } from '@cms/api-types';
 
 function px(zoneH: number, f: number): number {
@@ -87,8 +87,8 @@ function BaseDiamond({ on1, on2, on3, accent, dim, h }: { on1: boolean; on2: boo
 /** A labelled count cluster — "B ●●○". */
 function Count({ label, n, filled, accent, dim, h }: { label: string; n: number; filled: number; accent: string; dim: string; h: number }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: px(h, 0.02) }}>
-      <span style={{ fontSize: px(h, 0.055), fontWeight: 900, color: dim, letterSpacing: 1 }}>{label}</span>
+    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+      <span style={{ fontSize: px(h, 0.055), fontWeight: 900, color: dim, letterSpacing: 1, marginRight: px(h, 0.02) }}>{label}</span>
       <Pips n={n} filled={Math.max(0, Math.min(n, filled))} color={accent} dim={dim} size={px(h, 0.045)} />
     </span>
   );
@@ -131,20 +131,29 @@ export function hasSituational(def: SportDefinition, stats: Record<string, unkno
 /** The broadcast situational strip — dispatches on sport. */
 export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: RowProps) {
   if (!hasSituational(def, stats)) return null;
+  const gap = px(h, 0.06);
   const rowStyle: CSSProperties = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: px(h, 0.06),
     height: px(h, 0.17),
     borderTop: `1px solid ${hairline}`,
     paddingTop: px(h, 0.02),
   };
+  // Chromium 83 (NovaStar Taurus LED controllers) has no flex `gap` —
+  // space the row's children with an adjacent-sibling margin rule
+  // instead. The class is keyed by `h` so two strips at different
+  // sizes never collide on the generated rule. (CLAUDE.md rule #10.)
+  const rowClass = `venueSitRow-h${h}`;
+  const gapCss = <style>{`.${rowClass} > * + * { margin-left: ${gap}px; }`}</style>;
+
+  let content: ReactNode;
+  let wrap = false;
 
   // ── Baseball / softball — base diamond + B/S/O ──
   if (def.segment.name === 'Inning') {
-    return (
-      <div style={rowStyle}>
+    content = (
+      <>
         <BaseDiamond
           on1={num(stats.on1B) > 0}
           on2={num(stats.on2B) > 0}
@@ -156,19 +165,15 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
         <Count label="B" n={3} filled={num(stats.balls)} accent={accent} dim={dim} h={h} />
         <Count label="S" n={2} filled={num(stats.strikes)} accent={accent} dim={dim} h={h} />
         <Count label="O" n={2} filled={num(stats.outs)} accent="#dc2626" dim={dim} h={h} />
-      </div>
+      </>
     );
-  }
-
-  // ── Football — timeouts + down & distance + ball-on + possession ──
-  if (def.key === 'football') {
+  } else if (def.key === 'football') {
+    // ── Football — timeouts + down & distance + ball-on + possession ──
     const down = num(stats.down);
     const dist = num(stats.distance);
     const ballOn = stats.ballOn;
     const poss = side(stats.possession);
-    // Per-team timeout pips, the broadcast standard — 3 a half. Sits
-    // at the ends of the row so home reads left, away reads right,
-    // matching the basketball strip.
+    // Per-team timeout pips, the broadcast standard — 3 a half.
     const toMax = def.stats.find((s) => s.key === 'homeTimeouts')?.max ?? 3;
     const toPips = (filled: number) => (
       <Pips
@@ -179,8 +184,8 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
         size={px(h, 0.04)}
       />
     );
-    return (
-      <div style={rowStyle}>
+    content = (
+      <>
         {toPips(num(stats.homeTimeouts))}
         {poss && (
           <span style={{ fontSize: px(h, 0.06), fontWeight: 900, color: accent }}>
@@ -198,65 +203,86 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
           </span>
         )}
         {toPips(num(stats.awayTimeouts))}
-      </div>
+      </>
     );
-  }
-
-  // ── Basketball — per-team timeouts + bonus, possession arrow ──
-  if (def.key === 'basketball') {
+  } else if (def.key === 'basketball') {
+    // ── Basketball — per-team timeouts + bonus, possession arrow ──
     const poss = side(stats.possession);
     const bonus = (f: number) => (f >= 10 ? 'DOUBLE BONUS' : f >= 7 ? 'BONUS' : null);
     const TeamSit = ({ to, b, alignR }: { to: number; b: string | null; alignR?: boolean }) => (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: px(h, 0.03), flexDirection: alignR ? 'row-reverse' : 'row' }}>
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          flexDirection: alignR ? 'row-reverse' : 'row',
+        }}
+      >
         <Pips n={5} filled={to} color={accent} dim={dim} size={px(h, 0.04)} />
         {b && (
-          <span style={{ fontSize: px(h, 0.05), fontWeight: 900, color: '#f59e0b', letterSpacing: 1 }}>{b}</span>
+          <span
+            style={{
+              fontSize: px(h, 0.05),
+              fontWeight: 900,
+              color: '#f59e0b',
+              letterSpacing: 1,
+              marginLeft: alignR ? undefined : px(h, 0.03),
+              marginRight: alignR ? px(h, 0.03) : undefined,
+            }}
+          >
+            {b}
+          </span>
         )}
       </span>
     );
-    return (
-      <div style={rowStyle}>
+    content = (
+      <>
         <TeamSit to={num(stats.homeTimeouts)} b={bonus(num(stats.homeFouls))} />
         <span style={{ fontSize: px(h, 0.055), fontWeight: 900, color: accent, letterSpacing: 1 }}>
           {poss === 'home' ? '◀ ' : ''}POSS{poss === 'away' ? ' ▶' : ''}
         </span>
         <TeamSit to={num(stats.awayTimeouts)} b={bonus(num(stats.awayFouls))} alignR />
-      </div>
+      </>
+    );
+  } else if (
+    (def.key === 'volleyball' || def.key === 'pickleball') &&
+    String(stats.serving || '').trim()
+  ) {
+    // ── Rally sports — serve indicator ──
+    content = (
+      <span style={{ fontSize: px(h, 0.06), fontWeight: 900, color: accent, letterSpacing: 1 }}>
+        🏐 SERVING — {String(stats.serving).trim().toUpperCase()}
+      </span>
+    );
+  } else {
+    // ── Everything else — clean stat chips ──
+    const chips = def.stats
+      .map((s) => {
+        const raw = stats[s.key];
+        if (raw === undefined || raw === null || raw === '') return null;
+        return { label: s.label.toUpperCase(), value: String(raw) };
+      })
+      .filter((x): x is { label: string; value: string } => x !== null)
+      .slice(0, 6);
+    if (chips.length === 0) return null;
+    wrap = true;
+    content = (
+      <>
+        {chips.map((s) => (
+          <span key={s.label} style={{ fontSize: px(h, 0.055), fontWeight: 700, color: dim }}>
+            {s.label}{' '}
+            <strong style={{ color: ink, fontVariantNumeric: 'tabular-nums' }}>{s.value}</strong>
+          </span>
+        ))}
+      </>
     );
   }
 
-  // ── Rally sports — serve indicator ──
-  if (def.key === 'volleyball' || def.key === 'pickleball') {
-    const serving = String(stats.serving || '').trim();
-    if (serving) {
-      return (
-        <div style={rowStyle}>
-          <span style={{ fontSize: px(h, 0.06), fontWeight: 900, color: accent, letterSpacing: 1 }}>
-            🏐 SERVING — {serving.toUpperCase()}
-          </span>
-        </div>
-      );
-    }
-  }
-
-  // ── Everything else — clean stat chips ──
-  const chips = def.stats
-    .map((s) => {
-      const raw = stats[s.key];
-      if (raw === undefined || raw === null || raw === '') return null;
-      return { label: s.label.toUpperCase(), value: String(raw) };
-    })
-    .filter((x): x is { label: string; value: string } => x !== null)
-    .slice(0, 6);
-  if (chips.length === 0) return null;
   return (
-    <div style={{ ...rowStyle, flexWrap: 'wrap' }}>
-      {chips.map((s) => (
-        <span key={s.label} style={{ fontSize: px(h, 0.055), fontWeight: 700, color: dim }}>
-          {s.label}{' '}
-          <strong style={{ color: ink, fontVariantNumeric: 'tabular-nums' }}>{s.value}</strong>
-        </span>
-      ))}
-    </div>
+    <>
+      {gapCss}
+      <div className={rowClass} style={wrap ? { ...rowStyle, flexWrap: 'wrap' } : rowStyle}>
+        {content}
+      </div>
+    </>
   );
 }
