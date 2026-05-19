@@ -55,6 +55,18 @@ function thumbUrl(asset: any) {
   // for video/* so every video item rendered the generic file icon.
   // Callers must check the mime to decide between <img> and <video>;
   // see <AssetThumb> below for the canonical pattern.
+  // 2026-05-19 — URL/webpage assets get a preview too. Operator: "in
+  // the playlist picker you dont see the preview". The asset library
+  // already used WordPress's free mshots service to render a homepage
+  // screenshot for text/html assets; the playlist surfaces (picker,
+  // editor, card preview) used this different thumbUrl that returned
+  // null and rendered a generic globe icon. Mirror the mshots branch
+  // so all three playlist surfaces show the same preview as the
+  // library. First mshots hit can return a warming placeholder — see
+  // the onError retry in <AssetThumb> below.
+  if (asset.mimeType === 'text/html' && asset.fileUrl) {
+    return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(asset.fileUrl)}?w=640&h=360`;
+  }
   if (
     !asset.mimeType?.startsWith('image/') &&
     !asset.mimeType?.startsWith('video/')
@@ -96,7 +108,29 @@ function AssetThumb({ asset, className }: { asset: any; className?: string }) {
     );
   }
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={url} alt="" className={className} />;
+  return (
+    <img
+      src={url}
+      alt=""
+      className={className}
+      onError={(e) => {
+        // mshots' first hit on a fresh URL can return a "warming"
+        // placeholder that fails to load; the screenshot is ready
+        // within ~1–3 s. Retry up to 3× with backoff before hiding.
+        // For non-mshots images this is just a transient-network retry.
+        const img = e.currentTarget;
+        const tries = Number(img.dataset.tries || 0);
+        if (tries < 3) {
+          img.dataset.tries = String(tries + 1);
+          setTimeout(() => {
+            img.src = url + (url.includes('?') ? '&' : '?') + 'retry=' + tries;
+          }, 1500 * (tries + 1));
+        } else {
+          img.style.display = 'none';
+        }
+      }}
+    />
+  );
 }
 
 function mimeIcon(mime: string, cls = 'w-4 h-4') {
