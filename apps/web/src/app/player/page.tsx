@@ -3749,14 +3749,19 @@ function PlayerPage() {
     // the interval tick AND the pagehide drain because keepalive lets
     // the request outlive the page navigation.
     const onHide = () => { void flush(); };
-    window.addEventListener('pagehide', onHide);
-    document.addEventListener('visibilitychange', () => {
+    // Named handler (not an inline arrow) so the cleanup can actually
+    // remove it — on a kiosk that runs for days, an un-removed
+    // visibilitychange listener stacks one copy per effect re-run.
+    const onVisibility = () => {
       if (document.visibilityState === 'hidden') void flush();
-    });
+    };
+    window.addEventListener('pagehide', onHide);
+    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       window.removeEventListener('edu:touch-action', onTouchAction as EventListener);
       window.removeEventListener('pagehide', onHide);
+      document.removeEventListener('visibilitychange', onVisibility);
       if (timer) clearInterval(timer);
       // Best-effort drain on unmount. keepalive: true on the underlying
       // fetch lets the request survive the page navigation that's about
