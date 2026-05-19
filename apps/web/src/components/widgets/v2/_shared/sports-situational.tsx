@@ -160,14 +160,28 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
     );
   }
 
-  // ── Football — down & distance + ball-on + possession ──
+  // ── Football — timeouts + down & distance + ball-on + possession ──
   if (def.key === 'football') {
     const down = num(stats.down);
     const dist = num(stats.distance);
     const ballOn = stats.ballOn;
     const poss = side(stats.possession);
+    // Per-team timeout pips, the broadcast standard — 3 a half. Sits
+    // at the ends of the row so home reads left, away reads right,
+    // matching the basketball strip.
+    const toMax = def.stats.find((s) => s.key === 'homeTimeouts')?.max ?? 3;
+    const toPips = (filled: number) => (
+      <Pips
+        n={toMax}
+        filled={Math.max(0, Math.min(toMax, filled))}
+        color={accent}
+        dim={dim}
+        size={px(h, 0.04)}
+      />
+    );
     return (
       <div style={rowStyle}>
+        {toPips(num(stats.homeTimeouts))}
         {poss && (
           <span style={{ fontSize: px(h, 0.06), fontWeight: 900, color: accent }}>
             🏈 {poss.toUpperCase()} BALL
@@ -183,6 +197,7 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
             BALL ON {String(ballOn)}
           </span>
         )}
+        {toPips(num(stats.awayTimeouts))}
       </div>
     );
   }
