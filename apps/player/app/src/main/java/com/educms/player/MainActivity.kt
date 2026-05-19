@@ -511,13 +511,40 @@ class MainActivity : ComponentActivity() {
      * player's overlay if they ever try to Check-for-updates and it
      * still isn't granted — see SoftwareInfoRow on the web side.
      */
+    /**
+     * Make a native AlertDialog reachable by the kiosk REMOTE. Taurus /
+     * OEM signage ROMs strip the default button focus-highlight
+     * drawable, so the operator can't see — or reach — what's selected;
+     * the dialog looks dead. This gives every button a theme-independent
+     * focus highlight (translucent fill) and parks initial focus on the
+     * positive button so the D-pad has a starting point. Wrap a
+     * built-and-shown AlertDialog: applyRemoteFocus(builder…show()).
+     */
+    private fun applyRemoteFocus(dialog: AlertDialog) {
+        for (which in intArrayOf(
+            AlertDialog.BUTTON_POSITIVE,
+            AlertDialog.BUTTON_NEGATIVE,
+            AlertDialog.BUTTON_NEUTRAL,
+        )) {
+            val b = dialog.getButton(which) ?: continue
+            b.isFocusable = true
+            b.isFocusableInTouchMode = false
+            b.setOnFocusChangeListener { v, hasFocus ->
+                // Theme-independent highlight — does not rely on the
+                // OEM ROM's (stripped) button focus drawable.
+                v.setBackgroundColor(if (hasFocus) 0x553B82F6.toInt() else 0)
+            }
+        }
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.requestFocus()
+    }
+
     private fun maybePromptForInstallPermission() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (packageManager.canRequestPackageInstalls()) return
         val prefs = getSharedPreferences("edu_player", Context.MODE_PRIVATE)
         if (prefs.getBoolean("installPromptShown", false)) return
 
-        AlertDialog.Builder(this)
+        applyRemoteFocus(AlertDialog.Builder(this)
             .setTitle("One-time setup")
             .setMessage(
                 "To apply player updates automatically, EduCMS needs permission " +
@@ -537,7 +564,7 @@ class MainActivity : ComponentActivity() {
             }
             .setNegativeButton("Later") { _, _ -> /* remind from overlay */ }
             .setCancelable(true)
-            .show()
+            .show())
 
         prefs.edit().putBoolean("installPromptShown", true).apply()
     }
@@ -597,7 +624,7 @@ class MainActivity : ComponentActivity() {
         val prefs = getSharedPreferences("edu_player", Context.MODE_PRIVATE)
         if (prefs.getBoolean("managerInstallPromptShown", false)) return
 
-        AlertDialog.Builder(this)
+        applyRemoteFocus(AlertDialog.Builder(this)
             .setTitle("One more setup step")
             .setMessage(
                 "EduCMS also needs to grant install permission to the companion app " +
@@ -620,7 +647,7 @@ class MainActivity : ComponentActivity() {
                 PlayerLogger.i("MainActivity", "Operator deferred Manager install-perm prompt")
             }
             .setCancelable(true)
-            .show()
+            .show())
 
         prefs.edit().putBoolean("managerInstallPromptShown", true).apply()
     }
@@ -666,7 +693,7 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        AlertDialog.Builder(this)
+        applyRemoteFocus(AlertDialog.Builder(this)
             .setTitle("Finish update setup")
             .setMessage(
                 "Set Venue OS Player as this screen's Home app so it " +
@@ -684,7 +711,7 @@ class MainActivity : ComponentActivity() {
                 PlayerLogger.i("MainActivity", "Operator deferred Home-app setup")
             }
             .setCancelable(true)
-            .show()
+            .show())
 
         prefs.edit().putBoolean("homeSetupPromptShown", true).apply()
     }
