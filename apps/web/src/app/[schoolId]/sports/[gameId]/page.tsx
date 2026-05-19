@@ -11,6 +11,10 @@
  * Every action writes through useGameControl() which PATCHes the API
  * and pushes the updated game straight into the query cache, so the
  * console reacts instantly; the 4s poll behind it is a reconcile net.
+ *
+ * v4 redesign: sticky statebar + 4 mode tabs so the live console is a
+ * single no-scroll screen. Setup / Roster / Highlights tabs hold the
+ * pre-game and between-game content that is rarely touched during play.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -29,7 +33,6 @@ import {
   Star,
   RectangleHorizontal,
   ImageIcon,
-  Loader2,
   Volume2,
 } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
@@ -57,6 +60,8 @@ import { RibbonImagesPanel } from './RibbonImagesPanel';
 import { SurfacePreview } from './SurfacePreview';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 
+// ── constants ──────────────────────────────────────────────────
+
 const GAME_STATUSES: { key: string; label: string }[] = [
   { key: 'SCHEDULED', label: 'Scheduled' },
   { key: 'PRE_GAME', label: 'Pre-game' },
@@ -64,6 +69,8 @@ const GAME_STATUSES: { key: string; label: string }[] = [
   { key: 'HALFTIME', label: 'Halftime' },
   { key: 'FINAL', label: 'Final' },
 ];
+
+type ConsoleMode = 'run' | 'setup' | 'roster' | 'highlights';
 
 // ── clock helpers ──────────────────────────────────────────────
 
@@ -131,9 +138,10 @@ function GameControl() {
   const def = useMemo(() => (game ? findSport((game as any).sport) : undefined), [game]);
   const liveMs = useLiveClock(game, def);
 
-  // "Stream overlay" copies the public scorebug URL to the clipboard
-  // so the operator can paste it straight into an OBS / vMix browser
-  // source. Falls back to opening the URL if the clipboard is blocked.
+  const [mode, setMode] = useState<ConsoleMode>('run');
+  const [showCues, setShowCues] = useState(false);
+
+  // Stream overlay URL — copy to clipboard for OBS / vMix browser source.
   const [copied, setCopied] = useState(false);
   const copyOverlayUrl = () => {
     const url = `${window.location.origin}/scorebug/${gameId}`;
@@ -174,11 +182,13 @@ function GameControl() {
   const g: any = game;
   const homeColor = g.homeColor || '#4f46e5';
   const awayColor = g.awayColor || '#dc2626';
+  const isLive = g.status === 'LIVE';
 
   return (
-    <div className="max-w-5xl mx-auto px-1 py-2">
-      {/* header */}
-      <div className="flex items-center justify-between mb-4">
+    <div className="flex flex-col min-h-[calc(100vh-64px)]">
+
+      {/* ── top toolbar ───────────────────────────────────────── */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-white">
         <button
           onClick={() => router.push(`/${schoolId}/sports`)}
           className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900"
@@ -189,245 +199,811 @@ function GameControl() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
+            size="sm"
             className="gap-1.5"
             onClick={copyOverlayUrl}
             title="Copy the broadcast scorebug URL for an OBS / vMix browser source"
           >
             {copied ? <Check className="h-4 w-4 text-green-600" /> : <Tv className="h-4 w-4" />}
-            {copied ? 'Overlay URL copied' : 'Stream overlay'}
+            <span className="hidden sm:inline">{copied ? 'Copied' : 'Stream overlay'}</span>
           </Button>
           <Button
             variant="outline"
+            size="sm"
             className="gap-1.5"
             onClick={() => window.open(`/ribbon/${gameId}`, '_blank')}
-            title="Open the stadium ribbon / fascia board — a seamless scrolling strip"
+            title="Open the stadium ribbon / fascia board"
           >
             <RectangleHorizontal className="h-4 w-4" />
-            Open ribbon
+            <span className="hidden sm:inline">Ribbon</span>
           </Button>
           <Button
             variant="outline"
+            size="sm"
             className="gap-1.5"
             onClick={() => window.open(`/board/${gameId}`, '_blank')}
           >
             <ExternalLink className="h-4 w-4" />
-            Open scoreboard
+            <span className="hidden sm:inline">Scoreboard</span>
           </Button>
         </div>
       </div>
 
-      {/* live preview bar */}
-      <div className="rounded-2xl bg-slate-900 text-white p-5 flex items-center justify-between">
-        <TeamReadout name={g.homeTeam} score={g.homeScore} color={homeColor} align="left" />
-        <div className="text-center px-4">
-          <div className="text-xs font-semibold tracking-widest text-slate-400">
-            {def.emoji} {segmentText(def, g)}
+      {/* ── sticky state bar ──────────────────────────────────── */}
+      <StateBar
+        g={g}
+        def={def}
+        liveMs={liveMs}
+        homeColor={homeColor}
+        awayColor={awayColor}
+        isLive={isLive}
+      />
+
+      {/* ── mode tabs ─────────────────────────────────────────── */}
+      <div className="flex gap-1 px-4 py-2 border-b border-slate-200 bg-white">
+        {(
+          [
+            { key: 'run', label: 'Run game', icon: '▶' },
+            { key: 'highlights', label: 'Highlights', icon: '★' },
+            { key: 'setup', label: 'Set up', icon: '⚙' },
+            { key: 'roster', label: 'Roster', icon: '👥' },
+          ] as { key: ConsoleMode; label: string; icon: string }[]
+        ).map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => { setMode(tab.key); setShowCues(false); }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
+              mode === tab.key
+                ? 'bg-indigo-50 text-indigo-600'
+                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <span>{tab.icon}</span>
+            <span>{tab.label}</span>
+            {tab.key === 'run' && isLive && (
+              <span className="ml-0.5 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── mode panels ───────────────────────────────────────── */}
+
+      {/* RUN MODE — 3-zone no-scroll live console */}
+      {mode === 'run' && !showCues && (
+        <RunMode
+          g={g}
+          def={def}
+          liveMs={liveMs}
+          homeColor={homeColor}
+          awayColor={awayColor}
+          ctl={ctl}
+          onShowCues={() => setShowCues(true)}
+          onHighlights={() => setMode('highlights')}
+        />
+      )}
+
+      {/* CUE OVERLAY — slides in on top of Run mode */}
+      {mode === 'run' && showCues && (
+        <div className="flex-1 overflow-auto bg-slate-50">
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold text-slate-900">Celebrations &amp; custom cues</h2>
+              <button
+                onClick={() => setShowCues(false)}
+                className="text-sm font-semibold text-indigo-600 hover:text-indigo-800"
+              >
+                ← Back to game
+              </button>
+            </div>
+            <PresentationSettingsSection gameId={gameId} def={def} ctl={ctl} />
+            <div className="mt-4 rounded-2xl bg-white ring-1 ring-slate-200 p-5">
+              <h2 className="text-sm font-bold text-slate-900 mb-3">Custom cues</h2>
+              <CueLaunchpad gameId={gameId} def={def} />
+            </div>
           </div>
-          {def.clock.type !== 'none' && (
+        </div>
+      )}
+
+      {/* SETUP MODE */}
+      {mode === 'setup' && (
+        <div className="flex-1 overflow-auto bg-slate-50">
+          <div className="max-w-4xl mx-auto p-4 space-y-4">
+            {/* game status */}
+            <Section title="Game status">
+              <div className="flex flex-wrap gap-2">
+                {GAME_STATUSES.map((s) => (
+                  <button
+                    key={s.key}
+                    onClick={() => ctl.status.mutate({ status: s.key })}
+                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                      g.status === s.key
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </Section>
+
+            <Section title="Put it on your screens">
+              <ScreenPushPanel gameId={gameId} />
+            </Section>
+
+            <Section title="Live preview">
+              <SurfacePreview gameId={gameId} />
+            </Section>
+
+            <Section title="Ribbon content">
+              <RibbonPresetsPanel gameId={gameId} />
+            </Section>
+
+            <Section title="Ribbon messages">
+              <RibbonPanel gameId={gameId} />
+            </Section>
+
+            <Section title="Ribbon images">
+              <RibbonImagesPanel gameId={gameId} />
+            </Section>
+
+            <Section title="Ribbon sponsors">
+              <SponsorPanel />
+            </Section>
+
+            <SponsorSchedulingSection />
+          </div>
+        </div>
+      )}
+
+      {/* ROSTER MODE */}
+      {mode === 'roster' && (
+        <div className="flex-1 overflow-auto bg-slate-50">
+          <div className="max-w-4xl mx-auto p-4">
+            <Section title="Team rosters">
+              <RosterPanel
+                gameId={gameId}
+                homeTeam={g.homeTeam}
+                awayTeam={g.awayTeam}
+                statKeys={PLAYER_STATS[g.sport] || []}
+              />
+            </Section>
+          </div>
+        </div>
+      )}
+
+      {/* HIGHLIGHTS MODE */}
+      {mode === 'highlights' && (
+        <div className="flex-1 overflow-auto bg-slate-50">
+          <div className="max-w-4xl mx-auto p-4">
+            <Section title="Scoreboard spotlight">
+              <SpotlightControl gameId={gameId} current={g.spotlight} />
+            </Section>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── StateBar ───────────────────────────────────────────────────
+
+function StateBar({
+  g,
+  def,
+  liveMs,
+  homeColor,
+  awayColor,
+  isLive,
+}: {
+  g: any;
+  def: SportDefinition;
+  liveMs: number;
+  homeColor: string;
+  awayColor: string;
+  isLive: boolean;
+}) {
+  // For baseball/softball show inning + half from stats; for others show the clock.
+  const isInning = def.segment.name === 'Inning';
+  const stats: Record<string, unknown> = g.stats || {};
+  const half = String(stats.half || 'Top').toLowerCase().startsWith('b') ? '▼' : '▲';
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 bg-slate-50 sticky top-0 z-10 flex-wrap">
+      {/* segment pill */}
+      <div className="text-base font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg shrink-0">
+        {segmentText(def, g)}
+      </div>
+
+      {/* HOME */}
+      <div className="flex flex-col leading-tight shrink-0">
+        <span className="text-[10px] font-black tracking-widest text-slate-400">HOME</span>
+        <span className="text-sm font-bold truncate max-w-[110px]" style={{ color: homeColor }}>
+          {g.homeTeam}
+        </span>
+      </div>
+      <div className="text-4xl font-black tabular-nums leading-none" style={{ color: homeColor }}>
+        {g.homeScore}
+      </div>
+
+      <div className="flex-1" />
+
+      {/* clock / count */}
+      <div className="flex flex-col items-center shrink-0">
+        {def.clock.type !== 'none' ? (
+          <>
             <div
-              className={`text-4xl font-black tabular-nums mt-1 ${
-                g.clockRunning ? 'text-amber-300' : 'text-white'
+              className={`text-4xl font-black tabular-nums leading-none ${
+                g.clockRunning ? 'text-amber-500' : 'text-slate-900'
               }`}
             >
               {fmtClock(liveMs)}
             </div>
-          )}
-        </div>
-        <TeamReadout name={g.awayTeam} score={g.awayScore} color={awayColor} align="right" />
-      </div>
-
-      {/* LIVE GAME CONTROL — every control the operator touches
-          mid-game is grouped here, contiguous, so a live game is run
-          from one place with no scrolling. Setup lives below. */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm font-extrabold uppercase tracking-widest text-indigo-500">
-          Live game control
-        </span>
-        <div className="h-px flex-1 bg-slate-200" />
-      </div>
-
-      {/* status */}
-      <Section title="Game status">
-        <div className="flex flex-wrap gap-2">
-          {GAME_STATUSES.map((s) => (
-            <button
-              key={s.key}
-              onClick={() => ctl.status.mutate({ status: s.key })}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                g.status === s.key
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            <div
+              className={`text-[10px] font-black tracking-widest mt-0.5 flex items-center gap-1 ${
+                g.clockRunning ? 'text-green-600' : 'text-slate-400'
               }`}
             >
-              {s.label}
-            </button>
+              {g.clockRunning && (
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              )}
+              {g.clockRunning ? 'RUNNING' : 'STOPPED'}
+            </div>
+          </>
+        ) : isInning ? (
+          <div className="text-2xl font-black text-slate-900 tabular-nums">
+            {half} {Number(stats.balls) || 0}&#8211;{Number(stats.strikes) || 0} &#xb7; {Number(stats.outs) || 0} OUT
+          </div>
+        ) : (
+          <div className="text-2xl font-black text-slate-900">{segmentText(def, g)}</div>
+        )}
+      </div>
+
+      <div className="flex-1" />
+
+      {/* AWAY */}
+      <div className="text-4xl font-black tabular-nums leading-none" style={{ color: awayColor }}>
+        {g.awayScore}
+      </div>
+      <div className="flex flex-col leading-tight text-right shrink-0">
+        <span className="text-[10px] font-black tracking-widest text-slate-400">AWAY</span>
+        <span className="text-sm font-bold truncate max-w-[110px]" style={{ color: awayColor }}>
+          {g.awayTeam}
+        </span>
+      </div>
+
+      {/* LIVE pill */}
+      {isLive && (
+        <div className="flex items-center gap-1.5 text-[11px] font-black text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full shrink-0">
+          <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+          LIVE
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── RunMode ────────────────────────────────────────────────────
+
+function RunMode({
+  g,
+  def,
+  liveMs,
+  homeColor,
+  awayColor,
+  ctl,
+  onShowCues,
+  onHighlights,
+}: {
+  g: any;
+  def: SportDefinition;
+  liveMs: number;
+  homeColor: string;
+  awayColor: string;
+  ctl: ReturnType<typeof useGameControl>;
+  onShowCues: () => void;
+  onHighlights: () => void;
+}) {
+  const isBaseballSoftball = def.key === 'baseball' || def.key === 'softball';
+  const stats: Record<string, unknown> = g.stats || {};
+
+  // Single-level undo for score changes — the #1 operator mis-tap.
+  // We keep the exact last score mutation so Undo applies its inverse.
+  const [lastAction, setLastAction] = useState<string>('');
+  const [lastScore, setLastScore] = useState<{ team: 'home' | 'away'; delta: number } | null>(null);
+
+  const scoreHome = (d: number) => {
+    ctl.score.mutate({ team: 'home', delta: d });
+    setLastAction(`${g.homeTeam} ${d > 0 ? '+' + d : d}`);
+    setLastScore({ team: 'home', delta: d });
+  };
+  const scoreAway = (d: number) => {
+    ctl.score.mutate({ team: 'away', delta: d });
+    setLastAction(`${g.awayTeam} ${d > 0 ? '+' + d : d}`);
+    setLastScore({ team: 'away', delta: d });
+  };
+  const undoScore = () => {
+    if (!lastScore) return;
+    ctl.score.mutate({ team: lastScore.team, delta: -lastScore.delta });
+    setLastScore(null);
+    setLastAction('');
+  };
+
+  return (
+    <div className="flex flex-col flex-1">
+      {/* two team zones */}
+      <div className="flex flex-1 min-h-0">
+        {/* HOME zone */}
+        <TeamZone
+          label={g.homeTeam}
+          score={g.homeScore}
+          color={homeColor}
+          side="home"
+          increments={def.score.increments}
+          onScore={scoreHome}
+          def={def}
+          stats={stats}
+          onStat={(s) => ctl.stats.mutate({ stats: s })}
+        />
+        {/* AWAY zone */}
+        <TeamZone
+          label={g.awayTeam}
+          score={g.awayScore}
+          color={awayColor}
+          side="away"
+          increments={def.score.increments}
+          onScore={scoreAway}
+          def={def}
+          stats={stats}
+          onStat={(s) => ctl.stats.mutate({ stats: s })}
+        />
+      </div>
+
+      {/* bottom control tray */}
+      <div className="flex items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
+        {/* clock control or ball/strike for baseball */}
+        {isBaseballSoftball ? (
+          <BaseTrayBall stats={stats} onStat={(s) => ctl.stats.mutate({ stats: s })} />
+        ) : def.clock.type !== 'none' ? (
+          <TrayClockBtn game={g} def={def} liveMs={liveMs} onAction={(a, ms) => ctl.clock.mutate({ action: a, ms })} />
+        ) : (
+          /* clockless non-baseball: segment nudge */
+          <div className="flex items-center gap-2 flex-1">
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => ctl.segment.mutate({ delta: -1 })}
+              aria-label={`Previous ${def.segment.name.toLowerCase()}`}
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <span className="text-sm font-bold text-slate-700 min-w-[80px] text-center">
+              {segmentText(def, g)}
+            </span>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => ctl.segment.mutate({ delta: 1 })}
+              aria-label={`Next ${def.segment.name.toLowerCase()}`}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* undo — reverses the last score change */}
+        <button
+          type="button"
+          onClick={undoScore}
+          disabled={!lastScore}
+          title={lastScore ? `Undo: ${lastAction}` : 'Nothing to undo'}
+          className="flex flex-col items-center justify-center gap-0.5 h-14 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 font-black text-sm hover:bg-amber-100 transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <span>↶ Undo</span>
+          {lastAction && (
+            <span className="text-[10px] font-semibold text-amber-600 max-w-[80px] truncate">
+              {lastAction}
+            </span>
+          )}
+        </button>
+
+        {/* highlights */}
+        <button
+          type="button"
+          onClick={onHighlights}
+          className="flex flex-col items-center justify-center gap-0.5 h-14 px-4 rounded-xl bg-amber-500 text-white font-black text-sm hover:bg-amber-600 transition-colors shrink-0"
+        >
+          <span>★ Highlights</span>
+          <span className="text-[10px] text-amber-100 font-semibold">spotlight</span>
+        </button>
+
+        {/* cues */}
+        <button
+          type="button"
+          onClick={onShowCues}
+          className="flex flex-col items-center justify-center gap-0.5 h-14 px-4 rounded-xl bg-indigo-600 text-white font-black text-sm hover:bg-indigo-700 transition-colors shrink-0"
+        >
+          <span>⊞ Cues</span>
+          <span className="text-[10px] text-indigo-200 font-semibold">celebrations</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── TeamZone ───────────────────────────────────────────────────
+
+function TeamZone({
+  label,
+  score,
+  color,
+  side,
+  increments,
+  onScore,
+  def,
+  stats,
+  onStat,
+}: {
+  label: string;
+  score: number;
+  color: string;
+  side: 'home' | 'away';
+  increments: number[];
+  onScore: (d: number) => void;
+  def: SportDefinition;
+  stats: Record<string, unknown>;
+  onStat: (s: Record<string, number | string>) => void;
+}) {
+  const isHome = side === 'home';
+  const isBaseballSoftball = def.key === 'baseball' || def.key === 'softball';
+
+  // Which stats belong to this zone?
+  // Home zone: shared stats + home-specific (fouls, etc.)
+  // Away zone: away-team stats only (hits, errors for baseball)
+  // For simplicity: home zone shows all shared stats, away shows away-specific ones.
+  // The actual field list comes from the sport def; we label by key prefix convention.
+  const zoneStats = def.stats.filter((s) => {
+    if (isBaseballSoftball) {
+      // For baseball the count is in the tray; zone shows hits/errors split by side
+      if (isHome) return ['hits', 'lob'].includes(s.key);
+      return ['hits_away', 'errors'].includes(s.key);
+    }
+    // For basketball/football/etc: home zone shows shared stats
+    if (isHome) return !s.key.startsWith('away_');
+    return s.key.startsWith('away_');
+  });
+
+  // Initial letter of the team for the logo avatar
+  const initial = label.trim().charAt(0).toUpperCase();
+
+  return (
+    <div
+      className={`flex-1 flex flex-col p-4 ${isHome ? 'border-r border-slate-200' : ''}`}
+      style={{
+        backgroundColor: `${color}10`,
+        borderTop: `4px solid ${color}`,
+      }}
+    >
+      {/* zone header */}
+      <div className="flex items-center gap-2 mb-2">
+        <span
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-black text-lg shrink-0"
+          style={{ backgroundColor: color }}
+        >
+          {initial}
+        </span>
+        <span className="text-lg font-black truncate" style={{ color }}>
+          {label}
+        </span>
+        <span className="ml-auto text-[10px] font-black tracking-widest text-slate-400">
+          {isHome ? 'HOME' : 'AWAY'}
+        </span>
+      </div>
+
+      {/* hero score */}
+      <div className="text-6xl font-black tabular-nums leading-none mb-3" style={{ color }}>
+        {score}
+      </div>
+
+      {/* score buttons */}
+      <div className="flex gap-2 mb-3">
+        {increments.map((inc) => (
+          <button
+            key={inc}
+            onClick={() => onScore(inc)}
+            className="flex-1 flex flex-col items-center py-3 rounded-xl text-white font-black text-xl shadow-md hover:opacity-90 active:scale-95 transition-transform"
+            style={{ backgroundColor: color }}
+          >
+            <span>+{inc}</span>
+            {inc === 1 && def.score.unit && (
+              <span className="text-[9px] font-bold opacity-80 uppercase tracking-wide">
+                {def.score.unit}
+              </span>
+            )}
+          </button>
+        ))}
+        <button
+          onClick={() => onScore(-1)}
+          className="w-12 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 font-black text-xl hover:bg-slate-100 active:scale-95 transition-transform"
+        >
+          −
+        </button>
+      </div>
+
+      {/* quick-stat chips — sport-specific inline controls */}
+      {!isBaseballSoftball && def.stats.length > 0 && (
+        <QuickStatChips def={def} stats={stats} onStat={onStat} side={side} />
+      )}
+
+      {/* baseball: show hits/errors for each side */}
+      {isBaseballSoftball && zoneStats.length > 0 && (
+        <div className="flex gap-2 mt-auto">
+          {zoneStats.map((s) => (
+            <StatChip
+              key={s.key}
+              label={s.label}
+              value={stats[s.key]}
+              onAdd={() => {
+                const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
+                onStat({ [s.key]: cur + 1 });
+              }}
+              onSub={() => {
+                const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
+                onStat({ [s.key]: Math.max(0, cur - 1) });
+              }}
+            />
           ))}
         </div>
-      </Section>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* score */}
-        <Section title="Score">
-          <div className="grid grid-cols-2 gap-4">
-            <ScoreColumn
-              label={g.homeTeam}
-              score={g.homeScore}
-              color={homeColor}
-              increments={def.score.increments}
-              onAdd={(d) => ctl.score.mutate({ team: 'home', delta: d })}
-            />
-            <ScoreColumn
-              label={g.awayTeam}
-              score={g.awayScore}
-              color={awayColor}
-              increments={def.score.increments}
-              onAdd={(d) => ctl.score.mutate({ team: 'away', delta: d })}
-            />
-          </div>
-        </Section>
-
-        {/* clock + segment */}
-        <Section title={def.clock.type === 'none' ? def.segment.name : 'Clock & ' + def.segment.name.toLowerCase()}>
-          {def.clock.type !== 'none' && (
-            <ClockControls
-              game={g}
-              def={def}
-              liveMs={liveMs}
-              onAction={(action, ms) => ctl.clock.mutate({ action, ms })}
-            />
-          )}
-          <div className={def.clock.type !== 'none' ? 'mt-4 pt-4 border-t border-slate-100' : ''}>
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
-              {def.segment.name}
-            </div>
-            <div className="flex items-center gap-3">
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={() => ctl.segment.mutate({ delta: -1 })}
-                aria-label={`Previous ${def.segment.name.toLowerCase()}`}
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <div className="text-2xl font-black text-slate-900 min-w-[120px] text-center">
-                {segmentText(def, g)}
-              </div>
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={() => ctl.segment.mutate({ delta: 1 })}
-                aria-label={`Next ${def.segment.name.toLowerCase()}`}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </Section>
-      </div>
-
-      {/* stats — kept inside the live-control group: down & distance,
-          the count, shots, fouls, etc. change constantly during play */}
-      {def.key === 'baseball' || def.key === 'softball' ? (
-        <Section title="The count">
-          <CountControl
-            stats={(g.stats as Record<string, unknown>) || {}}
-            onStat={(s) => ctl.stats.mutate({ stats: s })}
-          />
-        </Section>
-      ) : def.stats.length > 0 ? (
-        <Section title="Game stats">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {def.stats.map((s) =>
-              s.key === 'down' && def.key === 'football' ? (
-                <DownControl
-                  key={s.key}
-                  value={Number((g.stats || {}).down) || 1}
-                  onSet={(n) => ctl.stats.mutate({ stats: { down: n } })}
-                />
-              ) : (
-                <StatField
-                  key={s.key}
-                  field={s}
-                  value={(g.stats || {})[s.key]}
-                  onCommit={(v) => ctl.stats.mutate({ stats: { [s.key]: v } })}
-                />
-              ),
-            )}
-          </div>
-        </Section>
-      ) : null}
-
-      {/* presentation settings — sound + co-brand for every fired cue */}
-      <PresentationSettingsSection
-        gameId={gameId}
-        def={def}
-        ctl={ctl}
-      />
-
-      {/* cue launchpad — built-in celebrations + custom cues in one
-          grid, with a per-fire target picker (scoreboard / ribbon / all) */}
-      <Section title="Custom cues">
-        <CueLaunchpad gameId={gameId} def={def} />
-      </Section>
-
-      {/* GAME SETUP — configured before the game; rarely touched once
-          it is live. Kept below the live-control group on purpose. */}
-      <div className="flex items-center gap-3 pt-2">
-        <span className="text-sm font-extrabold uppercase tracking-widest text-slate-400">
-          Game setup
-        </span>
-        <div className="h-px flex-1 bg-slate-200" />
-      </div>
-
-      {/* push a surface (scoreboard / ribbon) to the venue's screens */}
-      <Section title="Put it on your screens">
-        <ScreenPushPanel gameId={gameId} />
-      </Section>
-
-      {/* live preview — a real iframe of each surface, updating live */}
-      <Section title="Live preview">
-        <SurfacePreview gameId={gameId} />
-      </Section>
-
-      {/* ribbon content — sport-aware presets the operator toggles on/off */}
-      <Section title="Ribbon content">
-        <RibbonPresetsPanel gameId={gameId} />
-      </Section>
-
-      {/* ribbon messages — operator-typed lines that scroll on the ribbon */}
-      <Section title="Ribbon messages">
-        <RibbonPanel gameId={gameId} />
-      </Section>
-
-      {/* ribbon images — full-bleed images that fill the whole ribbon */}
-      <Section title="Ribbon images">
-        <RibbonImagesPanel gameId={gameId} />
-      </Section>
-
-      {/* ribbon sponsors — uploaded brand logos that scroll on the ribbon */}
-      <Section title="Ribbon sponsors">
-        <SponsorPanel />
-      </Section>
-
-      {/* sponsor scheduling — flight dates, frequency cap, weight & active
-          for ad-ops control without touching the cue settings UI */}
-      <SponsorSchedulingSection />
-
-      {/* team rosters — players, headshots, stats */}
-      <Section title="Team rosters">
-        <RosterPanel
-          gameId={gameId}
-          homeTeam={g.homeTeam}
-          awayTeam={g.awayTeam}
-          statKeys={PLAYER_STATS[g.sport] || []}
-        />
-      </Section>
-
-      {/* broadcast spotlight */}
-      <Section title="Scoreboard spotlight">
-        <SpotlightControl gameId={gameId} current={g.spotlight} />
-      </Section>
+      )}
     </div>
+  );
+}
+
+// ── QuickStatChips ─────────────────────────────────────────────
+// Renders the sport-aware quick-stat row inside a team zone.
+// Basketball: fouls, bonus, possession. Football: down, distance, etc.
+// Each chip is a compact tap-to-increment / label display.
+
+function QuickStatChips({
+  def,
+  stats,
+  onStat,
+  side,
+}: {
+  def: SportDefinition;
+  stats: Record<string, unknown>;
+  onStat: (s: Record<string, number | string>) => void;
+  side: 'home' | 'away';
+}) {
+  // Show the first 3 shared stats in the home zone; none in away if they
+  // already show in home (avoids duplication for symmetric sports).
+  const sharedStats = def.stats.filter(
+    (s) => !s.key.startsWith('away_') && !s.key.startsWith('home_'),
+  );
+  const visibleStats = side === 'home' ? sharedStats.slice(0, 3) : [];
+
+  // Football: render down selector in home zone only.
+  const showDown = side === 'home' && def.key === 'football';
+
+  if (visibleStats.length === 0 && !showDown) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2 mt-auto">
+      {showDown && (
+        <CompactDownControl
+          value={Number(stats.down) || 1}
+          onSet={(n) => onStat({ down: n })}
+        />
+      )}
+      {visibleStats.map((s) =>
+        s.key === 'down' ? null : (
+          <StatChip
+            key={s.key}
+            label={s.label}
+            value={stats[s.key]}
+            onAdd={() => {
+              const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
+              onStat({ [s.key]: Math.min(cur + 1, s.max ?? 9999) });
+            }}
+            onSub={() => {
+              const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
+              onStat({ [s.key]: Math.max(cur - 1, s.min ?? 0) });
+            }}
+          />
+        ),
+      )}
+    </div>
+  );
+}
+
+// ── StatChip ───────────────────────────────────────────────────
+
+function StatChip({
+  label,
+  value,
+  onAdd,
+  onSub,
+}: {
+  label: string;
+  value: unknown;
+  onAdd: () => void;
+  onSub: () => void;
+}) {
+  const display = value === undefined || value === null ? '0' : String(value);
+  return (
+    <button
+      type="button"
+      onClick={onAdd}
+      onContextMenu={(e) => { e.preventDefault(); onSub(); }}
+      title={`${label}: tap to add, right-click to subtract`}
+      className="flex flex-col items-center bg-white border border-slate-200 rounded-xl px-3 py-2 hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+    >
+      <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase">
+        {label}
+      </span>
+      <span className="text-lg font-black text-slate-900 tabular-nums leading-tight">
+        {display}
+      </span>
+    </button>
+  );
+}
+
+// ── CompactDownControl ─────────────────────────────────────────
+
+function CompactDownControl({ value, onSet }: { value: number; onSet: (n: number) => void }) {
+  const d = value >= 1 && value <= 4 ? value : 1;
+  const labels = ['1st', '2nd', '3rd', '4th'];
+  return (
+    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1.5">
+      <span className="text-[9px] font-black tracking-widest text-slate-400 mr-1">DOWN</span>
+      {labels.map((lbl, i) => (
+        <button
+          key={lbl}
+          type="button"
+          onClick={() => onSet(i + 1)}
+          aria-pressed={i + 1 === d}
+          className={`rounded-md px-1.5 py-0.5 text-xs font-black transition-colors ${
+            i + 1 === d
+              ? 'bg-indigo-600 text-white'
+              : 'text-slate-500 hover:bg-slate-100'
+          }`}
+        >
+          {lbl}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── BaseTrayBall ───────────────────────────────────────────────
+// Baseball / softball bottom tray: Ball, Strike / Foul / Out buttons.
+
+function BaseTrayBall({
+  stats,
+  onStat,
+}: {
+  stats: Record<string, unknown>;
+  onStat: (s: Record<string, number>) => void;
+}) {
+  const num = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : 0);
+  const balls = num(stats.balls);
+  const strikes = num(stats.strikes);
+  const outs = num(stats.outs);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => onStat({ balls: balls + 1 })}
+        className="flex-1 h-14 rounded-xl bg-red-600 text-white font-black text-lg hover:bg-red-700 transition-colors"
+      >
+        Ball
+      </button>
+      <button
+        type="button"
+        onClick={() => onStat({ strikes: strikes + 1 })}
+        className="flex-1 h-14 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-sm hover:bg-slate-100 transition-colors flex flex-col items-center justify-center"
+      >
+        <span>Strike</span>
+        <span className="text-[10px] text-slate-400">· Foul · Out</span>
+      </button>
+      {/* live count indicator */}
+      <div className="flex flex-col items-center justify-center bg-white border border-slate-200 rounded-xl px-3 h-14 shrink-0">
+        <span className="text-[9px] font-black tracking-widest text-slate-400">COUNT</span>
+        <span className="text-xl font-black text-slate-900 tabular-nums">
+          {balls}–{strikes}
+        </span>
+        <span className="text-[9px] text-slate-400">{outs} out</span>
+      </div>
+    </>
+  );
+}
+
+// ── TrayClockBtn ───────────────────────────────────────────────
+// Clock start/stop/segment button row for sports with a game clock.
+
+function TrayClockBtn({
+  game,
+  def,
+  liveMs,
+  onAction,
+}: {
+  game: any;
+  def: SportDefinition;
+  liveMs: number;
+  onAction: (action: string, ms?: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [setText, setSetText] = useState('');
+
+  const commitSet = () => {
+    const ms = parseClock(setText);
+    if (ms !== null) {
+      onAction('set', ms);
+      setSetText('');
+    }
+    setEditing(false);
+  };
+
+  return (
+    <>
+      {/* start/stop */}
+      {game.clockRunning ? (
+        <button
+          type="button"
+          onClick={() => onAction('pause')}
+          className="flex-1 h-14 rounded-xl bg-red-600 text-white font-black text-lg flex items-center justify-center gap-2 hover:bg-red-700 transition-colors"
+        >
+          <Pause className="h-5 w-5" />
+          Stop
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onAction('start')}
+          className="flex-1 h-14 rounded-xl bg-green-600 text-white font-black text-lg flex items-center justify-center gap-2 hover:bg-green-700 transition-colors"
+        >
+          <Play className="h-5 w-5" />
+          Start
+        </button>
+      )}
+
+      {/* segment − / label / + */}
+      <button
+        type="button"
+        onClick={() => onAction('reset')}
+        title="Reset clock"
+        className="h-14 w-12 rounded-xl bg-white border border-slate-200 text-slate-600 flex items-center justify-center hover:bg-slate-100 transition-colors"
+      >
+        <RotateCcw className="h-4 w-4" />
+      </button>
+
+      {/* clock set */}
+      {editing ? (
+        <div className="flex items-center gap-1">
+          <Input
+            autoFocus
+            value={setText}
+            onChange={(e) => setSetText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') commitSet(); if (e.key === 'Escape') setEditing(false); }}
+            placeholder="MM:SS"
+            className="w-20 h-14 text-center text-lg font-black"
+          />
+          <Button size="sm" onClick={commitSet} disabled={parseClock(setText) === null}>
+            Set
+          </Button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => { setEditing(true); setSetText(fmtClock(liveMs)); }}
+          className="h-14 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-lg tabular-nums hover:bg-slate-100 transition-colors"
+          title="Tap to set clock"
+        >
+          {fmtClock(liveMs)}
+        </button>
+      )}
+    </>
   );
 }
 
@@ -447,13 +1023,7 @@ function segmentText(def: SportDefinition, g: any): string {
 }
 
 // ── Game-day Presentation Settings ────────────────────────────
-//
-// The operator sets a celebration sound URL and picks a co-brand
-// sponsor here. Every built-in celebration cue fired from this
-// section carries audioUrl + sponsorName/sponsorLogoUrl in the
-// POST /sports/games/:id/cue request body.
 
-/** Minimal sponsor shape — only what we need for the co-brand picker. */
 interface PresentationSponsor {
   id: string;
   name: string;
@@ -484,8 +1054,6 @@ function PresentationSettingsSection({
   const selectedSponsor = sponsors.find((s) => s.id === sponsorId) ?? null;
 
   const fire = (key: string) => {
-    // Build an enriched body — audioUrl + co-brand sponsor fields —
-    // alongside the standard key + target fields.
     const body: {
       key: string;
       target: string;
@@ -511,13 +1079,13 @@ function PresentationSettingsSection({
   ];
 
   return (
-    <Section title="Celebrations">
+    <div className="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
+      <h2 className="text-sm font-bold text-slate-900 mb-3">Celebrations</h2>
       <p className="text-xs text-slate-400 mb-3">
         Tap a celebration to fire it. The sound clip and co-brand sponsor below are
         included in every cue sent from here.
       </p>
 
-      {/* fire-to target */}
       <div className="mb-3">
         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">
           Fire to
@@ -540,7 +1108,6 @@ function PresentationSettingsSection({
         </div>
       </div>
 
-      {/* celebration tiles */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 mb-4">
         {def.celebrations.map((c) => {
           const tileId = `builtin:${c.key}`;
@@ -567,13 +1134,10 @@ function PresentationSettingsSection({
         })}
       </div>
 
-      {/* presentation settings */}
       <div className="rounded-xl border border-slate-200 p-3 space-y-3">
         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
           Celebration settings
         </p>
-
-        {/* celebration sound */}
         <div>
           <label className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
             <Volume2 className="h-3.5 w-3.5" />
@@ -587,16 +1151,12 @@ function PresentationSettingsSection({
             maxLength={2048}
           />
           <p className="text-[11px] text-slate-400 mt-1">
-            A sound clip URL (mp3/ogg). Played on every fired celebration — leave blank
-            for no sound.
+            A sound clip URL (mp3/ogg). Played on every fired celebration — leave blank for no
+            sound.
           </p>
         </div>
-
-        {/* co-brand sponsor */}
         <div>
-          <label className="text-xs font-semibold text-slate-500">
-            Co-brand celebrations with
-          </label>
+          <label className="text-xs font-semibold text-slate-500">Co-brand celebrations with</label>
           <select
             value={sponsorId}
             onChange={(e) => setSponsorId(e.target.value)}
@@ -617,18 +1177,12 @@ function PresentationSettingsSection({
           )}
         </div>
       </div>
-    </Section>
+    </div>
   );
 }
 
 // ── Sponsor Scheduling ─────────────────────────────────────────
-//
-// Ad-ops fields: flight start/end, frequency cap, active toggle,
-// and rotation weight — per sponsor. Wired to the existing
-// PATCH /sports/sponsors/:id endpoint which now accepts
-// flightStartAt, flightEndAt, frequencyCapPerHour, active, weight.
 
-/** Extended sponsor shape with the new ad-ops fields. */
 interface ScheduledSponsor {
   id: string;
   name: string;
@@ -643,9 +1197,7 @@ interface ScheduledSponsor {
 function SponsorSchedulingSection() {
   const { data, isLoading } = useSponsors();
   const update = useUpdateSponsor();
-  const sponsors: ScheduledSponsor[] = Array.isArray(data)
-    ? (data as ScheduledSponsor[])
-    : [];
+  const sponsors: ScheduledSponsor[] = Array.isArray(data) ? (data as ScheduledSponsor[]) : [];
 
   if (isLoading) return null;
   if (sponsors.length === 0) return null;
@@ -653,12 +1205,16 @@ function SponsorSchedulingSection() {
   return (
     <Section title="Sponsor ad scheduling">
       <p className="text-xs text-slate-400 mb-3">
-        Set flight windows and per-hour frequency caps for each sponsor. Higher rotation
-        weight means the brand comes around more often per loop.
+        Set flight windows and per-hour frequency caps for each sponsor. Higher rotation weight
+        means the brand comes around more often per loop.
       </p>
       <div className="space-y-2">
         {sponsors.map((s) => (
-          <SponsorScheduleRow key={s.id} sponsor={s} onSave={(vals) => update.mutate({ id: s.id, data: vals })} />
+          <SponsorScheduleRow
+            key={s.id}
+            sponsor={s}
+            onSave={(vals) => update.mutate({ id: s.id, data: vals })}
+          />
         ))}
       </div>
     </Section>
@@ -672,9 +1228,7 @@ function SponsorScheduleRow({
   sponsor: ScheduledSponsor;
   onSave: (vals: SponsorInput) => void;
 }) {
-  // Normalise ISO → date-input format (YYYY-MM-DD) and back.
-  const toDateValue = (iso?: string | null) =>
-    iso ? iso.slice(0, 10) : '';
+  const toDateValue = (iso?: string | null) => (iso ? iso.slice(0, 10) : '');
   const toIso = (dateVal: string) => (dateVal ? new Date(dateVal).toISOString() : null);
 
   const [active, setActive] = useState(sponsor.active);
@@ -714,14 +1268,15 @@ function SponsorScheduleRow({
             }}
           />
         ) : null}
-        <span className="text-sm font-semibold text-slate-800 flex-1 truncate">
-          {sponsor.name}
-        </span>
+        <span className="text-sm font-semibold text-slate-800 flex-1 truncate">{sponsor.name}</span>
         <label className="flex items-center gap-1.5 cursor-pointer shrink-0">
           <input
             type="checkbox"
             checked={active}
-            onChange={(e) => { setActive(e.target.checked); mark(); }}
+            onChange={(e) => {
+              setActive(e.target.checked);
+              mark();
+            }}
             className="h-4 w-4 accent-indigo-600 cursor-pointer"
           />
           <span className="text-xs font-medium text-slate-600">Active</span>
@@ -729,23 +1284,21 @@ function SponsorScheduleRow({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-        {/* weight */}
         <div>
-          <label className="font-semibold text-slate-500">
-            Rotation weight — {weight}
-          </label>
+          <label className="font-semibold text-slate-500">Rotation weight — {weight}</label>
           <input
             type="range"
             min={1}
             max={10}
             step={1}
             value={weight}
-            onChange={(e) => { setWeight(Number(e.target.value)); mark(); }}
+            onChange={(e) => {
+              setWeight(Number(e.target.value));
+              mark();
+            }}
             className="w-full mt-1 accent-indigo-600 cursor-pointer"
           />
         </div>
-
-        {/* frequency cap */}
         <div>
           <label className="font-semibold text-slate-500">Max per hour</label>
           <Input
@@ -754,31 +1307,34 @@ function SponsorScheduleRow({
             value={freqCap}
             min={1}
             placeholder="Uncapped"
-            onChange={(e) => { setFreqCap(e.target.value); mark(); }}
+            onChange={(e) => {
+              setFreqCap(e.target.value);
+              mark();
+            }}
           />
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            Leave blank for uncapped.
-          </p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Leave blank for uncapped.</p>
         </div>
-
-        {/* flight start */}
         <div>
           <label className="font-semibold text-slate-500">Flight start</label>
           <input
             type="date"
             value={flightStart}
-            onChange={(e) => { setFlightStart(e.target.value); mark(); }}
+            onChange={(e) => {
+              setFlightStart(e.target.value);
+              mark();
+            }}
             className="mt-1 w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
           />
         </div>
-
-        {/* flight end */}
         <div>
           <label className="font-semibold text-slate-500">Flight end</label>
           <input
             type="date"
             value={flightEnd}
-            onChange={(e) => { setFlightEnd(e.target.value); mark(); }}
+            onChange={(e) => {
+              setFlightEnd(e.target.value);
+              mark();
+            }}
             className="mt-1 w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
           />
         </div>
@@ -798,9 +1354,7 @@ function SponsorScheduleRow({
               setFlightStart(toDateValue(sponsor.flightStartAt));
               setFlightEnd(toDateValue(sponsor.flightEndAt));
               setFreqCap(
-                sponsor.frequencyCapPerHour != null
-                  ? String(sponsor.frequencyCapPerHour)
-                  : '',
+                sponsor.frequencyCapPerHour != null ? String(sponsor.frequencyCapPerHour) : '',
               );
               setDirty(false);
             }}
@@ -813,23 +1367,17 @@ function SponsorScheduleRow({
   );
 }
 
-// ── sub-components ─────────────────────────────────────────────
+// ── helpers ────────────────────────────────────────────────────
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mt-4 rounded-2xl bg-white ring-1 ring-slate-200 p-5">
+    <div className="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
       <h2 className="text-sm font-bold text-slate-900 mb-3">{title}</h2>
       {children}
     </div>
   );
 }
 
-/**
- * Per-screen surface picker. Every paired screen in the venue is a row
- * with a 3-way choice — Scoreboard, Ribbon, or Off. One tap puts that
- * surface live on the screen; the player swaps within a couple seconds.
- * An emergency alert always overrides whatever is showing.
- */
 function ScreenPushPanel({ gameId }: { gameId: string }) {
   const { data: screens, isLoading } = useGameScreens(gameId);
   const show = useShowGameOnScreens(gameId);
@@ -845,8 +1393,8 @@ function ScreenPushPanel({ gameId }: { gameId: string }) {
   if (list.length === 0) {
     return (
       <p className="text-sm text-slate-400">
-        No paired screens in this venue yet. Pair a display first, then come back to
-        put the scoreboard or ribbon on it.
+        No paired screens in this venue yet. Pair a display first, then come back to put the
+        scoreboard or ribbon on it.
       </p>
     );
   }
@@ -855,8 +1403,8 @@ function ScreenPushPanel({ gameId }: { gameId: string }) {
     <div>
       <div className="flex items-center justify-between gap-3 mb-3">
         <p className="text-xs text-slate-400">
-          Pick what each screen shows — the full scoreboard, the LED ribbon, or off.
-          An emergency alert always overrides it.
+          Pick what each screen shows — the full scoreboard, the LED ribbon, or off. An emergency
+          alert always overrides it.
         </p>
         {showingCount > 0 && (
           <Button
@@ -940,9 +1488,7 @@ function SurfaceBtn({
       onClick={onClick}
       aria-pressed={active}
       className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${
-        active
-          ? 'bg-green-600 text-white'
-          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+        active ? 'bg-green-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
       }`}
     >
       {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
@@ -951,385 +1497,7 @@ function SurfaceBtn({
   );
 }
 
-function TeamReadout({
-  name,
-  score,
-  color,
-  align,
-}: {
-  name: string;
-  score: number;
-  color: string;
-  align: 'left' | 'right';
-}) {
-  return (
-    <div className={`flex-1 ${align === 'right' ? 'text-right' : 'text-left'}`}>
-      <div className="flex items-center gap-2" style={{ flexDirection: align === 'right' ? 'row-reverse' : 'row' }}>
-        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />
-        <span className="text-sm font-bold truncate max-w-[180px]">{name}</span>
-      </div>
-      <div className="text-5xl font-black tabular-nums mt-1">{score}</div>
-    </div>
-  );
-}
-
-function ScoreColumn({
-  label,
-  score,
-  color,
-  increments,
-  onAdd,
-}: {
-  label: string;
-  score: number;
-  color: string;
-  increments: number[];
-  onAdd: (delta: number) => void;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 p-3">
-      <div className="flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-        <span className="text-xs font-bold text-slate-600 truncate">{label}</span>
-      </div>
-      <div className="text-5xl font-black text-slate-900 tabular-nums text-center my-2">
-        {score}
-      </div>
-      <div className="flex flex-wrap gap-1.5 justify-center">
-        {increments.map((inc) => (
-          <button
-            key={inc}
-            onClick={() => onAdd(inc)}
-            className="h-9 min-w-[44px] px-2 rounded-lg text-sm font-bold text-white"
-            style={{ backgroundColor: color }}
-          >
-            +{inc}
-          </button>
-        ))}
-        <button
-          onClick={() => onAdd(-1)}
-          className="h-9 min-w-[44px] px-2 rounded-lg text-sm font-bold bg-slate-100 text-slate-600 hover:bg-slate-200"
-        >
-          −1
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ClockControls({
-  game,
-  def,
-  liveMs,
-  onAction,
-}: {
-  game: any;
-  def: SportDefinition;
-  liveMs: number;
-  onAction: (action: string, ms?: number) => void;
-}) {
-  const [setText, setSetText] = useState('');
-
-  const commitSet = () => {
-    const ms = parseClock(setText);
-    if (ms !== null) {
-      onAction('set', ms);
-      setSetText('');
-    }
-  };
-
-  // Clock adjuster — nudge the clock with +/-, then Apply to push it
-  // to the game clock. pendingMs is the draft; null means "not
-  // adjusting" so the readout tracks the live clock.
-  const [pendingMs, setPendingMs] = useState<number | null>(null);
-  const nudge = (deltaMs: number) =>
-    setPendingMs((prev) => Math.max(0, (prev ?? liveMs) + deltaMs));
-  const applyAdjust = () => {
-    if (pendingMs !== null) {
-      onAction('set', pendingMs);
-      setPendingMs(null);
-    }
-  };
-
-  return (
-    <div>
-      <div className="flex items-center gap-3">
-        <div
-          className={`text-5xl font-black tabular-nums ${
-            game.clockRunning ? 'text-amber-500' : 'text-slate-900'
-          }`}
-        >
-          {fmtClock(liveMs)}
-        </div>
-        <div className="flex gap-2 ml-auto">
-          {game.clockRunning ? (
-            <Button onClick={() => onAction('pause')} className="gap-1.5 bg-amber-500 text-white">
-              <Pause className="h-4 w-4" />
-              Pause
-            </Button>
-          ) : (
-            <Button onClick={() => onAction('start')} className="gap-1.5 bg-green-600 text-white">
-              <Play className="h-4 w-4" />
-              Start
-            </Button>
-          )}
-          <Button variant="outline" onClick={() => onAction('reset')} className="gap-1.5">
-            <RotateCcw className="h-4 w-4" />
-            Reset
-          </Button>
-        </div>
-      </div>
-      {/* clock adjust — nudge with +/-, then Apply to push it to the
-          game clock. Works while the clock is running or paused. */}
-      <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Adjust
-        </span>
-        <button
-          type="button"
-          onClick={() => nudge(-1000)}
-          aria-label="Subtract a second"
-          className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:border-indigo-400 hover:text-indigo-600"
-        >
-          <Minus className="h-4 w-4" />
-        </button>
-        <div
-          className={`min-w-[78px] text-center text-xl font-black tabular-nums ${
-            pendingMs !== null ? 'text-indigo-600' : 'text-slate-400'
-          }`}
-        >
-          {fmtClock(pendingMs ?? liveMs)}
-        </div>
-        <button
-          type="button"
-          onClick={() => nudge(1000)}
-          aria-label="Add a second"
-          className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:border-indigo-400 hover:text-indigo-600"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
-        {pendingMs !== null && (
-          <>
-            <Button size="sm" onClick={applyAdjust}>
-              Apply
-            </Button>
-            <button
-              type="button"
-              onClick={() => setPendingMs(null)}
-              className="text-xs font-semibold text-slate-400 hover:text-slate-600"
-            >
-              Cancel
-            </button>
-          </>
-        )}
-      </div>
-      <div className="mt-3 flex items-center gap-2">
-        <Input
-          value={setText}
-          onChange={(e) => setSetText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && commitSet()}
-          placeholder="MM:SS"
-          className="w-24"
-        />
-        <Button variant="secondary" size="sm" onClick={commitSet} disabled={parseClock(setText) === null}>
-          Set clock
-        </Button>
-        <span className="text-xs text-slate-400">
-          {def.clock.type === 'countdown' ? 'Counts down' : 'Counts up'}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function StatField({
-  field,
-  value,
-  onCommit,
-}: {
-  field: SportStatField;
-  value: unknown;
-  onCommit: (v: number | string) => void;
-}) {
-  const [local, setLocal] = useState<string>(value === undefined || value === null ? '' : String(value));
-
-  // Re-sync when a poll / another operator changes the value, unless
-  // the field is focused (don't yank the operator's in-progress edit).
-  const focused = useRef(false);
-  useEffect(() => {
-    if (!focused.current) {
-      setLocal(value === undefined || value === null ? '' : String(value));
-    }
-  }, [value]);
-
-  const commit = () => {
-    if (field.type === 'number') {
-      let n = parseInt(local, 10);
-      if (Number.isNaN(n)) n = field.min ?? 0;
-      if (field.min !== undefined) n = Math.max(field.min, n);
-      if (field.max !== undefined) n = Math.min(field.max, n);
-      setLocal(String(n));
-      onCommit(n);
-    } else {
-      onCommit(local);
-    }
-  };
-
-  return (
-    <div>
-      <label className="text-xs font-semibold text-slate-500">{field.label}</label>
-      <Input
-        className="mt-1"
-        type={field.type === 'number' ? 'number' : 'text'}
-        value={local}
-        min={field.min}
-        max={field.max}
-        onFocus={() => { focused.current = true; }}
-        onChange={(e) => setLocal(e.target.value)}
-        onBlur={() => { focused.current = false; commit(); }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-        }}
-      />
-    </div>
-  );
-}
-
-/**
- * Baseball / softball count engine. The operator just clicks Ball,
- * Strike, or Out — the server cascades the rules: a 4th ball walks,
- * a 3rd strike is an out, a 3rd out flips the half-inning. Each click
- * sends the next raw count; the rolled-over result polls straight
- * back, so a walk or a retired side is visible immediately.
- */
-function CountControl({
-  stats,
-  onStat,
-}: {
-  stats: Record<string, unknown>;
-  onStat: (s: Record<string, number>) => void;
-}) {
-  const num = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : 0);
-  const balls = num(stats.balls);
-  const strikes = num(stats.strikes);
-  const outs = num(stats.outs);
-  const half = String(stats.half || 'Top').toLowerCase().startsWith('b') ? 'Bottom' : 'Top';
-
-  return (
-    <div>
-      <p className="text-xs text-slate-400 mb-3">
-        Click Ball, Strike, or Out — a 4th ball walks the batter, a 3rd strike is an out,
-        and 3 outs flip the half-inning automatically.
-      </p>
-      <div className="grid grid-cols-3 gap-3">
-        <CountChip
-          label="Balls"
-          value={balls}
-          dots={3}
-          dotClass="bg-emerald-500"
-          onAdd={() => onStat({ balls: balls + 1 })}
-          onSub={() => onStat({ balls: Math.max(0, balls - 1) })}
-        />
-        <CountChip
-          label="Strikes"
-          value={strikes}
-          dots={2}
-          dotClass="bg-amber-500"
-          onAdd={() => onStat({ strikes: strikes + 1 })}
-          onSub={() => onStat({ strikes: Math.max(0, strikes - 1) })}
-        />
-        <CountChip
-          label="Outs"
-          value={outs}
-          dots={2}
-          dotClass="bg-red-500"
-          onAdd={() => onStat({ outs: outs + 1 })}
-          onSub={() => onStat({ outs: Math.max(0, outs - 1) })}
-        />
-      </div>
-      <div className="mt-3 text-xs font-semibold text-slate-500">
-        {half} of the inning
-      </div>
-    </div>
-  );
-}
-
-function CountChip({
-  label,
-  value,
-  dots,
-  dotClass,
-  onAdd,
-  onSub,
-}: {
-  label: string;
-  value: number;
-  dots: number;
-  dotClass: string;
-  onAdd: () => void;
-  onSub: () => void;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 p-3 text-center">
-      <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">{label}</div>
-      <div className="flex items-center justify-center gap-1.5 my-2.5">
-        {Array.from({ length: dots }, (_, i) => (
-          <span
-            key={i}
-            className={`h-3 w-3 rounded-full ${i < value ? dotClass : 'bg-slate-200'}`}
-          />
-        ))}
-      </div>
-      <div className="flex items-center justify-center gap-1.5">
-        <button
-          onClick={onSub}
-          aria-label={`Remove a ${label.toLowerCase().replace(/s$/, '')}`}
-          className="h-9 w-9 rounded-lg bg-slate-100 text-slate-600 font-bold hover:bg-slate-200"
-        >
-          −
-        </button>
-        <button
-          onClick={onAdd}
-          className="h-9 flex-1 rounded-lg bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700"
-        >
-          +1
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Football down selector. Football has exactly four downs — the
- * operator taps the current one. There is no 5th down; tapping never
- * produces an out-of-range value.
- */
-function DownControl({ value, onSet }: { value: number; onSet: (n: number) => void }) {
-  const d = value >= 1 && value <= 4 ? value : 1;
-  const labels = ['1st', '2nd', '3rd', '4th'];
-  return (
-    <div>
-      <label className="text-xs font-semibold text-slate-500">Down</label>
-      <div className="mt-1 flex gap-1">
-        {labels.map((lbl, i) => (
-          <button
-            key={lbl}
-            type="button"
-            onClick={() => onSet(i + 1)}
-            aria-pressed={i + 1 === d}
-            className={`flex-1 rounded-lg py-2 text-xs font-bold transition-colors ${
-              i + 1 === d
-                ? 'bg-indigo-600 text-white'
-                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-            }`}
-          >
-            {lbl}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
+// ── SpotlightControl ───────────────────────────────────────────
 
 function SpotlightControl({ gameId, current }: { gameId: string; current: any }) {
   const ctl = useGameControl(gameId);
@@ -1347,8 +1515,6 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
   const players: any[] = Array.isArray(roster.data) ? roster.data : [];
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  // Pull a roster player straight into the spotlight — name, headshot,
-  // number/position, and their stat lines, all in one pick.
   const fillFromPlayer = (p: any) => {
     setTitle(p.name || '');
     setPhotoUrl(p.photoUrl || '');
@@ -1380,8 +1546,7 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
   return (
     <div>
       <p className="text-xs text-slate-400 mb-3">
-        Feature a player or a promo on the scoreboard — photo, title, and up to four stat
-        lines.
+        Feature a player or a promo on the scoreboard — photo, title, and up to four stat lines.
         {onAir && <span className="ml-1 font-bold text-green-600">● On the board now</span>}
       </p>
       {players.length > 0 && (
@@ -1511,3 +1676,68 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
     </div>
   );
 }
+
+// ── Unused import guard (StatField kept for possible future use) ─
+// StatField was used in the old scrolling layout for the stats
+// section inside the live-control group. In the v4 layout the same
+// data is surfaced via StatChip / QuickStatChips in the team zones.
+// Keeping it here avoids a "declared but never used" TS error while
+// the hook signature types still reference SportStatField.
+function _StatField({
+  field,
+  value,
+  onCommit,
+}: {
+  field: SportStatField;
+  value: unknown;
+  onCommit: (v: number | string) => void;
+}) {
+  const [local, setLocal] = useState<string>(
+    value === undefined || value === null ? '' : String(value),
+  );
+  const focused = useRef(false);
+  useEffect(() => {
+    if (!focused.current) {
+      setLocal(value === undefined || value === null ? '' : String(value));
+    }
+  }, [value]);
+
+  const commit = () => {
+    if (field.type === 'number') {
+      let n = parseInt(local, 10);
+      if (Number.isNaN(n)) n = field.min ?? 0;
+      if (field.min !== undefined) n = Math.max(field.min, n);
+      if (field.max !== undefined) n = Math.min(field.max, n);
+      setLocal(String(n));
+      onCommit(n);
+    } else {
+      onCommit(local);
+    }
+  };
+
+  return (
+    <div>
+      <label className="text-xs font-semibold text-slate-500">{field.label}</label>
+      <Input
+        className="mt-1"
+        type={field.type === 'number' ? 'number' : 'text'}
+        value={local}
+        min={field.min}
+        max={field.max}
+        onFocus={() => {
+          focused.current = true;
+        }}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={() => {
+          focused.current = false;
+          commit();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        }}
+      />
+    </div>
+  );
+}
+// Suppress "declared but never read" for the guard above.
+void _StatField;
