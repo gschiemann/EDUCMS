@@ -1195,13 +1195,18 @@ function CanvasInfoRow() {
 // ─── Error boundary wraps the whole player so a single widget crash can't
 // ─── black out the screen mid-emergency. On crash, we surface the cached
 // ─── emergency (if any) and start a recovery countdown, then auto-reload.
-class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; err?: any }> {
-  state = { hasError: false, err: undefined as any };
+class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; err?: any; errInfo?: string }> {
+  state = { hasError: false, err: undefined as any, errInfo: undefined as string | undefined };
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
   private reloadCount = 0;
   static getDerivedStateFromError(err: any) { return { hasError: true, err }; }
   componentDidCatch(err: any, info: any) {
     console.error('[Player] FATAL render error', err, info);
+    // Surface WHAT crashed on the recovery screen — the operator can
+    // read it off the kiosk and report it, turning a blind crash-loop
+    // into a one-shot fix. info.componentStack names the component
+    // that actually threw.
+    try { this.setState({ errInfo: String(info?.componentStack || '').trim() }); } catch { /* noop */ }
     // Bound the reload CADENCE so a widget that crashes on every mount
     // can't become a tight CPU-burning crash-reload loop — but NEVER
     // stop retrying. The old behaviour parked on "Player recovering"
@@ -1252,11 +1257,36 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
         </div>
       );
     }
+    const e: any = this.state.err;
+    const errMsg = (e && (e.message || String(e))) || 'Unknown error';
+    const stackHead = String(e?.stack || '')
+      .split('\n').slice(1, 4).map((s: string) => s.trim()).filter(Boolean).join('\n');
+    const compHead = String(this.state.errInfo || '')
+      .split('\n').map((s: string) => s.trim()).filter(Boolean).slice(0, 6).join('\n');
     return (
-      <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center">
+      <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-8">
         <Loader2 className="w-12 h-12 text-amber-500 animate-spin mb-4" />
         <h2 className="text-xl font-bold mb-2">Player recovering…</h2>
-        <p className="text-slate-400 text-sm">Reloading automatically…</p>
+        <p className="text-slate-400 text-sm mb-4">Reloading automatically…</p>
+        {/* Diagnostic panel — names WHAT threw so an operator can read
+            it off the screen and report it. Only ever visible on a
+            crash; a healthy player never renders this boundary. */}
+        <div
+          className="w-full max-w-3xl text-left bg-black/60 border border-slate-700 rounded-lg p-3 overflow-auto"
+          style={{ maxHeight: '42vh' }}
+        >
+          <div className="text-[11px] font-bold uppercase tracking-wide text-rose-400 mb-1">What crashed</div>
+          <div className="text-[12px] font-mono text-rose-200 break-words whitespace-pre-wrap">{errMsg}</div>
+          {stackHead && (
+            <div className="text-[10px] font-mono text-slate-400 mt-2 break-words whitespace-pre-wrap">{stackHead}</div>
+          )}
+          {compHead && (
+            <div className="mt-2">
+              <div className="text-[10px] font-bold text-amber-400/90 mb-0.5">component trail</div>
+              <div className="text-[10px] font-mono text-amber-300/80 break-words whitespace-pre-wrap">{compHead}</div>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
