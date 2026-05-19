@@ -185,6 +185,10 @@ const BASEBALL: SportDefinition = {
     { key: 'on1B', label: 'Runner on 1st', scope: 'game', type: 'number', min: 0, max: 1 },
     { key: 'on2B', label: 'Runner on 2nd', scope: 'game', type: 'number', min: 0, max: 1 },
     { key: 'on3B', label: 'Runner on 3rd', scope: 'game', type: 'number', min: 0, max: 1 },
+    // Pitch count — per team's current pitcher; the operator resets it
+    // on a pitching change. HS leagues enforce pitch-count limits.
+    { key: 'homePitchCount', label: 'Home Pitch Count', scope: 'home', type: 'number', min: 0, max: 200 },
+    { key: 'awayPitchCount', label: 'Away Pitch Count', scope: 'away', type: 'number', min: 0, max: 200 },
   ],
   celebrations: [
     { key: 'homeRun', label: 'Home Run', emoji: '⚾' },
@@ -224,6 +228,10 @@ const SOCCER: SportDefinition = {
     { key: 'homeShots', label: 'Home Shots', scope: 'home', type: 'number', min: 0, max: 99 },
     { key: 'awayShots', label: 'Away Shots', scope: 'away', type: 'number', min: 0, max: 99 },
     { key: 'addedTime', label: 'Added Time (min)', scope: 'game', type: 'number', min: 0, max: 15 },
+    { key: 'homeYellowCards', label: 'Home Yellow Cards', scope: 'home', type: 'number', min: 0, max: 11 },
+    { key: 'awayYellowCards', label: 'Away Yellow Cards', scope: 'away', type: 'number', min: 0, max: 11 },
+    { key: 'homeRedCards', label: 'Home Red Cards', scope: 'home', type: 'number', min: 0, max: 11 },
+    { key: 'awayRedCards', label: 'Away Red Cards', scope: 'away', type: 'number', min: 0, max: 11 },
   ],
   celebrations: [
     { key: 'goal', label: 'GOAL!', emoji: '⚽' },
