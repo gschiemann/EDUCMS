@@ -27,23 +27,23 @@ export class EmailService {
   constructor(private readonly prisma: PrismaService) {}
 
   async sendWelcome(params: { to: string; districtName: string; tenantSlug: string }): Promise<void> {
-    const subject = `Welcome to EduSignage, ${params.districtName}`;
+    const subject = `Welcome to VenueOS, ${params.districtName}`;
     const loginUrl = `${this.appUrl}/login`;
     const body = [
-      `Your EduSignage workspace for ${params.districtName} is ready.`,
+      `Your VenueOS workspace for ${params.districtName} is ready.`,
       ``,
       `Sign in to get started: ${loginUrl}`,
       ``,
       `Tenant slug: ${params.tenantSlug}`,
       ``,
-      `— The EduSignage team`,
+      `— The VenueOS team`,
     ].join('\n');
 
     await this.#enqueue({ to: params.to, subject, body, kind: 'WELCOME' });
   }
 
   async sendPasswordReset(params: { to: string; resetToken: string }): Promise<void> {
-    const subject = 'Reset your EduSignage password';
+    const subject = 'Reset your VenueOS password';
     const resetUrl = `${this.appUrl}/reset-password/${encodeURIComponent(params.resetToken)}`;
     const body = [
       `We received a request to reset your password.`,
@@ -53,7 +53,7 @@ export class EmailService {
       ``,
       `If you didn't request this, you can safely ignore this email.`,
       ``,
-      `— The EduSignage team`,
+      `— The VenueOS team`,
     ].join('\n');
 
     await this.#enqueue({ to: params.to, subject, body, kind: 'PASSWORD_RESET' });
@@ -66,17 +66,17 @@ export class EmailService {
     role: string;
     inviteToken: string;
   }): Promise<void> {
-    const subject = `${params.inviterEmail} invited you to ${params.tenantName} on EduSignage`;
+    const subject = `${params.inviterEmail} invited you to ${params.tenantName} on VenueOS`;
     const acceptUrl = `${this.appUrl}/accept-invite/${encodeURIComponent(params.inviteToken)}`;
     const body = [
-      `${params.inviterEmail} invited you to join ${params.tenantName} on EduSignage as ${params.role}.`,
+      `${params.inviterEmail} invited you to join ${params.tenantName} on VenueOS as ${params.role}.`,
       ``,
       `Accept your invitation and choose a password:`,
       acceptUrl,
       ``,
       `This invitation expires in 7 days.`,
       ``,
-      `— The EduSignage team`,
+      `— The VenueOS team`,
     ].join('\n');
 
     await this.#enqueue({ to: params.to, subject, body, kind: 'INVITE' });
@@ -158,7 +158,7 @@ export class EmailService {
       `Open the review queue to approve or reject:`,
       params.reviewLink,
       ``,
-      `— EduSignage`,
+      `— VenueOS`,
     ].join('\n');
     await this.#enqueue({ to: params.to, subject, body, kind: 'ASSET_PENDING_REVIEW' });
   }
@@ -183,7 +183,7 @@ export class EmailService {
           `Manage your assets:`,
           params.assetsLink,
           ``,
-          `— EduSignage`,
+          `— VenueOS`,
         ].join('\n')
       : [
           `"${params.assetName}" was rejected by ${params.reviewerEmail}.`,
@@ -191,7 +191,7 @@ export class EmailService {
           `You can edit and re-upload, or open the assets page for details:`,
           params.assetsLink,
           ``,
-          `— EduSignage`,
+          `— VenueOS`,
         ].join('\n');
     const kind = params.decision === 'APPROVED' ? 'ASSET_APPROVED' : 'ASSET_REJECTED';
     await this.#enqueue({ to: params.to, subject, body, kind });
@@ -202,8 +202,8 @@ export class EmailService {
    *
    * Config (all optional — unset = dev-mode logging only):
    *   RESEND_API_KEY    your re_... API key from https://resend.com
-   *   EMAIL_FROM        "EduSignage <noreply@yourdomain.com>", defaults
-   *                     to "EduSignage <onboarding@resend.dev>" which
+   *   EMAIL_FROM        "VenueOS <noreply@yourdomain.com>", defaults
+   *                     to "VenueOS <onboarding@resend.dev>" which
    *                     works without domain verification but carries
    *                     the Resend branding and goes to spam on many
    *                     providers. Verify a custom sender domain in the
@@ -224,7 +224,7 @@ export class EmailService {
       return;
     }
 
-    const from = process.env.EMAIL_FROM || 'EduSignage <onboarding@resend.dev>';
+    const from = process.env.EMAIL_FROM || 'VenueOS <onboarding@resend.dev>';
     const replyTo = process.env.EMAIL_REPLY_TO || undefined;
     // Body is plain text today — Resend accepts `text` without `html`
     // and the few inline links still render as clickable in every major
