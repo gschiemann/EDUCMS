@@ -164,12 +164,22 @@ class OtaUpdateWorker(
             if (conn.responseCode !in 200..299) {
                 Log.w(TAG, "update-check returned ${conn.responseCode}")
                 PlayerLogger.w(TAG, "OTA update-check returned HTTP ${conn.responseCode}")
+                // v1.0.68 — make the bail VISIBLE. Without this report the
+                // operator taps "Update now", the worker silently exits,
+                // and the dashboard shows nothing at all.
+                reportOtaState(
+                    apiRoot, deviceFingerprint, "ERROR", null,
+                    "Update check failed — server returned HTTP ${conn.responseCode}",
+                )
                 return@withContext Result.success()
             }
 
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             val json = JSONObject(body)
-            val latest = json.optJSONObject("latest") ?: return@withContext Result.success()
+            val latest = json.optJSONObject("latest") ?: run {
+                PlayerLogger.i(TAG, "OTA check: server returned no newer release — Player is current")
+                return@withContext Result.success()
+            }
             val latestVc = latest.optInt("versionCode")
             if (latestVc <= BuildConfig.VERSION_CODE) {
                 PlayerLogger.i(TAG, "OTA check: up to date (current=${BuildConfig.VERSION_CODE}, latest=$latestVc)")
@@ -177,7 +187,14 @@ class OtaUpdateWorker(
             }
 
             val apkUrl = latest.optString("apkUrl")
-            if (apkUrl.isEmpty()) return@withContext Result.success()
+            if (apkUrl.isEmpty()) {
+                PlayerLogger.w(TAG, "OTA aborted — update offered but apkUrl was empty (server config issue)")
+                reportOtaState(
+                    apiRoot, deviceFingerprint, "ERROR", null,
+                    "Update available but the server returned no download URL",
+                )
+                return@withContext Result.success()
+            }
             val expectedSha = latest.optString("sha256")
             val forced = latest.optBoolean("forced", false)
             val latestVn = latest.optString("versionName", "$latestVc")
@@ -267,7 +284,7 @@ class OtaUpdateWorker(
             // exits cleanly. No double-prompt risk because Manager's
             // notification path doesn't actually surface in practice.
             reportOtaState(apiRoot, deviceFingerprint, "INSTALLING", null, "v$latestVn")
-            triggerInstall(outFile, forced)
+            triggerInstall(outFile, forced, apiRoot, deviceFingerprint)
             // Success state is reported on next boot via the heartbeat
             // (new versionName lands in playerVersion, dashboard infers
             // INSTALLED from a version change). We don't report
@@ -366,7 +383,7 @@ class OtaUpdateWorker(
      * The notification remains as a user-visible fallback for case 3
      * if the prompt gets dismissed.
      */
-    private fun triggerInstall(apk: File, forced: Boolean) {
+    private fun triggerInstall(apk: File, forced: Boolean, apiRoot: String, deviceFingerprint: String) {
         val ctx = applicationContext
 
         // v1.0.55 — Schedule a post-install relaunch safety net BEFORE
@@ -467,6 +484,13 @@ class OtaUpdateWorker(
         } catch (ex: Exception) {
             Log.w(TAG, "PackageInstaller.Session path failed — operator can use notification to install", ex)
             PlayerLogger.w(TAG, "PackageInstaller.Session install failed; tap-to-install notification posted", ex)
+            // v1.0.68 — surface the install failure to the dashboard.
+            // Previously this fell through to a notification the OEM
+            // battery-saver often eats, leaving the operator no signal.
+            reportOtaState(
+                apiRoot, deviceFingerprint, "ERROR", null,
+                "Install could not start automatically: ${ex.message?.take(160) ?: "unknown error"}",
+            )
             postFallbackInstallNotification(ctx, apk, forced)
         }
     }
