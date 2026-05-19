@@ -30,6 +30,7 @@ export default function LandingPage() {
       <LogoStrip />
       <IndustryShowcase />
       <Gallery />
+      <SportsShowcase />
       <Features />
       <EmergencyCallout />
       <PricingTeaser />
@@ -187,6 +188,150 @@ function Gallery() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── sports showcase ──────────────────────────────────────────────
+// VenueOS Sports on the splash page — a faithful CSS mock of the live
+// scoreboard plus the perimeter ribbon ticker (a real CSS marquee).
+// A mock, not a live /board embed, so it has no game-data dependency
+// and always renders pixel-perfect.
+
+const TICKER = [
+  'LINCOLN 21',
+  'RIVERSIDE 14',
+  '3RD QTR · 4:32',
+  'GO TIGERS',
+  'NEXT HOME GAME · FRI 7:00',
+  'SPONSORED BY NORTHGATE MARKET',
+];
+
+function ScoreboardTeam({
+  name,
+  sub,
+  score,
+  color,
+}: {
+  name: string;
+  sub: string;
+  score: number;
+  color: string;
+}) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center py-6 md:py-9"
+      style={{
+        background: `linear-gradient(165deg, ${color}26, transparent 72%)`,
+        borderTop: `4px solid ${color}`,
+      }}
+    >
+      <span className="text-sm md:text-lg font-black tracking-wide text-white">{name}</span>
+      <span className="mt-0.5 text-[10px] font-bold tracking-[0.2em]" style={{ color }}>
+        {sub}
+      </span>
+      <span className="mt-1 text-6xl md:text-7xl font-black tabular-nums text-white leading-none">
+        {score}
+      </span>
+    </div>
+  );
+}
+
+function ScoreboardMock() {
+  return (
+    <div
+      className="rounded-2xl overflow-hidden border border-[#1c2438] shadow-2xl"
+      style={{ background: '#05070d' }}
+    >
+      <div className="flex items-center justify-between px-5 py-3 border-b border-[#141b2e]">
+        <span className="text-xs md:text-sm font-bold tracking-[0.15em] text-slate-300">
+          FOOTBALL
+        </span>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-600 text-white text-[10px] font-black tracking-[0.15em]">
+          <span className="w-1.5 h-1.5 rounded-full bg-white" />
+          LIVE
+        </span>
+      </div>
+      <div className="grid grid-cols-3">
+        <ScoreboardTeam name="LINCOLN" sub="HOME" score={21} color="#dc2626" />
+        <div className="flex flex-col items-center justify-center py-6 md:py-9">
+          <span className="text-[10px] md:text-xs font-bold tracking-[0.2em] text-slate-500">
+            3RD QTR
+          </span>
+          <span
+            className="mt-1 text-4xl md:text-6xl font-black tabular-nums text-amber-400 leading-none"
+            style={{ textShadow: '0 0 26px rgba(251,191,36,0.4)' }}
+          >
+            4:32
+          </span>
+          <span className="mt-2 text-[9px] md:text-[10px] font-bold tracking-[0.25em] text-slate-600">
+            VENUEOS
+          </span>
+        </div>
+        <ScoreboardTeam name="RIVERSIDE" sub="AWAY" score={14} color="#2563eb" />
+      </div>
+    </div>
+  );
+}
+
+function RibbonTicker() {
+  return (
+    <div
+      className="relative overflow-hidden rounded-xl border border-[#1c2438]"
+      style={{ background: '#0a0e1a' }}
+    >
+      <div className="flex w-max venueTickerTrack">
+        {[0, 1].map((dup) => (
+          <div key={dup} className="flex items-center shrink-0" aria-hidden={dup === 1}>
+            {TICKER.map((t, i) => (
+              <span key={`${dup}-${i}`} className="flex items-center">
+                <span className="px-6 py-3 text-sm font-black tracking-wide text-amber-300 whitespace-nowrap">
+                  {t}
+                </span>
+                <span className="text-indigo-500">◆</span>
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+      <style>{`
+        @keyframes venueTickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+        .venueTickerTrack { animation: venueTickerScroll 28s linear infinite; }
+        @media (prefers-reduced-motion: reduce) { .venueTickerTrack { animation: none; } }
+      `}</style>
+    </div>
+  );
+}
+
+function SportsShowcase() {
+  return (
+    <section className="relative overflow-hidden" style={{ background: NAVY }}>
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-40 h-[620px] w-[900px]"
+        style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.16), transparent 64%)' }}
+      />
+      <div className="relative max-w-6xl mx-auto px-6 py-20 md:py-24">
+        <div className="max-w-2xl">
+          <p className="text-xs font-semibold tracking-[0.14em] uppercase text-indigo-300">
+            VenueOS Sports
+          </p>
+          <h2 className="mt-3 text-3xl md:text-4xl font-semibold tracking-tight text-white">
+            Game night, on every board you own.
+          </h2>
+          <p className="mt-3 text-base md:text-lg text-slate-400 leading-relaxed">
+            A live scoreboard, a perimeter ribbon ticker, and a broadcast scorebug — every
+            sport, run from one phone. VenueOS drives the LED boards you already have, with
+            no proprietary controller to buy.
+          </p>
+        </div>
+        <div className="mt-10">
+          <ScoreboardMock />
+        </div>
+        <div className="mt-4">
+          <RibbonTicker />
         </div>
       </div>
     </section>
