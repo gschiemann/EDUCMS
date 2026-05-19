@@ -173,6 +173,23 @@ export class SportsController {
     return this.sports.clockAction(req.user.tenantId, id, body);
   }
 
+  /** Basketball shot clock — configure the length (24/30/35/off) or
+   *  start / stop / reset the live countdown. */
+  @Patch('games/:id/shot-clock')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  shotClock(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { action?: string; value?: number },
+  ) {
+    return this.sports.setShotClock(req.user.tenantId, id, body);
+  }
+
   @Patch('games/:id/segment')
   @RequireRoles(
     AppRole.SUPER_ADMIN,

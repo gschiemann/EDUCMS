@@ -2199,9 +2199,19 @@ export function useGameControl(gameId: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-game', gameId] }),
   });
 
+  const shotClock = useMutation({
+    // Basketball shot clock — configure length, or start/stop/reset.
+    mutationFn: (body: { action: string; value?: number }) =>
+      apiFetch(`/sports/games/${gameId}/shot-clock`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+  });
+
   return {
     score,
     clock,
+    shotClock,
     segment,
     stats,
     status,

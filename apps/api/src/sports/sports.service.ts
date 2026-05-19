@@ -950,6 +950,77 @@ export class SportsService {
     return updated;
   }
 
+  /**
+   * Basketball shot clock — a second countdown, independent of the
+   * game clock. Level-aware: Pro 24s, College 30s, HS 35s, or Off.
+   * Stored in Game.stats JSON under `shotClock` (no schema column);
+   * every surface projects it from the anchor like the game clock.
+   * `configure` sets the length; start / stop / reset run it.
+   */
+  async setShotClock(
+    tenantId: string,
+    id: string,
+    dto: { action?: string; value?: number },
+  ) {
+    const game = await this.owned(tenantId, id);
+    const action = String(dto.action || '');
+    const stats: Record<string, unknown> =
+      game.stats && typeof game.stats === 'object'
+        ? { ...(game.stats as Record<string, unknown>) }
+        : {};
+    const prev: Record<string, unknown> =
+      stats.shotClock && typeof stats.shotClock === 'object'
+        ? (stats.shotClock as Record<string, unknown>)
+        : {};
+    let len = Number(prev.len) || 0;
+    let ms = Math.max(0, Number(prev.ms) || 0);
+    let running = !!prev.running;
+
+    // The live reading, projected from the prior anchor.
+    const live = (): number => {
+      if (!running) return ms;
+      const at = new Date(String(prev.at || '')).getTime();
+      if (!Number.isFinite(at)) return ms;
+      return Math.max(0, ms - (Date.now() - at));
+    };
+
+    switch (action) {
+      case 'configure': {
+        // value = shot-clock length in seconds: 0 (off) | 24 | 30 | 35.
+        const v = Math.round(Number(dto.value));
+        len = [0, 24, 30, 35].includes(v) ? v : 0;
+        ms = len * 1000;
+        running = false;
+        break;
+      }
+      case 'start':
+        if (len <= 0) throw new BadRequestException('Shot clock is off');
+        ms = live();
+        running = true;
+        break;
+      case 'stop':
+        ms = live();
+        running = false;
+        break;
+      case 'reset': {
+        // value = seconds to reset to (full length, or a 14 / 20 partial).
+        const v = Math.round(Number(dto.value));
+        const sec = Number.isFinite(v) && v > 0 ? v : len;
+        ms = Math.min(sec, len || sec) * 1000;
+        running = len > 0;
+        break;
+      }
+      default:
+        throw new BadRequestException('action must be configure | start | stop | reset');
+    }
+
+    const shotClock = { len, ms, at: new Date().toISOString(), running };
+    return this.prisma.client.game.update({
+      where: { id },
+      data: { stats: { ...stats, shotClock } as any },
+    });
+  }
+
   /** Advance / set the segment (quarter, inning, set, period). */
   async setSegment(
     tenantId: string,
