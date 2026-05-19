@@ -28,14 +28,14 @@ export default function OnboardingBrandingPage() {
       <header className="px-6 py-3 border-b border-slate-200 bg-white flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="font-bold">VenueOS</span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Onboarding · step 2 of 4</span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Getting started</span>
         </div>
         <Link href={activeTenant ? `/${activeTenant}/dashboard` : '/'} className="text-sm text-slate-500 hover:text-slate-900">Skip for now →</Link>
       </header>
 
       <div className="text-center py-6 px-4">
         <h1 className="text-2xl font-bold">Make it feel like home.</h1>
-        <p className="text-slate-600 mt-1 text-sm">Paste your school&apos;s website — we&apos;ll do the rest.</p>
+        <p className="text-slate-600 mt-1 text-sm">Paste your website — we&apos;ll do the rest.</p>
       </div>
 
       <BrandingWizard

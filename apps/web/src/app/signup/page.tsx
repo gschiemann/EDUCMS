@@ -204,7 +204,10 @@ export default function SignupPage() {
       const data = await res.json();
       if (res.ok && data.access_token) {
         login(data.access_token, data.user);
-        router.push(`/${data.user.tenantSlug || data.user.tenantId}/dashboard`);
+        // New workspaces land on onboarding first (paste-your-URL
+        // auto-branding); that page has its own "Skip for now" to the
+        // dashboard, so the step is never a dead end.
+        router.push('/onboarding/branding');
       } else {
         setError(data.message || 'Signup failed. Please try again.');
       }
