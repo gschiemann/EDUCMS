@@ -13,7 +13,7 @@ Two accounts are ready for you. Either works for everything in this guide — pi
 | `chuck@agceducation.com` | `12345678` |
 | `larry@agceducation.com` | `12345678` |
 
-Both sign in at **https://educms-five.vercel.app/login**.
+Both sign in at **https://venue-os.app/login**.
 
 > Keep this guide open on one side of your screen and the browser on the other. You'll be flipping between tabs, so a little screen real estate helps.
 
@@ -38,7 +38,7 @@ In about 20 minutes you'll sign in, turn a second browser tab into a pretend "ha
 
 ## Step 1 — Sign In
 
-1. In Chrome, go to **https://educms-five.vercel.app/login**.
+1. In Chrome, go to **https://venue-os.app/login**.
 2. In the **Email** field, type `chuck@agceducation.com` (or `larry@…`).
 3. In the **Password** field, type `12345678`.
 4. **Check the box labeled "Remember me"** before clicking sign in. This keeps you logged in for the full demo so you don't have to retype the password on every tab.
@@ -64,7 +64,7 @@ Every hallway TV, lobby monitor, or cafeteria board is called a **Screen** in th
 
 [SCREENSHOT: Add Screen dialog with pairing code visible]
 
-4. Open a **new browser tab** (Ctrl+T / Cmd+T) and go to **https://educms-five.vercel.app/pair**.
+4. Open a **new browser tab** (Ctrl+T / Cmd+T) and go to **https://venue-os.app/pair**.
 5. Paste the pairing code into the box. Click **Pair this Device**.
 6. Flip back to your first tab (the dashboard). The Screens list now shows your new screen with a green **ONLINE** badge.
 
@@ -161,7 +161,7 @@ A **Playlist** is the sequence of content that rotates on a screen. We'll mix yo
 
 This is the heart of what makes EDU CMS different. If something happens at your school, any authorized staff member can lock down every screen in seconds from their phone.
 
-1. On your **phone**, open a browser and go to **https://educms-five.vercel.app/panic**.
+1. On your **phone**, open a browser and go to **https://venue-os.app/panic**.
 2. Sign in with the same account (`chuck@agceducation.com` / `12345678`).
 3. **Check the box labeled "Keep me logged in"** before submitting.
 

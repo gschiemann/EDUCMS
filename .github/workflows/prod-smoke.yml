@@ -1,6 +1,6 @@
 name: Prod Smoke
 
-# Hits https://educms-five.vercel.app with a real Playwright browser,
+# Hits https://venue-os.app with a real Playwright browser,
 # logs in as the seed admin, walks every tenant + opens 12 templates
 # in the builder. Fails CI on regressions like:
 #   - login flow broken (form / API contract drift)
@@ -68,7 +68,7 @@ jobs:
         # constant. Not a secret. Override via repo Vars/Secrets if
         # the seed account is ever rotated.
         env:
-          PROD_SMOKE_BASE: https://educms-five.vercel.app
+          PROD_SMOKE_BASE: https://venue-os.app
           PROD_SMOKE_API: https://api-production-39a1.up.railway.app/api/v1
           PROD_SMOKE_EMAIL: admin@springfield.edu
           PROD_SMOKE_PASSWORD: admin123

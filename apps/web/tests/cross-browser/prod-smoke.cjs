@@ -32,7 +32,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const { mkdirSync, writeFileSync } = require('node:fs');
 const { resolve } = require('node:path');
 
-const BASE = process.env.PROD_SMOKE_BASE || 'https://educms-five.vercel.app';
+const BASE = process.env.PROD_SMOKE_BASE || 'https://venue-os.app';
 const API = process.env.PROD_SMOKE_API || 'https://api-production-39a1.up.railway.app/api/v1';
 const EMAIL = process.env.PROD_SMOKE_EMAIL || 'admin@springfield.edu';
 const PASSWORD = process.env.PROD_SMOKE_PASSWORD || 'admin123';

@@ -91,13 +91,13 @@ NovaStar and Goodview will eventually ship GMS-equivalent setup wizards.
   "android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM":
       "<base64 SHA-256 of signing cert>",
   "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION":
-      "https://educms-five.vercel.app/download/manager.apk",
+      "https://venue-os.app/download/manager.apk",
   "android.app.extra.PROVISIONING_WIFI_SSID": "SchoolWifi",
   "android.app.extra.PROVISIONING_WIFI_PASSWORD": "...",
   "android.app.extra.PROVISIONING_SKIP_ENCRYPTION": true,
   "android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE": {
     "tenantId": "...",
-    "serverUrl": "https://educms-five.vercel.app"
+    "serverUrl": "https://venue-os.app"
   }
 }
 ```

@@ -4,7 +4,7 @@
 
 **No new APK has been built or shipped this sprint.** The Android compatibility
 work that landed in commit `3efd74f` lives ENTIRELY in the web bundle —
-your existing APK loads `https://educms-five.vercel.app/player` on boot
+your existing APK loads `https://venue-os.app/player` on boot
 and the new capability detection code is part of that bundle. **No APK
 rebuild needed for any of the new features (streaming, POS, ads,
 billing UI, capability runtime).**
@@ -55,7 +55,7 @@ compatibility.
 
 Sign up for a free trial at https://www.browserstack.com/live and pick
 "Android 7" or "Android 8" — they spin up a real device with stock
-Chromium. Open `https://educms-five.vercel.app/player` and inspect the
+Chromium. Open `https://venue-os.app/player` and inspect the
 console: you'll see the `[Player] capabilities` log line with the real
 detected feature flags.
 
@@ -69,7 +69,7 @@ Actual answer for production confidence. Connect ADB to a kiosk:
 
 ```bash
 adb shell am start -n com.venueos.player/.MainActivity \
-  -d "https://educms-five.vercel.app/player?devmode=1"
+  -d "https://venue-os.app/player?devmode=1"
 adb logcat | grep '\[Player\]'
 ```
 

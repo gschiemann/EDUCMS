@@ -77,7 +77,7 @@ SoC, OS version, and architecture.
 
 ## Network requirements
 
-- Outbound HTTPS to your Vercel domain (default: `educms-five.vercel.app`)
+- Outbound HTTPS to your Vercel domain (default: `venue-os.app`)
 - Outbound HTTPS to your Railway API domain
 - Outbound to `connectivitycheck.gstatic.com` (captive portal detection)
 - Outbound DNS — many TaurusOS boxes lock DNS to NovaStar's CDN; if
@@ -168,7 +168,7 @@ When a customer reports a Taurus issue, walk through this in order:
    - In ViPlex User Software panel → Process List → PlayService should
      show "Disabled"
 3. **Does the kiosk reach the internet?**
-   - From ViPlex shell: `curl -I https://educms-five.vercel.app/`
+   - From ViPlex shell: `curl -I https://venue-os.app/`
    - Should return 200. If timeout, school network or captive portal.
 4. **Is the right ABI installed?**
    - `pm list packages | grep educms` then `dumpsys package com.educms.player`

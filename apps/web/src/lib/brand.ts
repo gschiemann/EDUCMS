@@ -85,7 +85,7 @@ export const BRANDS: Record<BrandKey, BrandConfig> = {
       primaryHover: '#4338ca', // indigo-700 — the CTA hover
       accent: '#6366f1',       // indigo-500 — focus rings, highlights
     },
-    primaryDomain: 'venueos.com', // placeholder until domain is acquired
+    primaryDomain: 'venue-os.app',
     logoVariant: 'venue',
     showVerticalPicker: true,  // multi-vertical
     defaultVertical: 'GYM',    // most common non-K12 starter
