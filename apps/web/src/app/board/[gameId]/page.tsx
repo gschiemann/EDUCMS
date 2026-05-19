@@ -166,6 +166,7 @@ function TeamPanel({
   color,
   logoUrl,
   winning,
+  hasPossession,
 }: {
   side: 'home' | 'away';
   name: string;
@@ -173,6 +174,7 @@ function TeamPanel({
   color: string;
   logoUrl: string | null;
   winning: boolean;
+  hasPossession?: boolean;
 }) {
   return (
     <div
@@ -249,18 +251,33 @@ function TeamPanel({
 
       <div
         style={{
-          fontSize: 54,
-          fontWeight: 800,
-          letterSpacing: 1,
-          color: '#fff',
-          textAlign: 'center',
-          maxWidth: 640,
-          lineHeight: 1.05,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          maxWidth: 660,
           marginTop: 6,
-          textShadow: '0 4px 18px rgba(0,0,0,0.6)',
         }}
       >
-        {name}
+        {/* possession marker — the football icon sits by whoever has
+            the ball, the way every broadcast scoreboard shows it */}
+        {hasPossession && (
+          <span aria-hidden style={{ fontSize: 40, lineHeight: 1, marginRight: 14 }}>
+            🏈
+          </span>
+        )}
+        <div
+          style={{
+            fontSize: 54,
+            fontWeight: 800,
+            letterSpacing: 1,
+            color: '#fff',
+            textAlign: 'center',
+            lineHeight: 1.05,
+            textShadow: '0 4px 18px rgba(0,0,0,0.6)',
+          }}
+        >
+          {name}
+        </div>
       </div>
       <div
         style={{
@@ -350,6 +367,13 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
     return () => clearInterval(t);
   }, [slots.length, spotSeconds]);
   const activeSlot = slots[slotIdx % slots.length] || slots[0];
+  // Football possession — lights the 🏈 marker on the team panel.
+  const ballSide =
+    def.key === 'football'
+      ? String((data.stats as Record<string, unknown> | undefined)?.possession || '')
+          .trim()
+          .toLowerCase()
+      : '';
 
   return (
     <div
@@ -418,6 +442,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           color={homeColor}
           logoUrl={data.homeLogoUrl}
           winning={data.homeScore > data.awayScore && data.status !== 'SCHEDULED'}
+          hasPossession={ballSide === 'home'}
         />
 
         {/* center column — clock + segment */}
@@ -489,6 +514,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           color={awayColor}
           logoUrl={data.awayLogoUrl}
           winning={data.awayScore > data.homeScore && data.status !== 'SCHEDULED'}
+          hasPossession={ballSide === 'away'}
         />
       </div>
 

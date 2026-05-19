@@ -170,7 +170,7 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
       <div style={rowStyle}>
         {poss && (
           <span style={{ fontSize: px(h, 0.06), fontWeight: 900, color: accent }}>
-            {poss === 'home' ? '◀' : ''} {poss.toUpperCase()} BALL {poss === 'away' ? '▶' : ''}
+            🏈 {poss.toUpperCase()} BALL
           </span>
         )}
         {down > 0 && (

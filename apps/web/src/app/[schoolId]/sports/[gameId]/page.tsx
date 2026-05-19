@@ -776,43 +776,176 @@ function QuickStatChips({
   onStat: (s: Record<string, number | string>) => void;
   side: 'home' | 'away';
 }) {
-  // Show the first 3 shared stats in the home zone; none in away if they
-  // already show in home (avoids duplication for symmetric sports).
+  // Football gets a dedicated control set — the down selector, TYPED
+  // yardage fields, and a possession toggle — in the home zone only.
+  if (def.key === 'football') {
+    return side === 'home' ? (
+      <FootballControls def={def} stats={stats} onStat={onStat} />
+    ) : null;
+  }
+
+  // Every other sport: the first 3 shared stats as quick chips, home
+  // zone only (away stays clean for symmetric sports).
   const sharedStats = def.stats.filter(
     (s) => !s.key.startsWith('away_') && !s.key.startsWith('home_'),
   );
   const visibleStats = side === 'home' ? sharedStats.slice(0, 3) : [];
-
-  // Football: render down selector in home zone only.
-  const showDown = side === 'home' && def.key === 'football';
-
-  if (visibleStats.length === 0 && !showDown) return null;
+  if (visibleStats.length === 0) return null;
 
   return (
     <div className="flex flex-wrap gap-2 mt-auto">
-      {showDown && (
-        <CompactDownControl
-          value={Number(stats.down) || 1}
-          onSet={(n) => onStat({ down: n })}
+      {visibleStats.map((s) => (
+        <StatChip
+          key={s.key}
+          label={s.label}
+          value={stats[s.key]}
+          onAdd={() => {
+            const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
+            onStat({ [s.key]: Math.min(cur + 1, s.max ?? 9999) });
+          }}
+          onSub={() => {
+            const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
+            onStat({ [s.key]: Math.max(cur - 1, s.min ?? 0) });
+          }}
         />
-      )}
-      {visibleStats.map((s) =>
-        s.key === 'down' ? null : (
-          <StatChip
-            key={s.key}
-            label={s.label}
-            value={stats[s.key]}
-            onAdd={() => {
-              const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
-              onStat({ [s.key]: Math.min(cur + 1, s.max ?? 9999) });
-            }}
-            onSub={() => {
-              const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
-              onStat({ [s.key]: Math.max(cur - 1, s.min ?? 0) });
-            }}
-          />
-        ),
-      )}
+      ))}
+    </div>
+  );
+}
+
+// ── FootballControls ───────────────────────────────────────────
+// Football's home-zone control set: the down selector, TYPED yardage
+// fields (To Go / Ball On — you never tap "+1" fifteen times to set
+// "1st & 15"), and a possession toggle that lights the 🏈 marker on
+// the scoreboard.
+function FootballControls({
+  def,
+  stats,
+  onStat,
+}: {
+  def: SportDefinition;
+  stats: Record<string, unknown>;
+  onStat: (s: Record<string, number | string>) => void;
+}) {
+  const distF = def.stats.find((s) => s.key === 'distance');
+  const ballF = def.stats.find((s) => s.key === 'ballOn');
+  return (
+    <div className="flex flex-wrap gap-2 mt-auto">
+      <CompactDownControl
+        value={Number(stats.down) || 1}
+        onSet={(n) => onStat({ down: n })}
+      />
+      <StatNumberField
+        label="To Go"
+        value={stats.distance}
+        min={distF?.min ?? 0}
+        max={distF?.max ?? 99}
+        onCommit={(n) => onStat({ distance: n })}
+      />
+      <StatNumberField
+        label="Ball On"
+        value={stats.ballOn}
+        min={ballF?.min ?? 0}
+        max={ballF?.max ?? 99}
+        onCommit={(n) => onStat({ ballOn: n })}
+      />
+      <PossessionToggle
+        value={stats.possession}
+        onSet={(v) => onStat({ possession: v })}
+      />
+    </div>
+  );
+}
+
+// ── StatNumberField ────────────────────────────────────────────
+// A compact TYPE-IN number control — for stats with a wide range
+// (yards to go, yard line) where a +/- stepper would mean tapping
+// dozens of times. Brings up the numeric keypad on a touch console;
+// clamps the entry to the stat's min/max on commit.
+function StatNumberField({
+  label,
+  value,
+  min,
+  max,
+  onCommit,
+}: {
+  label: string;
+  value: unknown;
+  min: number;
+  max: number;
+  onCommit: (n: number) => void;
+}) {
+  const live =
+    value === undefined || value === null || value === '' ? '' : String(value);
+  const [text, setText] = useState('');
+  const [editing, setEditing] = useState(false);
+  const commit = () => {
+    if (!editing) return;
+    const n = parseInt(text, 10);
+    if (Number.isFinite(n)) onCommit(Math.max(min, Math.min(max, n)));
+    setEditing(false);
+  };
+  return (
+    <div className="flex flex-col items-center bg-white border border-slate-200 rounded-xl px-3 py-1.5">
+      <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase">
+        {label}
+      </span>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={editing ? text : live}
+        onFocus={() => {
+          setText(live);
+          setEditing(true);
+        }}
+        onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            commit();
+            e.currentTarget.blur();
+          } else if (e.key === 'Escape') {
+            setEditing(false);
+            e.currentTarget.blur();
+          }
+        }}
+        placeholder="—"
+        className="w-12 bg-transparent text-center text-lg font-black text-slate-900 tabular-nums leading-tight outline-none"
+      />
+    </div>
+  );
+}
+
+// ── PossessionToggle ───────────────────────────────────────────
+// Home / Away segmented control for who has the ball. Sets the
+// `possession` stat, which lights the 🏈 marker on the scoreboard.
+function PossessionToggle({
+  value,
+  onSet,
+}: {
+  value: unknown;
+  onSet: (v: string) => void;
+}) {
+  const v = String(value || '').trim().toLowerCase();
+  const opt = (key: 'home' | 'away', label: string) => (
+    <button
+      type="button"
+      onClick={() => onSet(key)}
+      aria-pressed={v === key}
+      className={`rounded-md px-2 py-0.5 text-xs font-black transition-colors ${
+        v === key ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'
+      }`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1.5">
+      <span className="text-[9px] font-black tracking-widest text-slate-400 mr-1">
+        🏈 BALL
+      </span>
+      {opt('home', 'Home')}
+      {opt('away', 'Away')}
     </div>
   );
 }
