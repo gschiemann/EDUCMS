@@ -723,11 +723,13 @@ export class PlayerOtaController {
   @Get('apk/latest')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async redirectToLatestApk(@Res() res: Response) {
-    // Self-healing: prefer an explicit env override, but fall back to
-    // pulling the latest release asset from GitHub's public API so the
-    // 'Download APK' button works the moment a release is published,
-    // with zero Railway env config. Cached 5 min in-memory so we don't
-    // hammer GitHub.
+    // Self-healing: prefer an explicit PLAYER_APK_URL override, else
+    // auto-track the latest release. When PLAYER_APK_URL is unset we
+    // resolve the newest player-v* release and 302 to the FAST Railway
+    // proxy (/apk/v/:vc — uncapped egress), NOT GitHub's CDN which
+    // throttles unauthenticated downloads to a crawl. This keeps the
+    // 'Download APK' button current with zero env config — nothing to
+    // set, nothing to go stale on each release. Cached 5 min.
     const explicit = process.env.PLAYER_APK_URL;
     if (explicit) {
       res.redirect(302, explicit);
@@ -735,9 +737,9 @@ export class PlayerOtaController {
     }
 
     try {
-      const url = await resolveLatestReleaseApk();
-      if (url) {
-        res.redirect(302, url);
+      const info = await resolveLatestReleaseInfo();
+      if (info?.derivedVersionCode) {
+        res.redirect(302, `/api/v1/player/apk/v/${info.derivedVersionCode}`);
         return;
       }
     } catch (e: any) {
@@ -945,11 +947,6 @@ async function serveLatestArtifactApk(res: Response): Promise<boolean> {
 interface ReleaseCache { url: string | null; fetchedAt: number }
 let releaseCache: ReleaseCache | null = null;
 const RELEASE_TTL_MS = 5 * 60 * 1000;
-
-async function resolveLatestReleaseApk(): Promise<string | null> {
-  const info = await resolveLatestReleaseInfo();
-  return info?.apkUrl ?? null;
-}
 
 // Same pattern as resolveLatestReleaseInfo but for `manager-v*` tags.
 // Cached separately so a Manager release lookup doesn't bust the
