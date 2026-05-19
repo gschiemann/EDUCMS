@@ -269,8 +269,9 @@ function GameControl() {
 
       {/* ── mode panels ───────────────────────────────────────── */}
 
-      {/* RUN MODE — 3-zone no-scroll live console */}
-      {mode === 'run' && !showCues && (
+      {/* RUN MODE — 3-zone no-scroll live console. Stays mounted even
+          while the cue popup is open, so firing a cue never leaves it. */}
+      {mode === 'run' && (
         <RunMode
           g={g}
           def={def}
@@ -283,24 +284,29 @@ function GameControl() {
         />
       )}
 
-      {/* CUE OVERLAY — slides in on top of Run mode */}
+      {/* CUE POPUP — fire a cue without leaving the Run screen. The
+          Run console stays mounted underneath; picking a cue fires it
+          and the popup auto-closes straight back to the game. */}
       {mode === 'run' && showCues && (
-        <div className="flex-1 overflow-auto bg-slate-50">
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold text-slate-900">Celebrations &amp; custom cues</h2>
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-3 sm:items-center sm:p-4"
+          onClick={() => setShowCues(false)}
+        >
+          <div
+            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900">Fire a cue</h2>
               <button
                 onClick={() => setShowCues(false)}
-                className="text-sm font-semibold text-indigo-600 hover:text-indigo-800"
+                className="rounded-md px-2 py-1 text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close"
               >
-                ← Back to game
+                ✕
               </button>
             </div>
-            <PresentationSettingsSection gameId={gameId} def={def} ctl={ctl} />
-            <div className="mt-4 rounded-2xl bg-white ring-1 ring-slate-200 p-5">
-              <h2 className="text-sm font-bold text-slate-900 mb-3">Custom cues</h2>
-              <CueLaunchpad gameId={gameId} def={def} />
-            </div>
+            <CueLaunchpad gameId={gameId} def={def} onFired={() => setShowCues(false)} />
           </div>
         </div>
       )}
@@ -353,6 +359,10 @@ function GameControl() {
             </Section>
 
             <SponsorSchedulingSection />
+
+            {/* Cue / celebration presentation — configured here before
+                the game; firing the cues happens from the Run screen. */}
+            <PresentationSettingsSection gameId={gameId} def={def} ctl={ctl} />
           </div>
         </div>
       )}

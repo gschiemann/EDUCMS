@@ -17,7 +17,7 @@
  * /assets/upload chain.
  */
 
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Plus, Pencil, Trash2, Loader2, X, ImageIcon, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -114,7 +114,16 @@ function LaunchTile({
   );
 }
 
-export function CueLaunchpad({ gameId, def }: { gameId: string; def: SportDefinition }) {
+export function CueLaunchpad({
+  gameId,
+  def,
+  onFired,
+}: {
+  gameId: string;
+  def: SportDefinition;
+  /** Called shortly after a cue fires — lets a host popup auto-close. */
+  onFired?: () => void;
+}) {
   const { data, isLoading } = useCues();
   const m = useCueMutations();
   const ctl = useGameControl(gameId);
@@ -123,6 +132,14 @@ export function CueLaunchpad({ gameId, def }: { gameId: string; def: SportDefini
   const [editing, setEditing] = useState<CustomCue | 'new' | null>(null);
   const [fired, setFired] = useState<string | null>(null);
   const firedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (firedTimer.current) clearTimeout(firedTimer.current);
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    },
+    [],
+  );
 
   const customCues: CustomCue[] = Array.isArray(data) ? data : [];
 
@@ -134,13 +151,24 @@ export function CueLaunchpad({ gameId, def }: { gameId: string; def: SportDefini
     firedTimer.current = setTimeout(() => setFired(null), 1500);
   };
 
+  // After a cue fires: if hosted in a popup, let the host auto-close
+  // after a beat — the operator sees it land, then drops straight back
+  // to the live Run screen.
+  const afterFire = () => {
+    if (!onFired) return;
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(onFired, 650);
+  };
+
   const fireBuiltin = (key: string) => {
     ctl.cue.mutate({ key, target });
     flash(`builtin:${key}`);
+    afterFire();
   };
   const fireCustom = (cue: CustomCue) => {
     ctl.cue.mutate({ cueId: cue.id, target });
     flash(`custom:${cue.id}`);
+    afterFire();
   };
 
   return (
