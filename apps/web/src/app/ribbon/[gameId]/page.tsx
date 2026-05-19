@@ -1053,12 +1053,14 @@ function LookView({
   }
 
   // ── All other looks — static tiled copies ─────────────────────
+  // A prompt is the operator's headline — ONE copy, scaled to fill
+  // the ribbon (sized in LookUnit), never tiled small.
   const unit =
-    look.kind === 'slide'
+    look.kind === 'slide' || look.kind === 'prompt'
       ? w
       : look.kind === 'player' || look.kind === 'situational'
         ? Math.min(w, h * 6)
-        : Math.min(w, h * 4.4); // prompt / final / pregame
+        : Math.min(w, h * 4.4); // final / pregame
   const copies = Math.max(1, Math.round(w / Math.max(1, unit)));
 
   return (
@@ -1075,7 +1077,7 @@ function LookView({
       }}
     >
       {Array.from({ length: copies }, (_, i) => (
-        <LookUnit key={i} look={look} h={h} data={data} def={def} />
+        <LookUnit key={i} look={look} h={h} w={w} data={data} def={def} />
       ))}
     </div>
   );
@@ -1085,11 +1087,13 @@ function LookView({
 function LookUnit({
   look,
   h,
+  w,
   data,
   def,
 }: {
   look: Look;
   h: number;
+  w: number;
   data: BoardData;
   def: SportDefinition;
 }) {
@@ -1124,15 +1128,44 @@ function LookUnit({
   }
 
   if (look.kind === 'prompt') {
+    // Scale the headline to FILL the ribbon — as large as fits the
+    // height and the content width, so a short message ("DEFENSE!")
+    // goes huge and a long one still reads end-to-end without clipping.
+    const len = Math.max(1, look.text.length);
+    const f = Math.min(h, (w * 0.94) / (1.08 + 0.66 * len));
     return (
       <div style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
-        <span style={{ color: '#fbbf24', fontSize: cu * 0.34, fontWeight: 900, marginRight: cu * 0.14 }}>
+        <span
+          style={{
+            color: '#fbbf24',
+            fontSize: f * 0.78,
+            fontWeight: 900,
+            lineHeight: 1,
+            marginRight: f * 0.14,
+          }}
+        >
           ‹
         </span>
-        <span style={{ fontSize: cu * 0.42, fontWeight: 900, letterSpacing: 4, color: '#fff' }}>
+        <span
+          style={{
+            fontSize: f,
+            fontWeight: 900,
+            lineHeight: 1,
+            letterSpacing: f * 0.04,
+            color: '#fff',
+          }}
+        >
           {look.text}
         </span>
-        <span style={{ color: '#fbbf24', fontSize: cu * 0.34, fontWeight: 900, marginLeft: cu * 0.14 }}>
+        <span
+          style={{
+            color: '#fbbf24',
+            fontSize: f * 0.78,
+            fontWeight: 900,
+            lineHeight: 1,
+            marginLeft: f * 0.14,
+          }}
+        >
           ›
         </span>
       </div>
