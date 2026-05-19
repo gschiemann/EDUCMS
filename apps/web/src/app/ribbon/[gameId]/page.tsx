@@ -14,14 +14,23 @@
  *   amateur — the score drifts off-edge so fans can never glance it,
  *   and constant motion reads as noise. Real ribbons are TWO layers:
  *
- *     • a fixed SCORE ZONE pinned to one end — score, clock, segment.
- *       It never moves; the digits just update in place.
+ *     • a SCORE ZONE — score, clock, segment. It never moves; the
+ *       digits just update in place.
  *     • a CONTENT ZONE that runs a rotating playlist of held-static
  *       "looks" (sponsor, crowd prompt, player, stat) — each holds
  *       6–8s, then a fast crossfade to the next. Looks tile across
  *       the ribbon's extreme width so every seat sees them.
  *
- *   A fired celebration cue takes the whole ribbon over for its hold.
+ *   On a continuous full-bowl wrap — a coliseum ribbon ringing the
+ *   whole seating bowl — the [score | content] unit RECURS around the
+ *   strip so the scorebug is glanceable from every seat, not just from
+ *   one end. The anchor count auto-derives from the ribbon's aspect
+ *   ratio; an installer can pin it with ?score=N on the kiosk URL. A
+ *   normal straight ribbon resolves to one anchor and renders exactly
+ *   as before.
+ *
+ *   A fired celebration cue takes the whole ribbon over for its hold,
+ *   tiled once per score anchor so the burst reaches every seat too.
  *
  * Chromium-83 safe (NovaStar Taurus): long-hand top/right/bottom/left
  * (no `inset`), per-child margin (no flex `gap`), animation is
@@ -387,6 +396,8 @@ export default function RibbonPage() {
 
   const [data, setData] = useState<BoardData | null>(null);
   const [vp, setVp] = useState({ w: 1920, h: 240 });
+  // installer override for the score-anchor count — ?score=N (0 = auto)
+  const [scoreOverride, setScoreOverride] = useState(0);
   // a re-render tick so the score-zone clock counts smoothly between polls
   const [, setTick] = useState(0);
   // which content look is showing
@@ -429,6 +440,15 @@ export default function RibbonPage() {
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
+  }, []);
+
+  // Read the ?score=N installer override once on mount — pins the
+  // score-anchor count for a commissioned full-bowl wrap. Uses
+  // window.location (not useSearchParams) so the page needs no
+  // Suspense boundary and the Next production build stays clean.
+  useEffect(() => {
+    const n = Number(new URLSearchParams(window.location.search).get('score'));
+    if (Number.isFinite(n) && n >= 1 && n <= 6) setScoreOverride(Math.round(n));
   }, []);
 
   // smooth clock tick — the score zone derives the clock from the
@@ -534,10 +554,28 @@ export default function RibbonPage() {
     );
   }
 
-  // The score zone is anchored to one end — ~20–30% of the ribbon,
-  // wide enough for the scorebug, never wider than the height allows.
-  const scoreZoneW = Math.round(Math.max(360, Math.min(vp.w * 0.4, vp.h * 4.4)));
-  const contentW = Math.max(0, vp.w - scoreZoneW);
+  // ── score-anchor recurrence ──────────────────────────────────
+  // On a continuous full-bowl wrap the ribbon is one very long strip;
+  // a single scorebug at one end is unreadable from the bowl's far
+  // side. So the [score | content] unit RECURS around the ribbon and
+  // the scorebug stays glanceable from every seat. The count
+  // auto-derives from the ribbon's aspect ratio; an installer can pin
+  // it with ?score=N on the kiosk URL.
+  const aspect = vp.w / Math.max(1, vp.h);
+  const autoAnchors = Math.max(1, Math.min(6, Math.round(aspect / 9)));
+  // Never subdivide so far a segment can't hold a scorebug — each
+  // anchor needs ≥ ~700px of ribbon width to read.
+  const maxAnchors = Math.max(1, Math.floor(vp.w / 700));
+  const segCount = Math.min(scoreOverride || autoAnchors, maxAnchors);
+  const segWf = vp.w / segCount;
+  // Per-anchor score-zone width — the legacy single-anchor formula,
+  // scoped to one segment, so a straight ribbon (segCount === 1)
+  // renders byte-identically to before.
+  const scoreZoneW = Math.round(Math.max(360, Math.min(segWf * 0.4, vp.h * 4.4)));
+  // One uniform content-zone width across every anchor so the sponsor
+  // marquees stay in lock-step; sub-pixel seam slop is absorbed by the
+  // near-black ribbon background and the root overflow clip.
+  const contentW = Math.max(0, Math.round(segWf) - scoreZoneW);
 
   return (
     <div
@@ -563,22 +601,36 @@ export default function RibbonPage() {
 @keyframes rbnMarquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
       `}</style>
 
-      {/* fixed score / clock zone — pinned, never moves */}
-      <ScoreZone data={data} def={def} w={scoreZoneW} h={vp.h} />
+      {/* [score | content] units, recurring around the ribbon so a
+          continuous full-bowl wrap is glanceable from every seat. A
+          straight ribbon resolves to one unit and renders as before. */}
+      {Array.from({ length: segCount }, (_, s) => {
+        const segLeft = Math.round(s * segWf);
+        return (
+          <div key={s}>
+            {/* score / clock anchor — never moves; digits update in place */}
+            <ScoreZone data={data} def={def} left={segLeft} w={scoreZoneW} h={vp.h} />
+            {/* rotating content zone — held-static looks, fast crossfades.
+                Every anchor shares one rotation index, so the whole
+                bowl crossfades in lock-step. */}
+            <ContentZone
+              looks={looks}
+              idx={Math.min(lookIdx, Math.max(0, looks.length - 1))}
+              left={segLeft + scoreZoneW}
+              w={contentW}
+              h={vp.h}
+              data={data}
+              def={def}
+            />
+          </div>
+        );
+      })}
 
-      {/* rotating content zone — held-static looks, fast crossfades */}
-      <ContentZone
-        looks={looks}
-        idx={Math.min(lookIdx, Math.max(0, looks.length - 1))}
-        left={scoreZoneW}
-        w={contentW}
-        h={vp.h}
-        data={data}
-        def={def}
-      />
-
-      {/* celebration cue overlay — a fired cue takes the ribbon over */}
-      {activeCue && <RibbonCueOverlay cue={activeCue} w={vp.w} h={vp.h} />}
+      {/* celebration cue overlay — a fired cue takes the ribbon over,
+          tiled once per score anchor for the full-bowl wrap */}
+      {activeCue && (
+        <RibbonCueOverlay cue={activeCue} h={vp.h} segCount={segCount} segWf={segWf} />
+      )}
     </div>
   );
 }
@@ -593,11 +645,13 @@ export default function RibbonPage() {
 function ScoreZone({
   data,
   def,
+  left,
   w,
   h,
 }: {
   data: BoardData;
   def: SportDefinition;
+  left: number;
   w: number;
   h: number;
 }) {
@@ -655,7 +709,7 @@ function ScoreZone({
     <div
       style={{
         position: 'absolute',
-        left: 0,
+        left,
         top: 0,
         bottom: 0,
         width: w,
@@ -1288,17 +1342,36 @@ function LookUnit({
 // ── celebration cue overlay ────────────────────────────────────
 
 /**
- * A fired cue takes over the whole ribbon for its hold window. A
- * custom cue shows the operator's uploaded art; a sport celebration
- * is a broadcast-grade burst — energy glow, shockwave rings, a light
- * sweep, an emoji + slammed label + the score frozen at fire time.
+ * A fired cue takes over the whole ribbon for its hold window. On a
+ * continuous full-bowl wrap the celebration is tiled once per score
+ * anchor — a single burst centred on a 45-ft ribbon would be invisible
+ * from the bowl's far seats. The dark scrim is one full-ribbon layer;
+ * the burst (glow / rings / sweep / label) repeats per anchor, in
+ * lock-step.
  *
  * Chromium-83 safe (NovaStar Taurus): long-hand insets, per-child
  * margin (no flex `gap`), animation is transform / opacity only.
  */
-function RibbonCueOverlay({ cue, w, h }: { cue: Cue; w: number; h: number }) {
-  // Custom cue — a full-ribbon takeover of the operator's uploaded art.
-  if (cue.mediaUrl) {
+function RibbonCueOverlay({
+  cue,
+  h,
+  segCount,
+  segWf,
+}: {
+  cue: Cue;
+  h: number;
+  segCount: number;
+  segWf: number;
+}) {
+  // Edges of each score segment, rounded so the tiles never sub-pixel gap.
+  const segs = Array.from({ length: segCount }, (_, s) => {
+    const left = Math.round(s * segWf);
+    return { left, width: Math.round((s + 1) * segWf) - left };
+  });
+
+  // Custom cue — the operator's uploaded art, tiled once per anchor.
+  const media = cue.mediaUrl;
+  if (media) {
     return (
       <div
         style={{
@@ -1307,24 +1380,92 @@ function RibbonCueOverlay({ cue, w, h }: { cue: Cue; w: number; h: number }) {
           right: 0,
           bottom: 0,
           left: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           background: cue.color || '#05070d',
           zIndex: 60,
           animation: 'rbnFade 0.4s ease-out',
         }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={cue.mediaUrl}
-          alt=""
-          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-        />
+        {segs.map((seg, s) => (
+          <div
+            key={s}
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: seg.left,
+              width: seg.width,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={media}
+              alt=""
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+            />
+          </div>
+        ))}
       </div>
     );
   }
 
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        overflow: 'hidden',
+        zIndex: 60,
+      }}
+    >
+      {/* dark scrim — one full-ribbon layer */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          background: 'rgba(5,7,13,0.93)',
+          animation: 'rbnScrim 3.9s ease-in-out forwards',
+        }}
+      />
+      {/* the celebration burst, tiled once per score anchor */}
+      {segs.map((seg, s) => (
+        <div
+          key={s}
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: seg.left,
+            width: seg.width,
+            overflow: 'hidden',
+          }}
+        >
+          <CueBurst cue={cue} w={seg.width} h={h} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One celebration burst — energy glow, shockwave rings, a light sweep,
+ * an emoji + slammed label + the score frozen at fire time, plus
+ * optional co-brand attribution — all centred in a band of width `w`.
+ * RibbonCueOverlay renders one CueBurst per score anchor.
+ *
+ * Chromium-83 safe: long-hand insets, per-child margin (no flex
+ * `gap`), animation is transform / opacity only.
+ */
+function CueBurst({ cue, w, h }: { cue: Cue; w: number; h: number }) {
   const snap = cue.snapshot;
   const energy = cue.color || '#fbbf24';
   const ch = Math.min(h * 0.86, 540);
@@ -1340,21 +1481,8 @@ function RibbonCueOverlay({ cue, w, h }: { cue: Cue; w: number; h: number }) {
         bottom: 0,
         left: 0,
         overflow: 'hidden',
-        zIndex: 60,
       }}
     >
-      {/* dark scrim */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          right: 0,
-          bottom: 0,
-          left: 0,
-          background: 'rgba(5,7,13,0.93)',
-          animation: 'rbnScrim 3.9s ease-in-out forwards',
-        }}
-      />
       {/* energy radial glow */}
       <div
         style={{
