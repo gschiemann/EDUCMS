@@ -70,7 +70,7 @@ const GAME_STATUSES: { key: string; label: string }[] = [
   { key: 'FINAL', label: 'Final' },
 ];
 
-type ConsoleMode = 'run' | 'setup' | 'roster' | 'highlights';
+type ConsoleMode = 'run' | 'setup' | 'roster';
 
 // ── clock helpers ──────────────────────────────────────────────
 
@@ -140,6 +140,7 @@ function GameControl() {
 
   const [mode, setMode] = useState<ConsoleMode>('run');
   const [showCues, setShowCues] = useState(false);
+  const [showHighlights, setShowHighlights] = useState(false);
 
   // Stream overlay URL — copy to clipboard for OBS / vMix browser source.
   const [copied, setCopied] = useState(false);
@@ -244,14 +245,13 @@ function GameControl() {
         {(
           [
             { key: 'run', label: 'Run game', icon: '▶' },
-            { key: 'highlights', label: 'Highlights', icon: '★' },
             { key: 'setup', label: 'Set up', icon: '⚙' },
             { key: 'roster', label: 'Roster', icon: '👥' },
           ] as { key: ConsoleMode; label: string; icon: string }[]
         ).map((tab) => (
           <button
             key={tab.key}
-            onClick={() => { setMode(tab.key); setShowCues(false); }}
+            onClick={() => { setMode(tab.key); setShowCues(false); setShowHighlights(false); }}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
               mode === tab.key
                 ? 'bg-indigo-50 text-indigo-600'
@@ -280,7 +280,7 @@ function GameControl() {
           awayColor={awayColor}
           ctl={ctl}
           onShowCues={() => setShowCues(true)}
-          onHighlights={() => setMode('highlights')}
+          onHighlights={() => setShowHighlights(true)}
         />
       )}
 
@@ -383,13 +383,33 @@ function GameControl() {
         </div>
       )}
 
-      {/* HIGHLIGHTS MODE */}
-      {mode === 'highlights' && (
-        <div className="flex-1 overflow-auto bg-slate-50">
-          <div className="max-w-4xl mx-auto p-4">
-            <Section title="Scoreboard spotlight">
-              <SpotlightControl gameId={gameId} current={g.spotlight} />
-            </Section>
+      {/* HIGHLIGHTS POPUP — spotlight a player without leaving Run. The
+          Run console stays mounted underneath; tapping a player puts
+          them on the scoreboard and the popup auto-closes. */}
+      {mode === 'run' && showHighlights && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-3 sm:items-center sm:p-4"
+          onClick={() => setShowHighlights(false)}
+        >
+          <div
+            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900">Scoreboard spotlight</h2>
+              <button
+                onClick={() => setShowHighlights(false)}
+                className="rounded-md px-2 py-1 text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <SpotlightControl
+              gameId={gameId}
+              current={g.spotlight}
+              onDone={() => setShowHighlights(false)}
+            />
           </div>
         </div>
       )}
@@ -1697,7 +1717,16 @@ function SurfaceBtn({
 
 // ── SpotlightControl ───────────────────────────────────────────
 
-function SpotlightControl({ gameId, current }: { gameId: string; current: any }) {
+function SpotlightControl({
+  gameId,
+  current,
+  onDone,
+}: {
+  gameId: string;
+  current: any;
+  /** Called after a spotlight is shown or hidden — lets a host popup auto-close. */
+  onDone?: () => void;
+}) {
   const ctl = useGameControl(gameId);
   const sp = current && typeof current === 'object' ? current : {};
   const [title, setTitle] = useState<string>(sp.title || '');
@@ -1713,19 +1742,6 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
   const players: any[] = Array.isArray(roster.data) ? roster.data : [];
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const fillFromPlayer = (p: any) => {
-    setTitle(p.name || '');
-    setPhotoUrl(p.photoUrl || '');
-    setSubtitle([p.number ? `#${p.number}` : null, p.position].filter(Boolean).join(' · '));
-    const entries = Object.entries(p.stats || {});
-    setLines(
-      [0, 1, 2, 3].map((i) => ({
-        label: entries[i] ? String(entries[i][0]) : '',
-        value: entries[i] ? String(entries[i][1]) : '',
-      })),
-    );
-  };
-
   const setLine = (i: number, key: 'label' | 'value', val: string) =>
     setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, [key]: val } : l)));
 
@@ -1738,8 +1754,29 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
       subtitle: subtitle.trim() || undefined,
       lines: lines.filter((l) => l.label.trim() || l.value.trim()),
     });
+    onDone?.();
   };
-  const remove = () => ctl.spotlight.mutate({ clear: true });
+  const remove = () => {
+    ctl.spotlight.mutate({ clear: true });
+    onDone?.();
+  };
+
+  // One-tap spotlight straight from a roster player — builds the
+  // payload from the player and fires it, no form round-trip.
+  const showPlayer = (p: any) => {
+    ctl.spotlight.mutate({
+      visible: true,
+      title: String(p.name || '').trim() || 'Player',
+      photoUrl: p.photoUrl || undefined,
+      subtitle:
+        [p.number ? `#${p.number}` : null, p.position].filter(Boolean).join(' · ') ||
+        undefined,
+      lines: Object.entries(p.stats || {})
+        .slice(0, 4)
+        .map(([label, value]) => ({ label: String(label), value: String(value) })),
+    });
+    onDone?.();
+  };
 
   return (
     <div>
@@ -1748,25 +1785,34 @@ function SpotlightControl({ gameId, current }: { gameId: string; current: any })
         {onAir && <span className="ml-1 font-bold text-green-600">● On the board now</span>}
       </p>
       {players.length > 0 && (
-        <div className="mb-3">
-          <label className="text-xs font-semibold text-slate-500">Pull from roster</label>
-          <select
-            value=""
-            onChange={(e) => {
-              const p = players.find((x) => x.id === e.target.value);
-              if (p) fillFromPlayer(p);
-            }}
-            className="mt-1 w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-          >
-            <option value="">Choose a player — fills name, photo &amp; stats…</option>
+        <div className="mb-4">
+          <label className="text-xs font-semibold text-slate-500">
+            Tap a player to put them on the board
+          </label>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
             {players.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.number ? `#${p.number} ` : ''}
-                {p.name}
-                {p.team === 'away' ? ' (away)' : ''}
-              </option>
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => showPlayer(p)}
+                disabled={ctl.spotlight.isPending}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 transition-colors hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-50"
+              >
+                {p.number ? (
+                  <span className="text-[11px] font-black text-slate-400">#{p.number}</span>
+                ) : null}
+                <span className="text-sm font-semibold text-slate-800">{p.name}</span>
+                {p.team === 'away' ? (
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    away
+                  </span>
+                ) : null}
+              </button>
             ))}
-          </select>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-400">
+            Or build a custom highlight (a promo, a milestone) below.
+          </p>
         </div>
       )}
       <div className="grid sm:grid-cols-2 gap-3">
