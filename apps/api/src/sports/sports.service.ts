@@ -1378,9 +1378,9 @@ export class SportsService {
    * stats. Returns how many innings to advance (0 or 1).
    *   · 3rd strike → out; the count resets.
    *   · 4th ball   → walk; the count resets, no out.
-   *   · 3rd out    → side retired: outs + count reset, half flips
-   *                  Top↔Bottom; advancing past the bottom bumps the
-   *                  inning.
+   *   · 3rd out    → side retired: outs + count reset, the bases
+   *                  clear, half flips Top↔Bottom; advancing past
+   *                  the bottom bumps the inning.
    */
   private applyBaseballCount(s: Record<string, unknown>): number {
     const n = (v: unknown) =>
@@ -1406,6 +1406,12 @@ export class SportsService {
       outs = 0;
       balls = 0;
       strikes = 0;
+      // Side retired — the bases clear for the new half. Without
+      // this a stranded runner would haunt the next half-inning's
+      // diamond on the scoreboard.
+      s.on1B = 0;
+      s.on2B = 0;
+      s.on3B = 0;
       if (half.toLowerCase().startsWith('b')) {
         half = 'Top';
         segmentDelta = 1;

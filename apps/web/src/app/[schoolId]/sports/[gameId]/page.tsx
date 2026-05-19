@@ -1212,6 +1212,18 @@ function FootballControls({
         value={Number(stats.down) || 1}
         onSet={(n) => onStat({ down: n })}
       />
+      {/* one-tap new series — the most common down/distance change */}
+      <button
+        type="button"
+        onClick={() => onStat({ down: 1, distance: 10 })}
+        title="New series — set 1st & 10 in one tap"
+        className="flex flex-col items-center justify-center rounded-xl bg-emerald-600 px-3 py-1.5 text-white transition-colors hover:bg-emerald-700"
+      >
+        <span className="text-[9px] font-black uppercase tracking-widest text-emerald-200">
+          New set
+        </span>
+        <span className="text-lg font-black leading-tight tabular-nums">1st &amp; 10</span>
+      </button>
       <StatNumberField
         label="To Go"
         value={stats.distance}

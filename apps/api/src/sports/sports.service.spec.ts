@@ -89,7 +89,16 @@ function setup() {
   const prisma = { client: { game, gameEvent, screen, sponsor, rosterPlayer, customCue } };
   const redis = { publish: jest.fn().mockResolvedValue(undefined) };
   const signer = { signMessage: jest.fn(() => ({ eventId: 'e', signature: 's' })) };
-  const service = new SportsService(prisma as any, redis as any, signer as any);
+  // SportsService gained a SponsorsService dependency (Phase 2 sponsorship)
+  // — the board read calls sponsorsService.listActive. Mock it so the
+  // getBoard tests don't NPE on an undefined collaborator.
+  const sponsorsService = { listActive: jest.fn().mockResolvedValue([]) };
+  const service = new SportsService(
+    prisma as any,
+    redis as any,
+    signer as any,
+    sponsorsService as any,
+  );
   return { service, game, gameEvent, screen, sponsor, rosterPlayer, customCue, redis, signer };
 }
 
@@ -530,6 +539,16 @@ describe('SportsService — baseball count rules', () => {
     const r: any = await service.updateStats(TENANT, g.id, { stats: { outs: 3 } });
     expect(r.stats).toMatchObject({ outs: 0, half: 'Bottom' });
     expect(r.segment).toBe(1);
+  });
+
+  it('the 3rd out clears the bases for the new half', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    await service.updateStats(TENANT, g.id, {
+      stats: { on1B: 1, on2B: 1, on3B: 1, outs: 2 },
+    });
+    const r: any = await service.updateStats(TENANT, g.id, { stats: { outs: 3 } });
+    expect(r.stats).toMatchObject({ on1B: 0, on2B: 0, on3B: 0, outs: 0 });
   });
 
   it('the 3rd out of the bottom advances the inning', async () => {
