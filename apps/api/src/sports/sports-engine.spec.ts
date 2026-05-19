@@ -12,12 +12,13 @@ import type { SportDefinition } from '@cms/api-types';
 const EXPECTED_KEYS = [
   'football', 'basketball', 'baseball', 'softball', 'soccer',
   'volleyball', 'wrestling', 'hockey', 'lacrosse', 'field_hockey',
-  'water_polo', 'pickleball',
+  'water_polo', 'pickleball', 'track_and_field', 'swimming_diving',
+  'cross_country', 'gymnastics', 'golf', 'competitive_cheer',
 ];
 
 describe('Sport Engine', () => {
-  it('ships the 12 expected sports', () => {
-    expect(SPORTS).toHaveLength(12);
+  it('ships the 18 expected sports', () => {
+    expect(SPORTS).toHaveLength(EXPECTED_KEYS.length);
     const keys = SPORTS.map((s) => s.key);
     for (const k of EXPECTED_KEYS) expect(keys).toContain(k);
   });
