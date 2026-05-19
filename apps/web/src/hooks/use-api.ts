@@ -643,7 +643,15 @@ export function useDeleteAssetFolder() {
 export function useTemplates(category?: string) {
   return useQuery({
     queryKey: ['templates', category],
-    queryFn: () => apiFetch(`/templates${category ? `?category=${category}` : ''}`),
+    // `cache: 'no-store'` — the GET /templates response carries an HTTP
+    // `Cache-Control: max-age=30, stale-while-revalidate=120` header. That
+    // browser HTTP cache sits UNDERNEATH React Query and was serving a
+    // stale list to the post-mutation refetch: after saving a new/edited
+    // template the gallery showed a blank card until a hard refresh.
+    // React Query (staleTime below) is already the client cache, so opt
+    // this one endpoint out of the HTTP layer — invalidation now lands
+    // and the new template's live thumbnail renders immediately on save.
+    queryFn: () => apiFetch(`/templates${category ? `?category=${category}` : ''}`, { cache: 'no-store' }),
     staleTime: 60_000,
   });
 }
