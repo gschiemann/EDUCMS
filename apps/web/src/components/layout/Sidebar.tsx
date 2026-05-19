@@ -183,12 +183,6 @@ export function Sidebar() {
   // stable href ("#"), then re-render with the real path after hydration.
   const tenantSlug = mounted && activeTenant ? activeTenant : null;
   const hrefFor = (path: string) => (tenantSlug ? `/${tenantSlug}${path}` : '#');
-  // VenueOS Sports — the live scoreboard + game-day control surface
-  // is only relevant to SPORTS-vertical tenants, so the nav entry is
-  // gated on the tenant's vertical. `mounted` gate keeps SSR + first
-  // client paint identical (same hydration-safety pattern as isAdmin
-  // below) — the Sports item appears one render tick after mount.
-  const isSportsVertical = mounted && tenantCopyForBrand.vertical === 'SPORTS';
   const navItems = [
     { name: 'Dashboard', href: hrefFor('/dashboard'), icon: LayoutDashboard },
     // Floor-plans is now a tab inside Screens (List | Floor Plans toggle),
@@ -198,9 +192,10 @@ export function Sidebar() {
     { name: 'Assets', href: hrefFor('/assets'), icon: Upload },
     { name: 'Templates', href: hrefFor('/templates'), icon: LayoutTemplate },
     { name: 'Playlists', href: hrefFor('/playlists'), icon: Folders },
-    ...(isSportsVertical
-      ? [{ name: 'Sports', href: hrefFor('/sports'), icon: Trophy }]
-      : []),
+    // Sports (live scoreboard + game-day control) — shown for every
+    // tenant; a school's gym is the Sprint 13 beachhead, so it must be
+    // reachable, not gated to SPORTS-vertical tenants only.
+    { name: 'Sports', href: hrefFor('/sports'), icon: Trophy },
     { name: 'Settings', href: hrefFor('/settings'), icon: Settings },
   ];
 
