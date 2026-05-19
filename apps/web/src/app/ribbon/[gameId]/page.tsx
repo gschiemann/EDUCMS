@@ -135,8 +135,6 @@ interface BoardData {
 
 // 750ms — sub-second sync, kept in step with the board + scorebug.
 const POLL_MS = 750;
-// 250ms — a smooth score-zone clock tick between polls.
-const TICK_MS = 250;
 const DEFAULT_HOME = '#4f46e5';
 const DEFAULT_AWAY = '#dc2626';
 
@@ -149,8 +147,15 @@ function cuePlaysHere(target?: string): boolean {
 
 // ── helpers ────────────────────────────────────────────────────
 
-function fmtClock(ms: number): string {
+function fmtClock(ms: number, showTenths = false): string {
   const safe = Math.max(0, ms);
+  // Final minute of a countdown — tenths of a second, the broadcast
+  // standard. Games come down to the last fraction.
+  if (showTenths && safe < 60_000) {
+    const s = Math.floor(safe / 1000);
+    const tenths = Math.floor((safe % 1000) / 100);
+    return `${s}.${tenths}`;
+  }
   const m = Math.floor(safe / 60_000);
   const s = Math.floor((safe % 60_000) / 1000);
   return `${m}:${String(s).padStart(2, '0')}`;
@@ -214,12 +219,34 @@ function ordinal(n: number): string {
   return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
 }
 
-function liveClockMs(data: BoardData, def: SportDefinition): number {
-  if (!data.clockRunning || def.clock.type === 'none') return data.clockMs;
-  const skew = data.serverTime - Date.now();
-  const elapsed = Date.now() + skew - new Date(data.clockUpdatedAt).getTime();
-  if (def.clock.type === 'countup') return data.clockMs + elapsed;
-  return Math.max(0, data.clockMs - elapsed);
+/**
+ * The live game clock — projected from the stored anchor with a STABLE
+ * skew captured ONCE per poll, then advanced by a 100ms interval. The
+ * old pure `liveClockMs` recomputed skew on every call, which cancelled
+ * `Date.now()` out and froze the clock between the 750ms polls — the
+ * ribbon clock visibly stuttered. This ticks it exact, every 100ms.
+ */
+function useLiveClock(data: BoardData | null, def: SportDefinition | undefined): number {
+  const [ms, setMs] = useState(0);
+  useEffect(() => {
+    if (!data || !def) return;
+    const skew = data.serverTime - Date.now();
+    const anchorAt = new Date(data.clockUpdatedAt).getTime();
+    const project = () => {
+      if (!data.clockRunning || def.clock.type === 'none') {
+        setMs(data.clockMs);
+        return;
+      }
+      const elapsed = Date.now() + skew - anchorAt;
+      if (def.clock.type === 'countup') setMs(data.clockMs + elapsed);
+      else setMs(Math.max(0, data.clockMs - elapsed));
+    };
+    project();
+    if (!data.clockRunning || def.clock.type === 'none') return;
+    const t = setInterval(project, 100);
+    return () => clearInterval(t);
+  }, [data?.clockMs, data?.clockRunning, data?.clockUpdatedAt, data?.serverTime, def]);
+  return ms;
 }
 
 /**
@@ -426,8 +453,6 @@ export default function RibbonPage() {
   const [vp, setVp] = useState({ w: 1920, h: 240 });
   // installer override for the score-anchor count — ?score=N (0 = auto)
   const [scoreOverride, setScoreOverride] = useState(0);
-  // a re-render tick so the score-zone clock counts smoothly between polls
-  const [, setTick] = useState(0);
   // which content look is showing
   const [lookIdx, setLookIdx] = useState(0);
 
@@ -479,13 +504,6 @@ export default function RibbonPage() {
     if (Number.isFinite(n) && n >= 1 && n <= 6) setScoreOverride(Math.round(n));
   }, []);
 
-  // smooth clock tick — the score zone derives the clock from the
-  // anchor each render; this just forces re-renders between polls.
-  useEffect(() => {
-    const t = setInterval(() => setTick((n) => (n + 1) % 1_000_000), TICK_MS);
-    return () => clearInterval(t);
-  }, []);
-
   // poll the public board endpoint
   useEffect(() => {
     if (!gameId) return;
@@ -525,6 +543,9 @@ export default function RibbonPage() {
   }, [gameId]);
 
   const def = useMemo(() => (data ? findSport(data.sport) : undefined), [data]);
+
+  // Live clock, projected smoothly between polls (see useLiveClock).
+  const clockMs = useLiveClock(data, def);
 
   // A stable key over every input buildLooks reads. `looks` is rebuilt
   // ONLY when this changes — so a clock-tick / score-change re-render
@@ -641,7 +662,14 @@ export default function RibbonPage() {
         return (
           <div key={s}>
             {/* score / clock anchor — never moves; digits update in place */}
-            <ScoreZone data={data} def={def} left={segLeft} w={scoreZoneW} h={vp.h} />
+            <ScoreZone
+              data={data}
+              def={def}
+              left={segLeft}
+              w={scoreZoneW}
+              h={vp.h}
+              clockMs={clockMs}
+            />
             {/* rotating content zone — held-static looks, fast crossfades.
                 Every anchor shares one rotation index, so the whole
                 bowl crossfades in lock-step. */}
@@ -680,12 +708,14 @@ function ScoreZone({
   left,
   w,
   h,
+  clockMs,
 }: {
   data: BoardData;
   def: SportDefinition;
   left: number;
   w: number;
   h: number;
+  clockMs: number;
 }) {
   const homeColor = data.homeColor || DEFAULT_HOME;
   const awayColor = data.awayColor || DEFAULT_AWAY;
@@ -695,7 +725,7 @@ function ScoreZone({
   const live = data.status === 'LIVE';
   const seg = segmentLabel(def, data);
   const hasClock = def.clock.type !== 'none';
-  const clk = fmtClock(liveClockMs(data, def));
+  const clk = fmtClock(clockMs, def.clock.type === 'countdown');
   const statusText = live
     ? hasClock
       ? `${seg} · ${clk}`
