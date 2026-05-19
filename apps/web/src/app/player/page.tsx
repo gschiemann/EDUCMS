@@ -4563,6 +4563,14 @@ function PlayerPage() {
           if (typeof cfg === 'string') {
             try { cfg = JSON.parse(cfg); } catch { cfg = {}; }
           }
+          // The API stores defaultConfig as NULL for a zone with no
+          // widget config (templates.controller create: `… : null`),
+          // and JSON.parse can itself yield null / a non-object. Without
+          // this guard that null reaches _buildPlayerRules(cfg) below,
+          // `cfg.fontFamily` throws, and the whole player crashes from
+          // INSIDE the zone .map() — before the per-widget boundary can
+          // catch it. cfg is a plain object past this line.
+          if (!cfg || typeof cfg !== 'object') cfg = {};
           const zoneTouchAction = zone.touchAction || null;
           // Phase D1 — full action dispatcher.
           // Replaces the v0 inline `if (type === 'url')` with a real
@@ -4630,6 +4638,9 @@ function PlayerPage() {
           // screens — including the LED poster install in production.
           const _buildPlayerRules = (s: any): string[] => {
             const r: string[] = [];
+            // s is `cfg` OR a per-field style object — either can be
+            // null (cfg._styles may hold a null value). Never deref null.
+            if (!s || typeof s !== 'object') return r;
             const fam = typeof s.fontFamily === 'string' && s.fontFamily.trim();
             const sz = typeof s.fontSize === 'number' && Number.isFinite(s.fontSize) ? s.fontSize : null;
             const col = typeof s.color === 'string' && s.color.trim();
@@ -4649,6 +4660,7 @@ function PlayerPage() {
           // gets overridden (with !important). background-image:none kills
           // gradients so a chosen solid color wins through every layer.
           const _buildPlayerBgRule = (s: any): string | null => {
+            if (!s || typeof s !== 'object') return null;
             const bg = typeof s.bgColor === 'string' && s.bgColor.trim();
             if (!bg || bg === 'transparent' || bg === 'inherit') return null;
             return `background-color: ${bg} !important; background: ${bg} !important; background-image: none !important`;
