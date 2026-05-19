@@ -16,6 +16,7 @@ import Link from 'next/link';
 import { ArrowRight, Check } from 'lucide-react';
 import { VERTICAL_TEMPLATE_CATEGORIES, type Vertical } from '@cms/api-types';
 import { TemplateEmbed } from './TemplateEmbed';
+import { VERTICAL_ICONS } from '@/lib/vertical-icons';
 
 interface Industry {
   vertical: Vertical;
@@ -232,6 +233,7 @@ const INDUSTRIES: Industry[] = [
 export function IndustryShowcase() {
   const [selected, setSelected] = useState<Vertical>('K12');
   const active = INDUSTRIES.find((i) => i.vertical === selected) || INDUSTRIES[0];
+  const ActiveIcon = VERTICAL_ICONS[active.vertical];
   const templates = VERTICAL_TEMPLATE_CATEGORIES[active.vertical]
     .filter((c) => c.key)
     .map((c) => c.label);
@@ -259,6 +261,7 @@ export function IndustryShowcase() {
         <div className="md:hidden flex gap-2 overflow-x-auto pb-2 -mx-6 px-6">
           {INDUSTRIES.map((ind) => {
             const isSelected = ind.vertical === selected;
+            const Icon = VERTICAL_ICONS[ind.vertical];
             return (
               <button
                 key={ind.vertical}
@@ -271,7 +274,7 @@ export function IndustryShowcase() {
                     : 'border-slate-200 bg-white text-slate-600'
                 }`}
               >
-                <span aria-hidden>{ind.emoji}</span>
+                <Icon className="w-4 h-4 shrink-0" strokeWidth={2} />
                 {ind.name}
               </button>
             );
@@ -282,6 +285,7 @@ export function IndustryShowcase() {
         <div className="hidden md:grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {INDUSTRIES.map((ind) => {
             const isSelected = ind.vertical === selected;
+            const Icon = VERTICAL_ICONS[ind.vertical];
             return (
               <button
                 key={ind.vertical}
@@ -295,8 +299,12 @@ export function IndustryShowcase() {
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-3xl leading-none" aria-hidden>
-                    {ind.emoji}
+                  <span
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${
+                      isSelected ? 'border-indigo-200 bg-white' : 'border-slate-200 bg-slate-50'
+                    }`}
+                  >
+                    <Icon className="w-5 h-5 text-indigo-600" strokeWidth={1.75} />
                   </span>
                   <h3 className="font-semibold tracking-tight text-slate-900 text-base">
                     {ind.name}
@@ -321,8 +329,8 @@ export function IndustryShowcase() {
             {/* left — pitch, benefits, CTA */}
             <div className="p-7 md:p-9">
               <div className="flex items-center gap-3">
-                <span className="text-4xl leading-none" aria-hidden>
-                  {active.emoji}
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-indigo-100 bg-indigo-50">
+                  <ActiveIcon className="w-6 h-6 text-indigo-600" strokeWidth={1.75} />
                 </span>
                 <div>
                   <h3 className="text-2xl font-semibold tracking-tight text-slate-900">
