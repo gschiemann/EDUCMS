@@ -2300,10 +2300,14 @@ export function useShowGameOnScreens(gameId: string) {
   return useMutation({
     // surface: 'BOARD' (full scoreboard) | 'RIBBON' (LED strip) |
     // 'SCOREBUG' (broadcast overlay) — which display the screen shows.
-    mutationFn: (vars: { screenIds: string[]; surface?: string }) =>
+    mutationFn: (vars: { screenIds: string[]; surface?: string; force?: boolean }) =>
       apiFetch(`/sports/games/${gameId}/show`, {
         method: 'POST',
-        body: JSON.stringify({ screenIds: vars.screenIds, surface: vars.surface }),
+        body: JSON.stringify({
+          screenIds: vars.screenIds,
+          surface: vars.surface,
+          force: vars.force,
+        }),
       }),
     onSuccess: (data) => {
       if (data) qc.setQueryData(['sports-game-screens', gameId], data);

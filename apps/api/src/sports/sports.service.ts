@@ -1,4 +1,12 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, forwardRef, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  forwardRef,
+  Inject,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -497,17 +505,44 @@ export class SportsService {
       },
       orderBy: { name: 'asc' },
     });
-    return screens.map((s) => ({
-      id: s.id,
-      name: s.name,
-      status: s.status,
-      showing: s.activeBoardGameId === gameId,
-      showingOther: !!s.activeBoardGameId && s.activeBoardGameId !== gameId,
-      // The surface this screen renders when it IS showing this game.
-      // Null surface on a pushed screen reads as BOARD (back-compat).
-      surface:
-        s.activeBoardGameId === gameId ? s.activeBoardSurface || 'BOARD' : null,
-    }));
+    // Label any screen claimed by a DIFFERENT game with that game's
+    // matchup, so the operator sees who owns it before taking it over.
+    const otherIds = [
+      ...new Set(
+        screens
+          .map((s) => s.activeBoardGameId)
+          .filter((id): id is string => !!id && id !== gameId),
+      ),
+    ];
+    const otherGames = otherIds.length
+      ? await this.prisma.client.game.findMany({
+          where: { id: { in: otherIds } },
+          select: { id: true, homeTeam: true, awayTeam: true },
+        })
+      : [];
+    const labelById = new Map(
+      otherGames.map((g) => [g.id, `${g.homeTeam} vs ${g.awayTeam}`]),
+    );
+    return screens.map((s) => {
+      const showingOther =
+        !!s.activeBoardGameId && s.activeBoardGameId !== gameId;
+      return {
+        id: s.id,
+        name: s.name,
+        status: s.status,
+        showing: s.activeBoardGameId === gameId,
+        showingOther,
+        // Which game owns it, when another game does — for the
+        // take-over confirmation.
+        otherGame: showingOther
+          ? labelById.get(s.activeBoardGameId as string) ?? 'another game'
+          : null,
+        // The surface this screen renders when it IS showing this game.
+        // Null surface on a pushed screen reads as BOARD (back-compat).
+        surface:
+          s.activeBoardGameId === gameId ? s.activeBoardSurface || 'BOARD' : null,
+      };
+    });
   }
 
   /**
@@ -520,12 +555,38 @@ export class SportsService {
     gameId: string,
     screenIds: unknown,
     surface?: unknown,
+    force?: unknown,
   ) {
     await this.owned(tenantId, gameId);
     const ids = Array.isArray(screenIds)
       ? screenIds.filter((x): x is string => typeof x === 'string' && x.length > 0)
       : [];
     if (ids.length === 0) throw new BadRequestException('screenIds is required');
+
+    // A screen is owned by ONE game at a time. If any target screen is
+    // already showing a DIFFERENT game, refuse — so two operators can
+    // never overwrite each other's screen — unless `force` is set (an
+    // explicit, confirmed take-over from the console).
+    const targets = await this.prisma.client.screen.findMany({
+      where: { id: { in: ids }, tenantId },
+      select: { id: true, name: true, activeBoardGameId: true },
+    });
+    if (force !== true) {
+      const conflicts = targets.filter(
+        (s) => s.activeBoardGameId && s.activeBoardGameId !== gameId,
+      );
+      if (conflicts.length > 0) {
+        throw new ConflictException({
+          code: 'SCREEN_IN_USE',
+          message: `Already showing another game: ${conflicts
+            .map((c) => c.name)
+            .join(', ')}. Take it over to switch.`,
+          screenIds: conflicts.map((c) => c.id),
+          screenNames: conflicts.map((c) => c.name),
+        });
+      }
+    }
+
     await this.prisma.client.screen.updateMany({
       where: { id: { in: ids }, tenantId },
       data: { activeBoardGameId: gameId, activeBoardSurface: this.cleanSurface(surface) },

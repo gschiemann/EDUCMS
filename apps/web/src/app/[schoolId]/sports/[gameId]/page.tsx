@@ -1556,6 +1556,25 @@ function ScreenPushPanel({ gameId }: { gameId: string }) {
   const showingCount = list.filter((s) => s.showing).length;
   const busy = show.isPending || hide.isPending;
 
+  // A screen is owned by one game. Pushing to a screen another game is
+  // already using takes an explicit, confirmed take-over (force) — so
+  // two operators can't silently overwrite each other's screen.
+  const pushTo = (
+    s: { id: string; name: string; showingOther?: boolean; otherGame?: string | null },
+    surface: string,
+  ) => {
+    if (s.showingOther) {
+      const ok = window.confirm(
+        `"${s.name}" is showing ${s.otherGame || 'another game'}.\n\n` +
+          `Take it over and show THIS game instead?`,
+      );
+      if (!ok) return;
+      show.mutate({ screenIds: [s.id], surface, force: true });
+      return;
+    }
+    show.mutate({ screenIds: [s.id], surface });
+  };
+
   if (isLoading) {
     return <p className="text-sm text-slate-400">Loading screens…</p>;
   }
@@ -1613,14 +1632,14 @@ function ScreenPushPanel({ gameId }: { gameId: string }) {
                   icon={MonitorPlay}
                   active={current === 'BOARD'}
                   disabled={busy}
-                  onClick={() => show.mutate({ screenIds: [s.id], surface: 'BOARD' })}
+                  onClick={() => pushTo(s, 'BOARD')}
                 />
                 <SurfaceBtn
                   label="Ribbon"
                   icon={RectangleHorizontal}
                   active={current === 'RIBBON'}
                   disabled={busy}
-                  onClick={() => show.mutate({ screenIds: [s.id], surface: 'RIBBON' })}
+                  onClick={() => pushTo(s, 'RIBBON')}
                 />
                 <SurfaceBtn
                   label="Off"

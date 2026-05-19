@@ -453,13 +453,14 @@ export class SportsController {
   showOnScreens(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { screenIds?: string[]; surface?: string },
+    @Body() body: { screenIds?: string[]; surface?: string; force?: boolean },
   ) {
     return this.sports.showOnScreens(
       req.user.tenantId,
       id,
       body?.screenIds,
       body?.surface,
+      body?.force,
     );
   }
 
