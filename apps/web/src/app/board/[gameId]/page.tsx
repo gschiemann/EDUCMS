@@ -359,6 +359,35 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
     return () => clearInterval(t);
   }, [shotAnchorMs, shotAnchorAt, shotRunning, shotLen, data.serverTime]);
 
+  // Football play clock — the 40/25 countdown between snaps,
+  // projected from its own anchor in stats.playClock.
+  const [playMs, setPlayMs] = useState(0);
+  const pcRaw = (data.stats as Record<string, unknown> | undefined)?.playClock;
+  const pc = pcRaw && typeof pcRaw === 'object' ? (pcRaw as Record<string, unknown>) : null;
+  const playArmed = !!(pc && String(pc.at || ''));
+  const playAnchorMs = Math.max(0, Number(pc?.ms) || 0);
+  const playAnchorAt = String(pc?.at || '');
+  const playRunning = !!pc?.running;
+  useEffect(() => {
+    if (!playArmed) {
+      setPlayMs(0);
+      return;
+    }
+    const skew = data.serverTime - Date.now();
+    const at = new Date(playAnchorAt).getTime();
+    const project = () => {
+      if (!playRunning || !Number.isFinite(at)) {
+        setPlayMs(playAnchorMs);
+        return;
+      }
+      setPlayMs(Math.max(0, playAnchorMs - (Date.now() + skew - at)));
+    };
+    project();
+    if (!playRunning) return;
+    const t = setInterval(project, 100);
+    return () => clearInterval(t);
+  }, [playArmed, playAnchorMs, playAnchorAt, playRunning, data.serverTime]);
+
   const status = STATUS_STYLE[data.status] || STATUS_STYLE.SCHEDULED;
   const homeColor = data.homeColor || DEFAULT_HOME;
   const awayColor = data.awayColor || DEFAULT_AWAY;
@@ -554,6 +583,36 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
                 }}
               >
                 {shotMs <= 5000 ? (shotMs / 1000).toFixed(1) : Math.ceil(shotMs / 1000)}
+              </span>
+            </div>
+          )}
+          {def.key === 'football' && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                marginTop: 14,
+              }}
+            >
+              <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: 4, color: '#64748b' }}>
+                PLAY
+              </span>
+              <span
+                style={{
+                  fontSize: 88,
+                  fontWeight: 900,
+                  lineHeight: 1,
+                  marginTop: 2,
+                  fontVariantNumeric: 'tabular-nums',
+                  color: playArmed && playMs <= 5000 ? '#ef4444' : '#e2e8f0',
+                }}
+              >
+                {!playArmed
+                  ? 40
+                  : playMs <= 5000
+                    ? (playMs / 1000).toFixed(1)
+                    : Math.ceil(playMs / 1000)}
               </span>
             </div>
           )}

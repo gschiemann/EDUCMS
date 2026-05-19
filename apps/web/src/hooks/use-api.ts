@@ -2208,10 +2208,20 @@ export function useGameControl(gameId: string) {
       }),
   });
 
+  const playClock = useMutation({
+    // Football play clock — start / stop / reset the 40-25 countdown.
+    mutationFn: (body: { action: string; value?: number }) =>
+      apiFetch(`/sports/games/${gameId}/play-clock`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+  });
+
   return {
     score,
     clock,
     shotClock,
+    playClock,
     segment,
     stats,
     status,

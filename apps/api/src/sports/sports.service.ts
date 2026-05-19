@@ -1021,6 +1021,64 @@ export class SportsService {
     });
   }
 
+  /**
+   * Football play clock — the 40 / 25-second countdown between snaps.
+   * A second clock, independent of the game clock; reset to 40 after a
+   * normal play, 25 after a stoppage. Stored in Game.stats.playClock.
+   */
+  async setPlayClock(
+    tenantId: string,
+    id: string,
+    dto: { action?: string; value?: number },
+  ) {
+    const game = await this.owned(tenantId, id);
+    const action = String(dto.action || '');
+    const stats: Record<string, unknown> =
+      game.stats && typeof game.stats === 'object'
+        ? { ...(game.stats as Record<string, unknown>) }
+        : {};
+    const prev: Record<string, unknown> =
+      stats.playClock && typeof stats.playClock === 'object'
+        ? (stats.playClock as Record<string, unknown>)
+        : {};
+    let ms = Math.max(0, Number(prev.ms) || 0);
+    let running = !!prev.running;
+
+    const live = (): number => {
+      if (!running) return ms;
+      const at = new Date(String(prev.at || '')).getTime();
+      if (!Number.isFinite(at)) return ms;
+      return Math.max(0, ms - (Date.now() - at));
+    };
+
+    switch (action) {
+      case 'start':
+        ms = live();
+        running = true;
+        break;
+      case 'stop':
+        ms = live();
+        running = false;
+        break;
+      case 'reset': {
+        // value = seconds to reset to (40 normal, 25 after a stoppage).
+        const v = Math.round(Number(dto.value));
+        const sec = Number.isFinite(v) && v > 0 && v <= 60 ? v : 40;
+        ms = sec * 1000;
+        running = true;
+        break;
+      }
+      default:
+        throw new BadRequestException('action must be start | stop | reset');
+    }
+
+    const playClock = { ms, at: new Date().toISOString(), running };
+    return this.prisma.client.game.update({
+      where: { id },
+      data: { stats: { ...stats, playClock } as any },
+    });
+  }
+
   /** Advance / set the segment (quarter, inning, set, period). */
   async setSegment(
     tenantId: string,

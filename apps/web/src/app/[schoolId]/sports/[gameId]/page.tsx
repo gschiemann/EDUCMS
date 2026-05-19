@@ -636,6 +636,14 @@ function RunMode({
           />
         )}
 
+        {/* football play clock — the 40/25 between snaps */}
+        {def.key === 'football' && (
+          <PlayClockBtn
+            stats={stats}
+            onAction={(a, v) => ctl.playClock.mutate({ action: a, value: v })}
+          />
+        )}
+
         {/* undo — reverses the last score change */}
         <button
           type="button"
@@ -1205,6 +1213,83 @@ function ShotClockBtn({
           {short}
         </button>
       )}
+    </div>
+  );
+}
+
+// ── PlayClockBtn ───────────────────────────────────────────────
+// Football play-clock tray control — the live 40/25 countdown with
+// start/stop and reset-to-40 (normal) / reset-to-25 (after a stoppage).
+function PlayClockBtn({
+  stats,
+  onAction,
+}: {
+  stats: Record<string, unknown>;
+  onAction: (action: string, value?: number) => void;
+}) {
+  const pc =
+    stats && typeof stats.playClock === 'object' && stats.playClock
+      ? (stats.playClock as Record<string, unknown>)
+      : {};
+  const armed = String(pc.at || '') !== '';
+  const anchorMs = Math.max(0, Number(pc.ms) || 0);
+  const anchorAt = String(pc.at || '');
+  const running = !!pc.running;
+  const [ms, setMs] = useState(anchorMs);
+  useEffect(() => {
+    const at = new Date(anchorAt).getTime();
+    const project = () => {
+      if (!running || !Number.isFinite(at)) {
+        setMs(anchorMs);
+        return;
+      }
+      setMs(Math.max(0, anchorMs - (Date.now() - at)));
+    };
+    project();
+    if (!running) return;
+    const t = setInterval(project, 200);
+    return () => clearInterval(t);
+  }, [anchorMs, anchorAt, running]);
+
+  const secs = !armed
+    ? '40'
+    : ms <= 5000
+      ? (ms / 1000).toFixed(1)
+      : String(Math.ceil(ms / 1000));
+  return (
+    <div className="flex items-stretch gap-1.5 shrink-0">
+      <div className="flex flex-col items-center justify-center px-2.5 h-14 rounded-xl bg-white border border-slate-200">
+        <span className="text-[9px] font-black tracking-widest text-slate-400">PLAY</span>
+        <span
+          className={`text-xl font-black tabular-nums leading-tight ${
+            armed && ms <= 5000 ? 'text-red-600' : 'text-slate-900'
+          }`}
+        >
+          {secs}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={() => onAction(running ? 'stop' : 'start')}
+        aria-label={running ? 'Stop play clock' : 'Start play clock'}
+        className="h-14 w-11 rounded-xl bg-white border border-slate-200 text-slate-700 flex items-center justify-center hover:bg-slate-100 transition-colors"
+      >
+        {running ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+      </button>
+      <button
+        type="button"
+        onClick={() => onAction('reset', 40)}
+        className="h-14 px-3 rounded-xl bg-indigo-600 text-white font-black text-base hover:bg-indigo-700 transition-colors"
+      >
+        40
+      </button>
+      <button
+        type="button"
+        onClick={() => onAction('reset', 25)}
+        className="h-14 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-base hover:bg-slate-100 transition-colors"
+      >
+        25
+      </button>
     </div>
   );
 }

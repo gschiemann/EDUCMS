@@ -190,6 +190,23 @@ export class SportsController {
     return this.sports.setShotClock(req.user.tenantId, id, body);
   }
 
+  /** Football play clock — start / stop / reset the 40-25 countdown
+   *  between snaps. */
+  @Patch('games/:id/play-clock')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  playClock(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { action?: string; value?: number },
+  ) {
+    return this.sports.setPlayClock(req.user.tenantId, id, body);
+  }
+
   @Patch('games/:id/segment')
   @RequireRoles(
     AppRole.SUPER_ADMIN,
