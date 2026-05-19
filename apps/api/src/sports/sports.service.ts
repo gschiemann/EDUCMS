@@ -9,6 +9,7 @@ import {
   resolveRibbonPresets,
   sanitizeRibbonPresets,
   sanitizeRibbonSpeed,
+  sanitizeRibbonScoreRepeat,
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
@@ -201,6 +202,20 @@ export class SportsService {
   }
 
   /**
+   * How many times the score anchor repeats around the ribbon — the
+   * latest RIBBON_SCORE event, normalized to a known value, default
+   * 'auto'. A continuous full-bowl wrap repeats the score so it stays
+   * readable from every seat. Rides the generic GameEvent log.
+   */
+  private async latestRibbonScoreRepeat(gameId: string): Promise<string> {
+    const ev = await this.prisma.client.gameEvent.findFirst({
+      where: { gameId, type: 'RIBBON_SCORE' },
+      orderBy: { createdAt: 'desc' },
+    });
+    return sanitizeRibbonScoreRepeat((ev?.payload as Record<string, unknown> | undefined)?.repeat);
+  }
+
+  /**
    * One game, tenant-scoped — for the operator control surface.
    * Includes the current custom ribbon messages, the effective
    * preset config, the scroll speed, and the image slides so every
@@ -208,13 +223,14 @@ export class SportsService {
    */
   async getGame(tenantId: string, id: string) {
     const game = await this.owned(tenantId, id);
-    const [ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides] = await Promise.all([
+    const [ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides, ribbonScoreRepeat] = await Promise.all([
       this.latestRibbonMessages(id),
       this.ribbonPresetsFor(id, game.sport),
       this.latestRibbonSpeed(id),
       this.latestRibbonSlides(id),
+      this.latestRibbonScoreRepeat(id),
     ]);
-    return { ...game, ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides };
+    return { ...game, ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides, ribbonScoreRepeat };
   }
 
   /**
@@ -229,7 +245,7 @@ export class SportsService {
     if (!game) throw new NotFoundException('Game not found');
 
     const since = new Date(Date.now() - CUE_FEED_WINDOW_MS);
-    const [cues, sponsors, roster, ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides] = await Promise.all([
+    const [cues, sponsors, roster, ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides, ribbonScoreRepeat] = await Promise.all([
       this.prisma.client.gameEvent.findMany({
         where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
         orderBy: { createdAt: 'asc' },
@@ -256,6 +272,8 @@ export class SportsService {
       // Ribbon scroll speed + the operator's full-bleed image slides.
       this.latestRibbonSpeed(id),
       this.latestRibbonSlides(id),
+      // How many times the score anchor repeats around the ribbon.
+      this.latestRibbonScoreRepeat(id),
     ]);
 
     return {
@@ -295,6 +313,7 @@ export class SportsService {
       ribbonPresets,
       ribbonSpeed,
       ribbonSlides,
+      ribbonScoreRepeat,
       sponsorSpotSeconds: SPONSOR_SPOT_SECONDS,
       serverTime: Date.now(),
     };
@@ -1430,6 +1449,20 @@ export class SportsService {
       : [];
     await this.record(id, 'RIBBON_SLIDES', { slides });
     return { slides };
+  }
+
+  /**
+   * Set how many times the score anchor repeats around the stadium
+   * ribbon — one scorebug for a straight ribbon, or a recurring score
+   * for a continuous full-bowl wrap so it reads from every seat.
+   * 'auto' lets the ribbon size the count to its own width. Stored as
+   * a RIBBON_SCORE GameEvent, latest-wins — no table, no migration.
+   */
+  async setRibbonScoreRepeat(tenantId: string, id: string, dto: { repeat?: unknown }) {
+    await this.owned(tenantId, id);
+    const repeat = sanitizeRibbonScoreRepeat(dto.repeat);
+    await this.record(id, 'RIBBON_SCORE', { repeat });
+    return { repeat };
   }
 
   // ── cue deck (custom triggers) ───────────────────────────────

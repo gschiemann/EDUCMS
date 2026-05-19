@@ -41,7 +41,12 @@ import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
-import { findSport, defaultRibbonPresets, ribbonSpeedMultiplier } from '@cms/api-types';
+import {
+  findSport,
+  defaultRibbonPresets,
+  ribbonSpeedMultiplier,
+  ribbonScoreRepeatCount,
+} from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 
 interface Sponsor {
@@ -118,6 +123,9 @@ interface BoardData {
   ribbonPresets?: string[];
   /** Operator-set rotation speed — slow / normal / fast / veryfast. */
   ribbonSpeed?: string;
+  /** How many times the score anchor repeats around the ribbon —
+   *  'auto' | '1'..'4'. 'auto' = derive the count from the width. */
+  ribbonScoreRepeat?: string;
   /** Full-bleed image slides the operator uploaded — image URLs. */
   ribbonSlides?: string[];
   /** Recent celebration cues — the board feed's 20s cue window. */
@@ -566,7 +574,11 @@ export default function RibbonPage() {
   // Never subdivide so far a segment can't hold a scorebug — each
   // anchor needs ≥ ~700px of ribbon width to read.
   const maxAnchors = Math.max(1, Math.floor(vp.w / 700));
-  const segCount = Math.min(scoreOverride || autoAnchors, maxAnchors);
+  // Precedence: ?score=N installer override → the operator's saved
+  // config (Ribbon content → Score in the console) → auto from the
+  // ribbon's aspect ratio.
+  const configuredAnchors = ribbonScoreRepeatCount(data.ribbonScoreRepeat);
+  const segCount = Math.min(scoreOverride || configuredAnchors || autoAnchors, maxAnchors);
   const segWf = vp.w / segCount;
   // Per-anchor score-zone width — the legacy single-anchor formula,
   // scoped to one segment, so a straight ribbon (segCount === 1)

@@ -365,6 +365,24 @@ export class SportsController {
     return this.sports.setRibbonSlides(req.user.tenantId, id, body);
   }
 
+  /** Set how many times the score repeats around the stadium ribbon —
+   *  one scorebug for a straight ribbon, or a recurring score for a
+   *  continuous full-bowl wrap. */
+  @Patch('games/:id/ribbon-score')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  ribbonScoreRepeat(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { repeat?: string },
+  ) {
+    return this.sports.setRibbonScoreRepeat(req.user.tenantId, id, body);
+  }
+
   // ── cue deck (custom triggers) ───────────────────────────────
 
   /** The tenant's reusable cue deck. */

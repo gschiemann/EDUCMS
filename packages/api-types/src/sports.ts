@@ -804,3 +804,51 @@ export function ribbonSpeedMultiplier(v: unknown): number {
   const key = sanitizeRibbonSpeed(v);
   return RIBBON_SPEEDS.find((o) => o.key === key)?.multiplier ?? 1;
 }
+
+// ── Ribbon score recurrence (full-bowl wrap) ───────────────────
+/**
+ * How many times the score / clock anchor repeats around the stadium
+ * ribbon. A straight ribbon along one wall wants ONE anchor; a
+ * continuous full-bowl wrap that rings the whole seating bowl needs
+ * the score to repeat so it stays glanceable from every seat. 'auto'
+ * lets the ribbon size the count from its own aspect ratio.
+ */
+export type RibbonScoreRepeat = 'auto' | '1' | '2' | '3' | '4';
+
+export interface RibbonScoreRepeatOption {
+  key: RibbonScoreRepeat;
+  label: string;
+  /** Operator-facing one-liner — the picker shows this under the row. */
+  hint: string;
+}
+
+export const RIBBON_SCORE_REPEATS: RibbonScoreRepeatOption[] = [
+  {
+    key: 'auto',
+    label: 'Auto',
+    hint: 'Auto-fits the score count to your ribbon’s width — the safe default.',
+  },
+  { key: '1', label: '1×', hint: 'One scorebug — a straight ribbon along a single wall.' },
+  { key: '2', label: '2×', hint: 'The score shows twice around the ribbon.' },
+  { key: '3', label: '3×', hint: 'The score shows three times — good for a full-bowl wrap.' },
+  { key: '4', label: '4×', hint: 'The score shows four times around a long wrap.' },
+];
+
+export const DEFAULT_RIBBON_SCORE_REPEAT: RibbonScoreRepeat = 'auto';
+
+/** Normalize an untrusted score-repeat value to a known key. */
+export function sanitizeRibbonScoreRepeat(v: unknown): RibbonScoreRepeat {
+  const s = String(v ?? '').toLowerCase();
+  return RIBBON_SCORE_REPEATS.some((o) => o.key === s)
+    ? (s as RibbonScoreRepeat)
+    : DEFAULT_RIBBON_SCORE_REPEAT;
+}
+
+/**
+ * The pinned score-anchor count for a score-repeat value, or 0 for
+ * 'auto' — the ribbon then derives the count from its own width.
+ */
+export function ribbonScoreRepeatCount(v: unknown): number {
+  const key = sanitizeRibbonScoreRepeat(v);
+  return key === 'auto' ? 0 : Number(key);
+}

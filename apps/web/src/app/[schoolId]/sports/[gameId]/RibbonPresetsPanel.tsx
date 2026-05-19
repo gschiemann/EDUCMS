@@ -17,8 +17,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { useGame, useGameControl } from '@/hooks/use-api';
-import { findSport, ribbonPresetCatalog, RIBBON_SPEEDS } from '@cms/api-types';
-import type { RibbonSpeed } from '@cms/api-types';
+import {
+  findSport,
+  ribbonPresetCatalog,
+  RIBBON_SPEEDS,
+  RIBBON_SCORE_REPEATS,
+} from '@cms/api-types';
+import type { RibbonSpeed, RibbonScoreRepeat } from '@cms/api-types';
 
 /** A small pill switch — on = indigo, off = slate. */
 function Toggle({ on }: { on: boolean }) {
@@ -52,13 +57,19 @@ export function RibbonPresetsPanel({ gameId }: { gameId: string }) {
   // polls or an in-progress edit gets yanked.
   const [enabled, setEnabled] = useState<Set<string>>(new Set());
   const [speed, setSpeed] = useState<RibbonSpeed>('normal');
+  const [scoreRepeat, setScoreRepeat] = useState<RibbonScoreRepeat>('auto');
   const seeded = useRef(false);
   useEffect(() => {
     if (!seeded.current && game) {
       seeded.current = true;
-      const g = game as { ribbonPresets?: string[]; ribbonSpeed?: string };
+      const g = game as {
+        ribbonPresets?: string[];
+        ribbonSpeed?: string;
+        ribbonScoreRepeat?: string;
+      };
       setEnabled(new Set(g.ribbonPresets || []));
       if (g.ribbonSpeed) setSpeed(g.ribbonSpeed as RibbonSpeed);
+      if (g.ribbonScoreRepeat) setScoreRepeat(g.ribbonScoreRepeat as RibbonScoreRepeat);
     }
   }, [game]);
 
@@ -80,8 +91,15 @@ export function RibbonPresetsPanel({ gameId }: { gameId: string }) {
     setSpeed(s);
     ctl.ribbonSpeed.mutate({ speed: s });
   };
+  const pickScoreRepeat = (r: RibbonScoreRepeat) => {
+    setScoreRepeat(r);
+    ctl.ribbonScoreRepeat.mutate({ repeat: r });
+  };
 
-  const saving = ctl.ribbonPresets.isPending || ctl.ribbonSpeed.isPending;
+  const saving =
+    ctl.ribbonPresets.isPending ||
+    ctl.ribbonSpeed.isPending ||
+    ctl.ribbonScoreRepeat.isPending;
 
   return (
     <div>
@@ -124,6 +142,30 @@ export function RibbonPresetsPanel({ gameId }: { gameId: string }) {
           </button>
         ))}
       </div>
+
+      <div className="mt-2.5 flex items-center gap-1.5">
+        <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          Score
+        </span>
+        {RIBBON_SCORE_REPEATS.map((r) => (
+          <button
+            key={r.key}
+            type="button"
+            title={r.hint}
+            onClick={() => pickScoreRepeat(r.key)}
+            className={`flex-1 rounded-md border px-1.5 py-1 text-xs font-semibold transition-colors ${
+              scoreRepeat === r.key
+                ? 'border-indigo-600 bg-indigo-600 text-white'
+                : 'border-slate-200 text-slate-600 hover:border-indigo-300'
+            }`}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1 text-[11px] leading-snug text-slate-400">
+        {RIBBON_SCORE_REPEATS.find((r) => r.key === scoreRepeat)?.hint}
+      </p>
 
       <p className="mt-2 flex items-center gap-1 text-xs text-slate-400">
         {saving ? (

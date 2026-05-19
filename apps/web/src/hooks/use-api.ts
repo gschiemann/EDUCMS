@@ -2189,6 +2189,16 @@ export function useGameControl(gameId: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-game', gameId] }),
   });
 
+  const ribbonScoreRepeat = useMutation({
+    // How many times the score anchor repeats around the ribbon.
+    mutationFn: (body: { repeat: string }) =>
+      apiFetch(`/sports/games/${gameId}/ribbon-score`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-game', gameId] }),
+  });
+
   return {
     score,
     clock,
@@ -2201,6 +2211,7 @@ export function useGameControl(gameId: string) {
     ribbonPresets,
     ribbonSpeed,
     ribbonSlides,
+    ribbonScoreRepeat,
   };
 }
 
