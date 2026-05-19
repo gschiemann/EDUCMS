@@ -24,7 +24,7 @@ import {
   MonitorCheck, CloudOff, ListVideo, Upload, Plus, ArrowRight,
   Image as ImageIcon, MonitorPlay, Siren, CheckCircle2, Clock,
   AlertTriangle, Calendar, Zap, Users as UsersIcon, Building2,
-  TrendingUp, TrendingDown, Activity, X,
+  TrendingUp, TrendingDown, Activity, X, RefreshCw,
 } from 'lucide-react';
 import { useRecentActivity } from '@/hooks/use-dashboard-data';
 import {
@@ -52,12 +52,24 @@ export default function DashboardPage() {
   // end of this function.
 
   const { data: activity } = useRecentActivity();
-  const { data: screens } = useScreens();
+  const screensQuery = useScreens();
+  const { data: screens } = screensQuery;
   const { data: screenGroups } = useScreenGroups();
-  const { data: playlists } = usePlaylists();
-  const { data: assets } = useAssets();
+  const playlistsQuery = usePlaylists();
+  const { data: playlists } = playlistsQuery;
+  const assetsQuery = useAssets();
+  const { data: assets } = assetsQuery;
   const { data: schedules } = useSchedules();
   const { data: tenant } = useTenantStatus();
+  // When the core fleet queries fail, every list below is empty and the
+  // dashboard masks the outage as a fresh, content-less tenant. Surface
+  // the failure with a retry instead.
+  const loadError = screensQuery.isError || playlistsQuery.isError || assetsQuery.isError;
+  const retryLoad = () => {
+    screensQuery.refetch();
+    playlistsQuery.refetch();
+    assetsQuery.refetch();
+  };
   const user = useAppStore((s) => s.user);
   const userRole = useUIStore((s) => s.user?.role);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
@@ -297,6 +309,28 @@ export default function DashboardPage() {
           <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Local time</div>
         </div>
       </header>
+
+      {/* ─── Load error ─────────────────────────────────────────
+          If the core fleet queries failed, say so plainly — otherwise
+          the cards below all read zero and an outage looks like an
+          empty tenant. */}
+      {loadError && (
+        <div className="rounded-xl bg-white border border-rose-200 px-5 py-4 flex items-center gap-4 flex-wrap">
+          <AlertTriangle className="w-6 h-6 text-rose-500 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold text-slate-800">Couldn&apos;t load your dashboard</div>
+            <div className="text-[13px] text-slate-500 mt-0.5">
+              Some data failed to load — the numbers below may be incomplete. Check your connection and try again.
+            </div>
+          </div>
+          <button
+            onClick={retryLoad}
+            className="shrink-0 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold inline-flex items-center gap-1.5"
+          >
+            <RefreshCw className="w-4 h-4" /> Retry
+          </button>
+        </div>
+      )}
 
       {/* ─── Status strip — single line, no redundant CTA ──────────
           The TopToolbar already carries the Emergency button in the top-

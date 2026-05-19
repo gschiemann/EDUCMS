@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { appConfirm } from '@/components/ui/app-dialog';
-import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, FolderInput, ChevronRight, Pencil, Home, MoreVertical, Check, Trash } from 'lucide-react';
+import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, FolderInput, ChevronRight, Pencil, Home, MoreVertical, Check, Trash, AlertCircle, RefreshCw } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder, useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
@@ -128,7 +128,7 @@ export default function AssetsPage() {
   const urlInputRef = useRef<HTMLInputElement>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
-  const { data: assets, isLoading } = useAssets();
+  const { data: assets, isLoading, isError, refetch } = useAssets();
   const addWebUrl = useAddWebUrl();
   const deleteAsset = useDeleteAsset();
 
@@ -821,6 +821,20 @@ export default function AssetsPage() {
       {/* Asset grid */}
       {isLoading ? (
         <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" /></div>
+      ) : isError ? (
+        /* Load error — show the failure instead of falling through to
+           the "Empty library" state, which would make an outage look
+           like a tenant with no assets. */
+        <div className="text-center py-16 bg-white rounded-3xl border border-transparent shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+          <AlertCircle className="w-10 h-10 text-rose-500 mx-auto mb-3" />
+          <p className="text-sm text-slate-500">Couldn&apos;t load your asset library. Check your connection and try again.</p>
+          <button
+            onClick={() => refetch()}
+            className="mt-4 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold inline-flex items-center gap-1.5"
+          >
+            <RefreshCw className="w-4 h-4" /> Retry
+          </button>
+        </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-3xl border border-transparent shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
           <UploadCloud className="w-10 h-10 text-slate-200 mx-auto mb-3" />

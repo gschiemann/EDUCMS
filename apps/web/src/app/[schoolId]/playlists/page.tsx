@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings, Upload, AlertCircle, Download, Usb, Check } from 'lucide-react';
+import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings, Upload, AlertCircle, Download, Usb, Check, RefreshCw } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -631,7 +631,7 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
 
 // --- Main page ---
 export default function PlaylistsPage() {
-  const { data: playlists, isLoading } = usePlaylists();
+  const { data: playlists, isLoading, isError, refetch } = usePlaylists();
   const { data: assets } = useAssets();
   const { data: folders } = useAssetFolders();
   const { data: screenGroups } = useScreenGroups();
@@ -2496,6 +2496,23 @@ export default function PlaylistsPage() {
       )}
 
       {isLoading && <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>}
+
+      {/* Load error — surface the failure instead of falling through to
+          the "No playlists yet" empty state, which would make an outage
+          look like a tenant with no playlists. */}
+      {isError && !isLoading && !showCreate && (
+        <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-2xl border border-slate-100">
+          <AlertCircle className="w-12 h-12 text-rose-500 mb-4" />
+          <h3 className="text-lg font-bold text-slate-900 mb-2">Couldn&apos;t load playlists</h3>
+          <p className="text-sm text-slate-500 mb-5">Check your connection and try again.</p>
+          <button
+            onClick={() => refetch()}
+            className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors inline-flex items-center gap-1.5"
+          >
+            <RefreshCw className="w-4 h-4" /> Retry
+          </button>
+        </div>
+      )}
 
       {/* ─── Playlist Dashboard — grid OR line layout ─── */}
       {playlists && playlists.length > 0 && displayedPlaylists.length > 0 && (

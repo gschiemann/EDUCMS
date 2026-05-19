@@ -1,6 +1,6 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check } from 'lucide-react';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -1006,7 +1006,7 @@ function CopyUrlButton({ url }: { url: string }) {
 }
 
 export default function ScreensPage() {
-  const { data: groups, isLoading, refetch } = useScreenGroups();
+  const { data: groups, isLoading, isError, refetch } = useScreenGroups();
   const { data: allScreens, refetch: refetchScreens } = useScreens();
   const userRole = useUIStore((s) => s.user?.role);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
@@ -1383,6 +1383,23 @@ export default function ScreensPage() {
       )}
 
       {isLoading && <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--brand-primary, #6366f1)' }} /></div>}
+
+      {/* Load error — surface the failure instead of falling through to
+          the "No Screen Groups Yet" empty state, which would make an
+          outage look like an empty fleet. */}
+      {isError && !isLoading && (
+        <div className="rounded-2xl border border-slate-200 bg-white py-16 text-center">
+          <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-3" />
+          <p className="text-sm text-slate-500">Couldn&apos;t load your screens. Check your connection and try again.</p>
+          <button
+            onClick={() => refetch()}
+            className="mt-4 px-4 py-2 rounded-lg text-white text-sm font-semibold inline-flex items-center gap-1.5"
+            style={{ background: 'var(--brand-primary, #4f46e5)' }}
+          >
+            <RefreshCw className="w-4 h-4" /> Retry
+          </button>
+        </div>
+      )}
 
       {/* Groups */}
       {groups && (
