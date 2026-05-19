@@ -802,6 +802,14 @@ model Template {
   createdBy      User?          @relation("TemplateCreator", fields: [createdById], references: [id])
   tenant         Tenant?        @relation(fields: [tenantId], references: [id])
 
+  // 2026-05-19 — Sprint 13 scoreboard builder. A template can be the
+  // scoreboard / ribbon / scorebug for any number of Games (the FK
+  // lives on Game). Three back-relations so Prisma can produce typed
+  // queries from either side without ambiguity.
+  scoreboardGames Game[] @relation("GameScoreboardTemplate")
+  ribbonGames     Game[] @relation("GameRibbonTemplate")
+  scorebugGames   Game[] @relation("GameScorebugTemplate")
+
   // Gallery orders by (isSystem desc, updatedAt desc) filtered by
   // tenantId + status + vertical. Composite index covers the common
   // combinations.
@@ -1447,11 +1455,32 @@ model Game {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
 
+  // 2026-05-19 — Sprint 13 scoreboard builder. Each game can pick an
+  // operator-customized Template for its three surfaces:
+  //   * scoreboardTemplate → /board/[gameId]  (the big LED video wall)
+  //   * ribbonTemplate     → /ribbon/[gameId] (the perimeter ribbon)
+  //   * scorebugTemplate   → /scorebug/[gameId] (the OBS broadcast bug)
+  // All three are nullable: a NULL value falls back to the legacy
+  // hardcoded layout in apps/web/src/app/board|ribbon|scorebug. This
+  // lets every existing Game in the database keep working unchanged
+  // while customers progressively opt into custom layouts. SetNull
+  // on the FK so deleting a template never wipes a game row.
+  scoreboardTemplateId String? @map("scoreboard_template_id")
+  ribbonTemplateId     String? @map("ribbon_template_id")
+  scorebugTemplateId   String? @map("scorebug_template_id")
+
   tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   events GameEvent[]
   roster RosterPlayer[]
 
+  scoreboardTemplate Template? @relation("GameScoreboardTemplate", fields: [scoreboardTemplateId], references: [id], onDelete: SetNull)
+  ribbonTemplate     Template? @relation("GameRibbonTemplate",     fields: [ribbonTemplateId],     references: [id], onDelete: SetNull)
+  scorebugTemplate   Template? @relation("GameScorebugTemplate",   fields: [scorebugTemplateId],   references: [id], onDelete: SetNull)
+
   @@index([tenantId, status])
+  @@index([scoreboardTemplateId])
+  @@index([ribbonTemplateId])
+  @@index([scorebugTemplateId])
   @@map("games")
 }
 
