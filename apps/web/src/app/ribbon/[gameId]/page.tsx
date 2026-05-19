@@ -179,6 +179,27 @@ function hexA(color: string | null | undefined, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+/** A team color made readable as TEXT on the dark ribbon. A dark team
+ *  color (Raiders black, a deep navy) is invisible on the near-black
+ *  ribbon, so anything below a luminance floor is lightened toward
+ *  white until it reads. Light colors pass through unchanged. */
+function readableInk(color: string | null | undefined): string {
+  let hex = String(color || '').trim();
+  if (hex[0] === '#') hex = hex.slice(1);
+  if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('');
+  if (hex.length !== 6 || /[^0-9a-f]/i.test(hex)) return '#e2e8f0';
+  let r = parseInt(hex.slice(0, 2), 16);
+  let g = parseInt(hex.slice(2, 4), 16);
+  let b = parseInt(hex.slice(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  if (lum >= 0.55) return `#${hex}`;
+  const mix = 0.62;
+  r = Math.round(r + (255 - r) * mix);
+  g = Math.round(g + (255 - g) * mix);
+  b = Math.round(b + (255 - b) * mix);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 function segmentLabel(def: SportDefinition, data: BoardData): string {
   const n = data.segment;
   if (n > def.segment.count) return n - def.segment.count > 1 ? `OT${n - def.segment.count}` : 'OT';
@@ -668,6 +689,9 @@ function ScoreZone({
 }) {
   const homeColor = data.homeColor || DEFAULT_HOME;
   const awayColor = data.awayColor || DEFAULT_AWAY;
+  // Team-color text must stay legible on the near-black ribbon.
+  const homeInk = readableInk(homeColor);
+  const awayInk = readableInk(awayColor);
   const live = data.status === 'LIVE';
   const seg = segmentLabel(def, data);
   const hasClock = def.clock.type !== 'none';
@@ -790,7 +814,7 @@ function ScoreZone({
             fontSize: code,
             fontWeight: 900,
             letterSpacing: 1,
-            color: homeColor,
+            color: homeInk,
             whiteSpace: 'nowrap',
           }}
         >
@@ -827,7 +851,7 @@ function ScoreZone({
             fontSize: code,
             fontWeight: 900,
             letterSpacing: 1,
-            color: awayColor,
+            color: awayInk,
             whiteSpace: 'nowrap',
           }}
         >
