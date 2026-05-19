@@ -310,11 +310,11 @@ function PricingTeaser() {
     <section className="py-8 md:py-12">
       <div className="max-w-3xl mx-auto px-6 text-center">
         <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-slate-900">
-          One price per location. No per-screen tax.
+          Simple per-screen pricing.
         </h2>
         <p className="mt-3 text-base md:text-lg text-slate-600">
-          Unlimited screens, users, and templates on every plan — you&rsquo;re never
-          charged more for adding a display. See every tier on the pricing page.
+          $25 per screen per month — $20 once you reach five. Every feature on every
+          plan, unlimited users, no add-ons.
         </p>
         <div className="mt-7">
           <Link
