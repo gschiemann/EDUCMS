@@ -227,7 +227,25 @@ class MainActivity : ComponentActivity() {
             context = applicationContext,
             baseUrl = BuildConfig.PLAYER_BASE_URL,
             onShowOverlay = { state ->
-                binding.recoveryOverlay.visibility = View.VISIBLE
+                // 2026-05-19 (v1.0.71) — operator on screen M43 reported
+                // the URL iframe is on top but the recoveryOverlay text
+                // ("Reconnecting to server…", "The screen will resume
+                // automatically.") was BLEEDING THROUGH behind the
+                // website. Root cause: while a URL asset is showing in
+                // urlOverlayView, the MAIN player webview can still
+                // fire onReceivedError / renderer-gone events (it's
+                // still mounted underneath, polling heartbeat). That
+                // kicks the recovery loop, which pops this overlay —
+                // but the URL iframe's hardware-accelerated layer on
+                // Taurus punches through view z-order, leaving the
+                // recovery text faintly visible behind the website.
+                //
+                // Fix: ONLY make the recoveryOverlay visible when the
+                // URL overlay is NOT showing. Keep the text fields
+                // up to date so the overlay renders correctly the
+                // moment the URL is dismissed. The recovery loop
+                // keeps running silently underneath so the player
+                // reconnects in the background.
                 binding.recoveryTitle.text = state.title
                 binding.recoverySub.text = state.sub
                 if (state.errorLabel.isNullOrBlank()) {
@@ -235,6 +253,11 @@ class MainActivity : ComponentActivity() {
                 } else {
                     binding.recoveryError.visibility = View.VISIBLE
                     binding.recoveryError.text = state.errorLabel
+                }
+                if (urlOverlayView.visibility != View.VISIBLE) {
+                    binding.recoveryOverlay.visibility = View.VISIBLE
+                } else {
+                    binding.recoveryOverlay.visibility = View.GONE
                 }
             },
             onHideOverlay = {
@@ -1088,7 +1111,21 @@ class MainActivity : ComponentActivity() {
         urlOverlayView.visibility = View.VISIBLE
         urlOverlayView.bringToFront()
         binding.managerGateOverlay.bringToFront()
-        binding.recoveryOverlay.bringToFront()
+        // 2026-05-19 (v1.0.71) — was: binding.recoveryOverlay.bringToFront()
+        // Removed. Intent was to keep the recovery overlay on top of the
+        // URL iframe, but Taurus's WebView hardware-accel layer punches
+        // through Android view z-order — the iframe ends up on top
+        // anyway, and the recovery text leaks faintly through behind it
+        // (operator caught this on M43). Recovery is about player
+        // health; while a URL is showing the operator wants the URL,
+        // not "Reconnecting…" copy fighting for pixels. Force-hide the
+        // recovery overlay; the recovery loop keeps running silently
+        // and we re-show the overlay in hideUrlOverlay() if it's still
+        // active when the URL is dismissed.
+        if (binding.recoveryOverlay.visibility == View.VISIBLE) {
+            PlayerLogger.i("MainActivity", "Suppressing recovery overlay — URL is now in front")
+        }
+        binding.recoveryOverlay.visibility = View.GONE
     }
 
     private fun hideUrlOverlay() {
@@ -1097,6 +1134,16 @@ class MainActivity : ComponentActivity() {
         urlOverlayCurrentUrl = null
         urlOverlayView.visibility = View.GONE
         urlOverlayView.loadUrl("about:blank")
+        // 2026-05-19 (v1.0.71) — if the recovery loop is still running
+        // (the main player webview is in an error state), re-show the
+        // overlay now that the URL is out of the way. Without this the
+        // operator would see a black screen (URL gone, main webview
+        // still broken) for up to 60s until the next recovery tick
+        // calls onShowOverlay again.
+        if (::recovery.isInitialized && recovery.isActive()) {
+            PlayerLogger.i("MainActivity", "Recovery still active — re-showing overlay after URL dismissed")
+            binding.recoveryOverlay.visibility = View.VISIBLE
+        }
     }
 
     private fun loadPlayer(token: String) {

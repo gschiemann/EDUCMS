@@ -151,6 +151,16 @@ class NetworkRecoveryController(
         scope.cancel()
     }
 
+    /**
+     * 2026-05-19 (v1.0.71) — true iff the recovery loop is currently
+     * running (player webview in an error state, probing /health on
+     * backoff). MainActivity.hideUrlOverlay() uses this to decide
+     * whether to re-show the recovery overlay after a URL asset is
+     * dismissed — if the player is still broken underneath, the
+     * operator should see "Reconnecting…" instead of a black screen.
+     */
+    fun isActive(): Boolean = loop?.isActive == true
+
     // ── Internals ──────────────────────────────────────────────
 
     private fun startLoop() {
