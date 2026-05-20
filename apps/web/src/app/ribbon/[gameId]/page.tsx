@@ -641,7 +641,11 @@ export default function RibbonPage() {
   // physical run, so software never multiplies the anchor). This is the
   // simple "everything scrolls, only the score is pinned" model the
   // operator asked for; it bypasses the rotating-"looks" model below.
-  if (def && (data.ribbonSlides || []).filter(Boolean).length > 0) {
+  if (
+    def &&
+    ((data.ribbonSlides || []).filter(Boolean).length > 0 ||
+      (data.sponsors || []).length > 0)
+  ) {
     return <RibbonMediaScroll data={data} def={def} vp={vp} clockMs={clockMs} />;
   }
 
@@ -775,6 +779,17 @@ function RibbonMediaScroll({
   clockMs: number;
 }) {
   const slides = (data.ribbonSlides || []).filter(Boolean);
+  const sponsors = (data.sponsors || []).filter((sp) => sp && (sp.logoUrl || sp.name));
+  // The scroll lane carries BOTH the operator's uploaded ribbon media
+  // AND the tenant's sponsor logos — everything rides one seamless
+  // marquee at native ribbon height (operator: "make sure it works for
+  // uploaded images AND the sponsor images"). Uploaded media renders
+  // full-bleed at native aspect; a sponsor renders as a full-height
+  // logo + name card.
+  const items: Array<{ t: 'media'; url: string } | { t: 'sponsor'; sp: Sponsor }> = [
+    ...slides.map((url) => ({ t: 'media' as const, url })),
+    ...sponsors.map((sp) => ({ t: 'sponsor' as const, sp })),
+  ];
   // Media fills the FULL width and scrolls BEHIND a pinned score badge —
   // "everything scrolls, only the score is pinned" (the operator's
   // original, better model). The badge sits over the left of the run;
@@ -782,7 +797,9 @@ function RibbonMediaScroll({
   // recurs along the physical ribbon without software multiplying it.
   const scoreZoneW = Math.round(Math.max(360, Math.min(vp.w * 0.34, vp.h * 4.4)));
   const speedMult = ribbonSpeedMultiplier(data.ribbonSpeed) || 1;
-  const singleVideo = slides.length === 1 && isRibbonVideo(slides[0]);
+  // Only the pure single-clip case (one video, nothing else) skips the
+  // marquee — that clip is already animated, so we tile + play it.
+  const singleVideo = items.length === 1 && slides.length === 1 && isRibbonVideo(slides[0]);
 
   // Each item: full ribbon height, native aspect width (no squish).
   const mediaStyle: CSSProperties = {
@@ -799,11 +816,103 @@ function RibbonMediaScroll({
       <img key={key} src={url} alt="" style={mediaStyle} />
     );
 
-  // Seamless marquee: lay the sequence TWICE, translateX 0 → -50% lands
-  // exactly on the start of the duplicate regardless of intrinsic media
-  // widths, so the loop never jumps. Duration scaled by item count and
-  // the operator's speed (faster multiplier → shorter duration).
-  const marqueeSecs = Math.max(6, (slides.length * 16) / speedMult);
+  // A sponsor renders as a full-height card — logo (native aspect) above
+  // its name. Capped logo height + max width so a huge asset can't
+  // dominate the run; flexShrink:0 keeps native size in the flex row.
+  const sLogoH = Math.round(vp.h * 0.5);
+  const sNameSize = Math.max(12, Math.round(vp.h * 0.15));
+  const sPad = Math.round(vp.h * 0.45);
+  const renderSponsor = (sp: Sponsor, key: string) => (
+    <div
+      key={key}
+      style={{
+        height: '100%',
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: `0 ${sPad}px`,
+      }}
+    >
+      {sp.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={sp.logoUrl}
+          alt=""
+          style={{ height: sLogoH, width: 'auto', maxWidth: vp.h * 3, objectFit: 'contain', display: 'block' }}
+        />
+      ) : null}
+      {sp.name ? (
+        <span
+          style={{
+            marginTop: Math.round(vp.h * 0.04),
+            fontSize: sNameSize,
+            fontWeight: 900,
+            color: '#fff',
+            whiteSpace: 'nowrap',
+            letterSpacing: 1,
+          }}
+        >
+          {sp.name}
+        </span>
+      ) : null}
+    </div>
+  );
+  const renderItem = (
+    it: { t: 'media'; url: string } | { t: 'sponsor'; sp: Sponsor },
+    key: string,
+  ) => (it.t === 'media' ? renderMedia(it.url, key) : renderSponsor(it.sp, key));
+
+  // Seamless scroll needs the strip to ALWAYS cover the ribbon AND to
+  // translate by EXACTLY one sequence width so the loop never jumps.
+  // Item widths are intrinsic (images / videos load async), so we MEASURE
+  // one rendered sequence, lay enough copies to overhang the ribbon, and
+  // bake the measured distance straight into the keyframe. The earlier
+  // 2-copy / translateX(-50%) version exposed black as it scrolled
+  // whenever the content was narrower than the ribbon — operator: "shows
+  // the image then goes to black chunk by chunk." px-literal keyframe (no
+  // CSS-var-in-keyframe) keeps it Chromium-83 / NovaStar-Taurus safe.
+  const seqRef = useRef<HTMLDivElement>(null);
+  const [seqW, setSeqW] = useState(0);
+  useEffect(() => {
+    const el = seqRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.getBoundingClientRect().width;
+      if (w > 0) setSeqW((prev) => (Math.abs(prev - w) > 1 ? w : prev));
+    };
+    measure();
+    let ro: ResizeObserver | null = null;
+    try {
+      ro = new ResizeObserver(measure);
+      ro.observe(el);
+    } catch {
+      /* very old WebView — fall back to the load listeners below */
+    }
+    const media = Array.from(el.querySelectorAll('img,video')) as HTMLElement[];
+    media.forEach((m) => {
+      m.addEventListener('load', measure);
+      m.addEventListener('loadedmetadata', measure);
+    });
+    return () => {
+      ro?.disconnect();
+      media.forEach((m) => {
+        m.removeEventListener('load', measure);
+        m.removeEventListener('loadedmetadata', measure);
+      });
+    };
+  }, [items.length, vp.h, vp.w]);
+
+  // Enough copies that the strip overhangs the ribbon by ≥ one sequence,
+  // so translating -1 sequence never exposes an edge. Capped so a very
+  // narrow item on a very wide ribbon can't spawn hundreds of nodes.
+  const copies = seqW > 0 ? Math.min(16, Math.max(2, Math.ceil(vp.w / seqW) + 2)) : 6;
+  // px/sec scroll rate scaled by the operator's speed; duration = the
+  // time to travel exactly one sequence width.
+  const pxPerSec = 90 * speedMult;
+  const marqueeSecs = Math.max(4, (seqW || vp.w) / pxPerSec);
+  const animName = 'rbnMq';
 
   return (
     <div
@@ -818,7 +927,7 @@ function RibbonMediaScroll({
         fontFamily: 'Inter, system-ui, sans-serif',
       }}
     >
-      <style>{`@keyframes rbnMediaMarquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}`}</style>
+      <style>{`@keyframes ${animName}{from{transform:translateX(0)}to{transform:translateX(-${Math.round(seqW)}px)}}`}</style>
 
       {/* full-width media lane — scrolls across the WHOLE ribbon */}
       <div
@@ -831,38 +940,36 @@ function RibbonMediaScroll({
           overflow: 'hidden',
         }}
       >
-        {singleVideo ? (
-          // already-animated clip → tile copies to cover the zone at
-          // native height, no marquee (the clip IS the motion).
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              bottom: 0,
-              left: 0,
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            {Array.from({ length: 4 }, (_, i) => renderMedia(slides[0], `v${i}`))}
-          </div>
-        ) : (
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              bottom: 0,
-              left: 0,
-              width: 'max-content',
-              display: 'flex',
-              alignItems: 'center',
-              animation: `rbnMediaMarquee ${marqueeSecs.toFixed(1)}s linear infinite`,
-            }}
-          >
-            {slides.map((u, i) => renderMedia(u, `a${i}`))}
-            {slides.map((u, i) => renderMedia(u, `b${i}`))}
-          </div>
-        )}
+        {/* The strip = `copies` identical sequences laid end-to-end.
+            singleVideo: NO translate — the clip is already animated, the
+            tiled copies just fill the width. Everything else: marquee by
+            exactly ONE measured sequence width, so the loop is seamless
+            and the strip always overhangs the ribbon (no black gap). */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: 0,
+            width: 'max-content',
+            display: 'flex',
+            alignItems: 'center',
+            animation:
+              !singleVideo && seqW > 0
+                ? `${animName} ${marqueeSecs.toFixed(1)}s linear infinite`
+                : undefined,
+          }}
+        >
+          {Array.from({ length: copies }, (_, c) => (
+            <div
+              key={c}
+              ref={c === 0 ? seqRef : undefined}
+              style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}
+            >
+              {items.map((it, i) => renderItem(it, `${c}-${i}`))}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* pinned score badge — overlays the left of the run on TOP of the
