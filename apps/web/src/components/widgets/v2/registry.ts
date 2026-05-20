@@ -44,6 +44,8 @@ import {
   TrafficCone, UserPlus, Languages, Accessibility, SmilePlus,
   Lightbulb, Disc3, Search, Map as MapIcon, HeartPulse, PlaneTakeoff,
   Plane, TrainFront, SquareParking, Activity, Coins,
+  // Retail pack (EDU CMS — 2026-05-19).
+  Percent, Tag, ShoppingBag, QrCode, Store,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -115,6 +117,12 @@ import {
   BarChartWidget, DonutGaugeWidget, LineChartWidget,
   ProgressListWidget, CountUpStatsWidget,
 } from './ChartsWidgets';
+// Retail pack (clean / minimal, approved 2026-05-19) — RETAIL-scoped.
+import {
+  SaleSealWidget, PriceTagWidget, ProductSpotlightWidget,
+  FlashCountdownWidget, StoreHoursWidget, LoyaltyQrWidget,
+  NewArrivalsWidget, PromoStripWidget,
+} from './RetailWidgets';
 
 // Live scoreboard — one widget, every sport. Polls /sports/board/:id
 // and renders driven by the game's SportDefinition. Three tiers.
@@ -443,6 +451,23 @@ export const WORSHIP_WIDGETS: RegisteredWidget[] = [
   W('PRAYER_REQUEST_QR',  CAT_WORSHIP, 'Prayer Request QR',  'QR to a confidential prayer form',       'universal', HeartHandshake, withMeasuredHeight(PrayerRequestQrWidget),   { qrLabel: 'firstchurch.org/prayer' }),
 ];
 
+/* ─── RETAIL — storefront pack (clean / minimal, approved 2026-05-19) ─
+ * Scoped to the RETAIL vertical at the ALL_V2_WIDGETS assembly point.
+ * Ported from scratch/design/retail/retail-pack-v2.html. Each Component
+ * sizes off the measured height + percentage layout; Chromium-83 safe. */
+const CAT_RETAIL = 'Retail';
+
+export const RETAIL_WIDGETS: RegisteredWidget[] = [
+  W('RETAIL_SALE_SEAL',       CAT_RETAIL, 'Sale Seal',           'Charcoal discount disc — big % off, thin ring',          'universal', Percent,     withMeasuredHeight(SaleSealWidget),         { pct: '50%', label: 'OFF' }),
+  W('RETAIL_PRICE_TAG',       CAT_RETAIL, 'Price-Drop Tag',      'Hanging swing tag — was/now price, limited label',       'universal', Tag,         withMeasuredHeight(PriceTagWidget),         { was: '$129', now: '$79', label: 'LIMITED' }),
+  W('RETAIL_PRODUCT',         CAT_RETAIL, 'Product Spotlight',   'Clean product card — image, brand, name, price',         'universal', ShoppingBag, withMeasuredHeight(ProductSpotlightWidget), { brand: 'Aurio', name: 'Studio Wireless', price: '$149', badge: 'New' }),
+  W('RETAIL_FLASH_COUNTDOWN', CAT_RETAIL, 'Flash-Sale Countdown','Live urgency timer — set an end time, it ticks down',     'universal', Timer,       withMeasuredHeight(FlashCountdownWidget),   { kicker: 'Flash sale ends in' }),
+  W('RETAIL_STORE_HOURS',     CAT_RETAIL, 'Store Hours',         'Open/closed status + day rows, today highlighted',       'universal', Store,       withMeasuredHeight(StoreHoursWidget),       { state: 'Open · closes 9 PM', open: true }),
+  W('RETAIL_LOYALTY_QR',      CAT_RETAIL, 'Loyalty QR',          'Join-rewards card — drop your QR image URL',             'universal', QrCode,      withMeasuredHeight(LoyaltyQrWidget),        { heading: 'Join Rewards', cta: '10% off your first scan →' }),
+  W('RETAIL_NEW_ARRIVALS',    CAT_RETAIL, 'New Arrivals',        'Eyebrow + title + scrolling category strip',             'universal', Sparkles,    withMeasuredHeight(NewArrivalsWidget),      { eyebrow: 'Just In', title: 'New Arrivals' }),
+  W('RETAIL_PROMO_STRIP',     CAT_RETAIL, 'Promo Strip',         'Clean banner with a single accent rule',                 'universal', Megaphone,   withMeasuredHeight(PromoStripWidget),       { big: 'Buy 1, Get 1 50%', small: 'This weekend only' }),
+];
+
 /* ─── SCOREBOARDS — live game scoreboard, three tiers ───────────────── */
 const CAT_SCOREBOARD = 'Scoreboards';
 
@@ -650,6 +675,7 @@ export const ALL_V2_WIDGETS: RegisteredWidget[] = [
   ...withVertical('CORPORATE', CORPORATE_WIDGETS),
   ...withVertical('HOSPITALITY', HOSPITALITY_WIDGETS),
   ...withVertical('WORSHIP', WORSHIP_WIDGETS),
+  ...withVertical('RETAIL', RETAIL_WIDGETS),
   // Charts are universal — a KPI bar chart fits every vertical, so no
   // vertical tag (shows in every palette).
   ...CHART_WIDGETS,

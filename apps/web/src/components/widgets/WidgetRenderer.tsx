@@ -620,6 +620,7 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'HOSPITALITY':
     case 'WORSHIP':
     case 'CHART':
+    case 'RETAIL':
     case 'BACKGROUND':
     case 'LIVE_DATA':
       return (

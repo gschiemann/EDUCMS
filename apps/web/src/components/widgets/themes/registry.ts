@@ -44,6 +44,8 @@ export type WidgetType =
   // type groups a vertical's widgets under one picker chip; all are
   // variant-rendered.
   | 'HEALTHCARE' | 'CORPORATE' | 'HOSPITALITY' | 'WORSHIP' | 'CHART'
+  // Retail pack (2026-05-19) — storefront widgets, RETAIL-vertical scoped.
+  | 'RETAIL'
   // VenueOS Sports — the live, engine-driven scoreboard widget.
   | 'SCOREBOARD'
   // Sprint 13 — sport-bound widget primitives. Each binds to live

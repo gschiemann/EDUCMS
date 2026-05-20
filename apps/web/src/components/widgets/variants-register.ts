@@ -768,6 +768,8 @@ const V2_CATEGORY_TO_CANONICAL: Record<string, WidgetType> = {
   'Hospitality':  'HOSPITALITY',
   'Worship':      'WORSHIP',
   'Charts':       'CHART',
+  // Retail storefront pack (2026-05-19) — RETAIL-vertical scoped.
+  'Retail':       'RETAIL',
   // VenueOS Sports — the live scoreboard widget (HS / College / Pro).
   'Scoreboards':  'SCOREBOARD',
   // VenueOS Sports Venue — jumbotron / ribbon / concourse surfaces.
