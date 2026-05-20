@@ -6762,6 +6762,45 @@ function CanvasSizeEditor({
             style={inputStyle}
           />
         </div>
+        {/* One-tap LED-poster presets. Each poster is 320×1080; 1–6 wide.
+            Tapping fills the size above with N×320 × 1080 — the controller
+            stays on its 1920 frame buffer and the player pins the render
+            to the top-left N×320 region the physical posters occupy.
+            Per-button margin (not flex `gap`) for Chromium-83 / Taurus. */}
+        <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px', fontWeight: 600 }}>
+          Quick set — LED posters (320×1080 each)
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: '18px', marginLeft: '-3px', marginRight: '-3px' }}>
+          {[1, 2, 3, 4, 5, 6].map((n) => {
+            const pw = n * 320;
+            const activeP = String(pw) === w && String(1080) === String(h);
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => { setW(String(pw)); setH('1080'); }}
+                style={{
+                  flex: '1 0 28%',
+                  margin: '3px',
+                  padding: '8px 4px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  border: activeP ? '1px solid #6366f1' : '1px solid #334155',
+                  background: activeP ? '#312e81' : '#1e293b',
+                  color: 'white',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  textAlign: 'center',
+                  lineHeight: 1.3,
+                }}
+              >
+                {n} poster{n > 1 ? 's' : ''}
+                <br />
+                <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 400 }}>{pw}×1080</span>
+              </button>
+            );
+          })}
+        </div>
         {/* Fit-mode picker. Plain-English labels (no CSS jargon).
             'auto' default picks the right mode based on aspect-diff:
             close-aspect = cover (fills LED); far-aspect = contain
