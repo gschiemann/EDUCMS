@@ -1034,6 +1034,14 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureUrlOverlay(wv: WebView) {
         wv.visibility = View.GONE
+        // 2026-05-20 — D-pad navigation needs the overlay WebView to hold
+        // Android view focus, otherwise super.onKeyDown routes remote keys
+        // to whatever else has focus (the main player WebView) and the
+        // overlay's DOM — where the SpatialNavigation shim listens — never
+        // sees them. WebViews default to focusable, but we set it
+        // explicitly + grab focus in showUrlOverlay() so it's deterministic.
+        wv.isFocusable = true
+        wv.isFocusableInTouchMode = true
         wv.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -1110,6 +1118,12 @@ class MainActivity : ComponentActivity() {
         urlOverlayView.loadUrl(cleanUrl)
         urlOverlayView.visibility = View.VISIBLE
         urlOverlayView.bringToFront()
+        // Grab view focus so D-pad / remote keys route into THIS WebView
+        // (and thus its DOM, where the SpatialNavigation shim listens).
+        // bringToFront() only changes z-order, not focus — without this
+        // the main player WebView keeps focus and the remote can't drive
+        // the URL page. (2026-05-20)
+        urlOverlayView.requestFocus()
         binding.managerGateOverlay.bringToFront()
         // 2026-05-19 (v1.0.71) — was: binding.recoveryOverlay.bringToFront()
         // Removed. Intent was to keep the recovery overlay on top of the

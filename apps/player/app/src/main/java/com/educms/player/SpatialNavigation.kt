@@ -202,18 +202,48 @@ object SpatialNavigation {
       return true;
     }
 
+    // 2026-05-20 — robust key resolution. Signage / TV remotes (Goodview,
+    // many Android-TV boxes) do NOT all deliver the W3C `e.key`
+    // ('ArrowUp' …). Depending on the OEM WebView + remote HID map we see
+    // any of: the modern key ('ArrowUp'), the legacy key ('Up'), the DOM
+    // keyCode (38/40/37/39, 13), or — on some OEM WebViews that leak the
+    // Android KeyEvent code straight through — the Android DPAD codes
+    // (19/20/21/22 up/down/left/right, 23/66 center/enter). The previous
+    // shim matched ONLY `e.key === 'ArrowUp'` etc., so on a remote that
+    // sent legacy/keyCode values it never engaged — the operator saw the
+    // WebView's own (worse) native focus move instead of ours. Match all
+    // forms so the shim engages regardless of how the remote reports.
+    function dirFor(e) {
+      var k = e.key, c = e.keyCode || e.which || 0;
+      if (k === 'ArrowUp'    || k === 'Up'    || c === 38 || c === 19) return 'up';
+      if (k === 'ArrowDown'  || k === 'Down'  || c === 40 || c === 20) return 'down';
+      if (k === 'ArrowLeft'  || k === 'Left'  || c === 37 || c === 21) return 'left';
+      if (k === 'ArrowRight' || k === 'Right' || c === 39 || c === 22) return 'right';
+      return null;
+    }
+    function isActivate(e) {
+      var k = e.key, c = e.keyCode || e.which || 0;
+      return k === 'Enter' || k === ' ' || k === 'Spacebar'
+        || c === 13 || c === 32 || c === 23 || c === 66;
+    }
+
     document.addEventListener('keydown', function(e) {
       // Don't interfere with text typing in an input.
       var ae = document.activeElement;
       var aeTag = (ae && ae.tagName || '').toLowerCase();
       var isTyping = (aeTag === 'input' || aeTag === 'textarea' || (ae && ae.isContentEditable));
-      var k = e.key;
-      if (k === 'ArrowUp')    { if (!isTyping && move('up'))    { e.preventDefault(); } }
-      else if (k === 'ArrowDown')  { if (!isTyping && move('down'))  { e.preventDefault(); } }
-      else if (k === 'ArrowLeft')  { if (!isTyping && move('left'))  { e.preventDefault(); } }
-      else if (k === 'ArrowRight') { if (!isTyping && move('right')) { e.preventDefault(); } }
-      else if (k === 'Enter' || k === ' ') {
-        if (!isTyping && activate()) { e.preventDefault(); }
+      // Diagnostic — surfaces in logcat via MainActivity's onConsoleMessage
+      // (tag "UrlOverlayWeb"). Tells us EXACTLY what a given remote sends
+      // so the next field test is data-driven, not a guess.
+      try { console.log('eduCmsSpatialNav key="' + e.key + '" code=' + (e.keyCode || e.which || 0) + ' typing=' + isTyping); } catch (_) {}
+      var dir = dirFor(e);
+      if (dir) {
+        if (!isTyping && move(dir)) { e.preventDefault(); e.stopPropagation(); }
+        return;
+      }
+      if (isActivate(e)) {
+        // Space inside a typing context must scroll/insert, not click.
+        if (!isTyping && activate()) { e.preventDefault(); e.stopPropagation(); }
       }
     }, true);
 
