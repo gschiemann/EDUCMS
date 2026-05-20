@@ -5936,6 +5936,28 @@ function PlayerPage() {
               .edu-action-row > * > button {
                 margin: 4px 7px !important;
               }
+              /* 2026-05-20 — visible remote/D-pad focus indicator.
+                 Operator: "when I highlight Resume I get no indicator —
+                 the highlight must be hidden behind the bold purple
+                 image." Root cause: the per-button focus:ring is a
+                 box-shadow at z-20 that the splash's branded (purple)
+                 art stacks over, AND the sibling Sync/Exit buttons had
+                 no ring at all. Fix every action button at once with a
+                 bright OUTLINE (renders outside the box, never clipped by
+                 overflow, unlike box-shadow) + a high z-index so the
+                 focused button always paints above the splash art.
+                 Amber #fde047 is high-contrast on purple, dark navy,
+                 emerald, and white alike. outline / outline-offset /
+                 z-index are all pre-Chromium-83 CSS (Taurus-safe). */
+              .edu-action-row > button:focus,
+              .edu-action-row > button:focus-visible,
+              .edu-action-row > * > button:focus,
+              .edu-action-row > * > button:focus-visible {
+                outline: 3px solid #fde047 !important;
+                outline-offset: 3px !important;
+                position: relative !important;
+                z-index: 60 !important;
+              }
             `}</style>
             <div
               className="edu-action-row flex flex-wrap items-center justify-center gap-3 flex-shrink-0 mt-6 w-full"
