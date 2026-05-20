@@ -1346,8 +1346,16 @@ function AdaptForLedModal({
   const sourceOrient: 'LANDSCAPE' | 'PORTRAIT' =
     (source.screenHeight || 1080) > (source.screenWidth || 1920) ? 'PORTRAIT' : 'LANDSCAPE';
   const [mode, setMode] = useState<'PORTRAIT' | 'LANDSCAPE' | 'CUSTOM'>(sourceOrient);
-  const [customW, setCustomW] = useState(source.screenWidth || 1920);
-  const [customH, setCustomH] = useState(source.screenHeight || 1080);
+  // String state so the operator can fully CLEAR the field and type a
+  // fresh value. The old `parseInt(e.target.value) || 1920` snapped the
+  // field back to 1920 the instant it went empty (operator: "every time
+  // I erase the default it resets to 1920"). Keep the raw string here;
+  // parse to numbers (with a sane fallback while mid-edit) for the
+  // preview/orientation hints, and clamp once on Adapt.
+  const [customW, setCustomW] = useState(String(source.screenWidth || 1920));
+  const [customH, setCustomH] = useState(String(source.screenHeight || 1080));
+  const numW = parseInt(customW, 10) || 1920;
+  const numH = parseInt(customH, 10) || 1080;
 
   // Compute the effective canvas size + which base the parent's
   // auto-router will pick. Mirrors the math in onAdapt so the UI
@@ -1355,7 +1363,7 @@ function AdaptForLedModal({
   const previewCanvas: { w: number; h: number; orientation: 'LANDSCAPE' | 'PORTRAIT' } =
     mode === 'PORTRAIT' ? { w: 1080, h: 1920, orientation: 'PORTRAIT' }
     : mode === 'LANDSCAPE' ? { w: 1920, h: 1080, orientation: 'LANDSCAPE' }
-    : { w: customW, h: customH, orientation: customH > customW ? 'PORTRAIT' : 'LANDSCAPE' };
+    : { w: numW, h: numH, orientation: numH > numW ? 'PORTRAIT' : 'LANDSCAPE' };
   const previewBase: Template = (() => {
     if (!portraitSibling) return source;
     const targetIsPortrait = previewCanvas.h > previewCanvas.w;
@@ -1378,8 +1386,8 @@ function AdaptForLedModal({
   const resolveCanvas = (): { screenWidth: number; screenHeight: number; orientation: 'LANDSCAPE' | 'PORTRAIT' } => {
     if (mode === 'PORTRAIT') return { screenWidth: 1080, screenHeight: 1920, orientation: 'PORTRAIT' };
     if (mode === 'LANDSCAPE') return { screenWidth: 1920, screenHeight: 1080, orientation: 'LANDSCAPE' };
-    const w = Math.max(100, Math.min(15360, Math.round(customW)));
-    const h = Math.max(100, Math.min(15360, Math.round(customH)));
+    const w = Math.max(100, Math.min(15360, Math.round(numW)));
+    const h = Math.max(100, Math.min(15360, Math.round(numH)));
     return {
       screenWidth: w,
       screenHeight: h,
@@ -1454,7 +1462,7 @@ function AdaptForLedModal({
                   min={100}
                   max={15360}
                   value={customW}
-                  onChange={(e) => setCustomW(parseInt(e.target.value) || 1920)}
+                  onChange={(e) => setCustomW(e.target.value)}
                   className="flex-1 px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   aria-label="Custom canvas width in pixels"
                 />
@@ -1464,22 +1472,22 @@ function AdaptForLedModal({
                   min={100}
                   max={15360}
                   value={customH}
-                  onChange={(e) => setCustomH(parseInt(e.target.value) || 1080)}
+                  onChange={(e) => setCustomH(e.target.value)}
                   className="flex-1 px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   aria-label="Custom canvas height in pixels"
                 />
-                <span className="text-[10px] text-slate-400 w-20">{customW > customH ? 'landscape' : 'portrait'}</span>
+                <span className="text-[10px] text-slate-400 w-20">{numW > numH ? 'landscape' : 'portrait'}</span>
               </div>
             </div>
             <div>
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Or pick an LED poster setup</label>
               <div className="grid grid-cols-3 gap-2">
                 {ledPanelShortcuts.map((p) => {
-                  const active = customW === p.w && customH === p.h;
+                  const active = numW === p.w && numH === p.h;
                   return (
                     <button
                       key={p.panels}
-                      onClick={() => { setCustomW(p.w); setCustomH(p.h); }}
+                      onClick={() => { setCustomW(String(p.w)); setCustomH(String(p.h)); }}
                       className={`px-3 py-2 rounded-lg text-left transition-all border ${active ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-200'}`}
                     >
                       <div className="text-xs font-bold">{p.panels} panel{p.panels > 1 ? 's' : ''}</div>
