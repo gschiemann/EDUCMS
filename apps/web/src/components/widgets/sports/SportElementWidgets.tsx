@@ -32,6 +32,31 @@
 import React from 'react';
 import { useGameState, type GameSnapshot } from './GameStateContext';
 
+// ── tier-preset display fonts ────────────────────────────────────────
+// The HS / College / Pro scoreboard tiers each specify a distinct family
+// (Baloo 2 = HS chunky-rounded, Saira = College condensed, Rajdhani /
+// Exo 2 = Pro thin-techy). None of these are loaded anywhere else in web,
+// so without this they silently fall back to generic sans-serif and the
+// three tiers lose two-thirds of their typographic distinction. Injected
+// ONCE, idempotently, at client module-load — every scoreboard render
+// path (live board, builder canvas, gallery thumbnail, player route)
+// imports this module, so the fonts are present in all of them. A Google
+// Fonts <link rel=stylesheet> parses cleanly on Chromium-83 / NovaStar
+// Taurus (no @import-in-CSSOM, no modern-only API). SSR-guarded.
+const SB_FONTS_LINK_ID = 'sb-tier-fonts';
+const SB_FONTS_HREF =
+  'https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Saira:wght@500;600;700&family=Rajdhani:wght@500;600;700&family=Exo+2:wght@400;500;600&display=swap';
+function injectScoreboardFonts() {
+  if (typeof document === 'undefined') return; // SSR
+  if (document.getElementById(SB_FONTS_LINK_ID)) return; // already loaded
+  const link = document.createElement('link');
+  link.id = SB_FONTS_LINK_ID;
+  link.rel = 'stylesheet';
+  link.href = SB_FONTS_HREF;
+  document.head.appendChild(link);
+}
+injectScoreboardFonts();
+
 // ── shared style ─────────────────────────────────────────────────────
 export interface ElCfg {
   team?: 'home' | 'away';
