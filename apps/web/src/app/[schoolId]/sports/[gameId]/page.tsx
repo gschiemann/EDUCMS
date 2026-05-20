@@ -47,6 +47,7 @@ import {
   useGameRoster,
   useSponsors,
   useUpdateSponsor,
+  useTemplates,
   type SponsorInput,
 } from '@/hooks/use-api';
 import { findSport, PLAYER_STATS } from '@cms/api-types';
@@ -372,6 +373,14 @@ function GameControl() {
             )}
 
             <SponsorSchedulingSection />
+
+            {/* Sprint 13 — operator can swap the Scoreboard / Ribbon /
+                Scorebug template anytime, even mid-game. Empty value
+                ("Default") clears the FK on the game; the surface
+                falls back to the hardcoded built-in layout. */}
+            <Section title="Layouts">
+              <LayoutsPanel g={g} ctl={ctl} />
+            </Section>
 
             {/* Cue / celebration presentation — configured here before
                 the game; firing the cues happens from the Run screen. */}
@@ -2105,6 +2114,101 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div className="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
       <h2 className="text-sm font-bold text-slate-900 mb-3">{title}</h2>
       {children}
+    </div>
+  );
+}
+
+// ── Sprint 13 — Layouts panel ────────────────────────────────────
+// Lets the operator hot-swap the Scoreboard / Ribbon / Scorebug
+// template at any time (pre-game, mid-game, after-game). Empty value
+// (the "Default" option) PATCHes the FK to null on the API and the
+// surface falls back to the hardcoded built-in layout. Operator
+// makes the choice on the game-create form too; this panel is for
+// changing it later. Surfaces update within the next 750ms poll.
+
+function LayoutsPanel({
+  g,
+  ctl,
+}: {
+  g: any;
+  ctl: ReturnType<typeof useGameControl>;
+}) {
+  const { data: templates } = useTemplates();
+  const list: Array<{ id: string; name: string; isSystem?: boolean }> = Array.isArray(templates)
+    ? (templates as any[])
+    : [];
+
+  // Local "saving" state per dropdown so the operator gets feedback;
+  // the optimistic writeBack in useGameControl makes the dropdown
+  // value snap immediately, but the spinner reassures on a slow link.
+  const [saving, setSaving] = useState<string | null>(null);
+  const save = async (field: 'scoreboard' | 'ribbon' | 'scorebug', value: string) => {
+    setSaving(field);
+    try {
+      await ctl.details.mutateAsync({
+        [`${field}TemplateId`]: value || null,
+      } as any);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const ROW: Array<{
+    field: 'scoreboard' | 'ribbon' | 'scorebug';
+    label: string;
+    hint: string;
+    current: string;
+  }> = [
+    {
+      field: 'scoreboard',
+      label: 'Scoreboard',
+      hint: 'The big LED video wall — /board/' + g.id,
+      current: g.scoreboardTemplateId || '',
+    },
+    {
+      field: 'ribbon',
+      label: 'Ribbon',
+      hint: 'Perimeter ribbon panel chain — /ribbon/' + g.id,
+      current: g.ribbonTemplateId || '',
+    },
+    {
+      field: 'scorebug',
+      label: 'Scorebug',
+      hint: 'OBS broadcast overlay — /scorebug/' + g.id,
+      current: g.scorebugTemplateId || '',
+    },
+  ];
+
+  return (
+    <div>
+      <p className="text-xs text-slate-400 mb-3">
+        Pick a custom template per surface. Operator can swap layouts anytime —
+        the surface updates within ~750ms. Leave on Default to use the built-in layout.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {ROW.map((r) => (
+          <div key={r.field}>
+            <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+              {r.label}
+            </label>
+            <select
+              className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
+              value={r.current}
+              disabled={saving === r.field}
+              onChange={(e) => save(r.field, e.target.value)}
+            >
+              <option value="">Default — built-in layout</option>
+              {list.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.isSystem ? '★ ' : ''}
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[10px] text-slate-400">{r.hint}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

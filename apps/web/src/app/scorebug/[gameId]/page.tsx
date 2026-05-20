@@ -256,7 +256,7 @@ export default function ScorebugPage() {
         <CustomScoreboardScene
           templateId={data.scorebugTemplateId}
           gameId={gameId}
-          initial={data as any}
+          initial={data}
         />
       </>
     );

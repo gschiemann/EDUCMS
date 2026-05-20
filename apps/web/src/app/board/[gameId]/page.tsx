@@ -2280,13 +2280,19 @@ export default function ScoreboardPage() {
   // to fit the viewport. NULL → legacy hardcoded scenes below render
   // unchanged (zero regression).
   if (data.scoreboardTemplateId) {
+    // BoardData is structurally a superset of GameSnapshot (id, sport,
+    // status, segment, homeTeam, awayTeam, homeScore, awayScore,
+    // homeColor, awayColor, homeLogoUrl, awayLogoUrl, clockMs,
+    // clockRunning, clockUpdatedAt, stats, serverTime — all present
+    // on both). The cast is just to satisfy the narrower context
+    // type; runtime values match exactly.
     return (
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
         {keyframes}
         <CustomScoreboardScene
           templateId={data.scoreboardTemplateId}
           gameId={gameId}
-          initial={data as any}
+          initial={data}
         />
       </div>
     );

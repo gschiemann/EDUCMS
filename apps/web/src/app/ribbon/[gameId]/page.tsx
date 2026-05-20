@@ -627,7 +627,7 @@ export default function RibbonPage() {
         <CustomScoreboardScene
           templateId={data.ribbonTemplateId}
           gameId={gameId}
-          initial={data as any}
+          initial={data}
         />
       </div>
     );

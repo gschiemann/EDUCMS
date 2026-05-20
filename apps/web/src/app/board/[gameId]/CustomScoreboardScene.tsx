@@ -31,7 +31,7 @@ interface Zone {
   widgetType: string;
   x: number; y: number; width: number; height: number;
   zIndex?: number | null;
-  defaultConfig?: any;
+  defaultConfig?: Record<string, unknown> | null;
 }
 
 interface Template {
@@ -51,6 +51,10 @@ function bgStyle(t: Template): React.CSSProperties {
     backgroundColor: t.bgColor || '#000000',
     backgroundSize: 'cover',
     backgroundPosition: 'center',
+    // Explicit z-index so an operator's custom zone with zIndex: 0
+    // can't accidentally render BEHIND the background. Zones use
+    // zIndex: z.zIndex ?? 1 below, so 0 is reserved for the bg.
+    zIndex: 0,
   };
   if (t.bgImage) {
     s.backgroundImage = t.bgImage.trim().startsWith('url(') ? t.bgImage : `url(${t.bgImage})`;

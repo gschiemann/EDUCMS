@@ -2167,6 +2167,26 @@ export function useGameControl(gameId: string) {
     }) =>
       apiFetch(`/sports/games/${gameId}/cue`, { method: 'POST', body: JSON.stringify(body) }),
   });
+
+  // Sprint 13 — editable game details (team identity + template
+  // re-assignment). Operator can swap a layout mid-game; the PATCH
+  // accepts empty-string → null to clear back to "use the built-in
+  // layout" for any surface.
+  const details = useMutation({
+    mutationFn: (body: {
+      homeTeam?: string;
+      awayTeam?: string;
+      homeColor?: string;
+      awayColor?: string;
+      homeLogoUrl?: string | null;
+      awayLogoUrl?: string | null;
+      scoreboardTemplateId?: string | null;
+      ribbonTemplateId?: string | null;
+      scorebugTemplateId?: string | null;
+    }) =>
+      apiFetch(`/sports/games/${gameId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: writeBack,
+  });
   const spotlight = useMutation({
     mutationFn: (body: {
       clear?: boolean;
@@ -2283,6 +2303,7 @@ export function useGameControl(gameId: string) {
     ribbonSpeed,
     ribbonSlides,
     ribbonScoreRepeat,
+    details,
   };
 }
 
