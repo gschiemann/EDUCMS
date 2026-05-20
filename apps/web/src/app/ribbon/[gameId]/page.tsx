@@ -463,7 +463,16 @@ export default function RibbonPage() {
   const gameId = String(params?.gameId || '');
 
   const [data, setData] = useState<BoardData | null>(null);
-  const [vp, setVp] = useState({ w: 1920, h: 240 });
+  // Actual window pixels. The LOGICAL ribbon canvas `vp` is derived from
+  // this — or from a ?canvas=WxH demo override (below).
+  const [winSize, setWinSize] = useState({ w: 1920, h: 240 });
+  // ?canvas=WIDTHxHEIGHT — demo/preview override. Renders the ribbon at a
+  // FIXED pixel canvas (e.g. a real 3077×256 / 1000mm-high LED) scaled to
+  // fit THIS screen, letterboxed — so an operator can show a customer the
+  // true wide-short ribbon shape on any display (even a portrait demo
+  // panel). Null = render at the native window size (normal behavior).
+  const [fixedCanvas, setFixedCanvas] = useState<{ w: number; h: number } | null>(null);
+  const vp = fixedCanvas || winSize;
   // installer override for the score-anchor count — ?score=N (0 = auto)
   const [scoreOverride, setScoreOverride] = useState(0);
   // which content look is showing
@@ -502,7 +511,7 @@ export default function RibbonPage() {
   // viewport measure
   useEffect(() => {
     const measure = () =>
-      setVp({ w: window.innerWidth || 1920, h: window.innerHeight || 240 });
+      setWinSize({ w: window.innerWidth || 1920, h: window.innerHeight || 240 });
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
@@ -515,6 +524,18 @@ export default function RibbonPage() {
   useEffect(() => {
     const n = Number(new URLSearchParams(window.location.search).get('score'));
     if (Number.isFinite(n) && n >= 1 && n <= 6) setScoreOverride(Math.round(n));
+  }, []);
+
+  // Read the ?canvas=WIDTHxHEIGHT demo override once on mount (e.g.
+  // ?canvas=3077x256 mirrors a 1000mm-high / 3.9mm-pitch 40ft ribbon).
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get('canvas');
+    const m = raw && raw.match(/^(\d{2,5})x(\d{2,5})$/i);
+    if (m) {
+      const w = Number(m[1]);
+      const h = Number(m[2]);
+      if (w >= 16 && h >= 16) setFixedCanvas({ w, h });
+    }
   }, []);
 
   // poll the public board endpoint
@@ -646,7 +667,7 @@ export default function RibbonPage() {
     ((data.ribbonSlides || []).filter(Boolean).length > 0 ||
       (data.sponsors || []).length > 0)
   ) {
-    return (
+    const ribbonBody = (
       <>
         <RibbonMediaScroll data={data} def={def} vp={vp} clockMs={clockMs} />
         {/* Celebrations must still take over the ribbon in media mode.
@@ -659,6 +680,30 @@ export default function RibbonPage() {
         )}
       </>
     );
+    // ?canvas=WxH demo: scale the fixed ribbon canvas to fit the screen,
+    // centered + letterboxed, so the true wide-short shape shows on any
+    // display (e.g. a portrait demo panel during a customer walkthrough).
+    if (fixedCanvas) {
+      const scale = Math.min(winSize.w / fixedCanvas.w, winSize.h / fixedCanvas.h) || 1;
+      return (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: '#000', overflow: 'hidden' }}>
+          <div
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              width: fixedCanvas.w,
+              height: fixedCanvas.h,
+              transform: `translate(-50%, -50%) scale(${scale})`,
+              transformOrigin: 'center center',
+            }}
+          >
+            {ribbonBody}
+          </div>
+        </div>
+      );
+    }
+    return ribbonBody;
   }
 
   // ── score-anchor recurrence ──────────────────────────────────
