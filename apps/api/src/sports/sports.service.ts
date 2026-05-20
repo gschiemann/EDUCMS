@@ -1738,6 +1738,7 @@ export class SportsService {
         mediaUrl: cc.mediaUrl || null,
         color: cc.color || null,
         durationMs: cc.durationMs,
+        displayMode: (cc as any).displayMode || 'overlay',
         custom: true,
         target,
         audioUrl,
@@ -1864,7 +1865,7 @@ export class SportsService {
   /** Create a custom cue (a trigger button + its takeover content). */
   async createCue(
     tenantId: string,
-    dto: { name?: string; mediaUrl?: string; color?: string; durationMs?: number },
+    dto: { name?: string; mediaUrl?: string; color?: string; durationMs?: number; displayMode?: string },
   ) {
     const name = this.cleanText(dto.name, 60);
     if (!name) throw new BadRequestException('Cue name is required.');
@@ -1876,6 +1877,7 @@ export class SportsService {
         mediaUrl: this.cleanText(dto.mediaUrl, 2048),
         color: this.cleanText(dto.color, 32),
         durationMs: this.cleanDuration(dto.durationMs),
+        displayMode: dto.displayMode === 'takeover' ? 'takeover' : 'overlay',
         sortOrder,
       },
     });
@@ -1892,7 +1894,7 @@ export class SportsService {
   async updateCue(
     tenantId: string,
     id: string,
-    dto: { name?: string; mediaUrl?: string; color?: string; durationMs?: number },
+    dto: { name?: string; mediaUrl?: string; color?: string; durationMs?: number; displayMode?: string },
   ) {
     await this.ownedCue(tenantId, id);
     const data: Record<string, unknown> = {};
@@ -1904,6 +1906,7 @@ export class SportsService {
     if (dto.mediaUrl !== undefined) data.mediaUrl = this.cleanText(dto.mediaUrl, 2048);
     if (dto.color !== undefined) data.color = this.cleanText(dto.color, 32);
     if (dto.durationMs !== undefined) data.durationMs = this.cleanDuration(dto.durationMs);
+    if (dto.displayMode !== undefined) data.displayMode = dto.displayMode === 'takeover' ? 'takeover' : 'overlay';
     return this.prisma.client.customCue.update({ where: { id }, data });
   }
 

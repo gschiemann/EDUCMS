@@ -1574,9 +1574,15 @@ model CustomCue {
   id         String   @id @default(uuid())
   tenantId   String   @map("tenant_id")
   name       String                                  // trigger button label
-  mediaUrl   String?  @map("media_url")               // uploaded takeover graphic
+  mediaUrl   String?  @map("media_url")               // uploaded graphic
   color      String?                                  // accent / background color
   durationMs Int      @default(6000) @map("duration_ms")
+  // 2026-05-20 — operator: "the custom cues took over the entire screen,
+  // they should overlay." How the cue renders on the board:
+  //   overlay  → board stays visible; media drops into a lower band
+  //   takeover → full-screen opaque media (the original behavior)
+  // Defaults to overlay (the expected behavior); takeover is opt-in.
+  displayMode String @default("overlay") @map("display_mode")
   sortOrder  Int      @default(0) @map("sort_order")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")

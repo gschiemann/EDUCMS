@@ -2488,6 +2488,8 @@ export interface CustomCue {
   mediaUrl: string | null;
   color: string | null;
   durationMs: number;
+  /** 'overlay' (board stays visible, lower band) | 'takeover' (full screen). */
+  displayMode?: string;
 }
 
 export function useCues() {

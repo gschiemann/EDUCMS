@@ -271,6 +271,9 @@ function CueEditorModal({
   const [name, setName] = useState(cue?.name || '');
   const [mediaUrl, setMediaUrl] = useState(cue?.mediaUrl || '');
   const [durationMs, setDurationMs] = useState(cue?.durationMs || 6000);
+  const [displayMode, setDisplayMode] = useState<'overlay' | 'takeover'>(
+    (cue?.displayMode as 'overlay' | 'takeover') || 'overlay',
+  );
   const [busy, setBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [err, setErr] = useState('');
@@ -283,7 +286,7 @@ function CueEditorModal({
     setBusy(true);
     setErr('');
     try {
-      await onSave({ name: name.trim(), mediaUrl: mediaUrl.trim(), durationMs });
+      await onSave({ name: name.trim(), mediaUrl: mediaUrl.trim(), durationMs, displayMode });
     } catch (e: any) {
       setErr(e?.message || 'Could not save the cue.');
       setBusy(false);
@@ -360,6 +363,30 @@ function CueEditorModal({
           placeholder="T-Shirt Toss"
           maxLength={60}
         />
+
+        {/* How the cue shows on the board — overlay (board stays visible)
+            vs full-screen takeover. */}
+        <label className="mt-3 block text-xs font-semibold text-slate-500">On the board</label>
+        <div className="mt-1 flex gap-1.5">
+          {([
+            ['overlay', 'Overlay', 'Drops into a lower band — score stays visible'],
+            ['takeover', 'Full screen', 'Covers the whole board'],
+          ] as const).map(([v, label, hint]) => (
+            <button
+              key={v}
+              type="button"
+              title={hint}
+              onClick={() => setDisplayMode(v)}
+              className={`flex-1 rounded-lg border px-2 py-2 text-xs font-bold transition-colors ${
+                displayMode === v
+                  ? 'border-indigo-600 bg-indigo-600 text-white'
+                  : 'border-slate-200 text-slate-600 hover:border-indigo-300'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
         <label className="mt-3 block text-xs font-semibold text-slate-500">
           On screen for {(durationMs / 1000).toFixed(0)}s

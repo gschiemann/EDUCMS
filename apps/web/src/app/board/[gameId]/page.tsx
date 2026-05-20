@@ -35,9 +35,12 @@ interface Cue {
   label?: string;
   emoji?: string;
   createdAt?: string;
-  // Custom cue-deck fields — a full-screen takeover of uploaded content.
+  // Custom cue-deck fields — uploaded content shown on a trigger.
   custom?: boolean;
   mediaUrl?: string | null;
+  // 'overlay' (default) → board stays visible, media drops into a lower
+  // band; 'takeover' → full-screen opaque media.
+  displayMode?: string | null;
   color?: string | null;
   durationMs?: number;
   // Which surfaces play this cue — BOARD / RIBBON / ALL (default ALL).
@@ -1698,31 +1701,45 @@ const BIG_CUE_RE =
  * transform/opacity only — Chromium-83 (NovaStar Taurus) + WebKit safe.
  */
 function CueOverlay({ cue }: { cue: Cue }) {
-  // Custom cue — a full-screen takeover of the operator's uploaded
-  // content (a sponsor graphic, a promo, a hype card).
+  // Custom cue — the operator's uploaded content (a sponsor graphic, a
+  // promo, a hype card).
   if (cue.mediaUrl) {
+    // TAKEOVER — full-screen opaque media (opt-in).
+    if (cue.displayMode === 'takeover') {
+      return (
+        <div
+          style={{
+            position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: cue.color || '#05070d', zIndex: 50,
+            animation: 'venueCelebScrim 0.4s ease-out',
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={cue.mediaUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+        </div>
+      );
+    }
+    // OVERLAY (default) — the board stays fully visible; the media drops
+    // into a lower band (bottom ~34%) over a gradient scrim that fades
+    // up, then slides away after the cue's duration. Operator: "the
+    // custom cues should overlay, not take over the entire screen."
     return (
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          right: 0,
-          bottom: 0,
-          left: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: cue.color || '#05070d',
-          zIndex: 50,
-          animation: 'venueCelebScrim 0.4s ease-out',
-        }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={cue.mediaUrl}
-          alt=""
-          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-        />
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 50, pointerEvents: 'none' }}>
+        <div
+          style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0, height: '34%',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            background: cue.color
+              ? `linear-gradient(to top, ${cue.color} 12%, ${cue.color}cc 55%, transparent 100%)`
+              : 'linear-gradient(to top, rgba(5,7,13,0.96) 12%, rgba(5,7,13,0.78) 55%, transparent 100%)',
+            animation: 'venueCueBandUp 0.45s cubic-bezier(0.22,1,0.36,1)',
+            padding: '0 3% 2.5%',
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={cue.mediaUrl} alt="" style={{ maxWidth: '94%', maxHeight: '88%', objectFit: 'contain' }} />
+        </div>
       </div>
     );
   }
@@ -2159,6 +2176,7 @@ export default function ScoreboardPage() {
       @keyframes venuePulse { 0%,100%{opacity:1} 50%{opacity:0.55} }
       @keyframes venueFooterFade { 0%{opacity:0} 100%{opacity:1} }
       @keyframes venueCelebScrim { 0%{opacity:0} 7%{opacity:1} 90%{opacity:1} 100%{opacity:0} }
+      @keyframes venueCueBandUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
       @keyframes venueCelebGlow {
         0%{opacity:0;transform:scale(0.35)}
         16%{opacity:1;transform:scale(1)}

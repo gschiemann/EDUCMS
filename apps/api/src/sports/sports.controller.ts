@@ -474,7 +474,7 @@ export class SportsController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   createCue(
     @Request() req: any,
-    @Body() body: { name?: string; mediaUrl?: string; color?: string; durationMs?: number },
+    @Body() body: { name?: string; mediaUrl?: string; color?: string; durationMs?: number ; displayMode?: string },
   ) {
     return this.sports.createCue(req.user.tenantId, body || {});
   }
@@ -485,7 +485,7 @@ export class SportsController {
   updateCue(
     @Request() req: any,
     @Param('cueId') cueId: string,
-    @Body() body: { name?: string; mediaUrl?: string; color?: string; durationMs?: number },
+    @Body() body: { name?: string; mediaUrl?: string; color?: string; durationMs?: number ; displayMode?: string },
   ) {
     return this.sports.updateCue(req.user.tenantId, cueId, body || {});
   }
