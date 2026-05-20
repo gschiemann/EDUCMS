@@ -154,9 +154,13 @@ function PenaltyRow({ p, serverTime, color }: { p: any; serverTime?: number; col
 export function PenaltyBoxWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const team = config.team ?? 'home';
-  const key = config.statKey ?? (team === 'away' ? 'awayPenalties' : 'homePenalties');
-  const raw = stat(s, key);
-  const penalties: any[] = Array.isArray(raw) ? raw : (s?.snapshot ? [] : [{ player: 17, ms: 95000, at: new Date().toISOString(), running: false }]);
+  // Penalties live in ONE stats.penalties[] array with a per-row `team`
+  // field (the console writes them there for hockey/lacrosse/water-polo
+  // exclusions). Filter to this side.
+  const all = stat(s, 'penalties');
+  const penalties: any[] = Array.isArray(all)
+    ? all.filter((p) => (p?.team ?? 'home') === team)
+    : (s?.snapshot ? [] : [{ player: 17, ms: 95000, at: new Date().toISOString(), running: false }]);
   const color = (team === 'away' ? s?.snapshot?.awayColor : s?.snapshot?.homeColor) || config.accentColor || '#dc2626';
   if (penalties.length === 0) return <div style={elRoot(config, { backgroundColor: 'transparent' })} />;
   return (
@@ -168,8 +172,10 @@ export function PenaltyBoxWidget({ config }: { config: ElCfg }) {
 
 export function PowerPlayBadgeWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
-  const homeP = (Array.isArray(stat(s, 'homePenalties')) ? (stat(s, 'homePenalties') as any[]).length : 0);
-  const awayP = (Array.isArray(stat(s, 'awayPenalties')) ? (stat(s, 'awayPenalties') as any[]).length : 0);
+  // Count active penalties per side from the shared stats.penalties[].
+  const all = Array.isArray(stat(s, 'penalties')) ? (stat(s, 'penalties') as any[]) : [];
+  const homeP = all.filter((p) => (p?.team ?? 'home') === 'home').length;
+  const awayP = all.filter((p) => (p?.team ?? 'home') === 'away').length;
   const team = config.team ?? 'home';
   const myP = team === 'home' ? homeP : awayP;
   const oppP = team === 'home' ? awayP : homeP;
