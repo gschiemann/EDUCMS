@@ -579,6 +579,39 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         defaultConfig: { variant: 'scoreboard-main' } },
     ],
   },
+  // ── Build-Your-Own Scoreboard (2026-05-20). Operator: "i should be
+  // able to build the entire scoreboard … i cant drag and drop any of
+  // the widgets." The Main Scoreboard above is ONE monolith zone — there
+  // is nothing to rearrange. THIS preset is the same board composed of
+  // ~14 INDIVIDUAL element widgets — each its own zone the operator can
+  // drag, resize, restyle, brand (logo URL), add to, or delete. This is
+  // the "full customization" surface; works at any custom LED size.
+  {
+    id: 'preset-elements-scoreboard',
+    name: '🧩 Build-Your-Own Scoreboard',
+    description: 'Every element is a separate widget you can drag, resize, restyle, brand, add or remove — home/away logo + name + score, game clock, period, shot clock, timeouts, possession, status. Lay out your own board at any LED size.',
+    category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#05070d',
+    zones: [
+      // status pill — top center
+      { name: 'Status', widgetType: 'SCOREBOARD', x: 43, y: 3, width: 14, height: 7, zIndex: 3, sortOrder: 0, defaultConfig: { variant: 'sb-status', fontSize: 30 } },
+      // HOME column (left)
+      { name: 'Home Logo', widgetType: 'SCOREBOARD', x: 6, y: 12, width: 18, height: 22, zIndex: 2, sortOrder: 1, defaultConfig: { variant: 'sb-team-logo-home', team: 'home' } },
+      { name: 'Home Name', widgetType: 'SCOREBOARD', x: 2, y: 36, width: 26, height: 9, zIndex: 2, sortOrder: 2, defaultConfig: { variant: 'sb-team-name-home', team: 'home', fontSize: 54 } },
+      { name: 'Home Score', widgetType: 'SCORE_HOME', x: 4, y: 46, width: 22, height: 40, zIndex: 2, sortOrder: 3, defaultConfig: { variant: 'score-home', color: '#ffffff', fontWeight: 900, fontSize: 300, align: 'center' } },
+      { name: 'Home Timeouts', widgetType: 'SCOREBOARD', x: 7, y: 88, width: 16, height: 6, zIndex: 2, sortOrder: 4, defaultConfig: { variant: 'sb-timeouts-home', team: 'home', fontSize: 40 } },
+      // CENTER column
+      { name: 'Game Clock', widgetType: 'GAME_CLOCK', x: 35, y: 16, width: 30, height: 26, zIndex: 2, sortOrder: 5, defaultConfig: { variant: 'game-clock', color: '#fbbf24', fontWeight: 900, fontSize: 190, align: 'center' } },
+      { name: 'Period', widgetType: 'GAME_SEGMENT', x: 38, y: 44, width: 24, height: 9, zIndex: 2, sortOrder: 6, defaultConfig: { variant: 'game-segment', color: '#ffffff', fontWeight: 700, fontSize: 64, align: 'center' } },
+      { name: 'Shot Clock', widgetType: 'SCOREBOARD', x: 40, y: 56, width: 20, height: 16, zIndex: 2, sortOrder: 7, defaultConfig: { variant: 'sb-shot-clock', fontSize: 96 } },
+      { name: 'Possession', widgetType: 'SCOREBOARD', x: 44, y: 74, width: 12, height: 8, zIndex: 2, sortOrder: 8, defaultConfig: { variant: 'sb-possession-arrow', fontSize: 48 } },
+      // AWAY column (right)
+      { name: 'Away Logo', widgetType: 'SCOREBOARD', x: 76, y: 12, width: 18, height: 22, zIndex: 2, sortOrder: 9, defaultConfig: { variant: 'sb-team-logo-away', team: 'away' } },
+      { name: 'Away Name', widgetType: 'SCOREBOARD', x: 72, y: 36, width: 26, height: 9, zIndex: 2, sortOrder: 10, defaultConfig: { variant: 'sb-team-name-away', team: 'away', fontSize: 54 } },
+      { name: 'Away Score', widgetType: 'SCORE_AWAY', x: 74, y: 46, width: 22, height: 40, zIndex: 2, sortOrder: 11, defaultConfig: { variant: 'score-away', color: '#ffffff', fontWeight: 900, fontSize: 300, align: 'center' } },
+      { name: 'Away Timeouts', widgetType: 'SCOREBOARD', x: 77, y: 88, width: 16, height: 6, zIndex: 2, sortOrder: 12, defaultConfig: { variant: 'sb-timeouts-away', team: 'away', fontSize: 40 } },
+    ],
+  },
   // ── Main Ribbon (2026-05-19, NEW id — was preset-std-ribbon, a generic
   // 8-zone SCORE_HOME layout the operator called trash). Single full-bleed
   // zone rendering RibbonScoreboardWidget: a live score-follow anchor +

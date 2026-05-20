@@ -2176,6 +2176,11 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         if (sbVariant === 'sb-sponsor') {
           fields.push(<TextField key="imageUrl" label="Sponsor image URL" value={cfg.imageUrl || ''} placeholder="https://…/logo.png" onChange={(v) => setField({ imageUrl: v })} />);
         }
+        // Team-logo elements: paste a logo URL to brand the board before
+        // a game is bound (overrides the live game logo).
+        if (sbVariant.startsWith('sb-team-logo')) {
+          fields.push(<TextField key="logoUrl" label="Logo image URL" value={cfg.logoUrl || ''} placeholder="https://…/team-logo.png" onChange={(v) => setField({ logoUrl: v })} />);
+        }
         // Full style set — every aspect editable.
         fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
         fields.push(<ColorField key="accentColor" label="Accent color" value={cfg.accentColor || '#fbbf24'} onChange={(v) => setField({ accentColor: v })} />);

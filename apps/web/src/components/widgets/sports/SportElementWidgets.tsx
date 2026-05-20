@@ -117,16 +117,20 @@ export function TeamAbbrWidget({ config }: { config: ElCfg }) {
 }
 
 // ── Team logo (or color initial disc) ────────────────────────────────
-export function TeamLogoWidget({ config }: { config: ElCfg }) {
+export function TeamLogoWidget({ config }: { config: ElCfg & { logoUrl?: string } }) {
   const s = useGameState();
   const team = config.team ?? 'home';
   const t = teamOf(s?.snapshot, team);
-  const color = t.color ?? (team === 'away' ? '#dc2626' : '#4f46e5');
+  const color = (config as any).color || t.color || (team === 'away' ? '#dc2626' : '#4f46e5');
+  // 2026-05-20 — operator wants to brand a board by pasting a logo URL
+  // BEFORE a game is bound. A config.logoUrl overrides the live game
+  // logo; if neither is set we fall back to the color-initial disc.
+  const logo = (config.logoUrl && config.logoUrl.trim()) || t.logo;
   return (
     <div style={elRoot(config, { backgroundColor: 'transparent' })}>
-      {t.logo ? (
+      {logo ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={t.logo} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'drop-shadow(0 6px 16px rgba(0,0,0,0.5))' }}
+        <img src={logo} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'drop-shadow(0 6px 16px rgba(0,0,0,0.5))' }}
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
       ) : (
         <div style={{ width: '72%', height: '72%', borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: config.fontSize ?? 64, boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
