@@ -1101,3 +1101,29 @@ for (const v of SPORT_ELEMENT_VARIANTS) {
     defaultConfig: { align: 'center', ...(v.defaultConfig || {}) },
   });
 }
+
+// 2026-05-19 — live RIBBON-board + SCOREBUG composite widgets (the
+// surfaces the operator said were missing entirely). One-drop, live-
+// bound, resize for any ribbon chain / OBS overlay.
+import { RibbonScoreboardWidget, ScorebugWidget } from './sports/RibbonScorebugWidgets';
+
+registerVariant({
+  id: 'ribbon-main',
+  widgetType: 'SCOREBOARD',
+  name: 'Ribbon Board (live)',
+  description: 'Perimeter ribbon: live score-follow anchor + rotating sponsor/message reel. Resize for any panel chain (1920×192 → 11520×192).',
+  category: 'SPORTS',
+  vertical: 'SPORTS',
+  render: RibbonScoreboardWidget as any,
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'scorebug-main',
+  widgetType: 'SCOREBOARD',
+  name: 'Scorebug (broadcast)',
+  description: 'Compact transparent broadcast overlay — team blocks + clock + period + per-sport situational line. Drop into OBS as a browser source.',
+  category: 'SPORTS',
+  vertical: 'SPORTS',
+  render: ScorebugWidget as any,
+  defaultConfig: {},
+});

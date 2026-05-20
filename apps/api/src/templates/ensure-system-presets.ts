@@ -67,6 +67,8 @@ SPORTS_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'SPORTS'));
 // renamed from preset-std-scoreboard) guarantees a clean single-zone
 // create rather than inheriting the old row's 7 stale zones.
 PRESET_VERTICAL.set('preset-main-scoreboard', 'SPORTS');
+PRESET_VERTICAL.set('preset-main-ribbon', 'SPORTS');
+PRESET_VERTICAL.set('preset-main-scorebug', 'SPORTS');
 
 // 2026-05-16 — the 70-template industry signage pack (preset-sig-*)
 // lives INSIDE SYSTEM_TEMPLATE_PRESETS so it shares the seeder, which

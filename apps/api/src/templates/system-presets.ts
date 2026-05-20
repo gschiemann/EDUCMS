@@ -579,67 +579,35 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         defaultConfig: { variant: 'scoreboard-main' } },
     ],
   },
-  // ── Standard Ribbon — long-and-thin perimeter LED. Operator clicks
-  // Customize → expands canvas to the actual ribbon pixel width
-  // (e.g. 11520×192 for a 60-panel chain) → the score anchor pattern
-  // remains layout-correct because each zone is positioned in
-  // PERCENTAGES, not pixels. 1920×192 is the natural starting aspect
-  // (10:1) — ribbon hardware is typically 8:1 to 60:1.
+  // ── Main Ribbon (2026-05-19, NEW id — was preset-std-ribbon, a generic
+  // 8-zone SCORE_HOME layout the operator called trash). Single full-bleed
+  // zone rendering RibbonScoreboardWidget: a live score-follow anchor +
+  // rotating sponsor/message reel that fills any ribbon pixel-chain. Old
+  // id drops from source → archived. SPORTS-tagged in ensure-system-presets.
   {
-    id: 'preset-std-ribbon',
-    name: '🎗️ Standard Ribbon',
-    description: 'Long-and-thin perimeter ribbon: home team + score on the left, clock + period in the middle, away team + score on the right. Click Customize to expand the canvas to your real ribbon pixel width (e.g. 11520×192).',
+    id: 'preset-main-ribbon',
+    name: '🎗️ Main Ribbon',
+    description: 'Perimeter ribbon board — live score-follow anchor (teams, score, clock, period) plus a rotating sponsor / message reel. Bind a game; resize for any panel chain (1920×192 → 11520×192).',
     category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
-    screenWidth: 1920, screenHeight: 192, bgColor: '#000000',
+    screenWidth: 1920, screenHeight: 192, bgColor: '#05070d',
     zones: [
-      // Left anchor: home logo (square) + home team name + home score.
-      { name: 'Home Logo', widgetType: 'SCORE_HOME', x: 1, y: 10, width: 6, height: 80, zIndex: 2, sortOrder: 0,
-        defaultConfig: { showLogo: true, color: '#ffffff', fontWeight: 800, fontSize: 80, align: 'center', placeholder: '' } },
-      { name: 'Home Code', widgetType: 'SCORE_HOME', x: 7, y: 10, width: 10, height: 80, zIndex: 2, sortOrder: 1,
-        defaultConfig: { showName: true, color: '#ffffff', fontWeight: 800, fontSize: 120, align: 'center', placeholder: 'HOME' } },
-      { name: 'Home Score', widgetType: 'SCORE_HOME', x: 17, y: 5, width: 13, height: 90, zIndex: 2, sortOrder: 2,
-        defaultConfig: { color: '#ffffff', fontWeight: 900, fontSize: 180, align: 'center', placeholder: '24' } },
-      // Center: clock + period.
-      { name: 'Clock', widgetType: 'GAME_CLOCK', x: 35, y: 5, width: 30, height: 60, zIndex: 2, sortOrder: 3,
-        defaultConfig: { color: '#fbbf24', fontWeight: 900, fontSize: 130, align: 'center', placeholder: '07:42' } },
-      { name: 'Period', widgetType: 'GAME_SEGMENT', x: 35, y: 65, width: 30, height: 30, zIndex: 2, sortOrder: 4,
-        defaultConfig: { color: '#ffffff', fontWeight: 700, fontSize: 60, align: 'center', placeholder: 'Q3' } },
-      // Right anchor: away score + away team name + away logo.
-      { name: 'Away Score', widgetType: 'SCORE_AWAY', x: 70, y: 5, width: 13, height: 90, zIndex: 2, sortOrder: 5,
-        defaultConfig: { color: '#ffffff', fontWeight: 900, fontSize: 180, align: 'center', placeholder: '21' } },
-      { name: 'Away Code', widgetType: 'SCORE_AWAY', x: 83, y: 10, width: 10, height: 80, zIndex: 2, sortOrder: 6,
-        defaultConfig: { showName: true, color: '#ffffff', fontWeight: 800, fontSize: 120, align: 'center', placeholder: 'AWAY' } },
-      { name: 'Away Logo', widgetType: 'SCORE_AWAY', x: 93, y: 10, width: 6, height: 80, zIndex: 2, sortOrder: 7,
-        defaultConfig: { showLogo: true, color: '#ffffff', fontWeight: 800, fontSize: 80, align: 'center', placeholder: '' } },
+      { name: 'Ribbon', widgetType: 'SCOREBOARD', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0,
+        defaultConfig: { variant: 'ribbon-main' } },
     ],
   },
-  // ── Standard Scorebug — broadcast overlay aspect ratio (typical for
-  // OBS browser-source overlays). 800×120 (≈ 6.7:1) is the classic
-  // ESPN scorebug shape — wide enough to fit two team blocks + a
-  // center clock, short enough to sit in the corner without
-  // occluding gameplay.
+  // ── Main Scorebug (2026-05-19, NEW id — was preset-std-scorebug). Single
+  // full-bleed zone rendering ScorebugWidget: compact transparent broadcast
+  // overlay for OBS / streaming. 760×150 natural; transparent bg so it
+  // composites over a video feed.
   {
-    id: 'preset-std-scorebug',
-    name: '📺 Standard Scorebug',
-    description: 'Compact broadcast overlay for OBS / streaming. Home block + center clock + away block. 800×120 — drop into OBS as a browser source at the same dimensions.',
+    id: 'preset-main-scorebug',
+    name: '📺 Main Scorebug',
+    description: 'Broadcast / streaming overlay — compact team blocks + clock + period + per-sport situational line, transparent background. Drop into OBS as a browser source.',
     category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
-    screenWidth: 800, screenHeight: 120, bgColor: '#0f172a',
+    screenWidth: 800, screenHeight: 160, bgColor: 'transparent',
     zones: [
-      // Left team block — color-coded background via Properties.
-      { name: 'Home Code', widgetType: 'SCORE_HOME', x: 2, y: 10, width: 18, height: 80, zIndex: 2, sortOrder: 0,
-        defaultConfig: { showName: true, color: '#ffffff', fontWeight: 800, fontSize: 36, align: 'center', placeholder: 'HOME' } },
-      { name: 'Home Score', widgetType: 'SCORE_HOME', x: 20, y: 5, width: 16, height: 90, zIndex: 2, sortOrder: 1,
-        defaultConfig: { color: '#ffffff', fontWeight: 900, fontSize: 64, align: 'center', placeholder: '24' } },
-      // Center: clock + period stacked.
-      { name: 'Clock', widgetType: 'GAME_CLOCK', x: 38, y: 10, width: 24, height: 50, zIndex: 2, sortOrder: 2,
-        defaultConfig: { color: '#fbbf24', fontWeight: 900, fontSize: 40, align: 'center', placeholder: '07:42' } },
-      { name: 'Period', widgetType: 'GAME_SEGMENT', x: 38, y: 60, width: 24, height: 30, zIndex: 2, sortOrder: 3,
-        defaultConfig: { color: '#ffffff', fontWeight: 700, fontSize: 22, align: 'center', placeholder: 'Q3' } },
-      // Right team block.
-      { name: 'Away Score', widgetType: 'SCORE_AWAY', x: 64, y: 5, width: 16, height: 90, zIndex: 2, sortOrder: 4,
-        defaultConfig: { color: '#ffffff', fontWeight: 900, fontSize: 64, align: 'center', placeholder: '21' } },
-      { name: 'Away Code', widgetType: 'SCORE_AWAY', x: 80, y: 10, width: 18, height: 80, zIndex: 2, sortOrder: 5,
-        defaultConfig: { showName: true, color: '#ffffff', fontWeight: 800, fontSize: 36, align: 'center', placeholder: 'AWAY' } },
+      { name: 'Scorebug', widgetType: 'SCOREBOARD', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0,
+        defaultConfig: { variant: 'scorebug-main' } },
     ],
   },
   {
