@@ -1307,6 +1307,31 @@ function PlayerPage() {
   const phaseRef = useRef<Phase>('registering');
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
+  // 2026-05-20 — always-on-screen update fix. The bundle-drift watcher
+  // (Phase B4, below) refuses to reload while content is playing so it
+  // never flashes mid-content. But a screen that plays a single URL /
+  // looping item 24/7 is ALWAYS "playing" and never hits an idle window,
+  // so it deferred the reload FOREVER and ran an ancient web bundle
+  // indefinitely (operator's M43 kiosk was stuck on a months-old build —
+  // that's why a stale error overlay bled through a URL page that current
+  // code renders correctly). Two new triggers fix it without flashing
+  // mid-content:
+  //   1. Loop-boundary reload (heartbeat): for a multi-item playlist, do
+  //      the pending reload at the exact moment we wrap from the last
+  //      item back to the first — the content was about to restart from
+  //      item 0 anyway, so picking up the new bundle there is invisible.
+  //   2. Max-staleness cap (watcher): a screen that NEVER wraps (single
+  //      URL / solo item) can't hit a loop boundary, so once the bundle
+  //      has been known-stale longer than this cap we reload anyway —
+  //      a rare ~3s splash blip beats running indefinitely-old code.
+  //      The dashboard "Refresh kiosk page" push stays the instant
+  //      override for an urgent fix.
+  // `bundleDriftSinceRef` = epoch ms when we first saw the server SHA
+  // differ from ours (null = we're in sync). Read by both the watcher
+  // and the playback heartbeat (different effects → must be a ref).
+  const bundleDriftSinceRef = useRef<number | null>(null);
+  const MAX_BUNDLE_STALE_MS = 6 * 60 * 60 * 1000; // 6h
+
   // 2026-05-15 — Web→Native liveness heartbeat. Operator (2026-05-15):
   // "i just saw my player disconnect and then start playing the url
   // content again". The Android shell has a watchdog timer
@@ -2955,7 +2980,11 @@ function PlayerPage() {
         if (!res.ok) return;
         const data = await res.json();
         const serverShaShort = typeof data?.sha === 'string' ? data.sha : null;
-        if (!serverShaShort || serverShaShort === myShaShort) return;
+        if (!serverShaShort) return;
+        if (serverShaShort === myShaShort) { bundleDriftSinceRef.current = null; return; }
+        // Record when we FIRST noticed the drift so the staleness cap +
+        // loop-boundary trigger can reason about how long we've run old code.
+        if (!bundleDriftSinceRef.current) bundleDriftSinceRef.current = Date.now();
         // Mismatch — server has a different deployed SHA than us.
         // Schedule a soft reload in 60-300s. The delay both spreads
         // fleet load and gives the operator a chance to dismiss
@@ -2990,9 +3019,19 @@ function PlayerPage() {
           // timer-fire time, not whatever it was when this useEffect
           // last ran (which was at mount, so phase='registering').
           if (phaseRef.current === 'playing') {
-            console.log('[bundle-drift] content playing — deferring reload until idle');
-            scheduledReloadTimer = null;
-            return;
+            // Never flash mid-content — defer… UNLESS we've been running a
+            // known-stale bundle past the cap. A 24/7 single-item / URL
+            // screen never hits a loop boundary, so without this cap it
+            // would defer forever (the original bug). Past the cap, a rare
+            // ~3s reload is the lesser evil vs. indefinitely-old code.
+            const staleMs = bundleDriftSinceRef.current ? Date.now() - bundleDriftSinceRef.current : 0;
+            if (staleMs < MAX_BUNDLE_STALE_MS) {
+              console.log('[bundle-drift] content playing — deferring (' + Math.round(staleMs / 60000) + 'm stale; loop-boundary or ' + Math.round(MAX_BUNDLE_STALE_MS / 3600000) + 'h cap will catch it)');
+              scheduledReloadTimer = null;
+              return;
+            }
+            console.warn('[bundle-drift] stale ' + Math.round(staleMs / 3600000) + 'h while continuously playing — forcing reload (staleness cap)');
+            // fall through to the reload below
           }
           try {
             const bridge = (window as any).EduCmsNative;
@@ -3627,6 +3666,26 @@ function PlayerPage() {
       const duration = item.durationMs || 10000;
       const elapsed = Date.now() - slideStartedAtRef.current;
       if (elapsed >= duration) {
+        // 2026-05-20 — loop-boundary opportunistic bundle reload. If a
+        // newer web bundle is waiting (bundle-drift watcher set the
+        // marker) and we're finishing the LAST item — about to wrap back
+        // to item 0 — pick the new bundle up RIGHT HERE. The playlist was
+        // going to restart from the top anyway, so the reload is invisible
+        // (no mid-content flash). A 24/7 single-item screen never reaches
+        // this branch; the watcher's staleness cap covers that case.
+        if (
+          idx === sorted.length - 1 &&
+          bundleDriftSinceRef.current &&
+          !readCachedEmergency()
+        ) {
+          console.log('[bundle-drift] loop boundary reached with new bundle pending — reloading at the seam');
+          try {
+            const bridge = (window as any).EduCmsNative;
+            if (bridge && typeof bridge.reload === 'function') bridge.reload();
+            else if (typeof window !== 'undefined') window.location.reload();
+            return;
+          } catch { /* reload threw — fall through to a normal advance */ }
+        }
         setCurrentIndex((prev) => prev + 1);
       }
     }, 500);
