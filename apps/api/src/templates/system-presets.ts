@@ -579,7 +579,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
   // reflows at any custom LED size (960×1080, ultrawide, etc.). The
   // one-piece board is still available below as "Quick Scoreboard".
   {
-    id: 'preset-main-scoreboard',
+    id: 'preset-sb-main',
     name: '🏟️ Main Scoreboard',
     description: 'Fully editable board — every piece (home/away logo + name + score, game clock, period, shot clock, possession, timeouts, status) is its own widget you can drag, resize, restyle, brand and remove. Bind a game; resize for any LED.',
     category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
@@ -605,7 +605,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
   // thing and go — NOT individually editable. Use "Main Scoreboard"
   // above to customize element-by-element.
   {
-    id: 'preset-elements-scoreboard',
+    id: 'preset-sb-quick',
     name: '⚡ Quick Scoreboard (one-piece)',
     description: 'A single ready-made live board — drop it and go. The whole board is one widget (not individually editable). For full customization use Main Scoreboard.',
     category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',

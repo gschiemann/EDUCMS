@@ -66,8 +66,14 @@ SPORTS_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'SPORTS'));
 // vertical to match this map, and a fresh id (preset-main-scoreboard,
 // renamed from preset-std-scoreboard) guarantees a clean single-zone
 // create rather than inheriting the old row's 7 stale zones.
-PRESET_VERTICAL.set('preset-main-scoreboard', 'SPORTS');
-PRESET_VERTICAL.set('preset-elements-scoreboard', 'SPORTS');
+// 2026-05-20 — scoreboard presets re-cut with fresh ids (preset-sb-main
+// = element-based composable board; preset-sb-quick = one-piece monolith)
+// because the boot seed can't rewrite an existing preset's MULTI-zone
+// composition — only a fresh id forces a clean create. The old
+// preset-main-scoreboard / preset-elements-scoreboard drop from source
+// and the seed's archive pass hides them.
+PRESET_VERTICAL.set('preset-sb-main', 'SPORTS');
+PRESET_VERTICAL.set('preset-sb-quick', 'SPORTS');
 PRESET_VERTICAL.set('preset-main-ribbon', 'SPORTS');
 PRESET_VERTICAL.set('preset-main-scorebug', 'SPORTS');
 
