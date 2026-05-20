@@ -37,7 +37,7 @@
  * transform/opacity only, plain CSS opacity transitions.
  */
 
-import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type SyntheticEvent, type CSSProperties } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
@@ -633,6 +633,18 @@ export default function RibbonPage() {
     );
   }
 
+  // 2026-05-20 — operator's "drop in a ribbon-sized file" path. When the
+  // operator has uploaded ribbon media (images / videos already cut to
+  // the ribbon height), render it FULL-HEIGHT and scrolling at native
+  // pixels — never squished into a tiny look-zone — with the score
+  // pinned ONCE (their hardware repeater replicates the frame along the
+  // physical run, so software never multiplies the anchor). This is the
+  // simple "everything scrolls, only the score is pinned" model the
+  // operator asked for; it bypasses the rotating-"looks" model below.
+  if (def && (data.ribbonSlides || []).filter(Boolean).length > 0) {
+    return <RibbonMediaScroll data={data} def={def} vp={vp} clockMs={clockMs} />;
+  }
+
   // ── score-anchor recurrence ──────────────────────────────────
   // On a continuous full-bowl wrap the ribbon is one very long strip;
   // a single scorebug at one end is unreadable from the bowl's far
@@ -721,6 +733,143 @@ export default function RibbonPage() {
       {activeCue && (
         <RibbonCueOverlay cue={activeCue} h={vp.h} segCount={segCount} segWf={segWf} />
       )}
+    </div>
+  );
+}
+
+// ── ribbon media scroll ────────────────────────────────────────
+// The operator's "give you a file and it just scrolls" path.
+
+/** Is this ribbon-media URL a video (vs an image)? Extension sniff. */
+function isRibbonVideo(u: string): boolean {
+  return /\.(mp4|webm|mov|m4v|ogv|ogg)(\?|#|$)/i.test(u || '');
+}
+
+/**
+ * Full-height scrolling ribbon media. The operator uploads media already
+ * cut to the ribbon HEIGHT (e.g. 1280×256 for a 1000mm / 3.9mm-pitch
+ * ribbon) and it renders at NATIVE height — filling the ribbon
+ * vertically — looped across the width and scrolling. NEVER squished to
+ * fit one tiny zone (the bug in the rotating-"looks" model). The score
+ * stays pinned in ONE anchor; the operator's hardware repeater
+ * replicates the rendered frame along the physical run, so software
+ * never multiplies the score.
+ *
+ * A SINGLE video is special-cased: it's already a scroll clip, so we
+ * play it full-height + tiled to fill WITHOUT a marquee — stacking a
+ * marquee on a baked-in scroll would double the motion. Images, or
+ * multiple items, ride the seamless marquee so "everything scrolls."
+ *
+ * Chromium-83 / NovaStar-Taurus safe: long-hand sides (no `inset`),
+ * transform-only animation, no flex `gap`.
+ */
+function RibbonMediaScroll({
+  data,
+  def,
+  vp,
+  clockMs,
+}: {
+  data: BoardData;
+  def: SportDefinition;
+  vp: { w: number; h: number };
+  clockMs: number;
+}) {
+  const slides = (data.ribbonSlides || []).filter(Boolean);
+  // Media fills the FULL width and scrolls BEHIND a pinned score badge —
+  // "everything scrolls, only the score is pinned" (the operator's
+  // original, better model). The badge sits over the left of the run;
+  // the hardware repeater replicates this whole frame so the score
+  // recurs along the physical ribbon without software multiplying it.
+  const scoreZoneW = Math.round(Math.max(360, Math.min(vp.w * 0.34, vp.h * 4.4)));
+  const speedMult = ribbonSpeedMultiplier(data.ribbonSpeed) || 1;
+  const singleVideo = slides.length === 1 && isRibbonVideo(slides[0]);
+
+  // Each item: full ribbon height, native aspect width (no squish).
+  const mediaStyle: CSSProperties = {
+    height: '100%',
+    width: 'auto',
+    display: 'block',
+    flexShrink: 0,
+  };
+  const renderMedia = (url: string, key: string) =>
+    isRibbonVideo(url) ? (
+      <video key={key} src={url} autoPlay loop muted playsInline style={mediaStyle} />
+    ) : (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img key={key} src={url} alt="" style={mediaStyle} />
+    );
+
+  // Seamless marquee: lay the sequence TWICE, translateX 0 → -50% lands
+  // exactly on the start of the duplicate regardless of intrinsic media
+  // widths, so the loop never jumps. Duration scaled by item count and
+  // the operator's speed (faster multiplier → shorter duration).
+  const marqueeSecs = Math.max(6, (slides.length * 16) / speedMult);
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        background: '#05070d',
+        overflow: 'hidden',
+        fontFamily: 'Inter, system-ui, sans-serif',
+      }}
+    >
+      <style>{`@keyframes rbnMediaMarquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}`}</style>
+
+      {/* full-width media lane — scrolls across the WHOLE ribbon */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: vp.w,
+          overflow: 'hidden',
+        }}
+      >
+        {singleVideo ? (
+          // already-animated clip → tile copies to cover the zone at
+          // native height, no marquee (the clip IS the motion).
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: 0,
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            {Array.from({ length: 4 }, (_, i) => renderMedia(slides[0], `v${i}`))}
+          </div>
+        ) : (
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: 0,
+              width: 'max-content',
+              display: 'flex',
+              alignItems: 'center',
+              animation: `rbnMediaMarquee ${marqueeSecs.toFixed(1)}s linear infinite`,
+            }}
+          >
+            {slides.map((u, i) => renderMedia(u, `a${i}`))}
+            {slides.map((u, i) => renderMedia(u, `b${i}`))}
+          </div>
+        )}
+      </div>
+
+      {/* pinned score badge — overlays the left of the run on TOP of the
+          scrolling media; never scrolls, digits update in place. Its
+          solid background occludes the media behind it so it stays
+          readable over a busy scroll. */}
+      <ScoreZone data={data} def={def} left={0} w={scoreZoneW} h={vp.h} clockMs={clockMs} />
     </div>
   );
 }

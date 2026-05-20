@@ -57,21 +57,26 @@ export function RibbonImagesPanel({ gameId }: { gameId: string }) {
   return (
     <div>
       <p className="mb-2.5 text-xs text-slate-400">
-        Full-bleed images that fill the whole ribbon as they scroll — sponsor banners,
-        promos, welcome art. Upload wide, ribbon-shaped art for the best fit.
+        Full-bleed images or videos that fill the ribbon at native height and scroll —
+        sponsor banners, promos, scroll clips. Cut them to the ribbon HEIGHT (e.g. 256px
+        tall for a 1000mm / 3.9mm ribbon); any width is fine — they loop to fill the run.
       </p>
 
       {slides.length === 0 ? (
         <p className="rounded-lg border border-dashed border-slate-300 py-4 text-center text-sm text-slate-400">
-          No ribbon images yet — add a sponsor banner or a promo graphic.
+          No ribbon media yet — add a sponsor banner, promo graphic, or scroll video.
         </p>
       ) : (
         <div className="space-y-2">
           {slides.map((url, i) => (
             <div key={`${url}-${i}`} className="flex items-center gap-2">
               <div className="h-14 flex-1 overflow-hidden rounded-md bg-slate-900">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt="" className="h-full w-full object-contain" />
+                {/\.(mp4|webm|mov|m4v|ogv|ogg)(\?|#|$)/i.test(url) ? (
+                  <video src={url} muted playsInline className="h-full w-full object-contain" />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={url} alt="" className="h-full w-full object-contain" />
+                )}
               </div>
               <button
                 type="button"
@@ -94,7 +99,7 @@ export function RibbonImagesPanel({ gameId }: { gameId: string }) {
           onClick={() => setPickerOpen(true)}
           disabled={slides.length >= MAX_SLIDES}
         >
-          <Plus className="h-3.5 w-3.5" /> Add image
+          <Plus className="h-3.5 w-3.5" /> Add media
         </Button>
         <span className="flex items-center gap-1 text-xs text-slate-400">
           {saving ? (
@@ -111,8 +116,8 @@ export function RibbonImagesPanel({ gameId }: { gameId: string }) {
 
       {pickerOpen && (
         <AssetPicker
-          kind="image"
-          title="Choose a ribbon image"
+          kind="all"
+          title="Choose ribbon media — image or video"
           onPick={addSlide}
           onClose={() => setPickerOpen(false)}
         />
