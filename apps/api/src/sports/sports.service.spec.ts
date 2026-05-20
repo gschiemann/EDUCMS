@@ -674,3 +674,67 @@ describe('SportsService — cue deck', () => {
     expect(await service.listCues(TENANT)).toHaveLength(0);
   });
 });
+
+describe('SportsService — duplicateGame', () => {
+  it('clones presentation into a fresh SCHEDULED game and resets live state', async () => {
+    const { service, game, rosterPlayer } = setup();
+    const src: any = await service.createGame(TENANT, {
+      sport: 'football',
+      homeTeam: 'Eagles',
+      awayTeam: 'Tigers',
+      homeColor: '#1d4ed8',
+      awayColor: '#dc2626',
+    });
+    // Custom surfaces + ribbon content on the source.
+    await service.updateGameDetails(TENANT, src.id, {
+      scoreboardTemplateId: 'tmpl-board',
+      ribbonTemplateId: 'tmpl-ribbon',
+    });
+    await service.setRibbonSlides(TENANT, src.id, {
+      slides: ['https://x/banner1.png', 'https://x/banner2.png'],
+    });
+    rosterPlayer.rows.push(
+      { id: 'p1', tenantId: TENANT, gameId: src.id, team: 'home', name: 'QB1', number: '7', position: 'QB', photoUrl: null, stats: {}, sortOrder: 0 },
+      { id: 'p2', tenantId: TENANT, gameId: src.id, team: 'away', name: 'RB2', number: '22', position: 'RB', photoUrl: null, stats: {}, sortOrder: 1 },
+    );
+    // Source is live + pushing to a screen group.
+    const srcRow: any = game.rows.find((r: any) => r.id === src.id);
+    srcRow.homeScore = 21;
+    srcRow.awayScore = 14;
+    srcRow.status = 'LIVE';
+    srcRow.segment = 3;
+    srcRow.screenGroupId = 'grp-1';
+
+    const copy: any = await service.duplicateGame(TENANT, src.id);
+
+    // Fresh game, clean live state.
+    expect(copy.id).not.toBe(src.id);
+    expect(copy.status).toBe('SCHEDULED');
+    expect(copy.homeScore).toBe(0);
+    expect(copy.awayScore).toBe(0);
+    expect(copy.segment).toBe(1);
+    expect(copy.screenGroupId).toBeNull(); // never inherit the live binding
+    // Presentation copied.
+    expect(copy.homeTeam).toBe('Eagles');
+    expect(copy.awayTeam).toBe('Tigers');
+    expect(copy.homeColor).toBe('#1d4ed8');
+    expect(copy.scoreboardTemplateId).toBe('tmpl-board');
+    expect(copy.ribbonTemplateId).toBe('tmpl-ribbon');
+    // Ribbon slides replayed onto the copy.
+    const copyView: any = await service.getGame(TENANT, copy.id);
+    expect(copyView.ribbonSlides).toEqual(['https://x/banner1.png', 'https://x/banner2.png']);
+    // Roster cloned (both teams).
+    const roster = await service.listRoster(TENANT, copy.id);
+    expect(roster).toHaveLength(2);
+    // Source untouched.
+    const srcView: any = await service.getGame(TENANT, src.id);
+    expect(srcView.homeScore).toBe(21);
+    expect(srcView.status).toBe('LIVE');
+  });
+
+  it('is tenant-scoped — refuses to duplicate another tenant\'s game', async () => {
+    const { service } = setup();
+    const src: any = await service.createGame(TENANT, { sport: 'football', homeTeam: 'A', awayTeam: 'B' });
+    await expect(service.duplicateGame('other-tenant', src.id)).rejects.toThrow(NotFoundException);
+  });
+});

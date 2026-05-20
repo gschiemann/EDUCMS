@@ -404,6 +404,116 @@ export class SportsService {
   }
 
   /**
+   * Duplicate a game — clone its full PRESENTATION setup into a fresh
+   * SCHEDULED game. Operator (2026-05-20): "if I have 5 games this week
+   * I can build out all the content ahead of time." Per-game pre-build
+   * already works on any SCHEDULED game; this is the "build once, reuse"
+   * shortcut so a whole week of games starts from a finished template
+   * instead of being assembled five times.
+   *
+   * Copies (the reusable presentation):
+   *   - identity: sport, team names, colors, logos
+   *   - the three surface template assignments (scoreboard / ribbon /
+   *     scorebug)
+   *   - ribbon config: messages, presets, speed, slides, score-repeat —
+   *     replayed as fresh GameEvents on the new game (that's where the
+   *     ribbon state lives; latest-event-wins)
+   *   - roster (home + away players) so the lineup is a starting point
+   *
+   * Resets (never inherit live state): score, clock, segment, status
+   * (always a clean SCHEDULED game), the broadcast spotlight (live
+   * content, not setup), and the screen-group binding (a duplicate must
+   * never silently start pushing to the source's live screens).
+   *
+   * Sponsors + custom cues are already tenant-level and reusable, so
+   * they carry over for free with no copy. Tenant-scoped; additive — no
+   * schema change.
+   */
+  async duplicateGame(tenantId: string, id: string) {
+    const src = await this.owned(tenantId, id);
+    const def = this.sportOf(src.sport);
+
+    // Latest-wins ribbon config rows on the source (any may be absent).
+    const ribbonTypes = [
+      'RIBBON',
+      'RIBBON_PRESETS',
+      'RIBBON_SPEED',
+      'RIBBON_SLIDES',
+      'RIBBON_SCORE',
+    ];
+    const ribbonEvents = await Promise.all(
+      ribbonTypes.map((type) =>
+        this.prisma.client.gameEvent.findFirst({
+          where: { gameId: id, type },
+          orderBy: { createdAt: 'desc' },
+        }),
+      ),
+    );
+
+    // Seed timeouts fresh from the sport (mirrors createGame) so the
+    // copy opens with full timeout pips, not the source's depleted count.
+    const initialStats: Record<string, number> = {};
+    for (const key of ['homeTimeouts', 'awayTimeouts']) {
+      const field = def.stats.find((s) => s.key === key);
+      if (field && typeof field.max === 'number') initialStats[key] = field.max;
+    }
+
+    const copy = await this.prisma.client.game.create({
+      data: {
+        tenantId,
+        sport: src.sport,
+        homeTeam: src.homeTeam,
+        awayTeam: src.awayTeam,
+        homeColor: src.homeColor,
+        awayColor: src.awayColor,
+        homeLogoUrl: src.homeLogoUrl,
+        awayLogoUrl: src.awayLogoUrl,
+        screenGroupId: null, // never inherit the source's live screen binding
+        status: 'SCHEDULED',
+        segment: 1,
+        clockMs: this.segmentStartMs(def),
+        clockRunning: false,
+        clockUpdatedAt: new Date(),
+        stats: initialStats,
+        scoreboardTemplateId: src.scoreboardTemplateId,
+        ribbonTemplateId: src.ribbonTemplateId,
+        scorebugTemplateId: src.scorebugTemplateId,
+      },
+    });
+
+    // Replay the ribbon config onto the copy (only events that exist).
+    for (const ev of ribbonEvents) {
+      if (ev) {
+        await this.record(copy.id, ev.type, ev.payload as Record<string, unknown>);
+      }
+    }
+
+    // Clone the roster (home + away). Players are per-game; copying
+    // gives the operator the lineup to tweak rather than re-enter it.
+    const roster = await this.prisma.client.rosterPlayer.findMany({
+      where: { gameId: id },
+      orderBy: { sortOrder: 'asc' },
+    });
+    if (roster.length > 0) {
+      await this.prisma.client.rosterPlayer.createMany({
+        data: roster.map((p) => ({
+          tenantId,
+          gameId: copy.id,
+          team: p.team,
+          name: p.name,
+          number: p.number,
+          position: p.position,
+          photoUrl: p.photoUrl,
+          stats: p.stats as any,
+          sortOrder: p.sortOrder,
+        })),
+      });
+    }
+
+    return copy;
+  }
+
+  /**
    * Edit a game's identity — team names, colors, logos. Lets an
    * operator fix a typo or drop in a brand logo without recreating
    * the game (and losing the score/clock). Tenant-scoped.

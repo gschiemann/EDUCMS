@@ -147,6 +147,22 @@ export class SportsController {
     return this.sports.deleteGame(req.user.tenantId, id);
   }
 
+  /**
+   * Clone a game's full presentation setup into a fresh SCHEDULED game
+   * — "build one game's content, run a week of games off it." Same
+   * roles as create (it creates a game).
+   */
+  @Post('games/:id/duplicate')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  duplicateGame(@Request() req: any, @Param('id') id: string) {
+    return this.sports.duplicateGame(req.user.tenantId, id);
+  }
+
   // ── live game control (operators + admins) ────────────────────
 
   @Patch('games/:id/score')

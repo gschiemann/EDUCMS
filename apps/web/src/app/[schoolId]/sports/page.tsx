@@ -11,13 +11,13 @@
 import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  Trophy, Plus, Radio, ExternalLink, Trash2, X, BadgeDollarSign,
+  Trophy, Plus, Radio, ExternalLink, Trash2, X, BadgeDollarSign, Copy,
   Loader2, ImageIcon, Globe,
 } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useGames, useCreateGame, useDeleteGame, useScrapeBranding, useTemplates } from '@/hooks/use-api';
+import { useGames, useCreateGame, useDeleteGame, useDuplicateGame, useScrapeBranding, useTemplates } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { SPORTS, findSport } from '@cms/api-types';
 import { AssetPicker } from '@/components/assets/AssetPicker';
@@ -53,7 +53,9 @@ function SportsHub() {
   const schoolId = String(params?.schoolId || '');
   const { data: games, isLoading } = useGames();
   const deleteGame = useDeleteGame();
+  const duplicateGame = useDuplicateGame();
   const [creating, setCreating] = useState(false);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
   const list: any[] = Array.isArray(games) ? games : [];
 
@@ -65,6 +67,22 @@ function SportsHub() {
       confirmLabel: 'Delete',
     });
     if (ok) deleteGame.mutate(id);
+  };
+
+  // Clone a finished game's whole presentation setup into a fresh
+  // SCHEDULED game and drop the operator straight into its console to
+  // rename the teams / date. The "build one, run a week off it" path.
+  const handleDuplicate = async (id: string) => {
+    if (duplicatingId) return;
+    setDuplicatingId(id);
+    try {
+      const copy: any = await duplicateGame.mutateAsync(id);
+      if (copy?.id) router.push(`/${schoolId}/sports/${copy.id}`);
+    } catch {
+      /* mutation surfaces its own error; just clear the spinner */
+    } finally {
+      setDuplicatingId(null);
+    }
   };
 
   return (
@@ -167,6 +185,16 @@ function SportsHub() {
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                     Scoreboard
+                  </Button>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    disabled={duplicatingId === g.id}
+                    onClick={() => handleDuplicate(g.id)}
+                    aria-label="Duplicate game (clone its content into a new game)"
+                    title="Duplicate — clone this game's content into a fresh game"
+                  >
+                    <Copy className={`h-4 w-4 text-slate-400 ${duplicatingId === g.id ? 'animate-pulse' : ''}`} />
                   </Button>
                   <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
                     <Button

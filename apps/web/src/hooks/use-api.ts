@@ -2116,6 +2116,22 @@ export function useDeleteGame() {
 }
 
 /**
+ * Clone a game's full presentation setup (teams, colors, logos, the
+ * three surface templates, the ribbon config, and the roster) into a
+ * fresh SCHEDULED game. Lets an operator build one game's content and
+ * run a whole week of games off it. Returns the new game so the caller
+ * can jump straight into its console.
+ */
+export function useDuplicateGame() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/sports/games/${id}/duplicate`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-games'] }),
+  });
+}
+
+/**
  * One hook for every live-control action on a game. Each call PATCHes
  * (or POSTs, for a cue) the matching endpoint and writes the updated
  * game straight into the React Query cache so the operator console
