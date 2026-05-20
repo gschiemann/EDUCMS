@@ -84,9 +84,17 @@ export function useSubClock(anchor: { ms?: number; at?: string; running?: boolea
 }
 
 export function teamOf(snap: GameSnapshot | null | undefined, team: 'home' | 'away') {
+  // Builder/thumbnail (no live snapshot) → sample names so logo
+  // initials + team-name elements read "EAGLES" / "TIGERS" instead of
+  // blank "?".
+  if (!snap) {
+    return team === 'away'
+      ? { name: 'TIGERS', color: '#dc2626', logo: null as string | null }
+      : { name: 'EAGLES', color: '#4f46e5', logo: null as string | null };
+  }
   return team === 'away'
-    ? { name: snap?.awayTeam, color: snap?.awayColor, logo: snap?.awayLogoUrl }
-    : { name: snap?.homeTeam, color: snap?.homeColor, logo: snap?.homeLogoUrl };
+    ? { name: snap.awayTeam, color: snap.awayColor, logo: snap.awayLogoUrl }
+    : { name: snap.homeTeam, color: snap.homeColor, logo: snap.homeLogoUrl };
 }
 
 // ── Team name ────────────────────────────────────────────────────────
