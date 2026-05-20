@@ -111,6 +111,17 @@ export interface SportDefinition {
     label: string;
     presets: { label: string; sec: number }[];
   };
+  /** Sports with a possession/shot clock that runs alongside the game
+   *  clock — basketball (24/14), water polo (30/20), lacrosse (80/60),
+   *  etc. `full` = reset-to-full seconds; `short` = the short reset
+   *  (offensive rebound / change of possession). `options` are the
+   *  lengths the setup picker offers (0 = off). Omitted for sports with
+   *  no shot clock — the console then hides the shot-clock controls. */
+  shotClock?: {
+    full: number;
+    short: number;
+    options: number[];
+  };
 }
 
 export type GameStatus = 'SCHEDULED' | 'PRE_GAME' | 'LIVE' | 'HALFTIME' | 'FINAL';
@@ -149,6 +160,9 @@ const BASKETBALL: SportDefinition = {
   clock: { type: 'countdown', segmentMs: 8 * 60_000 },
   segment: { name: 'Quarter', count: 4, overtime: true },
   score: { unit: 'points', increments: [1, 2, 3] },
+  // 24s pro / 30s college; 14s offensive-rebound short reset. HS varies
+  // (35s where adopted, or off).
+  shotClock: { full: 24, short: 14, options: [0, 24, 30, 35] },
   stats: [
     { key: 'homeFouls', label: 'Home Fouls', scope: 'home', type: 'number', min: 0, max: 30 },
     { key: 'awayFouls', label: 'Away Fouls', scope: 'away', type: 'number', min: 0, max: 30 },
@@ -328,6 +342,9 @@ const LACROSSE: SportDefinition = {
   clock: { type: 'countdown', segmentMs: 12 * 60_000 },
   segment: { name: 'Quarter', count: 4, overtime: true },
   score: { unit: 'goals', increments: [1] },
+  // 80s NCAA men's shot clock; 60s short reset on a re-start in the
+  // offensive half.
+  shotClock: { full: 80, short: 60, options: [0, 60, 80] },
   stats: [
     { key: 'homeShots', label: 'Home Shots', scope: 'home', type: 'number', min: 0, max: 99 },
     { key: 'awayShots', label: 'Away Shots', scope: 'away', type: 'number', min: 0, max: 99 },
@@ -386,14 +403,24 @@ const WATER_POLO: SportDefinition = {
   name: 'Water Polo',
   emoji: '🤽',
   mode: 'HEAD_TO_HEAD',
-  clock: { type: 'countdown', segmentMs: 7 * 60_000 },
+  // NFHS / NCAA / FINA regulation quarters are 8:00 (was 7:00).
+  clock: { type: 'countdown', segmentMs: 8 * 60_000 },
   segment: { name: 'Quarter', count: 4, overtime: true },
   score: { unit: 'goals', increments: [1] },
+  // 30s shot clock, resets to 20 on offensive rebound / corner /
+  // post-exclusion retained possession. THE must-have for the water
+  // polo beta tester — the console now shows the shot-clock controls
+  // because this field is set.
+  shotClock: { full: 30, short: 20, options: [0, 20, 30] },
   stats: [
     { key: 'homeShots', label: 'Home Shots', scope: 'home', type: 'number', min: 0, max: 99 },
     { key: 'awayShots', label: 'Away Shots', scope: 'away', type: 'number', min: 0, max: 99 },
     { key: 'homeExclusions', label: 'Home Exclusions', scope: 'home', type: 'number', min: 0, max: 30 },
     { key: 'awayExclusions', label: 'Away Exclusions', scope: 'away', type: 'number', min: 0, max: 30 },
+    // Timeouts-left per team (T.O.L. on a regulation board). Picked up
+    // automatically by the universal Timeouts widget + console stat tray.
+    { key: 'homeTimeouts', label: 'Home Timeouts', scope: 'home', type: 'number', min: 0, max: 3 },
+    { key: 'awayTimeouts', label: 'Away Timeouts', scope: 'away', type: 'number', min: 0, max: 3 },
   ],
   celebrations: [
     { key: 'goal', label: 'GOAL!', emoji: '🤽' },

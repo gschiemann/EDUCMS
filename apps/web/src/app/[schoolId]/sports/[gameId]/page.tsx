@@ -366,9 +366,9 @@ function GameControl() {
               <SponsorPanel />
             </Section>
 
-            {def.key === 'basketball' && (
+            {def.shotClock && (
               <Section title="Shot clock">
-                <ShotClockSetup gameId={gameId} current={(g.stats || {}) as Record<string, unknown>} />
+                <ShotClockSetup gameId={gameId} current={(g.stats || {}) as Record<string, unknown>} config={def.shotClock} />
               </Section>
             )}
 
@@ -683,10 +683,12 @@ function RunMode({
           </div>
         )}
 
-        {/* basketball shot clock — a second countdown */}
-        {def.key === 'basketball' && (
+        {/* shot clock — any sport with a possession clock (basketball,
+            water polo, lacrosse). A second countdown beside the game clock. */}
+        {def.shotClock && (
           <ShotClockBtn
             stats={stats}
+            shortReset={def.shotClock.short}
             onAction={(a, v) => ctl.shotClock.mutate({ action: a, value: v })}
           />
         )}
@@ -1459,9 +1461,11 @@ function BaseTrayBall({
 function ShotClockBtn({
   stats,
   onAction,
+  shortReset,
 }: {
   stats: Record<string, unknown>;
   onAction: (action: string, value?: number) => void;
+  shortReset?: number;
 }) {
   const sc =
     stats && typeof stats.shotClock === 'object' && stats.shotClock
@@ -1488,7 +1492,9 @@ function ShotClockBtn({
   }, [anchorMs, anchorAt, running]);
   if (len <= 0) return null;
 
-  const short = len === 24 ? 14 : len === 30 ? 20 : len;
+  // Short reset comes from the sport's shotClock.short when provided
+  // (water polo 20, lacrosse 60); otherwise derive from the length.
+  const short = shortReset && shortReset < len ? shortReset : len === 24 ? 14 : len === 30 ? 20 : len;
   const secs = ms <= 5000 ? (ms / 1000).toFixed(1) : String(Math.ceil(ms / 1000));
   return (
     <div className="flex items-stretch gap-1.5 shrink-0">
@@ -1613,9 +1619,11 @@ function PlayClockBtn({
 function ShotClockSetup({
   gameId,
   current,
+  config,
 }: {
   gameId: string;
   current: Record<string, unknown>;
+  config?: { full: number; short: number; options: number[] };
 }) {
   const ctl = useGameControl(gameId);
   const sc =
@@ -1623,12 +1631,20 @@ function ShotClockSetup({
       ? (current.shotClock as Record<string, unknown>)
       : {};
   const len = Number(sc.len) || 0;
-  const OPTS: { v: number; label: string; hint: string }[] = [
-    { v: 0, label: 'Off', hint: 'No shot clock — many high-school states.' },
-    { v: 24, label: '24s', hint: 'Pro — NBA / WNBA / FIBA.' },
-    { v: 30, label: '30s', hint: 'College — NCAA men’s & women’s.' },
-    { v: 35, label: '35s', hint: 'High school — where the state has adopted it.' },
-  ];
+  const HINTS: Record<number, string> = {
+    0: 'No shot clock.',
+    14: '14s — offensive-rebound short reset.',
+    20: '20s — water polo short reset (rebound / corner).',
+    24: '24s — pro basketball (NBA / WNBA / FIBA).',
+    30: '30s — college basketball / water polo full reset.',
+    35: '35s — high-school basketball where adopted.',
+    60: '60s — lacrosse re-start in the offensive half.',
+    80: '80s — NCAA men’s lacrosse full reset.',
+  };
+  // Options come from the sport definition; fall back to the classic
+  // basketball set so an undefined config never empties the picker.
+  const opts = config?.options ?? [0, 24, 30, 35];
+  const OPTS = opts.map((v) => ({ v, label: v === 0 ? 'Off' : `${v}s`, hint: HINTS[v] ?? `${v}s shot clock.` }));
   return (
     <div>
       <p className="text-xs text-slate-400 mb-2">
