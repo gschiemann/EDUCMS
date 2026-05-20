@@ -1895,7 +1895,11 @@ function VideoWidget({ config, live }: { config: any; live?: boolean }) {
           ref={videoRef}
           src={resolveUrl(config.assetUrl)}
           className="w-full h-full"
-          style={{ objectFit: config.fitMode || 'contain' }}
+          // Default to fill-the-zone (operator: "drop a video in and it
+          // should go full screen"). 'contain' (letterbox) is opt-in via
+          // the Fit control. A full-canvas VIDEO widget now fills the
+          // screen edge-to-edge regardless of the clip's aspect.
+          style={{ objectFit: config.fitMode || 'cover' }}
           autoPlay={shouldAutoplay}
           muted={shouldMute}
           loop={shouldLoop}
