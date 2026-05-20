@@ -76,6 +76,10 @@ PRESET_VERTICAL.set('preset-sb-main', 'SPORTS');
 PRESET_VERTICAL.set('preset-sb-quick', 'SPORTS');
 PRESET_VERTICAL.set('preset-main-ribbon', 'SPORTS');
 PRESET_VERTICAL.set('preset-main-scorebug', 'SPORTS');
+// Three genuinely-different tiers (distinct layouts, not palette swaps).
+PRESET_VERTICAL.set('preset-sb-hs', 'SPORTS');
+PRESET_VERTICAL.set('preset-sb-college', 'SPORTS');
+PRESET_VERTICAL.set('preset-sb-pro', 'SPORTS');
 
 // 2026-05-16 — the 70-template industry signage pack (preset-sig-*)
 // lives INSIDE SYSTEM_TEMPLATE_PRESETS so it shares the seeder, which

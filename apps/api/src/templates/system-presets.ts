@@ -646,6 +646,90 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         defaultConfig: { variant: 'scorebug-main' } },
     ],
   },
+  // ════════════════════════════════════════════════════════════════
+  // 2026-05-20 — THREE genuinely-different scoreboard tiers (HS /
+  // College / Pro). Operator: "the highschool college and pro
+  // templates you have for scoreboard are identical." These are NOT
+  // palette swaps — each is a distinct LAYOUT + typography + treatment
+  // (designed by the design agent, positions measured from the live
+  // mockups), and each is ELEMENT-BASED so every piece is individually
+  // editable / draggable / brandable. Fonts fall back gracefully if not
+  // loaded. SPORTS-tagged in ensure-system-presets.
+  // ════════════════════════════════════════════════════════════════
+  // HIGH SCHOOL — Friday-night gym. Big team blocks, chunky rounded
+  // type, amber clock, high contrast.
+  {
+    id: 'preset-sb-hs',
+    name: '🏀 Scoreboard · High School',
+    description: 'Friday-night gym board — big team color blocks, chunky rounded type, bright amber clock. Every element editable. Bind a game; resize for any LED.',
+    category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#0a1628',
+    zones: [
+      { name: 'Home Logo', widgetType: 'SCOREBOARD', x: 10, y: 9, width: 12, height: 21, zIndex: 2, sortOrder: 0, defaultConfig: { variant: 'sb-team-logo-home', team: 'home' } },
+      { name: 'Home Name', widgetType: 'SCOREBOARD', x: 0, y: 33, width: 32, height: 8, zIndex: 2, sortOrder: 1, defaultConfig: { variant: 'sb-team-name-home', team: 'home', fontFamily: "'Baloo 2', sans-serif", fontWeight: 800, fontSize: 60 } },
+      { name: 'Home Score', widgetType: 'SCORE_HOME', x: 0, y: 50, width: 32, height: 36, zIndex: 2, sortOrder: 2, defaultConfig: { variant: 'score-home', color: '#ffffff', fontWeight: 900, fontSize: 420, fontFamily: "'Baloo 2', sans-serif", align: 'center' } },
+      { name: 'Away Logo', widgetType: 'SCOREBOARD', x: 78, y: 9, width: 12, height: 21, zIndex: 2, sortOrder: 3, defaultConfig: { variant: 'sb-team-logo-away', team: 'away' } },
+      { name: 'Away Name', widgetType: 'SCOREBOARD', x: 68, y: 33, width: 32, height: 8, zIndex: 2, sortOrder: 4, defaultConfig: { variant: 'sb-team-name-away', team: 'away', fontFamily: "'Baloo 2', sans-serif", fontWeight: 800, fontSize: 60 } },
+      { name: 'Away Score', widgetType: 'SCORE_AWAY', x: 68, y: 50, width: 32, height: 36, zIndex: 2, sortOrder: 5, defaultConfig: { variant: 'score-away', color: '#ffffff', fontWeight: 900, fontSize: 420, fontFamily: "'Baloo 2', sans-serif", align: 'center' } },
+      { name: 'Period', widgetType: 'GAME_SEGMENT', x: 40, y: 17, width: 20, height: 9, zIndex: 2, sortOrder: 6, defaultConfig: { variant: 'game-segment', color: '#fde68a', fontWeight: 800, fontSize: 70, fontFamily: "'Baloo 2', sans-serif", align: 'center' } },
+      { name: 'Clock', widgetType: 'GAME_CLOCK', x: 35, y: 29, width: 29, height: 27, zIndex: 2, sortOrder: 7, defaultConfig: { variant: 'game-clock', color: '#fbbf24', fontWeight: 900, fontSize: 200, fontFamily: "'Baloo 2', sans-serif", align: 'center' } },
+      { name: 'Shot Clock', widgetType: 'SCOREBOARD', x: 56, y: 27, width: 10, height: 16, zIndex: 2, sortOrder: 8, defaultConfig: { variant: 'sb-shot-clock', color: '#ef4444', fontSize: 90 } },
+      { name: 'Possession', widgetType: 'SCOREBOARD', x: 35, y: 60, width: 29, height: 8, zIndex: 2, sortOrder: 9, defaultConfig: { variant: 'sb-possession-arrow', accentColor: '#fbbf24', fontSize: 44 } },
+      { name: 'Home Timeouts', widgetType: 'SCOREBOARD', x: 4, y: 88, width: 18, height: 7, zIndex: 2, sortOrder: 10, defaultConfig: { variant: 'sb-timeouts-home', team: 'home', fontSize: 40 } },
+      { name: 'Away Timeouts', widgetType: 'SCOREBOARD', x: 78, y: 88, width: 18, height: 7, zIndex: 2, sortOrder: 11, defaultConfig: { variant: 'sb-timeouts-away', team: 'away', fontSize: 40 } },
+    ],
+  },
+  // COLLEGE — ESPN broadcast. Centered clock-tower, condensed type,
+  // possession arrows, full-width bottom stat strip.
+  {
+    id: 'preset-sb-college',
+    name: '🎓 Scoreboard · College',
+    description: 'Broadcast-style — centered clock tower, condensed type, possession arrows, bottom stat strip. Every element editable. Bind a game; resize for any LED.',
+    category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#11151c',
+    zones: [
+      { name: 'Status', widgetType: 'SCOREBOARD', x: 34, y: 7, width: 32, height: 6, zIndex: 3, sortOrder: 0, defaultConfig: { variant: 'sb-status', fontSize: 26 } },
+      { name: 'Clock', widgetType: 'GAME_CLOCK', x: 34, y: 14, width: 32, height: 20, zIndex: 2, sortOrder: 1, defaultConfig: { variant: 'game-clock', color: '#f8fafc', fontWeight: 700, fontSize: 200, fontFamily: "'Saira', 'Oswald', sans-serif", align: 'center' } },
+      { name: 'Quarter', widgetType: 'GAME_SEGMENT', x: 34, y: 35, width: 32, height: 6, zIndex: 2, sortOrder: 2, defaultConfig: { variant: 'game-segment', color: '#94a3b8', fontWeight: 600, fontSize: 48, fontFamily: "'Saira', 'Oswald', sans-serif", align: 'center' } },
+      { name: 'Shot Clock', widgetType: 'SCOREBOARD', x: 45, y: 43, width: 10, height: 12, zIndex: 2, sortOrder: 3, defaultConfig: { variant: 'sb-shot-clock', fontSize: 80 } },
+      { name: 'Home Logo', widgetType: 'SCOREBOARD', x: 5, y: 14, width: 8, height: 14, zIndex: 2, sortOrder: 4, defaultConfig: { variant: 'sb-team-logo-home', team: 'home' } },
+      { name: 'Home Name', widgetType: 'SCOREBOARD', x: 14, y: 16, width: 19, height: 7, zIndex: 2, sortOrder: 5, defaultConfig: { variant: 'sb-team-name-home', team: 'home', fontFamily: "'Saira', 'Oswald', sans-serif", fontWeight: 700, fontSize: 52, align: 'left' } },
+      { name: 'Home Score', widgetType: 'SCORE_HOME', x: 4, y: 32, width: 31, height: 24, zIndex: 2, sortOrder: 6, defaultConfig: { variant: 'score-home', color: '#ffffff', fontWeight: 700, fontSize: 280, fontFamily: "'Saira', 'Oswald', sans-serif", align: 'center' } },
+      { name: 'Home Possession', widgetType: 'SCOREBOARD', x: 24, y: 23, width: 5, height: 8, zIndex: 3, sortOrder: 7, defaultConfig: { variant: 'sb-possession-ball-home', team: 'home', fontSize: 40 } },
+      { name: 'Away Logo', widgetType: 'SCOREBOARD', x: 87, y: 14, width: 8, height: 14, zIndex: 2, sortOrder: 8, defaultConfig: { variant: 'sb-team-logo-away', team: 'away' } },
+      { name: 'Away Name', widgetType: 'SCOREBOARD', x: 67, y: 16, width: 19, height: 7, zIndex: 2, sortOrder: 9, defaultConfig: { variant: 'sb-team-name-away', team: 'away', fontFamily: "'Saira', 'Oswald', sans-serif", fontWeight: 700, fontSize: 52, align: 'right' } },
+      { name: 'Away Score', widgetType: 'SCORE_AWAY', x: 65, y: 32, width: 31, height: 24, zIndex: 2, sortOrder: 10, defaultConfig: { variant: 'score-away', color: '#ffffff', fontWeight: 700, fontSize: 280, fontFamily: "'Saira', 'Oswald', sans-serif", align: 'center' } },
+      { name: 'Away Possession', widgetType: 'SCOREBOARD', x: 71, y: 23, width: 5, height: 8, zIndex: 3, sortOrder: 11, defaultConfig: { variant: 'sb-possession-ball-away', team: 'away', fontSize: 40 } },
+      { name: 'Home Fouls', widgetType: 'SCOREBOARD', x: 12, y: 86, width: 14, height: 10, zIndex: 2, sortOrder: 12, defaultConfig: { variant: 'sb-fouls-home', team: 'home', fontSize: 44 } },
+      { name: 'Home Timeouts', widgetType: 'SCOREBOARD', x: 28, y: 87, width: 16, height: 7, zIndex: 2, sortOrder: 13, defaultConfig: { variant: 'sb-timeouts-home', team: 'home', fontSize: 36 } },
+      { name: 'Away Timeouts', widgetType: 'SCOREBOARD', x: 56, y: 87, width: 16, height: 7, zIndex: 2, sortOrder: 14, defaultConfig: { variant: 'sb-timeouts-away', team: 'away', fontSize: 36 } },
+      { name: 'Away Fouls', widgetType: 'SCOREBOARD', x: 74, y: 86, width: 14, height: 10, zIndex: 2, sortOrder: 15, defaultConfig: { variant: 'sb-fouls-away', team: 'away', fontSize: 44 } },
+    ],
+  },
+  // PRO — jumbotron. Near-black, thin elegant type, glass scorebar with
+  // a clock pod floating above, lower stat ribbon + sponsor slot.
+  {
+    id: 'preset-sb-pro',
+    name: '🏆 Scoreboard · Pro',
+    description: 'Jumbotron-grade — near-black, thin elegant type, glass scorebar with a floating clock pod, lower stat ribbon + sponsor slot. Every element editable. Bind a game; resize for any LED.',
+    category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#06080d',
+    zones: [
+      { name: 'Clock', widgetType: 'GAME_CLOCK', x: 37, y: 11, width: 26, height: 18, zIndex: 3, sortOrder: 0, defaultConfig: { variant: 'game-clock', color: '#e2f6ff', fontWeight: 500, fontSize: 170, fontFamily: "'Rajdhani', 'Exo 2', sans-serif", align: 'center' } },
+      { name: 'Period', widgetType: 'GAME_SEGMENT', x: 37, y: 29, width: 26, height: 5, zIndex: 3, sortOrder: 1, defaultConfig: { variant: 'game-segment', color: '#67e8f9', fontWeight: 600, fontSize: 40, fontFamily: "'Rajdhani', 'Exo 2', sans-serif", align: 'center' } },
+      { name: 'Shot Clock', widgetType: 'SCOREBOARD', x: 64, y: 11, width: 7, height: 12, zIndex: 3, sortOrder: 2, defaultConfig: { variant: 'sb-shot-clock', color: '#67e8f9', fontSize: 80 } },
+      { name: 'Home Logo', widgetType: 'SCOREBOARD', x: 8, y: 42, width: 9, height: 16, zIndex: 2, sortOrder: 3, defaultConfig: { variant: 'sb-team-logo-home', team: 'home' } },
+      { name: 'Home Name', widgetType: 'SCOREBOARD', x: 18, y: 41, width: 16, height: 6, zIndex: 2, sortOrder: 4, defaultConfig: { variant: 'sb-team-name-home', team: 'home', fontFamily: "'Rajdhani', 'Exo 2', sans-serif", fontWeight: 600, fontSize: 46, align: 'left' } },
+      { name: 'Home Score', widgetType: 'SCORE_HOME', x: 34, y: 40, width: 14, height: 18, zIndex: 2, sortOrder: 5, defaultConfig: { variant: 'score-home', color: '#ffffff', fontWeight: 500, fontSize: 220, fontFamily: "'Rajdhani', 'Exo 2', sans-serif", align: 'center' } },
+      { name: 'Away Logo', widgetType: 'SCOREBOARD', x: 83, y: 42, width: 9, height: 16, zIndex: 2, sortOrder: 6, defaultConfig: { variant: 'sb-team-logo-away', team: 'away' } },
+      { name: 'Away Name', widgetType: 'SCOREBOARD', x: 66, y: 41, width: 16, height: 6, zIndex: 2, sortOrder: 7, defaultConfig: { variant: 'sb-team-name-away', team: 'away', fontFamily: "'Rajdhani', 'Exo 2', sans-serif", fontWeight: 600, fontSize: 46, align: 'right' } },
+      { name: 'Away Score', widgetType: 'SCORE_AWAY', x: 52, y: 40, width: 14, height: 18, zIndex: 2, sortOrder: 8, defaultConfig: { variant: 'score-away', color: '#ffffff', fontWeight: 500, fontSize: 220, fontFamily: "'Rajdhani', 'Exo 2', sans-serif", align: 'center' } },
+      { name: 'Home Timeouts', widgetType: 'SCOREBOARD', x: 8, y: 76, width: 18, height: 7, zIndex: 2, sortOrder: 9, defaultConfig: { variant: 'sb-timeouts-home', team: 'home', accentColor: '#67e8f9', fontSize: 34 } },
+      { name: 'Possession', widgetType: 'SCOREBOARD', x: 44, y: 75, width: 12, height: 8, zIndex: 2, sortOrder: 10, defaultConfig: { variant: 'sb-possession-arrow', accentColor: '#67e8f9', fontSize: 40 } },
+      { name: 'Away Timeouts', widgetType: 'SCOREBOARD', x: 74, y: 76, width: 18, height: 7, zIndex: 2, sortOrder: 11, defaultConfig: { variant: 'sb-timeouts-away', team: 'away', accentColor: '#67e8f9', fontSize: 34 } },
+      { name: 'Sponsor', widgetType: 'SCOREBOARD', x: 30, y: 91, width: 40, height: 8, zIndex: 2, sortOrder: 12, defaultConfig: { variant: 'sb-sponsor', label: 'PRESENTED BY', fontSize: 22 } },
+    ],
+  },
   {
     id: 'preset-hs-caf-counter',
     name: '🍽️ Cafeteria — Counter Plate',
