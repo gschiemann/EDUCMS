@@ -217,6 +217,43 @@ export function ServeIndicatorWidget({ config }: { config: ElCfg }) {
   );
 }
 
+// ════════════════ SOCCER ════════════════
+
+export function CardCountWidget({ config }: { config: ElCfg }) {
+  const s = useGameState();
+  const team = config.team ?? 'home';
+  const yKey = config.statKey ?? (team === 'away' ? 'awayYellow' : 'homeYellow');
+  const rKey = team === 'away' ? 'awayRed' : 'homeRed';
+  const yellow = s?.snapshot ? Number(stat(s, yKey) ?? 0) : 2;
+  const red = s?.snapshot ? Number(stat(s, rKey) ?? 0) : 1;
+  const card = (color: string, n: number) => (
+    <div style={{ display: 'flex', alignItems: 'center', marginLeft: '0.3em' }}>
+      <span style={{ width: '0.6em', height: '0.85em', background: color, borderRadius: 2, marginRight: '0.18em', display: 'inline-block' }} />
+      <span style={{ fontWeight: 900 }}>{n}</span>
+    </div>
+  );
+  return (
+    <div style={elRoot(config, { backgroundColor: 'transparent' })}>
+      {card('#fbbf24', yellow)}
+      {card('#ef4444', red)}
+    </div>
+  );
+}
+
+export function StatPairWidget({ config }: { config: ElCfg }) {
+  // Generic labelled stat (shots, corners, possession %, etc.) — bind a
+  // stat key in Properties. Covers the long tail of per-sport numbers.
+  const s = useGameState();
+  const v = stat(s, config.statKey ?? 'shots');
+  const display = v != null && v !== '' ? `${v}` : (s?.snapshot ? '0' : '12');
+  return (
+    <div style={elRoot(config, { flexDirection: 'column', backgroundColor: 'transparent' })}>
+      {config.label !== '' && <div style={{ fontSize: '0.34em', fontWeight: 800, letterSpacing: 2, color: '#64748b' }}>{config.label ?? 'SHOTS'}</div>}
+      <div style={{ fontWeight: 900, color: config.color ?? '#fff' }}>{display}</div>
+    </div>
+  );
+}
+
 // ════════════════ WRESTLING ════════════════
 
 export function RidingTimeWidget({ config }: { config: ElCfg }) {

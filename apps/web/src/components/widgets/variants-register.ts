@@ -1033,6 +1033,7 @@ import {
   CountWidget, BaseDiamondWidget, InningHalfWidget, PitchCountWidget, PitchSpeedWidget,
   PenaltyBoxWidget, PowerPlayBadgeWidget, SetScoresWidget, ServeIndicatorWidget,
   RidingTimeWidget, WeightClassWidget, TeamScoreRunningWidget, LeaderboardWidget,
+  CardCountWidget, StatPairWidget,
 } from './sports/SportElementWidgets.sports';
 
 const SPORT_ELEMENT_VARIANTS: Array<{
@@ -1085,6 +1086,10 @@ const SPORT_ELEMENT_VARIANTS: Array<{
   { id: 'sb-weight-class', name: 'Weight Class', description: 'Wrestling weight class.', render: WeightClassWidget as any, defaultConfig: { fontSize: 36 } },
   { id: 'sb-team-score-home', name: 'Dual Score · Home', description: 'Running dual-meet team score, home (wrestling/track).', render: TeamScoreRunningWidget as any, defaultConfig: { team: 'home', fontSize: 64 } },
   { id: 'sb-team-score-away', name: 'Dual Score · Away', description: 'Running dual-meet team score, away.', render: TeamScoreRunningWidget as any, defaultConfig: { team: 'away', fontSize: 64 } },
+  // Soccer
+  { id: 'sb-cards-home', name: 'Cards · Home', description: 'Yellow + red card counts, home (soccer).', render: CardCountWidget as any, defaultConfig: { team: 'home', fontSize: 40 } },
+  { id: 'sb-cards-away', name: 'Cards · Away', description: 'Yellow + red card counts, away (soccer).', render: CardCountWidget as any, defaultConfig: { team: 'away', fontSize: 40 } },
+  { id: 'sb-stat-pair', name: 'Stat (labelled)', description: 'Generic labelled stat — bind shots / corners / possession% / etc. in Properties.', render: StatPairWidget as any, defaultConfig: { statKey: 'shots', label: 'SHOTS', fontSize: 48 } },
   // Track / swim
   { id: 'sb-leaderboard', name: 'Leaderboard', description: 'Place / lane / name / time rows (track, swim).', render: LeaderboardWidget as any, defaultConfig: { fontSize: 28 } },
 ];
