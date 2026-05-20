@@ -560,8 +560,16 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
   // For per-element layout control, the SPORTS widget palette still has
   // the Home Score / Away Score / Game Clock / Period / Game Stat
   // primitives to build a custom board from scratch.
+  // 2026-05-19 — NEW ID (was preset-std-scoreboard). The old id's DB
+  // row was tagged K12 (the seed's default vertical) AND carried 7 stale
+  // zones from the original generic layout, mangled to widgetType
+  // SCOREBOARD by the zone-sync — so the SPORTS "dodgers" tenant saw
+  // nothing and a K12 view would render 6 junk zones. A fresh id forces
+  // the boot seed to CREATE a clean single-zone row tagged SPORTS (see
+  // PRESET_VERTICAL override in ensure-system-presets.ts); the old
+  // preset-std-scoreboard drops out of source and gets archived.
   {
-    id: 'preset-std-scoreboard',
+    id: 'preset-main-scoreboard',
     name: '🏟️ Main Scoreboard',
     description: 'THE live game board — team color panels, logos, big scores, amber game clock, period, possession. The exact board pushed to screens, as a customizable template. Bind a game; resize for any LED.',
     category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',

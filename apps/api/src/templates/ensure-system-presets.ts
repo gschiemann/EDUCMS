@@ -56,6 +56,18 @@ RETAIL_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'RETAIL'));
 // ribbon templates follow once their widget set lands.
 SPORTS_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'SPORTS'));
 
+// 2026-05-19 — the Main Scoreboard preset lives in the GENERAL
+// SYSTEM_TEMPLATE_PRESETS array (it's a multi-vertical template surface,
+// not part of the SPORTS_TEMPLATE_PRESETS celebration starter set), so
+// the K12 default above tagged it K12 → invisible to the SPORTS-vertical
+// "dodgers" tenant where the operator was testing. It is a sports
+// surface; tag it SPORTS so it surfaces in the sports gallery. The
+// boot-time metadata-sync pass below migrates any existing row's
+// vertical to match this map, and a fresh id (preset-main-scoreboard,
+// renamed from preset-std-scoreboard) guarantees a clean single-zone
+// create rather than inheriting the old row's 7 stale zones.
+PRESET_VERTICAL.set('preset-main-scoreboard', 'SPORTS');
+
 // 2026-05-16 — the 70-template industry signage pack (preset-sig-*)
 // lives INSIDE SYSTEM_TEMPLATE_PRESETS so it shares the seeder, which
 // means the K12 default above tagged every one of them 'K12'. They
