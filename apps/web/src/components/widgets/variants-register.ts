@@ -1011,3 +1011,93 @@ registerVariant({
     placeholder: '2',
   },
 });
+
+// ════════════════════════════════════════════════════════════════════
+// 2026-05-19 — Composable scoreboard ELEMENT widgets. Operator: "make
+// sure everything in these scoreboards are added as widgets and can be
+// added or removed." Each is an individual element (team name, logo,
+// timeouts, possession, play/shot clock, down&distance, base diamond,
+// penalty box, sets, riding time, leaderboard, …) the operator drops,
+// positions, sizes, brands, and removes independently. All register
+// under the SCOREBOARD canonical type (variant-dispatched) so they
+// share the picker's Scoreboard chip; SPORTS-scoped + SPORTS category.
+// ════════════════════════════════════════════════════════════════════
+import {
+  TeamNameWidget, TeamAbbrWidget, TeamLogoWidget, TeamRecordWidget,
+  GameStatusWidget, TimeoutsWidget, PossessionArrowWidget, PossessionBallWidget,
+  PlayClockWidget, ShotClockWidget, AddedTimeWidget, BonusLampWidget,
+  SponsorSlotWidget, TeamFoulsWidget,
+} from './sports/SportElementWidgets';
+import {
+  DownDistanceWidget, BallOnWidget, FlagIndicatorWidget,
+  CountWidget, BaseDiamondWidget, InningHalfWidget, PitchCountWidget, PitchSpeedWidget,
+  PenaltyBoxWidget, PowerPlayBadgeWidget, SetScoresWidget, ServeIndicatorWidget,
+  RidingTimeWidget, WeightClassWidget, TeamScoreRunningWidget, LeaderboardWidget,
+} from './sports/SportElementWidgets.sports';
+
+const SPORT_ELEMENT_VARIANTS: Array<{
+  id: string; name: string; description: string;
+  render: ComponentType<ThemeWidgetProps>; defaultConfig?: Record<string, any>;
+}> = [
+  // Universal
+  { id: 'sb-team-name-home', name: 'Team Name · Home', description: 'Home team name. Pick home/away in Properties.', render: TeamNameWidget as any, defaultConfig: { team: 'home', fontSize: 54, fontWeight: 800, color: '#ffffff' } },
+  { id: 'sb-team-name-away', name: 'Team Name · Away', description: 'Away team name.', render: TeamNameWidget as any, defaultConfig: { team: 'away', fontSize: 54, fontWeight: 800, color: '#ffffff' } },
+  { id: 'sb-team-abbr-home', name: 'Team Abbr · Home', description: '3-letter home abbreviation.', render: TeamAbbrWidget as any, defaultConfig: { team: 'home', fontSize: 64, fontWeight: 900 } },
+  { id: 'sb-team-abbr-away', name: 'Team Abbr · Away', description: '3-letter away abbreviation.', render: TeamAbbrWidget as any, defaultConfig: { team: 'away', fontSize: 64, fontWeight: 900 } },
+  { id: 'sb-team-logo-home', name: 'Team Logo · Home', description: 'Home team logo (or color initial disc).', render: TeamLogoWidget as any, defaultConfig: { team: 'home' } },
+  { id: 'sb-team-logo-away', name: 'Team Logo · Away', description: 'Away team logo.', render: TeamLogoWidget as any, defaultConfig: { team: 'away' } },
+  { id: 'sb-team-record-home', name: 'Team Record · Home', description: 'Home W-L record (set in Properties).', render: TeamRecordWidget as any, defaultConfig: { team: 'home', fontSize: 32, placeholder: '10-1' } },
+  { id: 'sb-team-record-away', name: 'Team Record · Away', description: 'Away W-L record.', render: TeamRecordWidget as any, defaultConfig: { team: 'away', fontSize: 32, placeholder: '8-3' } },
+  { id: 'sb-status', name: 'Game Status', description: 'LIVE / FINAL / HALFTIME pill — pulses when live.', render: GameStatusWidget as any, defaultConfig: { fontSize: 30 } },
+  { id: 'sb-timeouts-home', name: 'Timeouts · Home', description: 'Home timeouts-remaining pips.', render: TimeoutsWidget as any, defaultConfig: { team: 'home', fontSize: 40 } },
+  { id: 'sb-timeouts-away', name: 'Timeouts · Away', description: 'Away timeouts-remaining pips.', render: TimeoutsWidget as any, defaultConfig: { team: 'away', fontSize: 40 } },
+  { id: 'sb-possession-arrow', name: 'Possession Arrow', description: 'Alternating-possession arrow (basketball/football).', render: PossessionArrowWidget as any, defaultConfig: { fontSize: 48 } },
+  { id: 'sb-possession-ball-home', name: 'Possession · Home', description: 'Who-has-the-ball marker, home side (football).', render: PossessionBallWidget as any, defaultConfig: { team: 'home', fontSize: 40 } },
+  { id: 'sb-possession-ball-away', name: 'Possession · Away', description: 'Who-has-the-ball marker, away side.', render: PossessionBallWidget as any, defaultConfig: { team: 'away', fontSize: 40 } },
+  { id: 'sb-play-clock', name: 'Play Clock', description: 'Football 40/25s play clock (separate from game clock).', render: PlayClockWidget as any, defaultConfig: { fontSize: 88, color: '#e2e8f0' } },
+  { id: 'sb-shot-clock', name: 'Shot Clock', description: 'Basketball/lacrosse/water-polo shot clock.', render: ShotClockWidget as any, defaultConfig: { fontSize: 88, color: '#e2e8f0' } },
+  { id: 'sb-added-time', name: 'Added Time', description: 'Soccer stoppage/added time (+N).', render: AddedTimeWidget as any, defaultConfig: { fontSize: 40 } },
+  { id: 'sb-bonus-home', name: 'Bonus Lamp · Home', description: 'Basketball BONUS / DOUBLE-BONUS lamp, home.', render: BonusLampWidget as any, defaultConfig: { team: 'home', fontSize: 24 } },
+  { id: 'sb-bonus-away', name: 'Bonus Lamp · Away', description: 'Basketball BONUS / DOUBLE-BONUS lamp, away.', render: BonusLampWidget as any, defaultConfig: { team: 'away', fontSize: 24 } },
+  { id: 'sb-sponsor', name: 'Sponsor Slot', description: 'Sponsor logo / text slot.', render: SponsorSlotWidget as any, defaultConfig: { fontSize: 22 } },
+  { id: 'sb-fouls-home', name: 'Team Fouls · Home', description: 'Home team fouls (basketball).', render: TeamFoulsWidget as any, defaultConfig: { team: 'home', fontSize: 56 } },
+  { id: 'sb-fouls-away', name: 'Team Fouls · Away', description: 'Away team fouls (basketball).', render: TeamFoulsWidget as any, defaultConfig: { team: 'away', fontSize: 56 } },
+  // Football
+  { id: 'sb-down-distance', name: 'Down & Distance', description: 'Football down + yards to go ("2ND & 7").', render: DownDistanceWidget as any, defaultConfig: { fontSize: 60, color: '#fbbf24' } },
+  { id: 'sb-ball-on', name: 'Ball On', description: 'Football ball-on / yard line.', render: BallOnWidget as any, defaultConfig: { fontSize: 32 } },
+  { id: 'sb-flag', name: 'Flag Indicator', description: 'Football penalty-flag indicator.', render: FlagIndicatorWidget as any, defaultConfig: { fontSize: 28 } },
+  // Baseball / softball
+  { id: 'sb-count', name: 'Count (B-S-O)', description: 'Balls-strikes count + out dots.', render: CountWidget as any, defaultConfig: { fontSize: 64 } },
+  { id: 'sb-bases', name: 'Base Diamond', description: 'Lit base-runner diamond (1st/2nd/3rd).', render: BaseDiamondWidget as any, defaultConfig: {} },
+  { id: 'sb-inning-half', name: 'Inning + Half', description: 'Inning number with top/bottom arrow.', render: InningHalfWidget as any, defaultConfig: { fontSize: 48 } },
+  { id: 'sb-pitch-count-home', name: 'Pitch Count · Home', description: 'Home pitcher pitch count.', render: PitchCountWidget as any, defaultConfig: { team: 'home', fontSize: 48 } },
+  { id: 'sb-pitch-count-away', name: 'Pitch Count · Away', description: 'Away pitcher pitch count.', render: PitchCountWidget as any, defaultConfig: { team: 'away', fontSize: 48 } },
+  { id: 'sb-pitch-speed', name: 'Pitch Speed', description: 'Radar-gun pitch speed (MPH).', render: PitchSpeedWidget as any, defaultConfig: { fontSize: 64 } },
+  // Hockey / lacrosse / water polo
+  { id: 'sb-penalty-home', name: 'Penalty Box · Home', description: 'Home stacked penalty timers + player #.', render: PenaltyBoxWidget as any, defaultConfig: { team: 'home', fontSize: 40 } },
+  { id: 'sb-penalty-away', name: 'Penalty Box · Away', description: 'Away stacked penalty timers + player #.', render: PenaltyBoxWidget as any, defaultConfig: { team: 'away', fontSize: 40 } },
+  { id: 'sb-power-play', name: 'Power Play / PK', description: 'Power-play / penalty-kill man-advantage badge.', render: PowerPlayBadgeWidget as any, defaultConfig: { fontSize: 22 } },
+  // Volleyball / tennis
+  { id: 'sb-set-scores', name: 'Set Scores', description: 'Per-set scores (volleyball/tennis).', render: SetScoresWidget as any, defaultConfig: { fontSize: 44 } },
+  { id: 'sb-serve', name: 'Serve Indicator', description: 'Which team is serving.', render: ServeIndicatorWidget as any, defaultConfig: { team: 'home', fontSize: 40 } },
+  // Wrestling
+  { id: 'sb-riding-time', name: 'Riding Time', description: 'Wrestling riding-time clock (≥1:00 = point).', render: RidingTimeWidget as any, defaultConfig: { fontSize: 56 } },
+  { id: 'sb-weight-class', name: 'Weight Class', description: 'Wrestling weight class.', render: WeightClassWidget as any, defaultConfig: { fontSize: 36 } },
+  { id: 'sb-team-score-home', name: 'Dual Score · Home', description: 'Running dual-meet team score, home (wrestling/track).', render: TeamScoreRunningWidget as any, defaultConfig: { team: 'home', fontSize: 64 } },
+  { id: 'sb-team-score-away', name: 'Dual Score · Away', description: 'Running dual-meet team score, away.', render: TeamScoreRunningWidget as any, defaultConfig: { team: 'away', fontSize: 64 } },
+  // Track / swim
+  { id: 'sb-leaderboard', name: 'Leaderboard', description: 'Place / lane / name / time rows (track, swim).', render: LeaderboardWidget as any, defaultConfig: { fontSize: 28 } },
+];
+
+for (const v of SPORT_ELEMENT_VARIANTS) {
+  registerVariant({
+    id: v.id,
+    widgetType: 'SCOREBOARD',
+    name: v.name,
+    description: v.description,
+    category: 'SPORTS',
+    vertical: 'SPORTS',
+    render: v.render,
+    defaultConfig: { align: 'center', ...(v.defaultConfig || {}) },
+  });
+}
