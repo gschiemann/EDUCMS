@@ -812,6 +812,10 @@ for (const w of ALL_V2_WIDGETS) {
     // from every other vertical's palette (a healthcare widget never
     // shows in a gym, a celebration never lands in a restaurant).
     vertical: w.vertical,
+    // Multi-vertical scope — cross-over widgets (Lunch Menu, Staff
+    // Spotlight, Transit) that belong to several lines but not all.
+    // Takes precedence over `vertical` in the picker filter.
+    verticals: w.verticals,
   });
 }
 

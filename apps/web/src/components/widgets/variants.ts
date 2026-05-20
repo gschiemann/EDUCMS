@@ -41,6 +41,14 @@ export interface WidgetVariant {
    *  vertical's builder palette (e.g. 'SPORTS', 'HEALTHCARE'). Unset =
    *  universal — shown to every vertical. */
   vertical?: string;
+  /** Multi-vertical scope — when set, this variant appears in EACH of
+   *  the listed verticals' palettes and nowhere else. Use for cross-
+   *  over widgets that belong to several business lines but not all
+   *  (e.g. a Lunch Menu in K12 + QSR + Hospitality, a Staff Spotlight
+   *  in K12 + Corporate + Healthcare + Worship). Takes precedence over
+   *  `vertical` when both are set. Unset = fall through to `vertical`
+   *  / category logic. */
+  verticals?: string[];
   /** Renderer — used as the picker thumbnail AND, by default, as the
    *  canvas render when this variant is selected. For variants whose
    *  `render` is a thumbnail-only preview (no real widget logic, no

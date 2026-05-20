@@ -28,4 +28,10 @@ export interface WidgetMeta {
    *  vertical's builder palette (e.g. 'SPORTS', 'HEALTHCARE'). Unset =
    *  universal — shown to every vertical. */
   vertical?: string;
+  /** Multi-vertical scope. When set, the widget appears in EACH listed
+   *  vertical's palette and nowhere else. For cross-over widgets that
+   *  span several business lines but not all (Lunch Menu → food-service
+   *  verticals; Staff Spotlight → people-org verticals; Transit →
+   *  big-building verticals). Takes precedence over `vertical`. */
+  verticals?: string[];
 }

@@ -179,11 +179,18 @@ const K12_ONLY_CATEGORIES: ReadonlySet<string> = new Set([
   'SAFETY',
 ]);
 function variantVisibleForVertical(v: WidgetVariant, vertical: string): boolean {
-  // Business-line scoped widgets (EDU CMS-10/11/12 packs — celebrations,
-  // healthcare, corporate, hospitality, worship) show ONLY in their own
-  // vertical's palette. A healthcare widget never clutters a gym; a
-  // touchdown ribbon never lands in a restaurant's gallery. This is a
-  // strict match — it overrides the K-12 category logic below.
+  // Multi-vertical scoped widgets (cross-over: Lunch Menu → food-service
+  // verticals, Staff Spotlight → people-org verticals, Transit →
+  // big-building verticals). Strict membership test — takes precedence
+  // over the single `vertical` and the K-12 category logic. A Lunch
+  // Menu tagged [K12, QSR, RESTAURANT, HOSPITALITY, BAR, CORPORATE]
+  // shows in exactly those palettes and nowhere else.
+  if (v.verticals && v.verticals.length) return v.verticals.includes(vertical);
+  // Single business-line scoped widgets (EDU CMS-10/11/12 packs —
+  // celebrations, healthcare, corporate, hospitality, worship) show
+  // ONLY in their own vertical's palette. A healthcare widget never
+  // clutters a gym; a touchdown ribbon never lands in a restaurant's
+  // gallery. Strict match — overrides the K-12 category logic below.
   if (v.vertical) return v.vertical === vertical;
   if (vertical === 'K12') return true;
   if (!v.category) return true; // neutral / no metadata — keep

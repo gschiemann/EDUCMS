@@ -185,11 +185,20 @@ const W = (
   defaults: Record<string, unknown> = {}
 ): RegisteredWidget => ({ type, category, label, desc, level, icon, Component, defaults });
 
-/** Stamp a business-line vertical onto a batch of widgets. Applied at
- *  the ALL_V2_WIDGETS assembly point so the per-pack arrays stay clean
- *  and a widget appears only in its own vertical's builder palette. */
+/** Stamp a SINGLE business-line vertical onto a batch of widgets.
+ *  Applied at the ALL_V2_WIDGETS assembly point so the per-pack arrays
+ *  stay clean and a widget appears only in its own vertical's palette. */
 const withVertical = (vertical: string, widgets: RegisteredWidget[]): RegisteredWidget[] =>
   widgets.map((w) => ({ ...w, vertical }));
+
+/** Stamp MULTIPLE business-line verticals onto a batch — for cross-over
+ *  widgets that belong to several lines but not all. e.g. a Lunch Menu
+ *  fits K-12, QSR, Restaurant, Hospitality, Bar, and a Corporate
+ *  cafeteria — but not Healthcare or Sports. The widget then appears in
+ *  EACH listed vertical's palette and nowhere else. Takes precedence
+ *  over `vertical` in the picker filter. */
+const withVerticals = (verticals: string[], widgets: RegisteredWidget[]): RegisteredWidget[] =>
+  widgets.map((w) => ({ ...w, verticals }));
 
 // 2026-05-02 integration note — the original drop's registry imported
 // component names that didn't match the exports in the widget files
@@ -600,11 +609,33 @@ export const TRANSIT_WIDGETS: RegisteredWidget[] = [
 ];
 
 /* ─── ALL ───────────────────────────────────────────────────────────── */
+// 2026-05-19 — per-vertical widget scoping, "universal-by-default"
+// model (operator: "widgets should not be shared across business lines
+// unless it makes sense — don't give me K-12 widgets in every single
+// one"). Genuinely cross-industry widgets stay universal (no tag);
+// industry-specific ones are scoped to the verticals where they make
+// sense. Canonical verticals: K12 | GYM | RETAIL | CORPORATE | QSR |
+// FASHION | BAR | HEALTHCARE | HOSPITALITY | RESTAURANT | SPORTS.
+const FOOD_SERVICE_VERTICALS = ['K12', 'QSR', 'RESTAURANT', 'HOSPITALITY', 'BAR', 'CORPORATE'];
+const PEOPLE_ORG_VERTICALS = ['K12', 'CORPORATE', 'HEALTHCARE', 'WORSHIP'];
+const BIG_BUILDING_VERTICALS = ['CORPORATE', 'HOSPITALITY', 'HEALTHCARE', 'K12'];
+
 export const ALL_V2_WIDGETS: RegisteredWidget[] = [
+  // ── Genuinely universal — every vertical has clocks, weather, text,
+  //    images, logos, countdowns, tickers, headlines, calendars, rich
+  //    text, photos. No vertical tag → shown everywhere. ──
   ...CLOCK_WIDGETS, ...HEADLINE_WIDGETS, ...ANNOUNCEMENT_WIDGETS, ...CALENDAR_WIDGETS,
-  ...STAFF_WIDGETS, ...COUNTDOWN_WIDGETS, ...LOGO_WIDGETS, ...TICKER_WIDGETS,
+  ...COUNTDOWN_WIDGETS, ...LOGO_WIDGETS, ...TICKER_WIDGETS,
   ...WEATHER_WIDGETS, ...PHOTO_WIDGETS, ...RICHTEXT_WIDGETS, ...IMAGE_WIDGETS,
-  ...LUNCH_WIDGETS, ...BELL_WIDGETS,
+  // ── Cross-over widgets — scoped to the verticals where they fit. ──
+  // Staff / team / employee spotlight: schools, offices, clinics,
+  // congregations all spotlight people. Not a restaurant / retail thing.
+  ...withVerticals(PEOPLE_ORG_VERTICALS, STAFF_WIDGETS),
+  // Lunch / menu boards: anywhere food is served. Hidden from
+  // healthcare / sports / retail / fashion / worship.
+  ...withVerticals(FOOD_SERVICE_VERTICALS, LUNCH_WIDGETS),
+  // Bell schedule: K-12 ONLY — a corporate lobby has no bell schedule.
+  ...withVerticals(['K12'], BELL_WIDGETS),
   // VenueOS Sports — celebration ribbons + venue surfaces, scoped to the
   // SPORTS vertical so they never appear in a school / restaurant /
   // clinic palette.
@@ -623,9 +654,13 @@ export const ALL_V2_WIDGETS: RegisteredWidget[] = [
   // vertical tag (shows in every palette).
   ...CHART_WIDGETS,
   // VenueOS universal packs — backgrounds, live data feeds, touch
-  // engagement, and transit boards. No vertical tag — every palette.
+  // engagement. No vertical tag — every palette.
   ...BACKGROUNDS_WIDGETS, ...LIVE_DATA_WIDGETS,
-  ...TOUCH_ENGAGE_WIDGETS, ...TRANSIT_WIDGETS,
+  ...TOUCH_ENGAGE_WIDGETS,
+  // Transit / departure boards: big multi-wing buildings with shuttles,
+  // campuses, hospital transit, hotel airport runs. Not a QSR / retail
+  // / bar / sports thing.
+  ...withVerticals(BIG_BUILDING_VERTICALS, TRANSIT_WIDGETS),
 ];
 
 export const V2_BY_TYPE: Record<string, RegisteredWidget> = Object.fromEntries(
