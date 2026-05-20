@@ -228,6 +228,24 @@ export function BrandKitPanel() {
           if (fontBody) cfg.fontFamily = fontBody;
           break;
 
+        case 'SCOREBOARD':
+        case 'SCORE_HOME':
+        case 'SCORE_AWAY':
+        case 'GAME_CLOCK':
+        case 'GAME_SEGMENT':
+        case 'GAME_STAT':
+          // Composable scoreboard widgets. A website brand-scrape themes
+          // the board: the brand heading font flows to every element, the
+          // accent recolors widgets that use one, and the brand (school)
+          // logo drops onto the HOME team-logo element. Score/clock keep
+          // their high-contrast white on the dark board — we don't wash
+          // those out with brand ink. (Board bg gets the brand gradient
+          // via setMeta below.)
+          if (fontHeading) cfg.fontFamily = fontHeading;
+          if (primary && Object.prototype.hasOwnProperty.call(cfg, 'accentColor')) cfg.accentColor = primary;
+          if (logoUrl && String(cfg.variant || '') === 'sb-team-logo-home') cfg.logoUrl = logoUrl;
+          break;
+
         default:
           // For any other widget type, only patch keys the existing
           // config already declares (no new keys added → no surprise
