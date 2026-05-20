@@ -2145,7 +2145,47 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="price" label="Price" value={cfg.price || ''} placeholder="$4.50" onChange={(v) => setField({ price: v })} />);
       fields.push(<TextField key="allergens" label="Allergens (comma separated)" value={Array.isArray(cfg.allergens) ? cfg.allergens.join(', ') : ''} placeholder="V, GF" onChange={(v) => setField({ allergens: v.split(',').map(s => s.trim()).filter(Boolean) })} />);
       break;
-    case 'SCOREBOARD':
+    case 'SCOREBOARD': {
+      // 2026-05-19 — the composable scoreboard ELEMENT widgets +
+      // Main/Ribbon/Scorebug composites all register under the SCOREBOARD
+      // canonical type with a `variant`. They bind to LIVE game state, so
+      // they don't take literal score/team text — instead the operator
+      // edits which side, which stat, the label, and the full style set
+      // (every aspect editable, per the operator's mandate). Detect a
+      // sports variant and render the right editor; the legacy generic
+      // ScoreboardWidget (no variant) keeps its old literal fields.
+      const sbVariant = String(cfg.variant || '');
+      const isSportEl = sbVariant.startsWith('sb-')
+        || sbVariant === 'scoreboard-main' || sbVariant === 'ribbon-main' || sbVariant === 'scorebug-main';
+      if (isSportEl) {
+        // Which side — shown for any element that carries a team.
+        if (cfg.team !== undefined) {
+          fields.push(<SelectField key="team" label="Team side" value={String(cfg.team || 'home')} options={[['home', 'Home'], ['away', 'Away']]} onChange={(v) => setField({ team: v })} />);
+        }
+        // Editable copy.
+        if (cfg.label !== undefined) {
+          fields.push(<TextField key="label" label="Label" value={cfg.label || ''} placeholder="Label" onChange={(v) => setField({ label: v })} />);
+        }
+        if (cfg.placeholder !== undefined) {
+          fields.push(<TextField key="placeholder" label="Sample / fallback text" value={cfg.placeholder || ''} placeholder="—" onChange={(v) => setField({ placeholder: v })} />);
+        }
+        // Advanced: bind to a specific Game.stats key (down, balls, sets, …).
+        if (cfg.statKey !== undefined) {
+          fields.push(<TextField key="statKey" label="Stat key (advanced)" value={cfg.statKey || ''} placeholder="down" onChange={(v) => setField({ statKey: v })} />);
+        }
+        if (sbVariant === 'sb-sponsor') {
+          fields.push(<TextField key="imageUrl" label="Sponsor image URL" value={cfg.imageUrl || ''} placeholder="https://…/logo.png" onChange={(v) => setField({ imageUrl: v })} />);
+        }
+        // Full style set — every aspect editable.
+        fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
+        fields.push(<ColorField key="accentColor" label="Accent color" value={cfg.accentColor || '#fbbf24'} onChange={(v) => setField({ accentColor: v })} />);
+        fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+        fields.push(<NumField key="fontSize" id="sb-fontSize" label="Font size (px)" value={typeof cfg.fontSize === 'number' ? cfg.fontSize : 48} onChange={(v) => setField({ fontSize: v })} min={8} max={480} step={2} />);
+        fields.push(<SelectField key="fontWeight" label="Font weight" value={String(cfg.fontWeight ?? 800)} options={[['400', 'Regular'], ['600', 'Semibold'], ['700', 'Bold'], ['800', 'Extra-bold'], ['900', 'Black']]} onChange={(v) => setField({ fontWeight: parseInt(v) })} />);
+        fields.push(<SelectField key="align" label="Align" value={String(cfg.align || 'center')} options={[['left', 'Left'], ['center', 'Center'], ['right', 'Right']]} onChange={(v) => setField({ align: v })} />);
+        break;
+      }
+      // Legacy generic scoreboard widget — literal fields.
       fields.push(<TextField key="status" label="Status" value={cfg.status || ''} placeholder="Tonight" onChange={(v) => setField({ status: v })} />);
       fields.push(<TextField key="period" label="Period / time" value={cfg.period || ''} placeholder="1ST · 8:42" onChange={(v) => setField({ period: v })} />);
       fields.push(<TextField key="homeName" label="Home team" value={cfg.homeName || ''} placeholder="Eagles" onChange={(v) => setField({ homeName: v })} />);
@@ -2153,6 +2193,7 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="homeScore" label="Home score" value={String(cfg.homeScore ?? '')} placeholder="0" onChange={(v) => setField({ homeScore: parseInt(v) || 0 })} />);
       fields.push(<TextField key="awayScore" label="Away score" value={String(cfg.awayScore ?? '')} placeholder="0" onChange={(v) => setField({ awayScore: parseInt(v) || 0 })} />);
       break;
+    }
     case 'SCHEDULE_GRID':
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Today's Schedule" onChange={(v) => setField({ title: v })} />);
       fields.push(<TextAreaField key="periods" label="Periods (num | name | time — one per line)" value={arrayForEditor(cfg.periods, DEFAULT_PERIODS).map((p: any) => `${p.num || ''} | ${p.name || ''} | ${p.time || ''}`).join('\n')} placeholder="1 | Homeroom | 8:00 - 8:15" onChange={(v) => setField({ periods: v.split('\n').filter(Boolean).map(line => { const [num, name, time] = line.split('|').map(s => s.trim()); return { num, name, time }; }) })} rows={8} />);
