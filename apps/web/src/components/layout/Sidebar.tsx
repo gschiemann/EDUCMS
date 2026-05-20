@@ -7,7 +7,7 @@ import DOMPurify from 'isomorphic-dompurify';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
-import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, FileClock, Crown, ClipboardCheck, Map, Trophy } from 'lucide-react';
+import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { usePendingAssets } from '@/hooks/use-api';
@@ -231,9 +231,11 @@ export function Sidebar() {
   // surfaced in the sidebar — submissions cover the workflow gap.
   // Badge counts BOTH pending sources so operators see a unified
   // "stuff awaiting your review" number.
+  // 2026-05-19 — operator: "put audit logs under settings, no need for
+  // its own tab." Audit Log dropped from the standalone sidebar nav; it
+  // now lives as a card on the Settings page (→ /audit route unchanged).
   const adminNavItems = [
     { name: 'Reviews', href: hrefFor('/reviews'), icon: ClipboardCheck, badge: pendingCount > 0 ? pendingCount : null },
-    { name: 'Audit Log', href: hrefFor('/audit'), icon: FileClock, badge: null as number | null },
   ];
 
   return (

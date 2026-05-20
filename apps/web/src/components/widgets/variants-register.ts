@@ -918,6 +918,22 @@ import {
   GameSegmentWidget,
   GameStatWidget,
 } from './sports/SportWidgets';
+// 2026-05-19 — the REAL board, one drop. Operator wanted the actual
+// pushed scoreboard available as a template, not the generic 7-zone
+// primitive layout. This is a faithful BoardScene reproduction that
+// reads live game state from the GameStateProvider.
+import { MainScoreboardWidget } from './sports/MainScoreboardWidget';
+
+registerVariant({
+  id: 'scoreboard-main',
+  widgetType: 'SCOREBOARD',
+  name: 'Main Scoreboard (live)',
+  description: 'The real game board — team color panels, logos, big scores, live amber clock, period, possession. Drop it, bind a game, done. Resize for any LED.',
+  category: 'SPORTS',
+  render: MainScoreboardWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: {},
+});
 
 registerVariant({
   id: 'score-home',

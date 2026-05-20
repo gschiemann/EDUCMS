@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff, ChevronDown, Clock, RefreshCw } from 'lucide-react';
+import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff, ChevronDown, Clock, RefreshCw, FileClock } from 'lucide-react';
 import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { RoleGate } from '@/components/RoleGate';
@@ -313,6 +313,25 @@ export default function SettingsPage() {
               </div>
             </div>
             <span className="text-xs text-pink-600 font-bold">Try →</span>
+          </Link>
+
+          {/* 2026-05-19 — operator moved Audit Log out of the standalone
+              sidebar tab into Settings. Route (/[schoolId]/audit) is
+              unchanged; this is just the new entry point. */}
+          <Link
+            href={`${pathname.replace(/\/settings$/, '')}/audit`}
+            className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-3 hover:border-slate-300 hover:shadow-md transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center">
+                <FileClock className="w-4 h-4 text-slate-600" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-800">Audit log</div>
+                <div className="text-[11px] text-slate-500">Immutable activity history — every emergency trigger, login, and admin action, with who and when.</div>
+              </div>
+            </div>
+            <span className="text-xs text-slate-600 font-bold">View →</span>
           </Link>
         </RoleGate>
 
