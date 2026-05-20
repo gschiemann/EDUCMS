@@ -646,7 +646,19 @@ export default function RibbonPage() {
     ((data.ribbonSlides || []).filter(Boolean).length > 0 ||
       (data.sponsors || []).length > 0)
   ) {
-    return <RibbonMediaScroll data={data} def={def} vp={vp} clockMs={clockMs} />;
+    return (
+      <>
+        <RibbonMediaScroll data={data} def={def} vp={vp} clockMs={clockMs} />
+        {/* Celebrations must still take over the ribbon in media mode.
+            The old looks path rendered this; the early return above
+            dropped it (operator: "triggered celebrations and nothing
+            triggered on the ribbon"). One full-width burst — the
+            operator's hardware repeater replicates it down the run. */}
+        {activeCue && (
+          <RibbonCueOverlay cue={activeCue} h={vp.h} segCount={1} segWf={vp.w} />
+        )}
+      </>
+    );
   }
 
   // ── score-anchor recurrence ──────────────────────────────────
@@ -909,8 +921,12 @@ function RibbonMediaScroll({
   // narrow item on a very wide ribbon can't spawn hundreds of nodes.
   const copies = seqW > 0 ? Math.min(16, Math.max(2, Math.ceil(vp.w / seqW) + 2)) : 6;
   // px/sec scroll rate scaled by the operator's speed; duration = the
-  // time to travel exactly one sequence width.
-  const pxPerSec = 90 * speedMult;
+  // time to travel exactly one sequence width. 60 px/s @ Normal is a
+  // calm ribbon scroll on a real wide run (a ~3000px ribbon takes ~50s
+  // end-to-end); the Slow/Fast/Very-fast control scales it (0.45–2.8×).
+  // NOTE: on a NARROW test screen the same px/s LOOKS much faster
+  // because the content crosses the short width sooner.
+  const pxPerSec = 60 * speedMult;
   const marqueeSecs = Math.max(4, (seqW || vp.w) / pxPerSec);
   const animName = 'rbnMq';
 
