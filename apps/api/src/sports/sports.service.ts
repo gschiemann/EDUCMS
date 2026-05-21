@@ -125,6 +125,12 @@ export class SportsService {
     return game;
   }
 
+  /** Public ownership assertion (controllers that need to gate on tenant
+   *  ownership without otherwise touching the game, e.g. feed-credentials). */
+  async assertGameOwned(tenantId: string, id: string): Promise<void> {
+    await this.owned(tenantId, id);
+  }
+
   // ── reads ────────────────────────────────────────────────────
 
   /** Sport catalog — single source of truth lives in @cms/api-types. */
@@ -1636,6 +1642,30 @@ export class SportsService {
    * broadcast via the signed pub/sub fan-out so every board surface
    * picks it up without polling.
    */
+  /**
+   * Feed-authorized ingest: the caller proved possession of the game's feed
+   * token (verified in the public board controller), so there's no dashboard
+   * session / tenant context. Resolve the game's own tenant, then reuse the
+   * exact same clamped `ingest()` path.
+   */
+  async ingestByFeed(
+    id: string,
+    dto: {
+      homeScore?: number;
+      awayScore?: number;
+      clockMs?: number;
+      clockRunning?: boolean;
+      segment?: number;
+    },
+  ) {
+    const game = await this.prisma.client.game.findUnique({
+      where: { id },
+      select: { tenantId: true },
+    });
+    if (!game) throw new NotFoundException('Game not found');
+    return this.ingest(game.tenantId, id, dto);
+  }
+
   async ingest(
     tenantId: string,
     id: string,

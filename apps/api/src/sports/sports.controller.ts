@@ -14,6 +14,7 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SportsService } from './sports.service';
+import { makeFeedToken } from './sports-feed-token';
 
 /** Editable fields for one roster player. The service sanitizes every
  *  value — the photo URL is produced by the existing /assets/upload. */
@@ -356,6 +357,44 @@ export class SportsController {
     },
   ) {
     return this.sports.ingest(req.user.tenantId, id, body || {});
+  }
+
+  /**
+   * Feed credentials for EXTERNAL score ingestion — the operator copies this
+   * URL + token into their feed vendor (Sportzcast/Scorebird console box, a
+   * serial-reader bridge, or a custom script) so live score/clock flows in
+   * machine-to-machine, no dashboard login. The token is a stateless
+   * game-scoped HMAC (see sports-feed-token.ts); ownership is verified here
+   * before we hand it out. Posts go to the PUBLIC board controller's
+   * /feed route, which re-verifies the token.
+   */
+  @Get('games/:id/feed-credentials')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async feedCredentials(@Request() req: any, @Param('id') id: string) {
+    // Ownership check (throws NotFound if the game isn't this tenant's).
+    await this.sports.assertGameOwned(req.user.tenantId, id);
+    const token = makeFeedToken(id);
+    const host = req.get?.('host') || process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost';
+    const proto = (req.headers?.['x-forwarded-proto'] as string) || req.protocol || 'https';
+    const ingestUrl = `${proto}://${host}/api/v1/sports/board/${id}/feed`;
+    return {
+      gameId: id,
+      ingestUrl,
+      tokenHeader: 'x-feed-token',
+      token,
+      // Copy-paste example for the vendor / a quick test.
+      curlExample:
+        `curl -X POST "${ingestUrl}" ` +
+        `-H "x-feed-token: ${token}" -H "Content-Type: application/json" ` +
+        `-d '{"homeScore":14,"awayScore":7,"clockMs":420000,"clockRunning":true,"segment":2}'`,
+      accepts: ['homeScore', 'awayScore', 'clockMs', 'clockRunning', 'segment'],
+      note: 'Any subset of fields may be sent; omitted fields are unchanged. Rate limit: 40 requests / 10s per game.',
+    };
   }
 
   /** Fire a cue — a sport celebration (`key`) or a custom cue

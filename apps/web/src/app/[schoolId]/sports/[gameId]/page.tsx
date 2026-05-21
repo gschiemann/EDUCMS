@@ -34,7 +34,9 @@ import {
   RectangleHorizontal,
   ImageIcon,
   Volume2,
+  Radio,
 } from 'lucide-react';
+import { apiFetch } from '@/lib/api-client';
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -159,6 +161,33 @@ function GameControl() {
     }
   };
 
+  // External score-feed credentials — copy the machine-to-machine ingest URL +
+  // token so a Sportzcast/console-reader/custom feed can push live score/clock
+  // without a dashboard login. Token is server-generated (HMAC); we fetch it.
+  const [feedCopied, setFeedCopied] = useState(false);
+  const copyFeedUrl = async () => {
+    try {
+      const c = await apiFetch<{ ingestUrl: string; token: string; curlExample: string }>(
+        `/sports/games/${gameId}/feed-credentials`,
+      );
+      const block =
+        `VenueOS live score feed\n` +
+        `POST to: ${c.ingestUrl}\n` +
+        `Header:   x-feed-token: ${c.token}\n` +
+        `Fields:   homeScore, awayScore, clockMs, clockRunning, segment (any subset)\n\n` +
+        `Test:\n${c.curlExample}`;
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(block);
+        setFeedCopied(true);
+        setTimeout(() => setFeedCopied(false), 2200);
+      } else {
+        window.prompt('Copy the score-feed details:', block);
+      }
+    } catch {
+      window.alert('Could not load the score-feed credentials. Try again.');
+    }
+  };
+
   if (isLoading) {
     return <div className="text-center py-24 text-sm text-slate-400">Loading game…</div>;
   }
@@ -209,6 +238,16 @@ function GameControl() {
           >
             {copied ? <Check className="h-4 w-4 text-green-600" /> : <Tv className="h-4 w-4" />}
             <span className="hidden sm:inline">{copied ? 'Copied' : 'Stream overlay'}</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={copyFeedUrl}
+            title="Copy the live score-feed URL + token for an external system (Sportzcast, console reader, custom integration) to push score/clock"
+          >
+            {feedCopied ? <Check className="h-4 w-4 text-green-600" /> : <Radio className="h-4 w-4" />}
+            <span className="hidden sm:inline">{feedCopied ? 'Copied' : 'Score feed'}</span>
           </Button>
           <Button
             variant="outline"
