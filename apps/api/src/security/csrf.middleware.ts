@@ -87,6 +87,15 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // STRIPE_WEBHOOK_SECRET in StripeService.constructWebhookEvent —
   // CSRF's ambient-cookie threat model does not apply.
   (p) => p === '/api/v1/billing/webhook',
+  // External live score-feed ingest (Sprint 13 "two clocks" gap). A
+  // Sportzcast/Scorebird box, console-reader bridge, or custom integration
+  // POSTs live score/clock machine-to-machine — no browser, no session
+  // cookie, so a CSRF token round-trip is impossible. Authenticity is the
+  // stateless game-scoped HMAC feed token (X-Feed-Token header or ?token=),
+  // verified constant-time in SportsBoardController.feed via verifyFeedToken.
+  // CSRF's ambient-cookie threat model does not apply — same argument as
+  // the Stripe webhook and native-APK OTA endpoints above.
+  (p) => /^\/api\/v1\/sports\/board\/[^/]+\/feed$/.test(p),
 ];
 
 export function isCsrfExempt(method: string, path: string): boolean {
