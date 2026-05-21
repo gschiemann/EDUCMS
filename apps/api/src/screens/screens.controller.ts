@@ -816,6 +816,27 @@ export class ScreensController {
     return { ok: true };
   }
 
+  /**
+   * Parse the Chromium major version out of a stored User-Agent. We already
+   * capture the full UA at register/heartbeat (Screen.userAgent); this surfaces
+   * the version so operators see real per-screen browser-engine compatibility
+   * instead of us guessing from a months-old incident. Returns null if the UA
+   * has no Chrome token (e.g. desktop Safari dev browsers).
+   *
+   * Engine cutoffs that matter for our widget CSS (so the dashboard can warn):
+   *   < 87  → no CSS `inset` shorthand        (swept; long-hand everywhere)
+   *   < 84  → no flex `gap`                    (runtime polyfill on the player)
+   *   < 105 → no container-query units (cqmin/cqh) and no `:has()`
+   * The lowest live box (NovaStar/rk356x LED controller) reports Chrome 83.
+   */
+  private chromiumMajor(ua?: string | null): number | null {
+    if (!ua || typeof ua !== 'string') return null;
+    const m = /Chrome\/(\d+)/.exec(ua);
+    if (!m) return null;
+    const n = parseInt(m[1], 10);
+    return Number.isFinite(n) ? n : null;
+  }
+
   // ─── ADMIN: List all screens in tenant ───
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get()
@@ -873,7 +894,22 @@ export class ScreensController {
       // view's per-pin emergency-cache badge in apps/web/src/components/
       // screens/ScreenMap.tsx).
       const { lastCrashStack: _stack, lastSelfTestReport: _self, ...rest } = s as any;
-      return { ...rest, status: liveStatus };
+      const chromiumMajor = this.chromiumMajor((s as any).userAgent);
+      return {
+        ...rest,
+        status: liveStatus,
+        // Real browser-engine version + a flag the dashboard uses to warn
+        // "this screen can't render container-query templates" etc.
+        chromiumMajor,
+        cssCompat: chromiumMajor == null
+          ? null
+          : {
+              flexGap: chromiumMajor >= 84,
+              inset: chromiumMajor >= 87,
+              containerQueryUnits: chromiumMajor >= 105,
+              has: chromiumMajor >= 105,
+            },
+      };
     });
   }
 
