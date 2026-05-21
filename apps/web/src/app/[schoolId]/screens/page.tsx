@@ -1493,6 +1493,24 @@ export default function ScreensPage() {
                                 Chrome / Firefox / Safari / Edge / generic
                                 Globe icon for browser players based on the
                                 screen's browserInfo string. */}
+                            {/* Real Chromium engine version (parsed from the
+                                UA we already capture). Amber-flag screens below
+                                Chrome 105 — those can't render container-query
+                                (cqmin/cqh) templates; below 84 also lack flex
+                                gap. Lets operators pick Taurus-safe content per
+                                screen instead of guessing. */}
+                            {typeof (screen as any).chromiumMajor === 'number' && (
+                              <span
+                                title={
+                                  (screen as any).chromiumMajor < 105
+                                    ? `Chrome ${(screen as any).chromiumMajor} — older engine. Container-query templates (cqmin/cqh)${(screen as any).chromiumMajor < 84 ? ' and flex-gap layouts' : ''} won't render correctly here. Use Taurus-safe templates (e.g. Animated Rainbow).`
+                                    : `Chrome ${(screen as any).chromiumMajor} — modern engine, all templates supported.`
+                                }
+                                className={(screen as any).chromiumMajor < 105 ? 'text-amber-600 font-semibold' : 'text-slate-400'}
+                              >
+                                {(screen as any).chromiumMajor < 105 ? '⚠ ' : ''}Cr{(screen as any).chromiumMajor}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg ${
