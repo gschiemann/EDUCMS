@@ -1,5 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit, Logger } from '@nestjs/common';
 import { Redis } from 'ioredis';
+import { requireSecret } from '../security/required-secret';
+import { verifyWsHmac } from '../security/ws-signature';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -8,6 +10,15 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   public subscriber: Redis | null = null;
   private gateway: any;
   private connected = false;
+
+  // Same key + dev-fallback the signer uses, so HMAC verify matches signing
+  // byte-for-byte. This is the SERVER-SIDE emergency gate: every message
+  // consumed off the Redis fan-out is verified before it reaches any player,
+  // so a forged message published onto a scope channel is dropped here and
+  // never renders. Stateless verify (no single-use nonce) → multi-replica safe.
+  private readonly deviceSecret = requireSecret('DEVICE_SECRET_KEY', {
+    devFallback: 'dev_only_device_secret_CHANGE_ME',
+  });
 
   constructor() {
     // Skip Redis entirely when explicitly disabled OR when no URL is set in production.
@@ -113,6 +124,25 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       const channelParts = channel.split(':');
       if (channelParts.length < 2) return;
       const [type, id] = channelParts;
+
+      // SERVER-SIDE EMERGENCY GATE (life-safety): verify the HMAC signature
+      // + freshness BEFORE fanning out to any player. Every legitimate
+      // publisher to tenant:* / group:* / device:* signs via
+      // WebsocketSignerService.signMessage; anything that fails verification
+      // was injected onto the channel by something other than our authorized
+      // controllers (e.g. a compromised Redis) and must never reach a screen.
+      // Stateless verify → safe across replicas. Real emergencies are still
+      // guaranteed by the player's authenticated HTTPS poll backstop even if
+      // a message is ever dropped here.
+      const verdict = verifyWsHmac(parsed, this.deviceSecret);
+      if (!verdict.ok) {
+        this.logger.warn(
+          `[WS] DROPPED unverified message on ${channel} ` +
+            `(reason=${verdict.reason}, msgType=${(parsed && parsed.type) || 'unknown'})`,
+        );
+        return;
+      }
+
       // Fan to BOTH transports. Either may be unset (e.g. WS gateway
       // not yet wired, or SSE service not present in test env).
       if (this.gateway) this.gateway.broadcastToScope(type, id, parsed);

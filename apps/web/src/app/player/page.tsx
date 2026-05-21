@@ -3313,13 +3313,21 @@ function PlayerPage() {
                 }
               }
             }
-            // ALL_CLEAR explicitly drops the cached emergency before refetching
-            // so any race between cache-replay and server response can't leave
-            // a stale alert on screen.
-            if (msg.type === 'ALL_CLEAR') {
-              setActiveEmergency(null);
-              cacheEmergency(null);
-            }
+            // SECURITY (life-safety): ALL_CLEAR no longer optimistically drops
+            // the active emergency. Previously a single ALL_CLEAR message
+            // cleared the lockdown overlay *before* re-confirming with the
+            // server — so a spoofed ALL_CLEAR could cancel a REAL lockdown for
+            // a window. Now the authenticated manifest is the SOLE arbiter of
+            // emergency state: ALL_CLEAR just triggers fetchContent() below,
+            // and fetchContent() clears the alert ONLY if the server-of-record
+            // manifest reports allClear/NONE (see the manifest.emergency block
+            // ~L2540). A forged ALL_CLEAR therefore can't drop a real alert —
+            // the re-fetch re-asserts it. Combined with the server-side HMAC
+            // verify at the Redis fan-out gate (redis.service handleRedisMessage),
+            // a forged ALL_CLEAR can't even reach the player in the first place.
+            // Clearing stays prompt for a genuine all-clear because the trigger
+            // endpoint sets Tenant.emergencyStatus=NONE before publishing, so
+            // the immediate fetchContent() sees the cleared state.
             // Audit fix #6: kiosk was re-paired by an admin to a different
             // tenant (likely physically moved between buildings or districts).
             // Wipe every piece of tenant-scoped local state and reset to the

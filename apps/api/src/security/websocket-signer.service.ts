@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { RedisService } from '../realtime/redis.service';
 import { requireSecret } from './required-secret';
+import { wsCanonicalString, wsHmacHex } from './ws-signature';
 
 export interface WsMessagePayload {
   eventId: string;
@@ -52,12 +53,10 @@ export class WebsocketSignerService {
     const eventId = crypto.randomUUID();
     const timestamp = Date.now();
 
-    const canonicalString = `${eventId}:${timestamp}:${type}:${JSON.stringify(payload)}`;
-
-    const signature = crypto
-      .createHmac('sha256', this.deviceSecret)
-      .update(canonicalString)
-      .digest('hex');
+    const signature = wsHmacHex(
+      wsCanonicalString({ eventId, timestamp, type, payload }),
+      this.deviceSecret,
+    );
 
     return {
       eventId,
@@ -81,11 +80,13 @@ export class WebsocketSignerService {
       return false;
     }
 
-    const canonicalString = `${message.eventId}:${message.timestamp}:${message.type}:${JSON.stringify(message.payload)}`;
-    const expectedSignature = crypto
-      .createHmac('sha256', this.deviceSecret)
-      .update(canonicalString)
-      .digest('hex');
+    const canonicalString = wsCanonicalString({
+      eventId: message.eventId,
+      timestamp: message.timestamp,
+      type: message.type,
+      payload: message.payload,
+    });
+    const expectedSignature = wsHmacHex(canonicalString, this.deviceSecret);
 
     const expectedBuf = Buffer.from(expectedSignature);
     const actualBuf = Buffer.from(message.signature);
