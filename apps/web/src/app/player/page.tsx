@@ -7,6 +7,7 @@ import { KioskSplash, type LoadProgress } from '@/components/player/KioskSplash'
 import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
+import { isFlexGapSupported, applyFlexGapPolyfill } from '@/lib/flex-gap-polyfill';
 import {
   registerOfflineCache,
   precachePlaylist,
@@ -1369,6 +1370,21 @@ function PlayerPage() {
     tick(); // immediate so the first heartbeat lands quickly after boot
     const id = setInterval(tick, 60_000);
     return () => clearInterval(id);
+  }, []);
+
+  // Chromium-83 (NovaStar Taurus) flex-`gap` polyfill. On every modern browser
+  // flex gap is supported, so isFlexGapSupported() returns true and this effect
+  // installs NOTHING — zero cost, zero regression. ONLY on a Taurus does it run:
+  // convert flex-container gaps to child margins after the initial paint and
+  // re-apply on a gentle interval so freshly-swapped content (new playlist item
+  // / template) is fixed too. The polyfill marks processed elements, so each
+  // pass only touches new DOM.
+  useEffect(() => {
+    if (isFlexGapSupported()) return; // modern browser → no-op
+    const run = () => { try { applyFlexGapPolyfill(); } catch { /* never break playback */ } };
+    const raf = requestAnimationFrame(run); // initial, after first paint
+    const id = setInterval(run, 2500);       // catch content swaps (Taurus only)
+    return () => { cancelAnimationFrame(raf); clearInterval(id); };
   }, []);
 
   const [storageInfo, setStorageInfo] = useState({ used: '1.2 GB', total: '32 GB', percent: 4 });
