@@ -202,6 +202,14 @@ export class SupabaseStorageService implements OnModuleInit {
         'Content-Type': contentType,
         'Content-Length': String(size),
         'x-upsert': 'true',
+        // Assets are content-addressed (UUID filenames) → never mutated in
+        // place, so they are safe to cache forever. Without this, Supabase
+        // Storage serves `cache-control: no-cache`, which forces Cloudflare
+        // and every browser/player/CI run to re-download the full file on
+        // every request — the cause of the 12GB egress overage on 256MB of
+        // stored assets (each served ~46×). One year + immutable collapses
+        // that to one origin fetch per asset per edge PoP.
+        'Cache-Control': 'public, max-age=31536000, immutable',
       },
       body: new Blob([ab]),
     });
