@@ -74,7 +74,11 @@ RUN apk add --no-cache \
     harfbuzz \
     ca-certificates \
     ttf-freefont \
-    font-noto
+    font-noto \
+    ffmpeg
+# ffmpeg: server-side video transcode in MediaOptimizationService. Signage
+# video uploaded at phone bitrate (40MB+) is re-encoded to ~1080p H.264 so a
+# screen isn't re-streaming tens of MB per loop. ~30MB added to the image.
 
 # Tell Puppeteer where Chromium lives (it won't try to download its
 # own bundled binary). Used by RendererService.launchBrowser.

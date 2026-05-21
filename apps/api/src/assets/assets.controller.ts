@@ -12,6 +12,7 @@ import { AppRole } from '@cms/database';
 import { extname } from 'path';
 import { randomUUID, createHash } from 'crypto';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
+import { MediaOptimizationService } from '../storage/media-optimization.service';
 import { EmailService } from '../email/email.service';
 
 // Browser-playable formats only. Cross-browser support is non-negotiable
@@ -115,6 +116,7 @@ export class AssetsController {
     private readonly prisma: PrismaService,
     private readonly storage: SupabaseStorageService,
     private readonly email: EmailService,
+    private readonly mediaOpt: MediaOptimizationService,
   ) {}
 
   private appPublicUrl(): string {
@@ -582,10 +584,6 @@ export class AssetsController {
       folderId = folder.id;
     }
 
-    // Upload to Supabase Storage: tenant/<tenantId>/<uuid>.<ext>
-    const ext = extname(file.originalname) || '';
-    const storagePath = `${req.user.tenantId}/${randomUUID()}${ext}`;
-
     // Normalize the multer payload to a real Buffer ONCE. Multer sometimes
     // delivers a serialized `{type:'Buffer',data:[...]}` instead of a
     // native Buffer (depends on the IPC/proxy boundary). Reuse the same
@@ -593,9 +591,33 @@ export class AssetsController {
     // never crash with ERR_INVALID_ARG_TYPE on createHash.
     const safeBuffer = this.storage.toSafeBuffer(file.buffer);
 
+    // Optimize IMAGES inline before storing — a 4000px PNG saved as 8MB
+    // becomes a ~0.5MB WebP that's visually identical on a screen, so every
+    // screen/preview/CI fetch is of the small version forever. This is the
+    // permanent fix for storage egress. Images are sub-second; VIDEO is left
+    // to the background optimizer (transcode is too slow to block the
+    // request and would risk an upload timeout). On ANY failure the service
+    // returns the original buffer, so an upload never breaks. Format may
+    // change (png/jpeg → webp), so the path extension + stored mimeType +
+    // fileSize all come from the optimizer result.
+    let uploadBuf = safeBuffer;
+    let uploadMime = file.mimetype;
+    let uploadExt = extname(file.originalname) || '';
+    if (this.mediaOpt.isOptimizableImage(file.mimetype)) {
+      const opt = await this.mediaOpt.optimize(safeBuffer, file.mimetype, uploadExt);
+      if (opt.optimized) {
+        uploadBuf = opt.buffer;
+        uploadMime = opt.mimeType;
+        uploadExt = opt.ext;
+      }
+    }
+
+    // Upload to Supabase Storage: tenant/<tenantId>/<uuid>.<ext>
+    const storagePath = `${req.user.tenantId}/${randomUUID()}${uploadExt}`;
+
     let fileUrl: string;
     try {
-      fileUrl = await this.storage.upload(storagePath, safeBuffer, file.mimetype);
+      fileUrl = await this.storage.upload(storagePath, uploadBuf, uploadMime);
     } catch (err: any) {
       throw new HttpException(
         `Upload failed: ${err.message}`,
@@ -605,17 +627,17 @@ export class AssetsController {
 
     // SHA-256 hash so the offline-cache Service Worker can detect when an
     // asset has been replaced server-side without the URL changing, and
-    // re-download exactly the diff. Computed in-memory from the same
-    // normalized buffer — no extra read.
-    const fileHash = createHash('sha256').update(safeBuffer).digest('hex');
+    // re-download exactly the diff. Computed in-memory from the SAME bytes
+    // we stored (post-optimization) — no extra read.
+    const fileHash = createHash('sha256').update(uploadBuf).digest('hex');
 
     const asset = await this.prisma.client.asset.create({
       data: {
         tenantId: req.user.tenantId,
         uploadedByUserId: req.user.id,
         fileUrl,
-        mimeType: file.mimetype,
-        fileSize: file.size,
+        mimeType: uploadMime,
+        fileSize: uploadBuf.length,
         fileHash,
         originalName: file.originalname,
         // Role-gated publish: CONTRIBUTOR uploads land in the review
