@@ -117,7 +117,16 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       if (res.status === 403 && !options._csrfRetry && isMutation) {
         const clone = res.clone();
         const body = await clone.json().catch(() => null);
-        if (body?.error === 'CsrfError') {
+        // The global exception filter normalizes every error to
+        // `{ error: true, code, message }`, so the CsrfError marker lands
+        // in `code` (not `error`, which is the boolean presence flag). The
+        // legacy `body?.error === 'CsrfError'` check could NEVER match
+        // (`true === 'CsrfError'`), so this transparent re-mint-and-retry —
+        // the recovery path for a dropped third-party CSRF cookie on the
+        // Vercel→Railway cross-origin deploy — silently never fired. Read
+        // `code` (the real field); keep the `error` form as a belt-and-
+        // suspenders fallback in case the envelope ever changes.
+        if (body?.code === 'CsrfError' || body?.error === 'CsrfError') {
           invalidateCsrfToken();
           return apiFetch<T>(path, { ...options, _csrfRetry: true });
         }

@@ -9,6 +9,43 @@ import {
 import * as Sentry from '@sentry/nestjs';
 
 /**
+ * Stable machine-readable code per HTTP status. Used as the DEFAULT `code`
+ * for an HttpException whose response payload doesn't carry an explicit
+ * `code`/`error` field — which is the case for every idiomatic
+ * `new HttpException('some message', HttpStatus.X)` (string payload). Before
+ * this map those all fell through to the catch-all 'INTERNAL_ERROR', so a
+ * 401/403/404/429 body wrongly reported `code: 'INTERNAL_ERROR'` even though
+ * the HTTP status was correct. An explicit `{ code }`/`{ error }` on the
+ * thrown payload still wins (see catch()).
+ */
+const STATUS_CODE_LABELS: Record<number, string> = {
+  400: 'BAD_REQUEST',
+  401: 'UNAUTHORIZED',
+  402: 'PAYMENT_REQUIRED',
+  403: 'FORBIDDEN',
+  404: 'NOT_FOUND',
+  405: 'METHOD_NOT_ALLOWED',
+  406: 'NOT_ACCEPTABLE',
+  408: 'REQUEST_TIMEOUT',
+  409: 'CONFLICT',
+  410: 'GONE',
+  413: 'PAYLOAD_TOO_LARGE',
+  415: 'UNSUPPORTED_MEDIA_TYPE',
+  422: 'UNPROCESSABLE_ENTITY',
+  423: 'LOCKED',
+  429: 'TOO_MANY_REQUESTS',
+  500: 'INTERNAL_ERROR',
+  501: 'NOT_IMPLEMENTED',
+  502: 'BAD_GATEWAY',
+  503: 'SERVICE_UNAVAILABLE',
+  504: 'GATEWAY_TIMEOUT',
+};
+
+function codeForStatus(status: number): string {
+  return STATUS_CODE_LABELS[status] ?? (status >= 500 ? 'INTERNAL_ERROR' : 'ERROR');
+}
+
+/**
  * Global exception filter.
  *
  * Responsibilities:
@@ -35,6 +72,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // ── HttpException (NestJS) ──
     if (exception instanceof HttpException) {
       status = exception.getStatus();
+      // Default the machine code to the one that matches the HTTP status.
+      // A string-payload HttpException (the idiomatic `throw new
+      // HttpException('msg', 404)`) carries no `code`/`error` field, so
+      // without this it fell through to 'INTERNAL_ERROR' — a 404/401/429
+      // body that wrongly self-reported as an internal error. An explicit
+      // `{ code }`/`{ error }` on the payload still overrides it below.
+      code = codeForStatus(status);
       const resp = exception.getResponse();
       if (typeof resp === 'string') {
         message = resp;
