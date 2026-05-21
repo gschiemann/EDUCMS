@@ -236,21 +236,38 @@ export class NotificationsService {
     // Emit per-screen notifications for tenants NOT flagged as infra
     // events. Same dedupe key as before so existing scan cadence
     // doesn't double-fire.
-    let notified = 0;
-    for (const screen of offlineScreens) {
-      if (!screen.tenantId) continue;
-      if (infraEventTenants.has(screen.tenantId)) continue; // suppressed
-      const bucket = Math.floor((screen.lastPingAt?.getTime() ?? now) / (60 * 60 * 1000));
-      const dedupeKey = `screen-offline:${screen.id}:${bucket}`;
-      const result = await this.notify({
-        tenantId: screen.tenantId,
-        kind: 'SCREEN_OFFLINE',
-        title: `Screen offline: ${screen.name}`,
-        body: `No heartbeat since ${screen.lastPingAt?.toISOString() ?? 'unknown'}.`,
-        link: `/screens`,
-        dedupeKey,
+    // Audit P1 (N+1): previously this looped `await this.notify()` per
+    // offline screen — one upsert round-trip each, serialized through the
+    // connection_limit=10 pool DURING an outage (exactly when the DB is most
+    // stressed). A 40%-partial drop on a 500-screen district = ~200 serial
+    // upserts every 60s. The (tenantId, dedupeKey) unique constraint lets us
+    // collapse that to a single createMany({ skipDuplicates }): the DB drops
+    // the already-seen buckets, so behavior (one row per dedupeKey) is
+    // identical — just one round-trip instead of N.
+    const offlineRows = offlineScreens
+      .filter((s) => s.tenantId && !infraEventTenants.has(s.tenantId))
+      .map((screen) => {
+        const bucket = Math.floor((screen.lastPingAt?.getTime() ?? now) / (60 * 60 * 1000));
+        return {
+          tenantId: screen.tenantId as string,
+          kind: 'SCREEN_OFFLINE',
+          title: `Screen offline: ${screen.name}`,
+          body: `No heartbeat since ${screen.lastPingAt?.toISOString() ?? 'unknown'}.`,
+          link: `/screens`,
+          dedupeKey: `screen-offline:${screen.id}:${bucket}`,
+        };
       });
-      if (result) notified++;
+    let notified = 0;
+    if (offlineRows.length) {
+      try {
+        const res = await this.prisma.client.notification.createMany({
+          data: offlineRows,
+          skipDuplicates: true,
+        });
+        notified = res.count;
+      } catch (err: any) {
+        this.logger.warn(`[scanOfflineScreens] batch notify failed: ${err?.message ?? err}`);
+      }
     }
 
     // One aggregated notification per infra-event tenant per 5-min

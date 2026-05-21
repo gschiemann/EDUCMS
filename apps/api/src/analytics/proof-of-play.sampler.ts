@@ -110,15 +110,28 @@ export class ProofOfPlaySampler implements OnModuleInit, OnModuleDestroy {
 
       if (screens.length === 0 || schedules.length === 0) return;
 
+      // Audit P2 (O(n²)): bucket schedules by tenant ONCE so each screen
+      // scans only its own tenant's schedules. The old nested loop was
+      // O(screens × ALL schedules across ALL tenants) — 10k×10k = 100M
+      // iterations every 10 min. Now it's O(screens × schedules-in-that-tenant).
+      const schedulesByTenant = new Map<string, typeof schedules>();
+      for (const s of schedules) {
+        if (!s.tenantId) continue;
+        const arr = schedulesByTenant.get(s.tenantId);
+        if (arr) arr.push(s);
+        else schedulesByTenant.set(s.tenantId, [s]);
+      }
+
       // Resolve each online screen's effective playlist — the
       // highest-priority schedule targeting the screen directly or via
       // its group. Screens with no active schedule are simply skipped.
       const rows: Array<{ tenantId: string; screenId: string; playlistId: string }> = [];
       for (const screen of screens) {
         if (!screen.tenantId) continue;
+        const tenantSchedules = schedulesByTenant.get(screen.tenantId);
+        if (!tenantSchedules) continue;
         let best: { playlistId: string; rank: number } | null = null;
-        for (const s of schedules) {
-          if (s.tenantId !== screen.tenantId) continue;
+        for (const s of tenantSchedules) {
           const matchesScreen = !!s.screenId && s.screenId === screen.id;
           const matchesGroup =
             !!s.screenGroupId &&
