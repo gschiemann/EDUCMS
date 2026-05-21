@@ -559,36 +559,52 @@ export class ScreensController {
       `prior=${screen.playerVersion || '(none)'} changed=${versionChanged} ` +
       `apk-ua=${isApkUa} url=${String(rawUrl).slice(0, 200)}`,
     );
-    await withDbRetry(
-      () => this.prisma.client.screen.update({
-        where: { id: screen.id },
-        data,
-      }),
-      { label: 'screen.update[heartbeat]' },
-    );
+    // Write-amplification fix (audit P0): the player heartbeats every 3s and
+    // sends ?v= every time, so the old code wrote lastPingAt + playerVersion
+    // on EVERY poll and then did a SECOND findUnique to re-read OTA state —
+    // 3 sequential round-trips per screen per 3s (~43M queries/day at 500
+    // screens) on the connection_limit=10 pool. Collapse it:
+    //   • WRITE only when something meaningful changed (version / manager /
+    //     OTA-install-clear) OR the 25s ping debounce is due — the same
+    //     shouldSkipLastPingWrite() debounce the manifest path already uses
+    //     (lastPingAt is at most ~25s stale, well within the 2-min offline
+    //     threshold).
+    //   • Return the OTA fields from the update's OWN select, so the third
+    //     query disappears. When we skip the write, the row already fetched
+    //     above (full select) serves the response.
+    // Result: 1 query on the common poll (unchanged version, debounced),
+    // 2 on a write — never 3. forceApkUpdatePendingAt is read from the
+    // always-fresh findUnique above, so OTA pushes are still detected
+    // immediately even on a debounced poll.
+    const OTA_SELECT = {
+      lastOtaState: true,
+      lastOtaProgress: true,
+      lastOtaMessage: true,
+      lastOtaAt: true,
+      playerVersion: true,
+      managerVersion: true,
+      forceApkUpdatePendingAt: true,
+    } as const;
 
-    // 2026-04-29 — surface OTA state on the heartbeat so the web
-    // player's splash can render REAL progress (CHECKING /
-    // DOWNLOADING N% / INSTALLING / etc.) instead of elapsed-time
-    // estimates. The OtaUpdateWorker on the APK POSTs to
-    // /ota-state at each phase; we just relay the latest values
-    // here. Web player already polls this endpoint every 30s, so
-    // we get progress feedback for free.
-    const screenAfterUpdate = await withDbRetry(
-      () => this.prisma.client.screen.findUnique({
-        where: { id: screen.id },
-        select: {
-          lastOtaState: true,
-          lastOtaProgress: true,
-          lastOtaMessage: true,
-          lastOtaAt: true,
-          playerVersion: true,
-          managerVersion: true,
-          forceApkUpdatePendingAt: true,
-        } as any,
-      }),
-      { label: 'screen.findUnique[ota-state]' },
-    );
+    const managerChanged =
+      managerVersionName !== undefined &&
+      (data.managerVersion ?? null) !== ((screen as any).managerVersion ?? null);
+    const otaCleared = data.forceApkUpdatePendingAt === null;
+    const mustWrite = !!versionChanged || managerChanged || otaCleared;
+    const pingDue = !shouldSkipLastPingWrite(screen.id);
+
+    let screenAfterUpdate: any = screen;
+    if (mustWrite || pingDue) {
+      markLastPingWritten(screen.id);
+      screenAfterUpdate = await withDbRetry(
+        () => this.prisma.client.screen.update({
+          where: { id: screen.id },
+          data,
+          select: OTA_SELECT as any,
+        }),
+        { label: 'screen.update[heartbeat]' },
+      );
+    }
     // 2026-04-29 — operator (push went silent on v1.0.30 kiosk):
     // "pushed, nothing happened anywhere" + dashboard showed
     // "waiting for kiosk (≤ 35 min via periodic check)". WS push

@@ -505,13 +505,23 @@ export class AssetsController {
     const fileHash = typeof body.fileHash === 'string' && /^[a-f0-9]{64}$/i.test(body.fileHash)
       ? body.fileHash.toLowerCase()
       : null;
+
+    // Don't trust the client's claimed size/mime — read the REAL values that
+    // landed in storage (cheap metadata call, no download). A client could
+    // otherwise record a false size/mime that then drives the player's
+    // rendering + the dashboard's cache-status math. Falls back to the
+    // claimed values only if the info endpoint is unavailable.
+    const info = await this.storage.getObjectInfo(storagePath);
+    const realMime = info?.contentType || mimeType;
+    const realSize = info?.size ?? Number(body.size);
+
     const asset = await this.prisma.client.asset.create({
       data: {
         tenantId: req.user.tenantId,
         uploadedByUserId: req.user.id,
         fileUrl: this.storage.publicUrlForPath(storagePath),
-        mimeType,
-        fileSize: Number(body.size),
+        mimeType: realMime,
+        fileSize: realSize,
         fileHash,
         originalName: body.filename || null,
         status: this.initialAssetStatus(req.user.role),

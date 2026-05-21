@@ -279,6 +279,37 @@ export class SupabaseStorageService implements OnModuleInit {
   }
 
   /**
+   * Fetch an object's stored metadata (real byte size + content-type) WITHOUT
+   * downloading it. Used by the presigned-upload completion to record the
+   * actual stored size/mime instead of trusting the client-claimed values
+   * (a client could otherwise lie about size/mime, which then drives the
+   * player's rendering + cache-status display). We deliberately do NOT
+   * re-hash the bytes here — that would require downloading the whole object
+   * and defeat the entire point of presigned (direct-to-storage) uploads for
+   * large files. Returns null if the info endpoint is unavailable so the
+   * caller can fall back to client-claimed values rather than fail the upload.
+   */
+  async getObjectInfo(filePath: string): Promise<{ size: number | null; contentType: string | null } | null> {
+    try {
+      const { url, key } = this.supabaseConfig();
+      const endpoint = `${url}/storage/v1/object/info/public/${BUCKET}/${filePath}`;
+      const res = await fetch(endpoint, {
+        headers: { Authorization: `Bearer ${key}`, apikey: key },
+      });
+      if (!res.ok) return null;
+      const j: any = await res.json();
+      const size = Number(j?.size ?? j?.metadata?.size);
+      const contentType = j?.content_type ?? j?.contentType ?? j?.metadata?.mimetype ?? null;
+      return {
+        size: Number.isFinite(size) ? size : null,
+        contentType: typeof contentType === 'string' ? contentType : null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Delete a file from Supabase Storage.
    */
   async delete(filePath: string): Promise<void> {

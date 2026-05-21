@@ -132,7 +132,7 @@ export class UsersController {
     // Create the user AND its immutable audit row atomically — a privileged
     // action (account + role grant) must never land without a forensic trail,
     // and the trail must not exist for a user that failed to create.
-    const user = await this.prisma.client.$transaction(async (tx) => {
+    const user = await this.prisma.client.$transaction(async (tx: any) => {
       const u = await tx.user.create({
         data: {
           tenantId,
@@ -199,7 +199,7 @@ export class UsersController {
     // Role change + audit row atomically. "Who made this account an admin?"
     // must always be answerable; a privilege escalation with no record is
     // exactly the gap this closes.
-    const updated = await this.prisma.client.$transaction(async (tx) => {
+    const updated = await this.prisma.client.$transaction(async (tx: any) => {
       const u = await tx.user.update({
         where: { id },
         data: { role: body.role },
@@ -242,7 +242,7 @@ export class UsersController {
 
     // Delete + audit atomically so an account deletion always leaves a record
     // (captured BEFORE the row is gone, in the same transaction).
-    await this.prisma.client.$transaction(async (tx) => {
+    await this.prisma.client.$transaction(async (tx: any) => {
       await tx.auditLog.create({
         data: {
           tenantId,
