@@ -6530,9 +6530,10 @@ function TemplateScaler({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
-  // 'topleft' for LED-poster shapes (narrow content at native size on a
-  // wider frame buffer); 'center' for everything else. See compute().
-  const [align, setAlign] = useState<'center' | 'topleft'>('center');
+  // 'left' for LED-poster shapes (narrow content at native size on a
+  // wider frame buffer — full height, so left-aligned not top-left);
+  // 'center' for everything else. See compute().
+  const [align, setAlign] = useState<'center' | 'left'>('center');
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -6568,7 +6569,7 @@ function TemplateScaler({
       // out of the box with zero controller config and zero on-poster
       // menu fiddling. Anything that fills the LED, or is downscaled to
       // fit, stays centered exactly as before.
-      setAlign(s >= 0.999 && designW * s < w - 1 ? 'topleft' : 'center');
+      setAlign(s >= 0.999 && designW * s < w - 1 ? 'left' : 'center');
     };
     compute();
     // Two RAFs — first paint may report 0 offsetWidth on the Taurus
@@ -6596,8 +6597,11 @@ function TemplateScaler({
         width: '100%',
         height: '100%',
         display: 'flex',
-        alignItems: align === 'topleft' ? 'flex-start' : 'center',
-        justifyContent: align === 'topleft' ? 'flex-start' : 'center',
+        // Poster shapes anchor LEFT (full height — the LED is full
+        // 1080px tall, so it's left-aligned, not top-left). Everything
+        // else stays centered.
+        alignItems: 'center',
+        justifyContent: align === 'left' ? 'flex-start' : 'center',
         overflow: 'hidden',
       }}
     >
@@ -6611,9 +6615,9 @@ function TemplateScaler({
           flexShrink: 0,
           position: 'relative',
           transform: scale > 0 ? `scale(${scale})` : 'scale(0)',
-          // Scale from the top-left corner for posters so the scaled box
-          // stays pinned to (0,0); center otherwise.
-          transformOrigin: align === 'topleft' ? 'top left' : 'center center',
+          // Scale from the left edge (vertically centered) for posters so
+          // the scaled box stays pinned to x=0; center otherwise.
+          transformOrigin: align === 'left' ? 'left center' : 'center center',
         }}
       >
         {children}
