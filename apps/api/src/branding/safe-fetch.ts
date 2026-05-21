@@ -9,7 +9,11 @@
  */
 
 import { lookup } from 'node:dns/promises';
+import * as dns from 'node:dns';
 import { isIP } from 'node:net';
+import * as https from 'node:https';
+import * as http from 'node:http';
+import * as zlib from 'node:zlib';
 
 export class SsrfError extends Error {
   constructor(msg: string) { super(msg); this.name = 'SsrfError'; }
@@ -106,6 +110,40 @@ export async function assertPublicUrl(rawUrl: string): Promise<URL> {
   return url;
 }
 
+/**
+ * net.LookupFunction that re-resolves at CONNECT TIME and rejects any
+ * private/loopback/link-local address. Wired into the http(s) request's
+ * `lookup` option so the socket only ever connects to an address THIS
+ * validates — closing the DNS-rebind TOCTOU (a low-TTL domain that passes
+ * the up-front check then flips to 169.254.169.254 / 10.x for the actual
+ * connection). No dependency — this is core node:dns, so it cannot break
+ * boot the way the reverted undici@8 approach did.
+ */
+function ssrfSafeLookup(
+  hostname: string,
+  options: dns.LookupOneOptions | dns.LookupAllOptions | dns.LookupOptions,
+  callback: (err: NodeJS.ErrnoException | null, address: any, family?: number) => void,
+): void {
+  dns.lookup(hostname, { ...(options as any), all: true }, (err, addresses) => {
+    if (err) return callback(err, '', 4);
+    const list = (Array.isArray(addresses) ? addresses : []) as dns.LookupAddress[];
+    if (!list.length) {
+      return callback(new SsrfError(`DNS returned no addresses for ${hostname}`) as any, '', 4);
+    }
+    for (const a of list) {
+      if (isPrivateIp(a.address)) {
+        return callback(
+          new SsrfError(`DNS for ${hostname} resolved to private range (${a.address})`) as any,
+          '',
+          4,
+        );
+      }
+    }
+    if ((options as any)?.all) return callback(null, list, undefined as any);
+    return callback(null, list[0].address, list[0].family);
+  });
+}
+
 export interface SafeFetchOptions {
   maxBytes?: number;         // default 5 MB
   timeoutMs?: number;        // default 8000
@@ -156,69 +194,85 @@ export async function safeFetch(
     }
   }
 
-  const ac = new AbortController();
-  const to = setTimeout(() => ac.abort(), timeoutMs);
+  // Use node:http(s) request (NOT global fetch) so we can pin DNS at connect
+  // via the `lookup` option — closing the rebind window. `fetch` gives no way
+  // to do this without an extra dependency (the reverted undici approach
+  // crashed boot on Node 20.20.2). We replicate fetch's behavior we relied on:
+  // manual redirects, a streaming byte cap, a timeout, and transparent
+  // gzip/deflate/br decoding (fetch did the last one for free).
+  const isHttps = url.protocol === 'https:';
+  const lib = isHttps ? https : http;
 
-  let res: Response;
-  try {
-    res = await fetch(url.toString(), {
-      redirect: 'manual',     // we chase redirects ourselves after revalidating
-      signal: ac.signal,
-      headers: {
-        'User-Agent': userAgent,
-        ...(accept ? { Accept: accept } : {}),
+  const result = await new Promise<
+    | { kind: 'redirect'; location: string | undefined; status: number }
+    | { kind: 'body'; status: number; headers: http.IncomingHttpHeaders; body: Buffer }
+  >((resolve, reject) => {
+    const req = lib.request(
+      url,
+      {
+        method: 'GET',
+        lookup: ssrfSafeLookup as any, // ← the SSRF connect-time pin
+        timeout: timeoutMs,
+        headers: {
+          'User-Agent': userAgent,
+          'Accept-Encoding': 'gzip, deflate, br',
+          ...(accept ? { Accept: accept } : {}),
+        },
       },
+      (res) => {
+        const status = res.statusCode || 0;
+        if ([301, 302, 303, 307, 308].includes(status)) {
+          res.resume(); // drain so the socket frees
+          resolve({ kind: 'redirect', location: res.headers.location, status });
+          return;
+        }
+        const chunks: Buffer[] = [];
+        let total = 0;
+        res.on('data', (c: Buffer) => {
+          total += c.length;
+          if (total > maxBytes) {
+            req.destroy();
+            reject(new FetchTooLargeError(`Response exceeded ${maxBytes} bytes`));
+            return;
+          }
+          chunks.push(c);
+        });
+        res.on('end', () => resolve({ kind: 'body', status, headers: res.headers, body: Buffer.concat(chunks) }));
+        res.on('error', (e) => reject(new SsrfError(`Read failed: ${e.message}`)));
+      },
+    );
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new SsrfError('Fetch timed out'));
     });
-    // NOTE: connection-level DNS-rebind pinning was reverted here — it relied
-    // on `undici@8`'s Agent, which crashes on boot on Railway's Node 20.20.2
-    // (webidl.util.markAsUncloneable). The up-front resolve+validate above +
-    // per-redirect re-validation remain in force. Re-closing the rebind window
-    // with a no-dependency lookup-pinning approach (node:https `lookup` option)
-    // is a tracked follow-up — see feedback_audits_must_be_exhaustive.md.
-  } catch (e: any) {
-    clearTimeout(to);
-    if (e?.name === 'AbortError') throw new SsrfError('Fetch timed out');
-    throw new SsrfError(`Fetch failed: ${e?.message || e}`);
-  }
-  clearTimeout(to);
+    req.on('error', (e: any) => {
+      reject(e instanceof SsrfError ? e : new SsrfError(`Fetch failed: ${e?.message || e}`));
+    });
+    req.end();
+  });
 
-  // Manual redirect handling
-  if ([301, 302, 303, 307, 308].includes(res.status)) {
-    const loc = res.headers.get('location');
-    if (!loc) throw new SsrfError(`${res.status} without Location`);
-    const next = new URL(loc, url).toString();
+  if (result.kind === 'redirect') {
+    if (!result.location) throw new SsrfError(`${result.status} without Location`);
+    const next = new URL(result.location, url).toString();
+    // validatePublicUrl + the connect-time lookup re-validate the next hop too.
     return safeFetch(next, { ...opts, redirectCount: redirectCount + 1 });
   }
 
-  // Streaming size cap — abort any response larger than maxBytes
-  const reader = res.body?.getReader();
-  if (!reader) {
-    return { body: Buffer.alloc(0), contentType: res.headers.get('content-type') || '', finalUrl: url.toString(), status: res.status };
-  }
-
-  const chunks: Uint8Array[] = [];
-  let total = 0;
+  // Transparently decode the content-encoding fetch used to handle for us.
+  let body = result.body;
+  const enc = String(result.headers['content-encoding'] || '').toLowerCase();
   try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (value) {
-        total += value.byteLength;
-        if (total > maxBytes) {
-          try { await reader.cancel(); } catch {}
-          throw new FetchTooLargeError(`Response exceeded ${maxBytes} bytes`);
-        }
-        chunks.push(value);
-      }
-    }
-  } finally {
-    try { reader.releaseLock(); } catch {}
+    if (enc === 'gzip') body = zlib.gunzipSync(body);
+    else if (enc === 'deflate') body = zlib.inflateSync(body);
+    else if (enc === 'br') body = zlib.brotliDecompressSync(body);
+  } catch {
+    // Bad/partial encoding — fall back to the raw bytes rather than throw.
   }
 
   return {
-    body: Buffer.concat(chunks.map(c => Buffer.from(c))),
-    contentType: res.headers.get('content-type') || 'application/octet-stream',
+    body,
+    contentType: String(result.headers['content-type'] || 'application/octet-stream'),
     finalUrl: url.toString(),
-    status: res.status,
+    status: result.status,
   };
 }
