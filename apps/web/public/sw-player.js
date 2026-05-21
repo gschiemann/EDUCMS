@@ -139,11 +139,81 @@ self.addEventListener('activate', (event) => {
       }
     }
 
+    // FIX (audit P1): also copy the PLAYLIST cache forward on a VERSION bump.
+    // Previously the playlist cache was dropped here and only refilled by the
+    // next PRECACHE_PLAYLIST — so every kiosk re-downloaded its ENTIRE playlist
+    // from Supabase on each SW upgrade (a fleet-wide egress spike, made worse
+    // by operators bumping VERSION as a "did the deploy land?" probe). Hashes
+    // still match, so this is a pure local copy — no network. Mirrors the
+    // emergency/meta copy-forward above.
+    const stalePlaylist = stale.filter((k) => k.startsWith('edu-player-playlist-')).sort();
+    const oldPlaylistName = stalePlaylist.length ? stalePlaylist[stalePlaylist.length - 1] : null;
+    if (oldPlaylistName) {
+      try {
+        const [oldPl, newPl] = await Promise.all([
+          caches.open(oldPlaylistName),
+          caches.open(PLAYLIST_CACHE),
+        ]);
+        const oldKeys = await oldPl.keys();
+        for (const req of oldKeys) {
+          const res = await oldPl.match(req);
+          if (res) await newPl.put(req, res.clone());
+        }
+      } catch (e) {
+        console.warn('[SW] activate: failed to copy old playlist cache', e);
+      }
+    }
+
     // Now safe to delete stale versioned caches.
     await Promise.all(stale.map((k) => caches.delete(k)));
     await self.clients.claim();
   })());
 });
+
+/**
+ * Build a 206 Partial Content response by slicing a fully-cached 200 response
+ * to the requested byte range. Lets the cache satisfy <video>/<audio> Range
+ * requests so media plays from disk (offline-capable) instead of re-streaming
+ * from origin. On any parse problem we fall back to the full cached response
+ * (never break playback). Cached entries are always full 200s (precached), so
+ * slicing the blob is correct.
+ */
+async function rangeResponseFromCached(cached, rangeHeader) {
+  try {
+    const m = /^bytes=(\d*)-(\d*)$/.exec((rangeHeader || '').trim());
+    if (!m) return cached;
+    const blob = await cached.blob();
+    const size = blob.size;
+    let start = m[1] === '' ? null : parseInt(m[1], 10);
+    let end = m[2] === '' ? null : parseInt(m[2], 10);
+    if (start === null && end === null) return cached;
+    if (start === null) {
+      // suffix range: last N bytes
+      start = Math.max(0, size - end);
+      end = size - 1;
+    } else if (end === null || end >= size) {
+      end = size - 1;
+    }
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= size) {
+      return new Response(null, {
+        status: 416,
+        statusText: 'Range Not Satisfiable',
+        headers: { 'Content-Range': `bytes */${size}`, 'Accept-Ranges': 'bytes' },
+      });
+    }
+    const headers = new Headers(cached.headers);
+    headers.set('Content-Range', `bytes ${start}-${end}/${size}`);
+    headers.set('Content-Length', String(end - start + 1));
+    headers.set('Accept-Ranges', 'bytes');
+    return new Response(blob.slice(start, end + 1), {
+      status: 206,
+      statusText: 'Partial Content',
+      headers,
+    });
+  } catch (e) {
+    return cached; // never break playback over a range-slicing error
+  }
+}
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
@@ -163,17 +233,26 @@ self.addEventListener('fetch', (event) => {
     const stripped = stripQuery(req.url);
     const altReq = stripped !== req.url ? new Request(stripped, { method: 'GET' }) : null;
 
+    // A <video>/<audio> element fetches media via HTTP Range requests
+    // (e.g. "Range: bytes=0-"). Cache.match() returns the full 200 we cached,
+    // which WebKit / older Chromium REJECT for a range request and then
+    // re-fetch from origin — so a looping emergency/playlist video re-streams
+    // from Supabase every loop (continuous fleet egress) and may not play at
+    // all when offline. Synthesize a 206 Partial Content from the cached blob
+    // so the cache actually satisfies the range. (FIX — audit P1.)
+    const rangeHeader = req.headers.get('range');
+
     // Try emergency cache first (highest priority for life-safety).
     const emCache = await caches.open(EMERGENCY_CACHE);
     const emHit = await emCache.match(req, { ignoreSearch: true })
               ?? (altReq && await emCache.match(altReq, { ignoreSearch: true }));
-    if (emHit) return emHit;
+    if (emHit) return rangeHeader ? await rangeResponseFromCached(emHit, rangeHeader) : emHit;
 
     // Then playlist cache.
     const plCache = await caches.open(PLAYLIST_CACHE);
     const plHit = await plCache.match(req, { ignoreSearch: true })
               ?? (altReq && await plCache.match(altReq, { ignoreSearch: true }));
-    if (plHit) return plHit;
+    if (plHit) return rangeHeader ? await rangeResponseFromCached(plHit, rangeHeader) : plHit;
 
     // Bug fix (Android images): for cross-origin URLs that are NOT in any
     // cache tier, bail out of the SW and let the browser fetch them natively.
