@@ -8,6 +8,7 @@ import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay'
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 import { isFlexGapSupported, applyFlexGapPolyfill } from '@/lib/flex-gap-polyfill';
+import { isCqUnitSupported, applyCqUnitPolyfill } from '@/lib/cq-unit-polyfill';
 import {
   registerOfflineCache,
   precachePlaylist,
@@ -1380,10 +1381,22 @@ function PlayerPage() {
   // / template) is fixed too. The polyfill marks processed elements, so each
   // pass only touches new DOM.
   useEffect(() => {
-    if (isFlexGapSupported()) return; // modern browser → no-op
-    const run = () => { try { applyFlexGapPolyfill(); } catch { /* never break playback */ } };
+    // Two independent legacy-Chromium fixes with DIFFERENT cutoffs:
+    //   • flex `gap` — Chrome 84  → only the 83 box needs it
+    //   • container-query units (cqmin/cqh) — Chrome 105 → the 83/95/101
+    //     boxes need it (a Chrome 95 box supports gap but NOT cq units, so
+    //     these must gate separately or the 95/101 boxes get missed).
+    // Each polyfill self-detects + no-ops where supported, so both are hard
+    // no-ops on every modern browser — zero cost, zero demo risk.
+    const needsGap = !isFlexGapSupported();
+    const needsCq = !isCqUnitSupported();
+    if (!needsGap && !needsCq) return; // fully modern engine → nothing to do
+    const run = () => {
+      if (needsGap) { try { applyFlexGapPolyfill(); } catch { /* never break playback */ } }
+      if (needsCq) { try { applyCqUnitPolyfill(); } catch { /* never break playback */ } }
+    };
     const raf = requestAnimationFrame(run); // initial, after first paint
-    const id = setInterval(run, 2500);       // catch content swaps (Taurus only)
+    const id = setInterval(run, 2500);       // re-apply after content/template swaps
     return () => { cancelAnimationFrame(raf); clearInterval(id); };
   }, []);
 
