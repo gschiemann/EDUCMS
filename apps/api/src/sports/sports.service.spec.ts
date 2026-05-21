@@ -738,3 +738,87 @@ describe('SportsService — duplicateGame', () => {
     await expect(service.duplicateGame('other-tenant', src.id)).rejects.toThrow(NotFoundException);
   });
 });
+
+describe('SportsService — AUTO celebration on score feed', () => {
+  // Pull the CUE events a feed ingest produced (the manual-launchpad and
+  // auto paths share the same CUE GameEvent shape).
+  const cues = (gameEvent: any) =>
+    gameEvent.rows.filter((r: any) => r.type === 'CUE').map((r: any) => r.payload);
+
+  it('fires the matching celebration when a FEED bumps the score by a standout delta', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'football'); // 0-0
+    // Feed reports a touchdown: home 0 → 7.
+    await service.ingestByFeed(g.id, { homeScore: 7 });
+    const fired = cues(gameEvent);
+    expect(fired).toHaveLength(1);
+    expect(fired[0].key).toBe('touchdown');
+    expect(fired[0].auto).toBe(true);
+    expect(fired[0].team).toBe('home');
+    // A field goal (delta 3) for the away team fires fieldGoal.
+    await service.ingestByFeed(g.id, { awayScore: 3 });
+    const fired2 = cues(gameEvent);
+    expect(fired2).toHaveLength(2);
+    expect(fired2[1].key).toBe('fieldGoal');
+    expect(fired2[1].team).toBe('away');
+  });
+
+  it('does NOT fire on a routine / non-standout delta (football +2 has no autoPoints)', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'football');
+    await service.ingestByFeed(g.id, { homeScore: 2 }); // safety — no celebration
+    expect(cues(gameEvent)).toHaveLength(0);
+  });
+
+  it('does NOT fire on a basketball bucket (+2) but DOES on a three (+3)', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+    await service.ingestByFeed(g.id, { homeScore: 2 });
+    expect(cues(gameEvent)).toHaveLength(0);
+    await service.ingestByFeed(g.id, { homeScore: 5 }); // +3 → three-pointer
+    const fired = cues(gameEvent);
+    expect(fired).toHaveLength(1);
+    expect(fired[0].key).toBe('threePointer');
+  });
+
+  it('fires a soccer GOAL on every +1', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'soccer');
+    await service.ingestByFeed(g.id, { homeScore: 1 });
+    await service.ingestByFeed(g.id, { homeScore: 2 });
+    const fired = cues(gameEvent);
+    expect(fired).toHaveLength(2);
+    expect(fired.every((c: any) => c.key === 'goal')).toBe(true);
+  });
+
+  it('does NOT fire on a score correction (delta <= 0) or an unchanged re-send', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'soccer');
+    await service.ingestByFeed(g.id, { homeScore: 3 }); // not a +1 → no goal cue
+    const after = cues(gameEvent).length;
+    await service.ingestByFeed(g.id, { homeScore: 3 }); // re-send, delta 0
+    await service.ingestByFeed(g.id, { homeScore: 2 }); // correction down
+    expect(cues(gameEvent).length).toBe(after);
+  });
+
+  it('does NOT auto-fire from the MANUAL (guarded) ingest path', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'soccer');
+    // No opts.auto → manual admin sync; operator fires cues themselves.
+    await service.ingest(TENANT, g.id, { homeScore: 1 });
+    expect(cues(gameEvent)).toHaveLength(0);
+  });
+
+  it('respects the per-game toggle — OFF suppresses, back ON resumes', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'soccer');
+    await service.setAutoCelebrate(TENANT, g.id, false);
+    await service.ingestByFeed(g.id, { homeScore: 1 });
+    expect(cues(gameEvent)).toHaveLength(0);
+    expect((await service.getAutoCelebrate(TENANT, g.id)).enabled).toBe(false);
+
+    await service.setAutoCelebrate(TENANT, g.id, true);
+    await service.ingestByFeed(g.id, { homeScore: 2 });
+    expect(cues(gameEvent)).toHaveLength(1);
+  });
+});

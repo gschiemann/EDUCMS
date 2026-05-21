@@ -424,6 +424,37 @@ export class SportsController {
     return this.sports.fireCue(req.user.tenantId, id, body);
   }
 
+  /** Read the AUTO-celebrate toggle — whether a live score feed should
+   *  auto-fire the matching celebration on a score jump. */
+  @Get('games/:id/auto-celebrate')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  getAutoCelebrate(@Request() req: any, @Param('id') id: string) {
+    return this.sports.getAutoCelebrate(req.user.tenantId, id);
+  }
+
+  /** Flip the AUTO-celebrate toggle for a game. When on (default), a live
+   *  score feed reporting a standout score jump (touchdown, three-pointer,
+   *  goal, grand slam) auto-fires that celebration on every surface. */
+  @Post('games/:id/auto-celebrate')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  setAutoCelebrate(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { enabled?: boolean },
+  ) {
+    return this.sports.setAutoCelebrate(req.user.tenantId, id, body?.enabled);
+  }
+
   /** Set the stadium ribbon's custom message reel — operator-typed
    *  lines that scroll on the ribbon in place of the default prompts. */
   @Patch('games/:id/ribbon')

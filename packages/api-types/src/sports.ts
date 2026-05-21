@@ -38,6 +38,19 @@ export interface SportCelebration {
   key: string;
   label: string;
   emoji: string;
+  /**
+   * AUTO trigger (Sprint 13). When a live score FEED reports a score
+   * INCREASE of one of these point values for a team, this celebration
+   * auto-fires for that team — "a feed reporting 14→21 fires the touchdown
+   * cue itself." Set ONLY on standout, delta-unambiguous moments
+   * (touchdown, three-pointer, goal, grand slam); NEVER on routine scoring
+   * (every basketball bucket, every volleyball rally) or on moments a score
+   * delta can't reveal (sack, steal, pin, solo home run). Manual operation
+   * — the +/- console buttons (adjustScore) and the celebration launchpad
+   * (fireCue) — is unaffected: AUTO fires only from the machine feed ingest
+   * path, and only when the per-game toggle is on (default on).
+   */
+  autoPoints?: number[];
 }
 
 /**
@@ -144,8 +157,11 @@ const FOOTBALL: SportDefinition = {
     { key: 'possession', label: 'Possession (home / away)', scope: 'game', type: 'text' },
   ],
   celebrations: [
-    { key: 'touchdown', label: 'Touchdown', emoji: '🏈' },
-    { key: 'fieldGoal', label: 'Field Goal', emoji: '🏈' },
+    // TD = 6; a batched feed may report TD+XP (7) or TD+2pt (8) as one
+    // delta. Field goal = 3. Safety (+2) and a lone XP (+1) have no
+    // celebration of their own, so they don't auto-fire.
+    { key: 'touchdown', label: 'Touchdown', emoji: '🏈', autoPoints: [6, 7, 8] },
+    { key: 'fieldGoal', label: 'Field Goal', emoji: '🏈', autoPoints: [3] },
     { key: 'firstDown', label: 'First Down', emoji: '📍' },
     { key: 'sack', label: 'Sack', emoji: '💥' },
     { key: 'turnover', label: 'Turnover', emoji: '🔄' },
@@ -172,7 +188,10 @@ const BASKETBALL: SportDefinition = {
     { key: 'possession', label: 'Possession (home / away)', scope: 'game', type: 'text' },
   ],
   celebrations: [
-    { key: 'threePointer', label: 'Three!', emoji: '🎯' },
+    // Only the three-pointer auto-fires: +3 in a single possession is
+    // unambiguously a three. A dunk (+2) is indistinguishable from any
+    // other field goal and far too frequent to auto-celebrate.
+    { key: 'threePointer', label: 'Three!', emoji: '🎯', autoPoints: [3] },
     { key: 'dunk', label: 'Dunk', emoji: '💪' },
     { key: 'buzzerBeater', label: 'Buzzer Beater', emoji: '⏰' },
     { key: 'steal', label: 'Steal', emoji: '🖐️' },
@@ -206,7 +225,7 @@ const BASEBALL: SportDefinition = {
   ],
   celebrations: [
     { key: 'homeRun', label: 'Home Run', emoji: '⚾' },
-    { key: 'grandSlam', label: 'Grand Slam', emoji: '💎' },
+    { key: 'grandSlam', label: 'Grand Slam', emoji: '💎', autoPoints: [4] },
     { key: 'strikeout', label: 'Strikeout', emoji: '🔥' },
     { key: 'doublePlay', label: 'Double Play', emoji: '⚡' },
   ],
@@ -224,7 +243,7 @@ const SOFTBALL: SportDefinition = {
   // a softball, not a baseball.
   celebrations: [
     { key: 'homeRun', label: 'Home Run', emoji: '🥎' },
-    { key: 'grandSlam', label: 'Grand Slam', emoji: '💎' },
+    { key: 'grandSlam', label: 'Grand Slam', emoji: '💎', autoPoints: [4] },
     { key: 'strikeout', label: 'Strikeout', emoji: '🔥' },
     { key: 'doublePlay', label: 'Double Play', emoji: '⚡' },
   ],
@@ -248,7 +267,8 @@ const SOCCER: SportDefinition = {
     { key: 'awayRedCards', label: 'Away Red Cards', scope: 'away', type: 'number', min: 0, max: 11 },
   ],
   celebrations: [
-    { key: 'goal', label: 'GOAL!', emoji: '⚽' },
+    // Soccer only scores by goals, one at a time → every +1 is a goal.
+    { key: 'goal', label: 'GOAL!', emoji: '⚽', autoPoints: [1] },
     { key: 'penalty', label: 'Penalty', emoji: '🎯' },
     { key: 'yellowCard', label: 'Yellow Card', emoji: '🟨' },
     { key: 'redCard', label: 'Red Card', emoji: '🟥' },
@@ -317,7 +337,7 @@ const HOCKEY: SportDefinition = {
     { key: 'awayPenalties', label: 'Away Penalties', scope: 'away', type: 'number', min: 0, max: 30 },
   ],
   celebrations: [
-    { key: 'goal', label: 'GOAL!', emoji: '🚨' },
+    { key: 'goal', label: 'GOAL!', emoji: '🚨', autoPoints: [1] },
     { key: 'powerPlay', label: 'Power Play', emoji: '⚡' },
     { key: 'penaltyKill', label: 'Penalty Kill', emoji: '🛡️' },
     { key: 'hatTrick', label: 'Hat Trick', emoji: '🎩' },
@@ -352,7 +372,7 @@ const LACROSSE: SportDefinition = {
     { key: 'awayGroundBalls', label: 'Away Ground Balls', scope: 'away', type: 'number', min: 0, max: 99 },
   ],
   celebrations: [
-    { key: 'goal', label: 'GOAL!', emoji: '🥍' },
+    { key: 'goal', label: 'GOAL!', emoji: '🥍', autoPoints: [1] },
     { key: 'save', label: 'Save', emoji: '🧤' },
     { key: 'groundBall', label: 'Ground Ball', emoji: '🔄' },
     { key: 'manUp', label: 'Man Up', emoji: '⚡' },
@@ -383,7 +403,7 @@ const FIELD_HOCKEY: SportDefinition = {
     { key: 'awayCorners', label: 'Away Corners', scope: 'away', type: 'number', min: 0, max: 99 },
   ],
   celebrations: [
-    { key: 'goal', label: 'GOAL!', emoji: '🏑' },
+    { key: 'goal', label: 'GOAL!', emoji: '🏑', autoPoints: [1] },
     { key: 'save', label: 'Save', emoji: '🧤' },
     { key: 'penaltyCorner', label: 'Penalty Corner', emoji: '📐' },
     { key: 'greenCard', label: 'Green Card', emoji: '🟩' },
@@ -423,7 +443,7 @@ const WATER_POLO: SportDefinition = {
     { key: 'awayTimeouts', label: 'Away Timeouts', scope: 'away', type: 'number', min: 0, max: 3 },
   ],
   celebrations: [
-    { key: 'goal', label: 'GOAL!', emoji: '🤽' },
+    { key: 'goal', label: 'GOAL!', emoji: '🤽', autoPoints: [1] },
     { key: 'save', label: 'Save', emoji: '🧤' },
     { key: 'exclusion', label: 'Exclusion', emoji: '✋' },
     { key: 'powerPlay', label: 'Power Play', emoji: '⚡' },

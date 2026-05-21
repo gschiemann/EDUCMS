@@ -52,6 +52,14 @@ const CUE_FEED_WINDOW_MS = 20_000;
 export class SportsService {
   private readonly logger = new Logger(SportsService.name);
 
+  // Per-game AUTO-celebrate toggle cache. Default ON; hydrated once per
+  // gameId from the latest AUTO_CELEBRATE GameEvent on first feed touch,
+  // then updated in place by setAutoCelebrate. Keeps the feed hot path
+  // (ingest, 1-10 pushes/sec) from re-reading the toggle on every push.
+  // Per-process — a single Railway instance; a cold start re-hydrates from
+  // the persisted event, so an operator's OFF survives a restart.
+  private readonly autoCelebrateCache = new Map<string, boolean>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
@@ -1663,7 +1671,11 @@ export class SportsService {
       select: { tenantId: true },
     });
     if (!game) throw new NotFoundException('Game not found');
-    return this.ingest(game.tenantId, id, dto);
+    // A machine feed has no operator at a launchpad, so this is the path
+    // that should auto-fire celebrations on a score jump (the Sprint 13
+    // "AUTO" trigger). The guarded admin /ingest endpoint passes no opts,
+    // staying manual.
+    return this.ingest(game.tenantId, id, dto, { auto: true });
   }
 
   async ingest(
@@ -1676,6 +1688,7 @@ export class SportsService {
       clockRunning?: boolean;
       segment?: number;
     },
+    opts: { auto?: boolean } = {},
   ) {
     const game = await this.owned(tenantId, id);
     const data: Record<string, unknown> = {};
@@ -1722,9 +1735,121 @@ export class SportsService {
       return game;
     }
 
+    // Capture the prior scores as PRIMITIVES before the write — the delta
+    // must compare pre- vs post-update values and never alias the same
+    // mutable row object.
+    const prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
     const updated = await this.prisma.client.game.update({ where: { id }, data });
     await this.record(id, 'INGEST', applied);
+
+    // AUTO celebration trigger — only on the machine-feed path, and only
+    // when a score field was actually applied. A score INCREASE matching a
+    // celebration's autoPoints fires that celebration for the scoring team.
+    // Best-effort: never let a celebration failure break the score sync.
+    if (opts.auto && (data.homeScore !== undefined || data.awayScore !== undefined)) {
+      try {
+        await this.maybeAutoCelebrate(id, prevScores, updated, dto);
+      } catch (e) {
+        this.logger.debug(`auto-celebrate skipped for game ${id}: ${(e as Error).message}`);
+      }
+    }
     return updated;
+  }
+
+  /**
+   * The Sprint 13 "AUTO" trigger. For each team whose score the feed just
+   * increased, find the celebration whose `autoPoints` includes the delta
+   * and fire it — routed through the SAME `record(id, 'CUE', …)` shape the
+   * manual launchpad (`fireCue`) uses, so every board / ribbon / scorebug
+   * surface plays it with zero rendering changes. Tagged `{ auto: true,
+   * team }` so the overlay can theme to the scoring side. Honors the
+   * per-game toggle (default ON).
+   */
+  private async maybeAutoCelebrate(
+    id: string,
+    prev: { homeScore: number; awayScore: number },
+    next: any,
+    dto: { homeScore?: number; awayScore?: number },
+  ): Promise<void> {
+    if (!(await this.autoCelebrateEnabled(id))) return;
+
+    let def: SportDefinition;
+    try {
+      def = this.sportOf(next.sport);
+    } catch {
+      return; // unknown sport — nothing to map a delta to
+    }
+
+    const hits: Array<{ team: 'home' | 'away'; cue: SportDefinition['celebrations'][number] }> = [];
+    for (const team of ['home', 'away'] as const) {
+      const provided = team === 'home' ? dto.homeScore !== undefined : dto.awayScore !== undefined;
+      if (!provided) continue;
+      const before = team === 'home' ? prev.homeScore : prev.awayScore;
+      const after = team === 'home' ? next.homeScore : next.awayScore;
+      const delta = after - before;
+      if (delta <= 0) continue; // only score INCREASES fire; corrections don't
+      const cue = def.celebrations.find(
+        (c) => Array.isArray(c.autoPoints) && c.autoPoints.includes(delta),
+      );
+      if (cue) hits.push({ team, cue });
+    }
+    if (hits.length === 0) return;
+
+    const snapshot = this.cueSnapshot(next);
+    for (const h of hits) {
+      await this.record(id, 'CUE', {
+        key: h.cue.key,
+        label: h.cue.label,
+        emoji: h.cue.emoji,
+        target: 'ALL',
+        audioUrl: null,
+        sponsorName: null,
+        sponsorLogoUrl: null,
+        auto: true,
+        team: h.team,
+        snapshot,
+      });
+    }
+  }
+
+  /**
+   * Per-game AUTO-celebrate toggle. Reads the in-memory cache; on a miss,
+   * hydrates ONCE from the latest AUTO_CELEBRATE GameEvent (default ON when
+   * none exists). Fails OPEN to the default on any read error so a feed
+   * game still gets its show — never blocks the score sync.
+   */
+  private async autoCelebrateEnabled(gameId: string): Promise<boolean> {
+    const cached = this.autoCelebrateCache.get(gameId);
+    if (cached !== undefined) return cached;
+    let enabled = true;
+    try {
+      const ev = await this.prisma.client.gameEvent.findFirst({
+        where: { gameId, type: 'AUTO_CELEBRATE' },
+        orderBy: { createdAt: 'desc' },
+      });
+      const payload = ev?.payload as { enabled?: unknown } | null;
+      if (payload && typeof payload.enabled === 'boolean') enabled = payload.enabled;
+    } catch {
+      /* fail open to default ON */
+    }
+    this.autoCelebrateCache.set(gameId, enabled);
+    return enabled;
+  }
+
+  /** Read the current AUTO-celebrate toggle for a game (tenant-scoped). */
+  async getAutoCelebrate(tenantId: string, id: string) {
+    await this.owned(tenantId, id);
+    return { enabled: await this.autoCelebrateEnabled(id) };
+  }
+
+  /** Flip the AUTO-celebrate toggle. Persists a latest-wins AUTO_CELEBRATE
+   *  GameEvent (no migration) and updates the hot-path cache in place. */
+  async setAutoCelebrate(tenantId: string, id: string, enabled: unknown) {
+    await this.owned(tenantId, id);
+    const val = Boolean(enabled);
+    await this.record(id, 'AUTO_CELEBRATE', { enabled: val });
+    this.autoCelebrateCache.set(id, val);
+    return { enabled: val };
   }
 
   /** Change the game status (SCHEDULED → LIVE → HALFTIME → FINAL …). */
