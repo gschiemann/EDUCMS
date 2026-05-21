@@ -326,19 +326,26 @@ export class TenantsController {
       throw new HttpException(`Cannot delete: this tenant has ${screenCount} paired screen(s). Unpair them first or contact support to migrate.`, HttpStatus.CONFLICT);
     }
 
-    // Audit BEFORE delete so the log entry survives the cascade
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId: target.parentId || target.id,
-        userId: req.user.userId,
-        action: 'CHILD_TENANT_DELETED',
-        targetType: 'Tenant',
-        targetId: target.id,
-        details: JSON.stringify({ name: target.name, slug: target.slug, parentTenantId: target.parentId }),
-      },
-    }).catch(() => { /* noop */ });
-
-    await this.prisma.client.tenant.delete({ where: { id } });
+    // Audit + delete ATOMICALLY. Previously the audit write was
+    // `.catch(() => {})` and the delete ran regardless — so if the audit
+    // insert failed, an entire tenant (users, assets, playlists, screens)
+    // was destroyed with NO record. Now both run in one transaction: if the
+    // audit can't be written, the delete rolls back and nothing is lost.
+    // The audit is scoped to the PARENT tenant (when present) so it survives
+    // the child's cascade delete.
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          tenantId: target.parentId || target.id,
+          userId: req.user.userId,
+          action: 'CHILD_TENANT_DELETED',
+          targetType: 'Tenant',
+          targetId: target.id,
+          details: JSON.stringify({ name: target.name, slug: target.slug, parentTenantId: target.parentId }),
+        },
+      });
+      await tx.tenant.delete({ where: { id } });
+    });
     return { success: true, deletedId: id };
   }
 

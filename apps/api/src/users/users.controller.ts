@@ -129,16 +129,32 @@ export class UsersController {
       return t;
     };
 
-    const user = await this.prisma.client.user.create({
-      data: {
-        tenantId,
-        email,
-        passwordHash,
-        role: body.role,
-        firstName: trim(body.firstName),
-        lastName: trim(body.lastName),
-      } as any,
-      select: { id: true, email: true, role: true, createdAt: true, firstName: true, lastName: true } as any,
+    // Create the user AND its immutable audit row atomically — a privileged
+    // action (account + role grant) must never land without a forensic trail,
+    // and the trail must not exist for a user that failed to create.
+    const user = await this.prisma.client.$transaction(async (tx) => {
+      const u = await tx.user.create({
+        data: {
+          tenantId,
+          email,
+          passwordHash,
+          role: body.role,
+          firstName: trim(body.firstName),
+          lastName: trim(body.lastName),
+        } as any,
+        select: { id: true, email: true, role: true, createdAt: true, firstName: true, lastName: true } as any,
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: req.user.id,
+          action: 'USER_CREATED',
+          targetType: 'user',
+          targetId: u.id,
+          details: JSON.stringify({ email, role: body.role, byRole: req.user.role }),
+        },
+      });
+      return u;
     });
 
     return user;
@@ -180,10 +196,26 @@ export class UsersController {
       );
     }
 
-    const updated = await this.prisma.client.user.update({
-      where: { id },
-      data: { role: body.role },
-      select: { id: true, email: true, role: true },
+    // Role change + audit row atomically. "Who made this account an admin?"
+    // must always be answerable; a privilege escalation with no record is
+    // exactly the gap this closes.
+    const updated = await this.prisma.client.$transaction(async (tx) => {
+      const u = await tx.user.update({
+        where: { id },
+        data: { role: body.role },
+        select: { id: true, email: true, role: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: req.user.id,
+          action: 'USER_ROLE_CHANGED',
+          targetType: 'user',
+          targetId: id,
+          details: JSON.stringify({ email: user.email, fromRole: user.role, toRole: body.role }),
+        },
+      });
+      return u;
     });
 
     return updated;
@@ -208,7 +240,21 @@ export class UsersController {
     });
     if (!user) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
 
-    await this.prisma.client.user.delete({ where: { id } });
+    // Delete + audit atomically so an account deletion always leaves a record
+    // (captured BEFORE the row is gone, in the same transaction).
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: req.user.id,
+          action: 'USER_DELETED',
+          targetType: 'user',
+          targetId: id,
+          details: JSON.stringify({ email: user.email, role: user.role }),
+        },
+      });
+      await tx.user.delete({ where: { id } });
+    });
     return { deleted: true };
   }
 }

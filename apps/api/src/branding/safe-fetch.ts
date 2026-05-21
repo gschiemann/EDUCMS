@@ -9,7 +9,9 @@
  */
 
 import { lookup } from 'node:dns/promises';
+import * as dns from 'node:dns';
 import { isIP } from 'node:net';
+import { Agent } from 'undici';
 
 export class SsrfError extends Error {
   constructor(msg: string) { super(msg); this.name = 'SsrfError'; }
@@ -106,6 +108,49 @@ export async function assertPublicUrl(rawUrl: string): Promise<URL> {
   return url;
 }
 
+/**
+ * net.LookupFunction that re-resolves the hostname AT CONNECT TIME and rejects
+ * any private/loopback/link-local address. This closes the DNS-rebinding
+ * TOCTOU: previously safeFetch resolved + validated the hostname, then called
+ * fetch() which let Node re-resolve INDEPENDENTLY — a low-TTL domain could
+ * pass the up-front check then flip to 169.254.169.254 / 10.x for the actual
+ * connection. With this lookup wired into the dispatcher, the connection only
+ * ever uses an address THIS validates, so a rebind can never reach an internal
+ * target. Re-validation (not just reusing the earlier result) is intentional
+ * and stateless — it's correct even across redirects and connection reuse.
+ */
+function ssrfSafeLookup(
+  hostname: string,
+  options: dns.LookupOneOptions | dns.LookupAllOptions | dns.LookupOptions,
+  callback: (
+    err: NodeJS.ErrnoException | null,
+    address: string | dns.LookupAddress[],
+    family?: number,
+  ) => void,
+): void {
+  dns.lookup(hostname, { ...(options as any), all: true }, (err, addresses) => {
+    if (err) return callback(err, '', 4);
+    const list = (Array.isArray(addresses) ? addresses : []) as dns.LookupAddress[];
+    if (!list.length) {
+      return callback(new SsrfError(`DNS returned no addresses for ${hostname}`) as any, '', 4);
+    }
+    for (const a of list) {
+      if (isPrivateIp(a.address)) {
+        return callback(
+          new SsrfError(`DNS for ${hostname} resolved to private range (${a.address})`) as any,
+          '',
+          4,
+        );
+      }
+    }
+    if ((options as any)?.all) return callback(null, list as any);
+    return callback(null, list[0].address, list[0].family);
+  });
+}
+
+/** Shared dispatcher that pins every connection through the SSRF-safe lookup. */
+const ssrfAgent = new Agent({ connect: { lookup: ssrfSafeLookup as any } });
+
 export interface SafeFetchOptions {
   maxBytes?: number;         // default 5 MB
   timeoutMs?: number;        // default 8000
@@ -168,7 +213,12 @@ export async function safeFetch(
         'User-Agent': userAgent,
         ...(accept ? { Accept: accept } : {}),
       },
-    });
+      // Pin the connection through the SSRF-safe lookup so the IP we actually
+      // connect to is re-validated — defeats DNS rebinding between the
+      // up-front check above and this fetch. `dispatcher` is an undici
+      // extension to RequestInit (not in the DOM fetch types).
+      dispatcher: ssrfAgent,
+    } as any);
   } catch (e: any) {
     clearTimeout(to);
     if (e?.name === 'AbortError') throw new SsrfError('Fetch timed out');
