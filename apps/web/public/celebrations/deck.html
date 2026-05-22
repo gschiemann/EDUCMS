@@ -36,9 +36,9 @@
   </div>
   <div id="label" data-label>VenueOS · Celebration Deck</div>
 
-<script src="celebration-engine.js"></script>
 <script>
 (function(){
+  function boot(){
   // Cue registry — every remaining cue across the 8 sports, all reusing the
   // shared engine (scene + prop + optional projectile + burst + headline +
   // lower-third + brand-shim). Marquee scoring plays live in their own files.
@@ -94,6 +94,12 @@
     idx.innerHTML=html;
   }
   document.getElementById('idxBtn').addEventListener('click',function(){location.search='';});
+  }
+  // load the shared engine fresh on every live load (no stale-cache surprises while iterating)
+  var _e=document.createElement('script');
+  _e.src='celebration-engine.js'+(location.protocol==='file:'?'':'?v='+Date.now());
+  _e.onload=boot;_e.onerror=function(){_e.onerror=null;_e.src='celebration-engine.js';};
+  document.head.appendChild(_e);
 })();
 </script>
 </body>
