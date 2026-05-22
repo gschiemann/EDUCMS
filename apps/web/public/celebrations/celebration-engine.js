@@ -141,17 +141,20 @@
 
   // ── goalie saves: the shot is STOPPED in front of the goal (never scored) ──
   function drawSave(t,T,pt){ if(CFG.save==='glove') catchGlove(t,T,pt); else stopHand(t,T,pt); }
-  function stopHand(t,T,pt){ // water polo — open "stop" palm punches up out of the water to block
+  function stopHand(t,T,pt){ // water polo — open "stop" palm blocks the shot (one continuous silhouette)
     var rise=easeOutCubic(seg(t,T.impact-300,T.impact+40)); if(rise<=0)return;
     var jolt=(t>=T.impact&&t<T.impact+150)?Math.sin((t-T.impact)/150*Math.PI)*-16:0;
-    ctx.save();ctx.translate(pt.x,pt.y+(1-rise)*180+jolt);ctx.rotate(-0.12);
-    ctx.shadowColor='rgba(0,0,0,0.45)';ctx.shadowBlur=22;ctx.fillStyle='#ecbf95';
-    rrect(-54,-18,108,170,42);ctx.fill();                                  // palm + wrist
-    var fx=[-40,-14,14,40],fh=[100,122,118,96];
-    for(var i=0;i<4;i++){rrect(fx[i]-16,-18-fh[i],32,fh[i]+46,16);ctx.fill();} // four fingers
-    ctx.save();ctx.translate(-56,16);ctx.rotate(-0.95);rrect(-16,-96,32,112,16);ctx.fill();ctx.restore(); // thumb
-    ctx.shadowBlur=0;ctx.strokeStyle=rgba(TLT,0.55);ctx.lineWidth=4;rrect(-54,-18,108,170,42);ctx.stroke(); // team rim-light
-    ctx.globalCompositeOperation='lighter';ctx.fillStyle='rgba(255,255,255,0.16)';ctx.beginPath();ctx.ellipse(-8,42,30,54,-0.12,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation='source-over'; // wet sheen
+    ctx.save();ctx.translate(pt.x,pt.y+(1-rise)*190+jolt);ctx.rotate(-0.05);ctx.scale(1.08,1.08);
+    var skin='#e9b78b';
+    ctx.save();ctx.shadowColor='rgba(0,0,0,0.4)';ctx.shadowBlur=20;ctx.fillStyle=skin;ctx.translate(-80,54);ctx.rotate(-0.3);ctx.beginPath();ctx.ellipse(0,0,54,30,0,0,Math.PI*2);ctx.fill();ctx.restore(); // thumb (palm overlaps its base)
+    var fg=[[-52.5,-95],[-17.5,-126],[17.5,-140],[52.5,-118]],hw=17.5,vy=-22;
+    ctx.shadowColor='rgba(0,0,0,0.4)';ctx.shadowBlur=20;ctx.beginPath();ctx.moveTo(-70,168);ctx.lineTo(-70,vy);
+    for(var i=0;i<4;i++){var cx=fg[i][0],cy=fg[i][1]+hw;ctx.lineTo(cx-hw,cy);ctx.arc(cx,cy,hw,Math.PI,0,false);ctx.lineTo(cx+hw,vy);}
+    ctx.lineTo(70,168);ctx.closePath();ctx.fillStyle=skin;ctx.fill();
+    ctx.shadowBlur=0;ctx.strokeStyle=rgba(TLT,0.5);ctx.lineWidth=4;ctx.stroke();                     // team rim-light
+    ctx.strokeStyle='rgba(150,90,55,0.45)';ctx.lineWidth=3;ctx.lineCap='round';                       // finger grooves
+    [-35,0,35].forEach(function(gx){ctx.beginPath();ctx.moveTo(gx,vy+2);ctx.lineTo(gx,vy-46);ctx.stroke();});
+    ctx.globalCompositeOperation='lighter';ctx.fillStyle='rgba(255,255,255,0.13)';ctx.beginPath();ctx.ellipse(-6,70,34,46,0,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation='source-over'; // wet sheen
     ctx.restore();
   }
   function catchGlove(t,T,pt){ // hockey — trapper catch-glove snaps shut on the puck
