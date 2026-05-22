@@ -139,6 +139,34 @@
     swirl:function(t,T,o){var p=seg(t,300,900);ctx.save();ctx.translate(W/2,540);ctx.rotate(p*6);ctx.globalAlpha=clamp(p*1.3,0,1);ctx.strokeStyle=rgba(TLT,1);ctx.lineWidth=18;ctx.lineCap='round';ctx.shadowColor=TEAM;ctx.shadowBlur=26;for(var k=0;k<3;k++){ctx.beginPath();ctx.arc(0,0,90+k*30,k*2,k*2+4);ctx.stroke();}ctx.restore();}
   };
 
+  // ── goalie saves: the shot is STOPPED in front of the goal (never scored) ──
+  function drawSave(t,T,pt){ if(CFG.save==='glove') catchGlove(t,T,pt); else stopHand(t,T,pt); }
+  function stopHand(t,T,pt){ // water polo — open "stop" palm punches up out of the water to block
+    var rise=easeOutCubic(seg(t,T.impact-300,T.impact+40)); if(rise<=0)return;
+    var jolt=(t>=T.impact&&t<T.impact+150)?Math.sin((t-T.impact)/150*Math.PI)*-16:0;
+    ctx.save();ctx.translate(pt.x,pt.y+(1-rise)*180+jolt);ctx.rotate(-0.12);
+    ctx.shadowColor='rgba(0,0,0,0.45)';ctx.shadowBlur=22;ctx.fillStyle='#ecbf95';
+    rrect(-54,-18,108,170,42);ctx.fill();                                  // palm + wrist
+    var fx=[-40,-14,14,40],fh=[100,122,118,96];
+    for(var i=0;i<4;i++){rrect(fx[i]-16,-18-fh[i],32,fh[i]+46,16);ctx.fill();} // four fingers
+    ctx.save();ctx.translate(-56,16);ctx.rotate(-0.95);rrect(-16,-96,32,112,16);ctx.fill();ctx.restore(); // thumb
+    ctx.shadowBlur=0;ctx.strokeStyle=rgba(TLT,0.55);ctx.lineWidth=4;rrect(-54,-18,108,170,42);ctx.stroke(); // team rim-light
+    ctx.globalCompositeOperation='lighter';ctx.fillStyle='rgba(255,255,255,0.16)';ctx.beginPath();ctx.ellipse(-8,42,30,54,-0.12,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation='source-over'; // wet sheen
+    ctx.restore();
+  }
+  function catchGlove(t,T,pt){ // hockey — trapper catch-glove snaps shut on the puck
+    var rise=easeOutBack(clamp(seg(t,T.impact-300,T.impact+80),0,1)); if(rise<=0)return;
+    ctx.save();ctx.translate(pt.x,pt.y+(1-rise)*150);ctx.rotate(0.12);
+    ctx.shadowColor='rgba(0,0,0,0.5)';ctx.shadowBlur=22;ctx.fillStyle='#2b3140';ctx.strokeStyle=rgba(TLT,0.8);ctx.lineWidth=4;
+    rrect(-34,46,120,96,18);ctx.fill();ctx.stroke();                       // cuff
+    ctx.fillStyle='#3c4456';ctx.beginPath();ctx.arc(0,0,88,0,Math.PI*2);ctx.fill();ctx.stroke();      // mitt body
+    ctx.beginPath();ctx.arc(-60,-34,42,0,Math.PI*2);ctx.fill();ctx.stroke();                          // thumb lobe
+    ctx.shadowBlur=0;ctx.fillStyle='#10141c';ctx.beginPath();ctx.ellipse(8,-6,48,42,0,0,Math.PI*2);ctx.fill(); // catch pocket
+    ctx.strokeStyle='#d9c089';ctx.lineWidth=3;                                                        // pocket laces
+    for(var i=0;i<11;i++){var a=i/11*Math.PI*2;ctx.beginPath();ctx.moveTo(8+Math.cos(a)*48,-6+Math.sin(a)*42);ctx.lineTo(8+Math.cos(a)*57,-6+Math.sin(a)*50);ctx.stroke();}
+    ctx.restore();
+  }
+
   // ── main run ──────────────────────────────────────────────────
   var startMs=0,rafId=0,prevMs=0,fired=false,CFG=null;
   function reset(){cancelAnimationFrame(rafId);TRGB=hexToRgb(TEAM);TLT=lighten(TRGB,0.5);startMs=0;fired=false;parts=[];shells=[];rafId=requestAnimationFrame(frame);}
@@ -150,7 +178,13 @@
     var P={};
     (SCENES[CFG.scene]||SCENES.court)(t,P);
     var impactPt=CFG.impactPt?CFG.impactPt(P):(P.goal||P.rim||P.net||P.up||P.wall||P.mat||P.zone||{x:CX,y:560});
-    if(CFG.projectile){var pr=CFG.projectile,bt=seg(t,pr.t0,pr.t1);if(t<=pr.t1+90){var bx=lerp(pr.from[0],impactPt.x,pr.ease==='lin'?bt:easeOutQuad(bt));var by=lerp(pr.from[1],impactPt.y,bt)-Math.sin(Math.PI*bt)*(pr.arc||0);(BALLS[pr.ball]||BALLS.soccer)(bx,by,(pr.r||32)*(pr.shrink?(1-bt*0.3):1),t*0.02);}}
+    if(CFG.save)drawSave(t,T,impactPt);
+    if(CFG.projectile){var pr=CFG.projectile;
+      if(t<=pr.t1){var bt=seg(t,pr.t0,pr.t1);var bx=lerp(pr.from[0],impactPt.x,pr.ease==='lin'?bt:easeOutQuad(bt));var by=lerp(pr.from[1],impactPt.y,bt)-Math.sin(Math.PI*bt)*(pr.arc||0);(BALLS[pr.ball]||BALLS.soccer)(bx,by,(pr.r||32)*(pr.shrink?(1-bt*0.3):1),t*0.02);}
+      else if(pr.deflect){var e=(t-pr.t1)/1000;if(e<=0.85){var dx=impactPt.x+pr.deflect[0]*e*320,dy=impactPt.y+pr.deflect[1]*e*320+760*e*e;ctx.globalAlpha=clamp(1-e/0.85,0,1);(BALLS[pr.ball]||BALLS.soccer)(dx,dy,(pr.r||32),t*0.02);ctx.globalAlpha=1;}}
+      else if(pr.caught){(BALLS[pr.ball]||BALLS.soccer)(impactPt.x,impactPt.y,(pr.r||32),t*0.02);}
+      else if(t<=pr.t1+90){(BALLS[pr.ball]||BALLS.soccer)(impactPt.x,impactPt.y,(pr.r||32),t*0.02);}
+    }
     if(CFG.motif&&MOTIFS[CFG.motif])MOTIFS[CFG.motif](t,T,CFG);
     if(t>=T.impact&&!fired){fired=true;BURST_AT=T.impact;if(CFG.burst&&CFG.burst!=='none')spawnBurst(impactPt.x,impactPt.y,CFG.burst);}
     if(CFG.burst&&CFG.burst!=='none')shockwave(t,T,impactPt.x,impactPt.y);
