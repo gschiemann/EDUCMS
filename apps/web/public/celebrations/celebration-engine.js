@@ -140,33 +140,14 @@
   };
 
   // ── goalie saves: the shot is STOPPED in front of the goal (never scored) ──
-  function drawSave(t,T,pt){ if(CFG.save==='glove') catchGlove(t,T,pt); else stopHand(t,T,pt); }
-  function stopHand(t,T,pt){ // water polo — open "stop" palm blocks the shot (one continuous silhouette)
-    var rise=easeOutCubic(seg(t,T.impact-300,T.impact+40)); if(rise<=0)return;
-    var jolt=(t>=T.impact&&t<T.impact+150)?Math.sin((t-T.impact)/150*Math.PI)*-16:0;
-    ctx.save();ctx.translate(pt.x,pt.y+(1-rise)*190+jolt);ctx.rotate(-0.05);ctx.scale(1.08,1.08);
-    var skin='#e9b78b';
-    ctx.save();ctx.shadowColor='rgba(0,0,0,0.4)';ctx.shadowBlur=20;ctx.fillStyle=skin;ctx.translate(-80,54);ctx.rotate(-0.3);ctx.beginPath();ctx.ellipse(0,0,54,30,0,0,Math.PI*2);ctx.fill();ctx.restore(); // thumb (palm overlaps its base)
-    var fg=[[-52.5,-95],[-17.5,-126],[17.5,-140],[52.5,-118]],hw=17.5,vy=-22;
-    ctx.shadowColor='rgba(0,0,0,0.4)';ctx.shadowBlur=20;ctx.beginPath();ctx.moveTo(-70,168);ctx.lineTo(-70,vy);
-    for(var i=0;i<4;i++){var cx=fg[i][0],cy=fg[i][1]+hw;ctx.lineTo(cx-hw,cy);ctx.arc(cx,cy,hw,Math.PI,0,false);ctx.lineTo(cx+hw,vy);}
-    ctx.lineTo(70,168);ctx.closePath();ctx.fillStyle=skin;ctx.fill();
-    ctx.shadowBlur=0;ctx.strokeStyle=rgba(TLT,0.5);ctx.lineWidth=4;ctx.stroke();                     // team rim-light
-    ctx.strokeStyle='rgba(150,90,55,0.45)';ctx.lineWidth=3;ctx.lineCap='round';                       // finger grooves
-    [-35,0,35].forEach(function(gx){ctx.beginPath();ctx.moveTo(gx,vy+2);ctx.lineTo(gx,vy-46);ctx.stroke();});
-    ctx.globalCompositeOperation='lighter';ctx.fillStyle='rgba(255,255,255,0.13)';ctx.beginPath();ctx.ellipse(-6,70,34,46,0,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation='source-over'; // wet sheen
-    ctx.restore();
-  }
-  function catchGlove(t,T,pt){ // hockey — trapper catch-glove snaps shut on the puck
-    var rise=easeOutBack(clamp(seg(t,T.impact-300,T.impact+80),0,1)); if(rise<=0)return;
-    ctx.save();ctx.translate(pt.x,pt.y+(1-rise)*150);ctx.rotate(0.12);
-    ctx.shadowColor='rgba(0,0,0,0.5)';ctx.shadowBlur=22;ctx.fillStyle='#2b3140';ctx.strokeStyle=rgba(TLT,0.8);ctx.lineWidth=4;
-    rrect(-34,46,120,96,18);ctx.fill();ctx.stroke();                       // cuff
-    ctx.fillStyle='#3c4456';ctx.beginPath();ctx.arc(0,0,88,0,Math.PI*2);ctx.fill();ctx.stroke();      // mitt body
-    ctx.beginPath();ctx.arc(-60,-34,42,0,Math.PI*2);ctx.fill();ctx.stroke();                          // thumb lobe
-    ctx.shadowBlur=0;ctx.fillStyle='#10141c';ctx.beginPath();ctx.ellipse(8,-6,48,42,0,0,Math.PI*2);ctx.fill(); // catch pocket
-    ctx.strokeStyle='#d9c089';ctx.lineWidth=3;                                                        // pocket laces
-    for(var i=0;i<11;i++){var a=i/11*Math.PI*2;ctx.beginPath();ctx.moveTo(8+Math.cos(a)*48,-6+Math.sin(a)*42);ctx.lineTo(8+Math.cos(a)*57,-6+Math.sin(a)*50);ctx.stroke();}
+  function drawSave(t,T,pt){ // a GIANT X slams over the goal mouth — shot DENIED
+    var pop=easeOutBack(clamp(seg(t,T.impact-160,T.impact+240),0,1)); if(pop<=0)return;
+    var jolt=(t>=T.impact&&t<T.impact+160)?Math.sin((t-T.impact)/160*Math.PI)*7:0;
+    var L=200;ctx.save();ctx.translate(pt.x,pt.y+jolt);ctx.scale(pop,pop);ctx.lineCap='round';
+    function bars(){ctx.beginPath();ctx.moveTo(-L,-L);ctx.lineTo(L,L);ctx.moveTo(L,-L);ctx.lineTo(-L,L);ctx.stroke();}
+    ctx.shadowColor=TEAM;ctx.shadowBlur=55;ctx.strokeStyle=rgba(TRGB,0.96);ctx.lineWidth=66;bars();   // team body + glow
+    ctx.shadowBlur=0;ctx.strokeStyle=rgba(TLT,1);ctx.lineWidth=40;bars();                              // lighter mid
+    ctx.strokeStyle='#ffffff';ctx.lineWidth=18;bars();                                                 // white core
     ctx.restore();
   }
 

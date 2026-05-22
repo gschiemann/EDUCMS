@@ -48,7 +48,7 @@
     'soccer-yellow':{scene:'grass',headline:'YELLOW CARD',headSize:150,sub1:'CAUTION',sub2:"58'  ·  #6 DELACRUZ",burst:'none',motif:'card',motifColor:'#ffd21a',shake:6},
     'soccer-red':{scene:'grass',headline:'RED CARD',headSize:160,sub1:'SENT OFF',sub2:"71'  ·  #4 BANKS",burst:'none',motif:'card',motifColor:'#e6362b',shake:6},
     // ── WATER POLO ──
-    'waterpolo-save':{scene:'pool',headline:'SAVE!',sub1:'NEWPORT HARBOR  9  —  8  CORONA DEL MAR',sub2:'3RD  ·  BIG SAVE  ·  #1 GK',burst:'water',save:'hand',impactPt:function(){return{x:1166,y:558};},projectile:{ball:'waterpolo',from:[-180,772],t0:560,t1:1000,arc:150,r:30,deflect:[-1.15,-1.25]}},
+    'waterpolo-save':{scene:'pool',headline:'SAVE!',sub1:'NEWPORT HARBOR  9  —  8  CORONA DEL MAR',sub2:'3RD  ·  BIG SAVE  ·  #1 GK',burst:'water',save:'x',impactPt:function(){return{x:1410,y:514};},projectile:{ball:'waterpolo',from:[-180,772],t0:540,t1:1000,arc:170,r:30,deflect:[-1.1,-0.7]}},
     'waterpolo-exclusion':{scene:'pool',headline:'EXCLUSION',headSize:160,sub1:'MAN UP  —  6 ON 5',sub2:'2ND  ·  #7 EXCLUDED  ·  :20',burst:'energy',motif:'whistle'},
     'waterpolo-powerplay':{scene:'pool',headline:'POWER PLAY',headSize:150,sub1:'MAN ADVANTAGE',sub2:'6 ON 5',burst:'energy',motif:'plus1',motifText:'6v5'},
     // ── BASKETBALL ──
@@ -59,7 +59,7 @@
     'hockey-powerplay':{scene:'ice',headline:'POWER PLAY',headSize:150,sub1:'MAN ADVANTAGE',sub2:'2ND  ·  5 ON 4',burst:'energy',motif:'plus1',motifText:'5v4'},
     'hockey-penaltykill':{scene:'ice',headline:'PENALTY KILL',headSize:140,sub1:'KILLED IT OFF',sub2:'2ND  ·  SHORTHANDED',burst:'energy',motif:'shield'},
     'hockey-hattrick':{scene:'ice',headline:'HAT TRICK!',headSize:160,sub1:'ICEHAWKS  4  —  2  TITANS',sub2:'3RD  ·  3 GOALS  ·  #17 NOVAK',burst:'energy',motif:'hats',projectile:{ball:'puck',from:[-200,700],t0:660,t1:1000,arc:40,r:30}},
-    'hockey-save':{scene:'ice',headline:'SAVE!',sub1:'ICEHAWKS  2  —  2  TITANS',sub2:'3RD  ·  GLOVE SAVE  ·  #30',burst:'ice',save:'glove',impactPt:function(){return{x:1356,y:642};},projectile:{ball:'puck',from:[-240,900],t0:600,t1:1000,arc:30,r:26,ease:'lin',caught:true}},
+    'hockey-save':{scene:'ice',headline:'SAVE!',sub1:'ICEHAWKS  2  —  2  TITANS',sub2:'3RD  ·  GLOVE SAVE  ·  #30',burst:'ice',save:'x',impactPt:function(){return{x:1470,y:592};},projectile:{ball:'puck',from:[-240,900],t0:600,t1:1000,arc:40,r:26,ease:'lin',deflect:[-1.2,-0.5]}},
     // ── BASEBALL ──
     'baseball-grandslam':{scene:'ballpark',headline:'GRAND SLAM!',headSize:150,sub1:'RIVER CATS  8  —  4  RAILRIDERS',sub2:'BOT 6TH  ·  4-RUN SLAM  ·  #24 CRUZ',burst:'fireworks',impactPt:function(){return{x:1320,y:300};},projectile:{ball:'baseball',from:[560,980],t0:520,t1:1000,arc:300,r:30,shrink:true}},
     'baseball-strikeout':{scene:'plate',headline:'STRIKEOUT!',headSize:150,sub1:'EAGLES  3  —  1  BULLDOGS',sub2:'TOP 7TH  ·  K  ·  #21 PARK',burst:'energy',motif:'bigK',projectile:{ball:'baseball',from:[280,300],t0:640,t1:980,arc:0,r:26,ease:'lin'}},
