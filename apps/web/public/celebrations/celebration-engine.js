@@ -85,14 +85,14 @@
     grass:function(t,P){nightTop(560);crowd(560);grassFloor(560);P.goal=softGoal(1200,560,520,180);},
     ice:function(t,P){var g=ctx.createLinearGradient(0,0,0,560);g.addColorStop(0,'#0a1422');g.addColorStop(1,'#16314a');ctx.fillStyle=g;ctx.fillRect(0,0,W,560);var w=ctx.createLinearGradient(0,560,0,H);w.addColorStop(0,'#dbe9f5');w.addColorStop(1,'#9fc0db');ctx.fillStyle=w;ctx.fillRect(0,560,W,H-560);
       ctx.strokeStyle='rgba(228,42,38,0.85)';ctx.lineWidth=6;L([1100,720],[1820,720]);
-      // red goal
-      var x=1280,y=470,w2=380,h2=250,ins=22,dT=26,dB=120;var FTL=[x,y],FTR=[x+w2,y],FBL=[x,y+h2],FBR=[x+w2,y+h2];var BTL=[x+ins+70,y-dT],BTR=[x+w2-ins+70,y-dT],BBL=[x+ins+120,y+h2+dB-120],BBR=[x+w2-ins+120,y+h2+dB-120];
-      ctx.strokeStyle='rgba(236,246,255,0.4)';ctx.lineWidth=1.4;meshQuad(FTL,FTR,BTR,BTL,12,4);meshQuad(BTL,BTR,BBR,BBL,12,7);meshQuad(FTR,BTR,BBR,FBR,4,8);
-      ctx.strokeStyle='#ef3a33';ctx.lineWidth=12;ctx.lineCap='round';ctx.shadowColor='#ff5148';ctx.shadowBlur=20;L(FTL,FBL);L(FTR,FBR);L(FTL,FTR);ctx.shadowBlur=0;P.goal={x:x+w2*0.5,y:y+h2*0.5};},
+      // red goal — full attached net pocket (top + floor + both sides + back share corners)
+      var x=1290,y=504,w2=360,h2=216,ins=30,dT=30,dB=110;var FTL=[x,y],FTR=[x+w2,y],FBL=[x,y+h2],FBR=[x+w2,y+h2];var BTL=[x+ins,y-dT],BTR=[x+w2-ins,y-dT],BBL=[x+ins,y+h2-dB],BBR=[x+w2-ins,y+h2-dB];
+      ctx.strokeStyle='rgba(236,246,255,0.42)';ctx.lineWidth=1.4;meshQuad(FTL,FTR,BTR,BTL,12,3);meshQuad(FBL,FBR,BBR,BBL,12,4);meshQuad(FTL,BTL,BBL,FBL,3,7);meshQuad(FTR,BTR,BBR,FBR,3,7);meshQuad(BTL,BTR,BBR,BBL,12,7);
+      ctx.strokeStyle='#ef3a33';ctx.lineWidth=12;ctx.lineCap='round';ctx.shadowColor='#ff5148';ctx.shadowBlur=20;L(FTL,FBL);L(FTR,FBR);L(FTL,FTR);L(FBL,FBR);ctx.shadowBlur=0;P.goal={x:x+w2*0.5,y:y+h2*0.5};},
     pool:function(t,P){var g=ctx.createLinearGradient(0,0,0,600);g.addColorStop(0,'#040d18');g.addColorStop(1,'#06182b');ctx.fillStyle=g;ctx.fillRect(0,0,W,600);var w=ctx.createLinearGradient(0,600,0,H);w.addColorStop(0,'#0e5a86');w.addColorStop(1,'#04121f');ctx.fillStyle=w;ctx.fillRect(0,600,W,H-600);ctx.strokeStyle=rgba(TLT,0.5);ctx.lineWidth=2;L([0,600],[W,600]);
-      var x=1180,y=600-150,w2=560,h2=150,ins=20,dT=14,dB=8;var FTL=[x,y],FTR=[x+w2,y],FBL=[x,y+h2],FBR=[x+w2,y+h2];var BTL=[x+ins+46,y-dT],BTR=[x+w2-ins+46,y-dT],BBL=[x+ins+60,y+h2-dB],BBR=[x+w2-ins+60,y+h2-dB];
-      ctx.strokeStyle='rgba(236,246,255,0.42)';ctx.lineWidth=1.4;meshQuad(FTL,FTR,BTR,BTL,16,3);meshQuad(BTL,BTR,BBR,BBL,16,5);
-      ctx.strokeStyle='rgba(245,250,255,0.96)';ctx.lineWidth=10;ctx.lineCap='round';ctx.shadowColor=TEAM;ctx.shadowBlur=22;L(FTL,FBL);L(FTR,FBR);L(FTL,FTR);ctx.shadowBlur=0;P.goal={x:x+w2*0.35,y:y+h2*0.45};},
+      var x=1180,y=450,w2=560,h2=150,ins=26,dT=16,dB=10;var FTL=[x,y],FTR=[x+w2,y],FBL=[x,y+h2],FBR=[x+w2,y+h2];var BTL=[x+ins,y-dT],BTR=[x+w2-ins,y-dT],BBL=[x+ins,y+h2-dB],BBR=[x+w2-ins,y+h2-dB];
+      ctx.strokeStyle='rgba(236,246,255,0.42)';ctx.lineWidth=1.4;meshQuad(FTL,FTR,BTR,BTL,16,3);meshQuad(FBL,FBR,BBR,BBL,16,3);meshQuad(FTL,BTL,BBL,FBL,3,6);meshQuad(FTR,BTR,BBR,FBR,3,6);meshQuad(BTL,BTR,BBR,BBL,16,6);
+      ctx.strokeStyle='rgba(245,250,255,0.96)';ctx.lineWidth=10;ctx.lineCap='round';ctx.shadowColor=TEAM;ctx.shadowBlur=22;L(FTL,FBL);L(FTR,FBR);L(FTL,FTR);ctx.shadowBlur=0;P.goal={x:x+w2*0.5,y:y+h2*0.5};},
     court:function(t,P){var g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#05070e');g.addColorStop(0.62,'#0a0a14');g.addColorStop(1,'#06040a');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
       var wg=ctx.createLinearGradient(0,875,0,H);wg.addColorStop(0,'rgba(120,70,28,0)');wg.addColorStop(1,'rgba(120,70,28,0.16)');ctx.fillStyle=wg;ctx.fillRect(0,875,W,H-875);
       var bx=1706,by=235,bw=300,bh=176;ctx.fillStyle='rgba(12,22,38,0.5)';ctx.strokeStyle=rgba(TLT,0.9);ctx.lineWidth=5;ctx.shadowColor=TEAM;ctx.shadowBlur=18;rrect(bx-bw/2,by,bw,bh,10);ctx.fill();ctx.stroke();ctx.shadowBlur=0;rrect(bx-50,by+bh-90,100,76,4);ctx.lineWidth=4;ctx.stroke();
@@ -143,7 +143,7 @@
   function drawSave(t,T,pt){ // a GIANT X slams over the goal mouth — shot DENIED
     var pop=easeOutBack(clamp(seg(t,T.impact-160,T.impact+240),0,1)); if(pop<=0)return;
     var jolt=(t>=T.impact&&t<T.impact+160)?Math.sin((t-T.impact)/160*Math.PI)*7:0;
-    var L=200;ctx.save();ctx.translate(pt.x,pt.y+jolt);ctx.scale(pop,pop);ctx.lineCap='round';
+    var L=170;ctx.save();ctx.translate(pt.x,pt.y+jolt);ctx.scale(pop,pop);ctx.lineCap='round';
     function bars(){ctx.beginPath();ctx.moveTo(-L,-L);ctx.lineTo(L,L);ctx.moveTo(L,-L);ctx.lineTo(-L,L);ctx.stroke();}
     ctx.shadowColor=TEAM;ctx.shadowBlur=55;ctx.strokeStyle=rgba(TRGB,0.96);ctx.lineWidth=66;bars();   // team body + glow
     ctx.shadowBlur=0;ctx.strokeStyle=rgba(TLT,1);ctx.lineWidth=40;bars();                              // lighter mid
