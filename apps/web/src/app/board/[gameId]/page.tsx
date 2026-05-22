@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { SituationalRow } from '@/components/widgets/v2/_shared/sports-situational';
+import { celebrationSrc } from '@/lib/celebration-assets';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import { findSport } from '@cms/api-types';
@@ -43,6 +44,9 @@ interface Cue {
   displayMode?: string | null;
   color?: string | null;
   durationMs?: number;
+  // Scoring team for a sport celebration ('home' | 'away') — used to brand
+  // the celebration animation to that team's color.
+  team?: string | null;
   // Which surfaces play this cue — BOARD / RIBBON / ALL (default ALL).
   target?: string;
   // Audio to play alongside a sport-celebration cue. Best-effort —
@@ -1700,7 +1704,7 @@ const BIG_CUE_RE =
  * live-score lower-third), EXIT (~0.5s fade). Every layer animates
  * transform/opacity only — Chromium-83 (NovaStar Taurus) + WebKit safe.
  */
-function CueOverlay({ cue }: { cue: Cue }) {
+function CueOverlay({ cue, sport }: { cue: Cue; sport?: string | null }) {
   // Custom cue — the operator's uploaded content (a sponsor graphic, a
   // promo, a hype card).
   if (cue.mediaUrl) {
@@ -1740,6 +1744,38 @@ function CueOverlay({ cue }: { cue: Cue }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={cue.mediaUrl} alt="" style={{ maxWidth: '94%', maxHeight: '88%', objectFit: 'contain' }} />
         </div>
+      </div>
+    );
+  }
+
+  // Cinematic sport celebration — a hand-tuned full-screen animation for this
+  // sport + cue, branded to the scoring team's color. Falls through to the
+  // generic text cue below when no animation is mapped for this combo.
+  const teamColor =
+    cue.color ||
+    (cue.team === 'away' ? cue.snapshot?.awayColor : cue.snapshot?.homeColor) ||
+    cue.snapshot?.homeColor ||
+    null;
+  const celebUrl = celebrationSrc(sport, cue.key, teamColor);
+  if (celebUrl) {
+    return (
+      <div
+        style={{
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+          zIndex: 50, background: '#05070d',
+          animation: 'venueCelebScrim 0.35s ease-out',
+        }}
+      >
+        <iframe
+          src={celebUrl}
+          title="celebration"
+          scrolling="no"
+          style={{
+            position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+            width: '100%', height: '100%', border: 0, display: 'block',
+            pointerEvents: 'none',
+          }}
+        />
       </div>
     );
   }
@@ -2099,10 +2135,14 @@ export default function ScoreboardPage() {
         // Audio API unavailable — silent fallback.
       }
     }
-    // A custom cue holds for its own duration; a sport celebration
-    // matches the 3.8s celebration animation.
+    // A custom cue holds for its own duration; a cinematic celebration runs
+    // ~4.3s, so hold it 4.8s; a plain text cue holds 3.9s.
     const holdMs =
-      next.mediaUrl && next.durationMs && next.durationMs > 0 ? next.durationMs : 3900;
+      next.mediaUrl && next.durationMs && next.durationMs > 0
+        ? next.durationMs
+        : celebrationSrc(data?.sport, next.key, null)
+          ? 4800
+          : 3900;
     cueTimer.current = setTimeout(() => {
       stopCueAudio();
       setActiveCue(null);
@@ -2347,7 +2387,7 @@ export default function ScoreboardPage() {
         {!isLive && !isPreGame && !isHalftime && !isFinal && (
           <BoardScene data={data} def={def} />
         )}
-        {activeCue && <CueOverlay cue={activeCue} />}
+        {activeCue && <CueOverlay cue={activeCue} sport={data?.sport} />}
       </div>
     </div>
   );
