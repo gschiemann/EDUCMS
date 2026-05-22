@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VenueOS · Celebration Deck</title>
+<style>
+  html,body{margin:0;height:100%;background:#04060b;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  #stage{position:absolute;top:0;right:0;bottom:0;left:0;display:flex;align-items:center;justify-content:center;}
+  canvas{width:100%;height:auto;max-height:100vh;display:block;}
+  #ui{position:absolute;left:16px;bottom:14px;z-index:10;display:flex;align-items:center;flex-wrap:wrap;}
+  #ui button{margin:0 8px 6px 0;padding:9px 14px;border-radius:10px;border:1px solid #2a3550;background:#0d1424;color:#cfe0ff;font-size:13px;font-weight:700;cursor:pointer;}
+  #ui .sw{width:30px;height:30px;padding:0;border-radius:50%;}
+  #label{position:absolute;right:16px;bottom:16px;z-index:10;color:#44506a;font-size:12px;letter-spacing:.1em;}
+  /* index */
+  #index{position:absolute;inset:0;overflow:auto;padding:30px 40px;color:#cfe0ff;display:none;}
+  #index h1{font-size:20px;margin:0 0 4px;color:#fff;}
+  #index p{color:#6f7d96;font-size:13px;margin:0 0 18px;}
+  #index .grp{margin-bottom:16px;}
+  #index .grp b{display:block;color:#9fb4d8;font-size:13px;letter-spacing:.08em;margin-bottom:6px;text-transform:uppercase;}
+  #index a{display:inline-block;margin:0 8px 8px 0;padding:8px 12px;border:1px solid #243049;border-radius:8px;background:#0c1322;color:#cfe0ff;text-decoration:none;font-size:13px;font-weight:700;}
+  #index a:hover{background:#16203a;}
+</style>
+</head>
+<body>
+  <div id="stage"><canvas id="c" width="1920" height="1080"></canvas></div>
+  <div id="index"></div>
+  <div id="ui">
+    <button id="replay">▶ Replay</button>
+    <button class="sw" style="background:#21e6ff" data-c="#21e6ff"></button>
+    <button class="sw" style="background:#ff2d55" data-c="#ff2d55"></button>
+    <button class="sw" style="background:#22e07a" data-c="#22e07a"></button>
+    <button class="sw" style="background:#ffc21a" data-c="#ffc21a"></button>
+    <button class="sw" style="background:#a06bff" data-c="#a06bff"></button>
+    <button id="idxBtn">☰ All cues</button>
+  </div>
+  <div id="label" data-label>VenueOS · Celebration Deck</div>
+
+<script src="celebration-engine.js"></script>
+<script>
+(function(){
+  // Cue registry — every remaining cue across the 8 sports, all reusing the
+  // shared engine (scene + prop + optional projectile + burst + headline +
+  // lower-third + brand-shim). Marquee scoring plays live in their own files.
+  var CUES={
+    // ── SOCCER ──
+    'soccer-penalty':{scene:'grass',headline:'PENALTY!',sub1:'HUNTINGTON BEACH  2  —  1  NEWPORT',sub2:"78'  ·  PENALTY  ·  #9 RIVERA",burst:'fire',projectile:{ball:'soccer',from:[430,772],t0:600,t1:1000,arc:130,r:30,shrink:true}},
+    'soccer-yellow':{scene:'grass',headline:'YELLOW CARD',headSize:150,sub1:'CAUTION',sub2:"58'  ·  #6 DELACRUZ",burst:'none',motif:'card',motifColor:'#ffd21a',shake:6},
+    'soccer-red':{scene:'grass',headline:'RED CARD',headSize:160,sub1:'SENT OFF',sub2:"71'  ·  #4 BANKS",burst:'none',motif:'card',motifColor:'#e6362b',shake:6},
+    // ── WATER POLO ──
+    'waterpolo-save':{scene:'pool',headline:'SAVE!',sub1:'NEWPORT HARBOR  9  —  8  CORONA DEL MAR',sub2:'3RD  ·  BIG SAVE  ·  #1 GK',burst:'water',motif:'glove',projectile:{ball:'waterpolo',from:[-160,640],t0:640,t1:1000,arc:80,r:30}},
+    'waterpolo-exclusion':{scene:'pool',headline:'EXCLUSION',headSize:160,sub1:'MAN UP  —  6 ON 5',sub2:'2ND  ·  #7 EXCLUDED  ·  :20',burst:'energy',motif:'whistle'},
+    'waterpolo-powerplay':{scene:'pool',headline:'POWER PLAY',headSize:150,sub1:'MAN ADVANTAGE',sub2:'6 ON 5',burst:'energy',motif:'plus1',motifText:'6v5'},
+    // ── BASKETBALL ──
+    'basketball-dunk':{scene:'court',headline:'SLAM!',headSize:240,sub1:'MATER DEI  61  —  58  SANTA MARGARITA',sub2:'4TH  ·  DUNK  ·  #23 OKAFOR',burst:'fire',projectile:{ball:'basketball',from:[1500,110],t0:640,t1:1000,arc:0,r:34}},
+    'basketball-buzzer':{scene:'court',headline:'BUZZER BEATER!',headSize:140,sub1:'AT THE HORN — WIN',sub2:'4TH  ·  0:00  ·  #3 REYES',burst:'fire',motif:'clock0',projectile:{ball:'basketball',from:[1080,715],t0:560,t1:1000,arc:320,r:32}},
+    'basketball-steal':{scene:'court',headline:'STEAL!',sub1:'TAKEAWAY  —  FAST BREAK',sub2:'3RD  ·  #5 CHEN',burst:'energy',motif:'swirl'},
+    // ── HOCKEY ──
+    'hockey-powerplay':{scene:'ice',headline:'POWER PLAY',headSize:150,sub1:'MAN ADVANTAGE',sub2:'2ND  ·  5 ON 4',burst:'energy',motif:'plus1',motifText:'5v4'},
+    'hockey-penaltykill':{scene:'ice',headline:'PENALTY KILL',headSize:140,sub1:'KILLED IT OFF',sub2:'2ND  ·  SHORTHANDED',burst:'energy',motif:'shield'},
+    'hockey-hattrick':{scene:'ice',headline:'HAT TRICK!',headSize:160,sub1:'ICEHAWKS  4  —  2  TITANS',sub2:'3RD  ·  3 GOALS  ·  #17 NOVAK',burst:'energy',motif:'hats',projectile:{ball:'puck',from:[-200,700],t0:660,t1:1000,arc:40,r:30}},
+    'hockey-save':{scene:'ice',headline:'SAVE!',sub1:'ICEHAWKS  2  —  2  TITANS',sub2:'3RD  ·  GLOVE SAVE  ·  #30',burst:'ice',motif:'glove',projectile:{ball:'puck',from:[-200,700],t0:660,t1:1000,arc:40,r:30}},
+    // ── BASEBALL ──
+    'baseball-grandslam':{scene:'ballpark',headline:'GRAND SLAM!',headSize:150,sub1:'RIVER CATS  8  —  4  RAILRIDERS',sub2:'BOT 6TH  ·  4-RUN SLAM  ·  #24 CRUZ',burst:'fireworks',impactPt:function(){return{x:1320,y:300};},projectile:{ball:'baseball',from:[560,980],t0:520,t1:1000,arc:300,r:30,shrink:true}},
+    'baseball-strikeout':{scene:'plate',headline:'STRIKEOUT!',headSize:150,sub1:'EAGLES  3  —  1  BULLDOGS',sub2:'TOP 7TH  ·  K  ·  #21 PARK',burst:'energy',motif:'bigK',projectile:{ball:'baseball',from:[280,300],t0:640,t1:980,arc:0,r:26,ease:'lin'}},
+    'baseball-doubleplay':{scene:'plate',headline:'DOUBLE PLAY!',headSize:140,sub1:'TWO OUTS — INNING OVER',sub2:'4-6-3',burst:'energy',motif:'plus1',motifText:'4-6-3'},
+    // ── FOOTBALL ──
+    'football-firstdown':{scene:'turf',headline:'FIRST DOWN!',headSize:150,sub1:'MOVE THE CHAINS',sub2:'1ST & 10  ·  #11 SOTO',burst:'energy',motif:'arrowFD'},
+    'football-sack':{scene:'turf',headline:'SACK!',sub1:'QB DOWN — LOSS OF 8',sub2:'3RD & LONG  ·  #55 OKAFOR',burst:'fire',impactPt:function(){return{x:960,y:600};}},
+    'football-turnover':{scene:'turf',headline:'TURNOVER!',sub1:'TAKEAWAY — BALL HAWK',sub2:'#21 RECOVERS',burst:'energy',motif:'swirl'},
+    // ── VOLLEYBALL ──
+    'volleyball-ace':{scene:'gym',headline:'ACE!',sub1:'MARINA  25  —  23  LAGUNA',sub2:'SET 5  ·  ACE  ·  #1 PARK',burst:'dust',projectile:{ball:'volleyball',from:[300,340],t0:620,t1:1000,arc:0,r:30}},
+    'volleyball-block':{scene:'gym',headline:'BLOCK!',sub1:'STUFFED AT THE NET',sub2:'SET 3  ·  #12 RUIZ',burst:'energy',impactPt:function(){return{x:960,y:560};},projectile:{ball:'volleyball',from:[760,330],t0:640,t1:1000,arc:0,r:30}},
+    'volleyball-setwon':{scene:'gym',headline:'SET WON!',headSize:150,sub1:'MARINA TAKES SET 4',sub2:'25  —  22',burst:'confetti',motif:'plus1',motifText:'SET'},
+    // ── WRESTLING ──
+    'wrestling-pin':{scene:'mat',headline:'PIN!',headSize:260,sub1:'MISSION VIEJO  def.  EDISON',sub2:'2ND PD  ·  FALL  ·  113 LBS',burst:'energy',motif:'whistle',shake:22,impactPt:function(){return{x:960,y:680};}},
+    'wrestling-takedown':{scene:'mat',headline:'TAKEDOWN!',headSize:150,sub1:'TWO POINTS',sub2:'1ST PD  ·  #145 LOPEZ',burst:'energy',motif:'plus1',motifText:'+2',impactPt:function(){return{x:960,y:680};}},
+    'wrestling-nearfall':{scene:'mat',headline:'NEAR FALL!',headSize:150,sub1:'BACK POINTS',sub2:'3RD PD  ·  #160',burst:'energy',motif:'plus1',motifText:'+3',impactPt:function(){return{x:960,y:680};}},
+    'wrestling-techfall':{scene:'mat',headline:'TECH FALL!',headSize:150,sub1:'15-POINT LEAD — MATCH OVER',sub2:'#132 WARREN',burst:'energy',motif:'plus1',motifText:'15',impactPt:function(){return{x:960,y:680};}}
+  };
+  var GROUPS={Soccer:['soccer-penalty','soccer-yellow','soccer-red'],'Water polo':['waterpolo-save','waterpolo-exclusion','waterpolo-powerplay'],Basketball:['basketball-dunk','basketball-buzzer','basketball-steal'],Hockey:['hockey-powerplay','hockey-penaltykill','hockey-hattrick','hockey-save'],Baseball:['baseball-grandslam','baseball-strikeout','baseball-doubleplay'],Football:['football-firstdown','football-sack','football-turnover'],Volleyball:['volleyball-ace','volleyball-block','volleyball-setwon'],Wrestling:['wrestling-pin','wrestling-takedown','wrestling-nearfall','wrestling-techfall']};
+
+  var q=new URLSearchParams(location.search), cue=q.get('cue');
+  if(cue&&CUES[cue]){
+    document.querySelector('[data-label]').textContent='VenueOS · '+cue;
+    VENUE.run(CUES[cue]);
+  } else {
+    // show the index
+    document.getElementById('stage').style.display='none';
+    var idx=document.getElementById('index');idx.style.display='block';
+    var team=q.get('team')?('&team='+q.get('team')):'';
+    var html='<h1>VenueOS — Celebration Deck</h1><p>Every remaining cue, reusing the shared engine. Click one to play it. Add a colour with the swatches.</p>';
+    for(var g in GROUPS){html+='<div class="grp"><b>'+g+'</b>';GROUPS[g].forEach(function(k){html+='<a href="?cue='+k+team+'">'+CUES[k].headline+'</a>';});html+='</div>';}
+    idx.innerHTML=html;
+  }
+  document.getElementById('idxBtn').addEventListener('click',function(){location.search='';});
+})();
+</script>
+</body>
+</html>
