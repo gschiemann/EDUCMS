@@ -1036,7 +1036,16 @@ export default function AssetsPage() {
                   <audio src={selectedAsset.fileUrl?.startsWith('http') ? selectedAsset.fileUrl : `${apiBase}${selectedAsset.fileUrl}`} controls autoPlay className="w-full" />
                 </div>
               ) : selectedAsset.mimeType === 'text/html' ? (
-                <iframe src={selectedAsset.fileUrl} className="w-full h-full border-0 bg-white" />
+                // Lane-1 P1: sandbox uploaded HTML assets. Any CONTRIBUTOR
+                // can upload text/html; without sandbox the page runs same-
+                // origin and can read the operator's session storage / cookies.
+                // `allow-scripts` keeps interactive previews; no
+                // `allow-same-origin` blocks document.cookie / localStorage.
+                <iframe
+                  src={selectedAsset.fileUrl}
+                  sandbox="allow-scripts"
+                  className="w-full h-full border-0 bg-white"
+                />
               ) : (
                 <div className="text-center text-white">{typeIcon(selectedAsset.mimeType, 'w-16 h-16 mx-auto')}<p className="mt-3 text-xs opacity-50">Preview not available</p></div>
               )}

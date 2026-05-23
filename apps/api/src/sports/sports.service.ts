@@ -109,6 +109,10 @@ export class SportsService {
     const event = await this.prisma.client.gameEvent.create({
       data: { gameId, type, payload: payload as any },
     });
+    // Lane-4 P0: every write to a game (cue/score/clock/penalty/segment/
+    // ribbon) flows through this method — invalidate the board cache so the
+    // next poll sees the change instantly instead of waiting up to 1s.
+    this.invalidateBoardCache(gameId);
     try {
       const signed = this.signer.signMessage('GAME_EVENT', {
         gameId,
@@ -255,14 +259,42 @@ export class SportsService {
     return { ...game, ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides, ribbonScoreRepeat };
   }
 
+  // Lane-4 P0 — in-process board cache. The /board/:id endpoint polls at
+  // 750ms × N viewers per game; each call fans out to 8 Prisma queries.
+  // A 1-second TTL drops that hot path by ~99% (a 750ms-poll window crosses
+  // at most one boundary). The cue feed advances by record() writing a new
+  // GameEvent whose `id` the board dedups by — so a 1-second cache lag on
+  // cue arrival is invisible (the next poll picks it up). Operator score
+  // updates are similarly bounded to <1s perceived lag.
+  //
+  // Cache is invalidated explicitly on writes (record + game.update paths)
+  // via invalidateBoardCache(); the TTL is the belt-and-suspenders.
+  private boardCache = new Map<string, { ts: number; payload: any }>();
+  private static readonly BOARD_CACHE_TTL_MS = 1000;
+  private invalidateBoardCache(gameId: string) { this.boardCache.delete(gameId); }
+
   /**
    * Public board view — by game id only, NOT tenant-scoped. Scoreboard
    * data (score, clock, team names) is inherently public: it is shown
    * on a stadium display. The id is an unguessable UUID. Returns the
    * raw clock anchor (board ticks locally) + the recent celebration
    * cue feed (board dedupes by event id and fires new ones).
+   *
+   * Lane-4 P0: response is memoized for BOARD_CACHE_TTL_MS so a 50-viewer
+   * game serving the same payload for ~750ms hits the DB once, not 50×.
    */
   async getBoard(id: string) {
+    const now = Date.now();
+    const hit = this.boardCache.get(id);
+    if (hit && now - hit.ts < SportsService.BOARD_CACHE_TTL_MS) {
+      return hit.payload;
+    }
+    const fresh = await this.getBoardFresh(id);
+    this.boardCache.set(id, { ts: now, payload: fresh });
+    return fresh;
+  }
+
+  private async getBoardFresh(id: string) {
     // Lane-4 P0 fix: explicit `select` so this hot poll (every 750ms × N
     // viewers per game) only ships the fields the board actually consumes,
     // not every column on the row. Combined with the future ETag/cache layer

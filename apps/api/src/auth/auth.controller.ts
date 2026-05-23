@@ -1,10 +1,11 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpException, HttpStatus, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { LoginInputSchema, type LoginInput } from '@cms/api-types';
 import { AuthService } from './auth.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RedisService } from '../realtime/redis.service';
+import { PrismaService } from '../prisma/prisma.service';
 import type { Request } from 'express';
 
 @Controller('api/v1/auth')
@@ -12,6 +13,7 @@ export class AuthController {
   constructor(
     private authService: AuthService,
     private redisService: RedisService,
+    private prisma: PrismaService,
   ) {}
 
   @HttpCode(HttpStatus.OK)
@@ -53,18 +55,46 @@ export class AuthController {
     if (type !== 'Bearer' || !token) {
       throw new UnauthorizedException('No bearer token');
     }
+    const user = (req as any).user;
     const pub = this.redisService.publisher;
-    if (pub) {
-      try {
-        await pub.sadd('jwt_revoked_list', token);
-        // 30 days = rememberMe ceiling — the JWT itself expires by then,
-        // so the set never grows unboundedly. Resets each logout (acceptable).
-        await pub.expire('jwt_revoked_list', 60 * 60 * 24 * 30);
-      } catch {
-        // Best-effort — if Redis is unreachable, the client still clears
-        // local state. The user may retry /logout once Redis recovers.
-      }
+    // Lane-1 P2 fix: Redis is the ONLY revocation store. If it's unreachable
+    // we cannot honor the logout — return 503 instead of pretending success.
+    // Pairs with jwt-auth.guard.ts which now fails CLOSED on Redis errors.
+    if (!pub) {
+      throw new HttpException(
+        'Revocation service unavailable; try again',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
     }
+    try {
+      await pub.sadd('jwt_revoked_list', token);
+      // 30 days = rememberMe ceiling — the JWT itself expires by then, so the
+      // set never grows unboundedly. Resets each logout (acceptable).
+      await pub.expire('jwt_revoked_list', 60 * 60 * 24 * 30);
+    } catch {
+      throw new HttpException(
+        'Revocation service unavailable; try again',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    // Lane-1 P2 fix: AuditLog every logout for incident forensics
+    // ("when did the attacker burn the session?"). Best-effort — never
+    // fail the logout if the audit row fails.
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId: user?.tenantId || user?.schoolId || user?.districtId || null,
+          userId: user?.userId || user?.id || null,
+          action: 'AUTH_LOGOUT',
+          targetType: 'User',
+          targetId: user?.userId || user?.id || null,
+          details: JSON.stringify({
+            ip: req.ip || req.headers['x-forwarded-for'] || null,
+            ua: (req.headers['user-agent'] || '').slice(0, 256),
+          }),
+        },
+      });
+    } catch { /* best-effort */ }
     return { success: true };
   }
 }
