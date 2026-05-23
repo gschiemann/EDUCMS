@@ -70,7 +70,11 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        // Lane-6 P1: dropped `[&:has([role=checkbox])]:pr-0` — `:has()` is
+        // Chromium 105+ / Safari 15.4+, silently no-ops on older Android
+        // WebView. Cells with a checkbox child can pass a className override
+        // on the specific cell if they need pr-0.
+        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground",
         className
       )}
       {...props}
@@ -83,7 +87,8 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+        // Lane-6 P1: same — `:has()` removed for cross-browser safety.
+        "p-2 align-middle whitespace-nowrap",
         className
       )}
       {...props}

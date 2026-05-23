@@ -217,12 +217,14 @@ export class FloorPlansController {
   // ─── List ──────────────────────────────────────────────────────
 
   @Get()
+  // Lane-2 P1: RESTRICTED_VIEWER removed — floor plans are operational
+  // security (building layout, per-screen emergency content config) per
+  // Sprint 8b spec. ADMIN-only read.
   @RequireRoles(
     AppRole.SUPER_ADMIN,
     AppRole.DISTRICT_ADMIN,
     AppRole.SCHOOL_ADMIN,
     AppRole.CONTRIBUTOR,
-    AppRole.RESTRICTED_VIEWER,
   )
   async list(@Request() req: any) {
     const tenantId = req.user.tenantId;
@@ -251,12 +253,13 @@ export class FloorPlansController {
   // ─── Single (with screens + zones) ─────────────────────────────
 
   @Get(':id')
+  // Lane-2 P1: RESTRICTED_VIEWER removed — getOne returns the full
+  // building layout + per-screen emergency content. ADMIN/CONTRIBUTOR only.
   @RequireRoles(
     AppRole.SUPER_ADMIN,
     AppRole.DISTRICT_ADMIN,
     AppRole.SCHOOL_ADMIN,
     AppRole.CONTRIBUTOR,
-    AppRole.RESTRICTED_VIEWER,
   )
   async getOne(@Request() req: any, @Param('id') id: string) {
     const tenantId = req.user.tenantId;

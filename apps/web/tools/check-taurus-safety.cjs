@@ -49,6 +49,20 @@ const PATTERNS = {
   // Lane-6 P0: `text-wrap: balance` is Chromium 114+. Silently ignored on
   // Taurus (Chromium 83) → headlines wrap badly on a 4K board.
   textWrapBalance: /\btext-wrap:\s*balance\b/g,
+  // Lane-6 re-audit: `color-mix(` is Chromium 111+. Falls back to invalid
+  // value on Chromium 83 — the entire declaration is dropped.
+  colorMix: /\bcolor-mix\s*\(/g,
+  // Lane-6 re-audit: `:has(` is Chromium 105+. Silently no-ops on Chromium
+  // 83, leaving rules with `:has()`-conditional layout broken.
+  hasSelector: /:has\(/g,
+  // Lane-6 re-audit: `aspect-ratio:` is Chromium 88+. Below that the box
+  // collapses; widgets that rely on it for visual proportion go to 0×0.
+  aspectRatio: /\baspect-ratio:\s*[^,;{}\n]+/g,
+  // Lane-6 re-audit: `oklch(` color function is Chromium 111+. Invalid on
+  // older engines → custom prop resets to initial value, semantic colors
+  // collapse. (globals.css has an @supports fallback; this catches NEW
+  // oklch usage that lacks one.)
+  oklch: /\boklch\s*\(/g,
 };
 
 const FILE_RE = /\.(tsx?|jsx?|css|scss)$/;

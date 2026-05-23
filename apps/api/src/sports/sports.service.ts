@@ -371,6 +371,61 @@ export class SportsService {
     return s ? s.slice(0, 2048) : null;
   }
 
+  /**
+   * Lane-2 P0: verify every foreign-key the operator can set on a Game
+   * (`screenGroupId` + three template IDs) belongs to the caller's tenant
+   * BEFORE persisting. Without this, a SCHOOL_ADMIN could paste a foreign
+   * tenant's ScreenGroup UUID and pin their game's broadcast output to a
+   * stranger's screen fleet — or paste a foreign template id to render
+   * arbitrary HTML on their own scoreboard. Same shape as the panic-settings
+   * ownership fix in tenants.controller.
+   *
+   * Templates may be tenant-owned OR `isSystem: true` (matches the existing
+   * templates.controller convention).
+   */
+  private async assertOwnedGameRefs(
+    tenantId: string,
+    refs: {
+      screenGroupId?: string | null;
+      scoreboardTemplateId?: string | null;
+      ribbonTemplateId?: string | null;
+      scorebugTemplateId?: string | null;
+    },
+  ): Promise<void> {
+    if (refs.screenGroupId) {
+      const sg = await this.prisma.client.screenGroup.findFirst({
+        where: { id: refs.screenGroupId, tenantId },
+        select: { id: true },
+      });
+      if (!sg) {
+        throw new NotFoundException(
+          `Screen group not found in this tenant: ${refs.screenGroupId}`,
+        );
+      }
+    }
+    const templateIds = [
+      refs.scoreboardTemplateId,
+      refs.ribbonTemplateId,
+      refs.scorebugTemplateId,
+    ].filter((x): x is string => typeof x === 'string' && x.length > 0);
+    if (templateIds.length > 0) {
+      const owned = await this.prisma.client.template.findMany({
+        where: {
+          id: { in: templateIds },
+          OR: [{ tenantId }, { isSystem: true }],
+        },
+        select: { id: true },
+      });
+      const ownedSet = new Set(owned.map((t) => t.id));
+      const foreign = templateIds.filter((id) => !ownedSet.has(id));
+      if (foreign.length > 0) {
+        throw new NotFoundException(
+          `Template(s) not found in this tenant: ${foreign.join(', ')}`,
+        );
+      }
+    }
+  }
+
   async createGame(
     tenantId: string,
     dto: {
@@ -395,6 +450,8 @@ export class SportsService {
     if (!homeTeam || !awayTeam) {
       throw new BadRequestException('homeTeam and awayTeam are required');
     }
+    // Lane-2 P0 ownership check — see assertOwnedGameRefs for rationale.
+    await this.assertOwnedGameRefs(tenantId, dto);
     const status = dto.status && GAME_STATUSES.includes(dto.status) ? dto.status : 'SCHEDULED';
 
     // Seed per-team timeout counts to their max so the broadcast
@@ -563,6 +620,8 @@ export class SportsService {
     },
   ) {
     await this.owned(tenantId, id);
+    // Lane-2 P0 ownership check — see assertOwnedGameRefs for rationale.
+    await this.assertOwnedGameRefs(tenantId, dto);
     const data: Record<string, unknown> = {};
     if (dto.homeTeam !== undefined) {
       const t = String(dto.homeTeam).trim();

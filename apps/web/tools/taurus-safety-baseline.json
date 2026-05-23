@@ -28,27 +28,31 @@
     "gap": 10
   },
   "apps/web/src/components/widgets/AnimatedCafeteriaChalkboardWidget.tsx": {
-    "gap": 4
+    "gap": 4,
+    "aspectRatio": 1
   },
   "apps/web/src/components/widgets/AnimatedCafeteriaElementaryPortraitWidget.tsx": {
     "gap": 6
   },
   "apps/web/src/components/widgets/AnimatedCafeteriaElementaryWidget.tsx": {
     "gap": 5,
-    "cqUnits": 11
+    "cqUnits": 11,
+    "aspectRatio": 1
   },
   "apps/web/src/components/widgets/AnimatedCafeteriaFoodtruckPortraitWidget.tsx": {
     "gap": 5
   },
   "apps/web/src/components/widgets/AnimatedCafeteriaFoodtruckWidget.tsx": {
-    "gap": 4
+    "gap": 4,
+    "aspectRatio": 1
   },
   "apps/web/src/components/widgets/AnimatedCafeteriaHighPortraitWidget.tsx": {
     "gap": 10
   },
   "apps/web/src/components/widgets/AnimatedCafeteriaHighWidget.tsx": {
     "gap": 6,
-    "cqUnits": 11
+    "cqUnits": 11,
+    "aspectRatio": 1
   },
   "apps/web/src/components/widgets/AnimatedCafeteriaMiddlePortraitWidget.tsx": {
     "gap": 11
@@ -80,10 +84,12 @@
     "cqUnits": 4
   },
   "apps/web/src/components/widgets/AnimatedWelcomeHighPortraitWidget.tsx": {
-    "gap": 6
+    "gap": 6,
+    "aspectRatio": 1
   },
   "apps/web/src/components/widgets/AnimatedWelcomeHighWidget.tsx": {
-    "gap": 2
+    "gap": 2,
+    "aspectRatio": 1
   },
   "apps/web/src/components/widgets/AnimatedWelcomeMiddlePortraitWidget.tsx": {
     "gap": 8
@@ -92,10 +98,12 @@
     "gap": 2
   },
   "apps/web/src/components/widgets/AnimatedWelcomePortraitWidget.tsx": {
-    "gap": 1
+    "gap": 1,
+    "aspectRatio": 1
   },
   "apps/web/src/components/widgets/AnimatedWelcomeWidget.tsx": {
-    "gap": 2
+    "gap": 2,
+    "aspectRatio": 1
   },
   "apps/web/src/components/widgets/bar/CocktailMenuWidget.tsx": {
     "gap": 4,
@@ -185,7 +193,8 @@
     "gap": 3
   },
   "apps/web/src/components/widgets/fitness/FitnessReformerWidget.tsx": {
-    "gap": 5
+    "gap": 5,
+    "aspectRatio": 1
   },
   "apps/web/src/components/widgets/fitness/FitnessSplashWidget.tsx": {
     "gap": 5
@@ -195,7 +204,8 @@
   },
   "apps/web/src/components/widgets/fitness/FitnessStickLauncherWidget.tsx": {
     "gap": 8,
-    "cqUnits": 45
+    "cqUnits": 45,
+    "colorMix": 4
   },
   "apps/web/src/components/widgets/fitness/FitnessTelemetryWidget.tsx": {
     "gap": 7
@@ -316,7 +326,8 @@
     "gap": 20
   },
   "apps/web/src/components/widgets/ms/MsStudioWidget.tsx": {
-    "gap": 26
+    "gap": 26,
+    "aspectRatio": 1
   },
   "apps/web/src/components/widgets/restaurant/AllergyLegendWidget.tsx": {
     "gap": 3,
@@ -324,7 +335,8 @@
   },
   "apps/web/src/components/widgets/restaurant/ComboCarouselWidget.tsx": {
     "gap": 6,
-    "cqUnits": 31
+    "cqUnits": 31,
+    "aspectRatio": 1
   },
   "apps/web/src/components/widgets/restaurant/LoyaltyTickerWidget.tsx": {
     "gap": 3,
@@ -356,7 +368,8 @@
   },
   "apps/web/src/components/widgets/retail/RetailProductGridWidget.tsx": {
     "gap": 3,
-    "cqUnits": 17
+    "cqUnits": 17,
+    "aspectRatio": 1
   },
   "apps/web/src/components/widgets/retail/RetailSaleCountdownWidget.tsx": {
     "gap": 3,
@@ -549,6 +562,9 @@
   },
   "apps/web/src/components/widgets/v2/PhotoWidgets.tsx": {
     "gap": 5
+  },
+  "apps/web/src/components/widgets/v2/RetailWidgets.tsx": {
+    "hasSelector": 1
   },
   "apps/web/src/components/widgets/v2/RichTextWidgets.tsx": {
     "gap": 2

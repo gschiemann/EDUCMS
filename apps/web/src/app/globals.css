@@ -186,6 +186,35 @@
   --sidebar-ring: oklch(0.55 0.25 260);
 }
 
+/* Lane-6 P1 — Chromium 90-110 / Safari 14 / Android WebView Chromium 90-110
+   parse oklch() as invalid → the custom prop falls back to its initial value,
+   making the semantic-color Tailwind classes paint engine defaults (often
+   white text on white card). Provide hex equivalents for the load-bearing
+   tokens so the dashboard chrome remains legible on older browsers; modern
+   engines pick up the oklch() values above. */
+@supports not (color: oklch(0% 0 0)) {
+  :root {
+    --background: #fafbfc;
+    --foreground: #1a1f2c;
+    --card: #ffffff;
+    --card-foreground: #1a1f2c;
+    --popover: #ffffff;
+    --popover-foreground: #1a1f2c;
+    --primary: #3b5dc9;
+    --primary-foreground: #fafafa;
+    --secondary: #ecf0f6;
+    --secondary-foreground: #2c3a55;
+    --muted: #eef1f6;
+    --muted-foreground: #6b7280;
+    --accent: #e6ecf8;
+    --accent-foreground: #2c3a55;
+    --destructive: #dc2626;
+    --border: #dde0e8;
+    --input: #dde0e8;
+    --ring: #3b5dc9;
+  }
+}
+
 .dark {
   --background: oklch(0.14 0.03 260);
   --foreground: oklch(0.96 0.01 260);

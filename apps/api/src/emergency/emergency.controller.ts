@@ -296,6 +296,23 @@ export class EmergencyController {
     // Throws 400 (unknown scopeType), 404 (scope not found), or 403 (cross-tenant).
     const ownedTenantId = await this.resolveScopeTenant(scopeType, scopeId, req.user);
 
+    // SECURITY (Lane-1 re-audit P0): verify the override's playlistId belongs
+    // to the scope's tenant — same shape as the panic-settings fix in
+    // tenants.controller. Without this a SCHOOL_ADMIN can paste another
+    // tenant's playlist UUID and that playlist plays on every screen the
+    // trigger reaches.
+    if (overridePayload?.playlistId) {
+      const ok = await this.prisma.client.playlist.findFirst({
+        where: { id: overridePayload.playlistId, tenantId: ownedTenantId },
+        select: { id: true },
+      });
+      if (!ok) {
+        throw new NotFoundException(
+          `Playlist not found in this tenant: ${overridePayload.playlistId}`,
+        );
+      }
+    }
+
     const overrideId = overridePayload.overrideId || `ovr_${crypto.randomUUID()}`;
     const severity = overridePayload.severity || 'CRITICAL';
     const message = {

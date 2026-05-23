@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request,
+  Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request,
   UseInterceptors, UploadedFile, HttpException, HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -337,7 +337,17 @@ export class AssetsController {
 
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
-  async list(@Request() req: any) {
+  async list(
+    @Request() req: any,
+    // Lane-4 P1 — opt-in pagination. Existing callers (no query params) still
+    // get the full list to preserve the asset-library contract; new callers
+    // can pass `?take=N&skip=M` to page. Default cap at 500 prevents a stray
+    // huge-list request from streaming 5K rows × 500 B each = 2.5 MB on a
+    // single nav. The dashboard already does client-side virtualization;
+    // server-side paging is the next leg.
+    @Query('take') takeRaw?: string,
+    @Query('skip') skipRaw?: string,
+  ) {
     const tenantId = req.user.tenantId;
     const emergencyAssetUrls = await this.listScreenEmergencyAssetUrls(tenantId);
     const where: any = {
@@ -359,6 +369,15 @@ export class AssetsController {
     // the dedicated Settings → Emergency Content surface. The server
     // still enforces the DELETE guard below as defense-in-depth
     // against stale caches.
+    const take = (() => {
+      const n = takeRaw ? parseInt(takeRaw, 10) : NaN;
+      if (!Number.isFinite(n) || n <= 0) return 500;  // default cap
+      return Math.min(n, 1000);                       // hard ceiling
+    })();
+    const skip = (() => {
+      const n = skipRaw ? parseInt(skipRaw, 10) : NaN;
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    })();
     return this.prisma.client.asset.findMany({
       where,
       include: {
@@ -366,6 +385,8 @@ export class AssetsController {
         folder: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
+      take,
+      skip,
     });
   }
 

@@ -371,6 +371,23 @@ export class ScreenEmergencyController {
     const tenantId = this.requireTenantId(req);
     const screen = await this.resolveScreen(screenId, tenantId);
     const override = this.validateOverride(body);
+    // SECURITY (Lane-1 re-audit P0): verify any operator-supplied playlistId
+    // belongs to the screen's tenant. Same shape as the panic-settings fix.
+    if (override.playlistId) {
+      if (!screen.tenantId) {
+        throw new HttpException('Screen has no tenant binding', HttpStatus.CONFLICT);
+      }
+      const owned = await this.prisma.client.playlist.findFirst({
+        where: { id: override.playlistId, tenantId: screen.tenantId },
+        select: { id: true },
+      });
+      if (!owned) {
+        throw new HttpException(
+          `Playlist not found in this tenant: ${override.playlistId}`,
+          HttpStatus.NOT_FOUND,
+        );
+      }
+    }
     const { overrideId } = await this.createOverrideAndBroadcast({
       screen,
       override,
@@ -522,6 +539,27 @@ export class ScreenEmergencyController {
     const screens = await this.prisma.client.screen.findMany({ where });
     if (screens.length === 0) {
       throw new HttpException('No matching screens found in your tenant', HttpStatus.NOT_FOUND);
+    }
+    // SECURITY (Lane-1 re-audit P0): verify the playlistId belongs to the
+    // tenant of EVERY targeted screen. SUPER_ADMIN bulk-triggers can span
+    // tenants — refuse if the playlist doesn't belong to all of them.
+    if (override.playlistId) {
+      const tenantIds = [...new Set(screens.map((s) => s.tenantId).filter((t): t is string => !!t))];
+      if (tenantIds.length === 0) {
+        throw new HttpException('Targeted screens have no tenant binding', HttpStatus.CONFLICT);
+      }
+      const owned = await this.prisma.client.playlist.findMany({
+        where: { id: override.playlistId, tenantId: { in: tenantIds } },
+        select: { id: true, tenantId: true },
+      });
+      const ownedTenants = new Set(owned.map((o) => o.tenantId));
+      const missing = tenantIds.filter((t) => !ownedTenants.has(t));
+      if (missing.length > 0) {
+        throw new HttpException(
+          `Playlist not found in tenant(s): ${missing.join(', ')}`,
+          HttpStatus.NOT_FOUND,
+        );
+      }
     }
     const results: Array<{ screenId: string; overrideId: string }> = [];
     for (const screen of screens) {
