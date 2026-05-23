@@ -48,22 +48,25 @@ export class JwtAuthGuard implements CanActivate {
 
       const payload = await this.jwtService.verifyAsync(token, { secret });
 
-      // THE BYPASS: Only check Redis if we are deployed to production.
-      // Your start-dev.bat sets NODE_ENV=development, so this will safely skip locally.
+      // Check Redis revocation set in production. Lane-1 P0 fix: previously a
+      // Redis error here LOGGED AND ALLOWED the token (fail-open), so a brief
+      // Redis hiccup let already-revoked tokens (logout, role downgrade) keep
+      // working. Now we fail CLOSED — if we can't confirm the token isn't
+      // revoked, we deny. Clients retry; transient Redis outages cause a brief
+      // auth blip rather than an auth bypass.
       if (process.env.NODE_ENV === 'production') {
         try {
           const isRevoked = await this.redisService.sismember('jwt_revoked_list', token);
           if (isRevoked) {
-            throw new UnauthorizedException('Session has been revoked due to role downgrade');
+            throw new UnauthorizedException('Session revoked');
           }
         } catch (redisError) {
-          // If the error is our own UnauthorizedException, re-throw it
           if (redisError instanceof UnauthorizedException) {
             throw redisError;
           }
-          // Otherwise, Redis probably crashed or is unreachable.
-          // Log it, but DO NOT block the user from logging in.
-          console.warn('[JwtAuthGuard] Redis check failed, allowing token:', redisError.message);
+          const msg = redisError instanceof Error ? redisError.message : String(redisError);
+          console.warn('[JwtAuthGuard] Redis revocation check failed (failing closed):', msg);
+          throw new UnauthorizedException('Auth check unavailable; please retry');
         }
       }
 

@@ -263,7 +263,21 @@ export class SportsService {
    * cue feed (board dedupes by event id and fires new ones).
    */
   async getBoard(id: string) {
-    const game = await this.prisma.client.game.findUnique({ where: { id } });
+    // Lane-4 P0 fix: explicit `select` so this hot poll (every 750ms × N
+    // viewers per game) only ships the fields the board actually consumes,
+    // not every column on the row. Combined with the future ETag/cache layer
+    // this measurably drops egress per game.
+    const game = await this.prisma.client.game.findUnique({
+      where: { id },
+      select: {
+        id: true, tenantId: true, sport: true, status: true, segment: true,
+        homeTeam: true, awayTeam: true, homeScore: true, awayScore: true,
+        homeColor: true, awayColor: true, homeLogoUrl: true, awayLogoUrl: true,
+        clockMs: true, clockRunning: true, clockUpdatedAt: true,
+        startedAt: true, stats: true, spotlight: true,
+        scoreboardTemplateId: true, ribbonTemplateId: true, scorebugTemplateId: true,
+      },
+    });
     if (!game) throw new NotFoundException('Game not found');
 
     const since = new Date(Date.now() - CUE_FEED_WINDOW_MS);
