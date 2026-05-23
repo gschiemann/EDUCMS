@@ -41,9 +41,9 @@ export class CleverController {
 
   /**
    * OAuth callback from Clever. Public endpoint (no session cookie may be
-   * attached during the redirect) — the `state` parameter carries tenantId
-   * and is signed indirectly via its presence in the initiating request.
-   * Follow-up: add HMAC signature over state to prevent tenant spoofing.
+   * attached during the redirect) — the `state` parameter is HMAC-signed by
+   * `buildAuthorizeUrl` and verified by `decodeState`, so an attacker cannot
+   * swap the tenantId in transit (Lane-1 P0 fix).
    */
   @Get('callback')
   async callback(

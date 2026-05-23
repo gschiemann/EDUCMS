@@ -3,6 +3,24 @@ import { PrismaService } from '../../prisma/prisma.service';
 import type { CleverHttpClient, CleverUser } from './clever-http.client';
 import { RealCleverHttpClient } from './clever-http.client';
 import { decryptToken, encryptToken } from './clever-crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+
+// State envelope signed with HMAC-SHA256 over (tenantId|nonce|ts). Defends
+// against the historical "swap the state param to bind your Clever org to a
+// victim tenant" attack (Lane-1 P0). Reuses DEVICE_SECRET_KEY (already
+// boot-validated as a >=16-char secret by required-secret.ts in production).
+const STATE_TTL_MS = 15 * 60 * 1000; // 15 min — OAuth round-trips finish in seconds
+function stateSecret(): string {
+  return (
+    process.env.DEVICE_SECRET_KEY ||
+    'dev-only-clever-state-fallback-do-not-use-in-production-1234567890'
+  );
+}
+function signStatePayload(tenantId: string, nonce: string, ts: number): string {
+  return createHmac('sha256', stateSecret())
+    .update(`${tenantId}|${nonce}|${ts}`)
+    .digest('base64url');
+}
 
 export const CLEVER_HTTP_CLIENT = 'CLEVER_HTTP_CLIENT';
 
@@ -43,10 +61,15 @@ export class CleverService {
     @Inject(CLEVER_HTTP_CLIENT) private readonly http: CleverHttpClient,
   ) {}
 
-  /** Build the Clever OAuth authorize URL for a tenant to begin a connect flow. */
+  /** Build the Clever OAuth authorize URL for a tenant to begin a connect flow.
+   *  State is HMAC-signed over (tenantId|nonce|ts) so the callback can reject
+   *  any attempt to swap the tenantId in transit. */
   buildAuthorizeUrl(tenantId: string, redirectUri: string): string {
     const clientId = process.env.CLEVER_CLIENT_ID ?? '';
-    const state = Buffer.from(JSON.stringify({ tenantId })).toString('base64url');
+    const nonce = randomBytes(12).toString('base64url');
+    const ts = Date.now();
+    const sig = signStatePayload(tenantId, nonce, ts);
+    const state = Buffer.from(JSON.stringify({ tenantId, nonce, ts, sig })).toString('base64url');
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: clientId,
@@ -57,13 +80,31 @@ export class CleverService {
     return `https://clever.com/oauth/authorize?${params.toString()}`;
   }
 
+  /** Verify the signed state envelope. Throws on missing/expired/forged. */
   decodeState(state: string): { tenantId: string } {
+    let parsed: { tenantId?: unknown; nonce?: unknown; ts?: unknown; sig?: unknown };
     try {
-      const json = Buffer.from(state, 'base64url').toString('utf8');
-      return JSON.parse(json) as { tenantId: string };
+      parsed = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
     } catch {
-      throw new Error('Invalid OAuth state');
+      throw new Error('Invalid OAuth state (decode)');
     }
+    const tenantId = typeof parsed.tenantId === 'string' ? parsed.tenantId : '';
+    const nonce = typeof parsed.nonce === 'string' ? parsed.nonce : '';
+    const ts = typeof parsed.ts === 'number' ? parsed.ts : 0;
+    const sig = typeof parsed.sig === 'string' ? parsed.sig : '';
+    if (!tenantId || !nonce || !ts || !sig) {
+      throw new Error('Invalid OAuth state (missing fields)');
+    }
+    if (Math.abs(Date.now() - ts) > STATE_TTL_MS) {
+      throw new Error('Invalid OAuth state (expired)');
+    }
+    const expected = signStatePayload(tenantId, nonce, ts);
+    const a = Buffer.from(sig);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      throw new Error('Invalid OAuth state (signature mismatch)');
+    }
+    return { tenantId };
   }
 
   /** Complete OAuth callback: exchange code, store encrypted token + district id. */

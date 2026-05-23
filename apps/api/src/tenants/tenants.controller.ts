@@ -380,13 +380,56 @@ export class TenantsController {
   ) {
     const tenantId = req.user.tenantId;
 
-    const updated = await this.prisma.client.tenant.update({
-      where: { id: tenantId },
-      data: {
-        panicLockdownPlaylistId: body.panicLockdownPlaylistId || null,
-        panicWeatherPlaylistId: body.panicWeatherPlaylistId || null,
-        panicEvacuatePlaylistId: body.panicEvacuatePlaylistId || null,
-      },
+    // SECURITY (lane-2 P0): verify every referenced playlist belongs to the
+    // caller's tenant. Without this a SCHOOL_ADMIN could paste another tenant's
+    // playlist UUID, and on the next panic trigger the foreign content would
+    // render on every screen in this tenant. Life-safety regression.
+    const candidates = [
+      body.panicLockdownPlaylistId,
+      body.panicWeatherPlaylistId,
+      body.panicEvacuatePlaylistId,
+    ].filter((x): x is string => typeof x === 'string' && x.length > 0);
+    if (candidates.length > 0) {
+      const owned = await this.prisma.client.playlist.findMany({
+        where: { id: { in: candidates }, tenantId },
+        select: { id: true },
+      });
+      const ownedSet = new Set(owned.map((p) => p.id));
+      const foreign = candidates.filter((id) => !ownedSet.has(id));
+      if (foreign.length > 0) {
+        throw new HttpException(
+          `Playlist(s) not found in this tenant: ${foreign.join(', ')}`,
+          HttpStatus.NOT_FOUND,
+        );
+      }
+    }
+
+    // Update + immutable audit row in one transaction (matches the pattern
+    // used by every other emergency-adjacent mutation in this codebase).
+    const updated = await this.prisma.client.$transaction(async (tx) => {
+      const t = await tx.tenant.update({
+        where: { id: tenantId },
+        data: {
+          panicLockdownPlaylistId: body.panicLockdownPlaylistId || null,
+          panicWeatherPlaylistId: body.panicWeatherPlaylistId || null,
+          panicEvacuatePlaylistId: body.panicEvacuatePlaylistId || null,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: req.user.userId,
+          action: 'PANIC_SETTINGS_UPDATED',
+          targetType: 'Tenant',
+          targetId: tenantId,
+          details: JSON.stringify({
+            panicLockdownPlaylistId: body.panicLockdownPlaylistId || null,
+            panicWeatherPlaylistId: body.panicWeatherPlaylistId || null,
+            panicEvacuatePlaylistId: body.panicEvacuatePlaylistId || null,
+          }),
+        },
+      });
+      return t;
     });
 
     return {

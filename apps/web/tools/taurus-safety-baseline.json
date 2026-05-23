@@ -269,22 +269,28 @@
     "gap": 10
   },
   "apps/web/src/components/widgets/ms/MsAtlasPortraitWidget.tsx": {
-    "gap": 21
+    "gap": 21,
+    "textWrapBalance": 1
   },
   "apps/web/src/components/widgets/ms/MsAtlasWidget.tsx": {
-    "gap": 22
+    "gap": 22,
+    "textWrapBalance": 1
   },
   "apps/web/src/components/widgets/ms/MsFieldnotesPortraitWidget.tsx": {
-    "gap": 23
+    "gap": 23,
+    "textWrapBalance": 1
   },
   "apps/web/src/components/widgets/ms/MsFieldnotesWidget.tsx": {
-    "gap": 21
+    "gap": 21,
+    "textWrapBalance": 1
   },
   "apps/web/src/components/widgets/ms/MsGreenhousePortraitWidget.tsx": {
-    "gap": 19
+    "gap": 19,
+    "textWrapBalance": 1
   },
   "apps/web/src/components/widgets/ms/MsGreenhouseWidget.tsx": {
-    "gap": 18
+    "gap": 18,
+    "textWrapBalance": 1
   },
   "apps/web/src/components/widgets/ms/MsHomeroomPortraitWidget.tsx": {
     "gap": 24
@@ -299,10 +305,12 @@
     "gap": 23
   },
   "apps/web/src/components/widgets/ms/MsPlaylistPortraitWidget.tsx": {
-    "gap": 34
+    "gap": 34,
+    "textWrapBalance": 1
   },
   "apps/web/src/components/widgets/ms/MsPlaylistWidget.tsx": {
-    "gap": 29
+    "gap": 29,
+    "textWrapBalance": 1
   },
   "apps/web/src/components/widgets/ms/MsStudioPortraitWidget.tsx": {
     "gap": 20

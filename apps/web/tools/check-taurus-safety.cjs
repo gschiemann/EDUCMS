@@ -29,6 +29,10 @@ const SCAN_DIRS = [
   path.join('apps', 'web', 'src', 'components', 'widgets'),
   path.join('apps', 'web', 'src', 'app', 'player'),
   path.join('apps', 'web', 'src', 'components', 'player'),
+  // Lane-6 P0: sports surfaces also render on Taurus.
+  path.join('apps', 'web', 'src', 'app', 'board'),
+  path.join('apps', 'web', 'src', 'app', 'ribbon'),
+  path.join('apps', 'web', 'src', 'app', 'scorebug'),
 ];
 const BASELINE_FILE = path.join(__dirname, 'taurus-safety-baseline.json');
 
@@ -42,6 +46,9 @@ const PATTERNS = {
   // Container query units inside any expression — almost always inside
   // `clamp(...)` which Chromium 83 evaluates as invalid.
   cqUnits: /\b\d+(?:\.\d+)?cq[hwimnb]\b/g,
+  // Lane-6 P0: `text-wrap: balance` is Chromium 114+. Silently ignored on
+  // Taurus (Chromium 83) → headlines wrap badly on a 4K board.
+  textWrapBalance: /\btext-wrap:\s*balance\b/g,
 };
 
 const FILE_RE = /\.(tsx?|jsx?|css|scss)$/;

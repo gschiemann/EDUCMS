@@ -127,6 +127,36 @@ async function bootstrap() {
       '[security] refusing to start: ALLOWED_ORIGINS is not set in production. Set a comma-separated list of allowed frontend origins (e.g. https://app.educms.com).',
     );
   }
+
+  // Lane-4 P0 fix: validate DATABASE_URL has a sane pool config. Memory:
+  // "`connection_limit=1` was the silent killer" — Prisma's default with
+  // `pgbouncer=true` is 1 connection, which causes every concurrent request
+  // to time out fetching from the pool. We require `connection_limit>=10`
+  // and `pool_timeout>=20` whenever `pgbouncer=true` is on (the typical
+  // Supabase pooled setup).
+  if (process.env.NODE_ENV === 'production') {
+    const url = process.env.DATABASE_URL || '';
+    if (!url) {
+      throw new Error('[security] refusing to start: DATABASE_URL is not set.');
+    }
+    const usesPgBouncer = /[?&]pgbouncer=true\b/.test(url);
+    if (usesPgBouncer) {
+      const climMatch = url.match(/[?&]connection_limit=(\d+)/);
+      const ptoMatch = url.match(/[?&]pool_timeout=(\d+)/);
+      const clim = climMatch ? Number(climMatch[1]) : null;
+      const pto = ptoMatch ? Number(ptoMatch[1]) : null;
+      if (clim == null || clim < 10) {
+        throw new Error(
+          `[security] refusing to start: DATABASE_URL has pgbouncer=true without connection_limit>=10 (got ${clim ?? 'unset'}). Append &connection_limit=10&pool_timeout=20.`,
+        );
+      }
+      if (pto == null || pto < 20) {
+        throw new Error(
+          `[security] refusing to start: DATABASE_URL has pgbouncer=true without pool_timeout>=20 (got ${pto ?? 'unset'}). Append &pool_timeout=20.`,
+        );
+      }
+    }
+  }
   app.enableCors({
     origin: process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)

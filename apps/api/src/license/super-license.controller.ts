@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Req, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
 
 // HIGH-2 audit fix: enums for the License columns. Whitelisting these
 // catches malformed admin payloads (`{ status: "PIZZA" }` would have
@@ -112,7 +112,9 @@ export class SuperLicenseController {
     });
   }
 
-  /** Create OR update the License row for a tenant. Idempotent upsert. */
+  /** Create OR update the License row for a tenant. Idempotent upsert.
+   *  Each mutation is wrapped with an immutable AuditLog row inside the same
+   *  $transaction (Lane-1 P0 fix — license mutations were previously silent). */
   @Post('tenants/:tenantId/license')
   async upsertLicense(
     @Param('tenantId') tenantId: string,
@@ -127,6 +129,7 @@ export class SuperLicenseController {
       expiresAt?: string | null;
       notes?: string | null;
     },
+    @Req() req: any,
   ) {
     if (!body.tier || typeof body.seatLimit !== 'number' || body.seatLimit < 1) {
       throw new HttpException('tier and seatLimit (>=1) required', HttpStatus.BAD_REQUEST);
@@ -159,10 +162,23 @@ export class SuperLicenseController {
       notes: body.notes ?? null,
     };
 
-    return this.prisma.client.license.upsert({
-      where: { tenantId },
-      create: { tenantId, ...data },
-      update: data,
+    return this.prisma.client.$transaction(async (tx) => {
+      const license = await tx.license.upsert({
+        where: { tenantId },
+        create: { tenantId, ...data },
+        update: data,
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: req?.user?.userId ?? null,
+          action: 'LICENSE_UPSERT',
+          targetType: 'License',
+          targetId: tenantId,
+          details: JSON.stringify(data),
+        },
+      });
+      return license;
     });
   }
 
@@ -171,15 +187,20 @@ export class SuperLicenseController {
   async comp(
     @Param('tenantId') tenantId: string,
     @Body() body: { seatLimit: number; tier?: string; notes?: string | null },
+    @Req() req: any,
   ) {
-    return this.upsertLicense(tenantId, {
-      tier: body.tier ?? 'PILOT',
-      seatLimit: body.seatLimit,
-      billingMode: 'COMP',
-      status: 'ACTIVE',
-      monthlyPriceCents: 0,
-      notes: body.notes ?? `Comp'd by SUPER_ADMIN at ${new Date().toISOString()}`,
-    });
+    return this.upsertLicense(
+      tenantId,
+      {
+        tier: body.tier ?? 'PILOT',
+        seatLimit: body.seatLimit,
+        billingMode: 'COMP',
+        status: 'ACTIVE',
+        monthlyPriceCents: 0,
+        notes: body.notes ?? `Comp'd by SUPER_ADMIN at ${new Date().toISOString()}`,
+      },
+      req,
+    );
   }
 
   /** Suspend a license (e.g. payment failure). Players still play; new
@@ -188,13 +209,27 @@ export class SuperLicenseController {
   async setStatus(
     @Param('tenantId') tenantId: string,
     @Body() body: { status: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED' },
+    @Req() req: any,
   ) {
     if (!body.status || !ALLOWED_STATUSES.has(body.status)) {
       throw new HttpException(`status must be one of: ${[...ALLOWED_STATUSES].join(', ')}`, HttpStatus.BAD_REQUEST);
     }
-    return this.prisma.client.license.update({
-      where: { tenantId },
-      data: { status: body.status },
+    return this.prisma.client.$transaction(async (tx) => {
+      const updated = await tx.license.update({
+        where: { tenantId },
+        data: { status: body.status },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: req?.user?.userId ?? null,
+          action: 'LICENSE_STATUS_CHANGED',
+          targetType: 'License',
+          targetId: tenantId,
+          details: JSON.stringify({ status: body.status }),
+        },
+      });
+      return updated;
     });
   }
 }
