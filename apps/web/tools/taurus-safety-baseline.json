@@ -12,7 +12,7 @@
     "gap": 4
   },
   "apps/web/src/components/widgets/AnimatedBellSchedulePortraitWidget.tsx": {
-    "gap": 7
+    "gap": 1
   },
   "apps/web/src/components/widgets/AnimatedBellScheduleWidget.tsx": {
     "gap": 8,
@@ -22,8 +22,7 @@
     "gap": 6
   },
   "apps/web/src/components/widgets/AnimatedBusBoardWidget.tsx": {
-    "gap": 6,
-    "cqUnits": 11
+    "gap": 1
   },
   "apps/web/src/components/widgets/AnimatedCafeteriaChalkboardPortraitWidget.tsx": {
     "gap": 10
@@ -65,8 +64,7 @@
     "gap": 5
   },
   "apps/web/src/components/widgets/AnimatedHallwayScheduleWidget.tsx": {
-    "gap": 6,
-    "cqUnits": 4
+    "gap": 3
   },
   "apps/web/src/components/widgets/AnimatedMainEntrancePortraitWidget.tsx": {
     "gap": 4
@@ -75,7 +73,7 @@
     "gap": 2
   },
   "apps/web/src/components/widgets/AnimatedMorningNewsPortraitWidget.tsx": {
-    "gap": 5
+    "gap": 1
   },
   "apps/web/src/components/widgets/AnimatedMorningNewsWidget.tsx": {
     "gap": 11,

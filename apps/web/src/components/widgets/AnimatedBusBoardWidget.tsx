@@ -299,7 +299,7 @@ const CSS_BB = `
 
 .bb-header {
   position: absolute; top: 36px; left: 36px; right: 280px;
-  display: flex; align-items: center; gap: 32px; z-index: 5;
+  display: flex; align-items: center; z-index: 5;
 }
 .bb-crest {
   width: 140px; height: 140px; position: relative;
@@ -438,27 +438,27 @@ const CSS_BB = `
 }
 .bb-routesSubtitle { text-align: center; font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: #64748b; letter-spacing: .15em; margin-bottom: 14px; }
 .bb-routesList {
-  flex: 1; display: flex; flex-direction: column; gap: clamp(4px, 1.5%, 10px);
+  flex: 1; display: flex; flex-direction: column;
   min-height: 0; overflow: hidden;
 }
 .bb-route {
   container-type: size;
   flex: 1 1 0; min-height: 0;
-  display: flex; align-items: center; gap: clamp(14px, 3cqh + 10px, 24px);
+  display: flex; align-items: center;
   background: linear-gradient(135deg, #fef3c7, #fde68a);
   border: 3px solid #1f2937;
   border-radius: 14px;
-  padding: clamp(8px, 10cqh, 16px) clamp(18px, 4cqh + 14px, 26px);
+  padding: 16px 26px;
   box-shadow: 4px 4px 0 #1e3a8a;
   overflow: hidden;
 }
 .bb-route .bb-num {
-  font-family: 'Bungee', cursive; font-size: clamp(28px, 58cqh, 64px);
+  font-family: 'Bungee', cursive; font-size: 64px;
   color: #fff;
   background: linear-gradient(135deg, #dc2626, #b91c1c);
   border: 3px solid #1f2937;
   border-radius: 12px;
-  padding: clamp(2px, 6cqh, 12px) clamp(10px, 4cqh + 6px, 18px);
+  padding: 12px 18px;
   min-width: 74px; text-align: center; flex: 0 0 auto;
   line-height: 1;
   text-shadow: 2px 2px 0 rgba(0,0,0,.2);
@@ -466,33 +466,33 @@ const CSS_BB = `
 .bb-route .bb-info { flex: 1; min-width: 0; }
 .bb-route .bb-dest {
   font-family: 'Fredoka', sans-serif; font-weight: 700;
-  font-size: clamp(20px, 36cqh, 38px);
+  font-size: 38px;
   color: #1f2937; line-height: 1.05;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .bb-route .bb-stops {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(14px, 22cqh, 24px);
+  font-size: 24px;
   color: #475569; letter-spacing: .05em;
-  margin-top: clamp(1px, 2cqh, 4px);
+  margin-top: 4px;
 }
 .bb-route .bb-eta {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(20px, 40cqh, 42px);
+  font-size: 42px;
   color: #1e3a8a; flex: 0 0 auto; text-align: right;
   line-height: 1;
   letter-spacing: .02em;
 }
 .bb-route .bb-eta small {
   display: block; font-family: 'Fredoka', sans-serif; font-weight: 500;
-  font-size: clamp(11px, 16cqh, 18px);
+  font-size: 18px;
   color: #64748b; letter-spacing: .1em; text-transform: uppercase;
   margin-top: 2px;
 }
 .bb-route.bb-late .bb-eta { color: #dc2626; }
 .bb-route.bb-late .bb-eta::before { content: '⚠ '; }
 
-.bb-rightCol { display: flex; flex-direction: column; gap: 20px; }
+.bb-rightCol { display: flex; flex-direction: column; }
 
 .bb-nextBus {
   position: relative;
@@ -519,7 +519,7 @@ const CSS_BB = `
   background: linear-gradient(135deg, #fef3c7, #fbbf24);
   border: 5px solid #1f2937; border-radius: 18px;
   padding: 16px 20px;
-  display: flex; align-items: center; gap: 16px;
+  display: flex; align-items: center;
   box-shadow: 0 10px 20px rgba(0,0,0,.25);
 }
 .bb-weatherEmoji { font-size: 64px; line-height: 1; filter: drop-shadow(0 3px 4px rgba(0,0,0,.2)); }
@@ -553,4 +553,11 @@ const CSS_BB = `
 .aw-hotspot { outline: none; transition: box-shadow .15s ease, background-color .15s ease; border-radius: 12px; }
 .aw-hotspot:hover { background-color: rgba(29, 78, 216, .1); box-shadow: inset 0 0 0 3px rgba(29, 78, 216, .6); }
 .aw-hotspot:focus-visible { background-color: rgba(29, 78, 216, .18); box-shadow: inset 0 0 0 3px rgba(29, 78, 216, .9); }
+
+/* Taurus-safe flex-gap shim — Chromium 83 ignores `gap` on flex. See CLAUDE.md #10. */
+.bb-header > * + * { margin-left: 32px; }
+.bb-routesList > * + * { margin-top: 10px; }
+.bb-route > * + * { margin-left: 24px; }
+.bb-rightCol > * + * { margin-top: 20px; }
+.bb-weather > * + * { margin-left: 16px; }
 `;

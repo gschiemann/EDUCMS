@@ -379,7 +379,7 @@ const CSS_BSP = `
   border: 8px solid #fff;
   border-radius: 32px;
   padding: 40px 60px;
-  display: flex; align-items: center; gap: 60px;
+  display: flex; align-items: center;
   box-shadow: 0 30px 60px rgba(236,72,153,.45), 0 0 0 5px rgba(236,72,153,.35);
   z-index: 4;
   animation: bsp-currentPulse 2.5s ease-in-out infinite;
@@ -392,7 +392,7 @@ const CSS_BSP = `
   font-family: 'Bungee', cursive; font-size: 32px; color: #fff;
   background: rgba(0,0,0,.3); padding: 12px 28px; border-radius: 999px;
   letter-spacing: .18em;
-  display: inline-flex; align-items: center; gap: 14px;
+  display: inline-flex; align-items: center;
 }
 .bsp-badge::before {
   content: ''; width: 18px; height: 18px; border-radius: 50%; background: #fff;
@@ -410,7 +410,7 @@ const CSS_BSP = `
   font-family: 'Inter', sans-serif; font-weight: 700; font-size: 38px;
   color: #fef3c7; margin-top: 10px; letter-spacing: .08em;
 }
-.bsp-timer { display: flex; flex-direction: column; align-items: flex-end; gap: 14px; min-width: 480px; }
+.bsp-timer { display: flex; flex-direction: column; align-items: flex-end; min-width: 480px; }
 .bsp-bigNum { font-family: 'Anton', sans-serif; font-size: 160px; color: #fff; line-height: 1; text-shadow: 5px 5px 0 rgba(0,0,0,.2); }
 .bsp-until { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 26px; color: rgba(255,255,255,.9); letter-spacing: .2em; text-transform: uppercase; }
 .bsp-progress { width: 100%; height: 18px; background: rgba(0,0,0,.25); border-radius: 999px; overflow: hidden; }
@@ -425,18 +425,18 @@ const CSS_BSP = `
 
 .bsp-timeline {
   position: absolute; top: 1500px; left: 60px; right: 60px; bottom: 200px;
-  display: flex; flex-direction: column; gap: 18px;
+  display: flex; flex-direction: column;
   z-index: 3;
 }
 .bsp-tHeader {
   font-family: 'Inter', sans-serif; font-weight: 800; font-size: 28px;
   color: #94a3b8; letter-spacing: .3em; text-transform: uppercase;
-  display: flex; align-items: center; gap: 24px;
+  display: flex; align-items: center;
   margin-bottom: 8px;
 }
 .bsp-tHeader::after { content: ''; flex: 1; height: 3px; background: linear-gradient(90deg, rgba(148,163,184,.4) 0%, transparent 100%); }
 
-.bsp-rows { flex: 1; display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow: hidden; }
+.bsp-rows { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .bsp-row {
   flex: 1 1 0; min-height: 0;
   display: grid; grid-template-columns: 320px 100px 1fr 200px;
@@ -509,4 +509,16 @@ const CSS_BSP = `
 .aw-hotspot { outline: none; transition: box-shadow .15s ease, background-color .15s ease; border-radius: 16px; }
 .aw-hotspot:hover { background-color: rgba(251, 191, 36, .12); box-shadow: inset 0 0 0 4px rgba(251, 191, 36, .55); }
 .aw-hotspot:focus-visible { background-color: rgba(251, 191, 36, .18); box-shadow: inset 0 0 0 4px rgba(251, 191, 36, .85); }
+
+/* Taurus-safe flex-gap shim — Chromium 83 ignores `gap` on flex. The
+   adjacent-sibling selector + pseudo margin works on Chromium 83 and is
+   identical to native gap on modern engines. See CLAUDE.md rule #10. */
+.bsp-currentCard > * + * { margin-left: 60px; }
+.bsp-badge::before { margin-right: 14px; }
+.bsp-badge > * + * { margin-left: 14px; }
+.bsp-timer > * + * { margin-top: 14px; }
+.bsp-timeline > * + * { margin-top: 18px; }
+.bsp-tHeader::after { margin-left: 24px; }
+.bsp-tHeader > * + * { margin-left: 24px; }
+.bsp-rows > * + * { margin-top: 14px; }
 `;

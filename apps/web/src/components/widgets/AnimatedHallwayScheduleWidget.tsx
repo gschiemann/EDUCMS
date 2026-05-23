@@ -345,7 +345,7 @@ const CSS_HS = `
   z-index: 3;
 }
 
-.hs-leftCol { display: flex; flex-direction: column; gap: 20px; min-height: 0; }
+.hs-leftCol { display: flex; flex-direction: column; min-height: 0; }
 
 .hs-notebook {
   position: relative; flex: 1;
@@ -400,10 +400,10 @@ const CSS_HS = `
   background: linear-gradient(90deg, rgba(251,191,36,.3) 0%, rgba(253,224,71,.25) 80%, transparent 100%);
   box-shadow: inset 3px 0 0 #fbbf24;
 }
-.hs-num { font-family: 'Caveat', cursive; font-weight: 700; font-size: clamp(22px, 42cqh, 36px); color: #be185d; text-align: center; line-height: 1; }
-.hs-time { font-family: 'Caveat', cursive; font-weight: 700; font-size: clamp(18px, 32cqh, 30px); color: #92400e; letter-spacing: .02em; }
-.hs-name { font-family: 'Caveat', cursive; font-weight: 700; font-size: clamp(20px, 36cqh, 34px); color: #4a2818; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hs-room { font-family: 'Caveat', cursive; font-weight: 500; font-size: clamp(16px, 28cqh, 26px); color: #b45309; text-align: right; }
+.hs-num { font-family: 'Caveat', cursive; font-weight: 700; font-size: 36px; color: #be185d; text-align: center; line-height: 1; }
+.hs-time { font-family: 'Caveat', cursive; font-weight: 700; font-size: 30px; color: #92400e; letter-spacing: .02em; }
+.hs-name { font-family: 'Caveat', cursive; font-weight: 700; font-size: 34px; color: #4a2818; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hs-room { font-family: 'Caveat', cursive; font-weight: 500; font-size: 26px; color: #b45309; text-align: right; }
 .hs-row::before { content: '•'; position: absolute; left: 54px; color: rgba(74,40,24,.6); font-size: 22px; }
 
 .hs-announce {
@@ -416,14 +416,14 @@ const CSS_HS = `
   box-shadow: 0 6px 16px rgba(0,0,0,.1);
 }
 .hs-badge {
-  display: inline-flex; align-items: center; gap: 8px;
+  display: inline-flex; align-items: center;
   font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 13px;
   color: #dc2626; letter-spacing: .2em; text-transform: uppercase;
 }
 .hs-badge::before { content: '📣'; font-size: 20px; }
 .hs-msg { font-family: 'Caveat', cursive; font-weight: 700; font-size: 34px; color: #4a2818; line-height: 1.1; margin-top: 6px; }
 
-.hs-rightCol { display: flex; flex-direction: column; gap: 18px; min-height: 0; }
+.hs-rightCol { display: flex; flex-direction: column; min-height: 0; }
 .hs-card {
   position: relative;
   background: #fffdf5;
@@ -530,4 +530,9 @@ const CSS_HS = `
 .aw-hotspot { outline: none; transition: box-shadow .15s ease, background-color .15s ease; border-radius: 12px; }
 .aw-hotspot:hover { background-color: rgba(236, 72, 153, .08); box-shadow: inset 0 0 0 3px rgba(236, 72, 153, .55); }
 .aw-hotspot:focus-visible { background-color: rgba(236, 72, 153, .14); box-shadow: inset 0 0 0 3px rgba(236, 72, 153, .85); }
+
+/* Taurus-safe flex-gap shim — Chromium 83 ignores `gap` on flex. See CLAUDE.md #10. */
+.hs-leftCol > * + * { margin-top: 20px; }
+.hs-badge > * + * { margin-left: 8px; }
+.hs-rightCol > * + * { margin-top: 18px; }
 `;

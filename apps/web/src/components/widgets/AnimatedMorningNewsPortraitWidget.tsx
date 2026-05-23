@@ -295,7 +295,7 @@ const CSS_MNP = `
 /* TOP BAND — chips + greeting + title */
 .mnp-recDot {
   position: absolute; top: 60px; left: 60px; z-index: 5;
-  display: flex; align-items: center; gap: 18px;
+  display: flex; align-items: center;
   background: rgba(0,0,0,.55); padding: 18px 36px;
   border-radius: 999px;
   border: 4px solid rgba(220,38,38,.65);
@@ -481,7 +481,7 @@ const CSS_MNP = `
   font-family: 'Anton', sans-serif; font-size: 44px;
   letter-spacing: .15em; border-radius: 8px;
   box-shadow: 0 0 32px rgba(220,38,38,.55), 0 8px 16px rgba(0,0,0,.35);
-  display: flex; align-items: center; gap: 14px;
+  display: flex; align-items: center;
 }
 .mnp-liveTag::before {
   content: ''; width: 16px; height: 16px; border-radius: 50%; background: #fee2e2;
@@ -506,7 +506,7 @@ const CSS_MNP = `
 .mnp-category {
   font-family: 'Inter', sans-serif; font-weight: 900; font-size: 36px;
   color: #fbbf24; letter-spacing: .25em; text-transform: uppercase;
-  display: flex; align-items: center; gap: 18px;
+  display: flex; align-items: center;
 }
 .mnp-category::after {
   content: ''; flex: 1; height: 4px; background: linear-gradient(90deg, #fbbf24 0%, transparent 100%);
@@ -551,7 +551,7 @@ const CSS_MNP = `
 .mnp-cardHeader {
   font-family: 'Inter', sans-serif; font-weight: 900; font-size: 44px;
   color: #fbbf24; letter-spacing: .25em; text-transform: uppercase;
-  display: flex; align-items: center; gap: 20px;
+  display: flex; align-items: center;
   margin-bottom: 32px;
 }
 .mnp-cardHeader::after {
@@ -662,4 +662,11 @@ const CSS_MNP = `
 .aw-hotspot { outline: none; transition: box-shadow .15s ease, background-color .15s ease; border-radius: 16px; }
 .aw-hotspot:hover { background-color: rgba(236, 72, 153, .08); box-shadow: inset 0 0 0 4px rgba(236, 72, 153, .55); }
 .aw-hotspot:focus-visible { background-color: rgba(236, 72, 153, .14); box-shadow: inset 0 0 0 4px rgba(236, 72, 153, .85); }
+
+/* Taurus-safe flex-gap shim — Chromium 83 ignores `gap` on flex. See CLAUDE.md #10. */
+.mnp-recDot > * + * { margin-left: 18px; }
+.mnp-liveTag::before { margin-right: 14px; }
+.mnp-liveTag > * + * { margin-left: 14px; }
+.mnp-category > * + * { margin-left: 18px; }
+.mnp-cardHeader > * + * { margin-left: 20px; }
 `;
