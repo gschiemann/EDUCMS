@@ -1770,6 +1770,11 @@ function CueOverlay({ cue, sport }: { cue: Cue; sport?: string | null }) {
           src={celebUrl}
           title="celebration"
           scrolling="no"
+          // Lane-8 P1: sandbox the celebration iframe even though src is
+          // always a same-origin static file under /celebrations/. `allow-scripts`
+          // lets the canvas engine run; omitting `allow-same-origin` blocks
+          // any cookie / localStorage / top-frame access from inside.
+          sandbox="allow-scripts"
           style={{
             position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
             width: '100%', height: '100%', border: 0, display: 'block',

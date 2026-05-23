@@ -1811,7 +1811,7 @@ export class SportsService {
 
     const snapshot = this.cueSnapshot(next);
     for (const h of hits) {
-      await this.record(id, 'CUE', {
+      const event = await this.record(id, 'CUE', {
         key: h.cue.key,
         label: h.cue.label,
         emoji: h.cue.emoji,
@@ -1823,6 +1823,26 @@ export class SportsService {
         team: h.team,
         snapshot,
       });
+      // Lane-8 P1: AUTO cues also get an immutable AuditLog row (forensics).
+      try {
+        await this.prisma.client.auditLog.create({
+          data: {
+            tenantId: next.tenantId,
+            userId: null, // AUTO has no user actor — it's score-feed-driven.
+            action: 'SPORTS_CUE_FIRED',
+            targetType: 'Game',
+            targetId: id,
+            details: JSON.stringify({
+              eventId: event.id,
+              key: h.cue.key,
+              label: h.cue.label,
+              target: 'ALL',
+              team: h.team,
+              auto: true,
+            }),
+          },
+        });
+      } catch { /* best-effort */ }
     }
   }
 
@@ -1995,7 +2015,11 @@ export class SportsService {
       audioUrl?: string;
       sponsorName?: string;
       sponsorLogoUrl?: string;
+      // Lane-8 P1: scoring team — drives the celebration's team-color brand
+      // shim. Manual path was previously missing this; only AUTO set it.
+      team?: 'home' | 'away' | null;
     },
+    actorUserId?: string,
   ) {
     const game = await this.owned(tenantId, id);
     const target = this.cleanCueTarget(dto.target);
@@ -2004,6 +2028,34 @@ export class SportsService {
     const audioUrl = this.cleanText(dto.audioUrl, 2048);
     const sponsorName = this.cleanText(dto.sponsorName, 120);
     const sponsorLogoUrl = this.cleanText(dto.sponsorLogoUrl, 2048);
+    const team = dto.team === 'home' || dto.team === 'away' ? dto.team : null;
+
+    // Lane-8 P1: mirror every cue-fire into the immutable AuditLog so a
+    // game-presentation forensics review can answer "who fired which
+    // sponsor takeover at 7:42 in Q3" — record() only writes a GameEvent
+    // (20s board-feed window), which evaporates after the moment.
+    const auditDetails = (eventId: string, key: string, label: string) => ({
+      eventId, key, label, target, team,
+      hasAudio: !!audioUrl,
+      hasSponsor: !!(sponsorName || sponsorLogoUrl),
+    });
+    const writeAudit = async (eventId: string, key: string, label: string) => {
+      try {
+        await this.prisma.client.auditLog.create({
+          data: {
+            tenantId,
+            userId: actorUserId || null,
+            action: 'SPORTS_CUE_FIRED',
+            targetType: 'Game',
+            targetId: id,
+            details: JSON.stringify(auditDetails(eventId, key, label)),
+          },
+        });
+      } catch {
+        // Best-effort — never let an audit-log failure block a cue from
+        // firing. The GameEvent is already persisted; this is forensics only.
+      }
+    };
 
     // Custom cue — operator-defined trigger from the cue deck.
     if (dto.cueId) {
@@ -2023,8 +2075,10 @@ export class SportsService {
         audioUrl,
         sponsorName,
         sponsorLogoUrl,
+        team,
         snapshot: this.cueSnapshot(game),
       });
+      await writeAudit(event.id, `custom:${cc.id}`, cc.name);
       return { fired: true, cueId: cc.id, target, eventId: event.id };
     }
 
@@ -2041,8 +2095,10 @@ export class SportsService {
       audioUrl,
       sponsorName,
       sponsorLogoUrl,
+      team,
       snapshot: this.cueSnapshot(game),
     });
+    await writeAudit(event.id, cue.key, cue.label);
     return { fired: true, cue, target, eventId: event.id };
   }
 

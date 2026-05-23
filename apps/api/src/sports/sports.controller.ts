@@ -419,9 +419,12 @@ export class SportsController {
       audioUrl?: string;
       sponsorName?: string;
       sponsorLogoUrl?: string;
+      // Lane-8 P1: scoring team for branded celebration overlay. Optional;
+      // AUTO path already sets this; manual cues now can too.
+      team?: 'home' | 'away';
     },
   ) {
-    return this.sports.fireCue(req.user.tenantId, id, body);
+    return this.sports.fireCue(req.user.tenantId, id, body, req?.user?.id);
   }
 
   /** Read the AUTO-celebrate toggle — whether a live score feed should
