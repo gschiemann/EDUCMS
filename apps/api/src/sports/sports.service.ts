@@ -676,7 +676,12 @@ export class SportsService {
       data.ribbonTemplateId = dto.ribbonTemplateId || null;
     if (dto.scorebugTemplateId !== undefined)
       data.scorebugTemplateId = dto.scorebugTemplateId || null;
-    return this.prisma.client.game.update({ where: { id }, data });
+    const updated = await this.prisma.client.game.update({ where: { id }, data });
+    // Lane-8 P1 (re-audit): updateGameDetails bypasses record(), so the
+    // board cache wouldn't refresh on team-name/color/logo/template change
+    // for up to BOARD_CACHE_TTL_MS. Invalidate explicitly.
+    this.invalidateBoardCache(id);
+    return updated;
   }
 
   /**
@@ -700,10 +705,12 @@ export class SportsService {
   ) {
     await this.owned(tenantId, id);
     if (dto.clear) {
-      return this.prisma.client.game.update({
+      const cleared = await this.prisma.client.game.update({
         where: { id },
         data: { spotlight: {} },
       });
+      this.invalidateBoardCache(id); // Lane-8 P1: bypasses record()
+      return cleared;
     }
     const title = String(dto.title ?? '').trim().slice(0, 80);
     if (!title) throw new BadRequestException('Spotlight title is required');
@@ -723,10 +730,12 @@ export class SportsService {
       subtitle: String(dto.subtitle ?? '').trim().slice(0, 80),
       lines,
     };
-    return this.prisma.client.game.update({
+    const updated = await this.prisma.client.game.update({
       where: { id },
       data: { spotlight: spotlight as any },
     });
+    this.invalidateBoardCache(id); // Lane-8 P1: bypasses record()
+    return updated;
   }
 
   async deleteGame(tenantId: string, id: string) {
@@ -1288,10 +1297,12 @@ export class SportsService {
     }
 
     const shotClock = { len, ms, at: new Date().toISOString(), running };
-    return this.prisma.client.game.update({
+    const updated = await this.prisma.client.game.update({
       where: { id },
       data: { stats: { ...stats, shotClock } as any },
     });
+    this.invalidateBoardCache(id); // Lane-8 P1: bypasses record()
+    return updated;
   }
 
   /**
@@ -1346,10 +1357,12 @@ export class SportsService {
     }
 
     const playClock = { ms, at: new Date().toISOString(), running };
-    return this.prisma.client.game.update({
+    const updated = await this.prisma.client.game.update({
       where: { id },
       data: { stats: { ...stats, playClock } as any },
     });
+    this.invalidateBoardCache(id); // Lane-8 P1: bypasses record()
+    return updated;
   }
 
   /**

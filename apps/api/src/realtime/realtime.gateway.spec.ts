@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RealtimeGateway } from './realtime.gateway';
 import { RedisService } from './redis.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { WebSocket } from 'ws';
 import * as jwt from 'jsonwebtoken';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -22,12 +23,27 @@ describe('RealtimeGateway', () => {
       publish: jest.fn(),
     } as any;
 
+    // Mock PrismaService — added in 769400b for the WS screen-existence
+    // check on auth. Default returns a valid screen; individual tests can
+    // override findUnique to simulate unpair / tenant-rebind paths.
+    const prismaService = {
+      client: {
+        screen: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'screen-1', tenantId: 'tenant-1' }),
+        },
+      },
+    } as any;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RealtimeGateway,
         {
           provide: RedisService,
           useValue: redisService,
+        },
+        {
+          provide: PrismaService,
+          useValue: prismaService,
         },
       ],
     }).compile();
