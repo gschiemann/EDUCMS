@@ -482,6 +482,33 @@ async function fetchAndStore(asset, cache, meta) {
   try {
     const res = await fetch(req);
     if (!res.ok) return false;
+    // SECURITY (lane-3 P2 fix): actually verify the SHA-256 of the response
+    // body before accepting it into cache. The previous logic only compared
+    // the manifest's stored hash to itself ("did this round's manifest ship
+    // the same hash as last round?"), so a manifest-controlling attacker
+    // could swap content silently. Here we recompute the digest from the
+    // bytes we just received and refuse to cache on mismatch.
+    if (asset.sha256 && self.crypto && self.crypto.subtle && self.crypto.subtle.digest) {
+      try {
+        const probe = res.clone();
+        const buf = await probe.arrayBuffer();
+        const dig = await self.crypto.subtle.digest('SHA-256', buf);
+        const view = new Uint8Array(dig);
+        let actual = '';
+        for (let i = 0; i < view.length; i++) actual += view[i].toString(16).padStart(2, '0');
+        const expected = String(asset.sha256).toLowerCase();
+        if (actual !== expected) {
+          // Refuse to cache — leave any prior cached version in place.
+          // eslint-disable-next-line no-console
+          console.warn('[sw-player] SHA-256 mismatch, refusing cache', { url: asset.url });
+          return false;
+        }
+      } catch (_e) {
+        // Hash failed (corrupt body / SubtleCrypto unavailable on this WebView).
+        // Conservatively refuse — better to miss a cache than accept un-verified bytes.
+        return false;
+      }
+    }
     await cache.put(req, res.clone());
     // FIX (player-002): measure size NOW from the body (or asset.size), not
     // later from a missing content-length header. We clone the response to

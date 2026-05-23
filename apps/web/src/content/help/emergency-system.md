@@ -42,7 +42,7 @@ When an alert fires, the API:
 4. Publishes to the Redis channel for that scope
 5. Every paired screen verifies the signature before rendering
 
-If Redis is unavailable, screens fall back to **HTTP polling** every 10 seconds against `/api/v1/emergency/status`. No single point of failure will keep an alert from reaching screens.
+If Redis is unavailable, screens fall back to **HTTP polling** against their device-authenticated manifest at `/api/v1/screens/:id/manifest` (which carries the live `emergency` field). No single point of failure will keep an alert from reaching screens.
 
 ## All-clear
 

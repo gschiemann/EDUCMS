@@ -75,6 +75,7 @@ import { AppRole } from '@cms/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
+import { assertAllowedEmergencyMediaUrl } from './media-url-guard';
 
 const ALLOWED_TYPES = new Set([
   'LOCKDOWN', 'EVACUATE', 'WEATHER', 'HOLD', 'SECURE', 'MEDICAL', 'CUSTOM',
@@ -140,6 +141,10 @@ export class ScreenEmergencyController {
         expiresAt = new Date(n);
       }
     }
+    // SECURITY: SSRF allowlist on the per-screen mediaUrl. Same rationale as
+    // the tenant-wide /trigger endpoint — without this an admin could paint
+    // arbitrary attacker-controlled or file:/// content onto any one screen.
+    assertAllowedEmergencyMediaUrl(input.mediaUrl, 'mediaUrl');
     return {
       type,
       severity,

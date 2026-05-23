@@ -172,7 +172,7 @@ This system triggers immediate lockdown/weather/evacuation alerts across screens
 1. **@AllowPanicBypass Decorator** — Only admins can override individual `canTriggerPanic` capability flags. Prevents unauthorized delegated triggers.
 2. **Immutable Audit Log** — Every trigger/clear is logged with userId, severity, overrideId, timestamp. No deletion or modification allowed.
 3. **Signed WebSocket Messages** — WebsocketSignerService signs each payload before Redis broadcast. Player verifies signature before rendering.
-4. **HTTP Polling Fallback** — If Redis fails, screens fall back to polling `/api/v1/emergency/status?tenantId=X` every 10s.
+4. **HTTP Polling Fallback** — If Redis fails, screens fall back to polling their device-authenticated manifest at `/api/v1/screens/:id/manifest` (which carries the live `emergency` field — same `Tenant.emergencyStatus` source of truth).
 5. **Hold-to-Trigger UX** — Mobile panic page requires 3-second hold on button to prevent accidental taps.
 
 ### WARNING: Emergency System Changes

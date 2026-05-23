@@ -12,6 +12,10 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { invalidateTenantState } from '../screens/manifest-hot-cache';
 import {
+  assertAllowedEmergencyMediaUrl,
+  assertAllowedEmergencyMediaUrls,
+} from './media-url-guard';
+import {
   TriggerEmergencyInputSchema,
   ClearEmergencyInputSchema,
   SosInputSchema,
@@ -281,6 +285,12 @@ export class EmergencyController {
     @Req() req: any,
   ) {
     const { scopeType, scopeId, overridePayload } = body;
+
+    // SECURITY: reject any operator-supplied media URL that isn't on the
+    // tenant's storage allowlist (Supabase by default). Without this an
+    // admin (legitimate or compromised) could paint file:///etc/hosts or
+    // arbitrary attacker content onto every screen in the district.
+    assertAllowedEmergencyMediaUrl(overridePayload?.mediaUrl, 'overridePayload.mediaUrl');
 
     // SECURITY: verify the caller owns the target scope before any mutation.
     // Throws 400 (unknown scopeType), 404 (scope not found), or 403 (cross-tenant).
@@ -612,6 +622,10 @@ export class EmergencyController {
       return { success: false, message: 'SOS rejected — user has no tenant context' };
     }
 
+    // SECURITY: SSRF allowlist on the SOS voice clip — same reason as
+    // overridePayload.mediaUrl on /trigger.
+    assertAllowedEmergencyMediaUrl(body.voiceClipUrl, 'voiceClipUrl');
+
     const messageId = `sos_${crypto.randomUUID()}`;
     const severity = 'CRITICAL';
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
@@ -789,6 +803,12 @@ export class EmergencyController {
   ) {
     const user = req.user || {};
     const { scopeType, scopeId, mediaUrls, audioUrl, textBlob, severity } = body;
+
+    // SECURITY: SSRF allowlist — every URL field the operator can set must
+    // resolve to the tenant's storage allowlist before we hand it to the
+    // player to fetch.
+    assertAllowedEmergencyMediaUrls(mediaUrls, 'mediaUrls');
+    assertAllowedEmergencyMediaUrl(audioUrl, 'audioUrl');
 
     // SECURITY: verify the caller owns the target scope before any mutation.
     const ownedTenantId = await this.resolveScopeTenant(scopeType, scopeId, user);
