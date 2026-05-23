@@ -531,7 +531,7 @@ const CSS_HS = `
 .aw-hotspot:hover { background-color: rgba(236, 72, 153, .08); box-shadow: inset 0 0 0 3px rgba(236, 72, 153, .55); }
 .aw-hotspot:focus-visible { background-color: rgba(236, 72, 153, .14); box-shadow: inset 0 0 0 3px rgba(236, 72, 153, .85); }
 
-/* Taurus-safe flex-gap shim — Chromium 83 ignores `gap` on flex. See CLAUDE.md #10. */
+/* Taurus-safe flex-gap shim — Chromium 83 ignores flex-gap. See CLAUDE.md #10. */
 .hs-leftCol > * + * { margin-top: 20px; }
 .hs-badge > * + * { margin-left: 8px; }
 .hs-rightCol > * + * { margin-top: 18px; }

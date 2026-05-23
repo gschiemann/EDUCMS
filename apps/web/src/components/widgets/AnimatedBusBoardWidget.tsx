@@ -554,7 +554,7 @@ const CSS_BB = `
 .aw-hotspot:hover { background-color: rgba(29, 78, 216, .1); box-shadow: inset 0 0 0 3px rgba(29, 78, 216, .6); }
 .aw-hotspot:focus-visible { background-color: rgba(29, 78, 216, .18); box-shadow: inset 0 0 0 3px rgba(29, 78, 216, .9); }
 
-/* Taurus-safe flex-gap shim — Chromium 83 ignores `gap` on flex. See CLAUDE.md #10. */
+/* Taurus-safe flex-gap shim — Chromium 83 ignores flex-gap. See CLAUDE.md #10. */
 .bb-header > * + * { margin-left: 32px; }
 .bb-routesList > * + * { margin-top: 10px; }
 .bb-route > * + * { margin-left: 24px; }

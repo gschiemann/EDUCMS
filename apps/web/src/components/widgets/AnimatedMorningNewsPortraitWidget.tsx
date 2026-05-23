@@ -663,7 +663,7 @@ const CSS_MNP = `
 .aw-hotspot:hover { background-color: rgba(236, 72, 153, .08); box-shadow: inset 0 0 0 4px rgba(236, 72, 153, .55); }
 .aw-hotspot:focus-visible { background-color: rgba(236, 72, 153, .14); box-shadow: inset 0 0 0 4px rgba(236, 72, 153, .85); }
 
-/* Taurus-safe flex-gap shim — Chromium 83 ignores `gap` on flex. See CLAUDE.md #10. */
+/* Taurus-safe flex-gap shim — Chromium 83 ignores flex-gap. See CLAUDE.md #10. */
 .mnp-recDot > * + * { margin-left: 18px; }
 .mnp-liveTag::before { margin-right: 14px; }
 .mnp-liveTag > * + * { margin-left: 14px; }

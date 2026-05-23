@@ -510,7 +510,7 @@ const CSS_BSP = `
 .aw-hotspot:hover { background-color: rgba(251, 191, 36, .12); box-shadow: inset 0 0 0 4px rgba(251, 191, 36, .55); }
 .aw-hotspot:focus-visible { background-color: rgba(251, 191, 36, .18); box-shadow: inset 0 0 0 4px rgba(251, 191, 36, .85); }
 
-/* Taurus-safe flex-gap shim — Chromium 83 ignores `gap` on flex. The
+/* Taurus-safe flex-gap shim — Chromium 83 ignores flex-gap. The
    adjacent-sibling selector + pseudo margin works on Chromium 83 and is
    identical to native gap on modern engines. See CLAUDE.md rule #10. */
 .bsp-currentCard > * + * { margin-left: 60px; }
