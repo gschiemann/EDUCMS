@@ -1,0 +1,27 @@
+# Taurus-safety regression guard.
+#
+# NovaStar Taurus LED controllers run Chromium 83. Modern flex `gap` and
+# CSS container queries (cqh/cqw/cqi/cqmin/cqb) are silently broken there
+# and have repeatedly slipped into player-shipped widgets (see CLAUDE.md
+# rule #10 + the 2026-05-23 Lane-5 audit). This workflow fails on any NEW
+# instance in player/widget paths — existing instances are tracked in
+# `apps/web/tools/taurus-safety-baseline.json` and the baseline only
+# ratchets DOWN.
+name: Taurus Safety
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  taurus-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check Chromium-83 forbidden patterns (flex gap, container queries)
+        run: node apps/web/tools/check-taurus-safety.cjs

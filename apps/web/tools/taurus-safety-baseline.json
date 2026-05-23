@@ -1,0 +1,566 @@
+{
+  "apps/web/src/app/player/page.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/player/KioskSplash.tsx": {
+    "gap": 14
+  },
+  "apps/web/src/components/widgets/AnimatedAchievementShowcasePortraitWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/AnimatedAchievementShowcaseWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/AnimatedBellSchedulePortraitWidget.tsx": {
+    "gap": 7
+  },
+  "apps/web/src/components/widgets/AnimatedBellScheduleWidget.tsx": {
+    "gap": 8,
+    "cqUnits": 7
+  },
+  "apps/web/src/components/widgets/AnimatedBusBoardPortraitWidget.tsx": {
+    "gap": 6
+  },
+  "apps/web/src/components/widgets/AnimatedBusBoardWidget.tsx": {
+    "gap": 6,
+    "cqUnits": 11
+  },
+  "apps/web/src/components/widgets/AnimatedCafeteriaChalkboardPortraitWidget.tsx": {
+    "gap": 10
+  },
+  "apps/web/src/components/widgets/AnimatedCafeteriaChalkboardWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/AnimatedCafeteriaElementaryPortraitWidget.tsx": {
+    "gap": 6
+  },
+  "apps/web/src/components/widgets/AnimatedCafeteriaElementaryWidget.tsx": {
+    "gap": 5,
+    "cqUnits": 11
+  },
+  "apps/web/src/components/widgets/AnimatedCafeteriaFoodtruckPortraitWidget.tsx": {
+    "gap": 5
+  },
+  "apps/web/src/components/widgets/AnimatedCafeteriaFoodtruckWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/AnimatedCafeteriaHighPortraitWidget.tsx": {
+    "gap": 10
+  },
+  "apps/web/src/components/widgets/AnimatedCafeteriaHighWidget.tsx": {
+    "gap": 6,
+    "cqUnits": 11
+  },
+  "apps/web/src/components/widgets/AnimatedCafeteriaMiddlePortraitWidget.tsx": {
+    "gap": 11
+  },
+  "apps/web/src/components/widgets/AnimatedCafeteriaMiddleWidget.tsx": {
+    "gap": 5,
+    "cqUnits": 11
+  },
+  "apps/web/src/components/widgets/AnimatedEventCountdownWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/AnimatedHallwaySchedulePortraitWidget.tsx": {
+    "gap": 5
+  },
+  "apps/web/src/components/widgets/AnimatedHallwayScheduleWidget.tsx": {
+    "gap": 6,
+    "cqUnits": 4
+  },
+  "apps/web/src/components/widgets/AnimatedMainEntrancePortraitWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/AnimatedMainEntranceWidget.tsx": {
+    "gap": 2
+  },
+  "apps/web/src/components/widgets/AnimatedMorningNewsPortraitWidget.tsx": {
+    "gap": 5
+  },
+  "apps/web/src/components/widgets/AnimatedMorningNewsWidget.tsx": {
+    "gap": 11,
+    "cqUnits": 4
+  },
+  "apps/web/src/components/widgets/AnimatedWelcomeHighPortraitWidget.tsx": {
+    "gap": 6
+  },
+  "apps/web/src/components/widgets/AnimatedWelcomeHighWidget.tsx": {
+    "gap": 2
+  },
+  "apps/web/src/components/widgets/AnimatedWelcomeMiddlePortraitWidget.tsx": {
+    "gap": 8
+  },
+  "apps/web/src/components/widgets/AnimatedWelcomeMiddleWidget.tsx": {
+    "gap": 2
+  },
+  "apps/web/src/components/widgets/AnimatedWelcomePortraitWidget.tsx": {
+    "gap": 1
+  },
+  "apps/web/src/components/widgets/AnimatedWelcomeWidget.tsx": {
+    "gap": 2
+  },
+  "apps/web/src/components/widgets/bar/CocktailMenuWidget.tsx": {
+    "gap": 4,
+    "cqUnits": 31
+  },
+  "apps/web/src/components/widgets/bar/EventTonightWidget.tsx": {
+    "gap": 2,
+    "cqUnits": 32
+  },
+  "apps/web/src/components/widgets/bar/GameDayScheduleWidget.tsx": {
+    "gap": 7,
+    "cqUnits": 29
+  },
+  "apps/web/src/components/widgets/bar/HappyHourCountdownWidget.tsx": {
+    "gap": 4,
+    "cqUnits": 29
+  },
+  "apps/web/src/components/widgets/bar/TapListWidget.tsx": {
+    "gap": 7,
+    "cqUnits": 28
+  },
+  "apps/web/src/components/widgets/bar/TriviaScoreboardWidget.tsx": {
+    "gap": 5,
+    "cqUnits": 35
+  },
+  "apps/web/src/components/widgets/BulletinCafeteriaPortraitWidget.tsx": {
+    "gap": 3
+  },
+  "apps/web/src/components/widgets/BulletinCafeteriaWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/BulletinHallwayPortraitWidget.tsx": {
+    "gap": 7
+  },
+  "apps/web/src/components/widgets/BulletinHallwayWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/fitness/FitnessAdBannerWidget.tsx": {
+    "gap": 1,
+    "cqUnits": 12
+  },
+  "apps/web/src/components/widgets/fitness/FitnessAppLibraryWidget.tsx": {
+    "gap": 11,
+    "cqUnits": 43
+  },
+  "apps/web/src/components/widgets/fitness/FitnessChannelGuideWidget.tsx": {
+    "gap": 7
+  },
+  "apps/web/src/components/widgets/fitness/FitnessClassScheduleWidget.tsx": {
+    "gap": 6,
+    "cqUnits": 30
+  },
+  "apps/web/src/components/widgets/fitness/FitnessCornermanWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/fitness/FitnessCragWidget.tsx": {
+    "gap": 5
+  },
+  "apps/web/src/components/widgets/fitness/FitnessDiscothequeWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/fitness/FitnessIronWidget.tsx": {
+    "gap": 6
+  },
+  "apps/web/src/components/widgets/fitness/FitnessLiveTVWidget.tsx": {
+    "gap": 3,
+    "cqUnits": 8
+  },
+  "apps/web/src/components/widgets/fitness/FitnessLobbyWidget.tsx": {
+    "gap": 5
+  },
+  "apps/web/src/components/widgets/fitness/FitnessLockerWidget.tsx": {
+    "gap": 7
+  },
+  "apps/web/src/components/widgets/fitness/FitnessMarqueeWidget.tsx": {
+    "gap": 7
+  },
+  "apps/web/src/components/widgets/fitness/FitnessMotivationalQuoteWidget.tsx": {
+    "gap": 2,
+    "cqUnits": 7
+  },
+  "apps/web/src/components/widgets/fitness/FitnessMusicPlayerWidget.tsx": {
+    "gap": 5,
+    "cqUnits": 13
+  },
+  "apps/web/src/components/widgets/fitness/FitnessRecessWidget.tsx": {
+    "gap": 3
+  },
+  "apps/web/src/components/widgets/fitness/FitnessReformerWidget.tsx": {
+    "gap": 5
+  },
+  "apps/web/src/components/widgets/fitness/FitnessSplashWidget.tsx": {
+    "gap": 5
+  },
+  "apps/web/src/components/widgets/fitness/FitnessStadiumWidget.tsx": {
+    "gap": 7
+  },
+  "apps/web/src/components/widgets/fitness/FitnessStickLauncherWidget.tsx": {
+    "gap": 8,
+    "cqUnits": 45
+  },
+  "apps/web/src/components/widgets/fitness/FitnessTelemetryWidget.tsx": {
+    "gap": 7
+  },
+  "apps/web/src/components/widgets/fitness/FitnessTrailheadWidget.tsx": {
+    "gap": 6
+  },
+  "apps/web/src/components/widgets/fitness/FitnessTrainingVideoWidget.tsx": {
+    "gap": 7,
+    "cqUnits": 44
+  },
+  "apps/web/src/components/widgets/fitness/FitnessVaultWidget.tsx": {
+    "gap": 6
+  },
+  "apps/web/src/components/widgets/fitness/FitnessWorkoutTimerWidget.tsx": {
+    "gap": 2,
+    "cqUnits": 8
+  },
+  "apps/web/src/components/widgets/hs/HsBlueprintPortraitWidget.tsx": {
+    "gap": 5
+  },
+  "apps/web/src/components/widgets/hs/HsBlueprintWidget.tsx": {
+    "gap": 3
+  },
+  "apps/web/src/components/widgets/hs/HsBroadcastPortraitWidget.tsx": {
+    "gap": 17
+  },
+  "apps/web/src/components/widgets/hs/HsBroadcastWidget.tsx": {
+    "gap": 7
+  },
+  "apps/web/src/components/widgets/hs/HsGalleryPortraitWidget.tsx": {
+    "gap": 7
+  },
+  "apps/web/src/components/widgets/hs/HsGalleryWidget.tsx": {
+    "gap": 5
+  },
+  "apps/web/src/components/widgets/hs/HsTerminalPortraitWidget.tsx": {
+    "gap": 9
+  },
+  "apps/web/src/components/widgets/hs/HsTerminalWidget.tsx": {
+    "gap": 6
+  },
+  "apps/web/src/components/widgets/hs/HsTransitPortraitWidget.tsx": {
+    "gap": 12
+  },
+  "apps/web/src/components/widgets/hs/HsTransitWidget.tsx": {
+    "gap": 8
+  },
+  "apps/web/src/components/widgets/hs/HsVarsityPortraitWidget.tsx": {
+    "gap": 9
+  },
+  "apps/web/src/components/widgets/hs/HsVarsityWidget.tsx": {
+    "gap": 11
+  },
+  "apps/web/src/components/widgets/hs/HsYearbookPortraitWidget.tsx": {
+    "gap": 9
+  },
+  "apps/web/src/components/widgets/hs/HsYearbookWidget.tsx": {
+    "gap": 5
+  },
+  "apps/web/src/components/widgets/hs/HsZinePortraitWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/hs/HsZineWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/ms/MsArcadePortraitWidget.tsx": {
+    "gap": 12
+  },
+  "apps/web/src/components/widgets/ms/MsArcadeWidget.tsx": {
+    "gap": 10
+  },
+  "apps/web/src/components/widgets/ms/MsAtlasPortraitWidget.tsx": {
+    "gap": 21
+  },
+  "apps/web/src/components/widgets/ms/MsAtlasWidget.tsx": {
+    "gap": 22
+  },
+  "apps/web/src/components/widgets/ms/MsFieldnotesPortraitWidget.tsx": {
+    "gap": 23
+  },
+  "apps/web/src/components/widgets/ms/MsFieldnotesWidget.tsx": {
+    "gap": 21
+  },
+  "apps/web/src/components/widgets/ms/MsGreenhousePortraitWidget.tsx": {
+    "gap": 19
+  },
+  "apps/web/src/components/widgets/ms/MsGreenhouseWidget.tsx": {
+    "gap": 18
+  },
+  "apps/web/src/components/widgets/ms/MsHomeroomPortraitWidget.tsx": {
+    "gap": 24
+  },
+  "apps/web/src/components/widgets/ms/MsHomeroomWidget.tsx": {
+    "gap": 23
+  },
+  "apps/web/src/components/widgets/ms/MsPaperPortraitWidget.tsx": {
+    "gap": 23
+  },
+  "apps/web/src/components/widgets/ms/MsPaperWidget.tsx": {
+    "gap": 23
+  },
+  "apps/web/src/components/widgets/ms/MsPlaylistPortraitWidget.tsx": {
+    "gap": 34
+  },
+  "apps/web/src/components/widgets/ms/MsPlaylistWidget.tsx": {
+    "gap": 29
+  },
+  "apps/web/src/components/widgets/ms/MsStudioPortraitWidget.tsx": {
+    "gap": 20
+  },
+  "apps/web/src/components/widgets/ms/MsStudioWidget.tsx": {
+    "gap": 26
+  },
+  "apps/web/src/components/widgets/restaurant/AllergyLegendWidget.tsx": {
+    "gap": 3,
+    "cqUnits": 16
+  },
+  "apps/web/src/components/widgets/restaurant/ComboCarouselWidget.tsx": {
+    "gap": 6,
+    "cqUnits": 31
+  },
+  "apps/web/src/components/widgets/restaurant/LoyaltyTickerWidget.tsx": {
+    "gap": 3,
+    "cqUnits": 14
+  },
+  "apps/web/src/components/widgets/restaurant/MenuBoardWidget.tsx": {
+    "gap": 7,
+    "cqUnits": 21
+  },
+  "apps/web/src/components/widgets/restaurant/SpecialsCalloutWidget.tsx": {
+    "gap": 3,
+    "cqUnits": 20
+  },
+  "apps/web/src/components/widgets/restaurant/WaitTimeWidget.tsx": {
+    "gap": 7,
+    "cqUnits": 31
+  },
+  "apps/web/src/components/widgets/retail/RetailLookbookCarouselWidget.tsx": {
+    "gap": 1,
+    "cqUnits": 15
+  },
+  "apps/web/src/components/widgets/retail/RetailLoyaltyQRWidget.tsx": {
+    "gap": 5,
+    "cqUnits": 18
+  },
+  "apps/web/src/components/widgets/retail/RetailPriceCalloutWidget.tsx": {
+    "gap": 5,
+    "cqUnits": 22
+  },
+  "apps/web/src/components/widgets/retail/RetailProductGridWidget.tsx": {
+    "gap": 3,
+    "cqUnits": 17
+  },
+  "apps/web/src/components/widgets/retail/RetailSaleCountdownWidget.tsx": {
+    "gap": 3,
+    "cqUnits": 15
+  },
+  "apps/web/src/components/widgets/retail/RetailStorefrontHoursWidget.tsx": {
+    "gap": 4,
+    "cqUnits": 17
+  },
+  "apps/web/src/components/widgets/retail/RetailWayfindingMapWidget.tsx": {
+    "gap": 2,
+    "cqUnits": 10
+  },
+  "apps/web/src/components/widgets/ScrapbookCafeteriaPortraitWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/ScrapbookCafeteriaWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/ScrapbookHallwayPortraitWidget.tsx": {
+    "gap": 7
+  },
+  "apps/web/src/components/widgets/ScrapbookHallwayWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/StorybookCafeteriaPortraitWidget.tsx": {
+    "gap": 5
+  },
+  "apps/web/src/components/widgets/StorybookCafeteriaWidget.tsx": {
+    "gap": 5
+  },
+  "apps/web/src/components/widgets/StorybookHallwayPortraitWidget.tsx": {
+    "gap": 6
+  },
+  "apps/web/src/components/widgets/StorybookHallwayWidget.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/themes/achievement-hall.tsx": {
+    "gap": 2,
+    "cqUnits": 3
+  },
+  "apps/web/src/components/widgets/themes/art-studio.tsx": {
+    "gap": 1,
+    "cqUnits": 1
+  },
+  "apps/web/src/components/widgets/themes/back-to-school.tsx": {
+    "gap": 1
+  },
+  "apps/web/src/components/widgets/themes/bulletin-board.tsx": {
+    "gap": 3
+  },
+  "apps/web/src/components/widgets/themes/bus-loop.tsx": {
+    "gap": 6,
+    "cqUnits": 34
+  },
+  "apps/web/src/components/widgets/themes/campus-quad.tsx": {
+    "gap": 10
+  },
+  "apps/web/src/components/widgets/themes/diner-chalkboard.tsx": {
+    "gap": 1,
+    "cqUnits": 21
+  },
+  "apps/web/src/components/widgets/themes/field-day.tsx": {
+    "gap": 2,
+    "cqUnits": 6
+  },
+  "apps/web/src/components/widgets/themes/final-chance.tsx": {
+    "gap": 9
+  },
+  "apps/web/src/components/widgets/themes/GenericWidgets.tsx": {
+    "gap": 9,
+    "cqUnits": 2
+  },
+  "apps/web/src/components/widgets/themes/gym-pe.tsx": {
+    "gap": 1,
+    "cqUnits": 8
+  },
+  "apps/web/src/components/widgets/themes/high-school-athletics.tsx": {
+    "cqUnits": 14
+  },
+  "apps/web/src/components/widgets/themes/jumbotron-pro.tsx": {
+    "gap": 16,
+    "cqUnits": 14
+  },
+  "apps/web/src/components/widgets/themes/library-quiet.tsx": {
+    "gap": 1,
+    "cqUnits": 15
+  },
+  "apps/web/src/components/widgets/themes/lobby-welcome.tsx": {
+    "gap": 5,
+    "cqUnits": 30
+  },
+  "apps/web/src/components/widgets/themes/locker-hallway.tsx": {
+    "gap": 3,
+    "cqUnits": 2
+  },
+  "apps/web/src/components/widgets/themes/middle-school-hall.tsx": {
+    "gap": 3,
+    "cqUnits": 26
+  },
+  "apps/web/src/components/widgets/themes/modern-2026.tsx": {
+    "gap": 14
+  },
+  "apps/web/src/components/widgets/themes/morning-news.tsx": {
+    "gap": 15
+  },
+  "apps/web/src/components/widgets/themes/music-arts.tsx": {
+    "gap": 3,
+    "cqUnits": 23
+  },
+  "apps/web/src/components/widgets/themes/news-studio-pro.tsx": {
+    "gap": 13
+  },
+  "apps/web/src/components/widgets/themes/office-dashboard.tsx": {
+    "gap": 4,
+    "cqUnits": 43
+  },
+  "apps/web/src/components/widgets/themes/principals-office.tsx": {
+    "gap": 1,
+    "cqUnits": 21
+  },
+  "apps/web/src/components/widgets/themes/rainbow-ribbon.tsx": {
+    "gap": 3,
+    "cqUnits": 6
+  },
+  "apps/web/src/components/widgets/themes/scorebug.tsx": {
+    "gap": 12,
+    "cqUnits": 1
+  },
+  "apps/web/src/components/widgets/themes/scrapbook.tsx": {
+    "gap": 1,
+    "cqUnits": 5
+  },
+  "apps/web/src/components/widgets/themes/senior-countdown.tsx": {
+    "gap": 3,
+    "cqUnits": 3
+  },
+  "apps/web/src/components/widgets/themes/spirit-rally.tsx": {
+    "gap": 9,
+    "cqUnits": 18
+  },
+  "apps/web/src/components/widgets/themes/stem-lab.tsx": {
+    "gap": 5,
+    "cqUnits": 5
+  },
+  "apps/web/src/components/widgets/themes/stem-science.tsx": {
+    "gap": 5,
+    "cqUnits": 34
+  },
+  "apps/web/src/components/widgets/themes/storybook.tsx": {
+    "gap": 4
+  },
+  "apps/web/src/components/widgets/themes/sunshine-academy.tsx": {
+    "gap": 1
+  },
+  "apps/web/src/components/widgets/themes/track-day.tsx": {
+    "gap": 2,
+    "cqUnits": 7
+  },
+  "apps/web/src/components/widgets/themes/varsity-athletic.tsx": {
+    "gap": 11,
+    "cqUnits": 10
+  },
+  "apps/web/src/components/widgets/v2/AnnouncementWidgets.tsx": {
+    "gap": 11
+  },
+  "apps/web/src/components/widgets/v2/BellScheduleWidgets.tsx": {
+    "gap": 7
+  },
+  "apps/web/src/components/widgets/v2/CalendarWidgets.tsx": {
+    "gap": 11
+  },
+  "apps/web/src/components/widgets/v2/ClockWidgets.tsx": {
+    "gap": 9
+  },
+  "apps/web/src/components/widgets/v2/CountdownWidgets.tsx": {
+    "gap": 10
+  },
+  "apps/web/src/components/widgets/v2/HeadlineWidgets.tsx": {
+    "gap": 9
+  },
+  "apps/web/src/components/widgets/v2/ImageWidgets.tsx": {
+    "gap": 1
+  },
+  "apps/web/src/components/widgets/v2/LogoWidgets.tsx": {
+    "gap": 6
+  },
+  "apps/web/src/components/widgets/v2/LunchMenuWidgets.tsx": {
+    "gap": 7
+  },
+  "apps/web/src/components/widgets/v2/PhotoWidgets.tsx": {
+    "gap": 5
+  },
+  "apps/web/src/components/widgets/v2/RichTextWidgets.tsx": {
+    "gap": 2
+  },
+  "apps/web/src/components/widgets/v2/StaffWidgets.tsx": {
+    "gap": 8
+  },
+  "apps/web/src/components/widgets/v2/TickerWidgets.tsx": {
+    "gap": 3
+  },
+  "apps/web/src/components/widgets/v2/WeatherWidgets.tsx": {
+    "gap": 9
+  },
+  "apps/web/src/components/widgets/variant-tiles/basic-content-tiles.tsx": {
+    "gap": 2
+  },
+  "apps/web/src/components/widgets/WidgetRenderer.tsx": {
+    "gap": 18,
+    "cqUnits": 4
+  }
+}
