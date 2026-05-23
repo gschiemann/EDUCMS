@@ -205,7 +205,7 @@
   "apps/web/src/components/widgets/fitness/FitnessStickLauncherWidget.tsx": {
     "gap": 8,
     "cqUnits": 45,
-    "colorMix": 4
+    "colorMix": 2
   },
   "apps/web/src/components/widgets/fitness/FitnessTelemetryWidget.tsx": {
     "gap": 7

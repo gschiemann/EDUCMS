@@ -7,6 +7,7 @@ import {
 import { Logger } from '@nestjs/common';
 import { Server, WebSocket } from 'ws';
 import { RedisService } from './redis.service';
+import { PrismaService } from '../prisma/prisma.service';
 import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
 import * as Sentry from '@sentry/nestjs';
@@ -31,7 +32,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   private clients: Map<WebSocket, ClientContext> = new Map();
 
-  constructor(private readonly redisService: RedisService) {
+  constructor(
+    private readonly redisService: RedisService,
+    private readonly prisma: PrismaService,
+  ) {
     this.redisService.setGateway(this);
   }
 
@@ -120,6 +124,26 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
           devFallback: 'dev_only_device_jwt_secret_CHANGE_ME',
         });
         decoded = jwt.verify(token, jwtSecret) as any;
+        // SECURITY (Lane-1 re-audit P1): verify the screen still exists +
+        // its tenant binding hasn't been swapped since the JWT was minted.
+        // Closes the "unpair a screen → its WS keeps streaming for 365d"
+        // window. SSE already does this at sse.controller.ts:62-69; WS now
+        // mirrors. One DB hit on connect; negligible (auth is one-time).
+        const screenId = decoded?.deviceId || decoded?.sub;
+        if (!screenId) throw new Error('Device JWT missing deviceId/sub');
+        const screen = await this.prisma.client.screen.findUnique({
+          where: { id: screenId },
+          select: { id: true, tenantId: true },
+        });
+        if (!screen) {
+          throw new Error('Screen not found / unpaired');
+        }
+        if (decoded?.tenantId && decoded.tenantId !== screen.tenantId) {
+          // Tenant rebound since JWT mint — force re-auth.
+          throw new Error('Screen tenant changed');
+        }
+        // Trust the DB tenant binding over the JWT claim.
+        decoded.tenantId = screen.tenantId;
       }
 
       ctx.deviceId = decoded.deviceId;

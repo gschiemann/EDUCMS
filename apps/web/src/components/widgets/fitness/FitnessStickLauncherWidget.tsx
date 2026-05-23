@@ -89,9 +89,31 @@ function stickLabel(type?: FitnessStickLauncherConfig['stickType']): string {
   return STICK_TYPE_LABELS[type] ?? 'Streaming Stick';
 }
 
+/** Parse `#rrggbb` (or `#rgb`) → [r, g, b] ints (0-255). Returns null on bad input. */
+function parseHex(hex: string): [number, number, number] | null {
+  let h = hex.trim().replace(/^#/, '');
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+  if (h.length !== 6) return null;
+  const n = parseInt(h, 16);
+  if (Number.isNaN(n)) return null;
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+/** Linear-RGB blend at author time. Replaces `color-mix(in srgb, a P%, b)`
+ *  which is Chromium 111+ — silently invalid on Taurus (Chromium 83). */
+function mixHex(a: string, b: string, fractionA: number): string {
+  const pa = parseHex(a) || [0, 0, 0];
+  const pb = parseHex(b) || [0, 0, 0];
+  const f = Math.max(0, Math.min(1, fractionA));
+  const r = Math.round(pa[0] * f + pb[0] * (1 - f));
+  const g = Math.round(pa[1] * f + pb[1] * (1 - f));
+  const bl = Math.round(pa[2] * f + pb[2] * (1 - f));
+  return '#' + [r, g, bl].map((v) => v.toString(16).padStart(2, '0')).join('');
+}
+
 /** Blend `hex` color toward dark charcoal for the READY / OFFLINE tints. */
 function dimHex(hex: string, alpha = 0.18): string {
-  return `color-mix(in srgb, ${hex} ${Math.round(alpha * 100)}%, #111216)`;
+  return mixHex(hex, '#111216', alpha);
 }
 
 // ─── Particle streak data (stable per mount) ─────────────────────────────────
@@ -181,21 +203,23 @@ export function FitnessStickLauncherWidget({
   const isOffline = displayState === 'offline';
 
   // Background varies per state.
+  // Lane-6 P1 — Chromium 83 (Taurus) drops the whole declaration if it
+  // contains `color-mix(`. Pre-compute the blend at author time via mixHex.
   const bgStyle: React.CSSProperties = isLaunching
     ? {
         background: `radial-gradient(ellipse 120% 120% at 50% 55%,
-          color-mix(in srgb, ${accent} 55%, #0c0c11) 0%,
+          ${mixHex(accent, '#0c0c11', 0.55)} 0%,
           #0c0c11 70%)`,
       }
     : isReady
     ? {
         background: `radial-gradient(ellipse 80% 80% at 18% 50%,
-          color-mix(in srgb, ${accent} 22%, #111216) 0%,
+          ${mixHex(accent, '#111216', 0.22)} 0%,
           #111216 65%)`,
       }
     : /* offline */ {
         background: `radial-gradient(ellipse 90% 90% at 50% 50%,
-          color-mix(in srgb, #dc2626 18%, #0e0e12) 0%,
+          ${mixHex('#dc2626', '#0e0e12', 0.18)} 0%,
           #0e0e12 65%)`,
       };
 
