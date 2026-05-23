@@ -31,8 +31,13 @@ import { EmailService } from '../email/email.service';
 //
 // If an operator hits this list with a .mov or .avi, the assertUploadIntent
 // error message tells them to export as MP4 (H.264) — universal.
+// Lane-1 P1: image/svg+xml dropped from ALLOWED_TYPES until AssetSanitizerService
+// is actually wired into the upload path. SVG can contain <script> and is rendered
+// raw via dangerouslySetInnerHTML by brand-kit / sidebar / branding-wizard. The
+// sanitizer service exists at apps/api/src/security/asset-sanitizer.service.ts
+// but has zero callers. Re-add SVG once the service runs on every upload buffer.
 const ALLOWED_TYPES = [
-  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml', 'image/x-icon', 'image/bmp',
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/x-icon', 'image/bmp',
   'video/mp4', 'video/webm', 'video/x-m4v',
   'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
   'application/pdf',
@@ -58,7 +63,7 @@ const EXTENSION_MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.webp': 'image/webp',
   '.gif': 'image/gif',
-  '.svg': 'image/svg+xml',
+  // '.svg': 'image/svg+xml',  // Lane-1 P1: temporarily disabled — see ALLOWED_TYPES comment.
   '.ico': 'image/x-icon',
   '.bmp': 'image/bmp',
   '.mp4': 'video/mp4',
@@ -76,7 +81,7 @@ const MIME_EXTENSIONS: Record<string, string> = {
   'image/png': '.png',
   'image/webp': '.webp',
   'image/gif': '.gif',
-  'image/svg+xml': '.svg',
+  // 'image/svg+xml': '.svg',  // Lane-1 P1: temporarily disabled.
   'image/x-icon': '.ico',
   'image/bmp': '.bmp',
   'video/mp4': '.mp4',

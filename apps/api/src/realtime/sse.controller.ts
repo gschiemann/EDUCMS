@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { SseService } from './sse.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from './redis.service';
 import { requireSecret } from '../security/required-secret';
 
 /**
@@ -32,6 +33,7 @@ export class SseController {
   constructor(
     private readonly sse: SseService,
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
   ) {}
 
   @Get('sse')
@@ -54,6 +56,19 @@ export class SseController {
       // Device JWT shape: { kind: 'device', sub: screenId, ... }
       if (payload?.kind !== 'device' || !payload?.sub) {
         throw new Error('not a device token');
+      }
+      // Lane-1 P1 (final audit): check the JWT revocation set so a revoked
+      // device token can't keep streaming. Fail-closed on Redis error —
+      // same posture as jwt-auth.guard.ts.
+      if (process.env.NODE_ENV === 'production') {
+        try {
+          if (await this.redis.sismember('jwt_revoked_list', token)) {
+            throw new Error('token revoked');
+          }
+        } catch (e) {
+          if ((e as Error)?.message === 'token revoked') throw e;
+          throw new Error('revocation check unavailable');
+        }
       }
       deviceId = payload.sub;
       // Look up the tenant from the screen — kiosk JWT alone doesn't

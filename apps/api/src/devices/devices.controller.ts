@@ -72,15 +72,36 @@ export class DevicesController {
     }
 
     // Bind / refresh device-side metadata. Idempotent — re-pairs are fine.
-    await this.prisma.client.screen.update({
-      where: { id: target.id },
-      data: {
-        deviceFingerprint: fp || target.deviceFingerprint,
-        osInfo: body.os || target.osInfo,
-        userAgent: `${body.model || ''} ${body.appVersion || ''}`.trim() || target.userAgent,
-        status: 'ONLINE',
-        pairedAt: target.pairedAt || new Date(),
-      },
+    // Lane-1 P1: wrap the update + immutable AuditLog row in one transaction.
+    // Pairing mints a 365-day device JWT; that's a privileged action and
+    // needs a forensic trail ("when did device X get bound to tenant Y?").
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.screen.update({
+        where: { id: target.id },
+        data: {
+          deviceFingerprint: fp || target.deviceFingerprint,
+          osInfo: body.os || target.osInfo,
+          userAgent: `${body.model || ''} ${body.appVersion || ''}`.trim() || target.userAgent,
+          status: 'ONLINE',
+          pairedAt: target.pairedAt || new Date(),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: target.tenantId!,
+          userId: null, // device-initiated; the admin claim already audited the original code.
+          action: 'DEVICE_PAIRED',
+          targetType: 'Screen',
+          targetId: target.id,
+          details: JSON.stringify({
+            screenId: target.id,
+            fp: fp ? fp.slice(0, 16) + '…' : null,
+            model: body.model || null,
+            os: body.os || null,
+            appVersion: body.appVersion || null,
+          }),
+        },
+      });
     });
 
     const token = jwt.sign(

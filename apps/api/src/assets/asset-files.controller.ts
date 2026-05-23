@@ -18,7 +18,19 @@ export class AssetFilesController {
   serveFile(@Param('filename') filename: string, @Res() res: Response) {
     // Sanitize filename to prevent path traversal
     const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '');
-    const filePath = resolve(process.cwd(), UPLOAD_DIR, safe);
+    // Lane-1 P1 fix: the strip leaves bare `..`/`.`/`` intact (regex passes
+    // through dots and underscores). Those resolve to the UPLOAD_DIR's
+    // parent or to UPLOAD_DIR itself — a directory-listing primitive.
+    // Reject any input that doesn't look like a file name.
+    if (!safe || safe === '.' || safe === '..' || safe.startsWith('.')) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    const uploadRoot = resolve(process.cwd(), UPLOAD_DIR);
+    const filePath = resolve(uploadRoot, safe);
+    // Belt-and-suspenders — refuse anything that escapes UPLOAD_DIR.
+    if (filePath !== uploadRoot && !filePath.startsWith(uploadRoot + '/')) {
+      return res.status(404).json({ error: 'File not found' });
+    }
 
     if (!existsSync(filePath)) {
       return res.status(404).json({ error: 'File not found' });
