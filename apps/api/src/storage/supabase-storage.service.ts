@@ -325,6 +325,64 @@ export class SupabaseStorageService implements OnModuleInit {
   }
 
   /**
+   * Bulk delete — Supabase storage `.remove()` accepts an array.
+   * Used by the SUPER_ADMIN wipe-all-assets endpoint to clear the
+   * bucket without making N separate HTTP calls. Chunks at 1000
+   * per request because the API has a per-request limit somewhere
+   * in the few-thousands and we don't want to find it the hard way.
+   *
+   * Returns the count of paths the API accepted as removed (which is
+   * usually all of them — Supabase ignores non-existent paths silently).
+   */
+  async deleteMany(filePaths: string[]): Promise<number> {
+    if (!this.client || filePaths.length === 0) return 0;
+    const CHUNK = 1000;
+    let removed = 0;
+    for (let i = 0; i < filePaths.length; i += CHUNK) {
+      const slice = filePaths.slice(i, i + CHUNK);
+      const { data, error } = await this.client.storage
+        .from(BUCKET)
+        .remove(slice);
+      if (error) {
+        this.logger.warn(`deleteMany chunk failed (${slice.length} paths): ${error.message}`);
+        continue;
+      }
+      removed += data?.length ?? 0;
+    }
+    return removed;
+  }
+
+  /**
+   * Download an object's bytes from Supabase storage back to the API.
+   * Used by the server-side optimization step in completeUpload — after
+   * the browser PUTs the raw bytes via presign, we pull them back,
+   * run them through MediaOptimizationService, then upsert the
+   * optimized version to the same path so the public URL stays stable.
+   *
+   * Returns null on miss so the caller can skip optimization gracefully
+   * rather than fail the whole upload.
+   */
+  async download(filePath: string): Promise<Buffer | null> {
+    const { url, key } = this.supabaseConfig();
+    const endpoint = `${url}/storage/v1/object/${BUCKET}/${filePath}`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${key}`, apikey: key },
+      });
+      if (!res.ok) {
+        this.logger.warn(`download(${filePath}) failed: ${res.status}`);
+        return null;
+      }
+      const ab = await res.arrayBuffer();
+      return Buffer.from(ab);
+    } catch (err: any) {
+      this.logger.warn(`download(${filePath}) threw: ${err?.message ?? err}`);
+      return null;
+    }
+  }
+
+  /**
    * Extract the storage path from a full Supabase public URL.
    * e.g. "https://xxx.supabase.co/storage/v1/object/public/assets/tenant/file.jpg"
    *   → "tenant/file.jpg"
@@ -334,5 +392,13 @@ export class SupabaseStorageService implements OnModuleInit {
     const idx = publicUrl.indexOf(marker);
     if (idx === -1) return null;
     return publicUrl.substring(idx + marker.length);
+  }
+
+  /**
+   * The bucket name. Exposed so admin endpoints can reference it in
+   * audit log entries without hard-coding the string elsewhere.
+   */
+  bucketName(): string {
+    return BUCKET;
   }
 }

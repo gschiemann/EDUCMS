@@ -57,6 +57,17 @@ const REJECTED_MIMES: Record<string, string> = {
 };
 
 const MAX_ASSET_FILE_SIZE = 500 * 1024 * 1024;
+// Per-type caps (Supabase egress hardening 2026-05-23). Signage content
+// has a sweet spot — 1080p H.264 at 5 Mbps is broadcast-tier on a wall
+// and 30-50 MB for a typical 60-second loop. A raw 200 MB phone export
+// is 4× more than the screen can resolve and serves as a CDN-miss
+// egress bomb. Cap matched to "best content on the display + zero
+// egress overage" tradeoff. Audio is rare here and small; PDFs are
+// usually logos/branding.
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024;        // 50 MB — 60s 1080p @ 5Mbps
+const MAX_IMAGE_SIZE_RAW = 25 * 1024 * 1024;    // 25 MB raw — optimizer brings to ~0.5 MB WebP
+const MAX_AUDIO_SIZE = 25 * 1024 * 1024;        // 25 MB
+const MAX_PDF_SIZE = 25 * 1024 * 1024;          // 25 MB
 const EXTENSION_MIME_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -181,6 +192,45 @@ export class AssetsController {
     if (Number(size) > MAX_ASSET_FILE_SIZE) {
       throw new HttpException(
         `File is too large. Max size is ${Math.round(MAX_ASSET_FILE_SIZE / (1024 * 1024))} MB.`,
+        HttpStatus.PAYLOAD_TOO_LARGE,
+      );
+    }
+
+    // Per-type caps (Supabase egress hardening 2026-05-23). The 500 MB
+    // outer cap is the absolute ceiling; these tighter per-type caps
+    // are what actually keep egress bounded. Friendly per-type
+    // messages so the operator knows what to do.
+    const numSize = Number(size);
+    if (mimeType.startsWith('video/') && numSize > MAX_VIDEO_SIZE) {
+      throw new HttpException(
+        `Video is too large for signage (${Math.round(numSize / (1024 * 1024))} MB). ` +
+          `Max is ${Math.round(MAX_VIDEO_SIZE / (1024 * 1024))} MB — plenty for a clean 1080p loop ` +
+          `at signage-tier quality. Compress with HandBrake (free, handbrake.fr), iMovie's ` +
+          `"Share → File → 1080p", or your phone's built-in "Save as smaller file" option, then try again.`,
+        HttpStatus.PAYLOAD_TOO_LARGE,
+      );
+    }
+    if (mimeType.startsWith('image/') && numSize > MAX_IMAGE_SIZE_RAW) {
+      throw new HttpException(
+        `Image is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
+          `Max is ${Math.round(MAX_IMAGE_SIZE_RAW / (1024 * 1024))} MB. ` +
+          `Our optimizer can shrink most raw photos to under 0.5 MB without visible loss — ` +
+          `but at this size your phone may be uploading an uncompressed RAW or HEIC original. ` +
+          `Export as JPG/PNG/WebP first.`,
+        HttpStatus.PAYLOAD_TOO_LARGE,
+      );
+    }
+    if (mimeType.startsWith('audio/') && numSize > MAX_AUDIO_SIZE) {
+      throw new HttpException(
+        `Audio is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
+          `Max is ${Math.round(MAX_AUDIO_SIZE / (1024 * 1024))} MB.`,
+        HttpStatus.PAYLOAD_TOO_LARGE,
+      );
+    }
+    if (mimeType === 'application/pdf' && numSize > MAX_PDF_SIZE) {
+      throw new HttpException(
+        `PDF is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
+          `Max is ${Math.round(MAX_PDF_SIZE / (1024 * 1024))} MB.`,
         HttpStatus.PAYLOAD_TOO_LARGE,
       );
     }
@@ -554,6 +604,66 @@ export class AssetsController {
         folderId,
       },
     });
+
+    // SUPABASE EGRESS / QUALITY FIX (2026-05-23). The legacy /assets/upload
+    // chain optimizes images inline via sharp; the presign chain shipped
+    // without that step, so iPhone JPGs landed at 8 MB and served raw
+    // forever. We close the gap by downloading the just-PUT object,
+    // running it through MediaOptimizationService, and re-uploading to a
+    // new content-addressed path with the correct mime + Cache-Control
+    // header (immutable, set inside supabase-storage.service.ts).
+    //
+    // Sync (not background) so the response carries the FINAL size/url
+    // and the operator's "uploaded" toast tells the truth.
+    //
+    // Defensive: on ANY failure we keep the original. Never break the
+    // upload over a best-effort compression step.
+    if (this.mediaOpt.isOptimizableImage(realMime)) {
+      try {
+        const original = await this.storage.download(storagePath);
+        if (original) {
+          const origExt = extname(storagePath) || '';
+          const opt = await this.mediaOpt.optimize(original, realMime, origExt);
+          if (opt.optimized && opt.finalBytes < original.length) {
+            // sharp output → re-upload to a NEW path so the URL extension
+            // matches the new mime (e.g. .webp). Old path is deleted to
+            // avoid orphaned blobs eating storage quota.
+            const newPath = `${req.user.tenantId}/${randomUUID()}${opt.ext}`;
+            try {
+              await this.storage.upload(newPath, opt.buffer, opt.mimeType);
+              await this.storage.delete(storagePath);
+              const newUrl = this.storage.publicUrlForPath(newPath);
+              const updated = await this.prisma.client.asset.update({
+                where: { id: asset.id },
+                data: {
+                  fileUrl: newUrl,
+                  mimeType: opt.mimeType,
+                  fileSize: opt.finalBytes,
+                },
+              });
+              asset.fileUrl = updated.fileUrl;
+              asset.mimeType = updated.mimeType;
+              asset.fileSize = updated.fileSize;
+            } catch (innerErr: any) {
+              // If the re-upload failed, the original is still in place
+              // and the Asset row points at it. We're back to "raw served
+              // forever" but at least the upload succeeded.
+              // Roll back the new-path object if it partially landed.
+              await this.storage.delete(newPath).catch(() => undefined);
+              console.warn(
+                `[assets] optimize re-upload failed for ${asset.id}: ${innerErr?.message ?? innerErr}. ` +
+                  `Keeping original at ${storagePath}.`,
+              );
+            }
+          }
+        }
+      } catch (err: any) {
+        // Optimization is best-effort. Log and continue with the original.
+        console.warn(
+          `[assets] post-upload optimize failed for ${asset.id}: ${err?.message ?? err}`,
+        );
+      }
+    }
 
     if (asset.status === 'PENDING_APPROVAL') {
       this.notifyAdminsOfPendingReview(req.user.tenantId, asset);

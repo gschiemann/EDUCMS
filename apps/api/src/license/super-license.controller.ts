@@ -13,6 +13,7 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { LicenseService } from './license.service';
+import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
 /**
  * Owner-only management endpoints. Used by the /super page in the web app
@@ -26,6 +27,7 @@ export class SuperLicenseController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly license: LicenseService,
+    private readonly storage: SupabaseStorageService,
   ) {}
 
   /** List every tenant with its license summary + paired-screen count.
@@ -312,6 +314,117 @@ export class SuperLicenseController {
         'on the next origin fetch. Browsers/players already holding the old ' +
         'no-cache directive will revalidate next request and pick up the new ' +
         'immutable header.',
+    };
+  }
+
+  /**
+   * SUPABASE STORAGE WIPE (2026-05-23) — POST /super/storage/wipe-all-assets
+   *
+   * Nuclear option. Deletes EVERY Asset row, the PlaylistItems that
+   * reference them, AND every object in the Supabase Storage `assets`
+   * bucket. Then the platform is on a clean slate where every future
+   * upload (per fixes shipped 2026-05-23) is cached immutably and image
+   * content is server-side optimized to WebP. No backfill drama.
+   *
+   * Confirmation: must POST `{ confirm: 'YES_WIPE_ALL_ASSETS' }` in the
+   * body. Without this string we 400 — guarding against an accidental
+   * curl or fat-finger from the dashboard console.
+   *
+   * The DB delete is wrapped in a transaction (PlaylistItem → Asset)
+   * so a partial wipe can't orphan one side. Storage delete happens
+   * AFTER the DB commit; if storage delete partially fails, the DB is
+   * already clean and the bucket's leftover objects become orphaned
+   * (still cheap to clean up via the storage console).
+   *
+   * Audit: writes an AuditLog row with the pre-wipe counts so the
+   * forensic trail captures "what was here before."
+   */
+  @Post('storage/wipe-all-assets')
+  async wipeAllAssets(
+    @Body() body: { confirm?: string },
+    @Req() req: any,
+  ) {
+    if (body?.confirm !== 'YES_WIPE_ALL_ASSETS') {
+      throw new HttpException(
+        'wipe-all-assets requires { confirm: "YES_WIPE_ALL_ASSETS" } in the body.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Snapshot counts + storage paths BEFORE the delete so we can audit
+    // what was there and have a list of objects to remove from Supabase.
+    const [assetCount, playlistItemCount, totalBytes, allAssets] = await Promise.all([
+      this.prisma.client.asset.count(),
+      this.prisma.client.playlistItem.count(),
+      this.prisma.client.asset.aggregate({ _sum: { fileSize: true } }),
+      this.prisma.client.asset.findMany({ select: { fileUrl: true } }),
+    ]);
+
+    // Map each Asset.fileUrl to its Supabase storage path. Skip any
+    // URL that doesn't parse (legacy local-disk fileUrls, etc).
+    const storagePaths = allAssets
+      .map((a) => this.storage.extractPath(a.fileUrl))
+      .filter((p): p is string => typeof p === 'string' && p.length > 0);
+
+    // Wipe DB in a transaction. playlist_items reference assets via
+    // assetId WITHOUT onDelete:Cascade in the schema, so we delete
+    // playlist_items first to avoid an FK violation. Note: this leaves
+    // Playlist rows intact — operators get to keep their playlist
+    // structure, just empty.
+    const dbResult = await this.prisma.client.$transaction(async (tx) => {
+      const removedItems = await tx.playlistItem.deleteMany({});
+      const removedAssets = await tx.asset.deleteMany({});
+      return {
+        playlistItemsDeleted: removedItems.count,
+        assetsDeleted: removedAssets.count,
+      };
+    });
+
+    // Now nuke the Supabase storage bucket contents. The DB rows are
+    // already gone so a partial failure here only leaves orphan blobs
+    // (which Supabase's "Unlinked Objects" report can sweep later).
+    const storageRemoved = await this.storage.deleteMany(storagePaths);
+
+    // Forensic trail. tenantId is null because this is a fleet-wide
+    // owner action that touches every tenant.
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId: null as any,
+        userId: req?.user?.userId ?? null,
+        action: 'STORAGE_WIPE_ALL_ASSETS',
+        targetType: 'Storage',
+        targetId: this.storage.bucketName(),
+        details: JSON.stringify({
+          before: {
+            assetCount,
+            playlistItemCount,
+            totalBytes: Number(totalBytes._sum.fileSize || 0),
+          },
+          deleted: {
+            ...dbResult,
+            storageObjectsRemoved: storageRemoved,
+            storagePathsRequested: storagePaths.length,
+          },
+        }),
+      },
+    });
+
+    return {
+      ok: true,
+      before: {
+        assetCount,
+        playlistItemCount,
+        totalBytes: Number(totalBytes._sum.fileSize || 0),
+      },
+      deleted: {
+        ...dbResult,
+        storageObjectsRemoved: storageRemoved,
+        storagePathsRequested: storagePaths.length,
+      },
+      note:
+        'Clean slate complete. All future uploads will be optimized server-side (images → WebP, ' +
+        'video size-capped at 50MB) and served with immutable Cache-Control. Re-run ' +
+        'POST /super/storage/wipe-all-assets to wipe again — safe to call on an already-empty bucket.',
     };
   }
 
