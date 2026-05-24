@@ -92,9 +92,12 @@ export function EmergencyTriggerModal({ onClose }: Props) {
         }
         clog.info('emergency', `TRIGGER success: ${payload.type}`, {
           elapsedMs: Math.round(performance.now() - started),
+          overrideId: result.overrideId,
         });
         // ONLY flip local emergency state after the server confirms the broadcast.
-        setEmergencyActive(true);
+        // Carry the overrideId into the store so EmergencyOverlay can pass it
+        // back on all-clear (audit P2 #3 — forensic chain-of-custody fix).
+        setEmergencyActive(true, result.overrideId);
         onClose();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

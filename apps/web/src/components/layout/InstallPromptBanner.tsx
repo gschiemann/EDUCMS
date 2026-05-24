@@ -123,12 +123,15 @@ export function InstallPromptBanner() {
       <button
         type="button"
         onClick={dismiss}
-        className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+        // Touch target HIG (2026-05-23 launch audit P2 #9): bumped from
+        // 28×28 (w-7 h-7) to 44×44 (min-h/min-w-[44px]). On a phone the
+        // small X was easy to miss-tap into the banner content below it.
+        className="absolute top-1 right-1 min-w-[44px] min-h-[44px] w-11 h-11 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
         aria-label="Dismiss install prompt"
       >
         <X className="w-4 h-4" />
       </button>
-      <div className="flex items-start gap-3 pr-7">
+      <div className="flex items-start gap-3 pr-11">
         <div className="shrink-0 w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
           <Download className="w-5 h-5 text-indigo-300" />
         </div>

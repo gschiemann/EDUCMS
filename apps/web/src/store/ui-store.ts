@@ -100,6 +100,12 @@ interface AppState {
   mobileSidebarOpen: boolean;
   activeTenant: string | null;
   isEmergencyActive: boolean;
+  /** 2026-05-23 launch audit P2 #3 — store the overrideId returned from
+   *  `broadcastEmergency` so EmergencyOverlay can pass it back to
+   *  allClearEmergency. Without this, every clear minted a fresh
+   *  `clear_<uuid>` and the AuditLog couldn't pair trigger → clear
+   *  events, breaking forensic chain-of-custody. */
+  activeEmergencyOverrideId: string | null;
 
   // Auth actions
   login: (token: string, user: any) => void;
@@ -110,7 +116,7 @@ interface AppState {
   setMobileSidebarOpen: (open: boolean) => void;
   toggleMobileSidebar: () => void;
   setActiveTenant: (tenantId: string) => void;
-  setEmergencyActive: (active: boolean) => void;
+  setEmergencyActive: (active: boolean, overrideId?: string | null) => void;
 }
 
 export const useUIStore = create<AppState>((set) => ({
@@ -123,6 +129,7 @@ export const useUIStore = create<AppState>((set) => ({
   mobileSidebarOpen: false,
   activeTenant: initial.user?.tenantSlug || initial.user?.tenantId || null,
   isEmergencyActive: false,
+  activeEmergencyOverrideId: null,
 
   // Auth actions
   login: (token, user) => {
@@ -173,7 +180,14 @@ export const useUIStore = create<AppState>((set) => ({
   setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
   toggleMobileSidebar: () => set((state) => ({ mobileSidebarOpen: !state.mobileSidebarOpen })),
   setActiveTenant: (tenantId) => set({ activeTenant: tenantId }),
-  setEmergencyActive: (active) => set({ isEmergencyActive: active }),
+  setEmergencyActive: (active, overrideId) =>
+    set({
+      isEmergencyActive: active,
+      // Preserve forensic chain-of-custody (audit P2 #3): on activate
+      // we record the overrideId so a later all-clear can pair to it
+      // in the AuditLog. On deactivate we null it back out.
+      activeEmergencyOverrideId: active ? (overrideId ?? null) : null,
+    }),
 }));
 
 // Re-export for backward compatibility with components that imported useAppStore

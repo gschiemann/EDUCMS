@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 
 interface EmergencyPayload {
   schoolId: string;
@@ -41,7 +40,11 @@ export async function broadcastEmergency(payload: EmergencyPayload) {
     /* response body not JSON; ignore — overrideId stays undefined */
   }
 
-  revalidatePath(`/[schoolId]/dashboard`, 'page');
+  // 2026-05-23 launch audit P2 #4 — removed the `revalidatePath`
+  // call that passed a literal "[schoolId]" string. Server Actions
+  // need a real path; the dynamic-segment placeholder was a no-op.
+  // React Query on the client handles the actual dashboard refresh,
+  // so removing the dead call has no behavior change.
 
   return { success: true, overrideId };
 }
@@ -81,6 +84,6 @@ export async function allClearEmergency(payload: {
     return { success: false, error: `All clear failed: ${res.status}` };
   }
 
-  revalidatePath(`/[schoolId]/dashboard`, 'page');
+  // See above — same dead `revalidatePath` removed (audit P2 #4).
   return { success: true };
 }

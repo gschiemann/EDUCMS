@@ -9,6 +9,12 @@ export function EmergencyOverlay() {
   const setEmergencyActive = useAppStore((state) => state.setEmergencyActive);
   const user = useAppStore((state) => state.user);
   const token = useAppStore((state) => state.token);
+  // 2026-05-23 audit P2 #3 — pass the active overrideId back to the
+  // all-clear so the AuditLog can pair trigger+clear events. The
+  // EmergencyTriggerModal puts the overrideId into the store on
+  // successful broadcast; previously this component minted a
+  // synthetic `clear_<uuid>` every time and the chain was broken.
+  const activeOverrideId = useAppStore((state) => state.activeEmergencyOverrideId);
   const [confirmKey, setConfirmKey] = useState('');
   const [isPending, startTransition] = useTransition();
 
@@ -52,6 +58,11 @@ export function EmergencyOverlay() {
           await allClearEmergency({
             schoolId: user?.tenantId || 'global',
             token: token || undefined,
+            // 2026-05-23 audit P2 #3 — forward the active overrideId
+            // so this all-clear pairs with the original trigger event
+            // in the AuditLog. Falls through to the action's
+            // `clear_<uuid>` mint if undefined (concurrent-clear case).
+            overrideId: activeOverrideId || undefined,
           });
           setEmergencyActive(false);
         } catch (e) {
