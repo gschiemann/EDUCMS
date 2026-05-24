@@ -91,7 +91,8 @@ export class CleverController {
   @RequireRoles(AppRole.DISTRICT_ADMIN)
   async disconnect(@Req() req: AuthedRequest) {
     const tenantId = req.user?.tenantId ?? '';
-    await this.clever.disconnect(tenantId);
+    const actorUserId = (req as any)?.user?.userId ?? (req as any)?.user?.id ?? null;
+    await this.clever.disconnect(tenantId, actorUserId);
     return { ok: true };
   }
 

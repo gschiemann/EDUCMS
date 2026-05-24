@@ -141,14 +141,37 @@ export class CleverService {
     });
   }
 
-  async disconnect(tenantId: string): Promise<void> {
-    await this.prisma.client.tenant.update({
-      where: { id: tenantId },
-      data: {
-        cleverAccessToken: null,
-        cleverDistrictId: null,
-        cleverConnectedAt: null,
-      },
+  async disconnect(tenantId: string, actorUserId?: string | null): Promise<void> {
+    // 2026-05-23 launch audit P1: disconnect purges Clever OAuth
+    // access token from Tenant.cleverAccessToken. Same secret-purge
+    // class as streaming/pos/ads connection deletes. Transactional
+    // with the audit-log so partial state is impossible.
+    await this.prisma.client.$transaction(async (tx) => {
+      const before = await tx.tenant.findUnique({
+        where: { id: tenantId },
+        select: { cleverDistrictId: true, cleverConnectedAt: true },
+      });
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: {
+          cleverAccessToken: null,
+          cleverDistrictId: null,
+          cleverConnectedAt: null,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId ?? null,
+          action: 'CLEVER_DISCONNECTED',
+          targetType: 'Tenant',
+          targetId: tenantId,
+          details: JSON.stringify({
+            priorDistrictId: before?.cleverDistrictId ?? null,
+            priorConnectedAt: before?.cleverConnectedAt ?? null,
+          }),
+        },
+      });
     });
   }
 

@@ -160,9 +160,29 @@ export class StreamingService {
     return row;
   }
 
-  async deleteConnection(tenantId: string, id: string) {
+  async deleteConnection(tenantId: string, id: string, actorUserId?: string | null) {
     const row = await this.getConnection(tenantId, id);
-    await (this.prisma.client as any).streamProviderConnection.delete({ where: { id: row.id } });
+    // 2026-05-23 launch audit P1: streaming connections store
+    // encrypted OAuth credentials. Deleting one purges those secrets —
+    // a privileged action that previously had ZERO forensic trail.
+    // Wrap delete + audit in a $transaction so partial state is
+    // impossible.
+    await this.prisma.client.$transaction(async (tx: any) => {
+      await tx.streamProviderConnection.delete({ where: { id: row.id } });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId ?? null,
+          action: 'STREAM_CONNECTION_DELETED',
+          targetType: 'StreamProviderConnection',
+          targetId: id,
+          details: JSON.stringify({
+            providerId: row.providerId,
+            displayName: row.displayName,
+          }),
+        },
+      });
+    });
   }
 
   /** Decrypt credentials for use by a per-provider handler. NEVER
@@ -230,12 +250,31 @@ export class StreamingService {
     });
   }
 
-  async deleteChannel(tenantId: string, id: string) {
+  async deleteChannel(tenantId: string, id: string, actorUserId?: string | null) {
     const ch = await (this.prisma.client as any).streamChannel.findFirst({
       where: { id, tenantId },
     });
     if (!ch) throw new NotFoundException('Channel not found.');
-    await (this.prisma.client as any).streamChannel.delete({ where: { id: ch.id } });
+    // 2026-05-23 launch audit P1: channel deletes are part of the
+    // OAuth-bound stream surface — audit-log them too so the
+    // forensic chain stays consistent with the connection delete.
+    await this.prisma.client.$transaction(async (tx: any) => {
+      await tx.streamChannel.delete({ where: { id: ch.id } });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId ?? null,
+          action: 'STREAM_CHANNEL_DELETED',
+          targetType: 'StreamChannel',
+          targetId: id,
+          details: JSON.stringify({
+            connectionId: ch.connectionId,
+            externalId: ch.externalId,
+            title: ch.title,
+          }),
+        },
+      });
+    });
   }
 
   /** Resolve a channel into a playable URL for the player. For

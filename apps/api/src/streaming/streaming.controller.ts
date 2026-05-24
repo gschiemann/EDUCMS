@@ -68,7 +68,8 @@ export class StreamingController {
   @Delete('connections/:id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async deleteConnection(@Request() req: any, @Param('id') id: string) {
-    await this.svc.deleteConnection(req.user.tenantId, id);
+    // Pass actor id for the AuditLog row (2026-05-23 launch audit P1).
+    await this.svc.deleteConnection(req.user.tenantId, id, req.user.id ?? null);
     return { success: true };
   }
 
@@ -99,7 +100,7 @@ export class StreamingController {
   @Delete('channels/:id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async deleteChannel(@Request() req: any, @Param('id') id: string) {
-    await this.svc.deleteChannel(req.user.tenantId, id);
+    await this.svc.deleteChannel(req.user.tenantId, id, req.user.id ?? null);
     return { success: true };
   }
 

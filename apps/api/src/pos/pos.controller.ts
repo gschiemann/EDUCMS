@@ -58,7 +58,7 @@ export class PosController {
   @Delete('connections/:id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async deleteConnection(@Request() req: any, @Param('id') id: string) {
-    await this.svc.deleteConnection(req.user.tenantId, id);
+    await this.svc.deleteConnection(req.user.tenantId, id, req.user.id ?? null);
     return { success: true };
   }
 

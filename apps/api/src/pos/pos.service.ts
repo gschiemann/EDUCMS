@@ -109,12 +109,30 @@ export class PosService {
     });
   }
 
-  async deleteConnection(tenantId: string, id: string) {
+  async deleteConnection(tenantId: string, id: string, actorUserId?: string | null) {
     const conn = await (this.prisma.client as any).posProviderConnection.findFirst({
       where: { id, tenantId },
     });
     if (!conn) throw new NotFoundException('POS connection not found.');
-    await (this.prisma.client as any).posProviderConnection.delete({ where: { id: conn.id } });
+    // 2026-05-23 launch audit P1: same secret-purge class as streaming
+    // connections — encrypted POS OAuth credentials. Audit-log the
+    // delete in the same transaction so partial state is impossible.
+    await this.prisma.client.$transaction(async (tx: any) => {
+      await tx.posProviderConnection.delete({ where: { id: conn.id } });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId ?? null,
+          action: 'POS_CONNECTION_DELETED',
+          targetType: 'PosProviderConnection',
+          targetId: id,
+          details: JSON.stringify({
+            providerId: conn.providerId,
+            displayName: conn.displayName,
+          }),
+        },
+      });
+    });
   }
 
   async decryptCredentials(tenantId: string, id: string): Promise<Record<string, unknown>> {

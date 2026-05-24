@@ -123,12 +123,30 @@ export class AdsService {
     });
   }
 
-  async deleteConnection(tenantId: string, id: string) {
+  async deleteConnection(tenantId: string, id: string, actorUserId?: string | null) {
     const conn = await (this.prisma.client as any).adNetworkConnection.findFirst({
       where: { id, tenantId },
     });
     if (!conn) throw new NotFoundException('Ad network connection not found.');
-    await (this.prisma.client as any).adNetworkConnection.delete({ where: { id: conn.id } });
+    // 2026-05-23 launch audit P1: ads connections store OAuth + ad-
+    // network secrets. Audit-log the delete in the same transaction
+    // so a partial state is impossible.
+    await this.prisma.client.$transaction(async (tx: any) => {
+      await tx.adNetworkConnection.delete({ where: { id: conn.id } });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId ?? null,
+          action: 'AD_CONNECTION_DELETED',
+          targetType: 'AdNetworkConnection',
+          targetId: id,
+          details: JSON.stringify({
+            networkId: conn.networkId,
+            displayName: conn.displayName,
+          }),
+        },
+      });
+    });
   }
 
   async setStatus(tenantId: string, id: string, status: 'ACTIVE' | 'PAUSED') {
