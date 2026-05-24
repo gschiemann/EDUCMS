@@ -8,6 +8,7 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import * as crypto from 'crypto';
+import { safeFetch } from '../branding/safe-fetch';
 import * as jwt from 'jsonwebtoken';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -1183,27 +1184,33 @@ export class ScreensController {
     // Geocode if the operator gave us a fresh address but no explicit
     // coordinates. Use OSM Nominatim (free, no key). Polite single
     // request with a descriptive User-Agent (their ToS).
+    //
+    // 2026-05-23 launch audit P2 #8: route through safeFetch so the
+    // hostname is DNS-pinned and a private-IP / link-local redirect
+    // can't exfil internal metadata. Nominatim is a fixed public
+    // hostname so the risk is low, but the project's documented rule
+    // is "never call fetch(url) directly in the API" (see
+    // branding/safe-fetch.ts header comment) and this was the last
+    // un-audited outbound HTTP call.
     if (addressChanged && body.address && body.latitude === undefined && body.longitude === undefined) {
-      const geoAbort = new AbortController();
-      const geoTimeout = setTimeout(() => geoAbort.abort(), 5000);
       try {
         const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(body.address)}`;
-        const r = await fetch(url, {
-          headers: { 'User-Agent': 'EduCMS/1.0 (+https://educms.app)' },
-          signal: geoAbort.signal,
+        const r = await safeFetch(url, {
+          userAgent: 'EduCMS/1.0 (+https://educms.app)',
+          timeoutMs: 5000,
+          maxBytes: 64 * 1024, // tiny JSON response, cap defensively
+          accept: 'application/json',
         });
-        if (r.ok) {
-          const arr = (await r.json()) as Array<{ lat: string; lon: string }>;
+        if (r.status >= 200 && r.status < 300) {
+          const arr = JSON.parse(r.body.toString('utf8')) as Array<{ lat: string; lon: string }>;
           if (arr[0]) {
             lat = parseFloat(arr[0].lat);
             lng = parseFloat(arr[0].lon);
           }
         }
       } catch {
-        // Geocode failure (including the 5s timeout) is non-fatal — the
-        // admin can still set lat/lng manually.
-      } finally {
-        clearTimeout(geoTimeout);
+        // Geocode failure (including timeout / SSRF reject / body too
+        // large) is non-fatal — the admin can still set lat/lng manually.
       }
     }
 

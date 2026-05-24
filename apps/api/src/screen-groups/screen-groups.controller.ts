@@ -162,13 +162,31 @@ export class ScreenGroupsController {
     });
     if (!group) return { error: 'Not found' };
 
-    // Unassign screens first, then delete group
-    await this.prisma.client.screen.updateMany({
-      where: { screenGroupId: id },
-      data: { screenGroupId: null },
+    // 2026-05-23 launch audit P1: deleting a screen group orphans
+    // every Schedule that targeted it (those rows still exist but
+    // their screenGroupId now points to a deleted record). Audit-log
+    // the delete so operators can diagnose "where did my group go"
+    // and forensics can identify the actor.
+    await this.prisma.client.$transaction(async (tx) => {
+      const unassigned = await tx.screen.updateMany({
+        where: { screenGroupId: id },
+        data: { screenGroupId: null },
+      });
+      await tx.screenGroup.delete({ where: { id } });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user.id,
+          action: 'SCREEN_GROUP_DELETED',
+          targetType: 'ScreenGroup',
+          targetId: id,
+          details: JSON.stringify({
+            name: group.name,
+            screensUnassigned: unassigned.count,
+          }),
+        },
+      });
     });
-
-    await this.prisma.client.screenGroup.delete({ where: { id } });
     return { deleted: true };
   }
 }

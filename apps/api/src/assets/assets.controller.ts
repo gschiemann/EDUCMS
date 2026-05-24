@@ -868,7 +868,7 @@ export class AssetsController {
     }
 
     // Delete playlist items referencing this asset
-    await this.prisma.client.playlistItem.deleteMany({ where: { assetId: id } });
+    const removedItems = await this.prisma.client.playlistItem.deleteMany({ where: { assetId: id } });
 
     // Delete from Supabase Storage if it's a Supabase URL
     const storagePath = this.storage.extractPath(asset.fileUrl);
@@ -876,7 +876,29 @@ export class AssetsController {
       await this.storage.delete(storagePath);
     }
 
-    await this.prisma.client.asset.delete({ where: { id } });
+    // 2026-05-23 launch audit P1: forensic trail for asset deletes.
+    // Records the original mime / size / hash so an asset deleted in
+    // error can be diagnosed (was it the right file? when was it
+    // uploaded? who removed it?).
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.asset.delete({ where: { id } });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user.id,
+          action: 'ASSET_DELETED',
+          targetType: 'Asset',
+          targetId: id,
+          details: JSON.stringify({
+            mimeType: asset.mimeType,
+            fileSize: (asset as any).fileSize ?? null,
+            fileHash: (asset as any).fileHash ?? null,
+            originalName: (asset as any).originalName ?? null,
+            removedPlaylistItems: removedItems.count,
+          }),
+        },
+      });
+    });
     return { deleted: true };
   }
 
