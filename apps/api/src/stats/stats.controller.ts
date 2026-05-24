@@ -15,16 +15,23 @@ export class StatsController {
   async getOverview(@Request() req: any) {
     const tenantId = req.user.tenantId;
 
-    const totalScreens = await this.prisma.client.screen.count({ where: { tenantId } });
-    const onlineScreens = await this.prisma.client.screen.count({ where: { tenantId, status: 'ONLINE' } });
-    const offlineScreens = totalScreens - onlineScreens;
-    const activePlaylists = await this.prisma.client.playlist.count({ where: { tenantId } });
+    // 2026-05-23 launch audit P1: this endpoint is polled every 60s
+    // by every open dashboard tab (use-dashboard-data.ts). Previously
+    // four DB round-trips ran sequentially — each await blocking the
+    // next. They have no inter-dependency, so Promise.all collapses
+    // it to 1 round-trip's worth of latency (~5ms vs ~80ms at typical
+    // Supabase pooler RTT).
+    const [totalScreens, onlineScreens, activePlaylists, tenant] = await Promise.all([
+      this.prisma.client.screen.count({ where: { tenantId } }),
+      this.prisma.client.screen.count({ where: { tenantId, status: 'ONLINE' } }),
+      this.prisma.client.playlist.count({ where: { tenantId } }),
+      this.prisma.client.tenant.findUnique({
+        where: { id: tenantId },
+        select: { emergencyStatus: true },
+      }),
+    ]);
 
-    // Query actual emergency status from the tenant record
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
-      select: { emergencyStatus: true }
-    });
+    const offlineScreens = totalScreens - onlineScreens;
     const emergencyStatus = tenant?.emergencyStatus === 'INACTIVE' ? 'CLEAR' : tenant?.emergencyStatus || 'CLEAR';
 
     return {

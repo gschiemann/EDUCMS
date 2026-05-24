@@ -2398,6 +2398,13 @@ export class ScreensController {
       throw new HttpException(`Device auth required (${authResult.reason})`, HttpStatus.UNAUTHORIZED);
     }
 
+    // 2026-05-23 launch audit P0 (efficiency): previously this fetched
+    // the screen, THEN the tenant — two sequential DB round-trips just
+    // to read the screen's per-screen-emergency columns + the tenant's
+    // tenant-wide-emergency columns. Collapse into one Prisma query
+    // with `include: { tenant: { select: ... } }` so it's a single
+    // round-trip. Saves ~1 RTT (~40ms at typical Supabase pooler
+    // latency) per emergency-asset poll (every 5 min per kiosk).
     const screen = await (this.prisma.client.screen as any).findUnique({
       where: { id },
       select: {
@@ -2426,32 +2433,31 @@ export class ScreensController {
         emergencyHoldPortraitAssetUrl: true,
         emergencySecurePortraitAssetUrl: true,
         emergencyMedicalPortraitAssetUrl: true,
+        tenant: {
+          select: {
+            id: true,
+            emergencyPlaylistId: true,
+            emergencyPortraitPlaylistId: true,
+            panicLockdownPlaylistId: true,
+            panicEvacuatePlaylistId: true,
+            panicWeatherPlaylistId: true,
+            panicHoldPlaylistId: true,
+            panicSecurePlaylistId: true,
+            panicMedicalPlaylistId: true,
+            panicLockdownPortraitPlaylistId: true,
+            panicEvacuatePortraitPlaylistId: true,
+            panicWeatherPortraitPlaylistId: true,
+            panicHoldPortraitPlaylistId: true,
+            panicSecurePortraitPlaylistId: true,
+            panicMedicalPortraitPlaylistId: true,
+          },
+        },
       },
     });
     if (!screen?.tenantId) {
       throw new HttpException('Screen not found or not paired', HttpStatus.NOT_FOUND);
     }
-
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: screen.tenantId },
-      select: {
-        id: true,
-        emergencyPlaylistId: true,
-        emergencyPortraitPlaylistId: true,
-        panicLockdownPlaylistId: true,
-        panicEvacuatePlaylistId: true,
-        panicWeatherPlaylistId: true,
-        panicHoldPlaylistId: true,
-        panicSecurePlaylistId: true,
-        panicMedicalPlaylistId: true,
-        panicLockdownPortraitPlaylistId: true,
-        panicEvacuatePortraitPlaylistId: true,
-        panicWeatherPortraitPlaylistId: true,
-        panicHoldPortraitPlaylistId: true,
-        panicSecurePortraitPlaylistId: true,
-        panicMedicalPortraitPlaylistId: true,
-      },
-    });
+    const tenant = (screen as any).tenant;
     if (!tenant) {
       throw new HttpException('Tenant not found', HttpStatus.NOT_FOUND);
     }
