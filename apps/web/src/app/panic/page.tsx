@@ -1,12 +1,28 @@
 "use client";
 
 import { useAppStore } from '@/lib/store';
-import { ShieldAlert, Loader2, AlertTriangle, CheckCircle2, Megaphone, LogIn, Hand, Lock, HeartPulse, CloudLightning } from 'lucide-react';
+import { ShieldAlert, Loader2, AlertTriangle, CheckCircle2, Megaphone, LogIn, Hand, Lock, HeartPulse, CloudLightning, ShieldOff } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { broadcastEmergency } from '@/actions/trigger-emergency';
+// LIFE-SAFETY (2026-05-23 launch audit P0 #1): use the centralized
+// helper so a missing NEXT_PUBLIC_API_URL surfaces a loud warning AND
+// the page can detect the misconfiguration to show an explicit error
+// instead of silently failing the 5s all-clear poll.
+import { API_URL, warnIfMisconfigured, isLikelyMisconfigured } from '@/lib/api-url';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+// Roles that inherently carry emergency-trigger authority — mirrored from
+// the API's @RequireRoles on /emergency/trigger (apps/api/src/emergency/
+// emergency.controller.ts). The `canTriggerPanic` opt-in flag covers
+// delegated authority for non-admin roles (per CLAUDE.md "Emergency
+// System → Key Safeguards #1").
+const PANIC_AUTHORITY_ROLES = new Set(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']);
+function hasPanicAuthority(user: { role?: string; canTriggerPanic?: boolean } | null): boolean {
+  if (!user) return false;
+  if (PANIC_AUTHORITY_ROLES.has(user.role || '')) return true;
+  if (user.canTriggerPanic === true) return true;
+  return false;
+}
 
 // 2026-05-03 BUG FIX (cycle 1 emergency BUG-001) — was 1500ms, but
 // CLAUDE.md "Key Safeguards #5: Hold-to-Trigger UX" requires
@@ -28,7 +44,10 @@ export default function MobilePanicPage() {
   const router = useRouter();
   const storeUser = useAppStore((s) => s.user);
   const storeToken = useAppStore((s) => s.token);
-  const [phase, setPhase] = useState<'loading' | 'idle' | 'triggering' | 'triggered' | 'error'>('loading');
+  // LIFE-SAFETY (2026-05-23 launch audit P0 #1): on a forgotten-env
+  // deploy the page would silently fall back to localhost; surface
+  // it instead so the operator knows their alert path is broken.
+  const [phase, setPhase] = useState<'loading' | 'idle' | 'triggering' | 'triggered' | 'error' | 'unauthorized' | 'misconfigured'>('loading');
   const [errorMsg, setErrorMsg] = useState('');
   const [firedType, setFiredType] = useState<string | null>(null);
 
@@ -91,12 +110,31 @@ export default function MobilePanicPage() {
 
   // Verify session on mount
   useEffect(() => {
+    // LIFE-SAFETY (audit P0 #1): if the deploy is missing
+    // NEXT_PUBLIC_API_URL the alert path is broken end-to-end. Surface
+    // a hard error instead of letting the page act as if it's working.
+    warnIfMisconfigured();
+    if (isLikelyMisconfigured()) {
+      setPhase('misconfigured');
+      return;
+    }
+
     async function verifySession() {
       const token = storeToken;
       if (!token) { router.push('/login?redirect=/panic'); return; }
       try {
         const res = await fetch(`${API_URL}/users`, { headers: { Authorization: `Bearer ${token}` } });
         if (res.ok && storeUser) {
+          // LIFE-SAFETY (audit P0 #3): role gate the UI BEFORE showing
+          // the trigger grid. A CONTRIBUTOR who lands here would hold for
+          // 3s, get back a server 403, and see misleading "Session
+          // expired" copy — dangerous during a real lockdown.
+          if (!hasPanicAuthority(storeUser)) {
+            setVerifiedUser(storeUser);
+            setVerifiedToken(token);
+            setPhase('unauthorized');
+            return;
+          }
           setVerifiedUser(storeUser);
           setVerifiedToken(token);
           setPhase('idle');
@@ -104,6 +142,12 @@ export default function MobilePanicPage() {
         }
       } catch {
         if (storeUser) {
+          if (!hasPanicAuthority(storeUser)) {
+            setVerifiedUser(storeUser);
+            setVerifiedToken(token);
+            setPhase('unauthorized');
+            return;
+          }
           setVerifiedUser(storeUser);
           setVerifiedToken(token);
           setPhase('idle');
@@ -140,6 +184,20 @@ export default function MobilePanicPage() {
 
   const handlePointerDown = (typeId: string) => (e: React.PointerEvent) => {
     e.preventDefault();
+    // LIFE-SAFETY (2026-05-23 launch audit P1 #8): pin the gesture to
+    // THIS button so finger drift within the 160px target doesn't fire
+    // pointerleave and reset the 3s hold timer. setPointerCapture keeps
+    // the same element receiving pointer events until pointerup or
+    // pointercancel — exactly the semantics we want for a sustained
+    // emergency-trigger hold.
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      // Older WebViews may not implement setPointerCapture; the
+      // pointer events still fire normally, just without capture —
+      // operator might have to re-position the finger if they drift
+      // off the circle. Better than failing the press entirely.
+    }
     startHold(typeId);
   };
 
@@ -174,39 +232,105 @@ export default function MobilePanicPage() {
         token: verifiedToken,
       });
       if (result?.error) {
+        // LIFE-SAFETY (audit P1 #7): differentiate auth vs network vs
+        // server errors. Previously every 4xx/5xx collapsed to "Session
+        // expired" which misroutes the operator during a real incident.
         if (result.error.includes('401') || result.error.includes('403')) {
-          throw new Error('Session expired. Please log out and log back in, then try again.');
+          throw new Error(
+            'Your account no longer has emergency-trigger authority. ' +
+              'NOTIFY SECURITY MANUALLY now — your alert was NOT broadcast.',
+          );
+        }
+        if (result.error.toLowerCase().includes('network') || result.error.toLowerCase().includes('fetch')) {
+          throw new Error(
+            'Could not reach the server. NOTIFY SECURITY MANUALLY now — ' +
+              'your alert was NOT broadcast. Retry once you have internet.',
+          );
         }
         throw new Error(result.error);
       }
       setPhase('triggered');
     } catch (e: any) {
       console.error('[PANIC] Emergency trigger failed:', e);
-      setErrorMsg(e.message || 'Failed to connect. Ensure you have internet.');
+      setErrorMsg(e.message || 'Could not reach the server. NOTIFY SECURITY MANUALLY now — your alert was NOT broadcast.');
       setPhase('error');
     }
   };
 
   if (phase === 'loading') {
     return (
-      <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center">
+      <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center">
         <Loader2 className="w-12 h-12 text-red-500 animate-spin mb-4" />
         <p className="text-slate-400 text-sm">Verifying authorization...</p>
       </div>
     );
   }
 
+  // LIFE-SAFETY (audit P0 #1): misconfigured deploy — every poll + every
+  // trigger will silently fail because API_URL is localhost. Don't pretend
+  // the page is working.
+  if (phase === 'misconfigured') {
+    return (
+      <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+        <AlertTriangle className="w-24 h-24 text-red-500 mb-6" />
+        <h1 className="text-3xl font-black mb-2 text-red-500 uppercase text-center">Not Configured</h1>
+        <p className="text-slate-300 mb-3 max-w-[300px] text-center text-sm font-bold">
+          Emergency trigger is unavailable on this deploy.
+        </p>
+        <p className="text-slate-400 mb-8 max-w-[300px] text-center text-xs">
+          The server URL is missing from this build (NEXT_PUBLIC_API_URL not set).
+          NOTIFY SECURITY MANUALLY for any emergency — DO NOT rely on this app
+          until your admin fixes the deploy configuration.
+        </p>
+      </div>
+    );
+  }
+
+  // LIFE-SAFETY (audit P0 #3): user is authenticated but lacks the
+  // capability to trigger emergencies. Show that explicitly so they
+  // know not to rely on this surface during a real incident.
+  if (phase === 'unauthorized') {
+    return (
+      <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+        <ShieldOff className="w-24 h-24 text-amber-500 mb-6" />
+        <h1 className="text-2xl font-black mb-2 text-amber-400 uppercase text-center">No Trigger Authority</h1>
+        <p className="text-slate-300 mb-3 max-w-[300px] text-center text-sm font-bold">
+          Your account doesn&rsquo;t have emergency-trigger authority.
+        </p>
+        <p className="text-slate-400 mb-8 max-w-[300px] text-center text-xs">
+          NOTIFY SECURITY MANUALLY for any emergency. Ask a district or school admin
+          to grant trigger authority if you should have it.
+        </p>
+        <button
+          onClick={() => router.push('/login?redirect=/panic')}
+          className="px-8 py-3 bg-slate-900 border border-slate-700 rounded-full font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 min-h-[44px]"
+        >
+          <LogIn className="w-4 h-4" /> Switch Account
+        </button>
+      </div>
+    );
+  }
+
   if (phase === 'error') {
     return (
-      <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+      <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
         <AlertTriangle className="w-24 h-24 text-red-500 mb-6" />
         <h1 className="text-3xl font-black mb-2 text-red-500">FAILED</h1>
-        <p className="text-slate-400 mb-8 max-w-[280px] text-center text-sm">{errorMsg}</p>
+        {/* LIFE-SAFETY (audit P1 #7): error copy now spells out the
+            "alert was NOT broadcast — notify security manually" guidance
+            explicitly, then surfaces the technical reason. */}
+        <p className="text-slate-300 mb-3 max-w-[300px] text-center text-sm font-bold">
+          Your alert was NOT broadcast.
+        </p>
+        <p className="text-slate-400 mb-6 max-w-[300px] text-center text-xs">
+          NOTIFY SECURITY MANUALLY for the actual incident, then try again here.
+        </p>
+        <p className="text-slate-500 mb-8 max-w-[280px] text-center text-xs italic">{errorMsg}</p>
         <div className="flex flex-col gap-3 w-full max-w-xs">
-          <button onClick={() => { setPhase('idle'); setErrorMsg(''); setFiredType(null); }} className="px-8 py-3 bg-slate-800 rounded-full font-bold uppercase tracking-wider text-sm">
+          <button onClick={() => { setPhase('idle'); setErrorMsg(''); setFiredType(null); }} className="px-8 py-3 bg-slate-800 rounded-full font-bold uppercase tracking-wider text-sm min-h-[44px]">
             Try Again
           </button>
-          <button onClick={() => router.push('/login?redirect=/panic')} className="px-8 py-3 bg-slate-900 border border-slate-700 rounded-full font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2">
+          <button onClick={() => router.push('/login?redirect=/panic')} className="px-8 py-3 bg-slate-900 border border-slate-700 rounded-full font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 min-h-[44px]">
             <LogIn className="w-4 h-4" /> Re-Login
           </button>
         </div>
@@ -222,9 +346,9 @@ export default function MobilePanicPage() {
     // us back to idle so staff see the resolution land.
     if (justCleared) {
       return (
-        <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+        <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
           <div className="relative mb-6">
-            <div className="absolute inset-0 bg-emerald-500 rounded-full animate-ping opacity-20 scale-150" />
+            <div className="absolute top-0 right-0 bottom-0 left-0 bg-emerald-500 rounded-full animate-ping opacity-20 scale-150" />
             <CheckCircle2 className="w-24 h-24 text-emerald-400 relative z-10" />
           </div>
           <h1 className="text-3xl font-black mb-2 text-emerald-400 uppercase text-center">All Clear</h1>
@@ -236,9 +360,9 @@ export default function MobilePanicPage() {
     }
 
     return (
-      <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+      <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
         <div className="relative mb-6">
-          <div className="absolute inset-0 bg-red-600 rounded-full animate-ping opacity-20 scale-150" />
+          <div className="absolute top-0 right-0 bottom-0 left-0 bg-red-600 rounded-full animate-ping opacity-20 scale-150" />
           <CheckCircle2 className="w-24 h-24 text-red-500 relative z-10" />
         </div>
         <h1 className="text-3xl font-black mb-2 text-red-500 uppercase text-center">{fired.name}<br/>Broadcasted</h1>
@@ -255,7 +379,7 @@ export default function MobilePanicPage() {
 
   // Main grid — 6 circles, 2 rows × 3 columns, each press-and-hold triggers
   return (
-    <div className="fixed inset-0 bg-slate-950 text-white flex flex-col overscroll-none select-none">
+    <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col overscroll-none select-none">
       {/* Header */}
       <div className="flex justify-between items-center px-5 pt-5 pb-3 opacity-60">
         <ShieldAlert className="w-5 h-5" />
@@ -283,7 +407,13 @@ export default function MobilePanicPage() {
               key={type.id}
               onPointerDown={handlePointerDown(type.id)}
               onPointerUp={clearHold}
-              onPointerLeave={clearHold}
+              // LIFE-SAFETY (audit P1 #8): onPointerLeave intentionally
+              // removed — with setPointerCapture in handlePointerDown,
+              // pointerleave doesn't fire while the gesture is captured.
+              // On a WebView where capture isn't available, removing
+              // this handler makes the hold more forgiving to finger
+              // drift; pointerup + pointercancel still terminate the
+              // hold cleanly.
               onPointerCancel={clearHold}
               onKeyDown={handleKeyDown(type.id)}
               onKeyUp={handleKeyUp}
@@ -299,7 +429,7 @@ export default function MobilePanicPage() {
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'none' }}
             >
               {/* Progress ring */}
-              <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 100 100">
+              <svg className="absolute top-0 right-0 bottom-0 left-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 100 100">
                 <circle cx="50" cy="50" r="46" className="stroke-black/20" strokeWidth="3" fill="none" />
                 <circle
                   cx="50" cy="50" r="46"

@@ -164,22 +164,22 @@ export default function PairPage() {
           />
           <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
           {phase === 'idle' && (
-            <div className="absolute inset-0 flex items-center justify-center">
+            <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center">
               <button
                 onClick={startCamera}
-                className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold"
+                className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold min-h-[44px]"
               >
                 Start Camera
               </button>
             </div>
           )}
           {phase === 'pairing' && (
-            <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
+            <div className="absolute top-0 right-0 bottom-0 left-0 bg-black/70 flex items-center justify-center">
               <p className="text-lg font-semibold">Pairing…</p>
             </div>
           )}
           {phase === 'success' && (
-            <div className="absolute inset-0 bg-emerald-600/90 flex flex-col items-center justify-center p-4 text-center">
+            <div className="absolute top-0 right-0 bottom-0 left-0 bg-emerald-600/90 flex flex-col items-center justify-center p-4 text-center">
               <p className="text-xl font-bold mb-2">Paired!</p>
               <p className="text-sm">{pairedName} is now connected.</p>
             </div>
@@ -207,12 +207,24 @@ export default function PairPage() {
               onChange={(e) => setManualCode(e.target.value.toUpperCase())}
               placeholder="ABC123"
               maxLength={12}
-              className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-center font-mono tracking-widest uppercase"
+              // Mobile keyboard hints (2026-05-23 launch audit P1 #6):
+              // pairing codes are uppercase alphanumeric, but iOS auto-
+              // capitalizes the first letter and auto-corrects the
+              // string — then the onChange's toUpperCase re-fires and
+              // the field jumps. Disabling autocorrect + spellcheck +
+              // setting autocapitalize=characters lets the operator
+              // touch-type the code cleanly.
+              inputMode="text"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck={false}
+              className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-center font-mono tracking-widest uppercase min-h-[44px]"
             />
             <button
               onClick={() => manualCode && submitPairingCode(manualCode)}
               disabled={!manualCode || phase === 'pairing'}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg font-bold"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg font-bold min-h-[44px]"
             >
               Pair
             </button>

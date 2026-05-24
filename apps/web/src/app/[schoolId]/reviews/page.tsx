@@ -41,9 +41,21 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px)]">
-      {/* Left rail — submission list */}
-      <div className="w-[360px] border-r border-slate-200 bg-white flex flex-col">
+    // Mobile responsive (2026-05-23 launch audit P1 #5): below md (768px),
+    // the layout switches to a single-pane push pattern — list view full
+    // width by default; tap a row to slide into the detail pane (which
+    // has its own Back-to-list button). The 360px rail next to flex-1
+    // collapses to 15px of detail on a 375px iPhone, which made the
+    // /reviews page unusable from a phone — exactly the Sprint 1.5
+    // approval-from-anywhere intent.
+    <div className="flex flex-col md:flex-row h-[calc(100vh-64px)]">
+      {/* Left rail — submission list. Full width on mobile when no
+          selection; hidden when a row is selected (so the detail pane
+          gets the full viewport). On desktop, always-on 360px fixed
+          column with a right border. */}
+      <div
+        className={`${selectedId ? 'hidden md:flex' : 'flex'} w-full md:w-[360px] md:border-r border-slate-200 bg-white flex-col`}
+      >
         <div className="p-4 border-b border-slate-200">
           <h1 className="text-lg font-bold text-slate-800 flex items-center gap-2">
             <Inbox className="w-5 h-5 text-indigo-500" />
@@ -56,7 +68,7 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
                 key={s}
                 type="button"
                 onClick={() => { setStatusFilter(s); setSelectedId(null); }}
-                className={`px-3 py-1.5 text-[11px] font-bold transition-colors ${
+                className={`px-3 py-2 text-[11px] font-bold transition-colors min-h-[44px] ${
                   statusFilter === s ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
                 }`}
               >
@@ -83,12 +95,16 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
         </div>
       </div>
 
-      {/* Right pane — drilldown */}
-      <div className="flex-1 overflow-y-auto bg-slate-50/40">
+      {/* Right pane — drilldown. Hidden on mobile until a row is selected;
+          full width when active on mobile so admins can approve from
+          their phone without horizontal scroll. */}
+      <div
+        className={`${selectedId ? 'flex' : 'hidden md:flex'} flex-1 overflow-y-auto bg-slate-50/40`}
+      >
         {selectedId ? (
           <ReviewDetail id={selectedId} onBack={() => setSelectedId(null)} statusFilter={statusFilter} />
         ) : (
-          <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+          <div className="h-full w-full flex items-center justify-center text-slate-400 text-sm">
             <p>Select a submission on the left to review it.</p>
           </div>
         )}
@@ -259,7 +275,7 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
               onClick={() => handleDecide('approve')}
               disabled={decide.isPending || isViewer}
               title={isViewer ? 'Read-only — viewer role' : undefined}
-              className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2.5 min-h-[44px] bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
             >
               <Check className="w-4 h-4" /> Approve & publish
             </button>
@@ -268,7 +284,7 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
               onClick={() => handleDecide('reject')}
               disabled={decide.isPending || isViewer}
               title={isViewer ? 'Read-only — viewer role' : undefined}
-              className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2.5 min-h-[44px] bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
             >
               <X className="w-4 h-4" /> Reject
             </button>
