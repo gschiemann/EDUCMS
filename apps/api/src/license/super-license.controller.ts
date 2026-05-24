@@ -232,4 +232,128 @@ export class SuperLicenseController {
       return updated;
     });
   }
+
+  /**
+   * SUPABASE EGRESS BACKFILL (2026-05-23) — POST /super/storage/backfill-cache-control
+   *
+   * Idempotent one-shot. The presign upload chain shipped without
+   * Cache-Control on the client PUT (fixed today on master), so every
+   * object uploaded between the presign rollout and this fix is sitting
+   * in Supabase Storage with the default `cache-control: no-cache`
+   * metadata. That is the exact root cause of the 11.7GB-from-273MB-
+   * stored egress incident — Cloudflare never cached the object, so
+   * every player/preview/CI fetch hit the origin.
+   *
+   * This endpoint walks `storage.objects` in the same Postgres database
+   * (Supabase storage lives in the `storage` schema alongside our
+   * `public` schema) and patches the `metadata.cacheControl` JSONB
+   * field on any object missing the immutable header. Zero re-upload,
+   * zero egress, single SQL statement — much cheaper than re-uploading
+   * the bytes through `update()`.
+   *
+   * After this runs, every NEXT GET from Cloudflare's edge will populate
+   * the CDN cache with the new immutable header, and from then on the
+   * fetch pattern is one origin pull per asset per edge PoP per year.
+   *
+   * Safe to re-run; the WHERE clause skips rows already marked immutable.
+   */
+  @Post('storage/backfill-cache-control')
+  async backfillStorageCacheControl(@Req() req: any) {
+    // Update the metadata.cacheControl on every object in the `assets`
+    // bucket that doesn't already carry the immutable header. The
+    // jsonb_set with create_missing=true also covers the case where the
+    // JSONB key is missing entirely.
+    //
+    // Match the value used at upload time in supabase-storage.service.ts:212
+    // and on every client PUT (see assets/page.tsx, AssetPicker.tsx,
+    // PropertiesPanel.tsx, all updated 2026-05-23).
+    const IMMUTABLE = 'public, max-age=31536000, immutable';
+
+    // executeRaw returns the count of affected rows.
+    const updated: number = await this.prisma.client.$executeRawUnsafe(
+      `
+      UPDATE storage.objects
+         SET metadata = jsonb_set(
+           COALESCE(metadata, '{}'::jsonb),
+           '{cacheControl}',
+           to_jsonb($1::text),
+           true
+         )
+       WHERE bucket_id = 'assets'
+         AND COALESCE(metadata->>'cacheControl', '') NOT LIKE '%immutable%'
+      `,
+      IMMUTABLE,
+    );
+
+    // Forensic trail. tenantId is null because this is a fleet-wide
+    // owner action that touches every tenant's assets.
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId: null as any,
+        userId: req?.user?.userId ?? null,
+        action: 'STORAGE_CACHE_CONTROL_BACKFILL',
+        targetType: 'Storage',
+        targetId: 'assets',
+        details: JSON.stringify({
+          immutable: IMMUTABLE,
+          rowsUpdated: updated,
+          bucket: 'assets',
+        }),
+      },
+    });
+
+    return {
+      ok: true,
+      rowsUpdated: updated,
+      bucket: 'assets',
+      cacheControl: IMMUTABLE,
+      note:
+        'Existing Cloudflare-cached responses with no-cache will be replaced ' +
+        'on the next origin fetch. Browsers/players already holding the old ' +
+        'no-cache directive will revalidate next request and pick up the new ' +
+        'immutable header.',
+    };
+  }
+
+  /**
+   * SUPABASE EGRESS AUDIT — GET /super/storage/cache-control-audit
+   *
+   * Operator visibility: sample N random objects from the assets bucket
+   * and report each one's stored Cache-Control. Detects drift before it
+   * becomes a billing event.
+   */
+  @Get('storage/cache-control-audit')
+  async auditStorageCacheControl() {
+    const rows = await this.prisma.client.$queryRawUnsafe<
+      Array<{ name: string; cache_control: string | null; size: number | null }>
+    >(
+      `
+      SELECT
+        name,
+        metadata->>'cacheControl' AS cache_control,
+        (metadata->>'size')::bigint AS size
+      FROM storage.objects
+      WHERE bucket_id = 'assets'
+      ORDER BY random()
+      LIMIT 50
+      `,
+    );
+
+    const missing = rows.filter(
+      (r) => !r.cache_control || !r.cache_control.includes('immutable'),
+    );
+    return {
+      sampledCount: rows.length,
+      missingImmutableCount: missing.length,
+      sample: rows.map((r) => ({
+        name: r.name,
+        cacheControl: r.cache_control,
+        size: Number(r.size || 0),
+      })),
+      verdict:
+        missing.length === 0
+          ? 'OK — every sampled object carries immutable Cache-Control.'
+          : `WARNING — ${missing.length}/${rows.length} sampled objects are missing immutable. Run POST /super/storage/backfill-cache-control.`,
+    };
+  }
 }

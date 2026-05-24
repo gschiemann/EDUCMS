@@ -5887,7 +5887,14 @@ export function AssetLibraryModal({
       }
       const putRes = await fetch(targetUrl, {
         method: 'PUT',
-        headers: { 'content-type': presigned.mimeType || contentType },
+        headers: {
+          'content-type': presigned.mimeType || contentType,
+          // SUPABASE EGRESS FIX (2026-05-23): see /assets/page.tsx for
+          // the full reasoning. Without this, Supabase signed-URL
+          // uploads default to `cache-control: no-cache` which forces
+          // every player/browser to re-download on every fetch.
+          'cache-control': 'public, max-age=31536000, immutable',
+        },
         body: file,
       });
       if (!putRes.ok) {

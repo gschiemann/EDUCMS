@@ -36,8 +36,13 @@ export class AssetFilesController {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // Set cache headers for performance
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    // Set cache headers for performance. Files are content-addressed
+    // (UUID filenames), never mutated in place — safe to cache forever.
+    // Bumped from `max-age=86400` to immutable on 2026-05-23 to match
+    // the Supabase upload posture and prevent any chance of a daily
+    // re-download cycle on a 1-day-only header. Same value as
+    // supabase-storage.service.ts:212.
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     return res.sendFile(filePath);
   }
 }

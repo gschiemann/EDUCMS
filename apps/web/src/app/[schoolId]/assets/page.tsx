@@ -411,6 +411,16 @@ export default function AssetsPage() {
       // after Codex's d29e6c5 switched to direct-storage uploads.
       xhr.open('PUT', signed.uploadUrl || signed.signedUrl);
       xhr.setRequestHeader('Content-Type', signed.mimeType || item.file.type || 'application/octet-stream');
+      // SUPABASE EGRESS FIX (2026-05-23): Supabase signed-URL uploads
+      // default the stored object's cache-control to `no-cache`, which
+      // re-causes the 11.7GB-from-273MB-stored egress incident we hit
+      // with the legacy multipart path. Assets here are content-addressed
+      // (UUID filenames) and never mutated in place, so caching for one
+      // year + immutable is correct. Supabase storage server reads this
+      // header verbatim and stores it on the object's metadata, so every
+      // future GET serves with the same Cache-Control and edge PoPs only
+      // pull origin once per asset per year.
+      xhr.setRequestHeader('Cache-Control', 'public, max-age=31536000, immutable');
       xhr.send(item.file);
     });
 

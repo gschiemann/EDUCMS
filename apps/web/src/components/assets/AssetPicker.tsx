@@ -121,7 +121,14 @@ export function AssetPicker({
       if (!target) throw new Error('Server did not return an upload URL.');
       const put = await fetch(target, {
         method: 'PUT',
-        headers: { 'content-type': pre.mimeType || contentType },
+        headers: {
+          'content-type': pre.mimeType || contentType,
+          // SUPABASE EGRESS FIX (2026-05-23): see /assets/page.tsx for
+          // the full reasoning. Without this, Supabase signed-URL
+          // uploads default to `cache-control: no-cache` which forces
+          // every player/browser to re-download on every fetch.
+          'cache-control': 'public, max-age=31536000, immutable',
+        },
         body: file,
       });
       if (!put.ok) throw new Error(`Storage upload failed (${put.status}).`);
