@@ -258,13 +258,35 @@ export class SchedulesController {
     });
     if (!schedule) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
-    const res = await this.prisma.client.schedule.update({
-      where: { id },
-      data: { isActive: !schedule.isActive },
-      include: {
-        playlist: { select: { id: true, name: true } },
-        screenGroup: { select: { id: true, name: true } },
-      },
+    // 2026-05-23 launch audit P1: toggling a schedule active/inactive
+    // directly controls what every screen plays at a given time —
+    // audit-worthy. Transactional with the update so a partial state
+    // is impossible.
+    const res = await this.prisma.client.$transaction(async (tx) => {
+      const updated = await tx.schedule.update({
+        where: { id },
+        data: { isActive: !schedule.isActive },
+        include: {
+          playlist: { select: { id: true, name: true } },
+          screenGroup: { select: { id: true, name: true } },
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user.id,
+          action: 'SCHEDULE_TOGGLED',
+          targetType: 'Schedule',
+          targetId: id,
+          details: JSON.stringify({
+            isActive: updated.isActive,
+            playlistId: schedule.playlistId,
+            screenId: schedule.screenId,
+            screenGroupId: schedule.screenGroupId,
+          }),
+        },
+      });
+      return updated;
     });
     this.notifySync(req.user.tenantId);
     return res;
@@ -278,7 +300,27 @@ export class SchedulesController {
     });
     if (!schedule) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
-    await this.prisma.client.schedule.delete({ where: { id } });
+    // 2026-05-23 launch audit P1: schedule delete previously had no
+    // forensic trail. Audit + delete in one transaction so partial
+    // state is impossible.
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.schedule.delete({ where: { id } });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user.id,
+          action: 'SCHEDULE_DELETED',
+          targetType: 'Schedule',
+          targetId: id,
+          details: JSON.stringify({
+            playlistId: schedule.playlistId,
+            screenId: schedule.screenId,
+            screenGroupId: schedule.screenGroupId,
+            wasActive: schedule.isActive,
+          }),
+        },
+      });
+    });
     this.notifySync(req.user.tenantId);
     return { deleted: true };
   }

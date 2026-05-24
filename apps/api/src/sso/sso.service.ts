@@ -454,7 +454,18 @@ export class SsoService {
       if (!config.metadataUrl && !config.x509Cert) {
         return { ok: false, message: 'SAML requires metadataUrl and/or x509Cert' };
       }
-      return { ok: true, message: 'SAML config looks complete (not contacting IdP in scaffold mode)' };
+      // 2026-05-23 launch audit P1: previously this said "SAML config
+      // looks complete" — a district admin saw a green check and
+      // assumed their cert / metadata were validated against the live
+      // IdP. They weren't (this path does no network IdP contact).
+      // Surface that explicitly so production logins aren't a surprise.
+      return {
+        ok: true,
+        message:
+          'SAML config has the required fields (entityId / acsUrl / cert or metadataUrl). ' +
+          'This check did NOT contact your IdP — run a real SP-initiated login to verify ' +
+          'end-to-end. Full IdP roundtrip validation ships in a follow-up.',
+      };
     }
     if (config.provider === 'OIDC') {
       if (!config.oidcIssuer || !config.oidcClientId || !config.oidcClientSecret) {

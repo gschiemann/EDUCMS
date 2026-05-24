@@ -54,10 +54,16 @@ import { AppRole } from '@cms/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
+// 2026-05-23 launch audit P1: removed PPTX / PPT from the accepted set.
+// The controller's response message at line 260 admits "The PowerPoint
+// → PDF → PNG pipeline ships in a follow-up commit" — the file is
+// stored as an Asset, a Playlist is created, but the player at
+// apps/web/src/app/player/page.tsx:5091 only iframe-renders text/html
+// + application/pdf. A .pptx playlist dropped on a screen showed blank.
+// Better to reject upfront with a friendly "export as PDF first" copy
+// than to ghost-create an unplayable playlist a customer drops on a wall.
 const ACCEPTED_MIMES = new Set([
   'application/pdf',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
-  'application/vnd.ms-powerpoint', // .ppt
   'image/png',
   'image/jpeg',
   'image/webp',
@@ -141,7 +147,12 @@ export class ImportsController {
   ) {
     if (!file) {
       throw new HttpException(
-        'No file uploaded or unsupported type. Accepted: PDF, PPTX, PNG, JPG, WEBP. Max 50 MB.',
+        // 2026-05-23 launch audit P1: PPTX removed from accepted set
+        // until the PowerPoint → PDF → PNG conversion pipeline ships.
+        // Operator copy now mentions the PDF-first workaround.
+        'No file uploaded or unsupported type. Accepted: PDF, PNG, JPG, WEBP. Max 50 MB. ' +
+          'For PowerPoint / Slides: export to PDF first (File → Export → PDF in PowerPoint, ' +
+          'or Download → PDF in Google Slides / Canva).',
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -248,7 +259,6 @@ export class ImportsController {
     });
 
     const isPdf = file.mimetype === 'application/pdf';
-    const isPptx = file.mimetype.includes('presentation') || file.mimetype.includes('powerpoint');
     const isImage = file.mimetype.startsWith('image/');
 
     let message: string;
@@ -256,8 +266,6 @@ export class ImportsController {
       message = `Imported "${niceName}". The image is ready as an Asset and a 1-page Playlist named "${playlistName}". Drop the playlist on any screen, or use the asset directly in an IMAGE widget.`;
     } else if (isPdf) {
       message = `Imported "${niceName}" as PDF. Multi-page page-split rendering is on a follow-up commit — the file is uploaded and a 1-item Playlist named "${playlistName}" exists. For multi-page decks today, export each page individually from Canva (Download → PDF Print → Select pages) and re-import each as its own asset.`;
-    } else if (isPptx) {
-      message = `Imported "${niceName}" as PPTX. The PowerPoint→PDF→PNG pipeline ships in a follow-up commit. For now the .pptx file is stored as an Asset; the playlist "${playlistName}" points at it but only browsers with native PPTX rendering will display it. Workaround: open in PowerPoint → File → Export → PDF, then re-import the PDF.`;
     } else {
       message = `Imported "${niceName}".`;
     }

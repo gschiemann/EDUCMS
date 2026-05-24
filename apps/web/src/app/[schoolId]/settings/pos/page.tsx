@@ -76,14 +76,31 @@ export default function PosSettingsPage() {
   return (
     <div className="space-y-6 max-w-6xl">
       <div className="rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-red-600 p-6 text-white relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(white 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
+        <div className="absolute top-0 right-0 bottom-0 left-0 opacity-10" style={{ backgroundImage: 'radial-gradient(white 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
         <div className="relative">
           <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
             <Utensils className="w-6 h-6" /> POS catalog sync
           </h1>
           <p className="text-amber-50 mt-1.5 text-sm max-w-xl">
-            Connect your point-of-sale. Menu boards, price callouts, and inventory widgets auto-sync from the live catalog. No more "we changed the burger price three weeks ago and the screens still say $7.99."
+            Connect your point-of-sale. Menu boards, price callouts, and inventory widgets auto-sync from the live catalog. No more &ldquo;we changed the burger price three weeks ago and the screens still say $7.99.&rdquo;
           </p>
+        </div>
+      </div>
+
+      {/* 2026-05-23 launch audit P1: pre-warn operators that catalog
+          sync handlers haven't shipped yet. Previously they could
+          connect Square / Toast / Clover credentials, click "Sync now,"
+          then get a generic "Sync handler not yet implemented" alert.
+          Better to set expectations on the page header before they
+          invest in the OAuth dance. */}
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 flex items-start gap-3 text-amber-900">
+        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+        <div className="text-xs leading-relaxed">
+          <strong className="font-bold">Heads up — catalog sync is on the roadmap.</strong> You
+          can pre-configure a provider connection today and we&rsquo;ll preserve your credentials, but
+          the per-provider catalog handlers (Square / Toast / Clover, etc.) ship in a
+          follow-up. Hitting <em>Sync now</em> will return a clear &ldquo;not yet implemented&rdquo;
+          message until the handler lands.
         </div>
       </div>
 
