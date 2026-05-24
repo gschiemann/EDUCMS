@@ -10,7 +10,7 @@ import { fullName as userFullName, initials as userInitials } from '@/lib/user-d
 import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
-import { usePendingAssets } from '@/hooks/use-api';
+import { usePendingAssets, useSubmissions } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { apiFetch } from '@/lib/api-client';
 import type { TenantBranding } from '@/lib/branding';
@@ -217,12 +217,24 @@ export function Sidebar() {
   // to the admin set on the next render after mount.
   const isAdmin = mounted && (user?.role === 'SUPER_ADMIN' || user?.role === 'DISTRICT_ADMIN' || user?.role === 'SCHOOL_ADMIN');
 
-  // Pending-review badge count. Hook is gated on isAdmin so the query
-  // stays dormant for CONTRIBUTOR / RESTRICTED_VIEWER tabs (otherwise
+  // Pending-review badge count. Hooks are gated on isAdmin so they
+  // stay dormant for CONTRIBUTOR / RESTRICTED_VIEWER tabs (otherwise
   // every non-admin would fire a recurring 403 against /assets/pending
-  // every 30s just to render a sidebar they don't even see).
+  // and /submissions every 30s just to render a sidebar they don't
+  // even see).
+  //
+  // 2026-05-23 launch audit P1 #10 fix: the badge used to call ONLY
+  // usePendingAssets, so any CONTRIBUTOR Submission (Sprint 1.5 path)
+  // never surfaced as a pending-review notification to admins —
+  // exactly the case the original "BOTH pending sources" comment
+  // intended to handle. Now we also call useSubmissions({status:
+  // 'PENDING'}) and sum both counts. Either source firing raises the
+  // badge; submissions are counted as "items awaiting your review."
   const pendingAssetsQ = usePendingAssets(isAdmin);
-  const pendingCount = Array.isArray(pendingAssetsQ.data) ? pendingAssetsQ.data.length : 0;
+  const pendingSubmissionsQ = useSubmissions({ status: 'PENDING', enabled: isAdmin });
+  const pendingAssetCount = Array.isArray(pendingAssetsQ.data) ? pendingAssetsQ.data.length : 0;
+  const pendingSubmissionCount = Array.isArray(pendingSubmissionsQ.data) ? pendingSubmissionsQ.data.length : 0;
+  const pendingCount = pendingAssetCount + pendingSubmissionCount;
 
   // One reviews entry, not two. Operator reported the duplicate
   // ("Review Queue" + "Reviews") was confusing. The Sprint 1.5

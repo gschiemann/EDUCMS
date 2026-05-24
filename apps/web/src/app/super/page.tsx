@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Crown, Building2, AlertCircle, Plus, Search, X, Filter } from 'lucide-react';
+import { Loader2, Crown, Building2, AlertCircle, Plus, Search, X, Filter, HardDrive, Trash2, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { useSuperTenants, useCompSeats, useUpsertLicense, type SuperTenantRow } from '@/hooks/use-api';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
+import { apiFetch } from '@/lib/api-client';
 
 /**
  * Owner-only control panel. Lists every tenant across the platform,
@@ -415,8 +416,171 @@ export default function SuperPage() {
             </section>
           ))
         )}
+
+        {/* Storage Admin — added 2026-05-23 launch audit P1 #9.
+            Surfaces the three POST/GET endpoints on
+            /api/v1/super/storage/* so the operator never has to drop
+            to curl to recover from a Supabase egress regression. */}
+        <StorageAdmin />
       </div>
     </div>
+  );
+}
+
+/**
+ * Storage Admin panel (SUPER_ADMIN only).
+ *
+ * Renders three operator controls:
+ *   1. Audit cache-control: GET /super/storage/cache-control-audit —
+ *      samples 50 objects and reports any with missing immutable header.
+ *   2. Backfill cache-control: POST /super/storage/backfill-cache-control —
+ *      idempotent SQL UPDATE on storage.objects.metadata. Zero re-upload.
+ *   3. Wipe all assets: POST /super/storage/wipe-all-assets — destroys
+ *      every Asset row, every PlaylistItem, every Supabase storage
+ *      object. Double-confirmation (browser confirm + typed sentinel
+ *      string) because this is irreversible.
+ */
+function StorageAdmin() {
+  const [auditResult, setAuditResult] = useState<any>(null);
+  const [busy, setBusy] = useState<'audit' | 'backfill' | 'wipe' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const runAudit = async () => {
+    setBusy('audit');
+    setError(null);
+    try {
+      const res = await apiFetch<any>('/super/storage/cache-control-audit');
+      setAuditResult({ kind: 'audit', data: res });
+    } catch (e: any) {
+      setError(e?.message || 'Audit failed.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runBackfill = async () => {
+    const ok = await appConfirm({
+      title: 'Backfill Cache-Control?',
+      message:
+        'This patches metadata.cacheControl on every object in the assets bucket that is missing the immutable header. Zero re-upload, single SQL UPDATE. Safe to re-run.',
+      confirmLabel: 'Run backfill',
+    });
+    if (!ok) return;
+    setBusy('backfill');
+    setError(null);
+    try {
+      const res = await apiFetch<any>('/super/storage/backfill-cache-control', { method: 'POST' });
+      setAuditResult({ kind: 'backfill', data: res });
+    } catch (e: any) {
+      setError(e?.message || 'Backfill failed.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runWipe = async () => {
+    // Two-step confirmation. Step 1: the universal "are you sure"
+    // dialog. Step 2: typed sentinel string — operator must literally
+    // type WIPE to proceed. Mirrors the server-side
+    // { confirm: 'YES_WIPE_ALL_ASSETS' } token.
+    const ok = await appConfirm({
+      title: 'Wipe ALL assets across every tenant?',
+      message:
+        'This deletes EVERY Asset row, EVERY PlaylistItem, and EVERY object in the Supabase assets bucket. Playlists / schedules / screens stay intact (just empty). IRREVERSIBLE.',
+      confirmLabel: 'Continue',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    const typed = await appPrompt({
+      title: 'Type WIPE to confirm',
+      message: 'You are about to wipe every asset across the platform. Type the word WIPE (uppercase) to proceed.',
+      placeholder: 'WIPE',
+    });
+    if (typed?.trim() !== 'WIPE') return;
+    setBusy('wipe');
+    setError(null);
+    try {
+      const res = await apiFetch<any>('/super/storage/wipe-all-assets', {
+        method: 'POST',
+        body: JSON.stringify({ confirm: 'YES_WIPE_ALL_ASSETS' }),
+      });
+      setAuditResult({ kind: 'wipe', data: res });
+    } catch (e: any) {
+      setError(e?.message || 'Wipe failed.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section className="mt-8 bg-white rounded-2xl border border-slate-200 shadow-sm">
+      <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2">
+        <HardDrive className="w-4 h-4 text-slate-500" />
+        <h2 className="text-sm font-extrabold text-slate-800">Storage Admin</h2>
+        <span className="text-[10px] text-slate-400 ml-2">Supabase assets bucket — egress / cache control / clean slate</span>
+      </div>
+      <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <button
+          type="button"
+          onClick={runAudit}
+          disabled={busy !== null}
+          className="flex flex-col items-start gap-1 p-4 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 rounded-xl text-left transition-colors disabled:opacity-50"
+        >
+          <div className="flex items-center gap-2">
+            {busy === 'audit' ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
+            <span className="text-sm font-bold text-slate-800">Audit Cache-Control</span>
+          </div>
+          <span className="text-[11px] text-slate-500">Sample 50 random assets and verify each one carries the immutable header.</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={runBackfill}
+          disabled={busy !== null}
+          className="flex flex-col items-start gap-1 p-4 border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 rounded-xl text-left transition-colors disabled:opacity-50"
+        >
+          <div className="flex items-center gap-2">
+            {busy === 'backfill' ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : <RefreshCw className="w-4 h-4 text-emerald-600" />}
+            <span className="text-sm font-bold text-slate-800">Backfill Cache-Control</span>
+          </div>
+          <span className="text-[11px] text-slate-500">Patch storage.objects.metadata so pre-fix assets serve as immutable. Idempotent.</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={runWipe}
+          disabled={busy !== null}
+          className="flex flex-col items-start gap-1 p-4 border border-rose-200 hover:border-rose-400 hover:bg-rose-50 rounded-xl text-left transition-colors disabled:opacity-50"
+        >
+          <div className="flex items-center gap-2">
+            {busy === 'wipe' ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : <Trash2 className="w-4 h-4 text-rose-600" />}
+            <span className="text-sm font-bold text-rose-700">Wipe ALL Assets</span>
+          </div>
+          <span className="text-[11px] text-rose-600/80">Irreversible. Deletes every asset + every Supabase storage object. Pre-launch clean slate.</span>
+        </button>
+      </div>
+
+      {(auditResult || error) && (
+        <div className="px-5 pb-5">
+          {error && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700">
+              <div className="font-bold mb-0.5">Action failed</div>
+              <div>{error}</div>
+            </div>
+          )}
+          {auditResult && (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                {auditResult.kind === 'audit' ? 'Audit result' : auditResult.kind === 'backfill' ? 'Backfill result' : 'Wipe result'}
+              </div>
+              <pre className="text-[11px] font-mono text-slate-700 whitespace-pre-wrap break-all max-h-64 overflow-y-auto">
+                {JSON.stringify(auditResult.data, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

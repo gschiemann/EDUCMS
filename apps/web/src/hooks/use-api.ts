@@ -1646,7 +1646,7 @@ export interface SubmissionRow {
   createdAt: string;
 }
 
-export function useSubmissions(opts?: { status?: 'PENDING' | 'APPROVED' | 'REJECTED'; mine?: boolean }) {
+export function useSubmissions(opts?: { status?: 'PENDING' | 'APPROVED' | 'REJECTED'; mine?: boolean; enabled?: boolean }) {
   const params = new URLSearchParams();
   if (opts?.status) params.set('status', opts.status);
   if (opts?.mine)   params.set('mine', '1');
@@ -1654,6 +1654,11 @@ export function useSubmissions(opts?: { status?: 'PENDING' | 'APPROVED' | 'REJEC
   return useQuery<SubmissionRow[]>({
     queryKey: ['submissions', opts?.status || null, !!opts?.mine],
     queryFn: () => apiFetch(`/submissions${qs ? `?${qs}` : ''}`),
+    // Gate non-admin / pre-mount calls so the sidebar badge can fire
+    // this query only when the user is actually a reviewer (CONTRIBUTOR
+    // / RESTRICTED_VIEWER would otherwise 403 every refresh). Defaults
+    // to enabled=true so every other callsite still works unchanged.
+    enabled: opts?.enabled !== false,
   });
 }
 
