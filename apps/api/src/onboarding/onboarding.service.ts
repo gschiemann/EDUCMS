@@ -121,17 +121,23 @@ export class OnboardingService {
 
   /**
    * Create a password-reset token. Always returns `{ ok: true }` even if the email
-   * is unknown — we do not leak account existence.
+   * is unknown — we do not leak account existence. ALSO returns
+   * `emailConfigured: false` when outbound mail isn't wired (2026-05-23
+   * launch audit P0 — previously the UI said "check your inbox" even
+   * when no email was ever sent, locking users out). The flag is
+   * deployment-level info, not per-account, so it's safe to return
+   * unconditionally without enabling email enumeration.
    */
-  async requestPasswordReset(email: string): Promise<{ ok: true }> {
+  async requestPasswordReset(email: string): Promise<{ ok: true; emailConfigured: boolean }> {
+    const emailConfigured = this.emailService.isConfigured();
     const normalized = (email || '').trim().toLowerCase();
     if (!isValidEmail(normalized)) {
-      return { ok: true }; // silently ignore to avoid enumeration
+      return { ok: true, emailConfigured }; // silently ignore to avoid enumeration
     }
 
     const user = await this.prisma.client.user.findUnique({ where: { email: normalized } });
     if (!user) {
-      return { ok: true };
+      return { ok: true, emailConfigured };
     }
 
     const token = generateToken();
@@ -143,7 +149,7 @@ export class OnboardingService {
     });
 
     await this.emailService.sendPasswordReset({ to: user.email, resetToken: token });
-    return { ok: true };
+    return { ok: true, emailConfigured };
   }
 
   async completePasswordReset(input: { token: string; newPassword: string }) {

@@ -164,7 +164,10 @@ export class SsoController {
   ) {
     await this.assertTenantAccess(tenantSlug, req);
     const { tenant } = await this.sso.getConfigByTenantSlug(tenantSlug);
-    const cfg = await this.sso.upsertConfig(tenant.id, dto);
+    // Pass through the acting user id so the audit log row carries the
+    // forensic attribution (2026-05-23 launch audit P1 #2).
+    const actorUserId = (req as any)?.user?.userId ?? (req as any)?.user?.id ?? null;
+    const cfg = await this.sso.upsertConfig(tenant.id, dto, actorUserId);
     return this.sso.toSafeConfig(cfg);
   }
 

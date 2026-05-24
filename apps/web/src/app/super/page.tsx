@@ -33,6 +33,48 @@ export default function SuperPage() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
+  // 2026-05-23 (launch-audit P0): all hooks moved ABOVE the early
+  // returns. The previous structure put 3 useStates and a useMemo
+  // AFTER the `if (!mounted)` / `if (!user || !SUPER_ADMIN)` guards,
+  // which is a Rules-of-Hooks violation. React 19 throws "Rendered
+  // more hooks than during the previous render" the moment a real
+  // SUPER_ADMIN reaches the post-return body. Result: /super was
+  // unrenderable for the only role that uses it — and the new
+  // Storage Admin panel shipped tonight (Wipe / Backfill / Audit)
+  // was unreachable until this fix. Verified via:
+  //   `npx eslint apps/web/src/app/super/page.tsx`
+  //   → 4× react-hooks/rules-of-hooks errors (lines 70, 71, 72, 88).
+  //
+  // Phase B closeout — multi-tenant filter. Operator (2026-05-11):
+  // "let me check on a group of locations but not all of them filtered
+  // in." Two filter mechanisms, composable:
+  //
+  //   1. Search box — substring match against name / slug / vertical.
+  //      Always applied first; narrows the visible set.
+  //   2. Selected-only toggle — when the operator has picked specific
+  //      tenants via checkbox, flipping the toggle restricts every
+  //      summary stat AND every row to that explicit pick set.
+  //
+  // The selection persists in component state for the session. Could
+  // be persisted to localStorage later but for now operators tend to
+  // open this page focused on one task — a fresh page load resetting
+  // the picks is the right default.
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showSelectedOnly, setShowSelectedOnly] = useState(false);
+
+  const visibleTenants = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return (tenants ?? []).filter((t) => {
+      if (showSelectedOnly && !selectedIds.has(t.id)) return false;
+      if (q) {
+        const hay = `${t.name} ${t.slug} ${t.vertical}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [tenants, searchQuery, showSelectedOnly, selectedIds]);
+
   if (!mounted) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -53,24 +95,8 @@ export default function SuperPage() {
     );
   }
 
-  // Phase B closeout — multi-tenant filter. Operator (2026-05-11):
-  // "let me check on a group of locations but not all of them filtered
-  // in." Two filter mechanisms, composable:
-  //
-  //   1. Search box — substring match against name / slug / vertical.
-  //      Always applied first; narrows the visible set.
-  //   2. Selected-only toggle — when the operator has picked specific
-  //      tenants via checkbox, flipping the toggle restricts every
-  //      summary stat AND every row to that explicit pick set.
-  //
-  // The selection persists in component state for the session. Could
-  // be persisted to localStorage later but for now operators tend to
-  // open this page focused on one task — a fresh page load resetting
-  // the picks is the right default.
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [showSelectedOnly, setShowSelectedOnly] = useState(false);
-
+  // Helpers + downstream-derived state (NOT hooks — safe to live below
+  // the early returns).
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -85,16 +111,6 @@ export default function SuperPage() {
   };
 
   const q = searchQuery.trim().toLowerCase();
-  const visibleTenants = useMemo(() => {
-    return (tenants ?? []).filter((t) => {
-      if (showSelectedOnly && !selectedIds.has(t.id)) return false;
-      if (q) {
-        const hay = `${t.name} ${t.slug} ${t.vertical}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [tenants, q, showSelectedOnly, selectedIds]);
 
   // Group VISIBLE tenants by vertical so the table sections respect
   // the filter. Empty verticals don't render at all.

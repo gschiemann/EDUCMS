@@ -296,21 +296,29 @@ export class PlaylistsController {
           startTime: true, endTime: true, isActive: true,
         },
       });
+      // 2026-05-23 launch audit P1: audit EVERY playlist delete, not
+      // just deletes-with-attached-schedules. Operators were able to
+      // ghost-delete an unscheduled draft with zero forensic trail.
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user.id,
+          action: 'PLAYLIST_DELETED',
+          targetType: 'Playlist',
+          targetId: id,
+          details: JSON.stringify({
+            name: playlist.name,
+            scheduleCount: attachedSchedules.length,
+            schedules: attachedSchedules,
+          }),
+        },
+      });
+      // 2026-05-23 launch audit P1: removed the `.catch(() => {})`
+      // that previously swallowed audit-write errors INSIDE this
+      // $transaction. A failed audit MUST roll back the playlist +
+      // schedule delete; a partial state with no forensic trail is
+      // worse than rejecting and asking the operator to retry.
       if (attachedSchedules.length > 0) {
-        await tx.auditLog.create({
-          data: {
-            tenantId: req.user.tenantId,
-            userId: req.user.id,
-            action: 'PLAYLIST_DELETED',
-            targetType: 'Playlist',
-            targetId: id,
-            details: JSON.stringify({
-              name: playlist.name,
-              scheduleCount: attachedSchedules.length,
-              schedules: attachedSchedules,
-            }),
-          },
-        }).catch(() => { /* non-fatal — primary delete still proceeds */ });
         await tx.schedule.deleteMany({ where: { playlistId: id } });
       }
       await tx.playlist.delete({ where: { id } });

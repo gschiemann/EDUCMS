@@ -214,9 +214,38 @@ export class EmailService {
    * preserves the zero-config dev experience while prod just works the
    * moment the env var lands on Railway.
    */
+  /** True when RESEND_API_KEY is set (i.e. the dispatcher will actually
+   *  POST to Resend, not just log). Used by callers that need to surface
+   *  "email isn't configured" to the operator instead of silently
+   *  pretending the message was queued — biggest example is the
+   *  /password-reset/request flow which previously showed "check your
+   *  inbox" even when no email was ever sent. */
+  isConfigured(): boolean {
+    return !!process.env.RESEND_API_KEY;
+  }
+
   async #dispatch(params: { to: string; subject: string; body: string; kind: string }): Promise<void> {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
+      // Production fail-closed (2026-05-23 launch audit P0): in prod a
+      // missing RESEND_API_KEY means the user's password-reset / invite /
+      // welcome email NEVER lands. Previously this path silently logged
+      // and returned, and every UI surface above it told the user "check
+      // your inbox." That's worse than a real error — the user thinks
+      // their request worked and waits for an email that never comes.
+      // We throw so the caller (#enqueue + onboarding.service) marks the
+      // email_log row FAILED and surfaces a real error to the UI.
+      //
+      // Dev keeps the zero-config behavior: log + return success so local
+      // development doesn't require a Resend key.
+      const isProd = process.env.NODE_ENV === 'production';
+      if (isProd) {
+        const msg =
+          'Outbound email is not configured (RESEND_API_KEY not set). ' +
+          'Set the env var on Railway and redeploy to enable password resets / invites / welcome mail.';
+        this.logger.error(`[email] ${msg}`);
+        throw new Error(msg);
+      }
       // Dev / unconfigured mode — the email_logs row is still the
       // durable record (#enqueue already wrote it), so recovery is just
       // "set the env var + replay QUEUED rows" if we ever need to.

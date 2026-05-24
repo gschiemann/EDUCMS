@@ -61,11 +61,31 @@ export class CleverService {
     @Inject(CLEVER_HTTP_CLIENT) private readonly http: CleverHttpClient,
   ) {}
 
+  /** True when the Clever OAuth credentials are present in env. Callers
+   *  can use this to render a "not configured" state or refuse to surface
+   *  the Connect button (2026-05-23 launch audit P0 — previously the UI
+   *  unconditionally rendered the Connect button which 302'd to a broken
+   *  clever.com error page when client_id was empty). */
+  isConfigured(): boolean {
+    return !!(process.env.CLEVER_CLIENT_ID && process.env.CLEVER_CLIENT_SECRET);
+  }
+
   /** Build the Clever OAuth authorize URL for a tenant to begin a connect flow.
    *  State is HMAC-signed over (tenantId|nonce|ts) so the callback can reject
    *  any attempt to swap the tenantId in transit. */
   buildAuthorizeUrl(tenantId: string, redirectUri: string): string {
+    // 2026-05-23 launch audit P0: refuse to mint a clever.com URL with
+    // an empty client_id. Previously this returned
+    //   https://clever.com/oauth/authorize?...&client_id=
+    // which 302'd the operator to a Clever "Invalid client" error page.
+    // Surface a real error so the controller can return a 503 with
+    // actionable copy instead.
     const clientId = process.env.CLEVER_CLIENT_ID ?? '';
+    if (!clientId) {
+      throw new Error(
+        'Clever integration is not configured for this deploy. Set CLEVER_CLIENT_ID and CLEVER_CLIENT_SECRET on the API service and redeploy.',
+      );
+    }
     const nonce = randomBytes(12).toString('base64url');
     const ts = Date.now();
     const sig = signStatePayload(tenantId, nonce, ts);
@@ -296,6 +316,11 @@ export class CleverService {
       orderBy: { syncStartedAt: 'desc' },
     });
     return {
+      // 2026-05-23 launch audit P0: surface deployment-level configured
+      // state so the UI can render a "Clever not configured for this
+      // deploy" empty state instead of a Connect button that 302s to
+      // a broken clever.com error page.
+      configured: this.isConfigured(),
       connected: !!tenant?.cleverDistrictId,
       districtId: tenant?.cleverDistrictId ?? null,
       connectedAt: tenant?.cleverConnectedAt ?? null,

@@ -67,7 +67,7 @@ export class SsoService {
     };
   }
 
-  async upsertConfig(tenantId: string, dto: SsoConfigDto) {
+  async upsertConfig(tenantId: string, dto: SsoConfigDto, actorUserId?: string | null) {
     if (dto.provider !== 'SAML' && dto.provider !== 'OIDC') {
       throw new BadRequestException('provider must be SAML or OIDC');
     }
@@ -84,22 +84,73 @@ export class SsoService {
       autoProvision: !!dto.autoProvision,
     };
     // Only re-encrypt secrets when the caller explicitly sends a new value.
-    if (dto.x509Cert !== undefined) {
+    const x509CertChanged = dto.x509Cert !== undefined;
+    const oidcSecretChanged = dto.oidcClientSecret !== undefined;
+    if (x509CertChanged) {
       data.x509Cert = dto.x509Cert ? encryptSecret(dto.x509Cert) : null;
     }
-    if (dto.oidcClientSecret !== undefined) {
+    if (oidcSecretChanged) {
       data.oidcClientSecret = dto.oidcClientSecret ? encryptSecret(dto.oidcClientSecret) : null;
     }
 
-    return this.prisma.client.tenantSSOConfig.upsert({
-      where: { tenantId },
-      create: { tenantId, ...data },
-      update: data,
+    // 2026-05-23 launch audit P1: SSO config changes are the most
+    // powerful login-hijack action in the SaaS — swap an IdP, harvest
+    // every login. Audit-log every upsert with the diff of what
+    // changed (never the plaintext secret — only "changed: true").
+    // Transactional with the upsert so a failed audit rolls back the
+    // SSO state change.
+    return this.prisma.client.$transaction(async (tx) => {
+      const result = await tx.tenantSSOConfig.upsert({
+        where: { tenantId },
+        create: { tenantId, ...data },
+        update: data,
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId ?? null,
+          action: 'SSO_CONFIG_UPSERT',
+          targetType: 'TenantSSOConfig',
+          targetId: tenantId,
+          details: JSON.stringify({
+            provider: data.provider,
+            enabled: data.enabled,
+            entityId: data.entityId,
+            acsUrl: data.acsUrl,
+            oidcIssuer: data.oidcIssuer,
+            oidcClientId: data.oidcClientId,
+            x509CertChanged,
+            oidcClientSecretChanged: oidcSecretChanged,
+            defaultRole: data.defaultRole,
+            allowedEmailDomain: data.allowedEmailDomain,
+            autoProvision: data.autoProvision,
+          }),
+        },
+      });
+      return result;
     });
   }
 
-  async deleteConfig(tenantId: string) {
-    return this.prisma.client.tenantSSOConfig.delete({ where: { tenantId } }).catch(() => null);
+  async deleteConfig(tenantId: string, actorUserId?: string | null) {
+    // 2026-05-23 launch audit P1: SSO config delete is the same
+    // login-hijack class as upsert — audit it. Removed the prior
+    // `.catch(() => null)` that swallowed errors silently; now a
+    // delete failure surfaces to the caller and rolls back any
+    // partial state.
+    return this.prisma.client.$transaction(async (tx) => {
+      const result = await tx.tenantSSOConfig.delete({ where: { tenantId } });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId ?? null,
+          action: 'SSO_CONFIG_DELETE',
+          targetType: 'TenantSSOConfig',
+          targetId: tenantId,
+          details: JSON.stringify({ provider: result.provider }),
+        },
+      });
+      return result;
+    });
   }
 
   // ---------------------------------------------------------------------------

@@ -1,26 +1,39 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'crypto';
+import { requireSecret } from '../security/required-secret';
 
 /**
  * At-rest encryption helpers for SSO secrets (x509 certs, OIDC client secrets).
  *
  * Uses AES-256-GCM with a per-record random IV. The encryption key is derived
  * from SSO_ENCRYPTION_KEY (hex string, 32 bytes / 64 hex chars recommended).
- * A SHA-256 fallback hash of whatever value is provided is used if the env var
- * is not exactly 32 bytes, so misconfigured environments still fail closed
- * rather than crashing on module init.
+ *
+ * SECURITY (2026-05-23 launch audit P0): previously this file fell back to
+ *   createHash('sha256').update('dev_only_sso_encryption_key_CHANGE_ME')
+ * when the env var was unset — silently, in any environment including
+ * production. The repo is PUBLIC on GitHub, so that fallback hash is
+ * universally-known. A deploy that forgot to set SSO_ENCRYPTION_KEY
+ * encrypted every tenant's SAML x509 cert + OIDC client_secret with a
+ * public key, making "at-rest encryption" theater.
+ *
+ * Same anti-pattern that wave-1's `requireSecret` helper was specifically
+ * built to eliminate (see apps/api/src/security/required-secret.ts).
+ * `streaming/creds-cipher.ts` and `ai/ai-key-cipher.ts` both fail-closed
+ * in prod; SSO now follows the same pattern. In dev/test the helper
+ * still emits a fallback so local tooling keeps working; production
+ * refuses to boot.
  *
  * Ciphertext format (base64): iv(12) | authTag(16) | ciphertext(rest)
  */
 
-const KEY_ENV = 'SSO_ENCRYPTION_KEY';
-
 export function getSsoKey(): Buffer {
-  const raw = process.env[KEY_ENV];
-  if (!raw || raw.length < 16) {
-    // Development fallback — still deterministic per-process but not suitable
-    // for production. Documented in .env.example.
-    return createHash('sha256').update('dev_only_sso_encryption_key_CHANGE_ME').digest();
-  }
+  // requireSecret() throws in production when missing/too-short; returns
+  // the dev-only fallback string in dev/test after emitting a loud warning.
+  // Same `dev_only_..._CHANGE_ME` sentinel as the prior code, but now never
+  // reachable in NODE_ENV=production.
+  const raw = requireSecret('SSO_ENCRYPTION_KEY', {
+    devFallback: 'dev_only_sso_encryption_key_CHANGE_ME',
+    minLength: 16,
+  });
   // Accept either 64 hex chars (32 bytes) or a longer arbitrary string hashed.
   if (/^[0-9a-fA-F]{64}$/.test(raw)) {
     return Buffer.from(raw, 'hex');

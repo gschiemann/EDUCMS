@@ -6,6 +6,8 @@ import {
   Req,
   Res,
   UseGuards,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
@@ -35,9 +37,26 @@ export class CleverController {
   @RequireRoles(AppRole.DISTRICT_ADMIN)
   connect(@Req() req: AuthedRequest) {
     const tenantId = req.user?.tenantId ?? '';
-    const url = this.clever.buildAuthorizeUrl(tenantId, this.redirectUri(req));
-    return { url };
+    // 2026-05-23 launch audit P0: catch the "not configured" throw from
+    // buildAuthorizeUrl and surface a clean 503 with actionable copy so
+    // the UI can render a "Clever not configured for this deploy"
+    // banner instead of pretending the OAuth handshake started.
+    try {
+      const url = this.clever.buildAuthorizeUrl(tenantId, this.redirectUri(req));
+      return { url };
+    } catch (err: any) {
+      throw new HttpException(
+        err?.message || 'Clever integration is not configured for this deploy.',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
   }
+
+  // Note: the existing /status endpoint at line 119 has been extended
+  // to include `configured: boolean` (see clever.service.ts getStatus),
+  // so a dedicated config-only endpoint isn't needed — the UI's
+  // existing /status fetch now carries deployment-level state alongside
+  // tenant-level connection state.
 
   /**
    * OAuth callback from Clever. Public endpoint (no session cookie may be

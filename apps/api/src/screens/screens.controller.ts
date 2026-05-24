@@ -543,22 +543,26 @@ export class ScreensController {
         data.managerVersionAt = null;
       }
     }
-    // Diagnostic — operator caught dashboard chip stuck blank on
-    // 2026-04-27 even with v1.0.11 installed. Log every heartbeat
-    // with the FULL request URL so we can see in Railway logs
-    // exactly what the kiosk is sending and pinpoint where ?v=
-    // is being dropped (URL nav, header strip, route mismatch).
-    // Verbose for now while diagnosing; tighten once root cause is fixed.
+    // Diagnostic logging — used to fire on EVERY heartbeat (every 3s
+    // per kiosk = ~28k Railway log lines per screen per day). 2026-05-23
+    // launch audit P0 efficiency: tighten to "log only when something
+    // CHANGED" so we keep the diagnostic value (which was added to
+    // catch the v1.0.11 OTA-chip-stuck-blank bug on 2026-04-27) without
+    // flooding logs at fleet scale.
     const fpShort = fingerprint.slice(0, 18);
     const versionChanged = vn && vn !== screen.playerVersion;
     const rawUrl = req?.originalUrl || req?.url || '(unknown)';
     const userAgent = req?.headers?.['user-agent'] || '(no-ua)';
     const isApkUa = /EduCmsPlayer/i.test(userAgent);
-    console.log(
-      `[heartbeat] fp=${fpShort}… v=${vn || '(NONE)'} vc=${versionCode || '(NONE)'} ` +
-      `prior=${screen.playerVersion || '(none)'} changed=${versionChanged} ` +
-      `apk-ua=${isApkUa} url=${String(rawUrl).slice(0, 200)}`,
-    );
+    if (versionChanged) {
+      // Real signal: the kiosk just rolled to a new player version.
+      // Worth the log line for forensics + dashboard chip diagnostics.
+      console.log(
+        `[heartbeat] fp=${fpShort}… v=${vn || '(NONE)'} vc=${versionCode || '(NONE)'} ` +
+        `prior=${screen.playerVersion || '(none)'} changed=${versionChanged} ` +
+        `apk-ua=${isApkUa} url=${String(rawUrl).slice(0, 200)}`,
+      );
+    }
     // Write-amplification fix (audit P0): the player heartbeats every 3s and
     // sends ?v= every time, so the old code wrote lastPingAt + playerVersion
     // on EVERY poll and then did a SECOND findUnique to re-read OTA state —

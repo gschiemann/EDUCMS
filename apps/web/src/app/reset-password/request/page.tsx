@@ -10,6 +10,12 @@ export default function RequestPasswordResetPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  // 2026-05-23 launch audit P0: when the deploy is missing
+  // RESEND_API_KEY the API still returns ok:true, so we need to
+  // surface a different UI message ("contact admin") instead of
+  // "check your inbox" — otherwise a locked-out user waits forever
+  // for an email that's never coming.
+  const [emailConfigured, setEmailConfigured] = useState(true);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,6 +28,8 @@ export default function RequestPasswordResetPage() {
         body: JSON.stringify({ email }),
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data?.emailConfigured === false) setEmailConfigured(false);
         setSubmitted(true);
       } else {
         const data = await res.json().catch(() => ({}));
@@ -46,13 +54,24 @@ export default function RequestPasswordResetPage() {
 
         <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl p-8">
           {submitted ? (
-            <div className="text-center space-y-3">
-              <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
-              <p className="text-sm text-slate-200 font-medium">Check your inbox</p>
-              <p className="text-xs text-slate-400">
-                If an account exists for that email, we just sent a reset link. It expires in one hour.
-              </p>
-            </div>
+            emailConfigured ? (
+              <div className="text-center space-y-3">
+                <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
+                <p className="text-sm text-slate-200 font-medium">Check your inbox</p>
+                <p className="text-xs text-slate-400">
+                  If an account exists for that email, we just sent a reset link. It expires in one hour.
+                </p>
+              </div>
+            ) : (
+              <div className="text-center space-y-3">
+                <AlertCircle className="w-10 h-10 text-amber-400 mx-auto" />
+                <p className="text-sm text-slate-200 font-medium">Email is not configured on this deployment</p>
+                <p className="text-xs text-slate-400">
+                  Your account exists, but outbound email isn&rsquo;t set up here so we can&rsquo;t send the reset link.
+                  Contact your administrator to reset your password directly or to enable outbound email.
+                </p>
+              </div>
+            )
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>

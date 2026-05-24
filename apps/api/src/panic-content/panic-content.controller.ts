@@ -209,15 +209,39 @@ export class PanicContentController {
     const next = (last?.sequenceOrder ?? -1) + 1;
     const dur = body.durationMs
       ?? (asset.mimeType?.startsWith('video/') || asset.mimeType?.startsWith('audio/') ? 30_000 : 10_000);
-    const created = await this.prisma.client.playlistItem.create({
-      data: {
-        playlistId,
-        assetId: asset.id,
-        durationMs: dur,
-        sequenceOrder: next,
-        transitionType: 'FADE',
-      },
-      include: { asset: { select: { id: true, fileUrl: true, mimeType: true, originalName: true } } },
+    // 2026-05-23 launch audit P1: this controller mutates what every
+    // screen will show during a real lockdown/evacuate/weather event.
+    // Same life-safety class as /emergency/trigger and /tenants/panic-
+    // settings (both already audited). Wrap the create + AuditLog in
+    // a transaction so a half-applied write is impossible.
+    const created = await this.prisma.client.$transaction(async (tx) => {
+      const item = await tx.playlistItem.create({
+        data: {
+          playlistId,
+          assetId: asset.id,
+          durationMs: dur,
+          sequenceOrder: next,
+          transitionType: 'FADE',
+        },
+        include: { asset: { select: { id: true, fileUrl: true, mimeType: true, originalName: true } } },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user.id,
+          action: 'PANIC_CONTENT_ASSET_ADDED',
+          targetType: 'Playlist',
+          targetId: playlistId,
+          details: JSON.stringify({
+            kind,
+            orientation,
+            itemId: item.id,
+            assetId: asset.id,
+            durationMs: dur,
+          }),
+        },
+      });
+      return item;
     });
     return created;
   }
@@ -244,7 +268,26 @@ export class PanicContentController {
     if (!item.playlist.isProtected || item.playlist.protectedKind !== expectedProtectedKind) {
       throw new HttpException('Item does not belong to this panic content bucket', HttpStatus.BAD_REQUEST);
     }
-    await this.prisma.client.playlistItem.delete({ where: { id: itemId } });
+    // 2026-05-23 launch audit P1: removing emergency content is the
+    // mirror life-safety mutation as adding it. Atomic delete+audit.
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.playlistItem.delete({ where: { id: itemId } });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user.id,
+          action: 'PANIC_CONTENT_ASSET_REMOVED',
+          targetType: 'Playlist',
+          targetId: item.playlistId,
+          details: JSON.stringify({
+            kind,
+            orientation,
+            itemId,
+            assetId: item.assetId,
+          }),
+        },
+      });
+    });
     return { ok: true };
   }
 }
