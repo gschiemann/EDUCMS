@@ -24,12 +24,13 @@ import { apiFetch } from '@/lib/api-client';
 import { Paintbrush, RotateCcw, AlertTriangle, Check, Loader2, Wand2 } from 'lucide-react';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useAppStore } from '@/lib/store';
-import { useTenant, useApplyBrandToTemplates } from '@/hooks/use-api';
+import { useApplyBrandToTemplates } from '@/hooks/use-api';
 import { pushBrandingPreview } from '@/components/branding/BrandStyleInjector';
 import type { TenantBranding } from '@/lib/branding';
 
 export function BrandingSettingsCard() {
-  const { data: tenant } = useTenant();
+  // 2026-05-25 — useTenant() dropped (was only used for the
+  // tenant-name pill that's no longer rendered).
   // 2026-05-25 — manual-mode state (inline file picker + color
   // pickers + display-name form) was removed from this card per
   // operator: "remove the upload button from the main area in the
@@ -105,20 +106,23 @@ export function BrandingSettingsCard() {
         <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0">
           <Paintbrush className="w-4 h-4 text-indigo-600" />
         </div>
-        {/* 2026-05-25 — operator: "maybe we need a little text for the
-            branding explaining it?" Added a single-line description
-            after the tenant pill so the card explains what the
-            Configure button actually does. Same one-row layout as the
-            Industry / Emergency cards. */}
+        {/* 2026-05-25 — operator: "no need to say dodgers here in
+            the settings menu....just say Brand Your CMS and then
+            fix that fucked up text you have there, website and
+            then you start talking another langues." Tenant-name
+            pill dropped (operator knows their own tenant — pill
+            was redundant and clashing). Title text becomes "Brand
+            your CMS." Description fixed: `&rsquo;` was the literal
+            HTML entity rendering as text because the string lives
+            in a JS ternary, not JSX — switched to the real
+            Unicode apostrophe (’, U+2019) so it parses as
+            "we'll" everywhere. */}
         <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
-          <span className="text-xs font-bold text-slate-700 shrink-0">Brand:</span>
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] font-bold text-indigo-700 truncate max-w-[18ch]">
-            {(tenant as any)?.name || '(unknown tenant)'}
-          </span>
+          <span className="text-sm font-bold text-slate-800 shrink-0">Brand your CMS</span>
           <span className="text-[11px] text-slate-500 truncate">
             {branding
               ? 'Update your colors, logo, and fonts.'
-              : 'Brand it as your own — paste your website and we&rsquo;ll match your colors, logo, and fonts.'}
+              : 'Brand it as your own — paste your website and we’ll match your colors, logo, and fonts.'}
           </span>
         </div>
         {/* 2026-05-25 operator: "remove the upload button from the
