@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { usePathname } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
-import { Paintbrush, Sparkles, RotateCcw, AlertTriangle, Upload, Check, Loader2, Wand2 } from 'lucide-react';
+import { Paintbrush, Sparkles, RotateCcw, AlertTriangle, Check, Loader2, Wand2 } from 'lucide-react';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useAppStore } from '@/lib/store';
 import { useTenant, useApplyBrandToTemplates } from '@/hooks/use-api';

@@ -49,7 +49,6 @@ import {
   Loader2,
   Building2,
   MapPin,
-  Upload,
   CheckCircle2,
   AlertTriangle,
   Image as ImageIcon,
@@ -637,12 +636,19 @@ function InlineFloorPlanUpload({ onUploaded }: { onUploaded: () => void }) {
   };
 
   // ── State 1: no file picked → single CTA button ─────────────
+  //
+  // 2026-05-25 — was "Upload floor plan" with an upload icon, which
+  // morphed into "Save floor plan" with the SAME upload icon after a
+  // file was picked. Operator feedback: "the upload button said save
+  // on it, that's an odd workflow". Renamed state-1 to "Choose floor
+  // plan image" so the click is clearly file SELECTION, not the
+  // upload itself. The upload doesn't fire until "Save" in state 2.
   if (!file) {
     return (
       <div>
         <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold cursor-pointer transition-colors">
-          <Upload className="w-4 h-4" />
-          Upload floor plan
+          <ImageIcon className="w-4 h-4" />
+          Choose floor plan image
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp"
@@ -736,8 +742,8 @@ function InlineFloorPlanUpload({ onUploaded }: { onUploaded: () => void }) {
           disabled={!name.trim() || upload.isPending}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {upload.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-          {upload.isPending ? 'Uploading…' : 'Save floor plan'}
+          {upload.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+          {upload.isPending ? 'Saving…' : 'Save floor plan'}
         </button>
         <button
           type="button"

@@ -82,6 +82,14 @@ const ALLOWED_FLOOR_PLAN_MIMES = [
  */
 function probeImageDimensions(buf: Buffer): { width: number; height: number } | null {
   if (!buf || buf.length < 24) return null;
+  // Defensive: Buffer-only methods (`readUInt32BE`, `readUInt16BE`,
+  // `readUInt16LE`, `.slice(...).toString('ascii')`) don't exist on
+  // raw Uint8Array. Multer on Railway has historically handed off
+  // file.buffer as Uint8Array. Caller normalizes via toSafeBuffer
+  // first, but belt-and-suspenders: if a raw Uint8Array slips in,
+  // bail to null instead of throwing a `<fn> is not a function`
+  // TypeError that escapes the controller as a 500.
+  if (typeof (buf as any).readUInt32BE !== 'function') return null;
 
   // PNG: 8-byte signature, then IHDR chunk where bytes 16..19 = width,
   // 20..23 = height (big-endian).
@@ -351,8 +359,11 @@ export class FloorPlansController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    const tenantId = req.user.tenantId;
-    const userId = req.user.id;
+    const tenantId = req.user?.tenantId;
+    const userId = req.user?.id;
+    if (!tenantId) {
+      throw new HttpException('Authentication required.', HttpStatus.UNAUTHORIZED);
+    }
     const name = (body.name || 'Untitled floor').trim().slice(0, 200);
     let widthPx = Number(body.widthPx);
     let heightPx = Number(body.heightPx);
@@ -369,6 +380,18 @@ export class FloorPlansController {
       );
     }
 
+    // 2026-05-25 BUG FIX — on Railway/Docker, multer sometimes hands us
+    // `file.buffer` as a raw Uint8Array, NOT a Node Buffer. Buffer-only
+    // methods (`.readUInt32BE`, `.readUInt16BE`) used inside
+    // probeImageDimensions then throw `TypeError: <fn> is not a function`,
+    // which escapes the controller as a plain Error → AllExceptionsFilter
+    // returns the generic 500 INTERNAL_ERROR/"Internal server error"
+    // envelope instead of an actionable message. Normalize once up front
+    // and reuse the safe Buffer everywhere downstream (probe + upload +
+    // hashing). Same SupabaseStorageService.toSafeBuffer the assets
+    // controller already uses for the same reason.
+    const safeBuffer = this.storage.toSafeBuffer(file.buffer);
+
     // 2026-05-03 BUG FIX (cycle 4 emergency-BUG-008) — probe the actual
     // image dimensions from the file header bytes and reject when the
     // client-supplied numbers don't match. Without this, a malicious
@@ -381,7 +404,7 @@ export class FloorPlansController {
     // a hair due to floating-point rounding when reading natural
     // dimensions in JS. Anything past 5% is either a bug in the
     // client or hostile.
-    const probed = probeImageDimensions(file.buffer);
+    const probed = probeImageDimensions(safeBuffer);
     if (probed) {
       const wDiff = Math.abs(widthPx - probed.width) / probed.width;
       const hDiff = Math.abs(heightPx - probed.height) / probed.height;
@@ -415,30 +438,56 @@ export class FloorPlansController {
 
     // Upload to Supabase storage. Path is tenant-scoped so a stray URL
     // can't leak across tenants if it ever escapes the public bucket.
-    const ext = (file.originalname.split('.').pop() || 'png').toLowerCase().slice(0, 6);
+    const rawOriginalName = typeof file.originalname === 'string' ? file.originalname : '';
+    const ext = (rawOriginalName.split('.').pop() || 'png').toLowerCase().slice(0, 6) || 'png';
     const filePath = `${tenantId}/floor-plans/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     let publicUrl: string;
     try {
-      publicUrl = await this.storage.upload(filePath, file.buffer, file.mimetype);
+      publicUrl = await this.storage.upload(filePath, safeBuffer, file.mimetype);
     } catch (err: any) {
-      this.logger.error(`Floor plan upload failed: ${err?.message || err}`);
+      const detail = err?.message ? String(err.message).slice(0, 400) : 'storage upload failed';
+      this.logger.error(
+        `[FloorPlan] Storage upload failed: tenant=${tenantId} size=${safeBuffer.length} ` +
+          `mime=${file.mimetype} err=${detail}`,
+      );
+      // Map Supabase-specific failures to actionable HTTP statuses.
+      const status =
+        /maximum allowed size|payload too large|exceeded/i.test(detail)
+          ? HttpStatus.PAYLOAD_TOO_LARGE
+          : /mime|content-type|not allowed/i.test(detail)
+            ? HttpStatus.UNSUPPORTED_MEDIA_TYPE
+            : HttpStatus.BAD_GATEWAY;
       throw new HttpException(
-        'Failed to upload floor plan image. Check storage configuration.',
-        HttpStatus.INTERNAL_SERVER_ERROR,
+        `Could not save the floor plan to storage: ${detail}`,
+        status,
       );
     }
 
-    const plan = await (this.prisma.client as any).floorPlan.create({
-      data: {
-        tenantId,
-        name,
-        buildingLabel: body.buildingLabel?.trim().slice(0, 200) || null,
-        floorLabel: body.floorLabel?.trim().slice(0, 100) || null,
-        imageUrl: publicUrl,
-        widthPx: Math.round(widthPx),
-        heightPx: Math.round(heightPx),
-      },
-    });
+    let plan: any;
+    try {
+      plan = await (this.prisma.client as any).floorPlan.create({
+        data: {
+          tenantId,
+          name,
+          buildingLabel: body.buildingLabel?.trim().slice(0, 200) || null,
+          floorLabel: body.floorLabel?.trim().slice(0, 100) || null,
+          imageUrl: publicUrl,
+          widthPx: Math.round(widthPx),
+          heightPx: Math.round(heightPx),
+        },
+      });
+    } catch (err: any) {
+      // Prisma errors normally land in AllExceptionsFilter's Prisma
+      // branch (DATABASE_ERROR), but if the row creation fails AFTER
+      // the storage upload succeeded we want an actionable surface for
+      // the operator — and a log line so a stray orphaned upload can
+      // be reconciled later.
+      this.logger.error(
+        `[FloorPlan] DB row creation failed after upload succeeded: tenant=${tenantId} ` +
+          `url=${publicUrl} err=${err?.message || err}`,
+      );
+      throw err;
+    }
 
     // Audit. Floor plans are sensitive operational data — log who
     // uploaded what so a compromise is forensically traceable.
