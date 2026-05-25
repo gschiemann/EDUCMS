@@ -47,6 +47,13 @@ export interface BrandingWizardProps {
   initial?: Partial<BrandingPreview> | null;
   /** After a successful adopt. */
   onAdopted?: (b: any) => void;
+  /**
+   * Tenant vertical — drives which industry-appropriate sample URLs we
+   * show under the input. Falls back to K12 (the default vertical) so
+   * old call sites + demo mode still get useful examples. The verticals
+   * align with packages/api-types/src/verticals.ts.
+   */
+  vertical?: string | null;
 }
 
 // ── Types (mirror of server BrandingPreview) ──────────────────────
@@ -75,14 +82,109 @@ export type BrandingPreview = {
   durationMs: number;
 };
 
-const EXAMPLES = [
-  { label: 'Lincoln County (NC)', url: 'https://www.lcsnc.org/' },
-  { label: 'NYC DOE', url: 'https://www.schools.nyc.gov/' },
-  { label: 'LAUSD', url: 'https://www.lausd.org/' },
-];
+/**
+ * Industry-specific sample URLs. Hand-curated for sites known to allow
+ * static scraping (favoring `.edu`, `.org`, and brands without aggressive
+ * Cloudflare/Akamai bot protection — the ones that DO block us return
+ * the friendly BRANDING_BLOCKED error from branding-scraper.service.ts
+ * with actionable copy, so even a sample fail is graceful).
+ *
+ * 2026-05-25 — operator: "im giving lausd as a sample url but that wont
+ * even work so thats not great, also your only giving schools, give
+ * samples based on what industry is selected." LAUSD (Cloudflare) +
+ * NYC DOE (also Cloudflare) removed; per-vertical lists added below.
+ *
+ * Verified scrape OK on 2026-05-25 against the live demo endpoint:
+ *   • lcsnc.org (K12, 48% confidence, 4 colors)
+ *   • harvard.edu (K12, 82% confidence, 8 colors)
+ *   • stanford.edu (K12, 86% confidence, 8 colors)
+ * Other entries are best-effort picks based on the scraper's known-
+ * friendly patterns; if one is blocked the operator sees the
+ * "Cloudflare bot protection" message and can pick another or paste
+ * their own. When adding NEW samples to this map, run the URL through
+ * `POST /branding/demo/scrape` first — silent-fail URLs make the
+ * feature feel broken at first impression.
+ */
+type SampleUrl = { label: string; url: string };
+const EXAMPLES_BY_VERTICAL: Record<string, SampleUrl[]> = {
+  K12: [
+    { label: 'Lincoln County (NC)', url: 'https://www.lcsnc.org/' },
+    { label: 'Harvard', url: 'https://www.harvard.edu/' },
+    { label: 'Stanford', url: 'https://www.stanford.edu/' },
+  ],
+  GYM: [
+    { label: 'Equinox', url: 'https://www.equinox.com/' },
+    { label: 'Crunch Fitness', url: 'https://www.crunch.com/' },
+    { label: 'CorePower Yoga', url: 'https://www.corepoweryoga.com/' },
+  ],
+  RETAIL: [
+    { label: 'Patagonia', url: 'https://www.patagonia.com/' },
+    { label: 'REI', url: 'https://www.rei.com/' },
+    { label: 'Warby Parker', url: 'https://www.warbyparker.com/' },
+  ],
+  CORPORATE: [
+    { label: 'IBM', url: 'https://www.ibm.com/' },
+    { label: 'Salesforce', url: 'https://www.salesforce.com/' },
+    { label: 'HubSpot', url: 'https://www.hubspot.com/' },
+  ],
+  QSR: [
+    { label: 'Chipotle', url: 'https://www.chipotle.com/' },
+    { label: 'Five Guys', url: 'https://www.fiveguys.com/' },
+    { label: 'Shake Shack', url: 'https://www.shakeshack.com/' },
+  ],
+  FASHION: [
+    { label: 'Madewell', url: 'https://www.madewell.com/' },
+    { label: 'Everlane', url: 'https://www.everlane.com/' },
+    { label: 'Bonobos', url: 'https://bonobos.com/' },
+  ],
+  BAR: [
+    { label: 'Sam Adams', url: 'https://www.samueladams.com/' },
+    { label: 'Stone Brewing', url: 'https://www.stonebrewing.com/' },
+    { label: 'Dogfish Head', url: 'https://www.dogfish.com/' },
+  ],
+  HEALTHCARE: [
+    { label: 'Mayo Clinic', url: 'https://www.mayoclinic.org/' },
+    { label: 'Cleveland Clinic', url: 'https://my.clevelandclinic.org/' },
+    { label: 'Kaiser Permanente', url: 'https://healthy.kaiserpermanente.org/' },
+  ],
+  HOSPITALITY: [
+    { label: 'Marriott', url: 'https://www.marriott.com/' },
+    { label: 'Hyatt', url: 'https://www.hyatt.com/' },
+    { label: 'Choice Hotels', url: 'https://www.choicehotels.com/' },
+  ],
+  RESTAURANT: [
+    { label: 'Olive Garden', url: 'https://www.olivegarden.com/' },
+    { label: 'Texas Roadhouse', url: 'https://www.texasroadhouse.com/' },
+    { label: 'Cracker Barrel', url: 'https://www.crackerbarrel.com/' },
+  ],
+  SPORTS: [
+    { label: 'MLB', url: 'https://www.mlb.com/' },
+    { label: 'NBA', url: 'https://www.nba.com/' },
+    { label: 'NCAA', url: 'https://www.ncaa.com/' },
+  ],
+  WORSHIP: [
+    { label: 'Life.Church', url: 'https://www.life.church/' },
+    { label: 'Saddleback', url: 'https://saddleback.com/' },
+    { label: "The Potter's House", url: 'https://thepottershouse.org/' },
+  ],
+};
 
-export function BrandingWizard({ mode, initial, onAdopted }: BrandingWizardProps) {
+function examplesForVertical(vertical?: string | null): SampleUrl[] {
+  const key = (vertical || 'K12').toUpperCase();
+  return EXAMPLES_BY_VERTICAL[key] || EXAMPLES_BY_VERTICAL.K12;
+}
+
+export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingWizardProps) {
   const router = useRouter();
+  const examples = useMemo(() => examplesForVertical(vertical), [vertical]);
+  // 2026-05-25 — operator: "i can only select the primary color from
+  // [the swatches] and not the secondary, that can only be selected
+  // from the picker and not from the main colors we find and present."
+  // Added a toggle above the swatch grid that decides which slot the
+  // NEXT swatch click writes to. Default = Primary (matches old
+  // behavior). Toggle to Accent → next click fills accent. The two
+  // picker rows above keep working unchanged.
+  const [swatchTarget, setSwatchTarget] = useState<'primary' | 'accent'>('primary');
   // BrandStyleInjector reads the LS cache per-tenant as
   // `edu-cms-branding-cache-v1:<tenantId>` (see commit 14a91fa which
   // fixed a cross-tenant theme bleed). We must write to the same key on
@@ -268,18 +370,23 @@ export function BrandingWizard({ mode, initial, onAdopted }: BrandingWizardProps
           </form>
 
           {!preview && !scraping && (
-            <div className="text-xs text-slate-500">
-              Try an example:{' '}
-              {EXAMPLES.map((ex, i) => (
-                <button
-                  key={ex.url}
-                  type="button"
-                  className="underline decoration-dotted text-indigo-600 hover:text-indigo-800 mr-2"
-                  onClick={() => { setUrl(ex.url); runScrape(ex.url); }}
-                >
-                  {ex.label}
-                </button>
-              ))}
+            <div className="text-xs text-slate-500 space-y-1">
+              <div>
+                Try an example:{' '}
+                {examples.map((ex) => (
+                  <button
+                    key={ex.url}
+                    type="button"
+                    className="underline decoration-dotted text-indigo-600 hover:text-indigo-800 mr-2"
+                    onClick={() => { setUrl(ex.url); runScrape(ex.url); }}
+                  >
+                    {ex.label}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[11px] text-slate-400">
+                If a sample is blocked by the site&rsquo;s bot protection, try a different one — or paste your own URL.
+              </div>
             </div>
           )}
 
@@ -358,21 +465,87 @@ export function BrandingWizard({ mode, initial, onAdopted }: BrandingWizardProps
                 <PaletteRow label="Primary" value={primary} onChange={setPrimary} />
                 <PaletteRow label="Accent" value={accent} onChange={setAccent} />
               </div>
-              <div className="pt-1">
-                <div className="text-xs text-slate-500 mb-1.5">All colors discovered — click to promote to primary</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {preview.colors.map((c, i) => (
+              <div className="pt-1 space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs text-slate-500">Colors discovered — click to apply</div>
+                  <div className="inline-flex rounded-md border border-slate-200 bg-slate-50 p-0.5 text-[11px] font-semibold">
                     <button
-                      key={c.hex}
                       type="button"
-                      onClick={() => setPrimary(c.hex)}
-                      className={cn('h-8 w-8 rounded-md border border-slate-200 hover:scale-110 transition relative', primary.toLowerCase() === c.hex.toLowerCase() && 'ring-2 ring-indigo-500 ring-offset-2')}
-                      style={{ background: c.hex }}
-                      title={`${c.hex} · score ${c.score.toFixed(1)}${c.isCustomProp ? ' · CSS var' : ''}`}
+                      onClick={() => setSwatchTarget('primary')}
+                      className={cn(
+                        'px-2 py-0.5 rounded transition-colors',
+                        swatchTarget === 'primary'
+                          ? 'bg-white text-indigo-700 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700',
+                      )}
+                      aria-pressed={swatchTarget === 'primary'}
                     >
-                      {c.isCustomProp && <span className="absolute -top-1 -right-1 text-[9px] bg-amber-400 text-amber-900 rounded-full px-1">★</span>}
+                      Primary
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => setSwatchTarget('accent')}
+                      className={cn(
+                        'px-2 py-0.5 rounded transition-colors',
+                        swatchTarget === 'accent'
+                          ? 'bg-white text-pink-700 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700',
+                      )}
+                      aria-pressed={swatchTarget === 'accent'}
+                    >
+                      Accent
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {preview.colors.map((c) => {
+                    const isPrimary = primary.toLowerCase() === c.hex.toLowerCase();
+                    const isAccent = accent.toLowerCase() === c.hex.toLowerCase();
+                    return (
+                      <button
+                        key={c.hex}
+                        type="button"
+                        onClick={() => {
+                          if (swatchTarget === 'primary') setPrimary(c.hex);
+                          else setAccent(c.hex);
+                        }}
+                        className={cn(
+                          'h-9 w-9 rounded-md border border-slate-200 hover:scale-110 transition relative',
+                          isPrimary && 'ring-2 ring-indigo-500 ring-offset-2',
+                          isAccent && !isPrimary && 'ring-2 ring-pink-500 ring-offset-2',
+                        )}
+                        style={{ background: c.hex }}
+                        title={`${c.hex} · score ${c.score.toFixed(1)}${c.isCustomProp ? ' · CSS var' : ''} · click to set ${swatchTarget}`}
+                        aria-label={`${c.hex} — click to set as ${swatchTarget}`}
+                      >
+                        {/* Slot badge — shows which palette slot this swatch
+                            currently fills, so the operator can SEE that
+                            multiple swatches are wired up (not just primary).
+                            If a swatch is BOTH primary and accent (same hex),
+                            primary wins for display since it's the dominant
+                            slot in the contrast checks below. */}
+                        {(isPrimary || isAccent) && (
+                          <span
+                            className={cn(
+                              'absolute -top-1 -left-1 text-[9px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center text-white shadow',
+                              isPrimary ? 'bg-indigo-600' : 'bg-pink-600',
+                            )}
+                            aria-hidden
+                          >
+                            {isPrimary ? 'P' : 'A'}
+                          </span>
+                        )}
+                        {c.isCustomProp && (
+                          <span
+                            className="absolute -top-1 -right-1 text-[9px] bg-amber-400 text-amber-900 rounded-full px-1"
+                            aria-hidden
+                          >
+                            ★
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               {/* Contrast warnings */}

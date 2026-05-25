@@ -9,11 +9,12 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { BrandingWizard, BrandingPreview } from '@/components/branding/BrandingWizard';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Trash2, Paintbrush } from 'lucide-react';
 import { pushBrandingPreview } from '@/components/branding/BrandStyleInjector';
+import { useTenant } from '@/hooks/use-api';
 
 export default function SettingsBrandingPage() {
+  const { data: tenant } = useTenant();
   const [current, setCurrent] = useState<BrandingPreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmRevert, setConfirmRevert] = useState(false);
@@ -103,7 +104,11 @@ export default function SettingsBrandingPage() {
       {loading ? (
         <div className="p-10 text-center text-slate-500">Loading…</div>
       ) : (
-        <BrandingWizard mode="authed" initial={current || undefined} />
+        <BrandingWizard
+          mode="authed"
+          initial={current || undefined}
+          vertical={(tenant as any)?.vertical || 'K12'}
+        />
       )}
     </div>
   );
