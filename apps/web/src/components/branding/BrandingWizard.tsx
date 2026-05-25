@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { pushBrandingPreview } from './BrandStyleInjector';
 import { useAppStore } from '@/lib/store';
 import { BrandingLivePreview } from './BrandingLivePreview';
+import { useLogoTone } from './useLogoTone';
 // 2026-05-25 — Operator chose to remove both AI sparkle icons +
 // the Wand2 magic icons here. The /settings/branding page header
 // has the Paintbrush; the wizard inside doesn't need to repeat
@@ -442,37 +443,22 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
               )}
             </Card>
 
-            {/* Logos */}
+            {/* Logos. Each tile renders on a checkerboard backdrop so
+                white-on-transparent wordmarks (e.g., MLB/Dodgers script)
+                stay readable — the gray squares give the white pixels
+                contrast. Universal fix that also handles dark logos +
+                colorful logos without per-logo logic. */}
             <Card className="p-4 space-y-3">
               <div className="text-sm font-medium">Logos found <span className="text-slate-400">({preview.logos.length})</span></div>
               <div className="grid grid-cols-3 gap-2">
                 {preview.logos.map((l, i) => (
-                  <button
+                  <LogoGalleryTile
                     key={i}
-                    type="button"
-                    onClick={() => setSelectedLogoIdx(i)}
-                    className={cn(
-                      'relative aspect-square rounded-md border-2 p-2 bg-slate-50 hover:border-indigo-400 flex items-center justify-center overflow-hidden transition',
-                      selectedLogoIdx === i ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-slate-200'
-                    )}
-                    aria-label={`Choose logo ${i+1}`}
-                  >
-                    {l.svgInline ? (
-                      // Many SVG wordmarks fill="currentColor" — set a dark
-                      // text color on the wrapper so the mark actually shows
-                      // against the light tile background.
-                      // XSS defense: sanitize before render; the SVG was
-                      // scraped from an untrusted URL.
-                      <div
-                        className="max-h-full max-w-full text-slate-800 [&_svg]:max-h-full [&_svg]:max-w-full [&_svg]:h-full [&_svg]:w-full"
-                        dangerouslySetInnerHTML={{ __html: sanitizeSvg(l.svgInline) }}
-                      />
-                    ) : l.url ? (
-                      <img src={l.url} alt="logo option" className="max-h-full max-w-full object-contain" loading="lazy" />
-                    ) : null}
-                    {selectedLogoIdx === i && <Check className="absolute top-1 right-1 h-4 w-4 bg-indigo-600 text-white rounded-full p-0.5" />}
-                    <div className="absolute bottom-0 inset-x-0 text-[10px] bg-white/80 py-0.5 text-slate-600 truncate">{l.kind}</div>
-                  </button>
+                    logo={l}
+                    selected={selectedLogoIdx === i}
+                    onSelect={() => setSelectedLogoIdx(i)}
+                    index={i}
+                  />
                 ))}
               </div>
             </Card>
@@ -717,3 +703,82 @@ function hexToRgb(hex: string) { const h = hex.replace('#',''); return { r: pars
 function channel(c: number) { const s = c/255; return s <= 0.03928 ? s/12.92 : Math.pow((s + 0.055)/1.055, 2.4); }
 function luminance(hex: string) { const { r, g, b } = hexToRgb(hex); return 0.2126*channel(r) + 0.7152*channel(g) + 0.0722*channel(b); }
 function contrast(a: string, b: string) { const la = luminance(a), lb = luminance(b); const [L1, L2] = la > lb ? [la, lb] : [lb, la]; return (L1 + 0.05) / (L2 + 0.05); }
+
+/**
+ * LogoGalleryTile — one card in the "Logos found" grid. The default
+ * white-tile backdrop made white-on-transparent wordmarks (Dodgers
+ * script, etc.) invisible (operator caught it on the MLB scrape on
+ * 2026-05-25). Fix: render every tile on a subtle 4×4-px checkerboard
+ * pattern so:
+ *   • Light/white logos sit against the gray squares → readable
+ *   • Dark logos sit against the white squares → readable
+ *   • Transparent/empty PNGs reveal the pattern → user sees nothing
+ *     is there (instead of looking like the tile loaded successfully)
+ *
+ * This is the industry-standard transparency indicator (Photoshop,
+ * Figma, Sketch). For SVG logos using fill="currentColor" we still
+ * force `text-slate-800` so the line art shows up against the white
+ * squares.
+ */
+type GalleryLogo = BrandingPreview['logos'][number];
+function LogoGalleryTile({
+  logo,
+  selected,
+  onSelect,
+  index,
+}: {
+  logo: GalleryLogo;
+  selected: boolean;
+  onSelect: () => void;
+  index: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        'relative aspect-square rounded-md border-2 p-2 hover:border-indigo-400 flex items-center justify-center overflow-hidden transition',
+        selected ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-slate-200',
+      )}
+      style={{
+        // 12px checkerboard. Two diagonal linear-gradients layered on
+        // top of a white base; the gradient stops paint half the cell
+        // gray and leave the other half transparent so the underlying
+        // white shows through.
+        backgroundColor: '#ffffff',
+        backgroundImage:
+          'linear-gradient(45deg, #e2e8f0 25%, transparent 25%), ' +
+          'linear-gradient(-45deg, #e2e8f0 25%, transparent 25%), ' +
+          'linear-gradient(45deg, transparent 75%, #e2e8f0 75%), ' +
+          'linear-gradient(-45deg, transparent 75%, #e2e8f0 75%)',
+        backgroundSize: '12px 12px',
+        backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0px',
+      }}
+      aria-label={`Choose logo ${index + 1}`}
+    >
+      {logo.svgInline ? (
+        // Many SVG wordmarks fill="currentColor" — set a dark text
+        // color on the wrapper so the mark actually shows against the
+        // checkerboard. XSS defense: sanitize before render; SVG came
+        // from an untrusted URL.
+        <div
+          className="max-h-full max-w-full text-slate-800 [&_svg]:max-h-full [&_svg]:max-w-full [&_svg]:h-full [&_svg]:w-full"
+          dangerouslySetInnerHTML={{ __html: sanitizeSvg(logo.svgInline) }}
+        />
+      ) : logo.url ? (
+        <img
+          src={logo.url}
+          alt="logo option"
+          className="max-h-full max-w-full object-contain"
+          loading="lazy"
+        />
+      ) : null}
+      {selected && (
+        <Check className="absolute top-1 right-1 h-4 w-4 bg-indigo-600 text-white rounded-full p-0.5" />
+      )}
+      <div className="absolute bottom-0 left-0 right-0 text-[10px] bg-white/85 backdrop-blur-sm py-0.5 text-slate-600 truncate">
+        {logo.kind}
+      </div>
+    </button>
+  );
+}

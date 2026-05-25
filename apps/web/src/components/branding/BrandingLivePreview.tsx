@@ -11,6 +11,7 @@ import { useMemo } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { cn } from '@/lib/utils';
 import { LayoutDashboard, MonitorPlay, LayoutTemplate, Folders, Settings, Bell, ShieldAlert, Search, ChevronDown } from 'lucide-react';
+import { useLogoTone } from './useLogoTone';
 
 // Defense-in-depth: the API now sanitizes on write, but rows written
 // before the fix (or injected via a different code path) could still
@@ -62,6 +63,17 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
 
   const name = branding?.displayName || 'Your District Signage';
 
+  // Detect whether the picked logo is light-toned (e.g., the white
+  // Dodgers wordmark). When it is, wrap it in a brand-color chip so
+  // it has contrast against the otherwise-light sidebar surface;
+  // otherwise render it on a plain transparent backdrop so dark
+  // logos sit naturally on the surface.
+  const logoTone = useLogoTone(
+    branding?.logoUrl || null,
+    branding?.logoSvgInline || null,
+  );
+  const needsDarkBacking = logoTone === 'light' || logoTone === 'unknown';
+
   return (
     <div className="preview-root relative bg-white" style={style}>
       <style>{`
@@ -97,12 +109,37 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
         {/* Sidebar */}
         <aside className="preview-sidebar border-r min-h-[540px] p-3">
           <div className="flex items-center gap-2 px-2 py-2 mb-3 rounded-md">
-            {safeLogoSvg ? (
-              <div className="h-8 w-8 flex items-center justify-center [&_svg]:max-h-8 [&_svg]:max-w-8" dangerouslySetInnerHTML={{ __html: safeLogoSvg }} />
-            ) : branding?.logoUrl ? (
-              <img src={branding.logoUrl} alt="logo" className="h-8 max-w-[32px] object-contain" />
+            {/* Light-toned logos (white wordmarks etc.) get wrapped in
+                a primary-color chip so they have contrast against the
+                light sidebar surface. Dark logos sit on transparent. */}
+            {safeLogoSvg || branding?.logoUrl ? (
+              <div
+                className={cn(
+                  'h-8 w-8 rounded-md flex items-center justify-center overflow-hidden shrink-0',
+                  needsDarkBacking ? 'p-1' : '',
+                )}
+                style={needsDarkBacking ? { background: 'var(--bp-primary)' } : undefined}
+              >
+                {safeLogoSvg ? (
+                  <div
+                    className={cn(
+                      'h-full w-full flex items-center justify-center [&_svg]:max-h-full [&_svg]:max-w-full',
+                      needsDarkBacking ? 'text-white' : 'text-slate-800',
+                    )}
+                    dangerouslySetInnerHTML={{ __html: safeLogoSvg }}
+                  />
+                ) : branding?.logoUrl ? (
+                  <img
+                    src={branding.logoUrl}
+                    alt="logo"
+                    className="max-h-full max-w-full object-contain"
+                  />
+                ) : null}
+              </div>
             ) : (
-              <div className="h-8 w-8 rounded-md preview-btn-primary flex items-center justify-center text-xs font-bold">{(name?.[0] || 'E').toUpperCase()}</div>
+              <div className="h-8 w-8 rounded-md preview-btn-primary flex items-center justify-center text-xs font-bold shrink-0">
+                {(name?.[0] || 'E').toUpperCase()}
+              </div>
             )}
             <div className="leading-tight">
               <div className="preview-heading text-[11px] font-bold truncate max-w-[110px]" title={name}>{name}</div>
