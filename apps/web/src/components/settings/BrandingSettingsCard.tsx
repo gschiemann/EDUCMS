@@ -97,8 +97,14 @@ export function BrandingSettingsCard() {
           Same compact pattern the industry switcher uses: icon + label +
           tenant pill + inline buttons. The cross-tenant-bleed indicator
           (which org you're branding) is preserved as the pill. */}
-      <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3">
-        <Paintbrush className="w-4 h-4 text-indigo-500 shrink-0" />
+      {/* 2026-05-25 — header row padded to p-4 (was px-5 py-3) +
+          icon wrapped in a 9×9 container so Brand visually matches
+          Emergency + AI / settings rows on the main page. Operator:
+          "keep it standard size unless we need more space." */}
+      <div className="p-4 flex flex-wrap items-center gap-3 border-b border-slate-100">
+        <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0">
+          <Paintbrush className="w-4 h-4 text-indigo-600" />
+        </div>
         {/* 2026-05-25 — operator: "maybe we need a little text for the
             branding explaining it?" Added a single-line description
             after the tenant pill so the card explains what the
@@ -124,7 +130,11 @@ export function BrandingSettingsCard() {
         <div className="flex gap-2 shrink-0">
           <Link
             href={`/${schoolId}/settings/branding`}
-            className="text-xs font-semibold px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
+            // 2026-05-25 — class signature aligned with the
+            // Emergency + AI Configure buttons so all three settings
+            // rows render the same button shape (only color differs:
+            // rose for emergency, indigo elsewhere).
+            className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors"
           >
             {branding ? 'Re-skin' : 'Configure'}
           </Link>

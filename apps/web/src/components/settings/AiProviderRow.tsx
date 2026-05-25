@@ -135,11 +135,20 @@ export function AiProviderRow() {
     return 'Pick a provider, paste a key, choose a model.';
   };
 
+  // 2026-05-25 — colors normalized to indigo to match the Brand
+  // row. Operator: "the configure button looks slightly diffrent on
+  // AI provider on where its located and the color purple it
+  // has...keep it standard size unless we need more space." Card
+  // container + padding were always the same code as Brand /
+  // Emergency; the only thing making AI look "off" was the violet
+  // accent. Now all three admin settings rows share the same
+  // `Configure` button style (indigo for AI + Brand, rose for
+  // Emergency since rose is the dedicated emergency semantic).
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-4">
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        <div className="w-9 h-9 rounded-lg bg-violet-50 border border-violet-200 flex items-center justify-center shrink-0">
-          <Sparkles className="w-4 h-4 text-violet-600" />
+        <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0">
+          <Sparkles className="w-4 h-4 text-indigo-600" />
         </div>
         <div className="min-w-0 flex items-center gap-2 flex-wrap">
           <span className="text-sm font-bold text-slate-800 shrink-0">AI provider</span>
@@ -149,7 +158,7 @@ export function AiProviderRow() {
       </div>
       <Link
         href={`/${schoolId}/settings/ai`}
-        className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 text-white text-xs font-bold hover:bg-violet-700 transition-colors"
+        className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors"
       >
         {status?.configured ? 'Manage' : 'Configure'}
       </Link>
