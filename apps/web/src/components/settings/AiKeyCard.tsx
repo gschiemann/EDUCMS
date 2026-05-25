@@ -171,19 +171,10 @@ export function AiKeyCard() {
   }
 
   return (
-    <div className="rounded-2xl bg-white border border-slate-200 p-6 space-y-5">
-      <div className="flex items-start gap-3">
-        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white flex-shrink-0">
-          <Sparkles className="w-5 h-5" />
-        </div>
-        <div className="flex-1">
-          <h3 className="text-base font-bold text-slate-900">AI provider</h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Bring your own API key. AI-generated copy (announcements, tickers, menu items, etc.) routes through your account at your provider's rates.
-            Keys are encrypted at rest and never exposed in API responses.
-          </p>
-        </div>
-      </div>
+    <div className="rounded-2xl bg-white border border-slate-200 p-6 space-y-4">
+      {/* 2026-05-25 — dropped the inner card header; the page header
+          above already says "AI provider" with a one-liner. Keeping
+          both was just noise. */}
 
       {/* CONFIGURED STATE */}
       {status?.configured && !editing && (() => {
@@ -234,20 +225,16 @@ export function AiKeyCard() {
         );
       })()}
 
-      {/* PLATFORM-FALLBACK NOTICE (when not configured but trial works) */}
+      {/* 2026-05-25 — slimmed both banners to one line each, no jargon. */}
       {!status?.configured && status?.platformFallbackAvailable && (
         <div className="rounded-lg border border-violet-200 bg-violet-50/50 px-4 py-3 text-xs text-violet-800">
-          <strong>AI works on our free trial key</strong> — limited to 30 generations/hour for the whole tenant. Add your own key below to remove the cap and route usage to your provider.
+          You&rsquo;re on our free trial. Add a key to remove the cap.
         </div>
       )}
-
-      {/* NO PLATFORM FALLBACK (BYOK required) */}
       {!status?.configured && !status?.platformFallbackAvailable && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3 text-xs text-amber-900 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <div>
-            <strong>AI is currently unavailable.</strong> Add your provider key below to enable the ✨ sparkle buttons in template editors.
-          </div>
+          <div>Add a provider key below to turn on AI.</div>
         </div>
       )}
 
@@ -291,9 +278,13 @@ export function AiKeyCard() {
             </div>
           </div>
 
-          {/* Model picker — list filtered to the chosen provider.
-              Cost-per-call is pre-computed server-side from the
-              published price-per-1M-tokens; the FE only formats it. */}
+          {/* Model picker. 2026-05-25 — dropped the verbose token-
+              math detail panel underneath ("Cost: $X / 1M input,
+              $Y / 1M output, a typical generation runs ~300
+              tokens..."). The dropdown option already shows the
+              per-call cost; the short tagline tells the operator
+              what each tier is for. Token math scares non-technical
+              admins. */}
           {currentProviderInfo && (
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">Model</label>
@@ -304,21 +295,12 @@ export function AiKeyCard() {
               >
                 {currentProviderInfo.models.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.label}{m.default ? ' (recommended)' : ''} — {formatPerCallCost(m.estCostPerCallUsd)}
+                    {m.label} — {formatPerCallCost(m.estCostPerCallUsd)}
                   </option>
                 ))}
               </select>
               {currentModelInfo && (
-                <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-600 space-y-0.5">
-                  <div className="font-semibold text-slate-700">{currentModelInfo.label}</div>
-                  <div>{currentModelInfo.tagline}</div>
-                  <div className="text-slate-500">
-                    Cost: ${currentModelInfo.inputPer1M.toFixed(2)} / 1M input tokens
-                    · ${currentModelInfo.outputPer1M.toFixed(2)} / 1M output tokens.
-                    {' '}A typical signage generation runs ~300 output tokens, so expect{' '}
-                    {formatPerCallCost(currentModelInfo.estCostPerCallUsd)}.
-                  </div>
-                </div>
+                <p className="mt-1.5 text-[11px] text-slate-500">{currentModelInfo.tagline}</p>
               )}
             </div>
           )}
@@ -351,8 +333,7 @@ export function AiKeyCard() {
               </button>
             </div>
             <p className="text-[11px] text-slate-500 mt-1.5">
-              We send one tiny test request to {currentProviderInfo?.label || 'the provider'} with the chosen model BEFORE saving.
-              Invalid keys (or keys without access to the model) are rejected and never stored.
+              We test the key before saving. Invalid keys are rejected.
             </p>
           </div>
 

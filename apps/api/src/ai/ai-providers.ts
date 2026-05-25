@@ -135,13 +135,13 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
   {
     id: 'anthropic',
     label: 'Anthropic (Claude)',
-    description: 'Recommended — best fit for our prompts.',
+    description: 'Recommended.',
     getKeyUrl: 'https://console.anthropic.com/settings/keys',
     models: [
       {
         id: 'claude-3-5-haiku-20241022',
         label: 'Standard — Claude 3.5 Haiku',
-        tagline: 'Fast + cheap. Day-to-day copy, announcements, ticker text.',
+        tagline: 'Best for everyday copy and announcements.',
         inputPer1M: 0.80, outputPer1M: 4.00,
         estCostPerCallUsd: estCost(0.80, 4.00),
         default: true,
@@ -149,14 +149,14 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
       {
         id: 'claude-3-5-sonnet-20241022',
         label: 'Balanced — Claude 3.5 Sonnet',
-        tagline: 'More nuance + better structured output. Pick for long copy.',
+        tagline: 'Better for longer copy.',
         inputPer1M: 3.00, outputPer1M: 15.00,
         estCostPerCallUsd: estCost(3.00, 15.00),
       },
       {
         id: 'claude-opus-4-20250514',
         label: 'Premium — Claude Opus 4',
-        tagline: 'Top tier. Use for AI-generated template layouts + complex prompts.',
+        tagline: 'Best for AI-generated template designs.',
         inputPer1M: 15.00, outputPer1M: 75.00,
         estCostPerCallUsd: estCost(15.00, 75.00),
       },
@@ -165,13 +165,13 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
   {
     id: 'openai',
     label: 'OpenAI (GPT)',
-    description: 'Good if you already have an OpenAI account.',
+    description: 'Use if you already have an OpenAI account.',
     getKeyUrl: 'https://platform.openai.com/api-keys',
     models: [
       {
         id: 'gpt-4o-mini',
         label: 'Standard — GPT-4o mini',
-        tagline: 'Fast + cheap. Day-to-day copy, announcements, ticker text.',
+        tagline: 'Best for everyday copy and announcements.',
         inputPer1M: 0.15, outputPer1M: 0.60,
         estCostPerCallUsd: estCost(0.15, 0.60),
         default: true,
@@ -179,14 +179,14 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
       {
         id: 'gpt-4.1',
         label: 'Balanced — GPT-4.1',
-        tagline: 'Better instruction-following. Pick for long copy + structured output.',
+        tagline: 'Better for longer copy.',
         inputPer1M: 2.00, outputPer1M: 8.00,
         estCostPerCallUsd: estCost(2.00, 8.00),
       },
       {
         id: 'gpt-5',
         label: 'Premium — GPT-5',
-        tagline: 'Top tier. Use for AI-generated template layouts + complex prompts.',
+        tagline: 'Best for AI-generated template designs.',
         inputPer1M: 5.00, outputPer1M: 20.00,
         estCostPerCallUsd: estCost(5.00, 20.00),
       },
@@ -195,7 +195,7 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
   {
     id: 'google',
     label: 'Google (Gemini)',
-    description: 'Lowest-cost option of the three. Generous free tier on aistudio.google.com.',
+    description: 'Cheapest. Generous free tier.',
     getKeyUrl: 'https://aistudio.google.com/apikey',
     models: [
       // SECURITY/COMPAT (audit-B3 fix, 2026-05-25) — default is
@@ -206,7 +206,7 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
       {
         id: 'gemini-1.5-flash',
         label: 'Standard — Gemini 1.5 Flash',
-        tagline: 'Fast + cheap. Day-to-day copy, announcements, ticker text.',
+        tagline: 'Best for everyday copy and announcements.',
         inputPer1M: 0.075, outputPer1M: 0.30,
         estCostPerCallUsd: estCost(0.075, 0.30),
         default: true,
@@ -214,14 +214,14 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
       {
         id: 'gemini-1.5-pro',
         label: 'Balanced — Gemini 1.5 Pro',
-        tagline: 'Longer reasoning runway. Pick for long copy + structured output.',
+        tagline: 'Better for longer copy.',
         inputPer1M: 1.25, outputPer1M: 5.00,
         estCostPerCallUsd: estCost(1.25, 5.00),
       },
       {
         id: 'gemini-2.5-pro',
         label: 'Premium — Gemini 2.5 Pro',
-        tagline: 'Top tier. Use for AI-generated template layouts + complex prompts.',
+        tagline: 'Best for AI-generated template designs.',
         inputPer1M: 2.50, outputPer1M: 10.00,
         estCostPerCallUsd: estCost(2.50, 10.00),
       },

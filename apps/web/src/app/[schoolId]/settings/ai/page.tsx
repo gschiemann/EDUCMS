@@ -39,11 +39,7 @@ export default function SettingsAiPage() {
           <Sparkles className="h-5 w-5 text-violet-600" />
           <div>
             <h1 className="text-lg font-bold">AI provider</h1>
-            <p className="text-xs text-slate-500">
-              Pick a provider, paste a key, choose a model. AI-generated copy
-              (announcements, tickers, menu items, etc.) routes through your
-              account at your provider&rsquo;s rates.
-            </p>
+            <p className="text-xs text-slate-500">Pick a provider and model. You pay your provider directly.</p>
           </div>
         </div>
       </div>
