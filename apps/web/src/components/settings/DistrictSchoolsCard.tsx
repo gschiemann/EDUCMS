@@ -51,57 +51,57 @@ const COPY: Record<Vertical, Copy> = {
   K12: {
     parentNoun: 'district', childNoun: 'school', childNounPlural: 'schools',
     cardHeading: 'Schools in this district',
-    addButton: 'Add a school',
+    addButton: 'School',
     exampleName: 'Lincoln High School', exampleSlug: 'lincoln-high',
-    emptyState: 'No schools yet. Click Add a school to spin up your first one.',
+    emptyState: 'No schools yet. Click + School to spin up your first one.',
     inheritanceNote: 'Each school gets its own screens, playlists, users, and emergency settings — but inherits your district branding.',
   },
   RESTAURANT: {
     parentNoun: 'franchise', childNoun: 'location', childNounPlural: 'locations',
     cardHeading: 'Locations in this group',
-    addButton: 'Add a location',
+    addButton: 'Location',
     exampleName: 'Times Square Store', exampleSlug: 'times-square',
-    emptyState: 'No locations yet. Click Add a location to add your first store.',
+    emptyState: 'No locations yet. Click + Location to add your first store.',
     inheritanceNote: 'Each location gets its own menu boards, schedules, and staff — but inherits your franchise branding.',
   },
   RETAIL: {
     parentNoun: 'chain', childNoun: 'store', childNounPlural: 'stores',
     cardHeading: 'Stores in this chain',
-    addButton: 'Add a store',
+    addButton: 'Store',
     exampleName: 'Mall of America Store', exampleSlug: 'mall-of-america',
-    emptyState: 'No stores yet. Click Add a store to onboard your first location.',
+    emptyState: 'No stores yet. Click + Store to onboard your first location.',
     inheritanceNote: 'Each store gets its own promo signage and inventory feeds — but inherits your chain branding.',
   },
   HEALTHCARE: {
     parentNoun: 'network', childNoun: 'clinic', childNounPlural: 'clinics',
     cardHeading: 'Clinics in this network',
-    addButton: 'Add a clinic',
+    addButton: 'Clinic',
     exampleName: 'Downtown Clinic', exampleSlug: 'downtown',
-    emptyState: 'No clinics yet. Click Add a clinic to onboard your first practice.',
+    emptyState: 'No clinics yet. Click + Clinic to onboard your first practice.',
     inheritanceNote: 'Each clinic gets its own waiting-room boards and HIPAA-compliant alerts — but inherits your network branding.',
   },
   FITNESS: {
     parentNoun: 'group', childNoun: 'gym', childNounPlural: 'gyms',
     cardHeading: 'Gyms in this group',
-    addButton: 'Add a gym',
+    addButton: 'Gym',
     exampleName: 'Chicago Loop Gym', exampleSlug: 'chicago-loop',
-    emptyState: 'No gyms yet. Click Add a gym to onboard your first location.',
+    emptyState: 'No gyms yet. Click + Gym to onboard your first location.',
     inheritanceNote: 'Each gym gets its own class schedule boards and member-facing screens — but inherits your group branding.',
   },
   CORPORATE: {
     parentNoun: 'company', childNoun: 'office', childNounPlural: 'offices',
     cardHeading: 'Offices in this company',
-    addButton: 'Add an office',
+    addButton: 'Office',
     exampleName: 'San Francisco Office', exampleSlug: 'san-francisco',
-    emptyState: 'No offices yet. Click Add an office to add your first location.',
+    emptyState: 'No offices yet. Click + Office to add your first location.',
     inheritanceNote: 'Each office gets its own lobby boards and event calendars — but inherits your company branding.',
   },
   OTHER: {
     parentNoun: 'group', childNoun: 'location', childNounPlural: 'locations',
     cardHeading: 'Locations in this group',
-    addButton: 'Add a location',
+    addButton: 'Location',
     exampleName: 'New Location', exampleSlug: 'new-location',
-    emptyState: 'No locations yet. Click Add a location to get started.',
+    emptyState: 'No locations yet. Click + Location to get started.',
     inheritanceNote: 'Each location gets its own screens, playlists, and users — but inherits your group branding.',
   },
   // 2026-05-03 — VenueOS launch additions. GYM mirrors FITNESS, QSR
@@ -111,25 +111,25 @@ const COPY: Record<Vertical, Copy> = {
   GYM: {
     parentNoun: 'group', childNoun: 'gym', childNounPlural: 'gyms',
     cardHeading: 'Gyms in this group',
-    addButton: 'Add a gym',
+    addButton: 'Gym',
     exampleName: 'Chicago Loop Gym', exampleSlug: 'chicago-loop',
-    emptyState: 'No gyms yet. Click Add a gym to onboard your first location.',
+    emptyState: 'No gyms yet. Click + Gym to onboard your first location.',
     inheritanceNote: 'Each gym gets its own class schedule boards and member-facing screens — but inherits your group branding.',
   },
   QSR: {
     parentNoun: 'brand', childNoun: 'restaurant', childNounPlural: 'restaurants',
     cardHeading: 'Restaurants in this brand',
-    addButton: 'Add a restaurant',
+    addButton: 'Restaurant',
     exampleName: 'Times Square Store', exampleSlug: 'times-square',
-    emptyState: 'No restaurants yet. Click Add a restaurant to onboard your first location.',
+    emptyState: 'No restaurants yet. Click + Restaurant to onboard your first location.',
     inheritanceNote: 'Each restaurant gets its own menu boards, schedules, and staff — but inherits your brand styling.',
   },
   FASHION: {
     parentNoun: 'brand', childNoun: 'boutique', childNounPlural: 'boutiques',
     cardHeading: 'Boutiques in this brand',
-    addButton: 'Add a boutique',
+    addButton: 'Boutique',
     exampleName: 'SoHo Studio', exampleSlug: 'soho',
-    emptyState: 'No boutiques yet. Click Add a boutique to onboard your first location.',
+    emptyState: 'No boutiques yet. Click + Boutique to onboard your first location.',
     inheritanceNote: 'Each boutique gets its own lookbook signage and storefront screens — but inherits your brand styling.',
   },
 };
@@ -320,10 +320,14 @@ export function DistrictSchoolsCard() {
           ) : null}
         </h2>
         {!adding && (
+          // 2026-05-25 — match the size of the Configure pills used on
+          // every other settings row (Emergency, AI, Branding, Billing):
+          // px-4 py-2 rounded-lg font-bold. Keeps the visual rhythm of
+          // the settings page uniform.
           <button
             type="button"
             onClick={() => { setAdding(true); setError(null); }}
-            className="text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
+            className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors"
           >
             <Plus className="h-3.5 w-3.5" /> {c.addButton}
           </button>
