@@ -78,26 +78,30 @@ export default function SettingsBrandingPage() {
     }
   };
 
+  // 2026-05-25 — header pattern unified with /settings/emergency.
+  // Was a full-width white box with border-b that looked square
+  // against the page background. Now a contained max-w header
+  // that matches the rest of the chrome.
   return (
-    <div>
-      <div className="px-6 pt-5">
-        <Link
-          href={`/${schoolId}/settings`}
-          className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 mb-2"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Settings
-        </Link>
-      </div>
-      <div className="px-6 pb-5 flex items-center justify-between border-b border-slate-200 bg-white">
-        <div className="flex items-center gap-2">
-          <Paintbrush className="h-5 w-5 text-indigo-600" />
-          <div>
-            <h1 className="text-lg font-bold">Branding</h1>
-            <p className="text-xs text-slate-500">Your CMS looks like your school. Paste a URL or tweak below.</p>
-          </div>
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+      <header className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <Link
+            href={`/${schoolId}/settings`}
+            className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 mb-2"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Settings
+          </Link>
+          <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
+            <Paintbrush className="w-6 h-6 text-indigo-500" />
+            Branding
+          </h1>
+          <p className="text-sm text-slate-500 mt-1 max-w-2xl">
+            Your CMS looks like your school. Paste a URL or tweak below.
+          </p>
         </div>
         {current && (
-          <div>
+          <div className="mt-1">
             {confirmRevert ? (
               <div className="flex gap-2 items-center text-sm">
                 <span>Revert to default theme?</span>
@@ -111,7 +115,7 @@ export default function SettingsBrandingPage() {
             )}
           </div>
         )}
-      </div>
+      </header>
 
       {loading ? (
         <div className="p-10 text-center text-slate-500">Loading…</div>

@@ -253,7 +253,7 @@ export class TenantsController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
   async updateMyTenant(
     @Request() req: any,
-    @Body() body: { vertical?: string; name?: string },
+    @Body() body: { vertical?: string; name?: string; address?: string | null },
   ) {
     const tenantId = req.user.tenantId;
     const data: any = {};
@@ -265,12 +265,27 @@ export class TenantsController {
       data.vertical = v;
     }
     if (body.name && body.name.trim()) data.name = body.name.trim();
+    // 2026-05-25 — address editable here. Empty string explicitly
+    // clears the field (operator might want to remove a wrong
+    // address); null is also treated as "clear." A NON-empty trimmed
+    // string overwrites. Anything outside those branches (e.g. the
+    // body field absent entirely) leaves the column untouched.
+    if (body.address !== undefined) {
+      const trimmed = (body.address ?? '').trim().slice(0, 500);
+      data.address = trimmed || null;
+      // Whenever address changes we MUST invalidate the cached
+      // lat/lng — Sprint 8's geocoder will re-run on the new value.
+      // Without this, an operator who corrects "123 Main St" → "456
+      // Oak St" would keep the old coords until manual refresh.
+      data.latitude = null;
+      data.longitude = null;
+    }
     if (Object.keys(data).length === 0) throw new HttpException('Nothing to update', HttpStatus.BAD_REQUEST);
 
     const updated = await this.prisma.client.tenant.update({
       where: { id: tenantId },
       data,
-      select: { id: true, name: true, slug: true, vertical: true },
+      select: { id: true, name: true, slug: true, vertical: true, address: true } as any,
     });
     await this.prisma.client.auditLog.create({
       data: {
@@ -370,11 +385,17 @@ export class TenantsController {
         name: true,
         slug: true,
         vertical: true,
+        // 2026-05-25 — expose address (+ future lat/lng) on the
+        // current-tenant info endpoint so the edit-location UI
+        // can prefill what's already stored.
+        address: true,
+        latitude: true,
+        longitude: true,
         emergencyStatus: true,
         panicLockdownPlaylistId: true,
         panicWeatherPlaylistId: true,
         panicEvacuatePlaylistId: true,
-      }
+      } as any,
     });
     return tenant;
   }

@@ -24,39 +24,41 @@ export default function SettingsAiPage() {
   const params = useParams();
   const schoolId = params?.schoolId as string;
 
+  // 2026-05-25 — header pattern unified with /settings/emergency
+  // per operator: "did you determine to not round the top menu
+  // items under each setting? i suggested it but you just ignored
+  // it." The old "full-width white box with border-b" looked square
+  // against the page background. Same max-w-contained layout that
+  // emergency uses is what everything else should look like.
   return (
-    <div>
-      <div className="px-6 pt-5">
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+      <header>
         <Link
           href={`/${schoolId}/settings`}
-          className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-violet-600 mb-2"
+          className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 mb-2"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Settings
         </Link>
-      </div>
-      <div className="px-6 pb-5 border-b border-slate-200 bg-white">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-violet-600" />
-          <div>
-            <h1 className="text-lg font-bold">AI provider</h1>
-            <p className="text-xs text-slate-500">Pick a provider and model. You pay your provider directly.</p>
-          </div>
-        </div>
-      </div>
+        <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
+          <Sparkles className="w-6 h-6 text-indigo-500" />
+          AI provider
+        </h1>
+        <p className="text-sm text-slate-500 mt-1 max-w-2xl">
+          Pick a provider and model. You pay your provider directly.
+        </p>
+      </header>
 
-      <div className="px-6 py-6">
-        <RoleGate
-          allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}
-          fallback={
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              Only district + school admins can configure the AI provider. Ask
-              your administrator if you need this changed.
-            </div>
-          }
-        >
-          <AiKeyCard />
-        </RoleGate>
-      </div>
+      <RoleGate
+        allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}
+        fallback={
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            Only district + school admins can configure the AI provider. Ask
+            your administrator if you need this changed.
+          </div>
+        }
+      >
+        <AiKeyCard />
+      </RoleGate>
     </div>
   );
 }
