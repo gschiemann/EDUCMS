@@ -2,7 +2,7 @@
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout } from '@/hooks/use-api';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
@@ -355,6 +355,12 @@ function CanaryRolloutTile({ canary }: { canary: { percent: number; setAt: strin
 // gear popover next to the screen row. No new endpoint — purely a
 // presentation enhancement.
 function ScreenDiagnostics({ screen }: { screen: any }) {
+  // 2026-05-24 — per-screen orientation lock control. Lives inside the
+  // diagnostics drawer (right next to Resolution) so operators with a
+  // sideways-mounted Goodview / Taurus screen can flip orientation in
+  // one click without climbing a ladder.
+  const setOrientation = useSetScreenOrientation();
+  const currentOrientation: string = screen?.orientation || 'LANDSCAPE';
   const cache: any = screen?.lastCacheReport || null;
   const cacheLine = cache
     ? `${cache.totalAssets ?? '?'} assets · ${cache.totalBytes != null ? Math.round(cache.totalBytes / 1024 / 1024) + ' MB' : '? size'}`
@@ -390,6 +396,27 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
       <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
         {row('OS', screen?.osInfo)}
         {row('Resolution', screen?.resolution)}
+        {/* 2026-05-24 — interactive orientation control. Asks the API
+            to flip LANDSCAPE / PORTRAIT / AUTO; signed WS broadcast +
+            manifest poll converge the kiosk within ~10s. */}
+        <div className="flex flex-col min-w-0">
+          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Orientation</div>
+          <select
+            value={currentOrientation}
+            disabled={setOrientation.isPending}
+            onChange={(e) => {
+              const next = e.target.value as 'LANDSCAPE' | 'PORTRAIT' | 'AUTO';
+              if (next === currentOrientation) return;
+              setOrientation.mutate({ id: screen.id, orientation: next });
+            }}
+            className="text-[11px] font-medium text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-0.5 mt-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Flip the kiosk between landscape, portrait, or sensor-decides (AUTO). Takes effect on the device within ~10s via signed WS broadcast."
+          >
+            <option value="LANDSCAPE">Landscape</option>
+            <option value="PORTRAIT">Portrait</option>
+            <option value="AUTO">Auto (sensor)</option>
+          </select>
+        </div>
         {row(
           'Player APK',
           playerV ? (

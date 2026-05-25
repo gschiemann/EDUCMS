@@ -112,6 +112,78 @@ class MainActivity : ComponentActivity() {
         private const val WATCHDOG_TICK_MS = 2L * 60L * 1000L
         /** How long the page can be stale before we force a reload. 10 minutes. */
         private const val WATCHDOG_TIMEOUT_MS = 10L * 60L * 1000L
+
+        // 2026-05-24 — operator-controlled orientation lock.
+        // SharedPreferences key for the most-recently-applied value,
+        // used on cold-boot before the manifest poll lands.
+        private const val PREFS_NAME = "edu_player"
+        private const val PREF_ORIENTATION = "screen_orientation"
+        const val ORIENTATION_LANDSCAPE = "LANDSCAPE"
+        const val ORIENTATION_PORTRAIT = "PORTRAIT"
+        const val ORIENTATION_AUTO = "AUTO"
+    }
+
+    /**
+     * Read the last-applied orientation from SharedPreferences. Returns
+     * LANDSCAPE by default — matches the historical effective behavior
+     * of SCREEN_ORIENTATION_FULL_SENSOR on stationary signage hardware
+     * (no accelerometer → defaults to firmware-set landscape).
+     */
+    private fun loadSavedOrientation(): String {
+        return try {
+            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(PREF_ORIENTATION, ORIENTATION_LANDSCAPE) ?: ORIENTATION_LANDSCAPE
+        } catch (e: Exception) {
+            PlayerLogger.w("Orientation", "loadSavedOrientation failed: ${e.message}")
+            ORIENTATION_LANDSCAPE
+        }
+    }
+
+    /**
+     * Apply an orientation value coming from the operator (via the
+     * manifest poll, the signed WS ORIENTATION_CHANGE message, or
+     * cold-boot SharedPreferences).
+     *
+     * Maps the three string values to the standard Android API:
+     *   LANDSCAPE → SCREEN_ORIENTATION_LANDSCAPE
+     *   PORTRAIT  → SCREEN_ORIENTATION_PORTRAIT
+     *   AUTO      → SCREEN_ORIENTATION_UNSPECIFIED  (back to sensor)
+     *
+     * Idempotent — only calls setRequestedOrientation if the new value
+     * differs from the current requestedOrientation, so a manifest poll
+     * that returns the same value every 10s doesn't trigger a redundant
+     * Activity recreation.
+     *
+     * If the underlying Goodview / Taurus firmware ignores the Android
+     * API (rare but documented on some locked ROMs), the /player route
+     * applies a CSS transform:rotate(90deg) fallback within ~2s of
+     * detecting that the layout still reports landscape dimensions
+     * after PORTRAIT was requested. That logic lives in apps/web/src/
+     * app/player/page.tsx — this Activity just makes the request and
+     * persists the choice.
+     */
+    fun applyOrientation(orientation: String, persist: Boolean = true) {
+        val normalized = orientation.uppercase()
+        val target = when (normalized) {
+            ORIENTATION_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            ORIENTATION_PORTRAIT  -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            ORIENTATION_AUTO      -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            else -> {
+                PlayerLogger.w("Orientation", "unknown value: $orientation; ignoring")
+                return
+            }
+        }
+        if (requestedOrientation != target) {
+            PlayerLogger.i("Orientation", "applying $normalized")
+            requestedOrientation = target
+        }
+        if (persist) {
+            runCatching {
+                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                    .putString(PREF_ORIENTATION, normalized)
+                    .apply()
+            }.onFailure { PlayerLogger.w("Orientation", "persist failed: ${it.message}") }
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -181,11 +253,22 @@ class MainActivity : ComponentActivity() {
         // ROMs. MainActivity is foregrounded so it satisfies BAL.
         handleInstallPromptTrampoline(intent)
 
-        // FULL sensor rotation — user mounts the display however they
-        // want (portrait, landscape, reverse). The WebView handles any
-        // orientation; the web player's CSS scales 1920×1080 scenes to
-        // fit either aspect via transform:scale.
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        // 2026-05-24 — per-screen orientation lock.
+        //
+        // Old behavior (SCREEN_ORIENTATION_FULL_SENSOR) deferred to the
+        // device accelerometer. On stationary signage hardware
+        // (Goodview, NovaStar Taurus, BrightSign, no-name wall-mount
+        // Android boxes) there's no useful sensor — Android falls back
+        // to the firmware default, which means a portrait-mounted
+        // Goodview panel renders landscape content sideways.
+        //
+        // New behavior: read the last-applied orientation from
+        // SharedPreferences on boot (so a cold-restart picks the same
+        // value the operator last set) and apply it via
+        // setRequestedOrientation. The manifest poll + WS message
+        // handlers both call applyOrientation(String) when the value
+        // changes; that path is in WebAppBridge.handleOrientation.
+        applyOrientation(loadSavedOrientation(), persist = false)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
@@ -991,6 +1074,17 @@ class MainActivity : ComponentActivity() {
                             "Web heartbeat: first tick received — watchdog freshness reset",
                         )
                     }
+                },
+                // 2026-05-24 — orientation lock. Web calls
+                // window.EduCmsNative.setOrientation(value) when it
+                // observes a new orientation in the manifest poll or
+                // in a signed WS ORIENTATION_CHANGE message. Native
+                // calls setRequestedOrientation on the UI thread and
+                // persists the choice in SharedPreferences so a
+                // cold-boot picks the same value before the manifest
+                // poll lands.
+                onSetOrientation = { raw ->
+                    runOnUiThread { applyOrientation(raw) }
                 },
             ),
             "EduCmsNative"

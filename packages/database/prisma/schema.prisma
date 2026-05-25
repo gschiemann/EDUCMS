@@ -410,6 +410,13 @@ model Screen {
   lastPingAt                          DateTime?    @map("last_ping_at")
   pairedAt                            DateTime?    @map("paired_at")
   resolution                          String?
+  // 2026-05-24 — operator-controllable orientation lock. Replaces the
+  // old SCREEN_ORIENTATION_FULL_SENSOR behavior on stationary signage
+  // hardware (Goodview, Taurus, BrightSign) that has no useful
+  // accelerometer. Values: 'LANDSCAPE' | 'PORTRAIT' | 'AUTO'. Default
+  // LANDSCAPE matches the pre-2026-05-24 effective behavior so every
+  // already-paired kiosk continues to behave the same after migrate.
+  orientation                         String       @default("LANDSCAPE")
   osInfo                              String?      @map("os_info")
   browserInfo                         String?      @map("browser_info")
   ipAddress                           String?      @map("ip_address")

@@ -1148,6 +1148,86 @@ export class ScreensController {
     return updated;
   }
 
+  // ─── 2026-05-24 — per-screen orientation lock ───
+  // Replaces the old "let the device sensor decide" behavior on
+  // stationary signage hardware (Goodview / NovaStar Taurus / BrightSign
+  // / no-name Android boxes mounted on a wall) that has no useful
+  // accelerometer. Operator flips orientation from the dashboard; the
+  // change broadcasts via signed WS to the kiosk and persists in DB so
+  // a cold-boot picks the same value from the manifest.
+  //
+  // Player APK maps the three string values to ActivityInfo constants:
+  //   LANDSCAPE → SCREEN_ORIENTATION_LANDSCAPE
+  //   PORTRAIT  → SCREEN_ORIENTATION_PORTRAIT
+  //   AUTO      → SCREEN_ORIENTATION_UNSPECIFIED  (back to sensor)
+  // If a stubborn ROM ignores setRequestedOrientation, the /player route
+  // applies a CSS transform:rotate fallback within 2s.
+  @Put(':id/orientation')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setOrientation(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { orientation?: string; reason?: string },
+  ) {
+    const target = String(body.orientation || '').toUpperCase().trim();
+    const ALLOWED = new Set(['LANDSCAPE', 'PORTRAIT', 'AUTO']);
+    if (!ALLOWED.has(target)) {
+      throw new HttpException(
+        'orientation must be one of: LANDSCAPE, PORTRAIT, AUTO',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+      select: { id: true, name: true, orientation: true, tenantId: true },
+    });
+    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    // Update + audit in a single transaction so partial state is
+    // impossible. Same pattern as the OAuth-purge audit-log sweep
+    // shipped earlier today.
+    const updated = await this.prisma.client.$transaction(async (tx) => {
+      const u = await tx.screen.update({
+        where: { id },
+        data: { orientation: target },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user?.id ?? null,
+          action: 'SCREEN_ORIENTATION_CHANGED',
+          targetType: 'Screen',
+          targetId: id,
+          details: JSON.stringify({
+            from: screen.orientation,
+            to: target,
+            reason: body.reason ?? null,
+          }),
+        },
+      });
+      return u;
+    });
+
+    // Signed WS broadcast so any connected player flips immediately.
+    // The player APK handler also re-applies on next manifest poll, so
+    // a kiosk that missed the WS message (offline / Redis blip) still
+    // converges within the manifest poll window (~10s).
+    const signed = this.signer.signMessage('ORIENTATION_CHANGE', {
+      screenId: id,
+      orientation: target,
+      reason: body.reason ?? null,
+    });
+    try {
+      await this.redisService.publish(`device:${id}`, signed);
+    } catch {
+      // Redis blip is non-fatal — the manifest is the source of truth.
+      // Player will pick up the new orientation on next manifest poll.
+    }
+
+    return updated;
+  }
+
   // ─── Sprint 8 — set screen geo location (map view) ───
   // Admin types an address (or pastes lat/lng); we forward to the
   // OpenStreetMap Nominatim public endpoint to geocode, store all three.
@@ -2104,6 +2184,8 @@ export class ScreensController {
           tenantId: screen.tenantId,
           tenantName: (screen as any).tenant?.name || null,
           generatedAt: new Date().toISOString(),
+          // 2026-05-24 — orientation lock for sports-mode screens too.
+          orientation: (screen as any).orientation || 'LANDSCAPE',
           playlists: this.buildScoreboardManifest(
             screen,
             boardGame,
@@ -2313,6 +2395,11 @@ export class ScreensController {
       tenantId: screen.tenantId,
       tenantName: (screen as any).tenant?.name || null,
       generatedAt: now.toISOString(),
+      // 2026-05-24 — operator-controlled orientation lock. Player APK
+      // applies on boot and on every manifest poll (cheap setter — only
+      // calls setRequestedOrientation if the value changed). Older APKs
+      // (no orientation field expected) ignore unknown fields.
+      orientation: (screen as any).orientation || 'LANDSCAPE',
       playlists: dynamicPlaylists
     };
 

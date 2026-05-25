@@ -36,6 +36,15 @@ class WebAppBridge(
      * and started playing from the beginning". See MainActivity.
      */
     private val onWebHeartbeat: () -> Unit = {},
+    /**
+     * 2026-05-24 — per-screen orientation lock. The /player route calls
+     * `bridge.setOrientation('LANDSCAPE' | 'PORTRAIT' | 'AUTO')` when
+     * it sees a new value in the manifest or in a signed WS
+     * ORIENTATION_CHANGE message. Native side maps to
+     * setRequestedOrientation; defaults to a no-op if the lambda isn't
+     * wired (e.g. for ad-hoc WebView previews).
+     */
+    private val onSetOrientation: (String) -> Unit = {},
 ) {
     /**
      * Escape hatch — exits our kiosk task stack and returns the user to
@@ -61,6 +70,16 @@ class WebAppBridge(
      */
     @JavascriptInterface
     fun heartbeat() = onWebHeartbeat()
+
+    /**
+     * 2026-05-24 — orientation lock. Called by the web player whenever
+     * it observes a new orientation value (either via manifest.orientation
+     * on the next poll, or via a signed ORIENTATION_CHANGE WS message).
+     * Input is validated native-side; unknown values are logged and
+     * ignored.
+     */
+    @JavascriptInterface
+    fun setOrientation(value: String) = onSetOrientation(value)
 
     /** Returns device info as JSON: manufacturer, model, sdk, width, height, appVersion. */
     @JavascriptInterface

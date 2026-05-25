@@ -126,6 +126,38 @@ export function useCreateScreen() {
   });
 }
 
+/** 2026-05-24 — flip a kiosk between LANDSCAPE / PORTRAIT / AUTO.
+ *  Hits the dedicated PUT /screens/:id/orientation endpoint so the
+ *  signed WS broadcast + AuditLog write fire alongside the DB update.
+ *  Optimistic so the dropdown reflects the choice instantly. */
+export function useSetScreenOrientation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, orientation, reason }: { id: string; orientation: 'LANDSCAPE' | 'PORTRAIT' | 'AUTO'; reason?: string }) =>
+      apiFetch(`/screens/${id}/orientation`, {
+        method: 'PUT',
+        body: JSON.stringify({ orientation, reason }),
+      }),
+    onMutate: async ({ id, orientation }) => {
+      await qc.cancelQueries({ queryKey: ['screens'] });
+      const prev = qc.getQueryData<any>(['screens']);
+      qc.setQueryData<any>(['screens'], (old: any) => {
+        const apply = (s: any) => (s?.id === id ? { ...s, orientation } : s);
+        if (Array.isArray(old)) return old.map(apply);
+        if (Array.isArray(old?.screens)) return { ...old, screens: old.screens.map(apply) };
+        return old;
+      });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['screens'], ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['screens'] });
+    },
+  });
+}
+
 export function useUpdateScreen() {
   const qc = useQueryClient();
   return useMutation({

@@ -9,7 +9,12 @@ export enum WsEventType {
   ACK = "ACK",
   STATE_RESYNC_REQUIRED = "STATE_RESYNC_REQUIRED",
   DEVICE_REVOKED = "DEVICE_REVOKED",
-  PURGE_CACHE = "PURGE_CACHE"
+  PURGE_CACHE = "PURGE_CACHE",
+  // 2026-05-24 — operator can flip a kiosk between landscape /
+  // portrait / auto from the dashboard without climbing a ladder.
+  // Player APK calls setRequestedOrientation; CSS transform fallback
+  // for stubborn ROMs that ignore the Android API.
+  ORIENTATION_CHANGE = "ORIENTATION_CHANGE"
 }
 
 export interface BaseSocketMessage {
@@ -91,7 +96,21 @@ export interface PurgeCacheEvent extends BaseSocketMessage {
   };
 }
 
-export type WebSocketMessage = 
+export type ScreenOrientation = "LANDSCAPE" | "PORTRAIT" | "AUTO";
+
+export interface OrientationChangeEvent extends BaseSocketMessage {
+  type: WsEventType.ORIENTATION_CHANGE;
+  payload: {
+    /** Target orientation. Player APK maps this to
+     *  ActivityInfo.SCREEN_ORIENTATION_{LANDSCAPE,PORTRAIT,UNSPECIFIED}.
+     *  AUTO restores the device-sensor-decides behavior. */
+    orientation: ScreenOrientation;
+    /** Optional reason / actor (audit + player-side info card). */
+    reason?: string;
+  };
+}
+
+export type WebSocketMessage =
   | HelloEvent
   | AuthOkEvent
   | AuthFailEvent
@@ -99,4 +118,5 @@ export type WebSocketMessage =
   | PublishAvailableEvent
   | OverrideEvent
   | AllClearEvent
-  | PurgeCacheEvent;
+  | PurgeCacheEvent
+  | OrientationChangeEvent;

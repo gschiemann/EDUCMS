@@ -1410,6 +1410,14 @@ function PlayerPage() {
   // available to fetchContent without being serializable state.
   const previewHandoffTokenRef = useRef<string | null>(null);
   const [previewOrientation, setPreviewOrientation] = useState<'portrait' | 'landscape'>('landscape');
+  // 2026-05-24 — per-screen orientation lock. Mirrors the manifest's
+  // orientation field; applies via:
+  //   1. native bridge setOrientation() FIRST (Android setRequestedOrientation)
+  //   2. CSS transform:rotate body fallback if the ROM ignored step 1
+  //      (detected by window.innerWidth/innerHeight not matching after ~2s)
+  // PORTRAIT-preview-mode users (?orientation=portrait in URL) bypass
+  // this and use the existing previewOrientation path.
+  const [manifestOrientation, setManifestOrientation] = useState<'LANDSCAPE' | 'PORTRAIT' | 'AUTO' | null>(null);
 
   // Tag <body> with data-player-route so the debug pill in globals.css
   // ONLY appears on the kiosk player, NEVER on the dashboard. Operator
@@ -1445,6 +1453,60 @@ function PlayerPage() {
     const q = qp('orientation');
     if (q === 'portrait' || q === 'landscape') setPreviewOrientation(q);
   }, []);
+
+  // Real-kiosk CSS-fallback orientation effect (2026-05-24).
+  //
+  // The native bridge bridge.setOrientation() already fired in
+  // applyManifest — Android setRequestedOrientation should have done
+  // the work. But some Goodview / NovaStar / no-name ROMs silently
+  // ignore the API and stay in the firmware default.
+  //
+  // Detection: 2 seconds after we asked for PORTRAIT, check if
+  // window.innerWidth > innerHeight. If yes, the ROM didn't rotate —
+  // apply a body transform:rotate(90deg) so the operator at least sees
+  // rotated content. Same approach the preview path uses (see below).
+  //
+  // LANDSCAPE asks: nothing to do — landscape is the default. AUTO
+  // releases the lock; if the device sensor takes over and rotates,
+  // the next manifest poll will see the new orientation regardless.
+  useEffect(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+    if (isPreviewMode()) return; // preview path owns the body in its own effect
+    if (manifestOrientation !== 'PORTRAIT') {
+      // Clear any prior CSS fallback so a switch from PORTRAIT → LANDSCAPE
+      // doesn't leave the body rotated.
+      const body = document.body;
+      const html = document.documentElement;
+      if (body.style.cssText.includes('rotate(90deg)')) {
+        body.style.cssText = '';
+        html.style.cssText = '';
+      }
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      // If the native rotation took effect, innerHeight > innerWidth
+      // already — no fallback needed. Otherwise, we apply the
+      // body-rotation trick.
+      const stillLandscape = window.innerWidth > window.innerHeight;
+      if (!stillLandscape) return;
+      const html = document.documentElement;
+      const body = document.body;
+      html.style.cssText = 'height:100vh;overflow:hidden;background:#000;';
+      body.style.cssText = [
+        'position:fixed',
+        'top:50%',
+        'left:50%',
+        'width:100vh',
+        'height:100vw',
+        'transform:translate(-50%,-50%) rotate(90deg)',
+        'transform-origin:center center',
+        'background:#000',
+        'overflow:hidden',
+        'margin:0',
+      ].join(';') + ';';
+    }, 2000);
+    return () => window.clearTimeout(handle);
+  }, [manifestOrientation]);
 
   // Preview-only orientation simulator. In portrait preview, we rotate
   // the <body> 90° and resize it to `100vh × 100vw` so content that
@@ -2110,6 +2172,8 @@ function PlayerPage() {
     isTemplate: boolean;
   };
   const [manifestPlaylists, setManifestPlaylists] = useState<ManifestPlaylistSummary[]>([]);
+  // manifestOrientation state declared above near previewOrientation
+  // so the CSS-fallback effect can reference it (Rules-of-Hooks).
   // Hydrate any cached emergency on first render so a power-cycle mid-alert
   // still shows the alert until ALL_CLEAR or a fresh manifest arrives.
   useEffect(() => {
@@ -2525,6 +2589,28 @@ function PlayerPage() {
     const applyManifest = (manifest: any) => {
       if (manifest.tenantId) setTenantId(manifest.tenantId);
       if (manifest.tenantName !== undefined) setTenantName(manifest.tenantName);
+
+      // 2026-05-24 — per-screen orientation lock. If the manifest
+      // carries an orientation field (LANDSCAPE / PORTRAIT / AUTO), ask
+      // the native side to rotate via setRequestedOrientation. The
+      // bridge persists the choice in SharedPreferences so a cold-boot
+      // applies it before the next manifest poll lands.
+      //
+      // The CSS-fallback path for stubborn ROMs lives in a separate
+      // effect (see manifestOrientation state below) — it watches for
+      // a mismatch between the requested orientation and the actual
+      // window aspect ratio ~2s after applying, and falls back to a
+      // body transform:rotate(90deg) if Android silently ignored us.
+      const orient = manifest.orientation;
+      if (orient === 'LANDSCAPE' || orient === 'PORTRAIT' || orient === 'AUTO') {
+        try {
+          const bridge = (window as any).EduCmsNative;
+          if (bridge && typeof bridge.setOrientation === 'function') {
+            bridge.setOrientation(orient);
+          }
+        } catch { /* bridge unavailable — CSS fallback effect handles it */ }
+        setManifestOrientation(orient);
+      }
 
       // Push every asset URL to the offline-cache Service Worker. Safe no-op
       // when SW isn't available. HIGH-5 fix: short-circuit when the URL set
