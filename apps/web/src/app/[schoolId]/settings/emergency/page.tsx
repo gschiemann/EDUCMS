@@ -562,9 +562,23 @@ function LocationModeEditor({ schoolId }: { schoolId: string }) {
 }
 
 /**
- * Inline upload form for a floor plan. Lives directly in the
- * emergency page — no navigation, no modal. File + name + optional
- * building / floor labels.
+ * Inline floor-plan upload — single-step flow. Operator clicks ONE
+ * "Upload floor plan" button → system file picker opens → file
+ * chosen → preview + auto-named form expands inline with optional
+ * building/floor labels and a Save button.
+ *
+ * Operator (2026-05-25): "the upload floor plan button is greyed
+ * out, the text fields arent aligned with each other and their
+ * seems to be another upload area at the top but lets just keep
+ * one upload button and the drag and drop shit can be in there
+ * once you select upload."
+ *
+ * Before: file picker AND form fields AND submit button were all
+ * rendered at once, with submit disabled until a file landed. That
+ * read as "broken page" — three boxes, none working until you found
+ * the right one.
+ *
+ * Now: one button. Click. Pick file. Form appears. Save. Done.
  */
 function InlineFloorPlanUpload({ onUploaded }: { onUploaded: () => void }) {
   const upload = useUploadFloorPlan();
@@ -581,6 +595,24 @@ function InlineFloorPlanUpload({ onUploaded }: { onUploaded: () => void }) {
     };
   }, [previewUrl]);
 
+  const handleFile = (f: File | null) => {
+    if (!f) return;
+    setFile(f);
+    // Auto-fill name from the filename (without extension) — the
+    // operator can override before saving. Saves a step in the
+    // common case where the file is literally "MainBuilding.png".
+    setName(f.name.replace(/\.[^.]+$/, ''));
+    setErr(null);
+  };
+
+  const reset = () => {
+    setFile(null);
+    setName('');
+    setBuildingLabel('');
+    setFloorLabel('');
+    setErr(null);
+  };
+
   const handleSubmit = async () => {
     if (!file || !name.trim()) return;
     setErr(null);
@@ -591,10 +623,7 @@ function InlineFloorPlanUpload({ onUploaded }: { onUploaded: () => void }) {
         buildingLabel: buildingLabel.trim() || undefined,
         floorLabel: floorLabel.trim() || undefined,
       });
-      setFile(null);
-      setName('');
-      setBuildingLabel('');
-      setFloorLabel('');
+      reset();
       onUploaded();
     } catch (e: any) {
       const msg = e?.message || 'Could not upload. Make sure the file is a PNG / JPG / WEBP under 25 MB.';
@@ -607,65 +636,62 @@ function InlineFloorPlanUpload({ onUploaded }: { onUploaded: () => void }) {
     }
   };
 
+  // ── State 1: no file picked → single CTA button ─────────────
+  if (!file) {
+    return (
+      <div>
+        <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold cursor-pointer transition-colors">
+          <Upload className="w-4 h-4" />
+          Upload floor plan
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={(e) => handleFile(e.target.files?.[0] || null)}
+          />
+        </label>
+        <p className="text-[11px] text-slate-500 mt-2">
+          PNG / JPG / WEBP, up to 25 MB. We&rsquo;ll detect the image dimensions automatically.
+        </p>
+      </div>
+    );
+  }
+
+  // ── State 2: file picked → preview + form + save ────────────
   return (
     <div className="space-y-3">
-      {/* File picker — slim row, click-to-select. Same UX target as the
-          panic editor drop zone, scaled down. */}
-      <div>
-        {file ? (
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-white border border-slate-200">
-            {previewUrl ? (
-              <img
-                src={previewUrl}
-                alt="Floor plan preview"
-                className="w-14 h-14 rounded object-cover border border-slate-200"
-              />
-            ) : (
-              <div className="w-14 h-14 rounded bg-slate-100 flex items-center justify-center">
-                <ImageIcon className="w-5 h-5 text-slate-400" />
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-bold text-slate-800 truncate">
-                {file.name}
-              </div>
-              <div className="text-[10px] text-slate-500">
-                {Math.round(file.size / 1024)} KB
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setFile(null)}
-              className="text-[11px] font-semibold text-slate-500 hover:text-rose-600"
-            >
-              Replace
-            </button>
-          </div>
+      <div className="flex items-center gap-3 p-3 rounded-lg bg-white border border-slate-200">
+        {previewUrl ? (
+          <img
+            src={previewUrl}
+            alt="Floor plan preview"
+            className="w-14 h-14 rounded object-cover border border-slate-200"
+          />
         ) : (
-          <label className="block cursor-pointer">
-            <div className="border border-dashed border-slate-300 rounded-md px-3 py-2.5 flex items-center gap-2 hover:border-rose-300 hover:bg-rose-50/30 transition-colors">
-              <Upload className="w-4 h-4 text-slate-400 shrink-0" />
-              <span className="text-xs font-bold text-slate-600">
-                Choose a floor plan image (PNG / JPG / WEBP, up to 25 MB)
-              </span>
-            </div>
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                setFile(f);
-                if (!name) setName(f.name.replace(/\.[^.]+$/, ''));
-              }}
-            />
-          </label>
+          <div className="w-14 h-14 rounded bg-slate-100 flex items-center justify-center">
+            <ImageIcon className="w-5 h-5 text-slate-400" />
+          </div>
         )}
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-bold text-slate-800 truncate">{file.name}</div>
+          <div className="text-[10px] text-slate-500">{Math.round(file.size / 1024)} KB</div>
+        </div>
+        <button
+          type="button"
+          onClick={reset}
+          className="text-[11px] font-semibold text-slate-500 hover:text-rose-600"
+        >
+          Pick a different file
+        </button>
       </div>
 
+      {/* All three labels render single-line so the inputs line up
+          left-to-right. The (optional) text used to push Building /
+          Floor down by a line vs Name, leaving inputs visually
+          unaligned (operator screenshot 2026-05-25). Now the
+          placeholder is "(optional)" and the label is just the name. */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-        <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1 md:col-span-1">
+        <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
           Name
           <input
             value={name}
@@ -676,21 +702,21 @@ function InlineFloorPlanUpload({ onUploaded }: { onUploaded: () => void }) {
           />
         </label>
         <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
-          Building <span className="font-normal text-slate-400">(optional)</span>
+          Building
           <input
             value={buildingLabel}
             onChange={(e) => setBuildingLabel(e.target.value)}
-            placeholder="e.g. Main"
+            placeholder="Optional, e.g. Main"
             maxLength={40}
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-800"
           />
         </label>
         <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
-          Floor <span className="font-normal text-slate-400">(optional)</span>
+          Floor
           <input
             value={floorLabel}
             onChange={(e) => setFloorLabel(e.target.value)}
-            placeholder="e.g. 2"
+            placeholder="Optional, e.g. 2"
             maxLength={20}
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-800"
           />
@@ -707,11 +733,19 @@ function InlineFloorPlanUpload({ onUploaded }: { onUploaded: () => void }) {
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={!file || !name.trim() || upload.isPending}
+          disabled={!name.trim() || upload.isPending}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {upload.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-          {upload.isPending ? 'Uploading…' : 'Upload floor plan'}
+          {upload.isPending ? 'Uploading…' : 'Save floor plan'}
+        </button>
+        <button
+          type="button"
+          onClick={reset}
+          disabled={upload.isPending}
+          className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 disabled:opacity-50"
+        >
+          Cancel
         </button>
         {upload.isSuccess && !upload.isPending && (
           <span className="text-[11px] font-semibold text-emerald-700 inline-flex items-center gap-1">

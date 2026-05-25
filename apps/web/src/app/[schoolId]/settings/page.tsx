@@ -687,12 +687,14 @@ function PanicContentGate() {
   // The handleToggle / button code paths are intentionally GONE from
   // this card — the only action here is "Configure" which navigates.
 
+  // 2026-05-25 operator: "change the configure button to a real button
+  // like all the other settings buttons in the area." Card no longer
+  // wraps in a Link — the rose-600 pill on the right is the only
+  // clickable affordance, matching the Switch / Upload logo / Auto-
+  // brand pattern used elsewhere on /settings.
   if (!hydrated && !isK12) {
     return (
-      <Link
-        href={`${pathnameForGate}/emergency`}
-        className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-4 hover:border-rose-300 hover:shadow-md transition-all"
-      >
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
             <AlertOctagon className="w-4 h-4 text-slate-500" />
@@ -702,17 +704,19 @@ function PanicContentGate() {
             <p className="text-[11px] text-slate-500 mt-0.5">Loading…</p>
           </div>
         </div>
-        <span className="text-xs text-rose-600 font-bold shrink-0">Configure →</span>
-      </Link>
+        <Link
+          href={`${pathnameForGate}/emergency`}
+          className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition-colors"
+        >
+          Configure
+        </Link>
+      </div>
     );
   }
 
   const showOn = isK12 || enabled;
   return (
-    <Link
-      href={`${pathnameForGate}/emergency`}
-      className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-4 hover:border-rose-300 hover:shadow-md transition-all"
-    >
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-4">
       <div className="flex items-center gap-3 min-w-0">
         <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${showOn ? 'bg-rose-50' : 'bg-slate-100'}`}>
           <AlertOctagon className={`w-4 h-4 ${showOn ? 'text-rose-600' : 'text-slate-500'}`} />
@@ -732,14 +736,17 @@ function PanicContentGate() {
             </span>
           </div>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            {showOn
-              ? 'Trigger content + on/off + floor-plan setup live on the dedicated page.'
-              : 'Lockdown / evacuate / weather alerts. Currently disabled — set up content first.'}
+            Trigger content + on/off + floor-plan setup live on the dedicated page.
           </p>
         </div>
       </div>
-      <span className="text-xs text-rose-600 font-bold shrink-0">Configure →</span>
-    </Link>
+      <Link
+        href={`${pathnameForGate}/emergency`}
+        className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition-colors"
+      >
+        Configure
+      </Link>
+    </div>
   );
 }
 
