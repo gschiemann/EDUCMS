@@ -75,22 +75,56 @@ export function VerticalSwitcherCard() {
     setPending(next);
     setError(null);
     try {
-      // 2026-05-25 bug fix: previously this code treated apiFetch's
-      // return value as a Response (checking `res.ok` + calling
-      // `res.json()`). apiFetch actually returns the PARSED JSON body
-      // on success and throws on non-2xx — so the `if (!res.ok)`
-      // branch was ALWAYS truthy (undefined is falsy → !undefined ===
-      // true) and the switcher silently failed with "Switch failed"
-      // on every successful call. The underlying PATCH /tenants/me
-      // had actually succeeded; only the UI lied. Reported by the
-      // operator during the 2026-05-25 settings bug-bash.
+      // 2026-05-25 bug fix #1: previously this treated apiFetch's
+      // return value as a Response (`res.ok` + `res.json()`). apiFetch
+      // returns the PARSED JSON body and throws on non-2xx, so the
+      // `if (!res.ok)` branch was ALWAYS hit and the switcher silently
+      // failed with "Switch failed" on every successful call.
       await apiFetch('/tenants/me', {
         method: 'PATCH',
         body: JSON.stringify({ vertical: next }),
       });
-      // Reload so every useTenantCopy() consumer re-resolves. Could be
-      // smarter (re-fetch /me + push into store) but the full reload
-      // guarantees no stale state across the dashboard chrome.
+
+      // 2026-05-25 bug fix #2 (operator: "switch industry still says
+      // the old one after reload"): the JWT in sessionStorage carries
+      // an `edu_cms_user` cached copy with the OLD tenantVertical
+      // (login.ts:138 stamps it on the user object at sign-in time).
+      // window.location.reload() re-hydrates from that cache, so the
+      // page came back showing the prior industry every time. Merge
+      // the new vertical into the cached user record BEFORE reloading
+      // so the next render sees the fresh value. Same-tab session +
+      // cross-tab backup both have to be updated.
+      try {
+        const USER_KEY = 'edu_cms_user';
+        const ss = typeof sessionStorage !== 'undefined' ? sessionStorage : null;
+        const ls = typeof localStorage !== 'undefined' ? localStorage : null;
+        const raw = ss?.getItem(USER_KEY) || ls?.getItem(USER_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          parsed.tenantVertical = next;
+          const updated = JSON.stringify(parsed);
+          ss?.setItem(USER_KEY, updated);
+          if (ls?.getItem(USER_KEY)) ls.setItem(USER_KEY, updated);
+        }
+        // Also push directly into the Zustand store so any consumer
+        // that reads from useUIStore between this line and the reload
+        // (e.g. quick re-renders in the same JS tick) gets the new
+        // value too.
+        const current = useUIStore.getState().user;
+        if (current) {
+          useUIStore.setState({ user: { ...current, tenantVertical: next } });
+        }
+      } catch {
+        // Storage write failure (private mode / quota) is non-fatal —
+        // the reload below will still re-fetch fresh data on the next
+        // /users/me call path. Worst case the operator sees the old
+        // vertical for one more reload until the cache clears.
+      }
+
+      // Reload so every useTenantCopy() consumer re-resolves with the
+      // freshly-cached value. Could be smarter (in-place store push +
+      // skip reload) but the full reload guarantees no stale state
+      // across the dashboard chrome.
       window.location.reload();
     } catch (e: any) {
       setError(e?.message || 'Switch failed.');
