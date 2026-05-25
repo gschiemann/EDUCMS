@@ -494,8 +494,11 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
               </p>
             ) : (
               <>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Click and hold a screen, then drag it onto the plan where it physically lives. After you drop it, set the emergency content for that screen.
+                {/* 2026-05-25 — slimmed per operator: "way too much text
+                    on the right side of this menu." The TV-shaped tiles
+                    already telegraph "drag me"; one line is enough. */}
+                <p className="text-[11px] text-slate-500 leading-snug">
+                  Drag onto the plan. Click any pin to set its content.
                 </p>
                 <ul className="grid grid-cols-2 gap-2">
                   {unplaced.map((s: any) => (
@@ -521,12 +524,9 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
               );
               if (placedWithoutContent.length === 0) return null;
               return (
-                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
-                  <strong className="font-bold">
-                    {placedWithoutContent.length} placed{' '}
-                    {placedWithoutContent.length === 1 ? 'screen has' : 'screens have'}
-                  </strong>{' '}
-                  no emergency content yet. Click each pin to set its lockdown / evacuate / weather / hold / secure / medical content.
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-900">
+                  <strong className="font-bold">{placedWithoutContent.length}</strong>{' '}
+                  {placedWithoutContent.length === 1 ? 'pin needs' : 'pins need'} content — click each one to set it.
                 </div>
               );
             })()}

@@ -503,10 +503,7 @@ function LocationModeEditor({ schoolId }: { schoolId: string }) {
         <div className="flex items-center gap-2">
           <MapPin className="w-4 h-4 text-rose-500" />
           <span className="text-sm font-bold text-slate-800">Floor plans</span>
-          <span className="text-[11px] text-slate-500">
-            Click a screen pin → side drawer opens with that screen&rsquo;s
-            emergency content slots.
-          </span>
+          <span className="text-[11px] text-slate-500">Tap any pin to edit its content.</span>
         </div>
         <button
           type="button"
