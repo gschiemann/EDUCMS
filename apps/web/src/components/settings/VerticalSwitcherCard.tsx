@@ -75,14 +75,19 @@ export function VerticalSwitcherCard() {
     setPending(next);
     setError(null);
     try {
-      const res = await apiFetch('/tenants/me', {
+      // 2026-05-25 bug fix: previously this code treated apiFetch's
+      // return value as a Response (checking `res.ok` + calling
+      // `res.json()`). apiFetch actually returns the PARSED JSON body
+      // on success and throws on non-2xx — so the `if (!res.ok)`
+      // branch was ALWAYS truthy (undefined is falsy → !undefined ===
+      // true) and the switcher silently failed with "Switch failed"
+      // on every successful call. The underlying PATCH /tenants/me
+      // had actually succeeded; only the UI lied. Reported by the
+      // operator during the 2026-05-25 settings bug-bash.
+      await apiFetch('/tenants/me', {
         method: 'PATCH',
         body: JSON.stringify({ vertical: next }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({} as any));
-        throw new Error(body?.message || `Switch failed (${res.status})`);
-      }
       // Reload so every useTenantCopy() consumer re-resolves. Could be
       // smarter (re-fetch /me + push into store) but the full reload
       // guarantees no stale state across the dashboard chrome.
