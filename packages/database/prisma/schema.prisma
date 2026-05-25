@@ -305,6 +305,38 @@ model User {
   // Clever / Google have a clean target shape).
   firstName            String?              @map("first_name")
   lastName             String?              @map("last_name")
+  // 2026-05-25 — operator wants signup + invite forms to collect
+  // first name, last name, email, and (optional) phone, so 2FA via
+  // SMS or password-reset via phone is possible later. Phone is
+  // optional because TOTP / passkey 2FA paths don't need it; we
+  // only collect it when the user explicitly opts in or when SMS
+  // 2FA is the chosen factor. Stored E.164 normalized at write
+  // time (e.g. "+12135551234"). Nullable so legacy rows + users
+  // who never provided one keep loading.
+  phone                String?              @map("phone")
+  // 2FA enrollment state. See onboarding/auth service for the
+  // canonical state machine; these are the raw fields.
+  // - mfaTotpSecret: AES-encrypted-at-rest TOTP shared secret
+  //   (base32). Null when TOTP not enrolled.
+  // - mfaTotpVerifiedAt: timestamp of the FIRST successful TOTP
+  //   verify after enrollment. Until set, the secret is provisional
+  //   and not used for login. Prevents an interrupted enrollment
+  //   from locking the user out.
+  // - mfaBackupCodes: JSON array of Argon2id hashes of one-time
+  //   recovery codes (10 generated at TOTP enrollment, single-use,
+  //   each hash removed from array after consumption). Plain codes
+  //   are SHOWN ONCE at enrollment, never stored.
+  // - mfaRequired: tenant policy override on this user — set to
+  //   true to force 2FA on next login even if user hasn't enrolled.
+  //   Used by admin "require 2FA for this user" UX.
+  // All four are nullable so the migration is purely additive and
+  // existing users continue to log in with password-only until they
+  // enroll. (Phase 2 work — fields reserved here so the migration
+  // is one round trip.)
+  mfaTotpSecret        String?              @map("mfa_totp_secret")
+  mfaTotpVerifiedAt    DateTime?            @map("mfa_totp_verified_at")
+  mfaBackupCodes       Json?                @map("mfa_backup_codes")
+  mfaRequired          Boolean              @default(false) @map("mfa_required")
   canTriggerPanic      Boolean              @default(false) @map("can_trigger_panic")
   status               String               @default("ACTIVE")
   createdAt            DateTime             @default(now()) @map("created_at")
@@ -316,6 +348,7 @@ model User {
   cleverId             String?              @unique @map("clever_id")
   cleverRole           String?              @map("clever_role")
   passwordResets       PasswordResetToken[]
+  passkeys             Passkey[]
   invitesSent          UserInvite[]         @relation("InviteInviter")
   invite               UserInvite?          @relation("InviteUser")
   notifications        Notification[]
@@ -361,6 +394,37 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+// 2026-05-25 — Passkey table reserved for Phase 3 (WebAuthn). Stores
+// one row per registered authenticator (laptop Touch ID, phone Face
+// ID, hardware key, etc.). A user can have many passkeys. Login can
+// happen passwordless via any registered passkey, OR password +
+// passkey (as the "something you have" factor in 2FA). Fields match
+// the @simplewebauthn/server library's expected shape so the
+// integration is direct:
+//   credentialId      → public key ID from registration response
+//   publicKey         → COSE-encoded public key (raw bytes)
+//   counter           → replay-attack counter, bumped on every assert
+//   transports        → "internal" / "usb" / "nfc" / "ble" / "hybrid"
+//   deviceLabel       → user-set name ("MacBook Touch ID", "iPhone")
+//   lastUsedAt        → most recent successful auth; used by the UI
+//                       to sort the device list + warn on dormant keys
+// On user deletion: cascade — passkeys without a user are useless.
+model Passkey {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  credentialId    String    @unique @map("credential_id") // base64url
+  publicKey       Bytes     @map("public_key")
+  counter         BigInt    @default(0) @map("counter")
+  transports      String[]  @default([]) @map("transports")
+  deviceLabel     String?   @map("device_label")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  lastUsedAt      DateTime? @map("last_used_at")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("passkeys")
 }
 
 model UserInvite {

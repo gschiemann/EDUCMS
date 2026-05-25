@@ -303,6 +303,12 @@ export type PasswordResetComplete = z.infer<typeof PasswordResetCompleteSchema>;
 
 const RoleNameString = BoundedText(40).min(1);
 const PersonNameString = BoundedText(80);
+// 2026-05-25 — added with the auth-Phase-1 ask. Phone is optional
+// everywhere (the user volunteers it; SMS-2FA path needs it later
+// but TOTP / passkey paths don't). Bounded to 32 chars to comfortably
+// cover E.164 worst-case (+15 digits) plus formatting characters
+// (spaces, dashes, parens) before the server normalizes.
+const PhoneString = BoundedText(32);
 
 export const SignupInputSchema = z
   .object({
@@ -311,6 +317,9 @@ export const SignupInputSchema = z
     adminEmail: EmailString,
     password: PasswordString,
     vertical: BoundedText(40).optional(),
+    firstName: PersonNameString.optional(),
+    lastName: PersonNameString.optional(),
+    phone: PhoneString.optional(),
   })
   .passthrough();
 export type SignupInput = z.infer<typeof SignupInputSchema>;
@@ -321,6 +330,7 @@ export const CreateInviteInputSchema = z
     role: RoleNameString,
     firstName: PersonNameString.optional(),
     lastName: PersonNameString.optional(),
+    phone: PhoneString.optional(),
   })
   .passthrough();
 export type CreateInviteInput = z.infer<typeof CreateInviteInputSchema>;
@@ -332,6 +342,7 @@ export const CreateUserDirectInputSchema = z
     password: PasswordString,
     firstName: PersonNameString.optional(),
     lastName: PersonNameString.optional(),
+    phone: PhoneString.optional(),
   })
   .passthrough();
 export type CreateUserDirectInput = z.infer<typeof CreateUserDirectInputSchema>;
@@ -339,6 +350,9 @@ export type CreateUserDirectInput = z.infer<typeof CreateUserDirectInputSchema>;
 export const AcceptInviteInputSchema = z
   .object({
     password: PasswordString,
+    firstName: PersonNameString.optional(),
+    lastName: PersonNameString.optional(),
+    phone: PhoneString.optional(),
   })
   .passthrough();
 export type AcceptInviteInput = z.infer<typeof AcceptInviteInputSchema>;

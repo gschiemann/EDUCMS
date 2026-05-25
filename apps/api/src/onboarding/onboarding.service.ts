@@ -59,10 +59,35 @@ export class OnboardingService {
   /**
    * District self-signup: creates a Tenant + first DISTRICT_ADMIN User, then auto-logs them in.
    */
-  async signup(input: { districtName: string; slug?: string; adminEmail: string; password: string; vertical?: string }) {
+  async signup(input: {
+    districtName: string;
+    slug?: string;
+    adminEmail: string;
+    password: string;
+    vertical?: string;
+    // 2026-05-25 — auth-Phase-1: collect identity at signup so the
+    // first admin has a real profile (first name shown on dashboard
+    // greeting, last name on user-list rows) and so the 2FA setup
+    // path later has a phone to fall back on for SMS recovery codes.
+    // All three are optional — legacy callers + the "just paste an
+    // email and go" path still work.
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+  }) {
     const districtName = (input.districtName || '').trim();
     const rawSlug = slugify(input.slug || districtName);
     const email = (input.adminEmail || '').trim().toLowerCase();
+    const firstName = (input.firstName || '').trim().slice(0, 80) || null;
+    const lastName = (input.lastName || '').trim().slice(0, 80) || null;
+    // Strip all non-digit chars except a leading +. Normalize at the
+    // edge so downstream code never has to parse "(213) 555-1234" vs
+    // "+1-213-555-1234". Empty after normalization → null.
+    const phoneRaw = (input.phone || '').trim();
+    const phoneNormalized = phoneRaw
+      ? (phoneRaw.startsWith('+') ? '+' : '') + phoneRaw.replace(/\D/g, '')
+      : '';
+    const phone = phoneNormalized.length >= 5 ? phoneNormalized.slice(0, 32) : null;
 
     if (!districtName) throw new BadRequestException('Organization name is required.');
     if (!rawSlug) throw new BadRequestException('Slug is required.');
@@ -99,7 +124,10 @@ export class OnboardingService {
           passwordHash,
           role: AppRole.DISTRICT_ADMIN,
           status: 'ACTIVE',
-        },
+          firstName,
+          lastName,
+          phone,
+        } as any,
       });
       await tx.auditLog.create({
         data: {
@@ -108,7 +136,17 @@ export class OnboardingService {
           action: 'TENANT_SIGNUP',
           targetType: 'Tenant',
           targetId: tenant.id,
-          details: JSON.stringify({ email, slug: rawSlug }),
+          // Audit-log redaction: never persist the phone in plaintext
+          // in the audit details (it's PII; the value lives on User.phone
+          // exactly once). Email + slug are already in the row and safe
+          // to repeat for forensics.
+          details: JSON.stringify({
+            email,
+            slug: rawSlug,
+            hasPhone: !!phone,
+            hasFirstName: !!firstName,
+            hasLastName: !!lastName,
+          }),
         },
       });
       return { tenant, user };

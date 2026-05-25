@@ -169,6 +169,15 @@ export default function SignupPage() {
   const [adminEmail, setAdminEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  // 2026-05-25 — operator: "lets ask for the first, last, email, and
+  // phone number when signing up a new account." Identity fields
+  // captured up front so the dashboard greeting + user-list rows
+  // read like a real person from day one. Phone is optional because
+  // TOTP / passkey 2FA paths don't need it; we only require it if
+  // the user wants SMS-2FA later.
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
   const [vertical, setVertical] = useState<Vertical | ''>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -199,7 +208,16 @@ export default function SignupPage() {
       const res = await fetch(`${API_URL}/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ districtName, slug, adminEmail, password, vertical }),
+        body: JSON.stringify({
+          districtName,
+          slug,
+          adminEmail,
+          password,
+          vertical,
+          firstName: firstName.trim() || undefined,
+          lastName: lastName.trim() || undefined,
+          phone: phone.trim() || undefined,
+        }),
       });
       const data = await res.json();
       if (res.ok && data.access_token) {
@@ -278,6 +296,33 @@ export default function SignupPage() {
                 </div>
               </Field>
 
+              {/* 2026-05-25 — identity row. Name fields side-by-side so
+                  the form stays compact; phone gets its own row with
+                  an explicit "optional" hint and 2FA copy so the
+                  operator understands why we're asking. */}
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="First name">
+                  <input
+                    type="text"
+                    autoComplete="given-name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="Alex"
+                    className={INPUT_CLS}
+                  />
+                </Field>
+                <Field label="Last name">
+                  <input
+                    type="text"
+                    autoComplete="family-name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Garcia"
+                    className={INPUT_CLS}
+                  />
+                </Field>
+              </div>
+
               <Field label="Admin email">
                 <input
                   type="email"
@@ -288,6 +333,21 @@ export default function SignupPage() {
                   placeholder={v.emailPlaceholder}
                   className={INPUT_CLS}
                 />
+              </Field>
+
+              <Field label="Phone (optional)">
+                <input
+                  type="tel"
+                  autoComplete="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+1 (213) 555-1234"
+                  className={INPUT_CLS}
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Used for two-factor recovery if you ever lose access to your
+                  authenticator app. We&rsquo;ll never SMS you marketing.
+                </p>
               </Field>
 
               <Field label="Password">
