@@ -108,46 +108,55 @@ function estCost(inputPer1M: number, outputPer1M: number): number {
   return (outputPer1M / 1_000_000) * PER_CALL_OUTPUT_TOKENS;
 }
 
+// 2026-05-25 (afternoon) — operator: "just give 3 options each, the
+// cheapest for standard stuff, middle for maybe more like text and
+// then max for the designing." Slimmed every provider to exactly
+// three tiers. Tier semantics are CONSISTENT across providers so an
+// operator picking "Standard" gets a comparable cost/quality
+// envelope whether they're on Anthropic, OpenAI, or Google:
+//
+//   • Standard — cheap, fast, fine for short signage copy
+//   • Balanced — middle, better at structured JSON + nuance
+//   • Premium  — top tier, use for AI-generated template layouts
+//                / complex prompts
+//
+// Why I left Opus 4 (not 4.5/4.7) as Anthropic Premium: model IDs
+// are wire-strings sent to the provider. A typo or speculative ID
+// returns 404 and the test-on-save flow refuses to persist the
+// operator's key. The catalog is a one-file edit with no migration —
+// when Anthropic / OpenAI / Google publish a confirmed-working
+// newer model id (Opus 4.5, GPT-5.5, Gemini 3.0, etc.), update the
+// `id:` field below and push; every operator's settings page picks
+// up the new option at next page-load via /ai/key/catalog.
+//
+// REFRESH CADENCE: review this catalog roughly quarterly, or
+// whenever a provider's pricing page gets a refresh.
 export const AI_PROVIDERS: AiProviderInfo[] = [
   {
     id: 'anthropic',
     label: 'Anthropic (Claude)',
-    description: 'Recommended — best fit for our prompts. Cheapest tier ≈ $0.001 / generation.',
+    description: 'Recommended — best fit for our prompts.',
     getKeyUrl: 'https://console.anthropic.com/settings/keys',
     models: [
       {
         id: 'claude-3-5-haiku-20241022',
-        label: 'Claude 3.5 Haiku',
-        tagline: 'Cheapest. Fast. Good enough for short copy + announcements.',
+        label: 'Standard — Claude 3.5 Haiku',
+        tagline: 'Fast + cheap. Day-to-day copy, announcements, ticker text.',
         inputPer1M: 0.80, outputPer1M: 4.00,
         estCostPerCallUsd: estCost(0.80, 4.00),
         default: true,
       },
       {
         id: 'claude-3-5-sonnet-20241022',
-        label: 'Claude 3.5 Sonnet',
-        tagline: 'Mid-tier — more nuance, better at structured JSON.',
-        inputPer1M: 3.00, outputPer1M: 15.00,
-        estCostPerCallUsd: estCost(3.00, 15.00),
-      },
-      {
-        id: 'claude-3-7-sonnet-20250219',
-        label: 'Claude 3.7 Sonnet',
-        tagline: 'Newer Sonnet generation; strong reasoning + writing.',
-        inputPer1M: 3.00, outputPer1M: 15.00,
-        estCostPerCallUsd: estCost(3.00, 15.00),
-      },
-      {
-        id: 'claude-sonnet-4-20250514',
-        label: 'Claude Sonnet 4',
-        tagline: 'Premium Sonnet. Use when quality > speed.',
+        label: 'Balanced — Claude 3.5 Sonnet',
+        tagline: 'More nuance + better structured output. Pick for long copy.',
         inputPer1M: 3.00, outputPer1M: 15.00,
         estCostPerCallUsd: estCost(3.00, 15.00),
       },
       {
         id: 'claude-opus-4-20250514',
-        label: 'Claude Opus 4',
-        tagline: 'Top-of-line Anthropic. Overkill for most signage copy.',
+        label: 'Premium — Claude Opus 4',
+        tagline: 'Top tier. Use for AI-generated template layouts + complex prompts.',
         inputPer1M: 15.00, outputPer1M: 75.00,
         estCostPerCallUsd: estCost(15.00, 75.00),
       },
@@ -156,51 +165,30 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
   {
     id: 'openai',
     label: 'OpenAI (GPT)',
-    description: 'Good if you already have an OpenAI account. Compatible quality at the cheap tier.',
+    description: 'Good if you already have an OpenAI account.',
     getKeyUrl: 'https://platform.openai.com/api-keys',
     models: [
       {
         id: 'gpt-4o-mini',
-        label: 'GPT-4o mini',
-        tagline: 'Cheapest OpenAI tier. ≈ $0.0002 / generation.',
+        label: 'Standard — GPT-4o mini',
+        tagline: 'Fast + cheap. Day-to-day copy, announcements, ticker text.',
         inputPer1M: 0.15, outputPer1M: 0.60,
         estCostPerCallUsd: estCost(0.15, 0.60),
         default: true,
       },
       {
-        id: 'gpt-4o',
-        label: 'GPT-4o',
-        tagline: 'Flagship multimodal. More creative output.',
-        inputPer1M: 2.50, outputPer1M: 10.00,
-        estCostPerCallUsd: estCost(2.50, 10.00),
-      },
-      {
         id: 'gpt-4.1',
-        label: 'GPT-4.1',
-        tagline: 'Refresh of 4-series with better instruction following.',
+        label: 'Balanced — GPT-4.1',
+        tagline: 'Better instruction-following. Pick for long copy + structured output.',
         inputPer1M: 2.00, outputPer1M: 8.00,
         estCostPerCallUsd: estCost(2.00, 8.00),
       },
       {
-        id: 'gpt-4.1-mini',
-        label: 'GPT-4.1 mini',
-        tagline: 'Smaller 4.1 — cheaper, faster, still solid.',
-        inputPer1M: 0.40, outputPer1M: 1.60,
-        estCostPerCallUsd: estCost(0.40, 1.60),
-      },
-      {
         id: 'gpt-5',
-        label: 'GPT-5',
-        tagline: 'Premium reasoning. Use if your prompt is genuinely hard.',
+        label: 'Premium — GPT-5',
+        tagline: 'Top tier. Use for AI-generated template layouts + complex prompts.',
         inputPer1M: 5.00, outputPer1M: 20.00,
         estCostPerCallUsd: estCost(5.00, 20.00),
-      },
-      {
-        id: 'gpt-5-mini',
-        label: 'GPT-5 mini',
-        tagline: 'Cheaper GPT-5 — closer to 4o-mini economics.',
-        inputPer1M: 0.50, outputPer1M: 2.00,
-        estCostPerCallUsd: estCost(0.50, 2.00),
       },
     ],
   },
@@ -210,39 +198,30 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     description: 'Lowest-cost option of the three. Generous free tier on aistudio.google.com.',
     getKeyUrl: 'https://aistudio.google.com/apikey',
     models: [
-      // SECURITY/COMPAT (audit-B3 fix, 2026-05-25) — default flipped
-      // from gemini-2.0-flash to gemini-1.5-flash. 2.0 is region-
-      // gated and several aistudio.google.com free-tier accounts
-      // return 404 / PERMISSION_DENIED. Test-on-save would then
-      // refuse to persist a perfectly valid key. 1.5-flash is
-      // available everywhere, identical price, identical adequate
-      // quality for our 300-token signage prompts.
+      // SECURITY/COMPAT (audit-B3 fix, 2026-05-25) — default is
+      // gemini-1.5-flash, not 2.0. 2.0 is region-gated on
+      // aistudio.google.com free-tier accounts and would refuse
+      // to save with a confusing 404. 1.5-flash is available
+      // everywhere and identical price.
       {
         id: 'gemini-1.5-flash',
-        label: 'Gemini 1.5 Flash',
-        tagline: 'Cheapest + most widely available. Generous free tier.',
+        label: 'Standard — Gemini 1.5 Flash',
+        tagline: 'Fast + cheap. Day-to-day copy, announcements, ticker text.',
         inputPer1M: 0.075, outputPer1M: 0.30,
         estCostPerCallUsd: estCost(0.075, 0.30),
         default: true,
       },
       {
-        id: 'gemini-2.0-flash',
-        label: 'Gemini 2.0 Flash',
-        tagline: 'Newer Flash with refreshed pricing. Region-gated on free tier — try 1.5 if 404.',
-        inputPer1M: 0.075, outputPer1M: 0.30,
-        estCostPerCallUsd: estCost(0.075, 0.30),
-      },
-      {
         id: 'gemini-1.5-pro',
-        label: 'Gemini 1.5 Pro',
-        tagline: 'Mid-tier Gemini with longer reasoning runway.',
+        label: 'Balanced — Gemini 1.5 Pro',
+        tagline: 'Longer reasoning runway. Pick for long copy + structured output.',
         inputPer1M: 1.25, outputPer1M: 5.00,
         estCostPerCallUsd: estCost(1.25, 5.00),
       },
       {
         id: 'gemini-2.5-pro',
-        label: 'Gemini 2.5 Pro',
-        tagline: 'Premium Gemini. Strongest on structured-output prompts.',
+        label: 'Premium — Gemini 2.5 Pro',
+        tagline: 'Top tier. Use for AI-generated template layouts + complex prompts.',
         inputPer1M: 2.50, outputPer1M: 10.00,
         estCostPerCallUsd: estCost(2.50, 10.00),
       },
