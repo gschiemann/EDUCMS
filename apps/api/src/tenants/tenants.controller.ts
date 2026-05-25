@@ -99,7 +99,7 @@ export class TenantsController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async createChild(
     @Request() req: any,
-    @Body() body: { name?: string; slug?: string; address?: string },
+    @Body() body: { name?: string; slug?: string; address?: string; latitude?: number; longitude?: number },
   ) {
     const name = (body?.name || '').trim();
     // 2026-05-25 — operator: "why even show URL Slug...we dont need
@@ -110,10 +110,22 @@ export class TenantsController {
     const rawSlug = (body?.slug || name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
     if (!name) throw new HttpException('Location name is required', HttpStatus.BAD_REQUEST);
     if (!rawSlug || rawSlug.length < 2) throw new HttpException('Name must produce a slug of at least 2 characters', HttpStatus.BAD_REQUEST);
-    // 2026-05-25 — optional address. Bounded length, sent verbatim
-    // to Sprint 8's geocoder (Nominatim) on a follow-up pass. If
-    // address comes in empty/whitespace, store null.
+    // 2026-05-25 — optional address. Bounded length. If the client
+    // used the AddressAutocomplete picker, lat/lng come along too
+    // and we skip Sprint 8's geocoder roundtrip entirely. Bounds-
+    // check the coords against world ranges so a broken payload
+    // can't write garbage values. Coords only stored when BOTH
+    // are present (a single coord alone is meaningless).
     const address = (body?.address || '').trim().slice(0, 500) || null;
+    const lat =
+      typeof body?.latitude === 'number' && body.latitude >= -90 && body.latitude <= 90
+        ? body.latitude
+        : null;
+    const lon =
+      typeof body?.longitude === 'number' && body.longitude >= -180 && body.longitude <= 180
+        ? body.longitude
+        : null;
+    const coordsValid = lat !== null && lon !== null;
 
     const callerTenantId = req.user.tenantId as string;
     const callerTenant = await this.prisma.client.tenant.findUnique({
@@ -132,7 +144,13 @@ export class TenantsController {
 
     const child = await this.prisma.client.$transaction(async (tx) => {
       const created = await tx.tenant.create({
-        data: { name, slug: rawSlug, parentId: districtId, address } as any,
+        data: {
+          name,
+          slug: rawSlug,
+          parentId: districtId,
+          address,
+          ...(coordsValid ? { latitude: lat, longitude: lon } : {}),
+        } as any,
         select: { id: true, name: true, slug: true, parentId: true, createdAt: true },
       });
       await tx.auditLog.create({
@@ -144,7 +162,7 @@ export class TenantsController {
           targetId: created.id,
           // Audit records WHICH fields were provided (hasAddress)
           // but not the raw address itself (PII).
-          details: JSON.stringify({ name, slug: rawSlug, parentTenantId: districtId, hasAddress: !!address }),
+          details: JSON.stringify({ name, slug: rawSlug, parentTenantId: districtId, hasAddress: !!address, hasCoords: coordsValid }),
         },
       });
       return created;
@@ -253,7 +271,7 @@ export class TenantsController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
   async updateMyTenant(
     @Request() req: any,
-    @Body() body: { vertical?: string; name?: string; address?: string | null },
+    @Body() body: { vertical?: string; name?: string; address?: string | null; latitude?: number; longitude?: number },
   ) {
     const tenantId = req.user.tenantId;
     const data: any = {};
@@ -279,6 +297,19 @@ export class TenantsController {
       // Oak St" would keep the old coords until manual refresh.
       data.latitude = null;
       data.longitude = null;
+    }
+    // 2026-05-25 — when the client used AddressAutocomplete it sends
+    // lat/lng alongside the address. These OVERWRITE the null-out
+    // above (since they're for the new address). Bounds-checked
+    // against world ranges. Skipped if address change wasn't part
+    // of this PATCH (lat/lng without an address change is also
+    // accepted — operator might manually correct coords without
+    // changing the string).
+    if (typeof body.latitude === 'number' && body.latitude >= -90 && body.latitude <= 90) {
+      data.latitude = body.latitude;
+    }
+    if (typeof body.longitude === 'number' && body.longitude >= -180 && body.longitude <= 180) {
+      data.longitude = body.longitude;
     }
     if (Object.keys(data).length === 0) throw new HttpException('Nothing to update', HttpStatus.BAD_REQUEST);
 

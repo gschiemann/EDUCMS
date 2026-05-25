@@ -16,6 +16,7 @@ import { useAppStore } from '@/lib/store';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
 import { Building2, Plus, MonitorPlay, Users, ExternalLink, AlertTriangle, Loader2, Home, Pencil, Check, X } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
+import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
 
 interface ChildTenant {
   id: string;
@@ -153,6 +154,8 @@ export function DistrictSchoolsCard() {
   const [editingParent, setEditingParent] = useState(false);
   const [editName, setEditName] = useState('');
   const [editAddress, setEditAddress] = useState('');
+  const [editAddressLat, setEditAddressLat] = useState<number | null>(null);
+  const [editAddressLon, setEditAddressLon] = useState<number | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [data, setData] = useState<ListResponse | null>(null);
@@ -162,6 +165,12 @@ export function DistrictSchoolsCard() {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [address, setAddress] = useState('');
+  // 2026-05-25 — when the user picks an autocomplete suggestion we
+  // capture lat/lng too (the Photon/Nominatim response includes
+  // them). Saved alongside `address` so the fleet map can plot
+  // immediately without Sprint 8's geocoding pass.
+  const [addressLat, setAddressLat] = useState<number | null>(null);
+  const [addressLon, setAddressLon] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -214,6 +223,8 @@ export function DistrictSchoolsCard() {
     setEditError(null);
     setEditName(parentTenantName || '');
     setEditAddress(parentTenantAddress || '');
+    setEditAddressLat(null);
+    setEditAddressLon(null);
   };
   const cancelEditParent = () => {
     setEditingParent(false);
@@ -235,6 +246,13 @@ export function DistrictSchoolsCard() {
           name: trimmedName,
           // Empty string explicitly clears; non-empty overwrites.
           address: editAddress.trim(),
+          // Only send coords if the user just picked an autocomplete
+          // suggestion in this edit session. If they typed freeform
+          // OR edited after picking, we leave lat/lng to the
+          // server-side null-out path in PATCH /tenants/me (which
+          // auto-invalidates cached coords on address change).
+          latitude: editAddressLat ?? undefined,
+          longitude: editAddressLon ?? undefined,
         }),
       });
       setEditingParent(false);
@@ -259,9 +277,16 @@ export function DistrictSchoolsCard() {
           // form-redesign comment in the JSX.
           slug: slug.trim() || undefined,
           address: address.trim() || undefined,
+          // lat/lng from the autocomplete pick. Stored only when
+          // the user PICKED a suggestion (vs typed freeform), so
+          // a typo-d address doesn't carry stale coords.
+          latitude: addressLat ?? undefined,
+          longitude: addressLon ?? undefined,
         }),
       });
-      setName(''); setSlug(''); setAddress(''); setAdding(false);
+      setName(''); setSlug(''); setAddress('');
+      setAddressLat(null); setAddressLon(null);
+      setAdding(false);
       await load();
     } catch (e: any) {
       setError(e?.message || `Could not create ${c.childNoun}.`);
@@ -341,15 +366,27 @@ export function DistrictSchoolsCard() {
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
                     Address <span className="text-slate-400 normal-case font-normal">(optional)</span>
                   </label>
-                  <input
-                    type="text"
+                  <AddressAutocomplete
                     value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder="1000 Vin Scully Ave, Los Angeles, CA 90012"
-                    className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                    onChange={(v) => {
+                      setAddress(v);
+                      // If they edit after a pick, the coords no
+                      // longer match the typed text — clear them
+                      // so we don't save mismatched values.
+                      if (addressLat !== null || addressLon !== null) {
+                        setAddressLat(null);
+                        setAddressLon(null);
+                      }
+                    }}
+                    onPick={(p) => {
+                      setAddress(p.displayName);
+                      setAddressLat(p.latitude);
+                      setAddressLon(p.longitude);
+                    }}
+                    placeholder="Start typing — 1000 Vin Scully Ave…"
                   />
                   <p className="text-[11px] text-slate-500 mt-1">
-                    We&rsquo;ll use this to plot your locations on the fleet map. You can edit it later.
+                    Start typing to pick from a list. We&rsquo;ll plot it on the fleet map. You can edit it later.
                   </p>
                 </div>
                 {error && (
@@ -426,12 +463,23 @@ export function DistrictSchoolsCard() {
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                       Address <span className="text-slate-400 font-normal">(optional)</span>
                     </label>
-                    <input
-                      type="text"
+                    <AddressAutocomplete
                       value={editAddress}
-                      onChange={(e) => setEditAddress(e.target.value)}
-                      placeholder="1000 Vin Scully Ave, Los Angeles, CA 90012"
-                      className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      onChange={(v) => {
+                        setEditAddress(v);
+                        // Drop the cached pick if the user edits
+                        // after picking — coords no longer match.
+                        if (editAddressLat !== null || editAddressLon !== null) {
+                          setEditAddressLat(null);
+                          setEditAddressLon(null);
+                        }
+                      }}
+                      onPick={(p) => {
+                        setEditAddress(p.displayName);
+                        setEditAddressLat(p.latitude);
+                        setEditAddressLon(p.longitude);
+                      }}
+                      placeholder="Start typing — 1000 Vin Scully Ave…"
                     />
                   </div>
                   {editError && (

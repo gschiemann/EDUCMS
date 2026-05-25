@@ -75,6 +75,8 @@ export class OnboardingService {
     lastName?: string;
     phone?: string;
     address?: string;
+    latitude?: number;
+    longitude?: number;
   }) {
     const districtName = (input.districtName || '').trim();
     const rawSlug = slugify(input.slug || districtName);
@@ -82,6 +84,19 @@ export class OnboardingService {
     const firstName = (input.firstName || '').trim().slice(0, 80) || null;
     const lastName = (input.lastName || '').trim().slice(0, 80) || null;
     const address = (input.address || '').trim().slice(0, 500) || null;
+    // 2026-05-25 — lat/lng come from the client-side autocomplete
+    // pick. Bounds-checked against world ranges so a broken payload
+    // can't write garbage coords. Only stored when BOTH are present
+    // (a single coord without its pair is meaningless).
+    const lat =
+      typeof input.latitude === 'number' && input.latitude >= -90 && input.latitude <= 90
+        ? input.latitude
+        : null;
+    const lon =
+      typeof input.longitude === 'number' && input.longitude >= -180 && input.longitude <= 180
+        ? input.longitude
+        : null;
+    const coordsValid = lat !== null && lon !== null;
     // Strip all non-digit chars except a leading +. Normalize at the
     // edge so downstream code never has to parse "(213) 555-1234" vs
     // "+1-213-555-1234". Empty after normalization → null.
@@ -117,7 +132,13 @@ export class OnboardingService {
 
     const { tenant, user } = await this.prisma.client.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
-        data: { name: districtName, slug: rawSlug, vertical: requestedVertical, address } as any,
+        data: {
+          name: districtName,
+          slug: rawSlug,
+          vertical: requestedVertical,
+          address,
+          ...(coordsValid ? { latitude: lat, longitude: lon } : {}),
+        } as any,
       });
       const user = await tx.user.create({
         data: {

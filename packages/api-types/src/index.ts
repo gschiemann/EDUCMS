@@ -321,10 +321,16 @@ export const SignupInputSchema = z
     lastName: PersonNameString.optional(),
     phone: PhoneString.optional(),
     // 2026-05-25 — optional physical address. Sprint 8's fleet map
-    // plots tenants by lat/lng (geocoded from this string via
-    // Nominatim). Operator decision: collect at signup + on
-    // add-location so every new account auto-populates the map.
+    // plots tenants by lat/lng. When the client uses the
+    // AddressAutocomplete component, it captures lat/lng at
+    // pick-time from the Photon/Nominatim response and sends them
+    // alongside the formatted address — no follow-up geocoding
+    // pass needed. When the address is typed freeform, lat/lng
+    // are absent and Sprint 8's deferred geocoding still fills
+    // them later.
     address: BoundedText(500).optional(),
+    latitude: z.number().min(-90).max(90).optional(),
+    longitude: z.number().min(-180).max(180).optional(),
   })
   .passthrough();
 export type SignupInput = z.infer<typeof SignupInputSchema>;

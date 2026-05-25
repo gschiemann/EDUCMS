@@ -22,6 +22,7 @@ import { API_URL } from '@/lib/api-url';
 import { useUIStore } from '@/store/ui-store';
 import { VERTICALS, isVertical, type Vertical } from '@cms/api-types';
 import { BrandMark } from '@/components/marketing/BrandMark';
+import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
 
 const NAVY = '#070a14';
 
@@ -179,10 +180,15 @@ export default function SignupPage() {
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   // 2026-05-25 — optional address at signup. Sprint 8's fleet map
-  // plots tenants by lat/lng (geocoded from this string). Operator:
-  // "this could auto build out our map from the screen area if we
-  // collect it with every account setup."
+  // plots tenants by lat/lng. Operator: "this could auto build out
+  // our map from the screen area if we collect it with every
+  // account setup." Address-autocomplete (Photon + Nominatim)
+  // captures lat/lng client-side at pick time so the map plots
+  // immediately, no follow-up geocoding pass needed for addresses
+  // entered this way.
   const [address, setAddress] = useState('');
+  const [addressLat, setAddressLat] = useState<number | null>(null);
+  const [addressLon, setAddressLon] = useState<number | null>(null);
   const [vertical, setVertical] = useState<Vertical | ''>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -223,6 +229,8 @@ export default function SignupPage() {
           lastName: lastName.trim() || undefined,
           phone: phone.trim() || undefined,
           address: address.trim() || undefined,
+          latitude: addressLat ?? undefined,
+          longitude: addressLon ?? undefined,
         }),
       });
       const data = await res.json();
@@ -357,16 +365,24 @@ export default function SignupPage() {
               </Field>
 
               <Field label="Address (optional)">
-                <input
-                  type="text"
-                  autoComplete="street-address"
+                <AddressAutocomplete
                   value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="1000 Vin Scully Ave, Los Angeles, CA 90012"
-                  className={INPUT_CLS}
+                  onChange={(v) => {
+                    setAddress(v);
+                    if (addressLat !== null || addressLon !== null) {
+                      setAddressLat(null);
+                      setAddressLon(null);
+                    }
+                  }}
+                  onPick={(p) => {
+                    setAddress(p.displayName);
+                    setAddressLat(p.latitude);
+                    setAddressLon(p.longitude);
+                  }}
+                  placeholder="Start typing — 1000 Vin Scully Ave…"
                 />
                 <p className="text-[11px] text-slate-500 mt-1">
-                  We&rsquo;ll plot your locations on a fleet map so you can manage screens visually. Editable later.
+                  Start typing to pick from a list. We&rsquo;ll plot your locations on a fleet map.
                 </p>
               </Field>
 
