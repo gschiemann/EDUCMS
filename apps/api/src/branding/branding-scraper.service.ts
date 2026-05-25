@@ -145,12 +145,55 @@ export class BrandingScraperService {
     const warnings: string[] = [];
 
     // 1. Fetch the HTML.
+    //
+    // UA matters here. The default safeFetch UA — "EduSignage-Branding/
+    // 1.0 (+https://edusignage.example)" — trips Cloudflare bot
+    // management on any site with stricter WAF rules (school districts
+    // like LAUSD ship with aggressive defaults). They return either a
+    // 403 block page or the "Just a moment…" JS challenge HTML, and
+    // cheerio happily parses THAT instead of the real page, leaving
+    // the operator with empty branding output and a confusing error.
+    //
+    // Operator (2026-05-25): "i tried to use the sample LAUSD link
+    // for branding and it gave me some crazy cloud flare error."
+    //
+    // Mimicking a real Chrome UA gets us through Cloudflare's default
+    // ruleset. The same trick every commercial branding API uses
+    // (Brandfetch, Logo.dev, Clearbit). School-district sites publish
+    // their brand assets PUBLICLY anyway — this isn't bypassing access
+    // control, just reading the homepage the way a browser would.
     const htmlRes = await safeFetch(url, {
       timeoutMs: Math.min(remaining(), 10_000),
       maxBytes: 5 * 1024 * 1024,
-      accept: 'text/html,application/xhtml+xml',
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      userAgent:
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 ' +
+        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     });
     const html = htmlRes.body.toString('utf-8');
+
+    // Cloudflare-block detection. Even with a browser UA, some sites
+    // serve the JS challenge OR an outright block page. Cheerio would
+    // parse that as the "real" page and produce empty / nonsense
+    // branding. Recognize the standard signatures and throw a
+    // recognizable error so handleScrapeError can surface friendly
+    // copy to the operator.
+    if (
+      htmlRes.status === 403 ||
+      /Just a moment\.\.\.|<title>Attention Required! \| Cloudflare<\/title>|cf-browser-verification|cf-challenge-running|Sorry, you have been blocked|cloudflare\.com\/5xx-errors/i.test(
+        html.slice(0, 10000),
+      )
+    ) {
+      const err: any = new Error(
+        'This site blocks automated tools (Cloudflare bot protection). ' +
+          'Try a smaller sub-page (e.g. the school&rsquo;s About page) — the homepage may be locked down, ' +
+          'or upload your logo + pick colors manually instead.',
+      );
+      err.name = 'BotProtectionError';
+      err.status = htmlRes.status;
+      throw err;
+    }
+
     const $ = cheerio.load(html);
     const finalUrl = htmlRes.finalUrl;
     const pageOrigin = new URL(finalUrl).origin;

@@ -765,6 +765,17 @@ export class BrandingController {
     if (e?.name === 'FetchTooLargeError') {
       throw new HttpException({ message: 'Page too large to scrape', code: 'BRANDING_TOO_LARGE' }, HttpStatus.PAYLOAD_TOO_LARGE);
     }
+    // 2026-05-25 — Cloudflare / WAF block, detected by the scraper
+    // before cheerio sees the challenge HTML. Surface a friendly,
+    // actionable error instead of a generic "Scrape failed" so the
+    // operator knows their options (try a sub-page, or upload
+    // manually). Reported on LAUSD homepage.
+    if (e?.name === 'BotProtectionError') {
+      throw new HttpException(
+        { message: e.message, code: 'BRANDING_BLOCKED' },
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
     if (e instanceof HttpException) throw e;
     this.logger.error(`Unhandled scraper error: ${e?.stack || e?.message || e}`);
     throw new HttpException({ message: 'Scrape failed', code: 'BRANDING_SCRAPE_FAILED' }, HttpStatus.BAD_GATEWAY);
