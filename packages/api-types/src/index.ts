@@ -320,6 +320,11 @@ export const SignupInputSchema = z
     firstName: PersonNameString.optional(),
     lastName: PersonNameString.optional(),
     phone: PhoneString.optional(),
+    // 2026-05-25 — optional physical address. Sprint 8's fleet map
+    // plots tenants by lat/lng (geocoded from this string via
+    // Nominatim). Operator decision: collect at signup + on
+    // add-location so every new account auto-populates the map.
+    address: BoundedText(500).optional(),
   })
   .passthrough();
 export type SignupInput = z.infer<typeof SignupInputSchema>;

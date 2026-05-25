@@ -151,6 +151,7 @@ export function DistrictSchoolsCard() {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
+  const [address, setAddress] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -197,9 +198,15 @@ export function DistrictSchoolsCard() {
     try {
       await apiFetch('/tenants/children', {
         method: 'POST',
-        body: JSON.stringify({ name: name.trim(), slug: slug.trim() || undefined }),
+        body: JSON.stringify({
+          name: name.trim(),
+          // Slug auto-derived from name silently — see 2026-05-25
+          // form-redesign comment in the JSX.
+          slug: slug.trim() || undefined,
+          address: address.trim() || undefined,
+        }),
       });
-      setName(''); setSlug(''); setAdding(false);
+      setName(''); setSlug(''); setAddress(''); setAdding(false);
       await load();
     } catch (e: any) {
       setError(e?.message || `Could not create ${c.childNoun}.`);
@@ -252,35 +259,43 @@ export function DistrictSchoolsCard() {
           <>
             {adding && (
               <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-4 space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                      {c.childNoun.charAt(0).toUpperCase() + c.childNoun.slice(1)} name
-                    </label>
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) => onNameChange(e.target.value)}
-                      placeholder={c.exampleName}
-                      className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                      autoFocus
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                      URL slug
-                    </label>
-                    <input
-                      type="text"
-                      value={slug}
-                      onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-'))}
-                      placeholder={c.exampleSlug}
-                      className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                    />
-                  </div>
+                {/* 2026-05-25 — operator: "why even show URL Slug
+                    and that name is not user friendly...we dont
+                    need to show the /name at all, it just happens?"
+                    Slug is now auto-derived from name SILENTLY at
+                    submit time; no form field for it.
+                    Plus: "maybe we should be asking for address
+                    info right? dont make it required but this could
+                    auto build out our map." Address added as an
+                    optional second field; future Sprint 8 work
+                    geocodes it for the fleet map view. */}
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                    {c.childNoun.charAt(0).toUpperCase() + c.childNoun.slice(1)} name
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => onNameChange(e.target.value)}
+                    placeholder={c.exampleName}
+                    className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                    autoFocus
+                  />
                 </div>
-                <div className="text-xs text-slate-500">
-                  This becomes the URL: <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200">/{slug || c.exampleSlug}/dashboard</code>. Pick something short.
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                    Address <span className="text-slate-400 normal-case font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="1000 Vin Scully Ave, Los Angeles, CA 90012"
+                    className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    We&rsquo;ll use this to plot your locations on the fleet map. You can edit it later.
+                  </p>
                 </div>
                 {error && (
                   <div className="flex items-start gap-2 text-xs text-rose-700 bg-rose-50 px-3 py-2 rounded border border-rose-200">
@@ -291,7 +306,7 @@ export function DistrictSchoolsCard() {
                 <div className="flex gap-2 justify-end">
                   <button
                     type="button"
-                    onClick={() => { setAdding(false); setName(''); setSlug(''); setError(null); }}
+                    onClick={() => { setAdding(false); setName(''); setSlug(''); setAddress(''); setError(null); }}
                     disabled={submitting}
                     className="px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 hover:text-slate-900"
                   >

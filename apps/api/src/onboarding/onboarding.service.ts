@@ -74,12 +74,14 @@ export class OnboardingService {
     firstName?: string;
     lastName?: string;
     phone?: string;
+    address?: string;
   }) {
     const districtName = (input.districtName || '').trim();
     const rawSlug = slugify(input.slug || districtName);
     const email = (input.adminEmail || '').trim().toLowerCase();
     const firstName = (input.firstName || '').trim().slice(0, 80) || null;
     const lastName = (input.lastName || '').trim().slice(0, 80) || null;
+    const address = (input.address || '').trim().slice(0, 500) || null;
     // Strip all non-digit chars except a leading +. Normalize at the
     // edge so downstream code never has to parse "(213) 555-1234" vs
     // "+1-213-555-1234". Empty after normalization → null.
@@ -115,7 +117,7 @@ export class OnboardingService {
 
     const { tenant, user } = await this.prisma.client.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
-        data: { name: districtName, slug: rawSlug, vertical: requestedVertical },
+        data: { name: districtName, slug: rawSlug, vertical: requestedVertical, address } as any,
       });
       const user = await tx.user.create({
         data: {

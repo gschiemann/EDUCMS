@@ -178,6 +178,11 @@ export default function SignupPage() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  // 2026-05-25 — optional address at signup. Sprint 8's fleet map
+  // plots tenants by lat/lng (geocoded from this string). Operator:
+  // "this could auto build out our map from the screen area if we
+  // collect it with every account setup."
+  const [address, setAddress] = useState('');
   const [vertical, setVertical] = useState<Vertical | ''>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -217,6 +222,7 @@ export default function SignupPage() {
           firstName: firstName.trim() || undefined,
           lastName: lastName.trim() || undefined,
           phone: phone.trim() || undefined,
+          address: address.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -347,6 +353,20 @@ export default function SignupPage() {
                 <p className="text-[11px] text-slate-500 mt-1">
                   Used for two-factor recovery if you ever lose access to your
                   authenticator app. We&rsquo;ll never SMS you marketing.
+                </p>
+              </Field>
+
+              <Field label="Address (optional)">
+                <input
+                  type="text"
+                  autoComplete="street-address"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="1000 Vin Scully Ave, Los Angeles, CA 90012"
+                  className={INPUT_CLS}
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  We&rsquo;ll plot your locations on a fleet map so you can manage screens visually. Editable later.
                 </p>
               </Field>
 

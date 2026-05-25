@@ -130,6 +130,15 @@ model Tenant {
   // pricing tier. Tenants are isolated regardless; this is just metadata
   // + UI personalization.
   vertical                        String           @default("K12") // K12 | GYM | RETAIL | CORPORATE | QSR | FASHION | BAR | HEALTHCARE | HOSPITALITY | RESTAURANT | SPORTS — canonical list: packages/api-types/src/verticals.ts (VERTICALS)
+  // 2026-05-25 — Per-location physical address. Sprint 8's fleet map
+  // view plots tenants + screens by lat/lng; collecting address here
+  // (optional at signup + on add-location) means every new account
+  // auto-populates the map without manual placement. Geocoded via
+  // OpenStreetMap Nominatim (free, rate-limited) on save when address
+  // changes; manual lat/lng entry is also supported.
+  address                         String?          @map("address")
+  latitude                        Float?           @map("latitude")
+  longitude                       Float?           @map("longitude")
   // BYOK AI integration (2026-05-04) — operator's own provider
   // credentials, so cost shifts to them. ai_provider null means use
   // platform default key (process.env.ANTHROPIC_API_KEY) — current

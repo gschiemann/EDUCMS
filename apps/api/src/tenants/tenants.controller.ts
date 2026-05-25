@@ -99,12 +99,21 @@ export class TenantsController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async createChild(
     @Request() req: any,
-    @Body() body: { name?: string; slug?: string },
+    @Body() body: { name?: string; slug?: string; address?: string },
   ) {
     const name = (body?.name || '').trim();
+    // 2026-05-25 — operator: "why even show URL Slug...we dont need
+    // to show the /name at all, it just happens." Slug is now
+    // ALWAYS derived from name silently; the form no longer collects
+    // it. Body.slug kept as a back-compat override for cron / API
+    // callers but defaulted from name otherwise.
     const rawSlug = (body?.slug || name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
-    if (!name) throw new HttpException('School name is required', HttpStatus.BAD_REQUEST);
-    if (!rawSlug || rawSlug.length < 2) throw new HttpException('Slug must be at least 2 characters', HttpStatus.BAD_REQUEST);
+    if (!name) throw new HttpException('Location name is required', HttpStatus.BAD_REQUEST);
+    if (!rawSlug || rawSlug.length < 2) throw new HttpException('Name must produce a slug of at least 2 characters', HttpStatus.BAD_REQUEST);
+    // 2026-05-25 — optional address. Bounded length, sent verbatim
+    // to Sprint 8's geocoder (Nominatim) on a follow-up pass. If
+    // address comes in empty/whitespace, store null.
+    const address = (body?.address || '').trim().slice(0, 500) || null;
 
     const callerTenantId = req.user.tenantId as string;
     const callerTenant = await this.prisma.client.tenant.findUnique({
@@ -123,7 +132,7 @@ export class TenantsController {
 
     const child = await this.prisma.client.$transaction(async (tx) => {
       const created = await tx.tenant.create({
-        data: { name, slug: rawSlug, parentId: districtId },
+        data: { name, slug: rawSlug, parentId: districtId, address } as any,
         select: { id: true, name: true, slug: true, parentId: true, createdAt: true },
       });
       await tx.auditLog.create({
@@ -133,7 +142,9 @@ export class TenantsController {
           action: 'CHILD_TENANT_CREATED',
           targetType: 'Tenant',
           targetId: created.id,
-          details: JSON.stringify({ name, slug: rawSlug, parentTenantId: districtId }),
+          // Audit records WHICH fields were provided (hasAddress)
+          // but not the raw address itself (PII).
+          details: JSON.stringify({ name, slug: rawSlug, parentTenantId: districtId, hasAddress: !!address }),
         },
       });
       return created;
