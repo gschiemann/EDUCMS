@@ -220,9 +220,27 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
       const fx = (e.clientX - rect.left) / stageScale;
       const fy = (e.clientY - rect.top) / stageScale;
       const screenId = dragHandle.screenId;
+      // Was this screen already on the plan (re-positioning) or
+      // brand new to the plan? Used below to decide whether to
+      // auto-open the emergency-content drawer.
+      const wasAlreadyPlaced = !!plan.screens.find((s) => s.id === screenId);
       setOptimisticPositions((prev) => ({ ...prev, [screenId]: { floorX: fx, floorY: fy } }));
       placeMutation
         .mutateAsync({ planId: plan.id, screenId, floorX: fx, floorY: fy })
+        .then(() => {
+          // 2026-05-25 — operator: "when you drop one that should
+          // engage the settings page for that screen to add the
+          // emergency content, otherwise its not really clear when
+          // or where you add that info." On a FRESH placement
+          // (sidebar → plan), auto-open the drawer so the operator
+          // immediately sees the per-screen emergency-content
+          // editor. On a re-position (plan → plan) we DON'T re-open
+          // the drawer — that would be annoying when nudging pins
+          // to refine the floor layout.
+          if (!wasAlreadyPlaced) {
+            setSelectedScreenId(screenId);
+          }
+        })
         .catch((err: any) => {
           setOptimisticPositions((prev) => {
             const next = { ...prev };
@@ -408,7 +426,7 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
             ) : (
               <>
                 <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Click and hold a screen, then drag it onto the plan. Drop where it lives.
+                  Click and hold a screen, then drag it onto the plan where it physically lives. After you drop it, set the emergency content for that screen.
                 </p>
                 <ul className="grid grid-cols-2 gap-2">
                   {unplaced.map((s: any) => (
@@ -423,6 +441,26 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
                 </ul>
               </>
             )}
+
+            {/* Discoverability nudge for placed pins that still have
+                no emergency content. Without this, an operator who
+                placed pins in an earlier session has no signal that
+                clicking each one is the next step. */}
+            {(() => {
+              const placedWithoutContent = placedScreens.filter(
+                (s) => !hasConfiguredEmergencyContent(s),
+              );
+              if (placedWithoutContent.length === 0) return null;
+              return (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
+                  <strong className="font-bold">
+                    {placedWithoutContent.length} placed{' '}
+                    {placedWithoutContent.length === 1 ? 'screen has' : 'screens have'}
+                  </strong>{' '}
+                  no emergency content yet. Click each pin to set its lockdown / evacuate / weather / hold / secure / medical content.
+                </div>
+              );
+            })()}
           </RoleGate>
         </aside>
       </div>
@@ -464,21 +502,71 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
   );
 }
 
+// ─── Shared chip visual (pin look) ────────────────────────────────
+// One visual primitive for: sidebar tile, floating drag preview,
+// placed pin. Operator: "just keep the little grey icon when i
+// drag and drop and dont switch back to the big one, infact just
+// do the grey icons on the right side as well but they can be a
+// little bigger until you drop them." So: sidebar uses the same
+// pin look, just SIZE_SIDEBAR; floating drag preview also uses it
+// at SIZE_SIDEBAR so the visual continuity is total — what you
+// grab is what follows the cursor is what lands on the plan
+// (just shrunk to SIZE_PIN once placed).
+const SIZE_SIDEBAR = { width: PIN_RADIUS * 2.8, height: PIN_RADIUS * 1.9 }; // ~50×34
+const SIZE_PIN = { width: PIN_RADIUS * 1.6, height: PIN_RADIUS * 1.1 }; // ~29×20
+
+function ScreenChipBody({
+  isOnline,
+  hasContent,
+  selected = false,
+  size,
+}: {
+  isOnline: boolean;
+  hasContent: boolean;
+  selected?: boolean;
+  size: { width: number; height: number };
+}) {
+  // Same color logic as the placed pin: violet > emerald > slate.
+  // Sidebar tiles default to whatever the screen's status reports;
+  // has-content is only known for placed screens, so a sidebar tile
+  // is emerald (online) or slate (offline) until the screen is
+  // placed AND given emergency content (then it goes violet on the
+  // plan).
+  return (
+    <div
+      className={`relative flex items-center justify-center rounded-md shadow-lg ring-2 transition-all ${
+        hasContent
+          ? 'bg-violet-500 ring-violet-300'
+          : isOnline
+            ? 'bg-emerald-500 ring-emerald-300'
+            : 'bg-slate-400 ring-slate-200'
+      } ${selected ? 'ring-4 ring-offset-2 ring-violet-400' : ''}`}
+      style={size}
+    >
+      <Monitor className="w-3.5 h-3.5 text-white" />
+      {hasContent && (
+        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-white border border-violet-500" />
+      )}
+    </div>
+  );
+}
+
 // ─── Unplaced screen card (sidebar — drag source) ─────────────────
 //
-// 2026-05-25 — two operator-driven updates same day:
-//   1. "get rid of the little grey stand on the bottom of the screen
-//      icon" — stand + base divs removed. The TV body is enough.
-//   2. "when i select and drag and drop the screen, the screen doesnt
-//      float with the cursor, it should allow me to click and hold
-//      down the button and the screen moves with my cursor then when
-//      i let go of the click it drops it right in that area" — moved
-//      from HTML5 native drag (browser-painted translucent ghost,
-//      source stays put, inconsistent across browsers) to
-//      pointerdown→pointermove→pointerup with a portal-rendered
-//      floating preview at fixed viewport coords (see the parent's
-//      drag pipeline). The source dims to 30% opacity while dragging
-//      so the icon visually "lifts off" and follows the cursor.
+// 2026-05-25 (afternoon revision) — operator: "just keep the little
+// grey icon when i drag and drop and dont switch back to the big
+// one, infact just do the grey icons on the right side as well but
+// they can be a little bigger until you drop them." Sidebar tile
+// is now the SAME chip visual as the placed pin (status-colored
+// rectangle with a Monitor glyph), just at SIZE_SIDEBAR so it's
+// grabbable. The name label sits underneath the chip on a single
+// line; long names truncate.
+//
+// Earlier same-day changes still apply:
+//   - No stand. The chip is the whole visual.
+//   - Pointer-event drag (pointerdown → cursor-follow → pointerup).
+//   - Source dims to 30% opacity while a drag is active so the
+//     "lift" reads visually.
 function DraggableScreenCard({
   screen,
   startDrag,
@@ -489,27 +577,17 @@ function DraggableScreenCard({
   isBeingDragged: boolean;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
-  const statusDotClass =
-    screen.status === 'ONLINE'
-      ? 'bg-emerald-500'
-      : screen.status === 'OFFLINE'
-        ? 'bg-rose-500'
-        : 'bg-slate-300';
+  const isOnline = screen.status === 'ONLINE';
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    // Only left mouse button / primary touch.
     if (e.button !== 0) return;
     e.preventDefault();
-    const el = cardRef.current;
-    let offsetX = 60; // half of FloatingScreenPreview width (defaults)
-    let offsetY = 38;
-    if (el) {
-      const r = el.getBoundingClientRect();
-      // Offset = cursor position within the source. Used to position
-      // the floating preview so the icon doesn't jump when grabbed.
-      offsetX = e.clientX - r.left;
-      offsetY = e.clientY - r.top;
-    }
+    // Lock cursor offset to the CHIP center so the floating preview
+    // sits centered under the cursor regardless of where the user
+    // grabbed the surrounding tile area. Feels more deliberate than
+    // grabbing from a corner.
+    const offsetX = SIZE_SIDEBAR.width / 2;
+    const offsetY = SIZE_SIDEBAR.height / 2;
     startDrag({
       screenId: screen.id,
       startClientX: e.clientX,
@@ -517,7 +595,7 @@ function DraggableScreenCard({
       offsetX,
       offsetY,
       screen: { id: screen.id, name: screen.name, status: screen.status },
-      onClickFallback: () => { /* sidebar cards have no click action */ },
+      onClickFallback: () => { /* sidebar tiles have no click action */ },
     });
   };
 
@@ -529,52 +607,31 @@ function DraggableScreenCard({
       onPointerDown={onPointerDown}
       onDragStart={(e) => e.preventDefault()}
       style={{ touchAction: 'none' }}
-      className={`group flex flex-col items-center select-none cursor-grab active:cursor-grabbing focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded-lg p-1.5 hover:bg-violet-50/50 transition-opacity ${
+      className={`group flex flex-col items-center gap-1.5 select-none cursor-grab active:cursor-grabbing focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded-lg p-2 hover:bg-slate-50 transition-opacity ${
         isBeingDragged ? 'opacity-30' : 'opacity-100'
       }`}
       title={`${screen.name}\n${screen.status}\nClick and hold, then drag onto the plan`}
       aria-label={`${screen.name} — ${screen.status} — click and hold to drag onto the plan`}
     >
-      {/* Monitor body — the "screen" face. No stand, per operator. */}
-      <div className="relative w-full aspect-[16/10] rounded-md bg-gradient-to-br from-slate-700 to-slate-900 border-2 border-slate-700 shadow-md group-hover:border-violet-400 group-hover:shadow-lg transition-all flex items-center justify-center px-2">
-        <Monitor className="absolute top-1 left-1 w-2.5 h-2.5 text-slate-400/60" />
-        <span
-          className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${statusDotClass}`}
-          aria-hidden
-        />
-        <span className="text-[10px] font-bold text-white text-center leading-tight line-clamp-2">
-          {screen.name}
-        </span>
-      </div>
-      {screen.location && (
-        <p className="text-[9px] text-slate-500 truncate w-full text-center mt-1">
-          {screen.location}
-        </p>
-      )}
+      <ScreenChipBody isOnline={isOnline} hasContent={false} size={SIZE_SIDEBAR} />
+      <span className="text-[10px] font-semibold text-slate-700 text-center leading-tight line-clamp-2 max-w-full">
+        {screen.name}
+      </span>
     </div>
   );
 }
 
 // ─── Floating preview (rendered while a drag is active) ──────────
-// Same visual language as the sidebar tile body. Sized at 120×75 so
-// the preview is consistent whether the drag originated from a
-// sidebar card or a tiny placed pin. Rendered via a portal so it
-// escapes any `overflow:hidden` ancestor (the stage card has it).
+// Renders the SAME chip visual at SIZE_SIDEBAR — what the operator
+// grabbed is what's flying with the cursor is what lands on the
+// plan. Rendered via a portal so it escapes any `overflow:hidden`
+// ancestor (the stage card has it).
 function FloatingScreenPreview({ screen }: { screen: { id: string; name: string; status?: string } }) {
-  const statusDotClass =
-    screen.status === 'ONLINE'
-      ? 'bg-emerald-500'
-      : screen.status === 'OFFLINE'
-        ? 'bg-rose-500'
-        : 'bg-slate-300';
+  const isOnline = screen.status === 'ONLINE';
   return (
-    <div
-      className="relative rounded-md bg-gradient-to-br from-slate-700 to-slate-900 border-2 border-violet-400 flex items-center justify-center px-2"
-      style={{ width: 120, height: 75 }}
-    >
-      <Monitor className="absolute top-1 left-1 w-2.5 h-2.5 text-slate-400/80" />
-      <span className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${statusDotClass}`} aria-hidden />
-      <span className="text-[11px] font-bold text-white text-center leading-tight line-clamp-2">
+    <div className="flex flex-col items-center gap-1.5">
+      <ScreenChipBody isOnline={isOnline} hasContent={false} size={SIZE_SIDEBAR} />
+      <span className="text-[10px] font-semibold text-slate-700 text-center leading-tight bg-white/90 px-1.5 py-0.5 rounded shadow-sm">
         {screen.name}
       </span>
     </div>
@@ -652,22 +709,16 @@ function ScreenPin({
       aria-label={`${screen.name} — ${screen.status}`}
       title={`${screen.name}\n${screen.status}\n${hasScreenContent ? 'Emergency content configured\n' : ''}Drag to reposition · click to configure`}
     >
-      {/* Monitor body — no stand per operator. Centered on the
-          drop coordinate now (translate -50/-50 instead of -50/-100). */}
-      <div
-        className={`relative flex items-center justify-center rounded-md shadow-lg ring-2 transition-all group-hover:scale-110 ${
-          hasScreenContent
-            ? 'bg-violet-500 ring-violet-300'
-            : isOnline
-              ? 'bg-emerald-500 ring-emerald-300'
-              : 'bg-slate-400 ring-slate-200'
-        } ${selected ? 'ring-4 ring-offset-2 ring-violet-400' : ''}`}
-        style={{ width: PIN_RADIUS * 1.6, height: PIN_RADIUS * 1.1 }}
-      >
-        <Monitor className="w-3.5 h-3.5 text-white" />
-        {hasScreenContent && (
-          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-white border border-violet-500" />
-        )}
+      {/* Monitor body — same chip primitive as the sidebar tile,
+          just at SIZE_PIN (smaller) so placed pins don't crowd the
+          plan. Centered on the drop coordinate. */}
+      <div className="group-hover:scale-110 transition-transform">
+        <ScreenChipBody
+          isOnline={isOnline}
+          hasContent={hasScreenContent}
+          selected={selected}
+          size={SIZE_PIN}
+        />
       </div>
       <div className="absolute left-1/2 -translate-x-1/2 -bottom-5 whitespace-nowrap text-[9px] font-bold text-slate-700 bg-white/90 border border-slate-200 px-1.5 py-0.5 rounded shadow-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
         {screen.name}
