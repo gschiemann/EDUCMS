@@ -1328,14 +1328,23 @@ export default function ScreensPage() {
           <ScreenMapClient
             screens={flatScreens.map(s => ({
               id: s.id, name: s.name, status: s.status,
-              latitude: s.latitude, longitude: s.longitude,
-              address: s.address, lastPingAt: s.lastPingAt,
+              // The API hydrates effectiveLatitude/Longitude from the
+              // screen's own lat/lng first, then falls back to the
+              // tenant's building-address coords (set via the location
+              // address autocomplete on /settings). Per-screen "Set
+              // location" still wins; this keeps building screens
+              // visible on the map even before precise pins are dropped.
+              latitude: s.effectiveLatitude ?? s.latitude,
+              longitude: s.effectiveLongitude ?? s.longitude,
+              address: s.effectiveAddress ?? s.address,
+              geoSource: s.geoSource,
+              lastPingAt: s.lastPingAt,
               lastCacheReport: s.lastCacheReport,
             }))}
           />
           {flatScreens.length > 0 && (
             <p className="text-[11px] text-slate-400">
-              Tip: open a screen card below and click <span className="font-bold">📍 Set location</span> to put it on the map.
+              Tip: every screen lands at its building&apos;s address by default. To drop a more precise pin, open the screen card and click <span className="font-bold">📍 Set location</span>.
             </p>
           )}
         </div>

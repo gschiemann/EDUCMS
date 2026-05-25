@@ -22,9 +22,14 @@ export type ScreenForMap = {
   id: string;
   name: string;
   status: string;
+  // Effective coords used for plotting. The API hydrates these from the
+  // screen's own lat/lng first, then falls back to the tenant's
+  // building location. geoSource tells the popup whether to badge it
+  // as a building-level pin vs a precise per-screen pin.
   latitude: number | null;
   longitude: number | null;
   address?: string | null;
+  geoSource?: 'screen' | 'tenant' | 'none';
   lastPingAt?: string | null;
   lastCacheReport?: { emergency?: { count?: number; bytes?: number } } | null;
 };
@@ -139,6 +144,15 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick }: P
                       {meta.label}
                     </div>
                     {s.address && <div className="text-slate-500 mb-1">{s.address}</div>}
+                    {s.geoSource === 'tenant' && (
+                      <div
+                        className="text-[10px] font-semibold mb-1 rounded px-1.5 py-0.5 inline-block"
+                        style={{ background: '#eef2ff', color: '#4338ca' }}
+                        title="No per-screen pin yet — showing the building location. Click the screen card to drop a precise pin."
+                      >
+                        Building location
+                      </div>
+                    )}
                     {s.lastPingAt && (
                       <div className="text-slate-400 text-[10px]">
                         Last ping {new Date(s.lastPingAt).toLocaleString()}

@@ -860,6 +860,17 @@ export class ScreensController {
       include: { screenGroup: { select: { id: true, name: true } } },
       orderBy: { name: 'asc' },
     });
+    // Pull the tenant's saved address/coords once so every screen WITHOUT
+    // its own per-screen lat/lng can fall back to the building location
+    // on the fleet map. Operator expectation: "I set the building's
+    // address — every screen there should show up at that pin." See
+    // ScreenMap.tsx for how `effectiveLatitude/Longitude` and `geoSource`
+    // are consumed. Per-screen "Set location" still wins because we
+    // keep `latitude/longitude` as the screen-specific coords.
+    const tenantGeo = await this.prisma.client.tenant.findUnique({
+      where: { id: req.user.tenantId },
+      select: { latitude: true, longitude: true, address: true },
+    });
     // Compute live online/offline from lastPingAt recency. The stored
     // `status` column only flips on register/pair/ping and never back,
     // so a player that dies silently was showing ONLINE forever. Two
@@ -900,9 +911,32 @@ export class ScreensController {
       // screens/ScreenMap.tsx).
       const { lastCrashStack: _stack, lastSelfTestReport: _self, ...rest } = s as any;
       const chromiumMajor = this.chromiumMajor((s as any).userAgent);
+      // Effective geo for the fleet map: screen-specific wins, tenant
+      // building location is the fallback, none → screen stays off the
+      // map. geoSource lets the UI badge "building location" so the
+      // operator knows it's not a precise pin.
+      const hasScreenCoords = s.latitude != null && s.longitude != null;
+      const hasTenantCoords =
+        tenantGeo?.latitude != null && tenantGeo?.longitude != null;
+      const effectiveLatitude = hasScreenCoords
+        ? s.latitude
+        : (hasTenantCoords ? tenantGeo!.latitude : null);
+      const effectiveLongitude = hasScreenCoords
+        ? s.longitude
+        : (hasTenantCoords ? tenantGeo!.longitude : null);
+      const effectiveAddress = hasScreenCoords
+        ? (s as any).address ?? null
+        : (hasTenantCoords ? tenantGeo!.address ?? null : null);
+      const geoSource: 'screen' | 'tenant' | 'none' = hasScreenCoords
+        ? 'screen'
+        : (hasTenantCoords ? 'tenant' : 'none');
       return {
         ...rest,
         status: liveStatus,
+        effectiveLatitude,
+        effectiveLongitude,
+        effectiveAddress,
+        geoSource,
         // Real browser-engine version + a flag the dashboard uses to warn
         // "this screen can't render container-query templates" etc.
         chromiumMajor,
