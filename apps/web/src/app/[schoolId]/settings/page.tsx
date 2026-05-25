@@ -665,44 +665,41 @@ function PanicContentGate() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, isK12]);
 
-  const handleToggle = (next: boolean) => {
-    setEnabled(next);
-    if (typeof window !== 'undefined' && tenantId) {
-      try {
-        window.localStorage.setItem(
-          `emergencyEnabled:${tenantId}`,
-          next ? 'true' : 'false',
-        );
-      } catch {
-        // ignore — UI still reflects the in-memory toggle
-      }
-    }
-  };
+  // handleToggle was removed 2026-05-25 — the toggle now lives on
+  // /settings/emergency where it's behind a click-through + confirm
+  // dialog. setEnabled is still called above (read-only hydrate from
+  // localStorage) so the status pill reflects current state.
 
-  // 2026-05-25 — emergency editor moved to its own /settings/emergency
-  // page (operator: "it creates another entirely new menu page instead
-  // of living in its own page"). The settings page now ONLY carries
-  // the on/off toggle (for non-K12 verticals) + a "Configure →" link
-  // card. The actual six SRP editor cards + location-mode floor-plan
-  // workflow live on the dedicated page.
+  // 2026-05-25 (full emergency UX overhaul) — the entire emergency
+  // configuration (master on/off, standard-vs-location mode, the six
+  // SRP editor cards, floor-plan upload, per-screen overrides) now
+  // lives on the dedicated /settings/emergency page. The settings
+  // surface ONLY shows a compact status row + a Configure button.
+  //
+  // Operator (2026-05-25): "turning it on and off should be inside
+  // the initial config page not a button that can be easily hit by
+  // accident." Toggling lives behind a click-through + confirm
+  // dialog on the dedicated page.
+  //
+  // Status pill reads:
+  //   - K12: always shows "On" (always-on contract)
+  //   - Non-K12: localStorage-backed "On" or "Off"
+  // The handleToggle / button code paths are intentionally GONE from
+  // this card — the only action here is "Configure" which navigates.
 
-  // K12: always-on, no toggle. Render a single-row link card that
-  // points at the dedicated editor.
-  if (isK12) {
+  if (!hydrated && !isK12) {
     return (
       <Link
         href={`${pathnameForGate}/emergency`}
         className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-4 hover:border-rose-300 hover:shadow-md transition-all"
       >
-        <div className="flex items-start gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center shrink-0">
-            <AlertOctagon className="w-4 h-4 text-rose-600" />
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+            <AlertOctagon className="w-4 h-4 text-slate-500" />
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-bold text-slate-800">Emergency content</div>
-            <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-              Configure lockdown / evacuate / medical / shelter / hold content for every screen.
-            </p>
+            <div className="text-sm font-bold text-slate-800">Emergency alerts</div>
+            <p className="text-[11px] text-slate-500 mt-0.5">Loading…</p>
           </div>
         </div>
         <span className="text-xs text-rose-600 font-bold shrink-0">Configure →</span>
@@ -710,58 +707,39 @@ function PanicContentGate() {
     );
   }
 
-  // Avoid flashing the wrong default before localStorage is read.
-  if (!hydrated) {
-    return (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-3 text-sm font-semibold text-slate-500">
-        <Loader2 className="w-4 h-4 animate-spin" />
-        Loading emergency settings…
-      </div>
-    );
-  }
-
-  // Non-K12: a single one-row card. Enable toggle on the right; when
-  // enabled, the title becomes a link to /settings/emergency. No
-  // inline editor — the editor is its own page now.
+  const showOn = isK12 || enabled;
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-4">
-      <div className="flex items-start gap-3 min-w-0 flex-1">
-        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-          enabled ? 'bg-rose-50' : 'bg-slate-100'
-        }`}>
-          <AlertOctagon className={`w-4 h-4 ${enabled ? 'text-rose-600' : 'text-slate-500'}`} />
+    <Link
+      href={`${pathnameForGate}/emergency`}
+      className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-4 hover:border-rose-300 hover:shadow-md transition-all"
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${showOn ? 'bg-rose-50' : 'bg-slate-100'}`}>
+          <AlertOctagon className={`w-4 h-4 ${showOn ? 'text-rose-600' : 'text-slate-500'}`} />
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-bold text-slate-800">Enable emergency alert system</div>
-          <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-            Optional. Configure lockdown / evacuate / weather alerts for incidents on premises.
+          <div className="text-sm font-bold text-slate-800 flex items-center gap-2 flex-wrap">
+            Emergency alerts
+            <span
+              className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                showOn
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-slate-100 text-slate-500'
+              }`}
+            >
+              {showOn ? <ShieldCheck className="w-3 h-3" /> : <ShieldOff className="w-3 h-3" />}
+              {showOn ? 'On' : 'Off'}
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            {showOn
+              ? 'Trigger content + on/off + floor-plan setup live on the dedicated page.'
+              : 'Lockdown / evacuate / weather alerts. Currently disabled — set up content first.'}
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {enabled && (
-          <Link
-            href={`${pathnameForGate}/emergency`}
-            className="text-xs font-bold text-rose-600 hover:text-rose-700 px-3 py-2 rounded-lg hover:bg-rose-50 transition-colors"
-          >
-            Configure →
-          </Link>
-        )}
-        <button
-          type="button"
-          onClick={() => handleToggle(!enabled)}
-          aria-pressed={enabled}
-          className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-[11px] font-bold uppercase tracking-wide transition-colors ${
-            enabled
-              ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
-              : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-400'
-          }`}
-        >
-          {enabled ? <ShieldCheck className="w-4 h-4" /> : <ShieldOff className="w-4 h-4" />}
-          <span>Emergency {enabled ? 'On' : 'Off'}</span>
-        </button>
-      </div>
-    </div>
+      <span className="text-xs text-rose-600 font-bold shrink-0">Configure →</span>
+    </Link>
   );
 }
 
