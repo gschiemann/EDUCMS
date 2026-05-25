@@ -623,12 +623,12 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
         <Card className="p-0 overflow-hidden shadow-lg border-slate-300">
           <BrandingLivePreview branding={previewBranding} />
         </Card>
-        {!preview && (
-          <div className="mt-6 rounded-xl border-2 border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 bg-white">
-            <Monitor className="h-10 w-10 mx-auto mb-3 text-slate-300" />
-            Paste a URL and click <b>Scan</b> to see the CMS re-skin in real time.
-          </div>
-        )}
+        {/* 2026-05-25 — dropped the "Paste a URL and click Scan to
+            see the CMS re-skin in real time" empty-state box per
+            operator: "dump this weird box we have at the bottom."
+            The form on the left side and the live preview above
+            already telegraph what to do — the dashed box was
+            redundant chrome. */}
       </div>
     </div>
   );

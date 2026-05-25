@@ -14,7 +14,8 @@ import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { useAppStore } from '@/lib/store';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
-import { Building2, Plus, MonitorPlay, Users, ExternalLink, AlertTriangle, Loader2 } from 'lucide-react';
+import { Building2, Plus, MonitorPlay, Users, ExternalLink, AlertTriangle, Loader2, Home } from 'lucide-react';
+import { useUIStore } from '@/store/ui-store';
 
 interface ChildTenant {
   id: string;
@@ -138,6 +139,12 @@ function copyFor(v?: string): Copy {
 
 export function DistrictSchoolsCard() {
   const user = useAppStore((s) => s.user);
+  // 2026-05-25 — parent tenant info for the "Default" row at top
+  // of the list. Falls back to "Your organization" if the tenant
+  // name isn't hydrated yet (rare; ui-store loads at boot).
+  const uiUser = useUIStore((s) => s.user);
+  const parentTenantName = (uiUser as any)?.tenantName || 'Your organization';
+  const parentTenantSlug = (uiUser as any)?.tenantSlug || '';
   const [data, setData] = useState<ListResponse | null>(null);
   const [vertical, setVertical] = useState<string>('K12');
   const [loading, setLoading] = useState(true);
@@ -307,55 +314,75 @@ export function DistrictSchoolsCard() {
               <div className="text-sm text-rose-600">{error}</div>
             )}
 
-            {data?.children?.length ? (
-              <div className="space-y-2">
-                {switchError && (
-                  <div className="flex items-start gap-2 text-xs text-rose-700 bg-rose-50 px-3 py-2 rounded border border-rose-200">
-                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <span>{switchError}</span>
-                  </div>
-                )}
-                {data.children.map((row) => {
-                  const isSwitching = switchingId === row.id;
-                  return (
-                    <button
-                      type="button"
-                      key={row.id}
-                      onClick={() => switchToTenant({ id: row.id, slug: row.slug })}
-                      disabled={!!switchingId}
-                      className="w-full flex items-center justify-between gap-4 px-4 py-3 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors group disabled:opacity-60 disabled:cursor-wait text-left"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-slate-800 group-hover:text-indigo-700 truncate">
-                          {row.name}
-                        </div>
-                        <div className="text-xs text-slate-500 font-mono">/{row.slug}</div>
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-slate-500">
-                        <span className="flex items-center gap-1">
-                          <MonitorPlay className="w-3.5 h-3.5" /> {row._count.screens}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Users className="w-3.5 h-3.5" /> {row._count.users}
-                        </span>
-                        {isSwitching ? (
-                          <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
-                        ) : (
-                          <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              !adding && (
-                <div className="text-sm text-slate-500 bg-slate-50 px-4 py-6 rounded-lg text-center border border-dashed border-slate-200">
-                  {c.emptyState}
-                  <div className="text-xs text-slate-400 mt-1">{c.inheritanceNote}</div>
+            {/* 2026-05-25 — operator: "this area should show the
+                initial location as the default location not as not
+                set up." Parent tenant is ALWAYS the first row now
+                (marked "Default" with a home icon). The "no
+                locations yet" empty state went away — there's
+                always at least one location (the parent itself),
+                so the empty state was never accurate. inheritanceNote
+                still renders as a one-line footer under the list. */}
+            <div className="space-y-2">
+              {switchError && (
+                <div className="flex items-start gap-2 text-xs text-rose-700 bg-rose-50 px-3 py-2 rounded border border-rose-200">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>{switchError}</span>
                 </div>
-              )
-            )}
+              )}
+              {/* Parent / default row — non-clickable since the
+                  operator is already inside this tenant. Just a
+                  status row anchoring the list. */}
+              <div className="w-full flex items-center justify-between gap-4 px-4 py-3 rounded-lg border border-indigo-200 bg-indigo-50/40 text-left">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Home className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-slate-800 truncate flex items-center gap-2">
+                      {parentTenantName}
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-600 text-white">
+                        Default
+                      </span>
+                    </div>
+                    {parentTenantSlug && (
+                      <div className="text-xs text-slate-500 font-mono">/{parentTenantSlug}</div>
+                    )}
+                  </div>
+                </div>
+                <div className="text-xs text-slate-500">You&rsquo;re here</div>
+              </div>
+              {data?.children?.map((row) => {
+                const isSwitching = switchingId === row.id;
+                return (
+                  <button
+                    type="button"
+                    key={row.id}
+                    onClick={() => switchToTenant({ id: row.id, slug: row.slug })}
+                    disabled={!!switchingId}
+                    className="w-full flex items-center justify-between gap-4 px-4 py-3 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors group disabled:opacity-60 disabled:cursor-wait text-left"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-slate-800 group-hover:text-indigo-700 truncate">
+                        {row.name}
+                      </div>
+                      <div className="text-xs text-slate-500 font-mono">/{row.slug}</div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-slate-500">
+                      <span className="flex items-center gap-1">
+                        <MonitorPlay className="w-3.5 h-3.5" /> {row._count.screens}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Users className="w-3.5 h-3.5" /> {row._count.users}
+                      </span>
+                      {isSwitching ? (
+                        <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
+                      ) : (
+                        <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+              <p className="text-xs text-slate-400 pt-1">{c.inheritanceNote}</p>
+            </div>
           </>
         )}
       </div>
