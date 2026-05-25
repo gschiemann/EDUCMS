@@ -27,7 +27,12 @@ import { cn } from '@/lib/utils';
 import { pushBrandingPreview } from './BrandStyleInjector';
 import { useAppStore } from '@/lib/store';
 import { BrandingLivePreview } from './BrandingLivePreview';
-import { Search, Palette, Sparkles, Check, Loader2, ExternalLink, AlertTriangle, RefreshCw, Monitor, Wand2, Eye } from 'lucide-react';
+// 2026-05-25 — Sparkles dropped on the "Scan" button. Branding is
+// scrape-driven (cheerio on the homepage HTML), not AI; the sparkle
+// vocabulary belongs to AI-generated content. Wand2 is the
+// established "magic auto-detection" icon throughout the wizard
+// header + apply-brand-to-templates button.
+import { Search, Palette, Check, Loader2, ExternalLink, AlertTriangle, RefreshCw, Monitor, Wand2, Eye } from 'lucide-react';
 
 // Scraped SVGs come from arbitrary third-party URLs — treat every one
 // as hostile until proven otherwise. Server also sanitizes on adopt,
@@ -375,7 +380,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
               />
             </div>
             <Button type="submit" disabled={scraping || !url.trim()} className="min-w-[110px]">
-              {scraping ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Scanning</> : <><Sparkles className="h-4 w-4 mr-2" />Scan</>}
+              {scraping ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Scanning</> : <><Wand2 className="h-4 w-4 mr-2" />Scan</>}
             </Button>
           </form>
 

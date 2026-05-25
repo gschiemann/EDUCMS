@@ -14,7 +14,14 @@ import { useEffect, useMemo, useState } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { usePathname } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
-import { Paintbrush, Sparkles, RotateCcw, AlertTriangle, Check, Loader2, Wand2 } from 'lucide-react';
+// 2026-05-25 — Sparkles dropped here per operator: "why are we
+// giving the AI sparkle on the branding button? are we using AI in
+// there?" Branding is pure cheerio scraping (zero AI calls); the
+// sparkle vocabulary is reserved for AI-generated content. Wand2
+// is the established "magic auto-detection" icon for non-AI
+// automation in this codebase (also used by the wizard header +
+// "Apply brand to templates" button).
+import { Paintbrush, RotateCcw, AlertTriangle, Check, Loader2, Wand2 } from 'lucide-react';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useAppStore } from '@/lib/store';
 import { useTenant, useApplyBrandToTemplates } from '@/hooks/use-api';
@@ -119,7 +126,7 @@ export function BrandingSettingsCard() {
             href={`/${schoolId}/settings/branding`}
             className="text-xs font-semibold px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
           >
-            <Sparkles className="h-3.5 w-3.5" /> {branding ? 'Re-skin' : 'Configure'}
+            <Wand2 className="h-3.5 w-3.5" /> {branding ? 'Re-skin' : 'Configure'}
           </Link>
         </div>
       </div>
