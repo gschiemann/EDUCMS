@@ -126,7 +126,7 @@ export function BrandingSettingsCard() {
             href={`/${schoolId}/settings/branding`}
             className="text-xs font-semibold px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
           >
-            <Wand2 className="h-3.5 w-3.5" /> {branding ? 'Re-skin' : 'Configure'}
+            {branding ? 'Re-skin' : 'Configure'}
           </Link>
         </div>
       </div>

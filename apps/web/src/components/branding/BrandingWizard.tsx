@@ -27,12 +27,11 @@ import { cn } from '@/lib/utils';
 import { pushBrandingPreview } from './BrandStyleInjector';
 import { useAppStore } from '@/lib/store';
 import { BrandingLivePreview } from './BrandingLivePreview';
-// 2026-05-25 — Sparkles dropped on the "Scan" button. Branding is
-// scrape-driven (cheerio on the homepage HTML), not AI; the sparkle
-// vocabulary belongs to AI-generated content. Wand2 is the
-// established "magic auto-detection" icon throughout the wizard
-// header + apply-brand-to-templates button.
-import { Search, Palette, Check, Loader2, ExternalLink, AlertTriangle, RefreshCw, Monitor, Wand2, Eye } from 'lucide-react';
+// 2026-05-25 — Operator chose to remove both AI sparkle icons +
+// the Wand2 magic icons here. The /settings/branding page header
+// has the Paintbrush; the wizard inside doesn't need to repeat
+// any icon vocabulary.
+import { Search, Palette, Check, Loader2, ExternalLink, AlertTriangle, RefreshCw, Monitor, Eye } from 'lucide-react';
 
 // Scraped SVGs come from arbitrary third-party URLs — treat every one
 // as hostile until proven otherwise. Server also sanitizes on adopt,
@@ -354,7 +353,12 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
       <div className="space-y-4">
         <Card className="p-5 space-y-4">
           <div className="flex items-center gap-2">
-            <Wand2 className="h-5 w-5 text-indigo-600" />
+            {/* 2026-05-25 — Wand2 dropped here per operator: "in this
+                page we have multiple icon going on that are the same
+                thing, no need to two and just keep the paint brush
+                one." The page header above already shows Paintbrush
+                next to "Branding"; repeating an icon next to "Brand
+                your CMS" is just chrome. */}
             <h1 className="text-xl font-bold">
               {mode === 'demo' ? 'Try auto-branding' : 'Brand your CMS'}
             </h1>
@@ -380,7 +384,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
               />
             </div>
             <Button type="submit" disabled={scraping || !url.trim()} className="min-w-[110px]">
-              {scraping ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Scanning</> : <><Wand2 className="h-4 w-4 mr-2" />Scan</>}
+              {scraping ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Scanning</> : 'Scan'}
             </Button>
           </form>
 
