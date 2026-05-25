@@ -274,7 +274,15 @@ export function BrandingSettingsCard() {
           </div>
         </div>
       )}
-      <div className="p-6">
+      {/* 2026-05-25 — when no branding is set yet, the card is a
+          one-row header (matches industry/emergency cards). The
+          verbose "paste your school's URL and we'll auto-skin"
+          paragraph that used to live here was operator noise —
+          the "Auto-brand" button already says what to click.
+          When branding IS set we still render the logo preview +
+          apply-to-templates + reset controls; that information is
+          worth keeping below the header. */}
+      {(loading || branding) && <div className="p-6">
         {loading ? (
           <div className="text-sm text-slate-400">Loading…</div>
         ) : branding ? (
@@ -367,12 +375,8 @@ export function BrandingSettingsCard() {
               )}
             </div>
           </>
-        ) : (
-          <div className="text-sm text-slate-600">
-            Paste your school&apos;s website URL and we&apos;ll auto-skin the CMS — logo, colors, fonts, all at once. Takes about ten seconds. You can reset to defaults at any time.
-          </div>
-        )}
-      </div>
+        ) : null}
+      </div>}
     </div>
   );
 }
