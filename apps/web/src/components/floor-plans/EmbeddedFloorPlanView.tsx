@@ -290,26 +290,18 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
                 Every paired screen is placed on a plan. Pair more from the Screens page.
               </p>
             ) : (
-              <ul className="space-y-1.5">
-                {unplaced.map((s: any) => (
-                  <li key={s.id}>
-                    <button
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('text/screen-id', s.id);
-                        e.dataTransfer.effectAllowed = 'move';
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-violet-300 hover:shadow-sm cursor-grab active:cursor-grabbing transition-all"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full shrink-0 ${s.status === 'ONLINE' ? 'bg-emerald-500' : s.status === 'OFFLINE' ? 'bg-rose-500' : 'bg-slate-300'}`} />
-                        <span className="text-xs font-semibold text-slate-700 truncate">{s.name}</span>
-                      </div>
-                      {s.location && <p className="text-[10px] text-slate-400 truncate mt-0.5">{s.location}</p>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Drag a screen onto the plan to place it. Drag a placed screen anywhere on the plan to move it.
+                </p>
+                <ul className="grid grid-cols-2 gap-2">
+                  {unplaced.map((s: any) => (
+                    <li key={s.id}>
+                      <DraggableScreenCard screen={s} />
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </RoleGate>
         </aside>
@@ -328,14 +320,68 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
   );
 }
 
+// ─── Unplaced screen card (sidebar — drag source) ─────────────────
+//
+// 2026-05-25 — was a single-row button with a status dot + name.
+// Operator: "make the screens that you can drag and drop more obvious
+// that this is what they are there for, make them little screen icons
+// with the name." Now each unplaced item renders as a small TV-shaped
+// tile (screen body + name on the face + a stand) so it's visually
+// obvious that THIS THING is meant to live on the plan.
+function DraggableScreenCard({ screen }: { screen: any }) {
+  const statusDotClass =
+    screen.status === 'ONLINE'
+      ? 'bg-emerald-500'
+      : screen.status === 'OFFLINE'
+        ? 'bg-rose-500'
+        : 'bg-slate-300';
+  return (
+    <div
+      role="button"
+      draggable
+      tabIndex={0}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/screen-id', screen.id);
+        e.dataTransfer.effectAllowed = 'move';
+      }}
+      className="group flex flex-col items-center select-none cursor-grab active:cursor-grabbing focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded-lg p-1.5 hover:bg-violet-50/50 transition-colors"
+      title={`${screen.name}\n${screen.status}\nDrag onto the plan to place it`}
+      aria-label={`${screen.name} — ${screen.status} — drag onto the plan to place`}
+    >
+      {/* Monitor body — the "screen" face */}
+      <div className="relative w-full aspect-[16/10] rounded-md bg-gradient-to-br from-slate-700 to-slate-900 border-2 border-slate-700 shadow-md group-hover:border-violet-400 group-hover:shadow-lg transition-all flex items-center justify-center px-2">
+        <Monitor className="absolute top-1 left-1 w-2.5 h-2.5 text-slate-400/60" />
+        <span
+          className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${statusDotClass}`}
+          aria-hidden
+        />
+        <span className="text-[10px] font-bold text-white text-center leading-tight line-clamp-2">
+          {screen.name}
+        </span>
+      </div>
+      {/* Stand + base — sells the "this is a TV/screen" metaphor */}
+      <div className="w-1 h-1 bg-slate-500" />
+      <div className="w-6 h-0.5 bg-slate-500 rounded-full" />
+      {screen.location && (
+        <p className="text-[9px] text-slate-500 truncate w-full text-center mt-1">
+          {screen.location}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Pin (placed screen) ──────────────────────────────────────────
 
 function ScreenPin({
   screen,
   planWidthPx,
   planHeightPx,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   planId,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onMoveOptimistic,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onMoveRejected,
   onSelect,
   selected,
@@ -349,40 +395,32 @@ function ScreenPin({
   onSelect: () => void;
   selected: boolean;
 }) {
-  const placeMutation = usePlaceScreenOnFloor();
   const xPct = ((screen.floorX || 0) / planWidthPx) * 100;
   const yPct = ((screen.floorY || 0) / planHeightPx) * 100;
 
   const isOnline = screen.status === 'ONLINE';
   const hasScreenContent = hasConfiguredEmergencyContent(screen);
 
-  const onDragEnd = async (e: React.DragEvent<HTMLButtonElement>) => {
-    if (!e.currentTarget) return;
-    const stage = e.currentTarget.parentElement?.getBoundingClientRect();
-    if (!stage) return;
-    const ox = e.clientX - stage.left;
-    const oy = e.clientY - stage.top;
-    if (ox < 0 || oy < 0 || ox > stage.width || oy > stage.height) return;
-    const fx = (ox / stage.width) * planWidthPx;
-    const fy = (oy / stage.height) * planHeightPx;
-    onMoveOptimistic(screen.id, { floorX: fx, floorY: fy });
-    try {
-      await placeMutation.mutateAsync({ planId, screenId: screen.id, floorX: fx, floorY: fy });
-    } catch {
-      onMoveRejected(screen.id);
-    }
-  };
-
+  // 2026-05-25 — was draggable WITHOUT onDragStart, which means
+  // dataTransfer was never populated and the stage's onDrop (the only
+  // mutation path) saw empty data and bailed. Result: placed pins
+  // appeared stuck after first placement. Now we set text/screen-id
+  // on dragstart so the SAME stage onDrop path that handles
+  // sidebar-→-plan ALSO handles plan-→-plan (placeMutation is
+  // idempotent — same endpoint, just new (floorX, floorY)).
   return (
     <button
       type="button"
       draggable
-      onDragEnd={onDragEnd}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/screen-id', screen.id);
+        e.dataTransfer.effectAllowed = 'move';
+      }}
       onClick={onSelect}
       className="absolute -translate-x-1/2 -translate-y-full focus:outline-none group"
       style={{ left: `${xPct}%`, top: `${yPct}%` }}
       aria-label={`${screen.name} — ${screen.status}`}
-      title={`${screen.name}\n${screen.status}\n${hasScreenContent ? 'Emergency content configured\n' : ''}Click to configure`}
+      title={`${screen.name}\n${screen.status}\n${hasScreenContent ? 'Emergency content configured\n' : ''}Drag to reposition · click to configure`}
     >
       {/* Monitor body */}
       <div
