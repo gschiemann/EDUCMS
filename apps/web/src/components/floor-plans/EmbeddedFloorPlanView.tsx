@@ -22,6 +22,7 @@
  */
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, AlertTriangle, MapPin, X, Wifi, WifiOff, Power, Monitor } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
@@ -74,6 +75,38 @@ interface EmbeddedFloorPlanViewProps {
   mode?: 'standalone' | 'embedded';
 }
 
+// ─── Drag state (pointer-event-based; floating preview follows cursor) ──
+//
+// 2026-05-25 — operator: "when i select and drag and drop the screen,
+// the screen doesnt float with the cursor, it should allow me to click
+// and hold down the button and the screen moves with my cursor then
+// when i let go of the click it drops it right in that area."
+//
+// HTML5 native drag-and-drop relies on a browser-generated translucent
+// ghost image that varies wildly across Chromium / WebKit / Gecko and
+// never visually MOVES the source — the operator's expectation is that
+// the icon itself follows the cursor. The fix is to switch to pointer
+// events with a portal-rendered floating preview at fixed viewport
+// coordinates, updated on every pointermove. Click-vs-drag is decided
+// by a 5px movement threshold so the placed pin's tap-to-open-drawer
+// behavior survives.
+
+type DragHandle = {
+  screenId: string;
+  /** Where the drag began in client coords — used for threshold + cursor offset. */
+  startClientX: number;
+  startClientY: number;
+  /** Cursor offset relative to icon center, so the icon doesn't jump on grab. */
+  offsetX: number;
+  offsetY: number;
+  /** Snapshot of the screen so the floating preview can render without re-fetching. */
+  screen: { id: string; name: string; status?: string };
+  /** Fired on pointerup if the drag never crossed the threshold (i.e., it was a click). */
+  onClickFallback: () => void;
+};
+
+const DRAG_THRESHOLD_PX = 5;
+
 export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }: EmbeddedFloorPlanViewProps) {
   const { data: plan, isLoading } = useFloorPlan(planId);
   const { data: allScreens } = useScreens();
@@ -82,6 +115,18 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
   const [selectedScreenId, setSelectedScreenId] = useState<string | null>(null);
   const [stageScale, setStageScale] = useState(1);
   const [optimisticPositions, setOptimisticPositions] = useState<Record<string, { floorX: number; floorY: number }>>({});
+
+  // Drag state. `dragHandle` is set once (on pointerdown) and cleared on
+  // pointerup/cancel. `dragPos` updates on every pointermove with
+  // current cursor coords; `active` flips true once we cross the
+  // 5px threshold so the floating preview only renders for real drags.
+  const [dragHandle, setDragHandle] = useState<DragHandle | null>(null);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number; active: boolean; overStage: boolean }>({
+    x: 0,
+    y: 0,
+    active: false,
+    overStage: false,
+  });
 
   useEffect(() => {
     setOptimisticPositions({});
@@ -101,6 +146,112 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
   }, [plan]);
+
+  // ── Drag pipeline ───────────────────────────────────────────
+  //
+  // Started by DraggableScreenCard / ScreenPin via the `startDrag`
+  // callback below (passed down as props). One global pointermove +
+  // pointerup pair handles preview tracking + drop resolution.
+  // Re-runs only when dragHandle starts/stops, not on every move.
+  const startDrag = useCallback((handle: DragHandle) => {
+    setDragHandle(handle);
+    setDragPos({
+      x: handle.startClientX,
+      y: handle.startClientY,
+      active: false,
+      overStage: false,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!dragHandle) return;
+
+    const stageHitTest = (x: number, y: number) => {
+      const stage = stageRef.current;
+      if (!stage) return false;
+      const r = stage.getBoundingClientRect();
+      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const dx = e.clientX - dragHandle.startClientX;
+      const dy = e.clientY - dragHandle.startClientY;
+      const beyondThreshold = Math.hypot(dx, dy) > DRAG_THRESHOLD_PX;
+      setDragPos((prev) => ({
+        x: e.clientX,
+        y: e.clientY,
+        active: prev.active || beyondThreshold,
+        overStage: stageHitTest(e.clientX, e.clientY),
+      }));
+    };
+
+    const finish = (e: PointerEvent | null, wasCancelled: boolean) => {
+      const dx = (e?.clientX ?? dragHandle.startClientX) - dragHandle.startClientX;
+      const dy = (e?.clientY ?? dragHandle.startClientY) - dragHandle.startClientY;
+      const wasActive = Math.hypot(dx, dy) > DRAG_THRESHOLD_PX;
+
+      // Tap (not a drag) → fall back to the click handler (open drawer).
+      if (!wasActive && !wasCancelled) {
+        try {
+          dragHandle.onClickFallback();
+        } catch {
+          /* ignore */
+        }
+        setDragHandle(null);
+        setDragPos({ x: 0, y: 0, active: false, overStage: false });
+        return;
+      }
+
+      // Cancelled or dropped outside stage → no placement.
+      if (wasCancelled || !e || !stageHitTest(e.clientX, e.clientY) || !plan) {
+        setDragHandle(null);
+        setDragPos({ x: 0, y: 0, active: false, overStage: false });
+        return;
+      }
+
+      // Compute floor-plan pixel coords from cursor position.
+      const stage = stageRef.current;
+      if (!stage) {
+        setDragHandle(null);
+        setDragPos({ x: 0, y: 0, active: false, overStage: false });
+        return;
+      }
+      const rect = stage.getBoundingClientRect();
+      const fx = (e.clientX - rect.left) / stageScale;
+      const fy = (e.clientY - rect.top) / stageScale;
+      const screenId = dragHandle.screenId;
+      setOptimisticPositions((prev) => ({ ...prev, [screenId]: { floorX: fx, floorY: fy } }));
+      placeMutation
+        .mutateAsync({ planId: plan.id, screenId, floorX: fx, floorY: fy })
+        .catch((err: any) => {
+          setOptimisticPositions((prev) => {
+            const next = { ...prev };
+            delete next[screenId];
+            return next;
+          });
+          appAlert({
+            title: "Couldn't place screen",
+            message: err?.message || 'Try again — if it keeps failing the screen may have been deleted.',
+            tone: 'danger',
+          });
+        });
+
+      setDragHandle(null);
+      setDragPos({ x: 0, y: 0, active: false, overStage: false });
+    };
+
+    const onUp = (e: PointerEvent) => finish(e, false);
+    const onCancel = (e: PointerEvent) => finish(e, true);
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+    };
+  }, [dragHandle, plan, stageScale, placeMutation]);
 
   const screensList = useMemo(() => {
     return Array.isArray(allScreens) ? allScreens : (allScreens as any)?.screens || [];
@@ -161,36 +312,10 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
     return screensList.filter((s: any) => !placedIds.has(s.id));
   }, [plan, allScreens, screensList, placedScreens]);
 
-  const onDrop = useCallback(
-    async (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      const screenId = e.dataTransfer.getData('text/screen-id');
-      if (!screenId || !plan) return;
-      const stage = stageRef.current;
-      if (!stage) return;
-      const rect = stage.getBoundingClientRect();
-      const ox = e.clientX - rect.left;
-      const oy = e.clientY - rect.top;
-      const fx = ox / stageScale;
-      const fy = oy / stageScale;
-      setOptimisticPositions((prev) => ({ ...prev, [screenId]: { floorX: fx, floorY: fy } }));
-      try {
-        await placeMutation.mutateAsync({ planId: plan.id, screenId, floorX: fx, floorY: fy });
-      } catch (err: any) {
-        setOptimisticPositions((prev) => {
-          const next = { ...prev };
-          delete next[screenId];
-          return next;
-        });
-        await appAlert({
-          title: "Couldn't place screen",
-          message: err?.message || 'Try again — if it keeps failing the screen may have been deleted.',
-          tone: 'danger',
-        });
-      }
-    },
-    [plan, stageScale, placeMutation],
-  );
+  // 2026-05-25 — old HTML5 onDrop callback removed. All drop logic now
+  // lives inside the pointer-event effect above; the stage no longer
+  // needs onDragOver/onDrop wiring. The mutation path (placeMutation)
+  // is the same — just driven by pointerup instead of dragend.
 
   if (isLoading) {
     return (
@@ -236,17 +361,17 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div
             ref={stageRef}
-            className="relative w-full bg-slate-100"
+            className={`relative w-full bg-slate-100 transition-all ${
+              dragPos.active && dragPos.overStage ? 'ring-4 ring-rose-300 ring-inset' : ''
+            }`}
             style={{ aspectRatio: `${plan.widthPx} / ${plan.heightPx}` }}
-            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-            onDrop={onDrop}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={plan.imageUrl}
               alt={`${plan.name} floor plan`}
               draggable={false}
-              className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+              className="absolute top-0 right-0 bottom-0 left-0 w-full h-full object-contain pointer-events-none select-none"
             />
             {placedScreens.map((s) => (
               <ScreenPin
@@ -254,19 +379,10 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
                 screen={s}
                 planWidthPx={plan.widthPx}
                 planHeightPx={plan.heightPx}
-                planId={plan.id}
-                onMoveOptimistic={(screenId, position) => {
-                  setOptimisticPositions((prev) => ({ ...prev, [screenId]: position }));
-                }}
-                onMoveRejected={(screenId) => {
-                  setOptimisticPositions((prev) => {
-                    const next = { ...prev };
-                    delete next[screenId];
-                    return next;
-                  });
-                }}
+                startDrag={startDrag}
                 onSelect={() => setSelectedScreenId(s.id)}
                 selected={selectedScreenId === s.id}
+                isBeingDragged={dragHandle?.screenId === s.id && dragPos.active}
               />
             ))}
           </div>
@@ -292,12 +408,16 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
             ) : (
               <>
                 <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Drag a screen onto the plan to place it. Drag a placed screen anywhere on the plan to move it.
+                  Click and hold a screen, then drag it onto the plan. Drop where it lives.
                 </p>
                 <ul className="grid grid-cols-2 gap-2">
                   {unplaced.map((s: any) => (
                     <li key={s.id}>
-                      <DraggableScreenCard screen={s} />
+                      <DraggableScreenCard
+                        screen={s}
+                        startDrag={startDrag}
+                        isBeingDragged={dragHandle?.screenId === s.id && dragPos.active}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -306,6 +426,30 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
           </RoleGate>
         </aside>
       </div>
+
+      {/* Floating preview — follows the cursor while drag is active.
+          Rendered to <body> via portal so it escapes any overflow-hidden
+          ancestor (the stage card has overflow:hidden). Pointer events
+          disabled on the preview itself so it can't intercept the
+          pointerup that finishes the drop. */}
+      {dragHandle && dragPos.active && typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              left: dragPos.x - dragHandle.offsetX,
+              top: dragPos.y - dragHandle.offsetY,
+              zIndex: 9999,
+              pointerEvents: 'none',
+              transform: 'rotate(-2deg)',
+              filter: 'drop-shadow(0 8px 16px rgba(15, 23, 42, 0.25))',
+            }}
+            aria-hidden
+          >
+            <FloatingScreenPreview screen={dragHandle.screen} />
+          </div>,
+          document.body,
+        )}
 
       {selectedScreenId && (
         <ScreenDetailDrawer
@@ -322,33 +466,76 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
 
 // ─── Unplaced screen card (sidebar — drag source) ─────────────────
 //
-// 2026-05-25 — was a single-row button with a status dot + name.
-// Operator: "make the screens that you can drag and drop more obvious
-// that this is what they are there for, make them little screen icons
-// with the name." Now each unplaced item renders as a small TV-shaped
-// tile (screen body + name on the face + a stand) so it's visually
-// obvious that THIS THING is meant to live on the plan.
-function DraggableScreenCard({ screen }: { screen: any }) {
+// 2026-05-25 — two operator-driven updates same day:
+//   1. "get rid of the little grey stand on the bottom of the screen
+//      icon" — stand + base divs removed. The TV body is enough.
+//   2. "when i select and drag and drop the screen, the screen doesnt
+//      float with the cursor, it should allow me to click and hold
+//      down the button and the screen moves with my cursor then when
+//      i let go of the click it drops it right in that area" — moved
+//      from HTML5 native drag (browser-painted translucent ghost,
+//      source stays put, inconsistent across browsers) to
+//      pointerdown→pointermove→pointerup with a portal-rendered
+//      floating preview at fixed viewport coords (see the parent's
+//      drag pipeline). The source dims to 30% opacity while dragging
+//      so the icon visually "lifts off" and follows the cursor.
+function DraggableScreenCard({
+  screen,
+  startDrag,
+  isBeingDragged,
+}: {
+  screen: any;
+  startDrag: (handle: DragHandle) => void;
+  isBeingDragged: boolean;
+}) {
+  const cardRef = useRef<HTMLDivElement>(null);
   const statusDotClass =
     screen.status === 'ONLINE'
       ? 'bg-emerald-500'
       : screen.status === 'OFFLINE'
         ? 'bg-rose-500'
         : 'bg-slate-300';
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Only left mouse button / primary touch.
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const el = cardRef.current;
+    let offsetX = 60; // half of FloatingScreenPreview width (defaults)
+    let offsetY = 38;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      // Offset = cursor position within the source. Used to position
+      // the floating preview so the icon doesn't jump when grabbed.
+      offsetX = e.clientX - r.left;
+      offsetY = e.clientY - r.top;
+    }
+    startDrag({
+      screenId: screen.id,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      offsetX,
+      offsetY,
+      screen: { id: screen.id, name: screen.name, status: screen.status },
+      onClickFallback: () => { /* sidebar cards have no click action */ },
+    });
+  };
+
   return (
     <div
+      ref={cardRef}
       role="button"
-      draggable
       tabIndex={0}
-      onDragStart={(e) => {
-        e.dataTransfer.setData('text/screen-id', screen.id);
-        e.dataTransfer.effectAllowed = 'move';
-      }}
-      className="group flex flex-col items-center select-none cursor-grab active:cursor-grabbing focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded-lg p-1.5 hover:bg-violet-50/50 transition-colors"
-      title={`${screen.name}\n${screen.status}\nDrag onto the plan to place it`}
-      aria-label={`${screen.name} — ${screen.status} — drag onto the plan to place`}
+      onPointerDown={onPointerDown}
+      onDragStart={(e) => e.preventDefault()}
+      style={{ touchAction: 'none' }}
+      className={`group flex flex-col items-center select-none cursor-grab active:cursor-grabbing focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded-lg p-1.5 hover:bg-violet-50/50 transition-opacity ${
+        isBeingDragged ? 'opacity-30' : 'opacity-100'
+      }`}
+      title={`${screen.name}\n${screen.status}\nClick and hold, then drag onto the plan`}
+      aria-label={`${screen.name} — ${screen.status} — click and hold to drag onto the plan`}
     >
-      {/* Monitor body — the "screen" face */}
+      {/* Monitor body — the "screen" face. No stand, per operator. */}
       <div className="relative w-full aspect-[16/10] rounded-md bg-gradient-to-br from-slate-700 to-slate-900 border-2 border-slate-700 shadow-md group-hover:border-violet-400 group-hover:shadow-lg transition-all flex items-center justify-center px-2">
         <Monitor className="absolute top-1 left-1 w-2.5 h-2.5 text-slate-400/60" />
         <span
@@ -359,14 +546,37 @@ function DraggableScreenCard({ screen }: { screen: any }) {
           {screen.name}
         </span>
       </div>
-      {/* Stand + base — sells the "this is a TV/screen" metaphor */}
-      <div className="w-1 h-1 bg-slate-500" />
-      <div className="w-6 h-0.5 bg-slate-500 rounded-full" />
       {screen.location && (
         <p className="text-[9px] text-slate-500 truncate w-full text-center mt-1">
           {screen.location}
         </p>
       )}
+    </div>
+  );
+}
+
+// ─── Floating preview (rendered while a drag is active) ──────────
+// Same visual language as the sidebar tile body. Sized at 120×75 so
+// the preview is consistent whether the drag originated from a
+// sidebar card or a tiny placed pin. Rendered via a portal so it
+// escapes any `overflow:hidden` ancestor (the stage card has it).
+function FloatingScreenPreview({ screen }: { screen: { id: string; name: string; status?: string } }) {
+  const statusDotClass =
+    screen.status === 'ONLINE'
+      ? 'bg-emerald-500'
+      : screen.status === 'OFFLINE'
+        ? 'bg-rose-500'
+        : 'bg-slate-300';
+  return (
+    <div
+      className="relative rounded-md bg-gradient-to-br from-slate-700 to-slate-900 border-2 border-violet-400 flex items-center justify-center px-2"
+      style={{ width: 120, height: 75 }}
+    >
+      <Monitor className="absolute top-1 left-1 w-2.5 h-2.5 text-slate-400/80" />
+      <span className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${statusDotClass}`} aria-hidden />
+      <span className="text-[11px] font-bold text-white text-center leading-tight line-clamp-2">
+        {screen.name}
+      </span>
     </div>
   );
 }
@@ -377,52 +587,73 @@ function ScreenPin({
   screen,
   planWidthPx,
   planHeightPx,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  planId,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onMoveOptimistic,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onMoveRejected,
+  startDrag,
   onSelect,
   selected,
+  isBeingDragged,
 }: {
   screen: FloorPlanScreen;
   planWidthPx: number;
   planHeightPx: number;
-  planId: string;
-  onMoveOptimistic: (screenId: string, position: { floorX: number; floorY: number }) => void;
-  onMoveRejected: (screenId: string) => void;
+  startDrag: (handle: DragHandle) => void;
   onSelect: () => void;
   selected: boolean;
+  isBeingDragged: boolean;
 }) {
+  const pinRef = useRef<HTMLButtonElement>(null);
   const xPct = ((screen.floorX || 0) / planWidthPx) * 100;
   const yPct = ((screen.floorY || 0) / planHeightPx) * 100;
 
   const isOnline = screen.status === 'ONLINE';
   const hasScreenContent = hasConfiguredEmergencyContent(screen);
 
-  // 2026-05-25 — was draggable WITHOUT onDragStart, which means
-  // dataTransfer was never populated and the stage's onDrop (the only
-  // mutation path) saw empty data and bailed. Result: placed pins
-  // appeared stuck after first placement. Now we set text/screen-id
-  // on dragstart so the SAME stage onDrop path that handles
-  // sidebar-→-plan ALSO handles plan-→-plan (placeMutation is
-  // idempotent — same endpoint, just new (floorX, floorY)).
+  // 2026-05-25 — operator: stand removed (matches sidebar tile). And
+  // moved from HTML5 draggable to pointer events so the icon visibly
+  // follows the cursor during drag (via the parent's portal-rendered
+  // floating preview). Click-vs-drag is decided by the 5px movement
+  // threshold inside the parent's pointerup handler: short presses
+  // call `onSelect` (open drawer), longer movements place the pin.
+  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const el = pinRef.current;
+    let offsetX = 60;
+    let offsetY = 38;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      offsetX = e.clientX - r.left;
+      offsetY = e.clientY - r.top;
+    }
+    startDrag({
+      screenId: screen.id,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      offsetX,
+      offsetY,
+      screen: { id: screen.id, name: screen.name, status: screen.status },
+      onClickFallback: onSelect,
+    });
+  };
+
   return (
     <button
+      ref={pinRef}
       type="button"
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData('text/screen-id', screen.id);
-        e.dataTransfer.effectAllowed = 'move';
+      onPointerDown={onPointerDown}
+      onDragStart={(e) => e.preventDefault()}
+      style={{
+        left: `${xPct}%`,
+        top: `${yPct}%`,
+        touchAction: 'none',
       }}
-      onClick={onSelect}
-      className="absolute -translate-x-1/2 -translate-y-full focus:outline-none group"
-      style={{ left: `${xPct}%`, top: `${yPct}%` }}
+      className={`absolute -translate-x-1/2 -translate-y-1/2 focus:outline-none group cursor-grab active:cursor-grabbing transition-opacity ${
+        isBeingDragged ? 'opacity-30' : 'opacity-100'
+      }`}
       aria-label={`${screen.name} — ${screen.status}`}
       title={`${screen.name}\n${screen.status}\n${hasScreenContent ? 'Emergency content configured\n' : ''}Drag to reposition · click to configure`}
     >
-      {/* Monitor body */}
+      {/* Monitor body — no stand per operator. Centered on the
+          drop coordinate now (translate -50/-50 instead of -50/-100). */}
       <div
         className={`relative flex items-center justify-center rounded-md shadow-lg ring-2 transition-all group-hover:scale-110 ${
           hasScreenContent
@@ -438,9 +669,6 @@ function ScreenPin({
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-white border border-violet-500" />
         )}
       </div>
-      {/* Stand */}
-      <div className="mx-auto w-1 h-1.5 bg-slate-500/60" />
-      <div className="mx-auto w-3 h-0.5 bg-slate-500/60 rounded-full" />
       <div className="absolute left-1/2 -translate-x-1/2 -bottom-5 whitespace-nowrap text-[9px] font-bold text-slate-700 bg-white/90 border border-slate-200 px-1.5 py-0.5 rounded shadow-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
         {screen.name}
       </div>
