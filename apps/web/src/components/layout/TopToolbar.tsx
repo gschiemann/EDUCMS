@@ -39,7 +39,20 @@ export function TopToolbar() {
           <button
             type="button"
             onClick={toggleMobileSidebar}
-            className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-xl text-slate-600 hover:text-indigo-600 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            // 2026-05-25 — restored takeover sprint #1: hover/focus
+            // colors read var(--brand-primary) so the tenant's
+            // primary tint shows in the chrome instead of fixed
+            // indigo. Falls back to #4f46e5 when no brand adopted.
+            className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2"
+            style={{
+              ['--tw-ring-color' as any]: 'var(--brand-primary, #4f46e5)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--brand-primary, #4f46e5)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = '';
+            }}
             aria-label="Open navigation menu"
           >
             <Menu className="w-5 h-5" aria-hidden="true" />
@@ -70,7 +83,19 @@ export function TopToolbar() {
           <div className="relative">
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
-              className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white text-xs font-bold shadow-md shadow-indigo-500/20 hover:scale-105 transition-transform"
+              // 2026-05-25 — restored takeover sprint #1: avatar
+              // gradient reads var(--brand-primary) + mix toward
+              // violet so the chrome picks up the tenant primary
+              // instead of hardcoded indigo. ProfileEditModal +
+              // Sidebar use this exact same gradient recipe so the
+              // avatar reads consistently across surfaces.
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow-md hover:scale-105 transition-transform"
+              style={{
+                background:
+                  'linear-gradient(135deg, var(--brand-primary, #4f46e5), color-mix(in srgb, var(--brand-primary, #4f46e5) 60%, #8b5cf6))',
+                boxShadow:
+                  '0 4px 12px color-mix(in srgb, var(--brand-primary, #4f46e5) 25%, transparent)',
+              }}
               title={mounted ? user?.email : undefined}
             >
               {initials}

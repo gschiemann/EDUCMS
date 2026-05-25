@@ -279,8 +279,8 @@ export function Sidebar() {
         aria-label="Primary navigation"
         aria-hidden={!mobileSidebarOpen && typeof window !== 'undefined' && window.innerWidth < 768 ? true : undefined}
       >
-        <div className="h-[73px] flex items-center px-5 justify-between gap-2">
-          <h1 className="text-xl font-extrabold tracking-tight text-slate-800 flex items-center gap-3 min-w-0">
+        <div className="min-h-[73px] flex items-start px-5 pt-4 pb-3 justify-between gap-2">
+          <h1 className="text-xl font-extrabold tracking-tight text-slate-800 flex items-start gap-3 min-w-0 flex-1">
             {brandLogoUrl && !logoImgBroken && !/\.(ico|icns)(\?|#|$)/i.test(brandLogoUrl) ? (
               // Wider box lets wide wordmarks (Chardon's tree + "CHARDON
               // LOCAL SCHOOLS") render at actual aspect ratio instead of
@@ -324,26 +324,37 @@ export function Sidebar() {
                 </svg>
               </div>
             )}
-            <span
-              title={brandName}
-              // 2026-05-09 — operator's "Los Medanos College" was
-              // truncating to "Los Medanos Col..." in the sidebar
-              // header. Real-world school names commonly run 18-30
-              // chars ("Springfield School District", "Chardon High
-              // School", etc.) which never fit on one line at xl
-              // size in a ~210px sidebar. Allow wrapping to 2 lines
-              // with leading-tight so the row stays compact, then
-              // ellipsis on the rare 3-word-plus name. Font size
-              // scales down slightly when the name is long enough
-              // to wrap so it doesn't visually crowd the logo.
-              className={cn(
-                'bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700',
-                'line-clamp-2 leading-[1.1] break-words',
-                brandName.length > 18 ? 'text-[15px]' : 'text-xl',
+            {/* 2026-05-25 — restored takeover sprint #1 (originally
+                d7bc089, lost in the 2026-05-07 NUCLEAR REVERT). Brand
+                name + tagline subtitle stacked. Tagline only renders
+                when the tenant explicitly set one in the wizard so
+                unbranded tenants stay clean. */}
+            <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+              <span
+                title={brandName}
+                // 2026-05-09 — operator's "Los Medanos College" was
+                // truncating to "Los Medanos Col..." in the sidebar
+                // header. Real-world school names commonly run 18-30
+                // chars; allow wrapping to 2 lines with leading-tight
+                // so the row stays compact. Font size scales down
+                // when the name is long enough to wrap.
+                className={cn(
+                  'bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700',
+                  'line-clamp-2 leading-[1.1] break-words',
+                  brandName.length > 18 ? 'text-[15px]' : 'text-xl',
+                )}
+              >
+                {brandName}
+              </span>
+              {mounted && branding?.tagline && (
+                <span
+                  className="text-[11px] font-medium text-slate-500 leading-snug truncate"
+                  title={branding.tagline}
+                >
+                  {branding.tagline}
+                </span>
               )}
-            >
-              {brandName}
-            </span>
+            </div>
           </h1>
           {/* Close button — only on mobile */}
           <button

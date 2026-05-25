@@ -29,7 +29,8 @@ import {
 import { useRecentActivity } from '@/hooks/use-dashboard-data';
 import {
   useScreens, useScreenGroups, usePlaylists, useAssets, useSchedules,
-  useTenantStatus, useApproveAsset, useSubmissions, type SubmissionRow,
+  useTenantStatus, useApproveAsset, useSubmissions, useTenantBranding,
+  type SubmissionRow,
 } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
 import { useUIStore } from '@/store/ui-store';
@@ -61,6 +62,13 @@ export default function DashboardPage() {
   const { data: assets } = assetsQuery;
   const { data: schedules } = useSchedules();
   const { data: tenant } = useTenantStatus();
+  // 2026-05-25 — restored takeover sprint #1: pull TenantBranding so
+  // the dashboard hero shows displayName + tagline + brand-tinted
+  // gradient. SSR-safe via react-query (queryFn doesn't run on the
+  // server, so the SSR crash that triggered the original NUCLEAR
+  // REVERT can't re-occur). Falls back to tenant.name when no
+  // branding is adopted.
+  const { data: branding } = useTenantBranding();
   // When the core fleet queries fail, every list below is empty and the
   // dashboard masks the outage as a fresh, content-less tenant. Surface
   // the failure with a retry instead.
@@ -290,25 +298,103 @@ export default function DashboardPage() {
         .group:hover .dash-arrow { color: var(--brand-primary, #6366f1); }
         .dash-quick-brand:hover { background: color-mix(in srgb, var(--brand-primary, #6366f1) 8%, white); }
       `}</style>
-      {/* ─── Header ─────────────────────────────────────────── */}
-      <header className="flex items-start justify-between gap-6 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
-            {greeting}, {firstName}
-          </h1>
-          <p className="text-sm font-medium text-slate-500 mt-1">
-            {tenantName}{now && ` · ${now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}`}
-          </p>
-        </div>
-        <div className="text-right">
-          <div className="text-2xl font-bold text-slate-800 tabular-nums">
-            {/* Empty string pre-mount so SSR + first paint match.
-                Time appears after the post-mount `setNow` fires. */}
-            {now ? now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}
+      {/* ─── Header ─────────────────────────────────────────────
+          2026-05-25 — restored takeover sprint #1's branded gradient
+          hero. When tenant has adopted branding (displayName +
+          optional tagline), render a soft brand-tinted banner with
+          a blur orb in the top-right. Falls back to the plain
+          greeting when no branding is adopted.
+
+          SSR safety: hero rendering is gated on `branding?.displayName`,
+          which is null on SSR (react-query queryFn doesn't run server-
+          side). So unbranded tenants get the plain block on first
+          paint; branded ones repaint into the hero post-hydration.
+          No throw paths in the render tree → SSR crash that killed
+          the original takeover cannot re-occur from this surface. */}
+      {branding?.displayName ? (
+        <header
+          className="relative rounded-2xl overflow-hidden p-6"
+          style={{
+            background:
+              'linear-gradient(135deg, color-mix(in srgb, var(--brand-primary, #4f46e5) 18%, white), color-mix(in srgb, var(--brand-primary, #4f46e5) 8%, white))',
+            border: '1px solid color-mix(in srgb, var(--brand-primary, #4f46e5) 18%, white)',
+          }}
+        >
+          <div
+            aria-hidden
+            className="absolute -top-12 -right-12 w-48 h-48 rounded-full pointer-events-none"
+            style={{
+              background:
+                'radial-gradient(circle, color-mix(in srgb, var(--brand-primary, #4f46e5) 35%, transparent), transparent 70%)',
+              filter: 'blur(20px)',
+            }}
+          />
+          <div className="relative flex items-start justify-between gap-6 flex-wrap">
+            <div className="min-w-0 flex-1">
+              <h1
+                className="text-3xl font-extrabold tracking-tight leading-tight"
+                style={{ color: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 85%, black)' }}
+              >
+                Welcome back to {branding.displayName}
+              </h1>
+              {branding.tagline && (
+                <p
+                  className="text-sm font-medium mt-1.5 max-w-2xl"
+                  style={{ color: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 70%, black)' }}
+                >
+                  {branding.tagline}
+                </p>
+              )}
+              <div className="flex items-center gap-x-3 gap-y-1 mt-3 flex-wrap text-[12px] font-semibold text-slate-700">
+                {now && (
+                  <span>
+                    {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+                  </span>
+                )}
+                {Array.isArray(screens) && (
+                  <>
+                    <span className="text-slate-300">·</span>
+                    <span>
+                      {screens.filter((s: any) => s.status === 'ONLINE').length} of {screens.length} screens online
+                    </span>
+                  </>
+                )}
+                {Array.isArray(schedules) && schedules.length > 0 && (
+                  <>
+                    <span className="text-slate-300">·</span>
+                    <span>{schedules.length} schedules</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <div className="text-2xl font-bold text-slate-800 tabular-nums">
+                {now ? now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}
+              </div>
+              <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">
+                Local time
+              </div>
+            </div>
           </div>
-          <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Local time</div>
-        </div>
-      </header>
+        </header>
+      ) : (
+        <header className="flex items-start justify-between gap-6 flex-wrap">
+          <div>
+            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
+              {greeting}, {firstName}
+            </h1>
+            <p className="text-sm font-medium text-slate-500 mt-1">
+              {tenantName}{now && ` · ${now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}`}
+            </p>
+          </div>
+          <div className="text-right">
+            <div className="text-2xl font-bold text-slate-800 tabular-nums">
+              {now ? now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}
+            </div>
+            <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Local time</div>
+          </div>
+        </header>
+      )}
 
       {/* ─── Load error ─────────────────────────────────────────
           If the core fleet queries failed, say so plainly — otherwise
