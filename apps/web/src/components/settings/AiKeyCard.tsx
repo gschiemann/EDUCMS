@@ -27,39 +27,81 @@ import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { Sparkles, Key, Loader2, Check, AlertCircle, Trash2, Eye, EyeOff } from 'lucide-react';
 
+type ProviderId = 'anthropic' | 'openai' | 'google';
+
 interface AiKeyStatus {
   configured: boolean;
-  provider: 'anthropic' | 'openai' | null;
+  provider: ProviderId | null;
+  model: string | null;
   keyMask: string | null;
   setAt: string | null;
   setByUserId: string | null;
   platformFallbackAvailable: boolean;
 }
 
-const PROVIDERS: { value: 'anthropic' | 'openai'; label: string; help: string; getKeyUrl: string }[] = [
-  { value: 'anthropic', label: 'Anthropic (Claude)', help: 'Recommended — best fit for our prompts. ~$0.005 per generation.', getKeyUrl: 'https://console.anthropic.com/settings/keys' },
-  { value: 'openai',    label: 'OpenAI (GPT-4o-mini)', help: 'Comparable quality + cost. Good if you already have an OpenAI account.', getKeyUrl: 'https://platform.openai.com/api-keys' },
-];
+interface AiModelInfo {
+  id: string;
+  label: string;
+  tagline: string;
+  inputPer1M: number;
+  outputPer1M: number;
+  estCostPerCallUsd: number;
+  default?: boolean;
+}
+interface AiProviderInfo {
+  id: ProviderId;
+  label: string;
+  description: string;
+  getKeyUrl: string;
+  models: AiModelInfo[];
+}
+
+function formatPerCallCost(usd: number): string {
+  if (usd <= 0) return '—';
+  if (usd < 0.001) return `< $0.001 / generation`;
+  if (usd < 0.01) return `~$${usd.toFixed(4)} / generation`;
+  return `~$${usd.toFixed(3)} / generation`;
+}
 
 export function AiKeyCard() {
   const [status, setStatus] = useState<AiKeyStatus | null>(null);
+  const [catalog, setCatalog] = useState<AiProviderInfo[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [provider, setProvider] = useState<'anthropic' | 'openai'>('anthropic');
+  const [provider, setProvider] = useState<ProviderId>('anthropic');
+  const [model, setModel] = useState<string>('');
   const [apiKey, setApiKey] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
+  const currentProviderInfo = catalog?.find((p) => p.id === provider);
+  const currentModelInfo = currentProviderInfo?.models.find((m) => m.id === model);
+
   const load = async () => {
     setLoading(true);
     try {
-      const s = await apiFetch<AiKeyStatus>('/ai/key');
+      const [s, c] = await Promise.all([
+        apiFetch<AiKeyStatus>('/ai/key'),
+        apiFetch<{ providers: AiProviderInfo[] }>('/ai/key/catalog').catch(() => ({ providers: [] })),
+      ]);
       setStatus(s);
+      setCatalog(c.providers);
       if (s.provider) setProvider(s.provider);
+      // Saved model wins; otherwise pick the provider's default
+      // (marked in the catalog) so the form lands on a known-good
+      // cheap tier instead of an empty select.
+      if (s.model) {
+        setModel(s.model);
+      } else {
+        const initialProvider = s.provider || 'anthropic';
+        const p = c.providers.find((x) => x.id === initialProvider);
+        const def = p?.models.find((m) => m.default) || p?.models[0];
+        if (def) setModel(def.id);
+      }
     } catch (e: any) {
       // Pre-migration / backend-not-redeployed case — surface gently.
-      setStatus({ configured: false, provider: null, keyMask: null, setAt: null, setByUserId: null, platformFallbackAvailable: false });
+      setStatus({ configured: false, provider: null, model: null, keyMask: null, setAt: null, setByUserId: null, platformFallbackAvailable: false });
     } finally {
       setLoading(false);
     }
@@ -67,15 +109,27 @@ export function AiKeyCard() {
 
   useEffect(() => { void load(); }, []);
 
+  // When the operator changes provider, jump to that provider's
+  // default model so the cost line + key placeholder both reflect
+  // the new choice immediately.
+  const onProviderChange = (next: ProviderId) => {
+    setProvider(next);
+    const p = catalog?.find((x) => x.id === next);
+    const def = p?.models.find((m) => m.default) || p?.models[0];
+    setModel(def?.id || '');
+  };
+
   const handleSave = async () => {
     setMsg(null);
     setSaving(true);
     try {
-      const res = await apiFetch<{ ok: true; provider: string; keyMask: string }>('/ai/key', {
+      const res = await apiFetch<{ ok: true; provider: string; model: string; keyMask: string }>('/ai/key', {
         method: 'POST',
-        body: JSON.stringify({ provider, apiKey }),
+        body: JSON.stringify({ provider, apiKey, model }),
       });
-      setMsg({ kind: 'ok', text: `Saved. AI generations now route through your ${res.provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} account.` });
+      const providerLabel = catalog?.find((p) => p.id === res.provider)?.label || res.provider;
+      const modelLabel = catalog?.find((p) => p.id === res.provider)?.models.find((m) => m.id === res.model)?.label || res.model;
+      setMsg({ kind: 'ok', text: `Saved. AI generations now route through ${providerLabel} (${modelLabel}).` });
       setApiKey('');
       setEditing(false);
       await load();
@@ -132,15 +186,26 @@ export function AiKeyCard() {
       </div>
 
       {/* CONFIGURED STATE */}
-      {status?.configured && !editing && (
+      {status?.configured && !editing && (() => {
+        const cfgProvider = catalog?.find((p) => p.id === status.provider);
+        const cfgModel = cfgProvider?.models.find((m) => m.id === status.model);
+        return (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 space-y-3">
           <div className="flex items-start gap-2">
             <Check className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold text-emerald-900">
-                Connected — {status.provider === 'anthropic' ? 'Anthropic (Claude)' : 'OpenAI (GPT-4o-mini)'}
+                Connected — {cfgProvider?.label || status.provider}
+                {cfgModel && (
+                  <span className="font-normal text-emerald-800"> · {cfgModel.label}</span>
+                )}
               </div>
               <div className="text-xs text-emerald-700 mt-0.5 font-mono truncate">{status.keyMask}</div>
+              {cfgModel && (
+                <div className="text-[11px] text-emerald-700/80 mt-0.5">
+                  {formatPerCallCost(cfgModel.estCostPerCallUsd)} — paid to {cfgProvider?.label}.
+                </div>
+              )}
               {status.setAt && (
                 <div className="text-[11px] text-emerald-700/80 mt-0.5">
                   Set {new Date(status.setAt).toLocaleDateString()} {new Date(status.setAt).toLocaleTimeString()}
@@ -166,7 +231,8 @@ export function AiKeyCard() {
             </button>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* PLATFORM-FALLBACK NOTICE (when not configured but trial works) */}
       {!status?.configured && status?.platformFallbackAvailable && (
@@ -188,42 +254,74 @@ export function AiKeyCard() {
       {/* FORM (always shown when not configured, or when "Replace" is hit) */}
       {(!status?.configured || editing) && (
         <div className="space-y-3">
-          {/* Provider picker */}
+          {/* Provider picker — driven by GET /ai/key/catalog so the
+              FE picks up new providers (e.g. Google added 2026-05-25)
+              without a redeploy of this card. */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-2">Provider</label>
-            <div className="space-y-2">
-              {PROVIDERS.map((p) => (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {(catalog || []).map((p) => (
                 <label
-                  key={p.value}
-                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
-                    provider === p.value ? 'border-violet-400 bg-violet-50/40' : 'border-slate-200 hover:bg-slate-50'
+                  key={p.id}
+                  className={`flex flex-col gap-1 rounded-lg border p-3 cursor-pointer transition-colors ${
+                    provider === p.id ? 'border-violet-400 bg-violet-50/40 ring-2 ring-violet-200' : 'border-slate-200 hover:bg-slate-50'
                   }`}
                 >
                   <input
                     type="radio"
                     name="ai-provider"
-                    value={p.value}
-                    checked={provider === p.value}
-                    onChange={() => setProvider(p.value)}
-                    className="mt-0.5"
+                    value={p.id}
+                    checked={provider === p.id}
+                    onChange={() => onProviderChange(p.id)}
+                    className="sr-only"
                   />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-slate-900">{p.label}</div>
-                    <div className="text-xs text-slate-500 mt-0.5">{p.help}</div>
-                    <a
-                      href={p.getKeyUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] text-violet-600 hover:text-violet-700 font-medium mt-1 inline-block"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Get a key →
-                    </a>
-                  </div>
+                  <div className="text-sm font-semibold text-slate-900">{p.label}</div>
+                  <div className="text-[11px] text-slate-500 leading-snug">{p.description}</div>
+                  <a
+                    href={p.getKeyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-violet-600 hover:text-violet-700 font-medium mt-auto"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Get a key →
+                  </a>
                 </label>
               ))}
             </div>
           </div>
+
+          {/* Model picker — list filtered to the chosen provider.
+              Cost-per-call is pre-computed server-side from the
+              published price-per-1M-tokens; the FE only formats it. */}
+          {currentProviderInfo && (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">Model</label>
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white"
+              >
+                {currentProviderInfo.models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}{m.default ? ' (recommended)' : ''} — {formatPerCallCost(m.estCostPerCallUsd)}
+                  </option>
+                ))}
+              </select>
+              {currentModelInfo && (
+                <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-600 space-y-0.5">
+                  <div className="font-semibold text-slate-700">{currentModelInfo.label}</div>
+                  <div>{currentModelInfo.tagline}</div>
+                  <div className="text-slate-500">
+                    Cost: ${currentModelInfo.inputPer1M.toFixed(2)} / 1M input tokens
+                    · ${currentModelInfo.outputPer1M.toFixed(2)} / 1M output tokens.
+                    {' '}A typical signage generation runs ~300 output tokens, so expect{' '}
+                    {formatPerCallCost(currentModelInfo.estCostPerCallUsd)}.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Key input */}
           <div>
@@ -233,7 +331,11 @@ export function AiKeyCard() {
                 type={showKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder={provider === 'anthropic' ? 'sk-ant-api03-…' : 'sk-…'}
+                placeholder={
+                  provider === 'anthropic' ? 'sk-ant-api03-…'
+                  : provider === 'openai' ? 'sk-…'
+                  : 'AIza…'
+                }
                 className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-400"
                 autoComplete="off"
                 spellCheck={false}
@@ -249,7 +351,8 @@ export function AiKeyCard() {
               </button>
             </div>
             <p className="text-[11px] text-slate-500 mt-1.5">
-              We test the key against {provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} before saving — invalid keys are rejected and never stored.
+              We send one tiny test request to {currentProviderInfo?.label || 'the provider'} with the chosen model BEFORE saving.
+              Invalid keys (or keys without access to the model) are rejected and never stored.
             </p>
           </div>
 

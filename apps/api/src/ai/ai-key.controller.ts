@@ -32,10 +32,13 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { sealAiKey, openAiKey, maskAiKey } from './ai-key-cipher';
-import { coerceProvider, validateApiKeyShape, dispatchAi } from './ai-providers';
+import {
+  coerceProvider, validateApiKeyShape, dispatchAi,
+  AI_PROVIDERS, isKnownModel, defaultModelFor,
+} from './ai-providers';
 import { AiService } from './ai.service';
 
-interface SetKeyBody { provider?: string; apiKey?: string; }
+interface SetKeyBody { provider?: string; apiKey?: string; model?: string; }
 
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('api/v1/ai/key')
@@ -67,6 +70,7 @@ export class AiKeyController {
         aiKeyEncrypted: true,
         aiKeySetAt: true,
         aiKeySetByUserId: true,
+        aiModel: true,
       } as any,
     }) as any;
     const platformKeyAvailable = !!process.env.ANTHROPIC_API_KEY;
@@ -78,6 +82,7 @@ export class AiKeyController {
       return {
         configured: false,
         provider: null,
+        model: null,
         keyMask: null,
         setAt: null,
         setByUserId: null,
@@ -97,12 +102,37 @@ export class AiKeyController {
     return {
       configured: true,
       provider: tenant.aiProvider,
+      // If the saved model was removed from our catalog (provider
+      // rebranded / we dropped support), surface the stored value as
+      // null + let the FE re-pick. Dispatcher already falls through
+      // to provider default at request time so generation stays live.
+      model: tenant.aiModel && isKnownModel(coerceProvider(tenant.aiProvider) || 'anthropic', tenant.aiModel)
+        ? tenant.aiModel
+        : null,
       keyMask,
       setAt: tenant.aiKeySetAt,
       setByUserId: tenant.aiKeySetByUserId,
       platformFallbackAvailable: platformKeyAvailable,
       usage,
     };
+  }
+
+  /**
+   * Catalog of supported providers + models with cost estimates. The
+   * settings UI fetches this on mount so a new model option ships
+   * without a FE deploy. Public-readable inside the tenant; no
+   * secrets leave the server.
+   */
+  @Get('catalog')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+    AppRole.RESTRICTED_VIEWER,
+  )
+  async getCatalog() {
+    return { providers: AI_PROVIDERS };
   }
 
   /**
@@ -122,7 +152,7 @@ export class AiKeyController {
     const provider = coerceProvider(body?.provider);
     if (!provider) {
       throw new HttpException(
-        'Pick a provider: "anthropic" or "openai".',
+        'Pick a provider: "anthropic", "openai", or "google".',
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -131,10 +161,25 @@ export class AiKeyController {
     if (shapeError) {
       throw new HttpException(shapeError, HttpStatus.BAD_REQUEST);
     }
+    // Validate the requested model against our catalog. Empty string
+    // / undefined means "use provider default" — accepted explicitly
+    // to keep the legacy "no model column" rows working unchanged.
+    const requestedModel = (body?.model || '').trim();
+    if (requestedModel && !isKnownModel(provider, requestedModel)) {
+      throw new HttpException(
+        `Unknown model "${requestedModel}" for provider ${provider}. Pick one from the catalog.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const model = requestedModel || defaultModelFor(provider);
 
     // Test the key — refuse to save anything that doesn't work.
+    // Note: tested with the chosen model so a key that's valid but
+    // lacks access to that specific model fails here, not later when
+    // an operator clicks "generate" and gets a confusing 403.
     const testResult = await dispatchAi(provider, {
       apiKey,
+      model,
       system: 'Reply with the single character "ok" and nothing else.',
       userPrompt: 'ping',
       maxTokens: 10,
@@ -144,10 +189,16 @@ export class AiKeyController {
       // key. 403 = key fine but lacks model permissions. Other = give
       // the status code so the operator can google.
       let detail = `Provider rejected the key (${testResult.errorStatus}).`;
+      const providerLabel =
+        provider === 'anthropic' ? 'Anthropic'
+        : provider === 'openai' ? 'OpenAI'
+        : 'Google';
       if (testResult.errorStatus === 401) {
-        detail = `That ${provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} key was rejected. Double-check you copied the full key from your provider dashboard.`;
+        detail = `That ${providerLabel} key was rejected. Double-check you copied the full key from your provider dashboard.`;
       } else if (testResult.errorStatus === 403) {
-        detail = `Key works but doesn't have access to the model we use. Make sure your ${provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} plan includes the cheapest tier.`;
+        detail = `Key works but doesn't have access to the "${model}" model. Pick a different model from the dropdown, or check your ${providerLabel} plan.`;
+      } else if (testResult.errorStatus === 404) {
+        detail = `The model "${model}" wasn't found on your ${providerLabel} account. Some models are gated by org / region — try a different one.`;
       } else if (testResult.errorStatus === 429) {
         detail = `Provider rate-limited the test request. Try again in a moment — the key itself may be fine.`;
       }
@@ -159,6 +210,7 @@ export class AiKeyController {
       where: { id: req.user.tenantId },
       data: {
         aiProvider: provider,
+        aiModel: model,
         aiKeyEncrypted: sealed,
         aiKeySetAt: new Date(),
         aiKeySetByUserId: req.user.id,
@@ -171,13 +223,15 @@ export class AiKeyController {
         targetId: req.user.tenantId,
         tenantId: req.user.tenantId,
         userId: req.user.id,
-        details: JSON.stringify({ provider }),
+        // Record provider + model (no key fragments) for forensics.
+        details: JSON.stringify({ provider, model }),
       },
     }).catch(() => { /* audit best-effort */ });
 
     return {
       ok: true,
       provider,
+      model,
       keyMask: maskAiKey(apiKey),
       setAt: new Date().toISOString(),
     };
@@ -194,6 +248,7 @@ export class AiKeyController {
       where: { id: req.user.tenantId },
       data: {
         aiProvider: null,
+        aiModel: null,
         aiKeyEncrypted: null,
         aiKeySetAt: null,
         aiKeySetByUserId: null,

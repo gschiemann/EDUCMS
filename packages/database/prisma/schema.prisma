@@ -134,7 +134,12 @@ model Tenant {
   // credentials, so cost shifts to them. ai_provider null means use
   // platform default key (process.env.ANTHROPIC_API_KEY) — current
   // free-trial behavior. Encrypted key never returned to clients.
-  aiProvider                      String?          @map("ai_provider") // 'anthropic' | 'openai'
+  aiProvider                      String?          @map("ai_provider") // 'anthropic' | 'openai' | 'google'
+  // 2026-05-25 — operator-selected model id from the catalog in
+  // apps/api/src/ai/ai-providers.ts. Null means "use the provider's
+  // default cheapest model" — same as legacy behavior pre-picker.
+  // Validated against isKnownModel() before dispatch.
+  aiModel                         String?          @map("ai_model")
   aiKeyEncrypted                  String?          @map("ai_key_encrypted")
   aiKeySetAt                      DateTime?        @map("ai_key_set_at")
   aiKeySetByUserId                String?          @map("ai_key_set_by_user_id")

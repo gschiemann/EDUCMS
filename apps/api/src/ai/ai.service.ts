@@ -185,19 +185,26 @@ export class AiService {
   private async resolveProviderKey(tenantId: string): Promise<{
     provider: AiProvider;
     apiKey: string;
+    /** Catalog model id; empty string means dispatch uses provider default. */
+    model: string;
     source: 'tenant' | 'platform';
   } | null> {
     // 1) Tenant BYOK
     const tenant = await this.prisma.client.tenant.findUnique({
       where: { id: tenantId },
-      select: { aiProvider: true, aiKeyEncrypted: true } as any,
+      select: { aiProvider: true, aiKeyEncrypted: true, aiModel: true } as any,
     }) as any;
     if (tenant?.aiKeyEncrypted) {
       const provider = coerceProvider(tenant.aiProvider);
       if (provider) {
         try {
           const apiKey = openAiKey(tenant.aiKeyEncrypted);
-          return { provider, apiKey, source: 'tenant' };
+          return {
+            provider,
+            apiKey,
+            model: typeof tenant.aiModel === 'string' ? tenant.aiModel : '',
+            source: 'tenant',
+          };
         } catch (e: any) {
           // Decryption failed (master key rotation, corrupted blob).
           // Don't crash the request — log + fall through to platform.
@@ -208,9 +215,12 @@ export class AiService {
       }
     }
     // 2) Platform fallback (current behavior — ANTHROPIC_API_KEY env).
+    // No model selection on platform fallback; the dispatcher picks
+    // the provider default (cheapest tier) so platform spend is
+    // bounded.
     const platformKey = process.env.ANTHROPIC_API_KEY;
     if (platformKey) {
-      return { provider: 'anthropic', apiKey: platformKey, source: 'platform' };
+      return { provider: 'anthropic', apiKey: platformKey, model: '', source: 'platform' };
     }
     return null;
   }
@@ -311,6 +321,7 @@ export class AiService {
     try {
       const out = await dispatchAi(resolved.provider, {
         apiKey: resolved.apiKey,
+        model: resolved.model,
         system: SYSTEM_PROMPTS[opts.intent],
         userPrompt,
         maxTokens: 300,
@@ -495,6 +506,7 @@ export class AiService {
     try {
       const out = await dispatchAi(resolved.provider, {
         apiKey: resolved.apiKey,
+        model: resolved.model,
         system,
         userPrompt,
         // Higher cap than the text-snippet path because a 6-zone
