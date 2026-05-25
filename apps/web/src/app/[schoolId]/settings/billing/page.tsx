@@ -178,22 +178,28 @@ export default function BillingPage() {
   const screens = lic?.seatsUsed ?? lic?.currentSeats ?? 0;
   const hasPaidPlan = !!lic && !lic.isPilot && lic.tier !== 'PILOT';
 
+  // 2026-05-25 — header swapped from a fat green-→-sky gradient
+  // hero to the clean max-w / contained header pattern that every
+  // other settings sub-page uses. Operator: "update the colors to
+  // match our purple gradient that we have not blue." Brand
+  // consistency: indigo / violet across all chrome, not the
+  // teal/emerald/sky palette this page was the only holdout for.
   return (
-    <div className="space-y-6 max-w-5xl">
-      <Link
-        href={`/${schoolId}/settings`}
-        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-emerald-600"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" /> Settings
-      </Link>
-      <div className="rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-sky-600 p-6 text-white">
-        <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
-          <CreditCard className="w-6 h-6" /> Billing &amp; usage
+    <div className="space-y-6 max-w-5xl mx-auto px-4 py-6">
+      <header>
+        <Link
+          href={`/${schoolId}/settings`}
+          className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 mb-2"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Settings
+        </Link>
+        <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
+          <CreditCard className="w-6 h-6 text-indigo-500" /> Billing &amp; usage
         </h1>
-        <p className="text-emerald-50 mt-1.5 text-sm max-w-xl">
-          Your plan, your screens, your monthly cost, and every invoice — in one place.
+        <p className="text-sm text-slate-500 mt-1 max-w-2xl">
+          Your plan, your screens, and every invoice — in one place.
         </p>
-      </div>
+      </header>
 
       {checkoutResult === 'success' && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 flex items-start gap-2">
@@ -364,7 +370,10 @@ function CurrentPlanCard({
           sub={
             seatPct != null ? (
               <div className="w-full h-1.5 bg-slate-100 rounded-full mt-1.5 overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${seatPct}%` }} />
+                {/* 2026-05-25 — usage-bar color flipped from emerald to
+                    indigo/violet gradient so the page reads as one
+                    brand palette. */}
+                <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full" style={{ width: `${seatPct}%` }} />
               </div>
             ) : (
               <span className="text-[11px] text-slate-400">Paired displays</span>
@@ -372,7 +381,7 @@ function CurrentPlanCard({
           }
         />
         <Metric
-          icon={<CreditCard className="w-4 h-4 text-emerald-500" />}
+          icon={<CreditCard className="w-4 h-4 text-indigo-500" />}
           label="This month"
           value={monthlyCost != null ? fmtCents(monthlyCost) : 'Free'}
           sub={<span className="text-[11px] text-slate-400">Billed per screen</span>}
