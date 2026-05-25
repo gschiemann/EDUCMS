@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff, ChevronDown, Clock, RefreshCw, FileClock } from 'lucide-react';
+import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff, ChevronDown, Clock, RefreshCw, FileClock, Code2 } from 'lucide-react';
 import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { RoleGate } from '@/components/RoleGate';
@@ -119,7 +119,11 @@ export default function SettingsPage() {
     }
   };
 
-  const playerUrl = typeof window !== 'undefined' ? `${window.location.origin}/player` : 'http://localhost:3000/player';
+  // 2026-05-25 — playerUrl previously rendered in a System Info card
+  // here. That card moved to /settings/developer (operator: "what is
+  // the system info setting? seems weird and something i wouldnt
+  // use"). Variable removed; the developer page derives the same
+  // value from window.location.origin locally.
 
   return (
     <div className="max-w-4xl space-y-8">
@@ -155,22 +159,12 @@ export default function SettingsPage() {
           </div>
         }
       >
-        {/* System Info */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-          <h2 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
-            <MonitorPlay className="w-4 h-4" style={{ color: 'var(--brand-primary, #6366f1)' }} /> System Info
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Player URL</p>
-              <code className="text-xs text-slate-700 select-all">{playerUrl}</code>
-            </div>
-            <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">API Endpoint</p>
-              <code className="text-xs text-slate-700 select-all">{process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}</code>
-            </div>
-          </div>
-        </div>
+        {/* 2026-05-25 — System Info moved to /settings/developer per
+            operator feedback ("what is the system info setting? seems
+            weird and something i wouldnt use ... lets build out a
+            developer section"). Engineers / integrators land on the
+            developer page; the main settings surface stays operator-
+            focused. The link card below replaces it. */}
 
         {/* Panic Button Content — direct upload, can't be accidentally deleted.
             Aligned with the Standard Response Protocol (SRP) used by most US K-12
@@ -332,6 +326,28 @@ export default function SettingsPage() {
               </div>
             </div>
             <span className="text-xs text-slate-600 font-bold">View →</span>
+          </Link>
+
+          {/* 2026-05-25 — Developer area. Replaces the old "System Info"
+              card that used to live on this page. Engineers / integrators
+              land here for API endpoints, connected integrations, the
+              upcoming REST tokens + webhooks surface, and SDK docs.
+              Operator-facing settings stay above this card; everything
+              technical lives under one umbrella. */}
+          <Link
+            href={`${pathname}/developer`}
+            className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-3 hover:border-indigo-300 hover:shadow-md transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <Code2 className="w-4 h-4 text-indigo-600" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-800">Developer</div>
+                <div className="text-[11px] text-slate-500">API endpoints, integrations, REST tokens + webhooks (coming next release), and SDK documentation.</div>
+              </div>
+            </div>
+            <span className="text-xs text-indigo-600 font-bold">Open →</span>
           </Link>
         </RoleGate>
 
