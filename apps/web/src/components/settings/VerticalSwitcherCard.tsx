@@ -33,6 +33,14 @@ import {
   isVertical,
   type Vertical,
 } from '@cms/api-types';
+// 2026-05-25 — operator: "the venue picker has lame emojis as
+// well, i thought we alrewady replaced all of these somewhere
+// else, lets match them if we did." Yes — VERTICAL_ICONS already
+// existed in lib/vertical-icons.ts from a prior pass. The chip +
+// dropdown options were still rendering the emoji from
+// VERTICAL_LABELS.emoji; switching them to the lucide icons so
+// every vertical badge across the app reads from one vocabulary.
+import { VERTICAL_ICONS } from '@/lib/vertical-icons';
 
 export function VerticalSwitcherCard() {
   const user = useUIStore((s) => s.user);
@@ -145,7 +153,10 @@ export function VerticalSwitcherCard() {
       <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
         <span className="text-xs font-bold text-slate-700 shrink-0">Industry:</span>
         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] font-bold text-indigo-700">
-          <span aria-hidden>{currentLabel.emoji}</span>
+          {(() => {
+            const Icon = VERTICAL_ICONS[currentVertical];
+            return Icon ? <Icon className="w-3 h-3" aria-hidden /> : null;
+          })()}
           <span>{currentLabel.singular}</span>
         </span>
         <span className="text-[11px] text-slate-500 truncate">Switch industry</span>
@@ -174,6 +185,7 @@ export function VerticalSwitcherCard() {
             <ul className="py-1 max-h-72 overflow-y-auto">
               {VERTICALS.map((v) => {
                 const labels = VERTICAL_LABELS[v];
+                const Icon = VERTICAL_ICONS[v];
                 const isActive = v === currentVertical;
                 const isPending = pending === v;
                 return (
@@ -191,7 +203,9 @@ export function VerticalSwitcherCard() {
                             : 'text-slate-700 hover:bg-slate-50'
                       }`}
                     >
-                      <span aria-hidden className="text-base">{labels.emoji}</span>
+                      {Icon ? (
+                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-500'}`} aria-hidden />
+                      ) : null}
                       <span className="flex-1 font-semibold truncate">{labels.singular}</span>
                       {isActive && <Check className="w-3.5 h-3.5 text-indigo-600" />}
                       {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />}
