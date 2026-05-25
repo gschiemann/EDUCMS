@@ -84,21 +84,37 @@ export class AiKeyController {
         provider: null,
         model: null,
         keyMask: null,
+        keyHealthy: null,
         setAt: null,
         setByUserId: null,
         platformFallbackAvailable: platformKeyAvailable,
         usage,
       };
     }
-    // Decrypt only to mask — never log, never return the raw key.
+    // Audit-W4 fix (2026-05-25) — decryption can silently fail
+    // after DEVICE_SECRET_KEY rotation, in which case every
+    // generation falls back to the platform key and burns platform
+    // quota WITHOUT any operator signal. Track health explicitly
+    // and expose on the status endpoint so the UI can show a
+    // "your saved key can't be decrypted — re-enter it" banner.
     let keyMask: string | null = null;
+    let keyHealthy = true;
     try {
       keyMask = maskAiKey(openAiKey(tenant.aiKeyEncrypted));
     } catch {
-      // If we can't decrypt (master key rotated?), surface so the
-      // operator knows to re-enter.
       keyMask = '••••••••';
+      keyHealthy = false;
     }
+    // Audit-W7 fix (2026-05-25) — `setByUserId` exposed which admin
+    // wired up the AI key, which a RESTRICTED_VIEWER doesn't need
+    // to know. Limit to roles that can actually mutate the key
+    // (and SUPER_ADMIN for cross-tenant support). CONTRIBUTOR also
+    // hidden since they're read-only on this surface.
+    const roleAllowsSetByUserId = [
+      AppRole.SUPER_ADMIN,
+      AppRole.DISTRICT_ADMIN,
+      AppRole.SCHOOL_ADMIN,
+    ].includes(req.user?.role);
     return {
       configured: true,
       provider: tenant.aiProvider,
@@ -110,8 +126,9 @@ export class AiKeyController {
         ? tenant.aiModel
         : null,
       keyMask,
+      keyHealthy,
       setAt: tenant.aiKeySetAt,
-      setByUserId: tenant.aiKeySetByUserId,
+      setByUserId: roleAllowsSetByUserId ? tenant.aiKeySetByUserId : null,
       platformFallbackAvailable: platformKeyAvailable,
       usage,
     };

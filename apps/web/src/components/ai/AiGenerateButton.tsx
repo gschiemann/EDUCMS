@@ -246,15 +246,22 @@ function AiGenerateModal({
       // Aborted requests are expected on unmount/regenerate — silent.
       if (e?.name === 'AbortError') return;
       const msg = String(e?.message || e || '');
-      // Cap-reached → switch to the upgrade-prompt view. AiService
-      // shapes the error string so it always contains "monthly free
-      // AI cap" — pattern-match on that phrase.
-      if (/monthly free AI cap/i.test(msg)) {
+      // 2026-05-25 (audit-W8) — was regex-matching the human error
+      // message ("monthly free AI cap"). Server now stamps a
+      // STRUCTURED `code` field on the error envelope; apiFetch
+      // surfaces it as `e.code`. Branch on the code first; fall
+      // back to message-pattern matching only for legacy paths
+      // that don't yet emit a code.
+      const code = String(e?.code || '');
+      const status = Number(e?.status || 0);
+      if (code === 'AI_CAP_REACHED' || status === 402) {
         setCapHit(true);
         setError(null);
-      } else if (/AI is not configured|503|Service Unavailable/i.test(msg)) {
-        setError('AI is not configured for this deployment. Ask your admin to set ANTHROPIC_API_KEY in Railway env, then try again.');
-      } else if (/hourly AI cap|rate.?limit/i.test(msg)) {
+      } else if (code === 'AI_FAILURE_CAP_REACHED' || (status === 429 && /failed AI/i.test(msg))) {
+        setError('Too many failed AI requests in the last hour. Wait an hour, or contact support if you think this is wrong.');
+      } else if (status === 503 || /AI is not configured/i.test(msg)) {
+        setError('AI is not configured for this deployment. Ask your admin to add a provider key in Settings → AI provider, then try again.');
+      } else if (status === 429 || /hourly AI cap|rate.?limit/i.test(msg)) {
         setError('Hit the hourly AI cap for this tenant. Try again in a bit, or upgrade for a higher cap.');
       } else {
         setError(msg || 'AI request failed. Try rephrasing your context.');

@@ -143,7 +143,19 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         const body = await res.json().catch(() => ({}));
         clog.error('api', `API error ${res.status}`, { url: fullUrl, method, message: body?.message });
         emit('ok', attempt, fullUrl);
-        throw new Error(body.message || `API error: ${res.status}`);
+        // 2026-05-25 (audit-W8) — attach status + code + body to the
+        // thrown error so callers can branch on a STRUCTURED field
+        // instead of regex-matching the message. Was a real defect
+        // for the AI cap-reached UX, but applies broadly: any
+        // controller that throws `HttpException({code,...}, status)`
+        // now exposes that code as `err.code` on the FE.
+        const err: any = new Error(body.message || `API error: ${res.status}`);
+        err.status = res.status;
+        if (body && typeof body === 'object') {
+          err.code = body.code;
+          err.body = body;
+        }
+        throw err;
       }
 
       emit('ok', attempt, fullUrl);

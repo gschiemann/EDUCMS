@@ -26,7 +26,7 @@
  *   - ticker         — short scrolling-ticker line
  */
 
-import { Injectable, Logger, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ServiceUnavailableException, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { dispatchAi, type AiProvider, coerceProvider } from './ai-providers';
 import { openAiKey } from './ai-key-cipher';
@@ -107,6 +107,60 @@ export class AiService {
    *  to prevent runaway loops, not for spend control. */
   private readonly recentByTenant = new Map<string, number[]>();
   private readonly HOURLY_CAP = 30;
+  // Audit-W1 fix (2026-05-25) — Separate failure tracker. The
+  // success tracker above only counts successful generations (slots
+  // pushed AFTER provider 200 OK) so a tenant burning 401s with a
+  // bad key, or hammering the endpoint with bad context (which
+  // throws before dispatch), doesn't consume the hourly quota. That
+  // lets an authed-but-malicious tenant pound /ai/generate forever
+  // without rate-limit gate. This second tracker counts ANY failure
+  // (bad input, provider 4xx/5xx, decryption fail, cap-reached)
+  // against a higher per-tenant ceiling. Sustained high failure
+  // rate from one tenant trips this and blocks the next attempt.
+  private readonly recentFailuresByTenant = new Map<string, number[]>();
+  private readonly HOURLY_FAILURE_CAP = 200;
+
+  /**
+   * Audit-W1 fix — register a failure of any kind against the per-
+   * tenant cap. Throws a 429 with a clean code if the tenant has
+   * crossed the failure ceiling. Call at every catch / bad-input
+   * branch in generate() and generateTouchTemplate().
+   *
+   * Stays in-memory (process-local). Acceptable — the threat model
+   * here is "stop one tenant from looping bad calls for free," not
+   * "stop a distributed attacker"; the AUTHED endpoint already has
+   * RBAC + session controls upstream.
+   */
+  private recordFailure(tenantId: string): void {
+    const now = Date.now();
+    const windowStart = now - 60 * 60 * 1000;
+    const recent = (this.recentFailuresByTenant.get(tenantId) || []).filter((t) => t > windowStart);
+    recent.push(now);
+    if (recent.length === 0) {
+      this.recentFailuresByTenant.delete(tenantId);
+    } else {
+      this.recentFailuresByTenant.set(tenantId, recent);
+    }
+  }
+  private checkFailureCap(tenantId: string): void {
+    const now = Date.now();
+    const windowStart = now - 60 * 60 * 1000;
+    const recent = (this.recentFailuresByTenant.get(tenantId) || []).filter((t) => t > windowStart);
+    if (recent.length === 0) {
+      this.recentFailuresByTenant.delete(tenantId);
+    } else {
+      this.recentFailuresByTenant.set(tenantId, recent);
+    }
+    if (recent.length >= this.HOURLY_FAILURE_CAP) {
+      throw new HttpException(
+        {
+          message: 'Too many failed AI requests in the last hour. Wait an hour or contact support.',
+          code: 'AI_FAILURE_CAP_REACHED',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
 
   /**
    * Monthly platform-paid generation cap per tenant. The Canva /
@@ -159,10 +213,22 @@ export class AiService {
    *      with count=1 (rollover).
    *   2) Else atomic increment the existing bucket.
    *
-   * Race window: if two requests both observe a stale month, both
-   * write count=1 instead of one writing 1 and the other 2. Worst
-   * case is a 1-call undercount per rollover boundary per tenant.
-   * Never an over-count, so spend stays bounded.
+   * Race windows (documented per audit-W3, 2026-05-25):
+   *   (a) Two requests both observe a stale month on rollover →
+   *       both write count=1 instead of one writing 1 and the other 2.
+   *       Worst case: 1-call undercount per rollover per tenant.
+   *       Acceptable; reset month boundary is once / tenant / month.
+   *   (b) Two requests on the SAME month both check usage at slot
+   *       cap-1, both proceed, both bump → count = cap+1 briefly.
+   *       Worst case: one-call overshoot per concurrent burst. The
+   *       caller is the user clicking the sparkle button — they can
+   *       physically only burst a couple at once before the UI
+   *       feedback catches up. Cost ceiling is bounded.
+   *   In either direction the over/undershoot is small and one-per-
+   *   tenant. Switching to a true transactional check (SELECT ... FOR
+   *   UPDATE + UPDATE inside a tx) would close both windows at the
+   *   cost of a row-lock on every AI call. Not worth it for $5/mo
+   *   spend ceiling.
    */
   private async bumpPlatformUsage(tenantId: string): Promise<void> {
     const monthKey = this.currentMonthKey();
@@ -248,6 +314,21 @@ export class AiService {
   }
 
   async generate(opts: AiGenerateRequest & { tenantId: string }): Promise<AiGenerateResponse> {
+    // Audit-W1 wrap: any throw out of the rest of this method
+    // (bad input, provider 4xx/5xx, cap-reached, decryption fail)
+    // counts as a failure against the per-tenant cap. The wrapper
+    // checks the cap BEFORE doing any work — sustained failures
+    // from one tenant are blocked at the door.
+    this.checkFailureCap(opts.tenantId);
+    try {
+      return await this.generateInner(opts);
+    } catch (e) {
+      this.recordFailure(opts.tenantId);
+      throw e;
+    }
+  }
+
+  private async generateInner(opts: AiGenerateRequest & { tenantId: string }): Promise<AiGenerateResponse> {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
@@ -274,7 +355,13 @@ export class AiService {
     // (packages/api-types/src/verticals.ts), case-insensitively — the
     // single source of truth, so a malicious string can't change the
     // system prompt or pollute logs.
-    if (opts.vertical && !isVertical(String(opts.vertical).toUpperCase())) {
+    // Audit-W6 fix (2026-05-25) — clamp BEFORE toUpperCase(). A
+    // malicious 1MB `vertical` string defeats the 2000-char `context`
+    // cap above (vertical is interpolated into the prompt too) and
+    // also burns CPU on the upper-case scan. The Zod schema in the
+    // controller caps at 40 chars; this is defense-in-depth in case
+    // the service is ever called from a non-Zod path (cron, internal).
+    if (opts.vertical && !isVertical(String(opts.vertical).slice(0, 40).toUpperCase())) {
       throw new BadRequestException('Invalid vertical.');
     }
     // Tone whitelist — same idea, prevents prompt injection via the
@@ -310,16 +397,28 @@ export class AiService {
     // platform-paid generations — BYOK tenants bypass entirely. The
     // editor surfaces this via the `usage` field on the success
     // response so the next click already sees the new count without
-    // a second fetch. Cap-reached error message is intentionally
-    // shaped so the editor can pattern-match and pop the upgrade
-    // modal: it always contains "monthly free AI" and the resetAt
-    // ISO date.
+    // Audit-W8 fix (2026-05-25) — was throwing a plain
+    // BadRequestException with a string the FE regex'd for "monthly
+    // free AI cap". That breaks the moment an i18n pass touches the
+    // message. Now throws an HttpException with a structured `code:
+    // 'AI_CAP_REACHED'` field. AllExceptionsFilter passes the code
+    // through to the response envelope so the FE matches on
+    // `errorCode === 'AI_CAP_REACHED'`. Cap value + resetAt are
+    // exposed as separate fields so the FE doesn't have to parse
+    // the human string.
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used >= u.cap) {
         const resetAt = u.resetAt;
-        throw new BadRequestException(
-          `Hit the monthly free AI cap (${u.cap} generations). Connect your own provider key in Settings → AI provider for unlimited, or wait until the cap resets at ${resetAt}.`,
+        throw new HttpException(
+          {
+            message: `Hit the monthly free AI cap (${u.cap} generations). Connect your own provider key in Settings → AI provider for unlimited, or wait until the cap resets at ${resetAt}.`,
+            code: 'AI_CAP_REACHED',
+            cap: u.cap,
+            used: u.used,
+            resetAt,
+          },
+          HttpStatus.PAYMENT_REQUIRED, // 402 — appropriate per RFC for "your free tier is exhausted, pay (or upgrade) to continue".
         );
       }
     }
@@ -479,6 +578,23 @@ export class AiService {
     source: 'tenant' | 'platform';
     usage: { used: number; cap: number; resetAt: string } | null;
   }> {
+    // Audit-W1 — same failure-cap wrapper as generate().
+    this.checkFailureCap(opts.tenantId);
+    try {
+      return await this.generateTouchTemplateInner(opts);
+    } catch (e) {
+      this.recordFailure(opts.tenantId);
+      throw e;
+    }
+  }
+
+  private async generateTouchTemplateInner(opts: {
+    tenantId: string;
+    prompt: string;
+    screenWidth?: number;
+    screenHeight?: number;
+    vertical?: string;
+  }): Promise<any> {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
@@ -506,8 +622,15 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used >= u.cap) {
-        throw new BadRequestException(
-          `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
+        throw new HttpException(
+          {
+            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
+            code: 'AI_CAP_REACHED',
+            cap: u.cap,
+            used: u.used,
+            resetAt: u.resetAt,
+          },
+          HttpStatus.PAYMENT_REQUIRED,
         );
       }
     }
@@ -782,6 +905,16 @@ function sanitizeTouchTemplate(raw: any): {
         }
         out.payload = flat;
       }
+    }
+    // Audit-W9 fix (2026-05-25) — request-help is "show a help
+    // bubble with this body text." Body was previously dropped
+    // because sanitizeAction only copied `target`. Operator
+    // saw AI-generated request-help buttons with no message.
+    // Cap to 500 chars (player surface, bubble text — not a
+    // novel).
+    if (type === 'request-help' && typeof a.body === 'string') {
+      const body = a.body.trim().slice(0, 500);
+      if (body) out.body = body;
     }
     return out;
   };
