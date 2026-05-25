@@ -3,18 +3,24 @@ import {
   ExecutionContext,
   Injectable,
   UnauthorizedException,
+  Optional,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 
 import { RedisService } from '../realtime/redis.service';
 import { requireSecret } from '../security/required-secret';
+import { ApiKeysService } from '../api-keys/api-keys.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private jwtService: JwtService,
-    private redisService: RedisService
+    private redisService: RedisService,
+    // Optional so the guard still loads in test contexts where the
+    // ApiKeysModule isn't imported. In production app.module imports
+    // ApiKeysModule globally so this is always present.
+    @Optional() private apiKeys?: ApiKeysService,
   ) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -23,6 +29,32 @@ export class JwtAuthGuard implements CanActivate {
 
     if (!token) {
       throw new UnauthorizedException('Authentication token missing');
+    }
+
+    // 2026-05-25 Developer area: tenant REST API keys (`vos_<32hex>`)
+    // share the Bearer header with user / device JWTs. Detect the
+    // format and route to a separate verification path that hashes
+    // and looks up against the TenantApiKey table. On success we
+    // attach a synthetic req.user with role + tenantId (userId = null
+    // because this is a machine identity — AuditLog rows for API-
+    // key-driven actions carry userId:null + apiKeyId for forensics).
+    if (token.startsWith('vos_') && this.apiKeys) {
+      const verified = await this.apiKeys.verify(token);
+      if (!verified) {
+        throw new UnauthorizedException('Invalid or revoked API key');
+      }
+      request['user'] = {
+        // No real user — machine identity. id/userId left null so
+        // AuditLog rows the API key triggers carry userId:null. The
+        // apiKeyId field identifies WHICH key was used.
+        id: null,
+        userId: null,
+        kind: 'api-key',
+        role: verified.role,
+        tenantId: verified.tenantId,
+        apiKeyId: verified.id,
+      };
+      return true;
     }
 
     try {

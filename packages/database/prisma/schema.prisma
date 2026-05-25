@@ -155,8 +155,74 @@ model Tenant {
   floorPlans                      FloorPlan[]
   // Phase D5 touch analytics.
   touchEvents                     TouchEvent[]
+  // 2026-05-25 Developer area: tenant-scoped REST tokens + outbound
+  // webhooks. Cascade-delete on tenant removal so a wiped tenant
+  // doesn't leave orphaned credentials sitting in the DB.
+  apiKeys                         TenantApiKey[]
+  webhooks                        TenantWebhook[]
 
   @@map("tenants")
+}
+
+/// Tenant-scoped REST API tokens (Developer area, 2026-05-25).
+///
+/// Token format at issue time: `vos_<32-hex-chars>`. The `prefix`
+/// column stores the first 8 chars of the hex portion for O(1) index
+/// lookup at request time; `hashedSecret` is a bcrypt hash of the FULL
+/// token (so a DB dump alone can't be replayed against the API). The
+/// plaintext is shown to the operator ONCE on creation and never again.
+///
+/// `role` is one of the AppRole strings — JwtAuthGuard treats an API-key
+/// request identically to a user-JWT request for RBAC purposes, except
+/// `userId` is null on AuditLog rows (machine identity).
+model TenantApiKey {
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  name            String
+  prefix          String    @unique
+  hashedSecret    String    @map("hashed_secret")
+  role            String
+  expiresAt       DateTime? @map("expires_at")
+  lastUsedAt      DateTime? @map("last_used_at")
+  revokedAt       DateTime? @map("revoked_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  createdByUserId String?   @map("created_by_user_id")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("tenant_api_keys")
+}
+
+/// Tenant-scoped outbound webhooks (Developer area, 2026-05-25).
+///
+/// `events` is a JSON-encoded string array of subscribed event types
+/// (e.g. ["emergency.triggered", "emergency.cleared"]). Cheaper than
+/// a many-to-many table for the typical "subscribe to 1-3 events"
+/// usage pattern. WebhookDispatchService loads all active webhooks for
+/// a tenant, parses the JSON, and filters in-memory before POSTing.
+///
+/// `signingSecret` is the HMAC-SHA256 secret the receiver uses to
+/// verify the X-VenueOS-Signature header on incoming POSTs. Returned
+/// to the operator ONCE at creation; rotating means delete + recreate.
+model TenantWebhook {
+  id                  String    @id @default(uuid())
+  tenantId            String    @map("tenant_id")
+  name                String
+  url                 String
+  events              String    @default("[]")
+  signingSecret       String    @map("signing_secret")
+  isActive            Boolean   @default(true) @map("is_active")
+  lastDeliveryAt      DateTime? @map("last_delivery_at")
+  lastDeliveryStatus  Int?      @map("last_delivery_status")
+  lastDeliveryError   String?   @map("last_delivery_error")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  createdByUserId     String?   @map("created_by_user_id")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@map("tenant_webhooks")
 }
 
 // Auto-branding — scraped or manually configured visual identity that

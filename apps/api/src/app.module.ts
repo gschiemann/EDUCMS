@@ -30,6 +30,9 @@ import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SubmissionsModule } from './submissions/submissions.module';
 import { LicenseModule } from './license/license.module';
+// 2026-05-25 Developer area: tenant REST API tokens + outbound webhooks.
+import { ApiKeysModule } from './api-keys/api-keys.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 import { BrandingModule } from './branding/branding.module';
 import { UsbExportModule } from './usb-export/usb-export.module';
 import { PlayerOtaModule } from './player-ota/player-ota.module';
@@ -81,6 +84,8 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     NotificationsModule,
     SubmissionsModule,
     LicenseModule,
+    ApiKeysModule,
+    WebhooksModule,
     BrandingModule,
     UsbExportModule,
     PlayerOtaModule,

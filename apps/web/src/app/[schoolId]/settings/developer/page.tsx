@@ -32,6 +32,7 @@
  * a deploy-config view.
  */
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useUIStore } from '@/store/ui-store';
@@ -45,7 +46,24 @@ import {
   BookOpen,
   ShieldAlert,
   GitBranch,
+  Plus,
+  Copy,
+  Check,
+  Trash2,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
 } from 'lucide-react';
+import {
+  useApiKeys,
+  useMintApiKey,
+  useRevokeApiKey,
+  useWebhooks,
+  useCreateWebhook,
+  useDeleteWebhook,
+} from '@/hooks/use-api';
+import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 
 export default function DeveloperSettingsPage() {
   const params = useParams<{ schoolId: string }>();
@@ -185,34 +203,11 @@ export default function DeveloperSettingsPage() {
         </div>
       </section>
 
-      {/* ── API Keys + Webhooks (scaffolded) ───────────────────── */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <div className="flex items-start justify-between gap-3 mb-1">
-          <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-            <KeyRound className="w-4 h-4 text-indigo-500" /> API Keys &amp; Webhooks
-          </h2>
-          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-            Coming next release
-          </span>
-        </div>
-        <p className="text-[11px] text-slate-500 mb-4">
-          Tenant-scoped REST tokens to drive VenueOS from your own automation,
-          plus outbound webhook URLs for emergency triggers, content publishes,
-          and screen status changes.
-        </p>
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
-          <PlannedFeature
-            icon={<KeyRound className="w-3.5 h-3.5" />}
-            title="REST API tokens"
-            blurb="Mint per-tenant bearer tokens with a chosen role + expiry. Revoke from this same page. Use them to POST emergencies, push playlists, or query screen status from your own scripts."
-          />
-          <PlannedFeature
-            icon={<Webhook className="w-3.5 h-3.5" />}
-            title="Outbound webhooks"
-            blurb="Register a URL to receive signed JSON for: emergency triggered, emergency cleared, playlist published, screen online / offline, OTA install completed. Same HMAC envelope the WS broadcasts use."
-          />
-        </div>
-      </section>
+      {/* ── API Keys ───────────────────────────────────────────── */}
+      <ApiKeysSection />
+
+      {/* ── Webhooks ───────────────────────────────────────────── */}
+      <WebhooksSection />
 
       {/* ── SDK + Documentation ───────────────────────────────── */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
@@ -310,25 +305,521 @@ function IntegrationCard({
   );
 }
 
-function PlannedFeature({
-  icon,
-  title,
-  blurb,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  blurb: string;
-}) {
+// ─── API Keys section ──────────────────────────────────────────
+
+const ALLOWED_API_KEY_ROLES = [
+  { value: 'DISTRICT_ADMIN', label: 'District admin' },
+  { value: 'SCHOOL_ADMIN', label: 'School admin' },
+  { value: 'CONTRIBUTOR', label: 'Contributor' },
+  { value: 'RESTRICTED_VIEWER', label: 'Read-only viewer' },
+] as const;
+
+function ApiKeysSection() {
+  const { data: keys, isLoading } = useApiKeys();
+  const mint = useMintApiKey();
+  const revoke = useRevokeApiKey();
+  const [showNew, setShowNew] = useState(false);
+  const [name, setName] = useState('');
+  const [role, setRole] = useState<string>('CONTRIBUTOR');
+  const [justMinted, setJustMinted] = useState<{ token: string; prefix: string } | null>(null);
+  const [copiedToken, setCopiedToken] = useState(false);
+
+  const handleMint = async () => {
+    setJustMinted(null);
+    try {
+      const result = await mint.mutateAsync({ name: name.trim(), role });
+      setJustMinted({ token: result.token, prefix: result.prefix });
+      setName('');
+      setRole('CONTRIBUTOR');
+      setShowNew(false);
+    } catch (err: any) {
+      await appAlert({
+        title: 'Could not create API key',
+        message: err?.message || 'Something went wrong.',
+        tone: 'danger',
+      });
+    }
+  };
+
+  const handleRevoke = async (id: string, label: string) => {
+    if (
+      !(await appConfirm({
+        title: 'Revoke API key?',
+        message: `"${label}" will stop working immediately. Anything using this token will start returning 401. This cannot be undone.`,
+        confirmLabel: 'Revoke',
+        tone: 'danger',
+      }))
+    )
+      return;
+    try {
+      await revoke.mutateAsync(id);
+    } catch (err: any) {
+      await appAlert({
+        title: 'Could not revoke',
+        message: err?.message || 'Something went wrong.',
+        tone: 'danger',
+      });
+    }
+  };
+
+  const copyToken = async () => {
+    if (!justMinted) return;
+    try {
+      await navigator.clipboard.writeText(justMinted.token);
+      setCopiedToken(true);
+      setTimeout(() => setCopiedToken(false), 2000);
+    } catch {
+      // clipboard blocked; operator can select+copy manually
+    }
+  };
+
+  const active = (keys ?? []).filter((k) => !k.revokedAt);
+  const revoked = (keys ?? []).filter((k) => k.revokedAt);
+
   return (
-    <div className="flex items-start gap-3">
-      <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
-        {icon}
+    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+          <KeyRound className="w-4 h-4 text-indigo-500" /> REST API keys
+        </h2>
+        <button
+          type="button"
+          onClick={() => setShowNew((v) => !v)}
+          className="text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
+        >
+          <Plus className="w-3.5 h-3.5" /> {showNew ? 'Cancel' : 'New key'}
+        </button>
       </div>
-      <div className="min-w-0">
-        <div className="text-xs font-bold text-slate-800">{title}</div>
-        <div className="text-[11px] text-slate-600 mt-0.5">{blurb}</div>
+      <p className="text-[11px] text-slate-500 mb-4">
+        Bearer tokens for calling the VenueOS REST API from your own automation.
+        Each token carries a role — the same RBAC the dashboard uses applies.
+      </p>
+
+      {/* Just-minted reveal banner — shows ONCE on creation. */}
+      {justMinted && (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <div className="text-xs font-bold text-emerald-800">
+              Key created. Copy it now — we&rsquo;ll never show it again.
+            </div>
+          </div>
+          <div className="flex items-center gap-2 bg-white border border-emerald-200 rounded-md px-3 py-2">
+            <code className="flex-1 text-xs font-mono text-slate-800 break-all select-all">
+              {justMinted.token}
+            </code>
+            <button
+              type="button"
+              onClick={copyToken}
+              className="text-xs font-semibold px-2.5 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 flex items-center gap-1.5 shrink-0"
+            >
+              {copiedToken ? (
+                <>
+                  <Check className="w-3 h-3" /> Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" /> Copy
+                </>
+              )}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setJustMinted(null)}
+            className="text-[11px] text-emerald-700 hover:underline mt-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* New-key form */}
+      {showNew && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
+              Name
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. CI pipeline"
+                maxLength={80}
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-800"
+              />
+            </label>
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
+              Role
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-800 bg-white"
+              >
+                {ALLOWED_API_KEY_ROLES.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleMint}
+              disabled={mint.isPending || !name.trim()}
+              className="text-xs font-semibold px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+            >
+              {mint.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Create key
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="text-center py-8 text-xs text-slate-400">
+          <Loader2 className="w-4 h-4 animate-spin inline-block" /> Loading…
+        </div>
+      ) : active.length === 0 && revoked.length === 0 ? (
+        <div className="text-center py-8 text-xs text-slate-400">
+          No API keys yet. Click <strong>New key</strong> to mint one.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left border-b border-slate-200">
+                <th className="py-2 font-bold text-slate-500 text-[10px] uppercase tracking-wider">
+                  Name
+                </th>
+                <th className="py-2 font-bold text-slate-500 text-[10px] uppercase tracking-wider">
+                  Prefix
+                </th>
+                <th className="py-2 font-bold text-slate-500 text-[10px] uppercase tracking-wider">
+                  Role
+                </th>
+                <th className="py-2 font-bold text-slate-500 text-[10px] uppercase tracking-wider">
+                  Last used
+                </th>
+                <th className="py-2 font-bold text-slate-500 text-[10px] uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {[...active, ...revoked].map((k) => (
+                <tr key={k.id} className="border-b border-slate-100">
+                  <td className="py-2.5 font-semibold text-slate-800 truncate max-w-[20ch]">
+                    {k.name}
+                  </td>
+                  <td className="py-2.5 font-mono text-slate-500">vos_{k.prefix}…</td>
+                  <td className="py-2.5 text-slate-600">{k.role}</td>
+                  <td className="py-2.5 text-slate-500">
+                    {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : '—'}
+                  </td>
+                  <td className="py-2.5">
+                    {k.revokedAt ? (
+                      <span className="text-rose-600 font-semibold">Revoked</span>
+                    ) : (
+                      <span className="text-emerald-600 font-semibold">Active</span>
+                    )}
+                  </td>
+                  <td className="py-2.5 text-right">
+                    {!k.revokedAt && (
+                      <button
+                        type="button"
+                        onClick={() => handleRevoke(k.id, k.name)}
+                        disabled={revoke.isPending}
+                        className="text-xs text-rose-600 hover:text-rose-700 font-semibold inline-flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" /> Revoke
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─── Webhooks section ──────────────────────────────────────────
+
+const ALLOWED_WEBHOOK_EVENTS = [
+  { value: 'emergency.triggered', label: 'Emergency triggered' },
+  { value: 'emergency.cleared', label: 'Emergency cleared' },
+] as const;
+
+function WebhooksSection() {
+  const { data: hooks, isLoading } = useWebhooks();
+  const create = useCreateWebhook();
+  const del = useDeleteWebhook();
+  const [showNew, setShowNew] = useState(false);
+  const [name, setName] = useState('');
+  const [url, setUrl] = useState('');
+  const [events, setEvents] = useState<string[]>([]);
+  const [justCreated, setJustCreated] = useState<{ signingSecret: string } | null>(null);
+  const [copiedSecret, setCopiedSecret] = useState(false);
+
+  const toggleEvent = (v: string) => {
+    setEvents((prev) => (prev.includes(v) ? prev.filter((e) => e !== v) : [...prev, v]));
+  };
+
+  const handleCreate = async () => {
+    setJustCreated(null);
+    try {
+      const result = await create.mutateAsync({
+        name: name.trim(),
+        url: url.trim(),
+        events,
+      });
+      setJustCreated({ signingSecret: result.signingSecret });
+      setName('');
+      setUrl('');
+      setEvents([]);
+      setShowNew(false);
+    } catch (err: any) {
+      await appAlert({
+        title: 'Could not create webhook',
+        message: err?.message || 'Something went wrong.',
+        tone: 'danger',
+      });
+    }
+  };
+
+  const handleDelete = async (id: string, label: string) => {
+    if (
+      !(await appConfirm({
+        title: 'Delete webhook?',
+        message: `"${label}" will stop receiving events. Cannot be undone.`,
+        confirmLabel: 'Delete',
+        tone: 'danger',
+      }))
+    )
+      return;
+    try {
+      await del.mutateAsync(id);
+    } catch (err: any) {
+      await appAlert({
+        title: 'Could not delete',
+        message: err?.message || 'Something went wrong.',
+        tone: 'danger',
+      });
+    }
+  };
+
+  const copySecret = async () => {
+    if (!justCreated) return;
+    try {
+      await navigator.clipboard.writeText(justCreated.signingSecret);
+      setCopiedSecret(true);
+      setTimeout(() => setCopiedSecret(false), 2000);
+    } catch {
+      /* user can select+copy manually */
+    }
+  };
+
+  return (
+    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+          <Webhook className="w-4 h-4 text-indigo-500" /> Outbound webhooks
+        </h2>
+        <button
+          type="button"
+          onClick={() => setShowNew((v) => !v)}
+          className="text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
+        >
+          <Plus className="w-3.5 h-3.5" /> {showNew ? 'Cancel' : 'New webhook'}
+        </button>
       </div>
-    </div>
+      <p className="text-[11px] text-slate-500 mb-4">
+        We&rsquo;ll POST signed JSON to your URL when subscribed events fire.
+        Verify <code className="font-mono">X-VenueOS-Signature</code> with the
+        HMAC-SHA256 secret we show you on creation.
+      </p>
+
+      {/* Just-created reveal banner */}
+      {justCreated && (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <div className="text-xs font-bold text-emerald-800">
+              Webhook created. Copy the signing secret now — we won&rsquo;t show it
+              again.
+            </div>
+          </div>
+          <div className="flex items-center gap-2 bg-white border border-emerald-200 rounded-md px-3 py-2">
+            <code className="flex-1 text-xs font-mono text-slate-800 break-all select-all">
+              {justCreated.signingSecret}
+            </code>
+            <button
+              type="button"
+              onClick={copySecret}
+              className="text-xs font-semibold px-2.5 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 flex items-center gap-1.5 shrink-0"
+            >
+              {copiedSecret ? (
+                <>
+                  <Check className="w-3 h-3" /> Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" /> Copy
+                </>
+              )}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setJustCreated(null)}
+            className="text-[11px] text-emerald-700 hover:underline mt-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* New-webhook form */}
+      {showNew && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
+              Name
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. PagerDuty bridge"
+                maxLength={80}
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-800"
+              />
+            </label>
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
+              POST URL
+              <input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://your.receiver/webhook"
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-800 font-mono"
+              />
+            </label>
+          </div>
+          <div className="space-y-1.5">
+            <div className="text-[11px] font-bold text-slate-600">
+              Events to subscribe to
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {ALLOWED_WEBHOOK_EVENTS.map((e) => {
+                const active = events.includes(e.value);
+                return (
+                  <button
+                    key={e.value}
+                    type="button"
+                    onClick={() => toggleEvent(e.value)}
+                    className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                      active
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300'
+                    }`}
+                  >
+                    {e.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={
+                create.isPending ||
+                !name.trim() ||
+                !url.trim() ||
+                events.length === 0
+              }
+              className="text-xs font-semibold px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+            >
+              {create.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Create webhook
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="text-center py-8 text-xs text-slate-400">
+          <Loader2 className="w-4 h-4 animate-spin inline-block" /> Loading…
+        </div>
+      ) : (hooks ?? []).length === 0 ? (
+        <div className="text-center py-8 text-xs text-slate-400">
+          No webhooks yet. Click <strong>New webhook</strong> to subscribe to events.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {(hooks ?? []).map((h) => (
+            <div
+              key={h.id}
+              className="flex items-center justify-between gap-3 p-3 rounded-lg border border-slate-200"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="text-xs font-bold text-slate-800">{h.name}</div>
+                  {h.lastDeliveryStatus != null && (
+                    <span
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        h.lastDeliveryStatus >= 200 && h.lastDeliveryStatus < 300
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-rose-100 text-rose-700'
+                      }`}
+                      title={h.lastDeliveryError || ''}
+                    >
+                      {h.lastDeliveryStatus >= 200 && h.lastDeliveryStatus < 300 ? (
+                        <CheckCircle2 className="w-3 h-3 inline" />
+                      ) : (
+                        <AlertCircle className="w-3 h-3 inline" />
+                      )}{' '}
+                      {h.lastDeliveryStatus}
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] font-mono text-slate-500 truncate">
+                  {h.url}
+                </div>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  {h.events.map((e) => (
+                    <span
+                      key={e}
+                      className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700"
+                    >
+                      {e}
+                    </span>
+                  ))}
+                  {h.lastDeliveryAt && (
+                    <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                      <Clock className="w-2.5 h-2.5" />
+                      {new Date(h.lastDeliveryAt).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleDelete(h.id, h.name)}
+                disabled={del.isPending}
+                className="text-xs text-rose-600 hover:text-rose-700 font-semibold inline-flex items-center gap-1 shrink-0"
+              >
+                <Trash2 className="w-3 h-3" /> Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

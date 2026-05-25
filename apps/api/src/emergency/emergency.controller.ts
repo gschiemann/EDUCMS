@@ -9,6 +9,7 @@ import { AllowPanicBypass } from '../auth/panic-bypass.decorator';
 import * as crypto from 'crypto';
 import * as Sentry from '@sentry/nestjs';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
+import { WebhookDispatchService } from '../webhooks/webhook-dispatch.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { invalidateTenantState } from '../screens/manifest-hot-cache';
 import {
@@ -36,7 +37,12 @@ export class EmergencyController {
   constructor(
     private readonly redisService: RedisService,
     private readonly prisma: PrismaService,
-    private readonly signer: WebsocketSignerService
+    private readonly signer: WebsocketSignerService,
+    // 2026-05-25 Developer area: outbound webhook dispatch on
+    // emergency-triggered + emergency-cleared events. Fire-and-forget;
+    // never blocks the response path. Injected from the global
+    // WebhooksModule.
+    private readonly webhookDispatch: WebhookDispatchService,
   ) {}
 
   private emergencyTypeKey(type?: string | null): string | null {
@@ -485,6 +491,23 @@ export class EmergencyController {
       console.warn(`[Emergency] Redis publish failed for ${channel}. Realtime bypass disabled. Screens will pull via HTTP polling. Error: ${error}`);
     }
 
+    // 2026-05-25 Developer area: outbound webhook on emergency.triggered.
+    // Fire-and-forget; the response below is never blocked. Only fires
+    // for tenant-scoped triggers (per-screen / per-group emergencies
+    // are too granular for typical external integrations — those can
+    // listen to the WS channel directly if needed).
+    if (scopeType === 'tenant' && ownedTenantId) {
+      this.webhookDispatch.dispatch(ownedTenantId, 'emergency.triggered', {
+        overrideId,
+        scopeType,
+        scopeId,
+        severity: message.payload?.severity ?? severity,
+        type: message.payload?.type,
+        triggeredAt: new Date().toISOString(),
+        triggeredByUserId: req.user?.id ?? null,
+      });
+    }
+
     return {
       success: true,
       overrideId,
@@ -599,6 +622,18 @@ export class EmergencyController {
         Sentry.captureException(error);
       });
       console.warn(`[Emergency] Redis publish failed for ${channel}.`);
+    }
+
+    // 2026-05-25 Developer area: outbound webhook on emergency.cleared.
+    // Mirror of the trigger-side dispatch above.
+    if (scopeType === 'tenant' && ownedTenantId) {
+      this.webhookDispatch.dispatch(ownedTenantId, 'emergency.cleared', {
+        overrideId,
+        scopeType,
+        scopeId,
+        clearedAt: new Date().toISOString(),
+        clearedByUserId: req.user?.id ?? null,
+      });
     }
 
     return {

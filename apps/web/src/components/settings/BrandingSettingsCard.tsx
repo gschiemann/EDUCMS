@@ -131,31 +131,33 @@ export function BrandingSettingsCard() {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-        <div className="min-w-0">
-          <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-            <Paintbrush className="w-4 h-4 text-indigo-500" /> Brand your CMS
-          </h2>
-          {/* Big tenant indicator so the user knows which org they're
-              branding — was a cross-tenant-bleed vector when users
-              adopted Chardon's URL while logged into Springfield. */}
-          <div className="text-[11px] text-slate-500 mt-1">
-            Branding: <span className="font-semibold text-indigo-700">{(tenant as any)?.name || '(unknown tenant)'}</span>
-          </div>
+      {/* 2026-05-25 — collapsed from a stacked title + subtitle header
+          into a single horizontal row per operator feedback ("brand your
+          CMS… just make that setting a single row and not double").
+          Same compact pattern the industry switcher uses: icon + label +
+          tenant pill + inline buttons. The cross-tenant-bleed indicator
+          (which org you're branding) is preserved as the pill. */}
+      <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3">
+        <Paintbrush className="w-4 h-4 text-indigo-500 shrink-0" />
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className="text-xs font-bold text-slate-700">Brand:</span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] font-bold text-indigo-700 truncate max-w-[18ch]">
+            {(tenant as any)?.name || '(unknown tenant)'}
+          </span>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setManualOpen((v) => !v)}
             className="text-xs font-semibold px-3 py-1.5 rounded-md bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 flex items-center gap-1.5"
           >
-            <Upload className="h-3.5 w-3.5" /> {manualOpen ? 'Cancel' : 'Upload logo manually'}
+            <Upload className="h-3.5 w-3.5" /> {manualOpen ? 'Cancel' : 'Upload logo'}
           </button>
           <Link
             href={`/${schoolId}/settings/branding`}
             className="text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
           >
-            <Sparkles className="h-3.5 w-3.5" /> {branding ? 'Re-skin' : 'Auto-brand from URL'}
+            <Sparkles className="h-3.5 w-3.5" /> {branding ? 'Re-skin' : 'Auto-brand'}
           </Link>
         </div>
       </div>

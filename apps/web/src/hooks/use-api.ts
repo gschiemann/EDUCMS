@@ -2580,3 +2580,84 @@ export function useScrapeBranding() {
       apiFetch('/branding/scrape', { method: 'POST', body: JSON.stringify({ url }) }),
   });
 }
+
+// ─── 2026-05-25 Developer area: API Keys + Webhooks ────────────────
+
+export interface ApiKeyRow {
+  id: string;
+  name: string;
+  prefix: string;
+  role: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  createdByUserId: string | null;
+}
+
+export function useApiKeys() {
+  return useQuery<ApiKeyRow[]>({
+    queryKey: ['api-keys'],
+    queryFn: () => apiFetch('/api-keys'),
+  });
+}
+
+export function useMintApiKey() {
+  const qc = useQueryClient();
+  return useMutation<
+    { id: string; token: string; prefix: string },
+    Error,
+    { name: string; role: string; expiresAt?: string | null }
+  >({
+    mutationFn: (body) => apiFetch('/api-keys', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['api-keys'] }),
+  });
+}
+
+export function useRevokeApiKey() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean }, Error, string>({
+    mutationFn: (id) => apiFetch(`/api-keys/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['api-keys'] }),
+  });
+}
+
+export interface WebhookRow {
+  id: string;
+  name: string;
+  url: string;
+  events: string[];
+  isActive: boolean;
+  lastDeliveryAt: string | null;
+  lastDeliveryStatus: number | null;
+  lastDeliveryError: string | null;
+  createdAt: string;
+  createdByUserId: string | null;
+}
+
+export function useWebhooks() {
+  return useQuery<WebhookRow[]>({
+    queryKey: ['webhooks'],
+    queryFn: () => apiFetch('/webhooks'),
+  });
+}
+
+export function useCreateWebhook() {
+  const qc = useQueryClient();
+  return useMutation<
+    { id: string; signingSecret: string },
+    Error,
+    { name: string; url: string; events: string[] }
+  >({
+    mutationFn: (body) => apiFetch('/webhooks', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['webhooks'] }),
+  });
+}
+
+export function useDeleteWebhook() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean }, Error, string>({
+    mutationFn: (id) => apiFetch(`/webhooks/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['webhooks'] }),
+  });
+}
