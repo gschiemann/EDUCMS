@@ -15,10 +15,12 @@
  *   • Bottom: picked channels list (per-connection drill-down).
  */
 import { useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
-import { Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert, Wrench, Cable, ArrowRight, Globe, Music, Radio, Lock, Zap, Sparkles } from 'lucide-react';
+import { ArrowLeft, Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert, Wrench, Cable, ArrowRight, Globe, Music, Radio, Lock, Zap, Sparkles } from 'lucide-react';
 
 interface Provider {
   id: string;
@@ -77,6 +79,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default function StreamingSettingsPage() {
+  const params = useParams();
+  const schoolId = params?.schoolId as string;
   const qc = useQueryClient();
   const providers = useQuery<Provider[]>({
     queryKey: ['streaming-providers'],
@@ -131,6 +135,12 @@ export default function StreamingSettingsPage() {
 
   return (
     <div className="space-y-6 max-w-6xl">
+      <Link
+        href={`/${schoolId}/settings`}
+        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-fuchsia-600"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" /> Settings
+      </Link>
       {/* Hero */}
       <div className="rounded-2xl bg-gradient-to-br from-violet-600 via-fuchsia-600 to-pink-600 p-6 text-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(white 1px, transparent 1px)', backgroundSize: '24px 24px' }} />

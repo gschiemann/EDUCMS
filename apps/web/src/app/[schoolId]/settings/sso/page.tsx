@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Shield, Loader2, CheckCircle2, AlertCircle, KeyRound, Copy } from 'lucide-react';
+import { ArrowLeft, Shield, Loader2, CheckCircle2, AlertCircle, KeyRound, Copy } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { API_URL } from '@/lib/api-url';
 
@@ -198,6 +199,12 @@ export default function SsoSettingsPage() {
 
   return (
     <div className="max-w-4xl space-y-8">
+      <Link
+        href={`/${schoolId}/settings`}
+        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" /> Settings
+      </Link>
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
           <Shield className="w-7 h-7 text-indigo-500" />

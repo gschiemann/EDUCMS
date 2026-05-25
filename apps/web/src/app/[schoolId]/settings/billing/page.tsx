@@ -14,8 +14,11 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import {
+  ArrowLeft,
   CreditCard,
   CheckCircle2,
   Loader2,
@@ -75,6 +78,8 @@ const fmtDate = (d: string | number | null | undefined) => {
 };
 
 export default function BillingPage() {
+  const params = useParams();
+  const schoolId = params?.schoolId as string;
   // Post-Checkout return flag — read client-side so the page needs no
   // useSearchParams Suspense boundary.
   const [checkoutResult, setCheckoutResult] = useState<string | null>(null);
@@ -175,6 +180,12 @@ export default function BillingPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
+      <Link
+        href={`/${schoolId}/settings`}
+        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-emerald-600"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" /> Settings
+      </Link>
       <div className="rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-sky-600 p-6 text-white">
         <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
           <CreditCard className="w-6 h-6" /> Billing &amp; usage

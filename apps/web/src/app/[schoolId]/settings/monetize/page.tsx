@@ -14,10 +14,12 @@
  * in ad-network.ts).
  */
 import { useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
-import { Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, Pause, Play, DollarSign, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, Pause, Play, DollarSign, TrendingUp } from 'lucide-react';
 
 interface AdNetwork {
   id: string;
@@ -77,6 +79,8 @@ function fmtUSD(cents: number): string {
 }
 
 export default function MonetizeSettingsPage() {
+  const params = useParams();
+  const schoolId = params?.schoolId as string;
   const qc = useQueryClient();
   const networks = useQuery<AdNetwork[]>({ queryKey: ['ads-networks'], queryFn: () => apiFetch<AdNetwork[]>('/ads/networks') });
   const connections = useQuery<AdConnection[]>({ queryKey: ['ads-connections'], queryFn: () => apiFetch<AdConnection[]>('/ads/connections') });
@@ -90,6 +94,12 @@ export default function MonetizeSettingsPage() {
 
   return (
     <div className="space-y-6 max-w-6xl">
+      <Link
+        href={`/${schoolId}/settings`}
+        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-emerald-600"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" /> Settings
+      </Link>
       <div className="rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600 p-6 text-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(white 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
         <div className="relative">

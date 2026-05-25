@@ -15,10 +15,12 @@
  * provider and trigger sync once the handler lands.
  */
 import { useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
-import { Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, RefreshCw, Utensils } from 'lucide-react';
+import { ArrowLeft, Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, RefreshCw, Utensils } from 'lucide-react';
 
 interface PosProvider {
   id: string;
@@ -63,6 +65,8 @@ const SCOPE_LABELS: Record<string, string> = {
 };
 
 export default function PosSettingsPage() {
+  const params = useParams();
+  const schoolId = params?.schoolId as string;
   const qc = useQueryClient();
   const providers = useQuery<PosProvider[]>({ queryKey: ['pos-providers'], queryFn: () => apiFetch<PosProvider[]>('/pos/providers') });
   const connections = useQuery<PosConnection[]>({ queryKey: ['pos-connections'], queryFn: () => apiFetch<PosConnection[]>('/pos/connections') });
@@ -75,6 +79,12 @@ export default function PosSettingsPage() {
 
   return (
     <div className="space-y-6 max-w-6xl">
+      <Link
+        href={`/${schoolId}/settings`}
+        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-orange-600"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" /> Settings
+      </Link>
       <div className="rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-red-600 p-6 text-white relative overflow-hidden">
         <div className="absolute top-0 right-0 bottom-0 left-0 opacity-10" style={{ backgroundImage: 'radial-gradient(white 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
         <div className="relative">

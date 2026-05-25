@@ -22,8 +22,11 @@
  */
 
 import { useState, useRef } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import {
+  ArrowLeft,
   FileUp, Loader2, CheckCircle2, AlertCircle, ExternalLink,
   Sparkles, Image as ImageIcon, FileText, Presentation, Palette, Lock, Clock,
 } from 'lucide-react';
@@ -39,6 +42,8 @@ const ACCEPTED_MIME = '.pdf,.pptx,.ppt,.png,.jpg,.jpeg,.webp';
 const MAX_BYTES = 50 * 1024 * 1024; // 50MB cap matches the existing asset upload limit
 
 export default function DesignImportsPage() {
+  const params = useParams();
+  const schoolId = params?.schoolId as string;
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -86,6 +91,12 @@ export default function DesignImportsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
+      <Link
+        href={`/${schoolId}/settings`}
+        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-cyan-600"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" /> Settings
+      </Link>
       {/* Hero */}
       <div className="rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600 p-6 text-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(white 1px, transparent 1px)', backgroundSize: '24px 24px' }} />

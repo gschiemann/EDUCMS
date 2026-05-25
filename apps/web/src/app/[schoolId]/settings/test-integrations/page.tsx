@@ -21,10 +21,12 @@
  * yet" (gap on the audit list, fix in a follow-up commit).
  */
 import { useState } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
 import {
+  ArrowLeft,
   Beaker, Loader2, CheckCircle2, ExternalLink, Trash2, AlertCircle, RefreshCw,
   Tv, Utensils, ShoppingBag, DollarSign, Sparkles,
 } from 'lucide-react';
@@ -120,6 +122,12 @@ export default function TestIntegrationsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
+      <Link
+        href={`/${schoolId}/settings`}
+        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-rose-600"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" /> Settings
+      </Link>
       <div className="rounded-2xl bg-gradient-to-br from-pink-600 via-rose-600 to-orange-600 p-6 text-white">
         <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
           <Beaker className="w-6 h-6" /> Test integrations

@@ -6,15 +6,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import { BrandingWizard, BrandingPreview } from '@/components/branding/BrandingWizard';
 import { Button } from '@/components/ui/button';
-import { Trash2, Paintbrush } from 'lucide-react';
+import { ArrowLeft, Trash2, Paintbrush } from 'lucide-react';
 import { pushBrandingPreview } from '@/components/branding/BrandStyleInjector';
 import { useTenant } from '@/hooks/use-api';
 
 export default function SettingsBrandingPage() {
   const { data: tenant } = useTenant();
+  const params = useParams();
+  const schoolId = params?.schoolId as string;
   const [current, setCurrent] = useState<BrandingPreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmRevert, setConfirmRevert] = useState(false);
@@ -76,7 +80,15 @@ export default function SettingsBrandingPage() {
 
   return (
     <div>
-      <div className="px-6 py-5 flex items-center justify-between border-b border-slate-200 bg-white">
+      <div className="px-6 pt-5">
+        <Link
+          href={`/${schoolId}/settings`}
+          className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 mb-2"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Settings
+        </Link>
+      </div>
+      <div className="px-6 pb-5 flex items-center justify-between border-b border-slate-200 bg-white">
         <div className="flex items-center gap-2">
           <Paintbrush className="h-5 w-5 text-indigo-600" />
           <div>

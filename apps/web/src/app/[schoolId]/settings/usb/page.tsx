@@ -22,9 +22,11 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import JSZip from 'jszip';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Usb, KeyRound, ShieldCheck, Download, Check, Loader2, AlertTriangle, Copy, RefreshCw, Power } from 'lucide-react';
+import { ArrowLeft, Usb, KeyRound, ShieldCheck, Download, Check, Loader2, AlertTriangle, Copy, RefreshCw, Power } from 'lucide-react';
 import { apiFetch, getApiUrl } from '@/lib/api-client';
 import { useUIStore } from '@/store/ui-store';
 import { usePlaylists, useScreens } from '@/hooks/use-api';
@@ -37,6 +39,8 @@ interface UsbConfig {
 }
 
 export default function UsbExportPage() {
+  const params = useParams();
+  const schoolId = params?.schoolId as string;
   const token = useUIStore((s) => s.token);
   const { data: config, refetch: refetchConfig } = useQuery<UsbConfig>({
     queryKey: ['tenants/me/usb-ingest'],
@@ -194,6 +198,12 @@ export default function UsbExportPage() {
 
   return (
     <div className="max-w-4xl space-y-6">
+      <Link
+        href={`/${schoolId}/settings`}
+        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" /> Settings
+      </Link>
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
           <Usb className="w-7 h-7 text-indigo-500" />
