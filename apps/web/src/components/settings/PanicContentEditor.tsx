@@ -139,7 +139,7 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
   const anyConfigured = landscapeCount > 0 || portraitCount > 0;
 
   return (
-    <div className={`p-4 rounded-xl border ${a.border} ${a.bg} flex flex-col gap-3 min-h-[180px]`}>
+    <div className={`p-3 rounded-xl border ${a.border} ${a.bg} flex flex-col gap-2`}>
       <div>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -190,9 +190,11 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
         </button>
       </div>
 
-      {/* Drop zone */}
+      {/* Drop zone — slim row, no "big drag-drop area" (2026-05-25
+          operator: "no need for that big ass drag and drop area").
+          Same drop target, same click target, half the vertical space. */}
       <div
-        className={`border-2 border-dashed rounded-lg px-3 py-4 text-center transition-colors cursor-pointer ${
+        className={`border border-dashed rounded-md px-2.5 py-1.5 transition-colors cursor-pointer flex items-center gap-1.5 ${
           dragOver
             ? 'border-indigo-400 bg-indigo-50'
             : 'border-slate-300 bg-white/70 hover:border-indigo-300 hover:bg-white'
@@ -206,8 +208,8 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
           if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
         }}
       >
-        <Upload className="w-4 h-4 text-slate-400 inline mr-1.5 -mt-0.5" />
-        <span className="text-xs font-bold text-slate-600">Drop files or click to upload</span>
+        <Upload className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+        <span className="text-[11px] font-bold text-slate-600 truncate">Drop or click to upload</span>
         <input
           ref={fileInputRef}
           type="file"
@@ -250,7 +252,7 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
       {isLoading ? (
         <Loader2 className="w-4 h-4 animate-spin text-slate-400 mx-auto" />
       ) : items.length === 0 ? (
-        <p className="text-[11px] text-slate-500 text-center py-2 italic">No content set. Upload one or more files above.</p>
+        <p className="text-[11px] text-slate-400 text-center py-0.5 italic">No content yet</p>
       ) : (
         <ul className="space-y-1">
           {items.map(item => {
