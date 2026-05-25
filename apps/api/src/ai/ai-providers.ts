@@ -210,18 +210,25 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     description: 'Lowest-cost option of the three. Generous free tier on aistudio.google.com.',
     getKeyUrl: 'https://aistudio.google.com/apikey',
     models: [
+      // SECURITY/COMPAT (audit-B3 fix, 2026-05-25) — default flipped
+      // from gemini-2.0-flash to gemini-1.5-flash. 2.0 is region-
+      // gated and several aistudio.google.com free-tier accounts
+      // return 404 / PERMISSION_DENIED. Test-on-save would then
+      // refuse to persist a perfectly valid key. 1.5-flash is
+      // available everywhere, identical price, identical adequate
+      // quality for our 300-token signage prompts.
       {
-        id: 'gemini-2.0-flash',
-        label: 'Gemini 2.0 Flash',
-        tagline: 'Cheapest + fastest. Generous free tier.',
+        id: 'gemini-1.5-flash',
+        label: 'Gemini 1.5 Flash',
+        tagline: 'Cheapest + most widely available. Generous free tier.',
         inputPer1M: 0.075, outputPer1M: 0.30,
         estCostPerCallUsd: estCost(0.075, 0.30),
         default: true,
       },
       {
-        id: 'gemini-1.5-flash',
-        label: 'Gemini 1.5 Flash',
-        tagline: 'Older Flash. Still cheap; pick if 2.0 unavailable on your project.',
+        id: 'gemini-2.0-flash',
+        label: 'Gemini 2.0 Flash',
+        tagline: 'Newer Flash with refreshed pricing. Region-gated on free tier — try 1.5 if 404.',
         inputPer1M: 0.075, outputPer1M: 0.30,
         estCostPerCallUsd: estCost(0.075, 0.30),
       },
@@ -307,6 +314,16 @@ export async function dispatchAi(
   const requested = input.model || '';
   const model = isKnownModel(provider, requested) ? requested : defaultModelFor(provider);
 
+  // SECURITY (audit-B2 fix, 2026-05-25) — Node 20's `fetch` has no
+  // default timeout. A hung provider would hold an Express handler
+  // open indefinitely; with our small Railway dyno + 10-connection
+  // Prisma pool this is a trivial DOS. Every provider call below
+  // attaches AbortSignal.timeout(15_000) so a stalled upstream
+  // aborts in 15s. 15s is enough headroom for a slow Anthropic
+  // first-token response without being long enough to chain into
+  // a worker pile-up under load.
+  const FETCH_TIMEOUT_MS = 15_000;
+
   if (provider === 'anthropic') {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -321,6 +338,7 @@ export async function dispatchAi(
         system: input.system,
         messages: [{ role: 'user', content: input.userPrompt }],
       }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
       const errorBody = await res.text().catch(() => '');
@@ -347,6 +365,7 @@ export async function dispatchAi(
           { role: 'user', content: input.userPrompt },
         ],
       }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
       const errorBody = await res.text().catch(() => '');
@@ -357,25 +376,45 @@ export async function dispatchAi(
   }
 
   if (provider === 'google') {
-    // Google Generative Language API (Gemini). Key in URL query is
-    // their convention; we already redact the URL in any error logs
-    // upstream (see ai.service.ts). System instruction is a sibling
-    // of `contents` in this API, not a message role. maxOutputTokens
-    // is camelCase (not max_tokens).
+    // Google Generative Language API (Gemini).
+    //
+    // SECURITY (audit-B1 fix, 2026-05-25) — Google supports the key
+    // as either a URL query param OR an `x-goog-api-key` header.
+    // We use the HEADER so the key never appears in the request URL
+    // — Google error responses commonly echo the request URL in
+    // `INVALID_ARGUMENT` / quota / 429 bodies, and that body is
+    // logged upstream in ai.service.ts:331. Header keeps the key
+    // out of `errorBody` entirely.
+    //
+    // System instruction is a sibling of `contents` in this API,
+    // not a message role. maxOutputTokens is camelCase (not
+    // max_tokens). gemini-1.5-flash + later support `systemInstruction`;
+    // older gemini-pro (which we don't list in the catalog) does not.
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}` +
-      `:generateContent?key=${encodeURIComponent(input.apiKey)}`;
+      `:generateContent`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-goog-api-key': input.apiKey,
+      },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: input.system }] },
         contents: [{ role: 'user', parts: [{ text: input.userPrompt }] }],
         generationConfig: { maxOutputTokens: input.maxTokens, temperature: 0.7 },
       }),
+      // SECURITY (audit-B2 fix) — see fetch-timeout note above the
+      // anthropic branch.
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
-      const errorBody = await res.text().catch(() => '');
+      // Belt-and-suspenders against B1: even with the header path
+      // above, redact any `key=...` substring that might appear in
+      // forwarded error bodies (e.g. Cloudflare interstitials,
+      // proxied error pages) before bubbling upstream.
+      let errorBody = await res.text().catch(() => '');
+      errorBody = errorBody.replace(/[?&]key=[^&\s"']+/g, '&key=REDACTED');
       return { raw: '', errorStatus: res.status, errorBody };
     }
     const json = (await res.json()) as any;

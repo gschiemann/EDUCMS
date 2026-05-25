@@ -31,6 +31,28 @@ import { PrismaService } from '../prisma/prisma.service';
 import { dispatchAi, type AiProvider, coerceProvider } from './ai-providers';
 import { openAiKey } from './ai-key-cipher';
 import { isVertical } from '@cms/api-types';
+// SECURITY (audit-B4 fix, 2026-05-25) — AI-generated touch actions
+// can include `open-url` / `webhook` targets. Without an SSRF guard,
+// a prompt-injection attacker could coax the model into emitting
+// `https://169.254.169.254/...` (AWS metadata), `https://10.0.0.x/...`
+// (private LAN), or DNS-rebinding hosts. Those would persist into
+// the template and fire at player render time — turning user
+// prompts into an SSRF primitive. validatePublicUrl does the same
+// host/IP-range check the branding scraper uses (loopback, link-
+// local, RFC1918, ULA, IPv6 ::1, 0.0.0.0, multicast, etc.).
+import { validatePublicUrl } from '../branding/safe-fetch';
+
+// Audit-W5 fix (2026-05-25) — error-message helper. Was inlined
+// `provider === 'anthropic' ? 'Anthropic' : 'OpenAI'` three times,
+// which collapsed Google → "OpenAI" so a Google-keyed tenant got
+// "Your OpenAI API key was rejected." Centralized here so adding
+// providers later doesn't reintroduce the bug.
+function providerDisplayName(p: AiProvider): string {
+  if (p === 'anthropic') return 'Anthropic';
+  if (p === 'openai') return 'OpenAI';
+  if (p === 'google') return 'Google';
+  return p;
+}
 
 export type AiIntent =
   | 'announcement'
@@ -337,12 +359,12 @@ export class AiService {
         // operator's job).
         if (out.errorStatus === 401 && resolved.source === 'tenant') {
           throw new ServiceUnavailableException(
-            `Your ${resolved.provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API key was rejected (401). Re-enter it in Settings → Integrations.`,
+            `Your ${providerDisplayName(resolved.provider)} API key was rejected (401). Re-enter it in Settings → Integrations.`,
           );
         }
         if (out.errorStatus === 429) {
           throw new ServiceUnavailableException(
-            `${resolved.provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} rate-limited the request. Try again in a moment.`,
+            `${providerDisplayName(resolved.provider)} rate-limited the request. Try again in a moment.`,
           );
         }
         throw new ServiceUnavailableException(
@@ -517,7 +539,7 @@ export class AiService {
       if (out.errorStatus) {
         if (out.errorStatus === 401 && resolved.source === 'tenant') {
           throw new ServiceUnavailableException(
-            `Your ${resolved.provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API key was rejected. Re-enter it in Settings → Integrations.`,
+            `Your ${providerDisplayName(resolved.provider)} API key was rejected. Re-enter it in Settings → Integrations.`,
           );
         }
         if (out.errorStatus === 429) {
@@ -711,10 +733,26 @@ function sanitizeTouchTemplate(raw: any): {
     const out: any = { type };
     if (typeof a.target === 'string' && a.target.trim()) {
       const target = a.target.trim().slice(0, 1000);
-      // open-url / webhook: must be https. Anything else falls through
-      // as text (scene/template name lookups happen later).
+      // open-url / webhook: must be https AND must not target a
+      // private / loopback / link-local host. The latter check
+      // (audit-B4 fix) defends against prompt-injection attempts to
+      // emit `https://169.254.169.254/...`, `https://10.x.x.x/...`,
+      // etc. — those would otherwise persist into the template and
+      // fire at player tap time. validatePublicUrl throws SsrfError
+      // on IP-literal hits; we swallow and drop the action (same
+      // failure-mode as a malformed scheme above). DNS-based
+      // hostnames pass synchronous IP-literal validation and rely
+      // on the player's own outbound network controls — that's
+      // documented as a defense-in-depth gap, not a blocker, in
+      // the audit follow-up. The synchronous validatePublicUrl is
+      // sufficient for the literal-IP threat model.
       if (type === 'open-url' || type === 'webhook') {
         if (!/^https:\/\//i.test(target)) return undefined;
+        try {
+          validatePublicUrl(target);
+        } catch {
+          return undefined;
+        }
       }
       out.target = target;
     }
