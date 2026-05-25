@@ -269,10 +269,32 @@ export class BrandingScraperService {
     const ogTitle = $('meta[property="og:title"]').attr('content')?.trim();
     const twitterTitle = $('meta[name="twitter:title"]').attr('content')?.trim();
     const pageTitle = $('title').first().text().trim();
-    const cleanedTitle = (pageTitle || '')
+    // 2026-05-25 — operator: "is the name and tagline really what we
+    // found? cant we do better than this?" — scraping mlb.com/dodgers
+    // returned name="MLB.com" (og:site_name) when "Los Angeles Dodgers"
+    // (og:title) is what the operator obviously wanted.
+    //
+    // Improvements vs. before:
+    //  1. Build cleanedTitle by ALSO stripping any "| <ogSiteName>"
+    //     or "- <ogSiteName>" suffix from the page <title>. So
+    //     "Los Angeles Dodgers | MLB.com" → "Los Angeles Dodgers".
+    //  2. For sub-path URLs (URL path !== "/"), prefer the page-
+    //     specific title (ogTitle / cleanedTitle) over the site-wide
+    //     ogSiteName, because the operator is intentionally pointing
+    //     us at the team/section, not the site.
+    //  3. For root URLs (URL path === "/"), keep the old order —
+    //     ogSiteName is right when scraping the homepage.
+    const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let cleanedTitle = (pageTitle || '')
       .replace(/\s*[|\-–—]\s*(Home|Welcome|Official Site|Home Page).*$/i, '')
       .replace(/\s*[|\-–—]\s*$/g, '')
       .trim();
+    if (ogSiteName && cleanedTitle) {
+      // Strip "| MLB.com", "- MLB.com", "– MLB.com", "— MLB.com" tail.
+      cleanedTitle = cleanedTitle
+        .replace(new RegExp(`\\s*[|\\-–—]\\s*${escapeRe(ogSiteName)}\\s*$`, 'i'), '')
+        .trim();
+    }
     const hostDerivedName = (() => {
       try {
         const h = new URL(finalUrl).hostname.replace(/^www\./, '');
@@ -280,7 +302,18 @@ export class BrandingScraperService {
         return root.split(/[-_]/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
       } catch { return null; }
     })();
-    const displayName = ogSiteName || ogTitle || twitterTitle || cleanedTitle || hostDerivedName || null;
+    // hasSubpath — is the URL pointing at something deeper than the
+    // bare homepage? Trailing-slash + index-style paths count as root.
+    const hasSubpath = (() => {
+      try {
+        const p = new URL(finalUrl).pathname || '/';
+        const stripped = p.replace(/\/+(index\.[a-z]+)?$/i, '');
+        return stripped.length > 0 && stripped !== '';
+      } catch { return false; }
+    })();
+    const displayName = hasSubpath
+      ? (ogTitle || twitterTitle || cleanedTitle || ogSiteName || hostDerivedName || null)
+      : (ogSiteName || ogTitle || twitterTitle || cleanedTitle || hostDerivedName || null);
 
     // 2026-05-07 — operator: "you ask for the name and tagline, and
     // it always just picks up the name twice".
@@ -345,11 +378,22 @@ export class BrandingScraperService {
         /^the official (?:site|website|page) of/i.test(lower)
       );
     };
+    // 2026-05-25 — operator caught the tagline coming back as
+    // "Headlines" on mlb.com/dodgers. That's not a tagline — it's a
+    // nav-section label that landed in `firstH2`. A real tagline is
+    // a sentence, not a section header. Reject any candidate that's
+    // a single-word common section label.
+    const isSectionLabel = (s: string) => {
+      const trimmed = s.trim();
+      if (/\s/.test(trimmed)) return false; // multi-word → keep
+      return /^(headlines?|news|schedule|scores?|roster|stats?|standings?|about|contact|home|menu|shop|store|gallery|photos?|videos?|tickets?|subscribe|login|search|more|live|events?|teams?|players?|results?|recap)$/i.test(trimmed);
+    };
     const tagline = taglineCandidates
       .map((s) => s?.trim())
       .filter((s): s is string => !!s && s.length >= 5 && s.length <= 160)
       .filter((s) => !dnNorm || normalize(s) !== dnNorm)
       .filter((s) => !isBoilerplate(s))
+      .filter((s) => !isSectionLabel(s))
       .filter((s) => !dnNorm || !normalize(s).startsWith(dnNorm)) // "BPHS - Home of..." → strip "BPHS" prefix elsewhere; here just reject equal-prefix cases
       [0] || null;
 
@@ -647,7 +691,11 @@ export class BrandingScraperService {
       logo: logos.length === 0 ? 0 : logos[0].score >= 90 ? 0.95 : logos[0].score >= 70 ? 0.8 : 0.5,
       palette: colors.length >= 3 ? 0.9 : colors.length === 2 ? 0.7 : colors.length === 1 ? 0.5 : 0.1,
       fonts: heading ? (heading.googleFont ? 0.85 : 0.6) : 0.3,
-      displayName: ogSiteName ? 0.95 : ogTitle ? 0.85 : cleanedTitle ? 0.7 : 0.4,
+      // 2026-05-25 — for sub-paths ogTitle is the page-specific name
+      // that beat ogSiteName above, so it's the high-confidence source.
+      displayName: hasSubpath
+        ? (ogTitle ? 0.9 : cleanedTitle ? 0.75 : ogSiteName ? 0.6 : 0.4)
+        : (ogSiteName ? 0.95 : ogTitle ? 0.85 : cleanedTitle ? 0.7 : 0.4),
       overall: 0,
     };
     confidence.overall = +(confidence.logo * 0.3 + confidence.palette * 0.35 + confidence.fonts * 0.2 + confidence.displayName * 0.15).toFixed(2);
@@ -835,6 +883,16 @@ export class BrandingScraperService {
     if (!first) return;
     // Skip generic system stacks and CSS keywords
     if (/^(inherit|initial|unset|revert|sans-serif|serif|monospace|cursive|fantasy|system-ui|-apple-system|BlinkMacSystemFont)$/i.test(first)) return;
+    // 2026-05-25 — Reject icon-fonts. Many sites declare a font-family
+    // of "slick" (jQuery Slick carousel arrow icons), "FontAwesome",
+    // "Material Icons" etc. for icon glyphs. These are NEVER the
+    // brand's typography but were getting captured as candidates,
+    // landing as "Heading: slick / Body: slick — System fallback" on
+    // mlb.com/dodgers (operator caught it 2026-05-25). Whole-family
+    // match (after lowercasing) — the FontAwesome family names include
+    // version numbers like "Font Awesome 6 Free" so we use `startsWith`
+    // for those.
+    if (this.isIconFont(first)) return;
     const key = first.toLowerCase();
     const prev = map.get(key) ?? { family: first, googleFont: matchGoogleFont(first), score: 0, occurrences: 0, weightsSeen: [], role };
     prev.occurrences += 1;
@@ -843,5 +901,64 @@ export class BrandingScraperService {
     if (role === 'heading') prev.role = 'heading';
     else if (role === 'body' && prev.role === 'either') prev.role = 'body';
     map.set(key, prev);
+  }
+
+  /**
+   * Recognize icon-font family names so they never get returned as a
+   * brand typography candidate. Operator caught it on 2026-05-25 when
+   * scraping mlb.com/dodgers produced Heading + Body = "slick" (the
+   * jQuery Slick carousel arrow font).
+   *
+   * Each entry is matched against the (lowercased) family name —
+   * `startsWith` for families that carry version suffixes ("Font
+   * Awesome 6 Free", "Material Symbols Outlined"), exact-match for
+   * simple-name fonts. Order matters only for readability; both
+   * branches run.
+   */
+  private isIconFont(family: string): boolean {
+    const f = family.trim().toLowerCase();
+    if (!f) return true;
+    // startsWith — these have variants ("Font Awesome 5 Pro",
+    // "Material Symbols Rounded", "Material Design Icons Mono"…).
+    const prefixes = [
+      'font awesome',
+      'fontawesome',
+      'material icons',
+      'material symbols',
+      'material design icons',
+      'mdi-',
+      'fa-',
+      'simple-line-icons',
+    ];
+    if (prefixes.some((p) => f.startsWith(p))) return true;
+    // exact-match — single-word library fonts that don't come in
+    // variants. "slick" is the carousel arrow font; the others are
+    // their library counterparts.
+    const exact = new Set([
+      'slick',
+      'glyphicons',
+      'glyphicons halflings',
+      'ionicons',
+      'feather',
+      'feather-icons',
+      'icomoon',
+      'themify',
+      'entypo',
+      'octicons',
+      'dripicons',
+      'et-line',
+      'elegant icons',
+      'lineicons',
+      'owl-carousel',
+      'swiper-icons',
+      'revicons',
+      'eleganticons',
+      'flat-icons',
+      'fontello',
+      'iconfont',
+      'icon',
+      'icons',
+    ]);
+    return exact.has(f);
   }
 }
