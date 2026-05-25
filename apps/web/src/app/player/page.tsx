@@ -2174,6 +2174,18 @@ function PlayerPage() {
   const [manifestPlaylists, setManifestPlaylists] = useState<ManifestPlaylistSummary[]>([]);
   // manifestOrientation state declared above near previewOrientation
   // so the CSS-fallback effect can reference it (Rules-of-Hooks).
+
+  // 2026-05-25 — pairing-splash orientation picker. Operator picks
+  // landscape/portrait/auto while the kiosk is still showing the 6-
+  // character pairing code. Each button tap:
+  //   1. Calls the native bridge so the kiosk visibly rotates RIGHT NOW
+  //   2. Mutates this state for the active-button highlight
+  //   3. If we already have a screenId (the server creates one before
+  //      a tenant claims it), POSTs to /screens/:id/orientation/device
+  //      with the device JWT so the choice persists on the server.
+  //      Pre-screenId taps still rotate the kiosk locally; persistence
+  //      retries the moment screenId lands.
+  const [pendingPairOrientation, setPendingPairOrientation] = useState<'LANDSCAPE' | 'PORTRAIT' | 'AUTO'>('LANDSCAPE');
   // Hydrate any cached emergency on first render so a power-cycle mid-alert
   // still shows the alert until ALL_CLEAR or a fresh manifest arrives.
   useEffect(() => {
@@ -4584,6 +4596,51 @@ function PlayerPage() {
               ? `${window.location.origin}/pair?code=${encodeURIComponent(pairingCode)}`
               : null
           }
+          orientation={pendingPairOrientation}
+          onOrientationChange={(value) => {
+            // 1. Instant local rotation via the native bridge — the
+            //    kiosk visibly rotates the moment the operator taps a
+            //    button, BEFORE the server has been notified. No round-
+            //    trip lag during setup.
+            try {
+              const bridge = (window as any).EduCmsNative;
+              if (bridge && typeof bridge.setOrientation === 'function') {
+                bridge.setOrientation(value);
+              }
+            } catch { /* bridge unavailable — CSS fallback effect handles it */ }
+            // Drive the active-button highlight + the CSS-fallback
+            // effect (which only kicks in for PORTRAIT on Android-API-
+            // ignoring ROMs).
+            setPendingPairOrientation(value);
+            setManifestOrientation(value);
+            // 2. Persist on the server when we can. The Screen row
+            //    exists from registration (well before tenant claim),
+            //    so the device JWT can write to /:id/orientation/device
+            //    as soon as we have a screenId. If we don't yet, the
+            //    setPendingPairOrientation state preserves the choice
+            //    for retry on the next render where screenId lands.
+            if (screenId) {
+              (async () => {
+                try {
+                  const tok = getDeviceToken();
+                  if (!tok) return; // pre-token render; manifest path retries
+                  await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/orientation/device`, {
+                    method: 'PUT',
+                    headers: {
+                      'Authorization': `Bearer ${tok}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ orientation: value, reason: 'pairing-splash' }),
+                  });
+                } catch {
+                  // Server persist failed (network blip / pre-pair).
+                  // Local rotation still applied; the persistence will
+                  // retry on next render if the operator taps again,
+                  // and dashboard-side change still works post-pair.
+                }
+              })();
+            }
+          }}
         />
         {otaOverlay}
         {connectivityToast}

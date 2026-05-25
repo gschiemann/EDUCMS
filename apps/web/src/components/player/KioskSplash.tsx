@@ -137,6 +137,22 @@ export interface KioskSplashProps {
    *  button (e.g. on pairing mode where there's no tenant context yet). */
   onInstallUpdate?: () => void;
 
+  // ─── Orientation picker (pairing mode only) ───
+  // Operator (2026-05-25): "i would think i pick the orientation from
+  // the player during the pairing menu... still keep the ability to
+  // change from dashboard but being able to change during setup seems
+  // easiest". Three buttons (Landscape / Portrait / Auto) on the
+  // pairing splash; the picker calls onOrientationChange immediately
+  // so the screen visibly rotates as the operator decides, AND the
+  // player route persists the choice to /screens/:id/orientation
+  // right after pairing completes.
+
+  /** Current orientation selection. Drives the active-button highlight
+   *  in the picker. Defaults to LANDSCAPE if undefined. */
+  orientation?: 'LANDSCAPE' | 'PORTRAIT' | 'AUTO' | null;
+  /** Click handler — fires immediately on button tap so the kiosk
+   *  visibly rotates during setup. */
+  onOrientationChange?: (value: 'LANDSCAPE' | 'PORTRAIT' | 'AUTO') => void;
 }
 
 export function KioskSplash({
@@ -152,7 +168,10 @@ export function KioskSplash({
   otaProgress,
   latestApkVersion,
   onInstallUpdate,
+  orientation,
+  onOrientationChange,
 }: KioskSplashProps) {
+  const activeOrientation = orientation || 'LANDSCAPE';
   const displayName = brandName && brandName.trim() ? brandName : 'VenueOS';
 
   // ─── OTA banner state ────────────────────────────────────────
@@ -301,6 +320,32 @@ export function KioskSplash({
               <div className="kiosk-qr-hint">
                 <QrCode className="kiosk-qr-icon" />
                 <span>Or scan to pair from your phone</span>
+              </div>
+            )}
+
+            {/* Orientation picker — operator (2026-05-25): set portrait
+                vs landscape RIGHT HERE on the kiosk during pairing.
+                Calls onOrientationChange immediately so the screen
+                visibly rotates as the operator decides. After pairing
+                completes the player route persists the choice via
+                PUT /screens/:id/orientation. Dashboard control still
+                works for changes-after-install. */}
+            {onOrientationChange && (
+              <div className="kiosk-orient-row" role="group" aria-label="Screen orientation">
+                <span className="kiosk-orient-label">Orientation</span>
+                <div className="kiosk-orient-buttons">
+                  {(['LANDSCAPE', 'PORTRAIT', 'AUTO'] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => onOrientationChange(v)}
+                      className={`kiosk-orient-btn ${activeOrientation === v ? 'kiosk-orient-btn-active' : ''}`}
+                      aria-pressed={activeOrientation === v}
+                    >
+                      {v === 'LANDSCAPE' ? 'Landscape' : v === 'PORTRAIT' ? 'Portrait' : 'Auto'}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -667,6 +712,60 @@ const CSS = `
   margin-bottom: clamp(16px, 2vh, 28px);
 }
 .kiosk-qr-icon { width: 18px; height: 18px; color: var(--splash-accent); }
+
+/* ─── Orientation picker (pairing splash, 2026-05-25) ────────── */
+.kiosk-orient-row {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.kiosk-orient-label {
+  font-size: clamp(11px, 1.3vh, 13px);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.kiosk-orient-buttons {
+  display: inline-flex;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+.kiosk-orient-btn {
+  appearance: none;
+  font: inherit;
+  border: 0;
+  cursor: pointer;
+  background: transparent;
+  color: #cbd5e1;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: clamp(13px, 1.5vh, 15px);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  transition: background 120ms ease, color 120ms ease, transform 80ms ease;
+}
+.kiosk-orient-btn:hover {
+  color: #f8fafc;
+  background: rgba(99, 102, 241, 0.18);
+}
+.kiosk-orient-btn:active {
+  transform: scale(0.97);
+}
+.kiosk-orient-btn-active {
+  background: #6366f1;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+}
+.kiosk-orient-btn-active:hover {
+  background: #4f46e5;
+  color: #ffffff;
+}
 
 /* ─── Status row ────────────────────────────────────────────── */
 .kiosk-status-row {

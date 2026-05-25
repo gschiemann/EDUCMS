@@ -1228,6 +1228,99 @@ export class ScreensController {
     return updated;
   }
 
+  /**
+   * 2026-05-25 — device-authenticated companion to PUT /:id/orientation.
+   *
+   * The pairing-splash orientation picker on the player runs BEFORE an
+   * operator has claimed the kiosk, so the player can't authenticate as
+   * an admin yet. It can however prove device identity via the device
+   * JWT it received at boot. This endpoint accepts that token, verifies
+   * the JWT.sub matches the targeted screenId, and applies the same
+   * persistence + signed WS broadcast + audit-log writes as the
+   * operator endpoint.
+   *
+   * Authorization model is the same as
+   * /:id/manifest + /:id/emergency-assets — verifyDeviceForScreen. Any
+   * device that tries to write a different screen's orientation is
+   * rejected at the auth gate.
+   *
+   * AuditLog row carries `source: 'device'` so a forensic reader can
+   * tell operator-driven changes from kiosk-driven ones.
+   */
+  @Put(':id/orientation/device')
+  async setOrientationFromDevice(
+    @Param('id') id: string,
+    @Req() req: ExpressReq,
+    @Body() body: { orientation?: string; reason?: string },
+  ) {
+    const auth = verifyDeviceForScreen(req, id);
+    if (!auth.ok) {
+      throw new HttpException(`Device auth required (${auth.reason})`, HttpStatus.UNAUTHORIZED);
+    }
+
+    const target = String(body.orientation || '').toUpperCase().trim();
+    const ALLOWED = new Set(['LANDSCAPE', 'PORTRAIT', 'AUTO']);
+    if (!ALLOWED.has(target)) {
+      throw new HttpException(
+        'orientation must be one of: LANDSCAPE, PORTRAIT, AUTO',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const screen = await this.prisma.client.screen.findUnique({
+      where: { id },
+      select: { id: true, tenantId: true, orientation: true, name: true },
+    });
+    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    const updated = await this.prisma.client.$transaction(async (tx) => {
+      const u = await tx.screen.update({
+        where: { id },
+        data: { orientation: target },
+      });
+      // Only audit when there's a tenant — pre-pair screens (tenantId
+      // null) still get a row but with a sentinel tenantId to keep the
+      // FK happy. AuditLog requires tenantId NOT NULL per schema; for
+      // pre-pair changes we skip the audit row — the persisted value
+      // alone is enough forensic signal for "what did the screen pick
+      // during setup" since the next manifest poll will reveal it.
+      if (screen.tenantId) {
+        await tx.auditLog.create({
+          data: {
+            tenantId: screen.tenantId,
+            userId: null,
+            action: 'SCREEN_ORIENTATION_CHANGED',
+            targetType: 'Screen',
+            targetId: id,
+            details: JSON.stringify({
+              from: screen.orientation,
+              to: target,
+              source: 'device',
+              reason: body.reason ?? null,
+            }),
+          },
+        });
+      }
+      return u;
+    });
+
+    // Signed WS broadcast — even though the player IS the one that
+    // requested the change, broadcasting closes the loop with any
+    // dashboard tabs currently watching this screen + keeps the
+    // device:<id> channel as the single source of truth.
+    const signed = this.signer.signMessage('ORIENTATION_CHANGE', {
+      screenId: id,
+      orientation: target,
+      source: 'device',
+      reason: body.reason ?? null,
+    });
+    try {
+      await this.redisService.publish(`device:${id}`, signed);
+    } catch { /* non-fatal — manifest poll converges */ }
+
+    return updated;
+  }
+
   // ─── Sprint 8 — set screen geo location (map view) ───
   // Admin types an address (or pastes lat/lng); we forward to the
   // OpenStreetMap Nominatim public endpoint to geocode, store all three.
