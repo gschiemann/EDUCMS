@@ -18,7 +18,7 @@ import { LicenseCard } from '@/components/settings/LicenseCard';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
 import { EmbeddedFloorPlanView } from '@/components/floor-plans/EmbeddedFloorPlanView';
 import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
-import { AiKeyCard } from '@/components/settings/AiKeyCard';
+import { AiProviderRow } from '@/components/settings/AiProviderRow';
 import { DistrictSchoolsCard } from '@/components/settings/DistrictSchoolsCard';
 import { VerticalSwitcherCard } from '@/components/settings/VerticalSwitcherCard';
 import { appConfirm } from '@/components/ui/app-dialog';
@@ -194,8 +194,16 @@ export default function SettingsPage() {
             key, generations route through their account, we stop
             paying. Falls back to platform free-trial key if unset
             and one is configured on the deployment. */}
+        {/* 2026-05-25 — was <AiKeyCard /> (fat embedded form). Per
+            operator: "shouldnt it be like the others where i click
+            configure, it goes to another page where i set everything
+            up and the main setting page just shows whats configured
+            once your done." The single-row status card here, the
+            full BYOK configurator (provider radio + model picker +
+            cost lines + key field) lives at /settings/ai. Pattern
+            matches Industry / Brand / Emergency / Developer rows. */}
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
-          <AiKeyCard />
+          <AiProviderRow />
         </RoleGate>
 
         {/* District-level: list + create child schools (Sprint 12 — district hierarchy UI) */}

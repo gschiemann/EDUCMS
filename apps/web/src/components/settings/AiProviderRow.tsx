@@ -1,0 +1,158 @@
+/**
+ * AiProviderRow — slim status card on /settings.
+ *
+ * 2026-05-25 — operator: "shouldnt it be like the others where i
+ * click configure, it goes to another page where i set everything
+ * up and the main setting page just shows whats configured once
+ * your done." Mirrors the Industry / Emergency / Brand row pattern:
+ * single line with a status pill + inline description + Configure
+ * button that navigates to /settings/ai for the full configuration
+ * flow.
+ *
+ * Fetches status from GET /ai/key + catalog labels from
+ * GET /ai/key/catalog so the row reads e.g. "Anthropic · Claude 3.5
+ * Haiku" without duplicating catalog data on the FE.
+ */
+'use client';
+
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { Sparkles, AlertCircle, Check, Loader2 } from 'lucide-react';
+import { apiFetch } from '@/lib/api-client';
+
+interface AiKeyStatus {
+  configured: boolean;
+  provider: 'anthropic' | 'openai' | 'google' | null;
+  model: string | null;
+  keyHealthy: boolean | null;
+  platformFallbackAvailable: boolean;
+}
+interface AiModelInfo {
+  id: string;
+  label: string;
+}
+interface AiProviderInfo {
+  id: 'anthropic' | 'openai' | 'google';
+  label: string;
+  models: AiModelInfo[];
+}
+
+export function AiProviderRow() {
+  const params = useParams();
+  const schoolId = params?.schoolId as string;
+  const [status, setStatus] = useState<AiKeyStatus | null>(null);
+  const [catalog, setCatalog] = useState<AiProviderInfo[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [s, c] = await Promise.all([
+          apiFetch<AiKeyStatus>('/ai/key'),
+          apiFetch<{ providers: AiProviderInfo[] }>('/ai/key/catalog').catch(() => ({ providers: [] })),
+        ]);
+        setStatus(s);
+        setCatalog(c.providers);
+      } catch {
+        // API not deployed yet / not reachable — render the "not
+        // configured" branch so the row still renders the Configure
+        // CTA.
+        setStatus({
+          configured: false,
+          provider: null,
+          model: null,
+          keyHealthy: null,
+          platformFallbackAvailable: false,
+        });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  // Resolve provider + model labels from catalog (so the row reads
+  // "Anthropic · Claude 3.5 Haiku" not "anthropic · claude-3-5-haiku-20241022").
+  const providerInfo = catalog?.find((p) => p.id === status?.provider);
+  const modelInfo = providerInfo?.models.find((m) => m.id === status?.model);
+
+  // Pick the state we're rendering. Five branches:
+  //   1. loading
+  //   2. configured + key healthy → "Connected — X · Y"
+  //   3. configured + key NOT healthy → red banner ("re-enter key")
+  //   4. not configured + platform fallback exists → "Free trial active"
+  //   5. not configured + no fallback → "Set up AI"
+  const renderStatusPill = () => {
+    if (loading) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-bold text-slate-500">
+          <Loader2 className="w-3 h-3 animate-spin" /> Loading
+        </span>
+      );
+    }
+    if (status?.configured && status?.keyHealthy === false) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-[11px] font-bold text-rose-700">
+          <AlertCircle className="w-3 h-3" /> Key broken
+        </span>
+      );
+    }
+    if (status?.configured) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-700">
+          <Check className="w-3 h-3" /> Connected
+        </span>
+      );
+    }
+    if (status?.platformFallbackAvailable) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 text-[11px] font-bold text-violet-700">
+          Free trial
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-bold text-slate-500">
+        Not set up
+      </span>
+    );
+  };
+
+  const renderInlineCopy = () => {
+    if (loading) return null;
+    if (status?.configured && status.keyHealthy === false) {
+      return 'Your saved key can’t be decrypted. Re-enter it to restore AI.';
+    }
+    if (status?.configured && providerInfo && modelInfo) {
+      return `${providerInfo.label} · ${modelInfo.label}`;
+    }
+    if (status?.configured && providerInfo) {
+      return providerInfo.label;
+    }
+    if (status?.platformFallbackAvailable) {
+      return 'Try AI on our free trial. Add your own key when ready.';
+    }
+    return 'Pick a provider, paste a key, choose a model.';
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-4">
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="w-9 h-9 rounded-lg bg-violet-50 border border-violet-200 flex items-center justify-center shrink-0">
+          <Sparkles className="w-4 h-4 text-violet-600" />
+        </div>
+        <div className="min-w-0 flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-bold text-slate-800 shrink-0">AI provider</span>
+          {renderStatusPill()}
+          <span className="text-[11px] text-slate-500 truncate">{renderInlineCopy()}</span>
+        </div>
+      </div>
+      <Link
+        href={`/${schoolId}/settings/ai`}
+        className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 text-white text-xs font-bold hover:bg-violet-700 transition-colors"
+      >
+        {status?.configured ? 'Manage' : 'Configure'}
+      </Link>
+    </div>
+  );
+}
