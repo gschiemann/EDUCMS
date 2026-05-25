@@ -203,94 +203,55 @@ export const DEFAULT_VERTICAL: Vertical = 'K12';
  * Per-vertical role display labels. The DB enum values stay constant
  * (DISTRICT_ADMIN / SCHOOL_ADMIN / SUPER_ADMIN / CONTRIBUTOR /
  * RESTRICTED_VIEWER) but the human labels change so a gym admin
- * doesn't see "District Admin" on their team page. K12 keeps its
- * existing strings exactly.
+ * doesn't see "District Admin" on their team page.
+ *
+ * 2026-05-25 — operator: "we are calling me a district admin even
+ * though im in the venue, lets just generalize the admin names,
+ * maybe super admin for the account creator." Per-vertical
+ * variants (League Admin / Venue Admin / Brand Admin / Region
+ * Admin / Boutique Admin / Ministry Admin / Game-Day Operator)
+ * mostly read awkwardly outside their flagship vertical and made
+ * the team page feel inconsistent across tenants. Generalized to
+ * one neutral canonical set across EVERY vertical:
+ *
+ *   - SUPER_ADMIN       → "Platform Admin" (our company staff —
+ *                          renamed from "Super Admin" so it can't
+ *                          collide with the customer's top role
+ *                          below; customers never see this).
+ *   - DISTRICT_ADMIN    → "Super Admin"    (THE ACCOUNT CREATOR
+ *                          for a tenant, per operator's exact ask.
+ *                          Top of the customer hierarchy.)
+ *   - SCHOOL_ADMIN      → "Admin"
+ *   - CONTRIBUTOR       → "Editor"
+ *   - RESTRICTED_VIEWER → "Viewer"
+ *
+ * The per-vertical map structure is preserved so we can re-introduce
+ * vertical-specific labels later if a customer asks (e.g., a school
+ * district wanting "District Admin" / "Principal" back). For now,
+ * uniform labels mean a single mental model whether the operator is
+ * running a school, a stadium, a hotel group, or a corporate office.
  */
+const CANONICAL_ROLE_LABELS: Record<string, string> = {
+  SUPER_ADMIN:        'Platform Admin',
+  DISTRICT_ADMIN:     'Super Admin',
+  SCHOOL_ADMIN:       'Admin',
+  CONTRIBUTOR:        'Editor',
+  RESTRICTED_VIEWER:  'Viewer',
+};
+
 export const VERTICAL_ROLE_LABELS: Record<Vertical, Record<string, string>> = {
-  K12: {
-    SUPER_ADMIN:        'Super Admin',
-    DISTRICT_ADMIN:     'District Admin',
-    SCHOOL_ADMIN:       'School Admin',
-    CONTRIBUTOR:        'Contributor',
-    RESTRICTED_VIEWER:  'Viewer',
-  },
-  GYM: {
-    SUPER_ADMIN:        'Super Admin',
-    DISTRICT_ADMIN:     'Region Admin',
-    SCHOOL_ADMIN:       'Gym Admin',
-    CONTRIBUTOR:        'Trainer',
-    RESTRICTED_VIEWER:  'Viewer',
-  },
-  RETAIL: {
-    SUPER_ADMIN:        'Super Admin',
-    DISTRICT_ADMIN:     'Region Admin',
-    SCHOOL_ADMIN:       'Store Admin',
-    CONTRIBUTOR:        'Associate',
-    RESTRICTED_VIEWER:  'Viewer',
-  },
-  CORPORATE: {
-    SUPER_ADMIN:        'Super Admin',
-    DISTRICT_ADMIN:     'Company Admin',
-    SCHOOL_ADMIN:       'Office Admin',
-    CONTRIBUTOR:        'Editor',
-    RESTRICTED_VIEWER:  'Viewer',
-  },
-  QSR: {
-    SUPER_ADMIN:        'Super Admin',
-    DISTRICT_ADMIN:     'Brand Admin',
-    SCHOOL_ADMIN:       'Restaurant Admin',
-    CONTRIBUTOR:        'Manager',
-    RESTRICTED_VIEWER:  'Viewer',
-  },
-  FASHION: {
-    SUPER_ADMIN:        'Super Admin',
-    DISTRICT_ADMIN:     'Brand Admin',
-    SCHOOL_ADMIN:       'Boutique Admin',
-    CONTRIBUTOR:        'Stylist',
-    RESTRICTED_VIEWER:  'Viewer',
-  },
-  BAR: {
-    SUPER_ADMIN:        'Super Admin',
-    DISTRICT_ADMIN:     'Owner',
-    SCHOOL_ADMIN:       'Manager',
-    CONTRIBUTOR:        'Manager',
-    RESTRICTED_VIEWER:  'Viewer',
-  },
-  HEALTHCARE: {
-    SUPER_ADMIN:        'Super Admin',
-    DISTRICT_ADMIN:     'Network Admin',
-    SCHOOL_ADMIN:       'Practice Admin',
-    CONTRIBUTOR:        'Coordinator',
-    RESTRICTED_VIEWER:  'Viewer',
-  },
-  HOSPITALITY: {
-    SUPER_ADMIN:        'Super Admin',
-    DISTRICT_ADMIN:     'Group Admin',
-    SCHOOL_ADMIN:       'Property Admin',
-    CONTRIBUTOR:        'Manager',
-    RESTRICTED_VIEWER:  'Viewer',
-  },
-  RESTAURANT: {
-    SUPER_ADMIN:        'Super Admin',
-    DISTRICT_ADMIN:     'Group Admin',
-    SCHOOL_ADMIN:       'Restaurant Admin',
-    CONTRIBUTOR:        'Manager',
-    RESTRICTED_VIEWER:  'Viewer',
-  },
-  SPORTS: {
-    SUPER_ADMIN:        'Super Admin',
-    DISTRICT_ADMIN:     'League Admin',
-    SCHOOL_ADMIN:       'Venue Admin',
-    CONTRIBUTOR:        'Game-Day Operator',
-    RESTRICTED_VIEWER:  'Viewer',
-  },
-  WORSHIP: {
-    SUPER_ADMIN:        'Super Admin',
-    DISTRICT_ADMIN:     'Ministry Admin',
-    SCHOOL_ADMIN:       'Campus Admin',
-    CONTRIBUTOR:        'Volunteer',
-    RESTRICTED_VIEWER:  'Viewer',
-  },
+  K12:         { ...CANONICAL_ROLE_LABELS },
+  GYM:         { ...CANONICAL_ROLE_LABELS },
+  RETAIL:      { ...CANONICAL_ROLE_LABELS },
+  CORPORATE:   { ...CANONICAL_ROLE_LABELS },
+  QSR:         { ...CANONICAL_ROLE_LABELS },
+  FASHION:     { ...CANONICAL_ROLE_LABELS },
+  BAR:         { ...CANONICAL_ROLE_LABELS },
+  HEALTHCARE:  { ...CANONICAL_ROLE_LABELS },
+  HOSPITALITY: { ...CANONICAL_ROLE_LABELS },
+  RESTAURANT:  { ...CANONICAL_ROLE_LABELS },
+  SPORTS:      { ...CANONICAL_ROLE_LABELS },
+  WORSHIP:     { ...CANONICAL_ROLE_LABELS },
 };
 
 export function getRoleLabel(role: string, vertical: Vertical = DEFAULT_VERTICAL): string {

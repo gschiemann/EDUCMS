@@ -10,6 +10,8 @@ import {
   ArrowRight,
   Plus,
   Building2,
+  Monitor,
+  Smartphone,
 } from 'lucide-react';
 import {
   useLocationBasedEmergencyConfig,
@@ -203,9 +205,9 @@ export function LocationBasedEmergencyCard() {
               </li>
               <li>
                 For each of the 6 emergency types, configure the{' '}
-                <span className="font-semibold">📺 Landscape</span> and{' '}
-                <span className="font-semibold">📱 Portrait</span> rows independently — pick a playlist or
-                upload a custom asset.
+                <span className="inline-flex items-center gap-1 font-semibold"><Monitor className="w-3.5 h-3.5" /> Landscape</span> and{' '}
+                <span className="inline-flex items-center gap-1 font-semibold"><Smartphone className="w-3.5 h-3.5" /> Portrait</span>{' '}
+                rows independently — pick a playlist or upload a custom asset.
               </li>
               <li>
                 Anything left on <span className="font-semibold">tenant default</span> falls back to the

@@ -541,7 +541,7 @@ export function Sidebar() {
                   Super Admin
                 </span>
               ) : (
-                <p className="text-[9px] text-slate-400">{mounted ? (user?.role?.replace(/_/g, ' ') || 'Role') : '\u00A0'}</p>
+                <p className="text-[9px] text-slate-400">{mounted ? (tenantCopyForBrand.roleLabel(user?.role || '') || 'Role') : '\u00A0'}</p>
               )}
             </div>
             <button

@@ -11,11 +11,16 @@ import { HelpDrawer } from '../help/HelpDrawer';
 import { NotificationsBell } from './NotificationsBell';
 import { SchoolSwitcher } from './SchoolSwitcher';
 import { ProfileEditModal } from './ProfileEditModal';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
 export function TopToolbar() {
   const router = useRouter();
   const isEmergencyActive = useAppStore((state) => state.isEmergencyActive);
   const user = useAppStore((state) => state.user);
+  // 2026-05-25 — resolve user.role through useTenantCopy so the
+  // dropdown label reads "Super Admin" / "Admin" / etc. instead of
+  // raw "DISTRICT_ADMIN" / "SCHOOL_ADMIN".
+  const topToolbarTenantCopy = useTenantCopy();
   const logout = useAppStore((state) => state.logout);
   const toggleMobileSidebar = useAppStore((state) => state.toggleMobileSidebar);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -108,7 +113,7 @@ export function TopToolbar() {
                   {fullDisplayName && user?.email && (
                     <p className="text-[10px] text-slate-400 mt-0.5 truncate">{user.email}</p>
                   )}
-                  <p className="text-[10px] text-slate-400 mt-0.5">{user?.role?.replace(/_/g, ' ')}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{topToolbarTenantCopy.roleLabel(user?.role || '')}</p>
                 </div>
                 {/* 2026-05-11 — Edit profile lives here, not in
                     /settings (operator: "settings page is fucking

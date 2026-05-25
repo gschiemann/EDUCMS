@@ -111,6 +111,14 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
   const { data: plan, isLoading } = useFloorPlan(planId);
   const { data: allScreens } = useScreens();
   const placeMutation = usePlaceScreenOnFloor();
+  // 2026-05-25 — operator: "i tried to drag a screen back off the map
+  // into the selection area and it doesnt remove it from the map, we
+  // need to allow that, maybe i placed it on the wrong map and want
+  // to set it again." Drag-to-sidebar is now the gesture for
+  // detaching a placed pin. Mutation reused from the drawer's
+  // "Remove from this plan" button — same endpoint, same audit log.
+  const sidebarDropRef = useRef<HTMLElement>(null);
+  const detachMutationParent = useDetachScreenFromFloor();
   const stageRef = useRef<HTMLDivElement>(null);
   const [selectedScreenId, setSelectedScreenId] = useState<string | null>(null);
   const [stageScale, setStageScale] = useState(1);
@@ -202,8 +210,42 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
         return;
       }
 
-      // Cancelled or dropped outside stage → no placement.
+      // Cancelled or dropped outside stage → potentially a detach.
       if (wasCancelled || !e || !stageHitTest(e.clientX, e.clientY) || !plan) {
+        // 2026-05-25 — drag-back-to-sidebar = detach. Only fires for
+        // pins that were ALREADY placed on this plan (sidebar-source
+        // drags don't need a detach path — they were never attached).
+        // Hit-test the sidebar's bounding rect; anywhere INSIDE
+        // counts as a detach gesture. Outside both stage AND sidebar
+        // is treated as a cancel (operator probably just released
+        // mid-air to abort).
+        const wasAlreadyPlaced = !!plan?.screens.find((s) => s.id === dragHandle.screenId);
+        const sidebarEl = sidebarDropRef.current;
+        const overSidebar =
+          !!e && !!sidebarEl
+            ? (() => {
+                const r = sidebarEl.getBoundingClientRect();
+                return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+              })()
+            : false;
+        if (wasAlreadyPlaced && overSidebar && !wasCancelled && plan) {
+          const screenId = dragHandle.screenId;
+          // Optimistic remove from local placedScreens cache.
+          setOptimisticPositions((prev) => {
+            const next = { ...prev };
+            delete next[screenId];
+            return next;
+          });
+          detachMutationParent
+            .mutateAsync({ planId: plan.id, screenId })
+            .catch((err: any) => {
+              appAlert({
+                title: "Couldn't remove pin from plan",
+                message: err?.message || 'Try again — if it keeps failing, refresh.',
+                tone: 'danger',
+              });
+            });
+        }
         setDragHandle(null);
         setDragPos({ x: 0, y: 0, active: false, overStage: false });
         return;
@@ -269,7 +311,7 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [dragHandle, plan, stageScale, placeMutation]);
+  }, [dragHandle, plan, stageScale, placeMutation, detachMutationParent]);
 
   const screensList = useMemo(() => {
     return Array.isArray(allScreens) ? allScreens : (allScreens as any)?.screens || [];
@@ -406,11 +448,38 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
           </div>
         </div>
 
-        {/* Unplaced screens panel */}
-        <aside className="space-y-3">
+        {/* Unplaced screens panel.
+            2026-05-25 — also serves as the drop target for "drag a
+            placed pin back here to detach it from this plan." The
+            drag pipeline hit-tests sidebarDropRef in its pointer-up
+            handler; ref attaches to <aside>. While a placed pin is
+            being dragged AND the cursor is over this sidebar, the
+            border tints rose to advertise the detach gesture. */}
+        <aside
+          ref={sidebarDropRef}
+          className={`space-y-3 rounded-2xl transition-all p-2 -m-2 ${
+            dragHandle &&
+            dragPos.active &&
+            !dragPos.overStage &&
+            !!plan?.screens.find((s) => s.id === dragHandle.screenId)
+              ? 'ring-2 ring-rose-300 bg-rose-50/40'
+              : ''
+          }`}
+        >
           <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
             Unplaced screens <span className="text-slate-300">({unplaced.length})</span>
           </div>
+          {/* Drop-here hint shown only while a placed pin is mid-drag
+              over the sidebar. Keeps the affordance discoverable
+              without permanently cluttering the panel. */}
+          {dragHandle &&
+            dragPos.active &&
+            !dragPos.overStage &&
+            !!plan?.screens.find((s) => s.id === dragHandle.screenId) && (
+              <p className="text-[11px] font-semibold text-rose-700 bg-rose-100/70 border border-rose-200 rounded-md px-2 py-1.5 leading-snug">
+                Drop here to remove from this plan
+              </p>
+            )}
           <RoleGate
             allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}
             fallback={

@@ -104,8 +104,8 @@ export function BrandingSettingsCard() {
           </span>
           <span className="text-[11px] text-slate-500 truncate">
             {branding
-              ? 'Re-skin the CMS to match your colors, logo, and fonts.'
-              : 'Paste your school&rsquo;s URL — we&rsquo;ll match the CMS to your colors, logo, and fonts.'}
+              ? 'Update your colors, logo, and fonts.'
+              : 'Brand it as your own — paste your website and we&rsquo;ll match your colors, logo, and fonts.'}
           </span>
         </div>
         {/* 2026-05-25 operator: "remove the upload button from the

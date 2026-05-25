@@ -23,7 +23,15 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { FileText, FileVideo, Image as ImageIcon, Loader2, Upload, Trash2 } from 'lucide-react';
+import {
+  FileText, FileVideo, Image as ImageIcon, Loader2, Upload, Trash2,
+  // 2026-05-25 — operator: "these little logos look like emojis,
+  // keep our looks and feel even on the little things like this."
+  // Replaced 🔒 / 🚪 / ✋ / 🛡️ / 🌪️ / 🚑 / 📺 / 📱 with the same
+  // monochrome lucide icons used everywhere else in the chrome.
+  Lock, DoorOpen, Hand, ShieldCheck, Tornado, Ambulance, Monitor, Smartphone,
+  type LucideIcon,
+} from 'lucide-react';
 import {
   useUpdateScreenEmergencyContent,
   type FloorPlanScreen,
@@ -40,27 +48,27 @@ export interface EmergencyTypeRow {
   portraitPlaylistKey: keyof FloorPlanScreen;
   portraitAssetKey: keyof FloorPlanScreen;
   label: string;
-  emoji: string;
+  Icon: LucideIcon;
   description: string;
 }
 
 export const EMERGENCY_TYPES: EmergencyTypeRow[] = [
-  { short: 'lockdown', label: 'Lockdown', emoji: '🔒', description: 'Threat — secure room, lights off',
+  { short: 'lockdown', label: 'Lockdown', Icon: Lock, description: 'Threat — secure room, lights off',
     playlistKey: 'emergencyLockdownPlaylistId', assetKey: 'emergencyLockdownAssetUrl',
     portraitPlaylistKey: 'emergencyLockdownPortraitPlaylistId', portraitAssetKey: 'emergencyLockdownPortraitAssetUrl' },
-  { short: 'evacuate', label: 'Evacuate', emoji: '🚪', description: 'Fire / hazard — leave the building',
+  { short: 'evacuate', label: 'Evacuate', Icon: DoorOpen, description: 'Fire / hazard — leave the building',
     playlistKey: 'emergencyEvacuatePlaylistId', assetKey: 'emergencyEvacuateAssetUrl',
     portraitPlaylistKey: 'emergencyEvacuatePortraitPlaylistId', portraitAssetKey: 'emergencyEvacuatePortraitAssetUrl' },
-  { short: 'hold',     label: 'Hold',     emoji: '✋', description: 'Clear hallways, stay in current room',
+  { short: 'hold',     label: 'Hold',     Icon: Hand, description: 'Clear hallways, stay in current room',
     playlistKey: 'emergencyHoldPlaylistId', assetKey: 'emergencyHoldAssetUrl',
     portraitPlaylistKey: 'emergencyHoldPortraitPlaylistId', portraitAssetKey: 'emergencyHoldPortraitAssetUrl' },
-  { short: 'secure',   label: 'Secure',   emoji: '🛡️', description: 'Outside threat — close perimeter, business as usual inside',
+  { short: 'secure',   label: 'Secure',   Icon: ShieldCheck, description: 'Outside threat — close perimeter, business as usual inside',
     playlistKey: 'emergencySecurePlaylistId', assetKey: 'emergencySecureAssetUrl',
     portraitPlaylistKey: 'emergencySecurePortraitPlaylistId', portraitAssetKey: 'emergencySecurePortraitAssetUrl' },
-  { short: 'weather',  label: 'Weather',  emoji: '🌪️', description: 'Severe storm / tornado — interior safe spot',
+  { short: 'weather',  label: 'Weather',  Icon: Tornado, description: 'Severe storm / tornado — interior safe spot',
     playlistKey: 'emergencyWeatherPlaylistId', assetKey: 'emergencyWeatherAssetUrl',
     portraitPlaylistKey: 'emergencyWeatherPortraitPlaylistId', portraitAssetKey: 'emergencyWeatherPortraitAssetUrl' },
-  { short: 'medical',  label: 'Medical',  emoji: '🚑', description: 'Medical event — clear the area',
+  { short: 'medical',  label: 'Medical',  Icon: Ambulance, description: 'Medical event — clear the area',
     playlistKey: 'emergencyMedicalPlaylistId', assetKey: 'emergencyMedicalAssetUrl',
     portraitPlaylistKey: 'emergencyMedicalPortraitPlaylistId', portraitAssetKey: 'emergencyMedicalPortraitAssetUrl' },
 ];
@@ -236,24 +244,29 @@ export function ScreenEmergencyContentConfig({
 
   return (
     <section>
-      <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
-        Upload the content that plays on <span className="font-semibold text-slate-700">this screen only</span> for each emergency type.
-        <span className="font-semibold"> 📺 Landscape</span> and <span className="font-semibold">📱 Portrait</span> are independent —
-        the player picks the one matching the screen's orientation. Empty slots fall back to the
-        tenant default.
+      <p className="text-[11px] text-slate-500 leading-relaxed mb-3 flex flex-wrap items-center gap-1">
+        <span>Upload the content that plays on <span className="font-semibold text-slate-700">this screen only</span> for each emergency type.</span>
+        <span className="inline-flex items-center gap-1 font-semibold text-slate-700">
+          <Monitor className="w-3.5 h-3.5" /> Landscape
+        </span>
+        <span>and</span>
+        <span className="inline-flex items-center gap-1 font-semibold text-slate-700">
+          <Smartphone className="w-3.5 h-3.5" /> Portrait
+        </span>
+        <span>are independent — the player picks the one matching the screen's orientation. Empty slots fall back to the tenant default.</span>
       </p>
       <div className="space-y-2.5">
         {filteredEmergencyTypes.map((t) => {
-          const orientations: { orient: Orient; icon: string; label: string }[] = [
-            { orient: 'landscape', icon: '📺', label: 'Landscape' },
-            { orient: 'portrait',  icon: '📱', label: 'Portrait' },
+          const orientations: { orient: Orient; Icon: LucideIcon; label: string }[] = [
+            { orient: 'landscape', Icon: Monitor,    label: 'Landscape' },
+            { orient: 'portrait',  Icon: Smartphone, label: 'Portrait' },
           ];
 
           return (
             <div key={t.short} className="rounded-lg border border-slate-200 p-2.5 bg-slate-50/60">
               <div className="flex items-center gap-2 mb-2">
-                <div className="shrink-0 w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-base shadow-sm" title={t.description}>
-                  <span aria-hidden>{t.emoji}</span>
+                <div className="shrink-0 w-9 h-9 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center shadow-sm" title={t.description}>
+                  <t.Icon className="w-4 h-4 text-rose-600" aria-hidden />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[12px] font-bold text-slate-700">{t.label}</div>
@@ -262,7 +275,7 @@ export function ScreenEmergencyContentConfig({
               </div>
 
               <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
-                {orientations.map(({ orient, icon, label }) => {
+                {orientations.map(({ orient, Icon: OrientIcon, label }) => {
                   const k = screenKeys(t, orient);
                   const assetUrl = (displayScreen[k.asset] as string | null | undefined) ?? '';
                   const hasCustomAsset = !!assetUrl;
@@ -298,7 +311,7 @@ export function ScreenEmergencyContentConfig({
                       }}
                     >
                       <div className="flex items-center justify-center gap-1.5 mb-1.5">
-                        <span className="text-xs" aria-hidden>{icon}</span>
+                        <OrientIcon className="w-3.5 h-3.5 text-slate-500" aria-hidden />
                         <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
                       </div>
                       {isUploadingThis ? (
