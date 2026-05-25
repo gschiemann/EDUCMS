@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useParams, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { useAppStore } from '@/lib/store';
@@ -12,6 +12,7 @@ import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { usePendingAssets, useSubmissions } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { useTenantStatus } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
 import type { TenantBranding } from '@/lib/branding';
 
@@ -39,6 +40,25 @@ export function Sidebar() {
   // Emergency modal trigger (moved from TopToolbar to match design spec)
   const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
   const isEmergencyActive = useAppStore((s) => s.isEmergencyActive);
+  // 2026-05-25 — operator: "we dont show the emergency button by
+  // default unless you enable the emergency content, becuase then
+  // you could trigger something that doesnt exist." Tenant exposes
+  // panicLockdownPlaylistId / panicWeatherPlaylistId /
+  // panicEvacuatePlaylistId on GET /tenants. If any is set, the
+  // tenant has wired up at least one emergency type and the
+  // trigger is safe to show. If none is set (a brand-new tenant
+  // who hasn't configured anything yet), hide the trigger and
+  // show a small "Set up alerts" link in its place — turns the
+  // dead button into a setup nudge.
+  const sidebarParams = useParams();
+  const sidebarSchoolId = sidebarParams?.schoolId as string | undefined;
+  const { data: tenantInfo } = useTenantStatus();
+  const tenantInfoAny = tenantInfo as any;
+  const hasEmergencyContent = !!(
+    tenantInfoAny?.panicLockdownPlaylistId ||
+    tenantInfoAny?.panicWeatherPlaylistId ||
+    tenantInfoAny?.panicEvacuatePlaylistId
+  );
 
   // Tenant branding for sidebar header. Reads from the PER-TENANT LS
   // cache written by <BrandStyleInjector> + re-fires on the
@@ -456,20 +476,27 @@ export function Sidebar() {
 
           {/* Emergency trigger — sits right under the last nav item
               (Audit Log for admins, Settings otherwise), matching the
-              live-preview mockup. Keeps it in the eye-scan-path of the
-              menu rather than buried at the bottom. */}
+              live-preview mockup.
+
+              2026-05-25 — hidden by default when no emergency content
+              has been configured. Triggering a panic on a tenant with
+              no Lockdown / Weather / Evacuate playlist would push
+              empty content to every screen — worse than no alert
+              because the screens still go to the override view but
+              show nothing. Replaced the dead button with a small
+              "Set up alerts" link that points to the configure page.
+              Once ANY of the three is set, the real trigger replaces
+              the setup link. ALWAYS rendered when an emergency is
+              already active (it becomes "Emergency Active" status
+              instead of a trigger) regardless of config state. */}
           <RoleGate allowedRoles={['admin']}>
-            {/* Wrapper matches the nav-item padding (px-4) so the button's
-                left edge and icon line up with 'Audit Log' above it, not
-                floated to the center. User asked for left-justified
-                alignment with the nav text. */}
             <div className="pt-3 mt-3 border-t border-slate-100 px-4">
               {isEmergencyActive ? (
                 <div className="inline-flex px-5 py-2 rounded-full bg-red-600 text-white text-xs font-bold items-center gap-1.5 shadow-md shadow-red-600/20 animate-pulse">
                   <ShieldAlert className="w-3.5 h-3.5" />
                   Emergency Active
                 </div>
-              ) : (
+              ) : hasEmergencyContent ? (
                 <button
                   type="button"
                   onClick={() => setEmergencyModalOpen(true)}
@@ -478,6 +505,15 @@ export function Sidebar() {
                   <ShieldAlert className="w-3.5 h-3.5" />
                   Emergency
                 </button>
+              ) : (
+                <Link
+                  href={`/${sidebarSchoolId}/settings/emergency`}
+                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 hover:text-rose-600 transition-colors"
+                  title="No emergency content configured yet — set it up so the trigger button is safe to use"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  Set up alerts
+                </Link>
               )}
             </div>
           </RoleGate>

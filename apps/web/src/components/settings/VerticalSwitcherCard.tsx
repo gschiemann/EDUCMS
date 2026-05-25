@@ -137,15 +137,18 @@ export function VerticalSwitcherCard() {
   return (
     <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
       <ArrowRightLeft className="w-4 h-4 text-indigo-500 shrink-0" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold text-slate-700">Industry:</span>
-          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] font-bold text-indigo-700">
-            <span aria-hidden>{currentLabel.emoji}</span>
-            <span>{currentLabel.singular}</span>
-          </span>
-        </div>
-        <p className="text-[11px] text-slate-500 mt-0.5">Switch industry context — testing only.</p>
+      {/* 2026-05-25 — operator: "move the text up to the same line as
+          the buttons so we can keep each row a single row and not that
+          extra space." Title + pill + inline description now share a
+          single flex row. Description truncates on narrow viewports
+          so the layout stays one line. */}
+      <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-bold text-slate-700 shrink-0">Industry:</span>
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] font-bold text-indigo-700">
+          <span aria-hidden>{currentLabel.emoji}</span>
+          <span>{currentLabel.singular}</span>
+        </span>
+        <span className="text-[11px] text-slate-500 truncate">Switch industry</span>
       </div>
       <div className="relative shrink-0" ref={popoverRef}>
         <button

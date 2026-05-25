@@ -92,10 +92,20 @@ export function BrandingSettingsCard() {
           (which org you're branding) is preserved as the pill. */}
       <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3">
         <Paintbrush className="w-4 h-4 text-indigo-500 shrink-0" />
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <span className="text-xs font-bold text-slate-700">Brand:</span>
+        {/* 2026-05-25 — operator: "maybe we need a little text for the
+            branding explaining it?" Added a single-line description
+            after the tenant pill so the card explains what the
+            Configure button actually does. Same one-row layout as the
+            Industry / Emergency cards. */}
+        <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
+          <span className="text-xs font-bold text-slate-700 shrink-0">Brand:</span>
           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] font-bold text-indigo-700 truncate max-w-[18ch]">
             {(tenant as any)?.name || '(unknown tenant)'}
+          </span>
+          <span className="text-[11px] text-slate-500 truncate">
+            {branding
+              ? 'Re-skin the CMS to match your colors, logo, and fonts.'
+              : 'Paste your school&rsquo;s URL — we&rsquo;ll match the CMS to your colors, logo, and fonts.'}
           </span>
         </div>
         {/* 2026-05-25 operator: "remove the upload button from the

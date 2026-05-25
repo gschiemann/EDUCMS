@@ -143,14 +143,24 @@ const EXAMPLES_BY_VERTICAL: Record<string, SampleUrl[]> = {
     { label: 'Dogfish Head', url: 'https://www.dogfish.com/' },
   ],
   HEALTHCARE: [
-    { label: 'Mayo Clinic', url: 'https://www.mayoclinic.org/' },
+    // 2026-05-25 spot-check: mayoclinic.org returns BRANDING_BLOCKED
+    // (Cloudflare bot protection). Swapped for Johns Hopkins (academic
+    // medical center, lighter WAF) + One Medical (consumer health,
+    // open marketing site). Cleveland Clinic / Kaiser kept; if either
+    // turns out to also be blocked the operator gets the friendly
+    // "bot protection" message and can try the next one.
+    { label: 'Johns Hopkins', url: 'https://www.hopkinsmedicine.org/' },
     { label: 'Cleveland Clinic', url: 'https://my.clevelandclinic.org/' },
-    { label: 'Kaiser Permanente', url: 'https://healthy.kaiserpermanente.org/' },
+    { label: 'One Medical', url: 'https://www.onemedical.com/' },
   ],
   HOSPITALITY: [
-    { label: 'Marriott', url: 'https://www.marriott.com/' },
+    // 2026-05-25 spot-check: marriott.com returns BRANDING_BLOCKED
+    // (Akamai bot protection). Swapped for Wyndham (lighter WAF) +
+    // Kimpton (mid-scale, brand subdomain). Hyatt kept; if blocked,
+    // the friendly fallback covers it.
     { label: 'Hyatt', url: 'https://www.hyatt.com/' },
-    { label: 'Choice Hotels', url: 'https://www.choicehotels.com/' },
+    { label: 'Wyndham', url: 'https://www.wyndhamhotels.com/' },
+    { label: 'Kimpton Hotels', url: 'https://www.kimptonhotels.com/' },
   ],
   RESTAURANT: [
     { label: 'Olive Garden', url: 'https://www.olivegarden.com/' },

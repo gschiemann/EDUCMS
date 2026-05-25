@@ -715,29 +715,30 @@ function PanicContentGate() {
   }
 
   const showOn = isK12 || enabled;
+  // 2026-05-25 — operator: "move the text up to the same line as the
+  // buttons so we can keep each row a single row." Title + status pill
+  // + inline description now share a single flex row.
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-4">
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-3 min-w-0 flex-1">
         <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${showOn ? 'bg-rose-50' : 'bg-slate-100'}`}>
           <AlertOctagon className={`w-4 h-4 ${showOn ? 'text-rose-600' : 'text-slate-500'}`} />
         </div>
-        <div className="min-w-0">
-          <div className="text-sm font-bold text-slate-800 flex items-center gap-2 flex-wrap">
-            Emergency alerts
-            <span
-              className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                showOn
-                  ? 'bg-emerald-100 text-emerald-700'
-                  : 'bg-slate-100 text-slate-500'
-              }`}
-            >
-              {showOn ? <ShieldCheck className="w-3 h-3" /> : <ShieldOff className="w-3 h-3" />}
-              {showOn ? 'On' : 'Off'}
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            Trigger content + on/off + floor-plan setup live on the dedicated page.
-          </p>
+        <div className="min-w-0 flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-bold text-slate-800 shrink-0">Emergency alerts</span>
+          <span
+            className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+              showOn
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-slate-100 text-slate-500'
+            }`}
+          >
+            {showOn ? <ShieldCheck className="w-3 h-3" /> : <ShieldOff className="w-3 h-3" />}
+            {showOn ? 'On' : 'Off'}
+          </span>
+          <span className="text-[11px] text-slate-500 truncate">
+            Set up the messages, media, and floor-plan content that broadcast during a lockdown, evacuation, or weather event.
+          </span>
         </div>
       </div>
       <Link
