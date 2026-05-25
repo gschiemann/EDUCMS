@@ -713,12 +713,16 @@ const CSS = `
 }
 .kiosk-qr-icon { width: 18px; height: 18px; color: var(--splash-accent); }
 
-/* ─── Orientation picker (pairing splash, 2026-05-25) ────────── */
+/* Orientation picker (pairing splash, 2026-05-25). Per CLAUDE.md
+   rule #10 + the Taurus Safety CI gate, no flex spacing-shorthand
+   on player-shipped CSS — Chromium 83 (NovaStar Taurus / some
+   Goodview ROMs) silently drops it. Spacing comes from per-child
+   margin on adjacent siblings instead. Modern engines compute
+   the same visual result; zero regression. */
 .kiosk-orient-row {
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
   margin-bottom: 20px;
 }
 .kiosk-orient-label {
@@ -727,14 +731,20 @@ const CSS = `
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #94a3b8;
+  /* Margin instead of parent-level flex spacing (Taurus rule). */
+  margin-bottom: 10px;
 }
 .kiosk-orient-buttons {
   display: inline-flex;
-  gap: 8px;
   padding: 4px;
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.55);
   border: 1px solid rgba(148, 163, 184, 0.18);
+}
+/* Adjacent-sibling spacing — CSS 2.1 selector, works everywhere
+   including Chromium 83 (no flex-spacing-shorthand required). */
+.kiosk-orient-btn + .kiosk-orient-btn {
+  margin-left: 8px;
 }
 .kiosk-orient-btn {
   appearance: none;
