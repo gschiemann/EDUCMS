@@ -372,6 +372,11 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
     currentCanvasW && currentCanvasH === 1080 && currentCanvasW % 320 === 0
       ? currentCanvasW / 320
       : null;
+  // 2026-05-26 — content tile-repeat (LED ribbon). For a 40ft ribbon
+  // with content repeating every 10ft, operator picks 4. Player wraps
+  // content in N iframe tiles each rendering the same playlist.
+  // Default 1 = no tiling.
+  const currentRepeats: number = typeof screen?.repeats === 'number' && screen.repeats >= 1 ? screen.repeats : 1;
   const cache: any = screen?.lastCacheReport || null;
   const cacheLine = cache
     ? `${cache.totalAssets ?? '?'} assets · ${cache.totalBytes != null ? Math.round(cache.totalBytes / 1024 / 1024) + ' MB' : '? size'}`
@@ -501,6 +506,50 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
                 : 'native'}
               {setCanvas.isPending && ' · saving…'}
               {setCanvas.isError && ' · error'}
+            </span>
+          </div>
+        </div>
+        {/* 2026-05-26 — Content tile-repeat. Operator: "we will repeat
+            probably 4 times, every 10ft of ribbon". Player wraps the
+            playback surface in N iframe tiles, each loading the same
+            screen ID and rendering the same playlist in lockstep.
+            Default 1 = no tiling, identical render to today. */}
+        <div className="flex flex-col min-w-0 col-span-2">
+          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+            Content tile-repeat (LED ribbon)
+          </div>
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
+            {[1, 2, 3, 4, 5, 6, 8].map((n) => {
+              const active = currentRepeats === n;
+              return (
+                <button
+                  key={`rep-${n}`}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (active) return;
+                    setCanvas.mutate({
+                      id: screen.id,
+                      canvasW: currentCanvasW,
+                      canvasH: currentCanvasH,
+                      repeats: n,
+                    });
+                  }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
+                    active
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-emerald-50 hover:border-emerald-200'
+                  }`}
+                  title={n === 1 ? 'No tiling — single canvas render' : `Render content ${n}× across canvas`}
+                >
+                  {n === 1 ? 'Off' : `${n}×`}
+                </button>
+              );
+            })}
+            <span className="text-[10px] text-slate-400 ml-1 font-mono">
+              {currentRepeats > 1
+                ? `${currentRepeats} tiles${currentCanvasW ? ` · ${Math.round(currentCanvasW / currentRepeats)}px each` : ''}`
+                : 'single canvas'}
             </span>
           </div>
         </div>

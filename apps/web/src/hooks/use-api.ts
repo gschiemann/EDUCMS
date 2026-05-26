@@ -186,15 +186,16 @@ export function useSetScreenOrientation() {
 export function useSetScreenCanvas() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, canvasW, canvasH, reason }: {
+    mutationFn: ({ id, canvasW, canvasH, repeats, reason }: {
       id: string;
       canvasW: number | null;
       canvasH: number | null;
+      repeats?: number;
       reason?: string;
     }) =>
       apiFetch(`/screens/${id}/canvas`, {
         method: 'PUT',
-        body: JSON.stringify({ canvasW, canvasH, reason }),
+        body: JSON.stringify({ canvasW, canvasH, repeats, reason }),
       }),
     // 2026-05-26 — patch BOTH ['screens'] AND ['screen-groups'] caches.
     // The dashboard's /screens page reads from useScreenGroups (the
@@ -202,14 +203,15 @@ export function useSetScreenCanvas() {
     // original screens-only optimistic update never lit up the button.
     // Operator: "i click 1 but it doesnt switch from off". Same fix
     // class as the orientation hook below.
-    onMutate: async ({ id, canvasW, canvasH }) => {
+    onMutate: async ({ id, canvasW, canvasH, repeats }) => {
       await Promise.all([
         qc.cancelQueries({ queryKey: ['screens'] }),
         qc.cancelQueries({ queryKey: ['screen-groups'] }),
       ]);
       const prevScreens = qc.getQueryData<any>(['screens']);
       const prevGroups = qc.getQueryData<any>(['screen-groups']);
-      const apply = (s: any) => (s?.id === id ? { ...s, canvasW, canvasH } : s);
+      const apply = (s: any) =>
+        s?.id === id ? { ...s, canvasW, canvasH, ...(repeats !== undefined ? { repeats } : {}) } : s;
       qc.setQueryData<any>(['screens'], (old: any) => {
         if (Array.isArray(old)) return old.map(apply);
         if (Array.isArray(old?.screens)) return { ...old, screens: old.screens.map(apply) };

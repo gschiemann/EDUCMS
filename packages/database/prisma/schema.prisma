@@ -596,6 +596,16 @@ model Screen {
   // viewport (no scaling, fine for regular landscape kiosks).
   canvasW                             Int?         @map("canvas_w")
   canvasH                             Int?         @map("canvas_h")
+  // 2026-05-26 — content tile-repeat count for LED ribbons. A ribbon
+  // is a single wide strip (e.g. 40ft long) where the same content is
+  // intentionally repeated N times across the width so the score / logo
+  // / sponsor stays visible from every viewing angle. Operator: "we
+  // will repeat probably 4 times, every 10ft of ribbon". The player
+  // wraps content in a flex grid with `repeats` children, each
+  // rendering the same template/playlist at width = canvasW / repeats.
+  // Default 1 = no tiling (normal canvas). Set this on the screen via
+  // the dashboard's diagnostics drawer next to the canvas picker.
+  repeats                             Int          @default(1)
   osInfo                              String?      @map("os_info")
   browserInfo                         String?      @map("browser_info")
   ipAddress                           String?      @map("ip_address")

@@ -1287,7 +1287,7 @@ export class ScreensController {
   async setCanvas(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { canvasW?: number | null; canvasH?: number | null; reason?: string },
+    @Body() body: { canvasW?: number | null; canvasH?: number | null; repeats?: number; reason?: string },
   ) {
     // Accept null to CLEAR; otherwise clamp to a sane range. 32px floor
     // catches typo "0", 8192px ceiling catches typo "32000" — anything
@@ -1305,17 +1305,30 @@ export class ScreensController {
     };
     const w = validate(body.canvasW);
     const h = validate(body.canvasH);
+    // 2026-05-26 — repeats: 1..12. 1 = no tiling. Operator picks 4 for
+    // a 40ft ribbon that should show the same content every 10ft.
+    let repeats = 1;
+    if (body.repeats !== undefined && body.repeats !== null) {
+      const r = parseInt(String(body.repeats), 10);
+      if (!isFinite(r) || r < 1 || r > 12) {
+        throw new HttpException(
+          'repeats must be an integer between 1 and 12',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      repeats = r;
+    }
 
     const screen = await this.prisma.client.screen.findFirst({
       where: { id, tenantId: req.user.tenantId },
-      select: { id: true, name: true, tenantId: true, canvasW: true, canvasH: true },
+      select: { id: true, name: true, tenantId: true, canvasW: true, canvasH: true, repeats: true },
     });
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
     const updated = await this.prisma.client.$transaction(async (tx) => {
       const u = await tx.screen.update({
         where: { id },
-        data: { canvasW: w, canvasH: h },
+        data: { canvasW: w, canvasH: h, repeats },
       });
       await tx.auditLog.create({
         data: {
@@ -1325,8 +1338,8 @@ export class ScreensController {
           targetType: 'Screen',
           targetId: id,
           details: JSON.stringify({
-            from: { w: screen.canvasW, h: screen.canvasH },
-            to: { w, h },
+            from: { w: screen.canvasW, h: screen.canvasH, repeats: screen.repeats },
+            to: { w, h, repeats },
             reason: body.reason ?? null,
           }),
         },
@@ -1342,6 +1355,7 @@ export class ScreensController {
       screenId: id,
       canvasW: w,
       canvasH: h,
+      repeats,
       reason: body.reason ?? null,
     });
     try {
@@ -2649,6 +2663,13 @@ export class ScreensController {
       // the new value within ~150ms of the operator's tap.
       canvasW: (screen as any).canvasW ?? null,
       canvasH: (screen as any).canvasH ?? null,
+      // 2026-05-26 — content tile-repeat count for ribbons. Default 1
+      // = no tiling. > 1 = player wraps content in flex grid with N
+      // children, each rendering same template at canvasW/repeats.
+      // Operator's 40ft × 1m ribbon with repeats=4: each 10ft segment
+      // gets the same score / sponsor / celebration. Viewing angle
+      // problem solved (no one's far from a visible repeat).
+      repeats: (screen as any).repeats ?? 1,
       playlists: dynamicPlaylists
     };
 

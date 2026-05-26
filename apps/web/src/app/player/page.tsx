@@ -1427,6 +1427,15 @@ function PlayerPage() {
   // this and use the existing previewOrientation path.
   const [manifestOrientation, setManifestOrientation] = useState<'LANDSCAPE' | 'PORTRAIT' | 'AUTO' | null>(null);
 
+  // 2026-05-26 — content tile-repeat for LED ribbons. Operator picks
+  // 1..12 from the dashboard. > 1 means the player wraps the playback
+  // surface in a horizontal flex grid with N children, each rendering
+  // the same playlist item. Use case: a 40ft ribbon with repeats=4
+  // shows the same score/sponsor/celebration every 10ft so it stays
+  // visible from any viewing angle. Default 1 = no tiling (normal
+  // full-canvas render).
+  const [manifestRepeats, setManifestRepeats] = useState<number>(1);
+
   // Tag <body> with data-player-route so the debug pill in globals.css
   // ONLY appears on the kiosk player, NEVER on the dashboard. Operator
   // (2026-05-04): "your dumb fucking pill is in the app no too not just
@@ -2652,24 +2661,43 @@ function PlayerPage() {
       // applied at runtime.
       const cw = typeof manifest.canvasW === 'number' && manifest.canvasW > 0 ? manifest.canvasW : null;
       const ch = typeof manifest.canvasH === 'number' && manifest.canvasH > 0 ? manifest.canvasH : null;
+      // 2026-05-26 — content tile-repeat for ribbons. Operator picks 1..12
+      // on the dashboard. Player exposes via --led-repeats CSS custom
+      // property + data-led-repeats attribute on <html>. Renderers
+      // (templates, splash, player surfaces) can opt-in via either.
+      // The "TileRepeatLayer" component below this section consumes
+      // both signals and wraps the playlist render in a flex grid.
+      const rp =
+        typeof manifest.repeats === 'number' && manifest.repeats >= 1 && manifest.repeats <= 12
+          ? Math.floor(manifest.repeats)
+          : 1;
+      // Push to React state so the playlist render wrapper sees it on
+      // next render. Cheap setter — React Query short-circuits if the
+      // value didn't change.
+      if (rp !== manifestRepeats) setManifestRepeats(rp);
       if (cw && ch && typeof document !== 'undefined') {
         try {
           // Persist for the next boot — pin script reads this from
           // localStorage when URL params are absent.
           localStorage.setItem('edu_canvasW', String(cw));
           localStorage.setItem('edu_canvasH', String(ch));
+          localStorage.setItem('edu_repeats', String(rp));
           const root = document.documentElement;
           const currentW = root.style.getPropertyValue('--led-w').trim();
+          const currentRepeats = root.getAttribute('data-led-repeats');
           const targetW = `${cw}px`;
+          const targetRepeats = String(rp);
           // Only mutate when the value actually changed (cheap setter
           // pattern, same as the bridge.setOrientation gate above).
-          if (currentW !== targetW) {
+          if (currentW !== targetW || currentRepeats !== targetRepeats) {
             root.style.width = `${cw}px`;
             root.style.height = `${ch}px`;
             root.style.overflow = 'hidden';
             root.style.setProperty('--led-w', `${cw}px`);
             root.style.setProperty('--led-h', `${ch}px`);
+            root.style.setProperty('--led-repeats', String(rp));
             root.setAttribute('data-led-cfg', '1');
+            root.setAttribute('data-led-repeats', String(rp));
             // Narrow heuristic matches the pin script in layout.tsx.
             if (cw < 600 || ch > cw * 2) {
               root.setAttribute('data-led-narrow', '1');
@@ -5312,6 +5340,74 @@ function PlayerPage() {
   // iframe, overlay only opens via remote/keyboard).
   const hasHtmlAsset = sorted.some((it: any) => it?.asset?.mimeType === 'text/html');
   const isPlaylistInteractive = hasHtmlAsset;
+  // 2026-05-26 — repeats > 1 means the operator wants the same content
+  // rendered N times across the canvas (LED ribbon use case: 40ft
+  // ribbon, repeats=4, content shows every 10ft).
+  //
+  // Implementation: lazily-loaded iframe tiles. When repeats > 1, the
+  // playback surface renders as N <iframe src="/player?tile=K" />
+  // elements in a horizontal flex grid. Each iframe loads a fresh
+  // player instance against the same screen ID, so they all subscribe
+  // to the same manifest + WebSocket and render the same playlist
+  // item in lockstep. Score / clock / celebrations stay aligned to
+  // within ~50ms (WebSocket fan-out latency).
+  //
+  // Why iframes instead of in-React duplication: the playback subtree
+  // is ~1200 LOC of stateful render with deep coupling to local hooks
+  // (currentItem, sorted, playbackStopped, manifest, etc.). Extracting
+  // cleanly is a multi-day refactor. Iframes get us the visual
+  // outcome (N synchronized tiles) without touching that complexity.
+  //
+  // VX400 Pro alternative: the operator can ALSO get the same visual
+  // outcome by configuring the NovaStar processor's pixel-map to
+  // "take a 480×208 region of HDMI and repeat 4× across the ribbon".
+  // That's the ZERO-software path and is often easier for an install.
+  // Software tile is here for cases where the LED processor can't
+  // pixel-map (some cheaper rental rigs).
+  //
+  // repeats=1 renders identically to before — no iframe, no overhead.
+  const tilesCount = Math.max(1, Math.min(12, manifestRepeats || 1));
+  const tileMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tile');
+  // If THIS instance was loaded as a tile child (?tile=K), skip the
+  // repeat logic — render as a normal single-canvas player. The parent
+  // iframe is the one doing the tiling.
+  const isTileChild = !!tileMode;
+  const effectiveTiles = isTileChild ? 1 : tilesCount;
+
+  if (effectiveTiles > 1 && typeof window !== 'undefined') {
+    const baseUrl = `${window.location.pathname}?tile=child`;
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
+          background: '#000',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'row',
+        }}
+      >
+        {Array.from({ length: effectiveTiles }).map((_, idx) => (
+          <iframe
+            key={`tile-${idx}`}
+            src={baseUrl}
+            title={`Ribbon tile ${idx + 1} of ${effectiveTiles}`}
+            style={{
+              flex: '1 1 0',
+              minWidth: 0,
+              height: '100%',
+              border: 0,
+              display: 'block',
+            }}
+            allow="autoplay"
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div
       className={`fixed top-0 right-0 bottom-0 left-0 bg-black overflow-hidden ${isPlaylistInteractive ? '' : 'cursor-none'}`}

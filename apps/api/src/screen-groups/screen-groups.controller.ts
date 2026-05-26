@@ -81,7 +81,7 @@ export class ScreenGroupsController {
             // 3 hours on a phantom kiosk-side bug" pattern AGAIN.
             // Adding all 3 here so they're propagated to the list.
             orientation: true,
-            canvasW: true, canvasH: true,
+            canvasW: true, canvasH: true, repeats: true,
             // lastCrashStack deliberately omitted from the list
             // endpoint — 8KB per row × N screens is too much for a
             // dashboard that re-fetches every 10s. Stack lives on the
