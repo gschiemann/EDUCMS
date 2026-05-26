@@ -15,6 +15,7 @@ import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useTenantStatus } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
 import type { TenantBranding } from '@/lib/branding';
+import { useLogoTone } from '@/components/branding/useLogoTone';
 
 // Must match the PER-TENANT key format BrandStyleInjector writes to.
 // Mobile-Claude's cross-tenant fix moved the injector to per-tenant
@@ -176,6 +177,18 @@ export function Sidebar() {
   // get a broken-image icon. Track a load error so we can fall back to
   // the inline SVG or the MonitorPlay default.
   const [logoImgBroken, setLogoImgBroken] = useState(false);
+  // 2026-05-26 — operator still doesn't see the Dodgers logo even
+  // after the silent-zero fallback fix. Root cause turned out to be
+  // different: the wordmark PNG loads SUCCESSFULLY (naturalWidth > 0)
+  // — it's a WHITE script on transparent. The sidebar header is
+  // white. White-on-white is invisible. Same root cause as the
+  // wizard preview problem we solved with useLogoTone + a
+  // var(--brand-primary) chip wrapper. The sidebar didn't use that
+  // hook. Now it does. Light/unknown tone → wrap in brand-primary
+  // chip with white text-color so currentColor-using SVGs also
+  // pick up the inverse. Dark logos render directly as before.
+  const logoTone = useLogoTone(brandLogoUrl, brandLogoSvg);
+  const logoNeedsDarkBacking = logoTone === 'light' || logoTone === 'unknown';
 
   // Close the mobile sidebar whenever the route changes
   useEffect(() => { setMobileSidebarOpen(false); }, [pathname, setMobileSidebarOpen]);
@@ -302,37 +315,53 @@ export function Sidebar() {
         <div className="min-h-[73px] flex items-start px-5 pt-4 pb-3 justify-between gap-2">
           <h1 className="text-xl font-extrabold tracking-tight text-slate-800 flex items-start gap-3 min-w-0 flex-1">
             {brandLogoUrl && !logoImgBroken && !/\.(ico|icns)(\?|#|$)/i.test(brandLogoUrl) ? (
-              // Wider box lets wide wordmarks (Chardon's tree + "CHARDON
-              // LOCAL SCHOOLS") render at actual aspect ratio instead of
-              // being squished into a 44px square.  max-w-[140px] caps
-              // the width so a ridiculously wide logo can't push the
-              // tenant name off the sidebar.
-              //
-              // 2026-05-26 — operator: "the dodgers logo didnt load
-              // even though the preview looked good". onError ONLY
-              // fires on HTTP-level failure (404, network drop). A
-              // hot-linked CDN that returns 200 OK with an empty body
-              // (CORS-tainted, referrer-blocked, etc.) loads "fine"
-              // but the img has naturalWidth=0 and renders invisibly.
-              // The fallback initials chip never gets a chance.
-              // Fix: onLoad inspects natural dimensions and flips
-              // logoImgBroken=true when zero so the chip kicks in.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={brandLogoUrl}
-                alt=""
-                onError={() => setLogoImgBroken(true)}
-                onLoad={(e) => {
-                  const img = e.currentTarget;
-                  if (img.naturalWidth === 0 || img.naturalHeight === 0) {
-                    setLogoImgBroken(true);
-                  }
-                }}
-                className="flex-shrink-0 h-12 max-w-[140px] object-contain"
-              />
+              // 2026-05-26 — light-toned logos (white wordmark on
+              // transparent like the Dodgers script) get wrapped in
+              // a var(--brand-primary) chip so they have contrast
+              // against the white sidebar surface. Dark logos render
+              // directly. Same pattern as BrandingLivePreview.tsx so
+              // the wizard preview and the real sidebar match
+              // exactly. The chip has its own h-12 box; the inner
+              // image's max-h-full keeps it scaled to the box height.
+              <div
+                className={cn(
+                  'flex-shrink-0 h-12 max-w-[140px] flex items-center justify-center overflow-hidden',
+                  logoNeedsDarkBacking ? 'rounded-lg px-2' : '',
+                )}
+                style={
+                  logoNeedsDarkBacking
+                    ? { background: 'var(--brand-primary, #4f46e5)' }
+                    : undefined
+                }
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={brandLogoUrl}
+                  alt=""
+                  onError={() => setLogoImgBroken(true)}
+                  onLoad={(e) => {
+                    // Silent-zero fallback (CORS-tainted 200 OK case)
+                    const img = e.currentTarget;
+                    if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+                      setLogoImgBroken(true);
+                    }
+                  }}
+                  className="max-h-full max-w-full object-contain"
+                />
+              </div>
             ) : brandLogoSvg && /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(brandLogoSvg) ? (
               <div
-                className="flex-shrink-0 h-12 max-w-[140px] [&_svg]:h-full [&_svg]:max-h-12 [&_svg]:w-auto"
+                className={cn(
+                  'flex-shrink-0 h-12 max-w-[140px] flex items-center justify-center [&_svg]:h-full [&_svg]:max-h-12 [&_svg]:w-auto',
+                  // currentColor-using SVGs inherit text color → set
+                  // white on dark chip, slate-800 on transparent.
+                  logoNeedsDarkBacking ? 'rounded-lg px-2 text-white' : 'text-slate-800',
+                )}
+                style={
+                  logoNeedsDarkBacking
+                    ? { background: 'var(--brand-primary, #4f46e5)' }
+                    : undefined
+                }
                 aria-hidden
                 dangerouslySetInnerHTML={{ __html: brandLogoSvg }}
               />
