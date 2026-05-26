@@ -3461,6 +3461,118 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
     // accent / rotation / etc.) instead of falling through to the
     // generic auto-form that doesn't know about color pickers, asset
     // pickers, or array editors.
+    // 2026-05-26 monetize-audit FAIL #4 — HOUSE_AD_BANNER was registered
+    // in variants-register.ts + rendered in WidgetRenderer but had NO
+    // PropertiesPanel case, so the operator could drop the tile and saw
+    // an empty side panel — no way to add slots, pick rotation, or set
+    // sponsor label. Same operator complaint shape as
+    // "this has no hot spot at all" — the panel ships a real form now.
+    case 'HOUSE_AD_BANNER': {
+      fields.push(<TextField key="zoneLabel" label="Zone label (optional)" value={cfg.zoneLabel || ''} placeholder="OUR SPONSORS" onChange={(v) => setField({ zoneLabel: v })} />);
+      fields.push(<TextField key="intervalMs" label="Rotate every (ms)" value={String(cfg.intervalMs ?? 8000)} placeholder="8000" onChange={(v) => setField({ intervalMs: parseInt(v) || 8000 })} />);
+      fields.push(<SelectField key="placement" label="Placement style" value={cfg.placement || 'banner'} options={[['banner','Banner (contain)'],['square','Square (contain)'],['fullbleed','Full-bleed (cover, no pip indicator)']]} onChange={(v) => setField({ placement: v })} />);
+      fields.push(<ToggleField key="showSponsorLabel" label='Show "Sponsored · {name}" disclosure' value={cfg.showSponsorLabel !== false} onChange={(v) => setField({ showSponsorLabel: v })} />);
+      fields.push(<TextAreaField key="slotsJson" label="Sponsor slots (JSON array of { assetUrl, assetMime?, sponsorName?, ctaText?, clickThroughUrl? })" value={typeof cfg.slots === 'string' ? cfg.slots : JSON.stringify(cfg.slots || [], null, 2)} rows={8} onChange={(v) => {
+        // BUG-003 fix pattern (FITNESS_AD_BANNER) — only commit on
+        // successful parse so mid-typing strings don't leak into
+        // cfg.slots and crash the renderer's .map().
+        try { setField({ slots: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
+      }} />);
+      break;
+    }
+    // 2026-05-26 monetize-audit FAIL #4 + #10/#11 — MusicPlayerWidget
+    // ships six sources (somafm / npr / nts / custom-stream / apple-
+    // business / spotify-business) plus pauseDuringEmergency +
+    // businessHours, but had no PropertiesPanel case at all. Operator
+    // dropped the tile and saw nothing editable. Now exposes every
+    // documented knob.
+    case 'MUSIC_PLAYER': {
+      fields.push(
+        <SelectField
+          key="source"
+          label="Music source"
+          value={cfg.source || 'somafm'}
+          options={[
+            ['somafm', 'SomaFM (free, 21 stations)'],
+            ['npr', 'NPR Live — local station by lat/lng'],
+            ['nts', 'NTS Radio (free, 2 channels)'],
+            ['custom-stream', 'Custom stream URL (Icecast / Shoutcast / m3u8)'],
+            ['apple-business', 'Apple Music for Business (coming soon)'],
+            ['spotify-business', 'Spotify for Business (coming soon)'],
+          ]}
+          onChange={(v) => setField({ source: v })}
+        />,
+      );
+      if ((cfg.source || 'somafm') === 'somafm') {
+        // 21 SomaFM stations matching the SOMAFM_DIRECT_URLS map in
+        // MusicPlayerWidget.tsx — keep this list in sync if more land.
+        fields.push(
+          <SelectField
+            key="somafmStationId"
+            label="SomaFM station"
+            value={cfg.somafmStationId || 'groovesalad'}
+            options={[
+              ['groovesalad', 'Groove Salad — chilled ambient electronica'],
+              ['dronezone', 'Drone Zone — atmospheric textures'],
+              ['secretagent', 'Secret Agent — spy/crime jazz'],
+              ['lush', 'Lush — sensuous female-vocal electronic'],
+              ['bagel', 'BAGeL Radio — indie rock'],
+              ['defcon', 'DEF CON Radio — music for hackers'],
+              ['spacestation', 'Space Station Soma — tribal downtempo'],
+              ['beatblender', 'Beat Blender — late-night downtempo'],
+              ['indie', 'Indie Pop Rocks!'],
+              ['cliqhop', 'cliqhop idm'],
+              ['poptron', 'PopTron — electropop'],
+              ['thetrip', 'The Trip — progressive house'],
+              ['fluid', 'Fluid — liquid drum & bass'],
+              ['folkfwd', 'Folk Forward — indie folk'],
+              ['illstreet', 'Illinois Street Lounge — cocktail jazz'],
+              ['brfm', 'Black Rock FM — Burning Man'],
+              ['digitalis', 'Digitalis — lo-fi electroacoustica'],
+              ['metal', 'Metal Detector — stoner/doom'],
+              ['7soul', 'Seven Inch Soul — 45rpm vinyl'],
+              ['seventies', 'Left Coast 70s'],
+              ['u80s', 'Underground 80s'],
+            ]}
+            onChange={(v) => setField({ somafmStationId: v })}
+          />,
+        );
+      }
+      if (cfg.source === 'nts') {
+        fields.push(
+          <SelectField
+            key="ntsChannel"
+            label="NTS channel"
+            value={cfg.ntsChannel || '1'}
+            options={[['1', 'NTS 1'], ['2', 'NTS 2']]}
+            onChange={(v) => setField({ ntsChannel: v })}
+          />,
+        );
+      }
+      if (cfg.source === 'npr') {
+        fields.push(<TextField key="nprStationCallSign" label="NPR station call sign (e.g. KQED, WBEZ)" value={cfg.nprStationCallSign || ''} placeholder="KQED" onChange={(v) => setField({ nprStationCallSign: v })} />);
+        fields.push(<TextField key="customStreamUrl" label="NPR direct stream URL (set by the lat/lng finder)" value={cfg.customStreamUrl || ''} placeholder="https://streams.kqed.org/kqedradio" onChange={(v) => setField({ customStreamUrl: v })} />);
+      }
+      if (cfg.source === 'custom-stream') {
+        fields.push(<TextField key="customStreamUrl" label="Custom stream URL (Icecast / Shoutcast / .m3u8)" value={cfg.customStreamUrl || ''} placeholder="https://example.com/stream.m3u8" onChange={(v) => setField({ customStreamUrl: v })} />);
+      }
+      fields.push(<TextField key="zoneLabel" label="Zone label (optional)" value={cfg.zoneLabel || ''} placeholder="NOW PLAYING" onChange={(v) => setField({ zoneLabel: v })} />);
+      fields.push(<TextField key="defaultVolume" label="Default volume (0-100)" value={String(cfg.defaultVolume ?? 70)} placeholder="70" onChange={(v) => {
+        const n = parseInt(v) || 0;
+        setField({ defaultVolume: Math.max(0, Math.min(100, n)) });
+      }} />);
+      fields.push(<ToggleField key="autoResume" label="Auto-resume on player reload" value={cfg.autoResume !== false} onChange={(v) => setField({ autoResume: v })} />);
+      fields.push(<ToggleField key="pauseDuringEmergency" label="Silence during emergency (recommended)" value={cfg.pauseDuringEmergency !== false} onChange={(v) => setField({ pauseDuringEmergency: v })} />);
+      // Business-hours JSON editor — same as bell schedule / dayparts;
+      // we keep it as JSON so the operator can express overnight
+      // windows + per-day-of-week without a 14-field UI.
+      fields.push(<TextAreaField key="businessHoursJson" label='Business hours (JSON: { "start": "08:00", "end": "22:00", "daysOfWeek": [1,2,3,4,5] } — leave blank for 24/7)' value={cfg.businessHours == null ? '' : JSON.stringify(cfg.businessHours, null, 2)} rows={5} onChange={(v) => {
+        const trimmed = v.trim();
+        if (!trimmed) { setField({ businessHours: undefined }); return; }
+        try { setField({ businessHours: JSON.parse(trimmed) }); } catch { /* keep previous value; user is mid-typing */ }
+      }} />);
+      break;
+    }
     case 'FITNESS_AD_BANNER': {
       // Rotating gym promo creative. Each creative is { headline, sub,
       // ctaText, ctaUrl?, durationMs? }; we render a small array editor.
