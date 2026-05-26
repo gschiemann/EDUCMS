@@ -40,6 +40,20 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm --filter web exec playwright install --with-deps chromium
 
+      # 2026-05-26 — fix: a11y CI was failing with "Module not found:
+      # Can't resolve '@cms/api-types'" because the web build needs
+      # the workspace TS packages compiled to dist/ first. Every
+      # other workflow (deploy-reliability, etc.) builds them
+      # explicitly; this one was missing the step. Mirrors the
+      # ordering in deploy-reliability.yml's api-build job.
+      - name: Generate Prisma client (must run BEFORE workspace builds)
+        run: cd packages/database && npx prisma generate
+      - name: Build workspace packages
+        run: |
+          pnpm --filter @cms/api-types build
+          pnpm --filter @cms/auth-core build
+          pnpm --filter @cms/ws-events build
+
       - name: Build Web
         run: pnpm --filter web build
         env:
