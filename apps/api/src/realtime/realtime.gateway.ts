@@ -283,12 +283,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   // signed emergency envelopes, absent for internal control messages
   // (AUTH_OK, HEARTBEAT_ACK, etc.).
   //
-  // CRITICAL (audit fix 2026-05-26, P0-1): every other consumer of
+  // CRITICAL (audit fix 2026-05-26, P0-1): every consumer of
   // msg.timestamp in this codebase expects MILLISECONDS:
   //   - Player freshness gate at apps/web/.../player/page.tsx:3424
   //     uses `Math.abs(Date.now() + offset - msg.timestamp) > 30_000`
-  //   - WebsocketSignerService.verifyMessage uses Date.now()-message.timestamp
-  //   - ws-signature.ts:71 uses Date.now()-message.timestamp
+  //   - ws-signature.ts:71 verifyWsHmac uses Date.now()-message.timestamp
   // Only this `send` was emitting seconds, which made every signed
   // SENSITIVE_TYPES message land ~1.7×10¹² ms "in the past" on the
   // player and get dropped. Default is now Date.now() in ms; for
