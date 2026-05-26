@@ -5,7 +5,7 @@
     "backdropBlurTw": 6
   },
   "apps/web/src/components/player/KioskSplash.tsx": {
-    "gap": 14,
+    "gap": 21,
     "backdropFilter": 4
   },
   "apps/web/src/components/player/TouchOverlay.tsx": {
