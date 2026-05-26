@@ -24,6 +24,36 @@ import {
 } from 'lucide-react';
 import type { HelpArticle } from '@/content/help/types';
 import { Markdown } from './Markdown';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
+
+// 2026-05-26 — operator: "its talking about school but i think it
+// needs to be redone to be more general and maybe have sections on
+// each business line if thats even needed...maybe for sport venue for
+// sure because thats a different setup and workflow." Per-vertical
+// hero noun + quick-actions + which categories to surface. Sports
+// content already exists (sports-getting-started.md, sports-cues.md,
+// sports-ribbon.md, sports-run-the-game.md, sports-screens.md); was
+// just buried under the generic "school"-flavored hero.
+const VERTICAL_NOUN: Record<string, string> = {
+  K12: 'school',
+  SPORTS: 'venue',
+  RESTAURANT: 'restaurant',
+  QSR: 'restaurant',
+  GYM: 'gym',
+  FITNESS: 'gym',
+  RETAIL: 'store',
+  WORSHIP: 'parish',
+  HOSPITALITY: 'hotel',
+  BAR: 'bar',
+  HEALTHCARE: 'clinic',
+  CORPORATE: 'office',
+  FASHION: 'boutique',
+  OTHER: 'venue',
+};
+// Categories that are K-12-specific. Hidden from Browse-by-topic when
+// the tenant is on any other vertical so we don't tease features they
+// can't use.
+const K12_ONLY_CATEGORIES = new Set(['Clever']);
 
 /**
  * In-app Help Center — slide-in popover triggered by the (?) icon
@@ -82,6 +112,14 @@ export function HelpDrawer() {
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
+  // 2026-05-26 — vertical-aware copy + content surfacing. SSR-safe:
+  // useTenantCopy returns 'K12' (the default) on first paint; the
+  // hero re-renders with the right noun once the tenant hydrates.
+  const tenantCopy = useTenantCopy();
+  const vertical = (tenantCopy?.vertical || 'K12').toUpperCase();
+  const venueNoun = VERTICAL_NOUN[vertical] || 'venue';
+  const isSports = vertical === 'SPORTS';
+  const isK12 = vertical === 'K12';
 
   useEffect(() => {
     if (!open || articles !== null) return;
@@ -139,18 +177,27 @@ export function HelpDrawer() {
     );
   }, [articles, q]);
 
-  // Quick-action tiles — the 3 most common onboarding tasks. Each
-  // links to its dedicated article inside the drawer (so the
-  // operator never leaves the popover for a task that's covered).
-  const QUICK_ACTIONS: { icon: typeof MonitorPlay; label: string; slug: string; tint: string }[] = [
-    { icon: MonitorPlay, label: 'Pair a screen',    slug: 'pair-a-screen',          tint: '#6366f1' },
-    { icon: ListVideo,   label: 'Build a playlist', slug: 'playlists-and-schedules', tint: '#0ea5e9' },
-    { icon: ShieldAlert, label: 'Emergency setup',  slug: 'emergency-system',        tint: '#e11d48' },
-  ];
+  // Quick-action tiles — vertical-aware. Sports tenants get "Run a
+  // game day" as the top action (linking to sports-getting-started)
+  // because that's the workflow they're here for; everyone else gets
+  // the generic playlist tile.
+  const QUICK_ACTIONS: { icon: typeof MonitorPlay; label: string; slug: string; tint: string }[] = isSports
+    ? [
+        { icon: MonitorPlay, label: 'Pair a screen',   slug: 'pair-a-screen',           tint: '#6366f1' },
+        { icon: ListVideo,   label: 'Run a game day',  slug: 'sports-getting-started', tint: '#10b981' },
+        { icon: ShieldAlert, label: 'Emergency setup', slug: 'emergency-system',        tint: '#e11d48' },
+      ]
+    : [
+        { icon: MonitorPlay, label: 'Pair a screen',    slug: 'pair-a-screen',           tint: '#6366f1' },
+        { icon: ListVideo,   label: 'Build a playlist', slug: 'playlists-and-schedules', tint: '#0ea5e9' },
+        { icon: ShieldAlert, label: 'Emergency setup',  slug: 'emergency-system',        tint: '#e11d48' },
+      ];
 
-  // Popular articles — pinned curated list (not algorithmic; small
-  // catalog). 3-4 rows max so this doesn't become a wall.
-  const POPULAR_SLUGS = ['pair-a-screen', 'assets', 'build-a-template', 'invite-users'];
+  // Popular articles — vertical-aware. Sports tenants see the
+  // game-day workflow + sport-specific surfaces front-and-center.
+  const POPULAR_SLUGS = isSports
+    ? ['sports-getting-started', 'sports-run-the-game', 'sports-screens', 'sports-ribbon']
+    : ['pair-a-screen', 'assets', 'build-a-template', 'invite-users'];
   const popular = useMemo(() => {
     if (!articles) return [];
     const bySlug = new Map(articles.map((a) => [a.slug, a]));
@@ -164,6 +211,7 @@ export function HelpDrawer() {
     'Templates': Wand2,
     'Screens': MonitorPlay,
     'Emergency System': ShieldAlert,
+    'Sports': ListVideo, // 2026-05-26 — Sports category surfaced for SPORTS tenants
     'SSO': UserPlus,
     'Clever': UserPlus,
     'Billing': CreditCard,
@@ -173,14 +221,25 @@ export function HelpDrawer() {
     const counts = new Map<string, number>();
     for (const a of articles) {
       const k = a.category || 'Other';
+      // 2026-05-26 — hide K-12-only categories (Clever, etc.) on
+      // every other vertical. Sports tenants don't need a Clever
+      // SIS chip teasing a feature they can't use.
+      if (!isK12 && K12_ONLY_CATEGORIES.has(k)) continue;
+      // Hide the Sports category for non-Sports tenants to keep the
+      // chip grid focused on what the operator is actually using.
+      if (!isSports && k === 'Sports') continue;
       counts.set(k, (counts.get(k) ?? 0) + 1);
     }
     return Array.from(counts.entries()).sort(([a], [b]) => {
       if (a === 'Getting Started') return -1;
       if (b === 'Getting Started') return 1;
+      // Sports tenants: float Sports to second slot, right after
+      // Getting Started.
+      if (isSports && a === 'Sports') return -1;
+      if (isSports && b === 'Sports') return 1;
       return a.localeCompare(b);
     });
-  }, [articles]);
+  }, [articles, isK12, isSports]);
 
   const active = articles && activeSlug ? articles.find((a) => a.slug === activeSlug) : null;
   const categoryArticles = useMemo(() => {
@@ -308,8 +367,16 @@ export function HelpDrawer() {
                     {/* Featured Getting Started Guide — slim card, single
                         solid color, BookOpen icon left of label. Opens
                         printable PDF guide in a new tab. */}
+                    {/* 2026-05-26 — vertical-aware hero. Sports
+                        tenants get a different anchor article + copy
+                        because their first-day workflow is "set up
+                        and run a game day," not "set up the dashboard."
+                        Other verticals get the generic noun-swapped
+                        copy ("school" / "venue" / "store" / "gym" /
+                        "restaurant" / etc.) so a fitness chain doesn't
+                        see "school" anywhere it doesn't make sense. */}
                     <Link
-                      href="/guide/getting-started"
+                      href={isSports ? '/help/sports-getting-started' : '/guide/getting-started'}
                       target="_blank"
                       onClick={() => setOpen(false)}
                       className="group flex items-center gap-3 p-3.5 rounded-xl border border-indigo-200 hover:border-indigo-400 hover:shadow-md transition-all"
@@ -320,10 +387,12 @@ export function HelpDrawer() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">
-                          Getting Started Guide
+                          {isSports ? 'VenueOS Sports Guide' : 'Getting Started Guide'}
                         </div>
                         <p className="text-sm font-semibold text-slate-900 leading-snug truncate">
-                          Set up your school in one sitting
+                          {isSports
+                            ? 'Set up + run your first game day'
+                            : `Set up your ${venueNoun} in one sitting`}
                         </p>
                       </div>
                       <ChevronRight className="w-4 h-4 text-indigo-700 shrink-0" />
@@ -420,7 +489,7 @@ export function HelpDrawer() {
                   Full help center <ExternalLink className="w-3 h-3" />
                 </Link>
                 <a
-                  href="mailto:support@edusignage.app"
+                  href="mailto:support@venue-os.app"
                   className="text-xs font-semibold text-slate-700 hover:text-slate-900 inline-flex items-center gap-1.5"
                 >
                   <Mail className="w-3.5 h-3.5" /> Contact support

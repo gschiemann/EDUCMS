@@ -320,12 +320,22 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
+    // 2026-05-26 — operator: "the sports picker menu is getting cut off
+    // top and not centered when the safari browser is not maximized."
+    // Root cause: items-center vertically centered the modal in 100vh,
+    // but max-h-[90vh] left only 5vh of breathing room. On a 600px-tall
+    // Safari window that's 30px — BEHIND the 73px sticky topbar — so
+    // the modal's header poked up under the topbar and looked cut off.
+    // Fix: scrollable overlay, items-start, pt-24 to clear the topbar,
+    // and drop the max-h cap so the modal grows naturally while the
+    // overlay handles overflow.
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50"
       onClick={onClose}
     >
+      <div className="min-h-full flex items-start justify-center p-4 pt-24 pb-8">
       <div
-        className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+        className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
@@ -496,6 +506,7 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
             {createGame.isPending ? 'Creating…' : 'Create & control'}
           </Button>
         </div>
+      </div>
       </div>
     </div>
   );
