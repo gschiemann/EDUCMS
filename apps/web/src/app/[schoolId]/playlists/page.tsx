@@ -3,6 +3,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings, Upload, AlertCircle, Download, Usb, Check, RefreshCw } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
+import { PlaylistPreviewThumb, derivePlaylistContentLabel, type TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   DndContext, closestCenter, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, DragEndEvent
@@ -394,7 +395,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
 // PUT /playlists/:id/active. When a playlist has zero schedules we
 // deep-link into the editor (onOpen) instead — we can't guess a target
 // to schedule to.
-function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, togglePending, layout = 'grid', isViewer = false }: {
+function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, togglePending, layout = 'grid', isViewer = false, templateLookup }: {
   playlist: any;
   screenMap: { screens: any[]; groups: any[]; scheduleCount: number; activeCount: number };
   onOpen: () => void;
@@ -403,6 +404,10 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
   togglePending: boolean;
   layout?: 'grid' | 'list';
   isViewer?: boolean;
+  /** Map of templateId → zones + bg + dimensions, so the card can
+   * render a live template thumbnail without refetching per row.
+   * Built by the caller from useTemplates() data. */
+  templateLookup?: Record<string, TemplateLookupEntry | undefined>;
 }) {
   const isTemplate = !!playlist.template;
   const slideCount = playlist.items?.length || 0;
@@ -411,8 +416,13 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
   const hasSchedules = screenMap.scheduleCount > 0;
   // A playlist is "on" when at least one of its schedules is active.
   const isLive = screenMap.activeCount > 0;
-  // First few asset thumbs for the grid-view preview strip.
-  const previewItems = (playlist.items || []).slice(0, 4);
+  // Content-type label — replaces the old binary "Media" vs "Layout".
+  // Operator (2026-05-25): "the words on the playlist descriptions
+  // that say media and layout dont make sense ... maybe just say
+  // image, video, template, or mixed content for multiple media
+  // types". Single source of truth in PlaylistPreviewThumb so the
+  // detail header, list row, and tile card stay in sync.
+  const contentLabel = derivePlaylistContentLabel(playlist);
   const assignedNames = [
     ...screenMap.screens.map((s: any) => s.name),
     ...screenMap.groups.map((g: any) => g.name),
@@ -440,13 +450,21 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
           className="absolute inset-0 w-full h-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 z-0"
         />
         <div className="relative z-10 flex items-center gap-4 px-4 py-3 pointer-events-none">
-          {/* Left accent + name */}
-          <div className={`w-1 h-9 rounded-full shrink-0 ${isTemplate ? 'bg-gradient-to-b from-violet-500 to-purple-500' : hasScreens ? 'bg-gradient-to-b from-emerald-400 to-teal-400' : 'bg-slate-200'}`} />
+          {/* Mini thumbnail (operator: "add mini previews when we
+              switch it from tile mode to list mode...we still have
+              room for small thumbnails"). Replaces the old colored
+              accent bar with the actual content. Sized 56×40 so the
+              row height stays compact. */}
+          <PlaylistPreviewThumb
+            playlist={playlist}
+            templateLookup={templateLookup}
+            size="list"
+          />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-bold text-slate-800 truncate">{playlist.name}</h3>
               <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${isTemplate ? 'bg-violet-100 text-violet-600' : 'bg-indigo-100 text-indigo-600'}`}>
-                {isTemplate ? 'Layout' : 'Media'}
+                {contentLabel}
               </span>
             </div>
             <div className="flex items-center gap-3 mt-0.5 text-[10px] text-slate-400">
@@ -529,7 +547,7 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
                   ? 'bg-violet-100 text-violet-600'
                   : 'bg-indigo-100 text-indigo-600'
               }`}>
-                {isTemplate ? 'Layout' : 'Media'}
+                {contentLabel}
               </span>
               <span className="text-[10px] text-slate-400">
                 {isTemplate
@@ -568,44 +586,24 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
           </div>
         </div>
 
-        {/* Preview strip — shows the first 4 asset thumbs so the card
-            has a "what's in this playlist" cue at a glance. Hidden for
-            Layout (template) playlists since they render dynamic
-            widgets rather than discrete slides. */}
-        {!isTemplate && previewItems.length > 0 && (
-          <div className="mb-3 -mx-1">
-            <div className="flex gap-1 px-1">
-              {previewItems.map((pi: any, idx: number) => {
-                const asset = pi.asset || {};
-                const thumb = thumbUrl(asset);
-                const isVideo = asset.mimeType?.startsWith('video/');
-                return (
-                  <div
-                    key={pi.id || idx}
-                    className="relative flex-1 aspect-video rounded-md bg-slate-50 border border-slate-100 overflow-hidden"
-                    title={assetName(asset)}
-                  >
-                    {thumb ? (
-                      <AssetThumb asset={asset} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        {mimeIcon(asset.mimeType, 'w-3.5 h-3.5')}
-                      </div>
-                    )}
-                    {isVideo && (
-                      <Play className="absolute inset-0 m-auto w-3 h-3 text-white drop-shadow" />
-                    )}
-                  </div>
-                );
-              })}
-              {slideCount > previewItems.length && (
-                <div className="flex-1 aspect-video rounded-md bg-slate-100 border border-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                  +{slideCount - previewItems.length}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Hero preview thumbnail (operator 2026-05-25: "playlists
+            should all have a preview, even a custom template should
+            give a preview in the playlist...and if its multiple
+            images, a slow scroll thru them would be really nice").
+            Single component handles all variants: cross-fade
+            slideshow for image playlists ≥2, first-frame for video,
+            live ScaledTemplateThumbnail render for templates, 2×2
+            grid for mixed content. Pauses when offscreen and on
+            prefers-reduced-motion. Previously: a flat 4-thumb strip
+            shown only for asset (non-template) playlists; templates
+            had no preview at all. */}
+        <div className="mb-3">
+          <PlaylistPreviewThumb
+            playlist={playlist}
+            templateLookup={templateLookup}
+            size="tile"
+          />
+        </div>
 
         {/* Screen Assignments — the hero section */}
         <div className="mt-1">
@@ -946,6 +944,28 @@ export default function PlaylistsPage() {
     }
     return map;
   }, [playlists, schedules, screens, screenGroups]);
+
+  // Template → zone-rich lookup so PlaylistCard can render a live
+  // ScaledTemplateThumbnail for template-based playlists without
+  // refetching per row. The /templates list endpoint already returns
+  // zones + bg + dimensions (see templates.controller.ts list()),
+  // and useTemplates() is called once at the page level — this just
+  // reshapes it into a Map for O(1) lookup by the cards.
+  const templateLookup = useMemo<Record<string, TemplateLookupEntry | undefined>>(() => {
+    const map: Record<string, TemplateLookupEntry | undefined> = {};
+    for (const t of (templates as any[] | undefined) || []) {
+      if (!t?.id) continue;
+      map[t.id] = {
+        zones: t.zones || [],
+        screenWidth: t.screenWidth || 1920,
+        screenHeight: t.screenHeight || 1080,
+        bgImage: t.bgImage || null,
+        bgGradient: t.bgGradient || null,
+        bgColor: t.bgColor || null,
+      };
+    }
+    return map;
+  }, [templates]);
 
   // --- Quick stats ---
   const totalScreensOnline = (screens || []).filter((s: any) => s.status === 'ONLINE').length;
@@ -1457,7 +1477,7 @@ export default function PlaylistsPage() {
                 <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                   selectedPlaylist.template ? 'bg-violet-100 text-violet-600' : 'bg-indigo-100 text-indigo-600'
                 }`}>
-                  {selectedPlaylist.template ? 'Layout' : 'Media'}
+                  {derivePlaylistContentLabel(selectedPlaylist)}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
@@ -2725,6 +2745,7 @@ export default function PlaylistsPage() {
               key={pl.id}
               playlist={pl}
               screenMap={playlistScreenMap[pl.id] || { screens: [], groups: [], scheduleCount: 0, activeCount: 0 }}
+              templateLookup={templateLookup}
               onOpen={() => handleSelect(pl)}
               onDelete={async () => {
                 // 2026-05-13 — the old "click delete and pray" path
