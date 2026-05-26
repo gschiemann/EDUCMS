@@ -43,9 +43,22 @@ const PATTERNS = {
   // Any `gap: …` declaration. Includes flex gap (broken on 83) and grid gap
   // (works on 83). The baseline allows current counts; only NEW additions fail.
   gap: /\bgap:\s*[^,;{}\n]+/g,
+  // 2026-05-26 audit P0-5: Tailwind `gap-N` / `gap-x-N` / `gap-y-N` class
+  // utilities compile to flex `gap: …` and have the same Chromium 83
+  // incompatibility. The CSS-property pattern above doesn't catch class
+  // usage in JSX — this one does. EmergencyOverlay had 3 of these before
+  // we shipped P0-5 and they slipped past every previous audit.
+  gapTw: /\bgap-(?:x-|y-)?(?:px|\d|\[)/g,
   // Container query units inside any expression — almost always inside
   // `clamp(...)` which Chromium 83 evaluates as invalid.
   cqUnits: /\b\d+(?:\.\d+)?cq[hwimnb]\b/g,
+  // 2026-05-26 audit P0-5: Tailwind `backdrop-blur-*` / inline
+  // `backdrop-filter: blur(…)`. Chromium 76+ supports it, but flaky on
+  // Android System WebView < 88 and renders as transparent on Taurus.
+  // Critical on overlay surfaces where the blur is the visible
+  // "I am a separate panel from the playlist behind me" signal.
+  backdropBlurTw: /\bbackdrop-blur(?:-[a-z]+)?\b/g,
+  backdropFilter: /\bbackdrop-filter:\s*blur/g,
   // Lane-6 P0: `text-wrap: balance` is Chromium 114+. Silently ignored on
   // Taurus (Chromium 83) → headlines wrap badly on a 4K board.
   textWrapBalance: /\btext-wrap:\s*balance\b/g,

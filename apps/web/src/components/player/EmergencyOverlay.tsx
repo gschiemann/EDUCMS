@@ -110,15 +110,27 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000 }: 
   // Banner-style for INFO text broadcasts, full-screen for everything else.
   const isBanner = active.type === 'TEXT_BROADCAST' && active.severity !== 'CRITICAL';
 
+  // 2026-05-26 P0-5 — Chromium-83 sweep on a life-safety surface.
+  // NovaStar Taurus LED controllers ship Chromium 83 and several K-12
+  // pilots play on Taurus walls. CLAUDE.md rule #10 bans flex GAP
+  // utilities (Chrome 84+; on 83 they collapse and icon+text stick
+  // together → unreadable lockdown banner), Tailwind BLUR utilities
+  // (Chromium 76+ but flaky on older Android WebView; renders as
+  // transparent on Taurus), and vh/vw inside rotated bodies (player
+  // preview mode). Fix: explicit margins instead of flex GAP, drop
+  // the BLUR utility entirely (the /95 bg opacity is already nearly
+  // opaque; blur was aesthetic polish, not load-bearing). Same render
+  // on modern engines; correct render on Chromium 83.
   if (isBanner) {
     return (
       <div
         role="alert"
         aria-live="assertive"
-        className={`fixed top-0 left-0 right-0 z-[9999] ${style.bg} ${style.text} border-b-4 ${style.border} ${style.animate} px-8 py-4 flex items-center gap-4 shadow-2xl`}
+        className={`fixed top-0 left-0 right-0 z-[9999] ${style.bg} ${style.text} border-b-4 ${style.border} ${style.animate} px-8 py-4 flex items-center shadow-2xl`}
       >
         <Icon className="w-8 h-8 flex-shrink-0" />
-        <div className="flex-1 text-xl font-bold leading-snug">{active.textBlob}</div>
+        {/* ml-4 stand-in for a parent flex GAP (Chrome 84+ only) */}
+        <div className="flex-1 text-xl font-bold leading-snug ml-4">{active.textBlob}</div>
       </div>
     );
   }
@@ -127,7 +139,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000 }: 
     <div
       role="alert"
       aria-live="assertive"
-      className={`fixed top-0 right-0 bottom-0 left-0 z-[9999] ${style.bg} ${style.text} ${style.animate} flex flex-col items-center justify-center p-12 backdrop-blur-sm`}
+      className={`fixed top-0 right-0 bottom-0 left-0 z-[9999] ${style.bg} ${style.text} ${style.animate} flex flex-col items-center justify-center p-12`}
     >
       {active.severity === 'CRITICAL' && (
         <div className="pointer-events-none absolute top-0 right-0 bottom-0 left-0 border-[12px] border-red-500 animate-pulse" aria-hidden />
@@ -145,24 +157,33 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000 }: 
         )}
 
         {active.mediaUrls && active.mediaUrls.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 max-h-[40vh]">
+          // Grid `gap-*` requires Chrome 84+. Use a negative-margin /
+          // positive-padding pair instead — works on every engine.
+          // max-h uses a fixed pixel cap rather than `vh` so the
+          // 90°-rotated preview-mode body doesn't size against the
+          // wrong axis on Taurus.
+          <div className="grid grid-cols-1 md:grid-cols-2 mt-6 -m-2" style={{ maxHeight: '432px' }}>
             {active.mediaUrls.slice(0, 4).map((url) => {
               const isVideo = /\.(mp4|webm|ogg)(\?|$)/i.test(url);
-              return isVideo ? (
-                <video key={url} src={url} autoPlay muted loop playsInline className="w-full h-full object-cover rounded-lg border-2 border-white/40" />
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={url} src={url} alt="Emergency media" className="w-full h-full object-cover rounded-lg border-2 border-white/40" />
+              return (
+                <div key={url} className="p-2">
+                  {isVideo ? (
+                    <video src={url} autoPlay muted loop playsInline className="w-full h-full object-cover rounded-lg border-2 border-white/40" />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={url} alt="Emergency media" className="w-full h-full object-cover rounded-lg border-2 border-white/40" />
+                  )}
+                </div>
               );
             })}
           </div>
         )}
 
         {active.audioUrl && (
-          <div className="mt-6 flex items-center justify-center gap-3 text-lg">
+          <div className="mt-6 flex items-center justify-center text-lg">
             <Volume2 className="w-6 h-6" />
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <audio src={active.audioUrl} autoPlay controls className="max-w-md" />
+            <audio src={active.audioUrl} autoPlay controls className="max-w-md ml-3" />
           </div>
         )}
       </div>

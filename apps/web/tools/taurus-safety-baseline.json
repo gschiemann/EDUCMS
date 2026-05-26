@@ -1,22 +1,33 @@
 {
   "apps/web/src/app/player/page.tsx": {
-    "gap": 4
+    "gap": 4,
+    "gapTw": 54,
+    "backdropBlurTw": 6
   },
   "apps/web/src/components/player/KioskSplash.tsx": {
-    "gap": 14
+    "gap": 14,
+    "backdropFilter": 4
+  },
+  "apps/web/src/components/player/TouchOverlay.tsx": {
+    "gapTw": 1,
+    "backdropBlurTw": 3
   },
   "apps/web/src/components/widgets/AnimatedAchievementShowcasePortraitWidget.tsx": {
-    "gap": 4
+    "gap": 4,
+    "backdropFilter": 2
   },
   "apps/web/src/components/widgets/AnimatedAchievementShowcaseWidget.tsx": {
-    "gap": 4
+    "gap": 4,
+    "backdropFilter": 2
   },
   "apps/web/src/components/widgets/AnimatedBellSchedulePortraitWidget.tsx": {
-    "gap": 1
+    "gap": 1,
+    "backdropFilter": 1
   },
   "apps/web/src/components/widgets/AnimatedBellScheduleWidget.tsx": {
     "gap": 8,
-    "cqUnits": 7
+    "cqUnits": 7,
+    "backdropFilter": 1
   },
   "apps/web/src/components/widgets/AnimatedBusBoardPortraitWidget.tsx": {
     "gap": 6
@@ -47,7 +58,8 @@
     "aspectRatio": 1
   },
   "apps/web/src/components/widgets/AnimatedCafeteriaHighPortraitWidget.tsx": {
-    "gap": 10
+    "gap": 10,
+    "backdropFilter": 1
   },
   "apps/web/src/components/widgets/AnimatedCafeteriaHighWidget.tsx": {
     "gap": 6,
@@ -62,7 +74,8 @@
     "cqUnits": 11
   },
   "apps/web/src/components/widgets/AnimatedEventCountdownWidget.tsx": {
-    "gap": 4
+    "gap": 4,
+    "backdropFilter": 1
   },
   "apps/web/src/components/widgets/AnimatedHallwaySchedulePortraitWidget.tsx": {
     "gap": 5
@@ -77,11 +90,13 @@
     "gap": 2
   },
   "apps/web/src/components/widgets/AnimatedMorningNewsPortraitWidget.tsx": {
-    "gap": 1
+    "gap": 1,
+    "backdropFilter": 2
   },
   "apps/web/src/components/widgets/AnimatedMorningNewsWidget.tsx": {
     "gap": 11,
-    "cqUnits": 4
+    "cqUnits": 4,
+    "backdropFilter": 2
   },
   "apps/web/src/components/widgets/AnimatedWelcomeHighPortraitWidget.tsx": {
     "gap": 6,
@@ -99,10 +114,12 @@
   },
   "apps/web/src/components/widgets/AnimatedWelcomePortraitWidget.tsx": {
     "gap": 1,
+    "backdropFilter": 1,
     "aspectRatio": 1
   },
   "apps/web/src/components/widgets/AnimatedWelcomeWidget.tsx": {
     "gap": 2,
+    "backdropFilter": 1,
     "aspectRatio": 1
   },
   "apps/web/src/components/widgets/bar/CocktailMenuWidget.tsx": {
@@ -143,11 +160,13 @@
   },
   "apps/web/src/components/widgets/fitness/FitnessAdBannerWidget.tsx": {
     "gap": 1,
-    "cqUnits": 12
+    "cqUnits": 12,
+    "backdropFilter": 1
   },
   "apps/web/src/components/widgets/fitness/FitnessAppLibraryWidget.tsx": {
     "gap": 11,
-    "cqUnits": 43
+    "cqUnits": 43,
+    "backdropFilter": 1
   },
   "apps/web/src/components/widgets/fitness/FitnessChannelGuideWidget.tsx": {
     "gap": 7
@@ -170,7 +189,8 @@
   },
   "apps/web/src/components/widgets/fitness/FitnessLiveTVWidget.tsx": {
     "gap": 3,
-    "cqUnits": 8
+    "cqUnits": 8,
+    "backdropFilter": 2
   },
   "apps/web/src/components/widgets/fitness/FitnessLobbyWidget.tsx": {
     "gap": 5
@@ -187,7 +207,8 @@
   },
   "apps/web/src/components/widgets/fitness/FitnessMusicPlayerWidget.tsx": {
     "gap": 5,
-    "cqUnits": 13
+    "cqUnits": 13,
+    "backdropFilter": 1
   },
   "apps/web/src/components/widgets/fitness/FitnessRecessWidget.tsx": {
     "gap": 3
@@ -205,6 +226,7 @@
   "apps/web/src/components/widgets/fitness/FitnessStickLauncherWidget.tsx": {
     "gap": 8,
     "cqUnits": 45,
+    "backdropFilter": 2,
     "colorMix": 2
   },
   "apps/web/src/components/widgets/fitness/FitnessTelemetryWidget.tsx": {
@@ -215,14 +237,16 @@
   },
   "apps/web/src/components/widgets/fitness/FitnessTrainingVideoWidget.tsx": {
     "gap": 7,
-    "cqUnits": 44
+    "cqUnits": 44,
+    "backdropFilter": 1
   },
   "apps/web/src/components/widgets/fitness/FitnessVaultWidget.tsx": {
     "gap": 6
   },
   "apps/web/src/components/widgets/fitness/FitnessWorkoutTimerWidget.tsx": {
     "gap": 2,
-    "cqUnits": 8
+    "cqUnits": 8,
+    "backdropFilter": 1
   },
   "apps/web/src/components/widgets/hs/HsBlueprintPortraitWidget.tsx": {
     "gap": 5
@@ -316,10 +340,12 @@
   },
   "apps/web/src/components/widgets/ms/MsPlaylistPortraitWidget.tsx": {
     "gap": 34,
+    "backdropFilter": 2,
     "textWrapBalance": 1
   },
   "apps/web/src/components/widgets/ms/MsPlaylistWidget.tsx": {
     "gap": 29,
+    "backdropFilter": 2,
     "textWrapBalance": 1
   },
   "apps/web/src/components/widgets/ms/MsStudioPortraitWidget.tsx": {
@@ -445,9 +471,11 @@
   },
   "apps/web/src/components/widgets/themes/gym-pe.tsx": {
     "gap": 1,
+    "gapTw": 2,
     "cqUnits": 8
   },
   "apps/web/src/components/widgets/themes/high-school-athletics.tsx": {
+    "gapTw": 3,
     "cqUnits": 14
   },
   "apps/web/src/components/widgets/themes/jumbotron-pro.tsx": {
@@ -523,7 +551,8 @@
     "gap": 4
   },
   "apps/web/src/components/widgets/themes/sunshine-academy.tsx": {
-    "gap": 1
+    "gap": 1,
+    "gapTw": 1
   },
   "apps/web/src/components/widgets/themes/track-day.tsx": {
     "gap": 2,
@@ -579,10 +608,15 @@
     "gap": 9
   },
   "apps/web/src/components/widgets/variant-tiles/basic-content-tiles.tsx": {
-    "gap": 2
+    "gap": 2,
+    "gapTw": 6
+  },
+  "apps/web/src/components/widgets/WidgetErrorBoundary.tsx": {
+    "gapTw": 1
   },
   "apps/web/src/components/widgets/WidgetRenderer.tsx": {
     "gap": 18,
+    "gapTw": 25,
     "cqUnits": 4
   }
 }
