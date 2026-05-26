@@ -336,7 +336,13 @@ export function Sidebar() {
               // a near-zero natural dimension trips the fallback too.
               <div
                 className={cn(
-                  'flex-shrink-0 h-12 min-w-[48px] max-w-[140px] flex items-center justify-center overflow-hidden rounded-lg px-2',
+                  // 2026-05-26 — operator: "the dodgers logo in the sample looks
+// better than the one thats placed in the actual app...the text is
+// larger and its easier to see." Bumped the chip h-12→h-14 (48→56
+// px) and max-w-140→max-w-160 + reduced inner padding px-2→px-1.5
+// so the wordmark fills more visual area inside the chip — matches
+// the prominence the operator sees in BrandingLivePreview's mock.
+'flex-shrink-0 h-14 min-w-[56px] max-w-[160px] flex items-center justify-center overflow-hidden rounded-lg px-1.5',
                   logoNeedsDarkBacking ? '' : 'bg-slate-50 border border-slate-200',
                 )}
                 style={
@@ -369,7 +375,11 @@ export function Sidebar() {
             ) : brandLogoSvg && /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(brandLogoSvg) ? (
               <div
                 className={cn(
-                  'flex-shrink-0 h-12 min-w-[48px] max-w-[140px] flex items-center justify-center rounded-lg px-2 [&_svg]:h-full [&_svg]:max-h-12 [&_svg]:w-auto',
+                  // 2026-05-26 — bumped sizing to match the IMG branch
+                  // above (h-12→h-14, max-w-140→max-w-160, px-2→px-1.5)
+                  // so inline-SVG logos and IMG logos have the same
+                  // visual prominence in the sidebar.
+                  'flex-shrink-0 h-14 min-w-[56px] max-w-[160px] flex items-center justify-center rounded-lg px-1.5 [&_svg]:h-full [&_svg]:max-h-14 [&_svg]:w-auto',
                   // currentColor-using SVGs inherit text color → set
                   // white on dark chip, slate-800 on light chip.
                   logoNeedsDarkBacking
@@ -392,7 +402,7 @@ export function Sidebar() {
               // Paintbrush icon, matching LogoThumbnail's fallback
               // visual. The operator at least sees "your brand color
               // is being honored" instead of "we forgot you exist".
-              <div className="flex-shrink-0 h-12 min-w-[48px] max-w-[140px] flex items-center justify-center overflow-hidden rounded-lg px-2"
+              <div className="flex-shrink-0 h-14 min-w-[56px] max-w-[160px] flex items-center justify-center overflow-hidden rounded-lg px-1.5"
                 style={{ background: 'var(--brand-primary, #4f46e5)' }}
                 aria-hidden
                 title={brandName}

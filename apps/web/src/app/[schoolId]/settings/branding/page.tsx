@@ -5,7 +5,7 @@
  */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
@@ -20,7 +20,6 @@ export default function SettingsBrandingPage() {
   const { data: tenant } = useTenant();
   const params = useParams();
   const schoolId = params?.schoolId as string;
-  const [current, setCurrent] = useState<BrandingPreview | null>(null);
   const [confirmRevert, setConfirmRevert] = useState(false);
 
   // Shared cache subscription instead of a raw apiFetch on mount.
@@ -33,16 +32,23 @@ export default function SettingsBrandingPage() {
   const invalidateBranding = useInvalidateTenantBranding();
   const loading = brandingLoading;
 
-  // Shape-coerce the stored record into a BrandingPreview enough for
-  // the wizard's editing mode. Re-runs when the shared cache changes
-  // (Adopt mutation invalidates → this effect re-fires).
-  useEffect(() => {
-    if (!brandingRow) {
-      setCurrent(null);
-      return;
-    }
+  // 2026-05-26 — operator: "when i save and apply the branding then go
+  // back into the reskin option, it forgets everything i had loaded".
+  //
+  // Bug was effect-ordering. Pre-fix used `useState+useEffect`: the
+  // wizard mounted with `initial={current}` where `current` was the
+  // useState slot, which started null and was filled by useEffect ON
+  // THE NEXT TICK. But the wizard's own internal `useState` captured
+  // `initial?.sourceUrl ?? ''` on FIRST render — which was still null
+  // at that moment. Subsequent updates to `current` never re-pushed
+  // through because the wizard already had its captured state.
+  //
+  // Fix: derive `current` synchronously via `useMemo` so it's already
+  // populated on the same render the wizard mounts on. No async gap.
+  const current = useMemo<BrandingPreview | null>(() => {
+    if (!brandingRow) return null;
     const b = brandingRow as any;
-    setCurrent({
+    return {
       sourceUrl: b.sourceUrl || '',
       finalUrl: b.sourceUrl || '',
       displayName: b.displayName,
@@ -71,15 +77,16 @@ export default function SettingsBrandingPage() {
       warnings: [],
       scrapedAt: b.scrapedAt || new Date().toISOString(),
       durationMs: 0,
-    });
+    };
   }, [brandingRow]);
 
   const revert = async () => {
     try {
       await apiFetch('/branding/me', { method: 'DELETE' });
-      setCurrent(null);
-      // Drop the shared cache so every subscriber repaints with the
-      // default palette without waiting for staleTime to expire.
+      // `current` is now derived via useMemo from brandingRow, so we
+      // don't setCurrent(null) — the cache invalidation below makes
+      // useTenantBranding refetch and return null, which makes
+      // `current` recompute to null on the next render automatically.
       invalidateBranding();
       pushBrandingPreview({ palette: null, displayName: null, tagline: null, logoUrl: null, faviconUrl: null, fontHeading: null, fontBody: null });
       setConfirmRevert(false);
@@ -127,24 +134,33 @@ export default function SettingsBrandingPage() {
         )}
       </header>
 
-      {/* 2026-05-26 — moved off /settings per operator: "why bring
-          all of these settings outside int the main settings page
-          these should have been in the settings menu for the
-          branding." Current-brand summary + palette + Apply-to-
-          templates + Reset all live here now, above the wizard. */}
-      {!loading && (
-        <div className="mb-6">
-          <BrandingSettingsCard />
-        </div>
-      )}
+      {/* 2026-05-26 round 2 — operator: "we talked about moving the
+          template rebranding to underneath the inital scanning section
+          because its weird to have that above the area where you
+          actually do the inital scanning and selecting of the logos."
+          Order is now:
+            1) BrandingWizard (scan + scrape + adopt — the primary action)
+            2) BrandingSettingsCard (Apply-brand-to-templates +
+               Reset — the follow-up actions you only take AFTER you
+               have a brand)
+          This is the inverse of the previous shipped order; the
+          earlier "move details OFF /settings" pass conflated two
+          things — operator wanted the brand-DETAILS card off of
+          /settings (kept), and wanted it BELOW the wizard on
+          /settings/branding (was reversed; now correct). */}
       {loading ? (
         <div className="p-10 text-center text-slate-500">Loading…</div>
       ) : (
-        <BrandingWizard
-          mode="authed"
-          initial={current || undefined}
-          vertical={(tenant as any)?.vertical || 'K12'}
-        />
+        <>
+          <BrandingWizard
+            mode="authed"
+            initial={current || undefined}
+            vertical={(tenant as any)?.vertical || 'K12'}
+          />
+          <div className="mt-6">
+            <BrandingSettingsCard />
+          </div>
+        </>
       )}
     </div>
   );
