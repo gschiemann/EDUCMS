@@ -327,17 +327,37 @@ export default function DashboardPage() {
             background:
               'linear-gradient(135deg, color-mix(in srgb, var(--brand-primary, #4f46e5) 18%, white), color-mix(in srgb, var(--brand-primary, #4f46e5) 8%, white))',
             border: '1px solid color-mix(in srgb, var(--brand-primary, #4f46e5) 18%, white)',
+            // 2026-05-26 — operator: "your gradient goes over the
+            // rounded menu, please fix that". The blurred orb below
+            // uses `filter: blur(20px)` which Chrome renders OUTSIDE
+            // the parent's overflow:hidden + border-radius clip
+            // (known compositor quirk with filtered descendants of
+            // rounded containers). `isolation: isolate` creates a new
+            // stacking context here so the filtered child is clipped
+            // by THIS box's rounded edges instead of leaking past
+            // them. Belt-and-suspenders is the explicit clipper div
+            // below.
+            isolation: 'isolate',
           }}
         >
+          {/* Orb clipper — explicitly re-clips the blurred orb to the
+              parent's rounded-2xl radius. Even when `overflow: hidden`
+              on the parent fails to clip the filter (the Chrome bug
+              above), this wrapper guarantees the blur stays inside. */}
           <div
             aria-hidden
-            className="absolute -top-12 -right-12 w-48 h-48 rounded-full pointer-events-none"
-            style={{
-              background:
-                'radial-gradient(circle, color-mix(in srgb, var(--brand-primary, #4f46e5) 35%, transparent), transparent 70%)',
-              filter: 'blur(20px)',
-            }}
-          />
+            className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden pointer-events-none"
+            style={{ borderRadius: 'inherit' }}
+          >
+            <div
+              className="absolute -top-12 -right-12 w-48 h-48 rounded-full"
+              style={{
+                background:
+                  'radial-gradient(circle, color-mix(in srgb, var(--brand-primary, #4f46e5) 35%, transparent), transparent 70%)',
+                filter: 'blur(20px)',
+              }}
+            />
+          </div>
           <div className="relative flex items-start justify-between gap-6 flex-wrap">
             <div className="min-w-0 flex-1">
               <h1
