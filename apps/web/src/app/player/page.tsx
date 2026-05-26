@@ -3684,6 +3684,30 @@ function PlayerPage() {
                 } catch { /* CustomEvent unsupported — ignore */ }
               }
             }
+            // Sprint 13 — CTS_MANUAL_CUE: admin / Stream Deck / mobile
+            // operator manually triggered a specific celebration cue on
+            // this screen. Re-route through the same window CustomEvent
+            // the orchestrator's Properties-panel test buttons fire, so
+            // the orchestrator (mounted full-coverage on the ribbon) just
+            // works without per-source plumbing. Not in SENSITIVE_TYPES —
+            // a forged manual cue is a UX nuisance, not a safety failure
+            // (same threat tier as GAME_STATE).
+            if (msg.type === 'CTS_MANUAL_CUE') {
+              const payload = (msg.payload || {}) as { cueId?: string; team?: string };
+              if (payload && typeof payload === 'object' && typeof payload.cueId === 'string') {
+                try {
+                  window.dispatchEvent(
+                    new CustomEvent('edu:cts-celebration-preview', {
+                      detail: {
+                        cueId: payload.cueId,
+                        team: payload.team === 'away' ? 'away' : payload.team === 'horn' ? 'horn' : 'home',
+                        source: 'manual',
+                      },
+                    }),
+                  );
+                } catch { /* ignore */ }
+              }
+            }
             // Sprint 11 Phase B — REFRESH_WEB: admin pushed a "reload
             // kiosks" command from the dashboard. Solves the chicken-
             // and-egg problem of "we shipped a web bundle fix but the

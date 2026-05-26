@@ -1300,12 +1300,59 @@ export function CtsCelebrationOrchestratorWidget({ config }: { config?: CtsCeleb
   const lastPeriodRef = useRef<number>(snap.period);
   const lastHornRef = useRef<boolean>(snap.horn);
 
-  const fire = useCallback((deck: CtsCueId[], idxRef: { current: number }, team: 'home' | 'away' | 'horn') => {
+  // Cross-snapshot cue dedup. If the same cueId is requested within
+  // CUE_COOLDOWN_MS of the last fire (e.g. a flap on the CTS feed
+  // resends the same horn-rising-edge), we DROP the duplicate. Without
+  // this guard a noisy console can re-fire the touchdown cinematic
+  // three times in 600ms — unwatchable. Tuned to 2s: shorter than any
+  // realistic celebration sequence, longer than any realistic feed
+  // glitch.
+  const lastFireAtRef = useRef<number>(0);
+  const lastFireCueRef = useRef<string>('');
+  const CUE_COOLDOWN_MS = 2_000;
+
+  // Best-effort audit POST. Resolves the gameId from URL the same way
+  // the sponsor/announcement widgets do, fire-and-forget so a network
+  // blip never blocks the visual. Writes a GameEvent row server-side
+  // for sponsor proof-of-play reporting.
+  const auditCueFire = useCallback((cueId: string, team: 'home' | 'away' | 'horn', source: 'auto' | 'preview' | 'manual') => {
+    if (typeof window === 'undefined') return;
+    const gameId = resolveGameId();
+    if (!gameId) return;
+    const root = ribbonApiRoot();
+    const url = root.endsWith('/api/v1')
+      ? `${root}/sports/board/${encodeURIComponent(gameId)}/cts-cue-fired`
+      : `${root}/api/v1/sports/board/${encodeURIComponent(gameId)}/cts-cue-fired`;
+    try {
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // keepalive: survive a tab-close mid-POST.
+        keepalive: true,
+        body: JSON.stringify({
+          cueId,
+          team,
+          source,
+          score: `${snap.homeScore}-${snap.awayScore}`,
+        }),
+      }).catch(() => undefined);
+    } catch { /* ignore */ }
+  }, [snap.homeScore, snap.awayScore]);
+
+  const fire = useCallback((deck: CtsCueId[], idxRef: { current: number }, team: 'home' | 'away' | 'horn', source: 'auto' | 'preview' | 'manual' = 'auto') => {
     if (!deck.length) return;
     const cueId = deck[idxRef.current % deck.length] as CtsCueId;
+    // Dedup: if this exact cue fired within the cooldown, skip it.
+    const now = Date.now();
+    if (cueId === lastFireCueRef.current && now - lastFireAtRef.current < CUE_COOLDOWN_MS) {
+      return;
+    }
     idxRef.current = (idxRef.current + 1) % deck.length;
-    setActive({ cueId, until: Date.now() + durationMs, team });
-  }, [durationMs]);
+    lastFireAtRef.current = now;
+    lastFireCueRef.current = cueId;
+    setActive({ cueId, until: now + durationMs, team });
+    auditCueFire(cueId, team, source);
+  }, [durationMs, auditCueFire]);
 
   // Goal / horn / period detection on every snapshot update.
   useEffect(() => {
@@ -1332,28 +1379,43 @@ export function CtsCelebrationOrchestratorWidget({ config }: { config?: CtsCeleb
     lastHornRef.current = snap.horn;
   }, [snap.homeScore, snap.awayScore, snap.period, snap.horn, homeDeck, awayDeck, periodDeck, hornDeck, fire, cfg.ignoreHorn, cfg.ignorePeriodEnd]);
 
-  // Operator-preview event — lets a Properties-panel button trigger a
-  // celebration without needing a real bridge connection. Detail can
-  // pin a specific cueId; otherwise it round-robins through the
-  // appropriate deck for the team.
+  // Operator-preview event — Properties-panel test buttons + admin
+  // CTS_MANUAL_CUE WS message (Stream Deck / mobile cue panel) both
+  // dispatch this. Detail can pin a specific cueId; otherwise it
+  // round-robins through the appropriate deck for the team. The
+  // `source` field tells the audit log whether this was a Properties-
+  // panel preview ('preview') or a Stream Deck / admin trigger
+  // ('manual'); defaults to 'preview' for back-compat.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onPreview = (e: Event) => {
       const detail = (e as CustomEvent).detail || {};
       const team: 'home' | 'away' | 'horn' = detail.team === 'away' ? 'away' : detail.team === 'horn' ? 'horn' : 'home';
+      const source: 'preview' | 'manual' = detail.source === 'manual' ? 'manual' : 'preview';
       let cueId: CtsCueId | undefined = typeof detail.cueId === 'string' && detail.cueId in CUE_CATALOG ? detail.cueId : undefined;
       if (!cueId) {
+        // No specific cue id pinned — round-robin from the appropriate
+        // deck. Wrap in a one-shot deck so we still go through the
+        // shared `fire()` for dedup + audit.
         const deck = team === 'home' ? homeDeck : team === 'away' ? awayDeck : hornDeck;
         const idxRef = team === 'home' ? homeIdxRef : team === 'away' ? awayIdxRef : hornIdxRef;
         if (!deck.length) return;
-        cueId = deck[idxRef.current % deck.length] as CtsCueId;
-        idxRef.current = (idxRef.current + 1) % deck.length;
+        fire(deck, idxRef, team, source);
+        return;
       }
-      setActive({ cueId, until: Date.now() + durationMs, team });
+      // Specific cue pinned — fire it directly (still dedup + audit).
+      const now = Date.now();
+      if (cueId === lastFireCueRef.current && now - lastFireAtRef.current < CUE_COOLDOWN_MS) {
+        return;
+      }
+      lastFireAtRef.current = now;
+      lastFireCueRef.current = cueId;
+      setActive({ cueId, until: now + durationMs, team });
+      auditCueFire(cueId, team, source);
     };
     window.addEventListener('edu:cts-celebration-preview', onPreview);
     return () => window.removeEventListener('edu:cts-celebration-preview', onPreview);
-  }, [homeDeck, awayDeck, hornDeck, durationMs]);
+  }, [homeDeck, awayDeck, hornDeck, durationMs, fire, auditCueFire]);
 
   // Auto-revert when the window expires.
   useEffect(() => {

@@ -2415,4 +2415,50 @@ export class SportsService {
     await this.prisma.client.customCue.delete({ where: { id } });
     return { deleted: true };
   }
+
+  /**
+   * Sprint 13 — CTS celebration audit log.
+   *
+   * The CTS celebration orchestrator on the kiosk player POSTs to
+   * /api/v1/sports/board/:id/cts-cue-fired each time it fires a cue,
+   * so the GameEvent table captures a forensic record of every
+   * celebration that played (cueId, team, source, live score at fire
+   * time). Drives the sponsor proof-of-play report — "during this
+   * game, the GOLAZO cue fired 4 times in front of the Pool Supply
+   * sponsor banner".
+   *
+   * Best-effort: failure here NEVER blocks the kiosk (which already
+   * rendered the cinematic). The endpoint that calls this catches and
+   * discards thrown errors.
+   */
+  async recordCueFired(
+    id: string,
+    dto: {
+      cueId: string;
+      team: 'home' | 'away' | 'horn';
+      source: 'auto' | 'preview' | 'manual';
+      score?: string;
+    },
+  ): Promise<void> {
+    // Confirm the game exists (cheap select) so we don't write orphan
+    // GameEvent rows pointing at deleted / non-existent games.
+    const game = await this.prisma.client.game.findUnique({
+      where: { id },
+      select: { id: true, homeScore: true, awayScore: true },
+    });
+    if (!game) return;
+    await this.prisma.client.gameEvent.create({
+      data: {
+        gameId: id,
+        type: 'CTS_CUE',
+        payload: {
+          cueId: dto.cueId,
+          team: dto.team,
+          source: dto.source,
+          score: dto.score || `${game.homeScore}-${game.awayScore}`,
+          t: new Date().toISOString(),
+        },
+      },
+    });
+  }
 }

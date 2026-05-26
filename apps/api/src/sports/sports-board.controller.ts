@@ -41,6 +41,65 @@ export class SportsBoardController {
     return this.sports.getBoard(id);
   }
 
+  /**
+   * Sprint 13 — CTS celebration audit log.
+   *
+   * The CTS orchestrator runs on the kiosk player. When it picks a cue
+   * from the operator's deck and fires the cinematic, it POSTs here
+   * (best-effort, no await) so the GameEvent table captures a forensic
+   * record of every celebration that played: cueId, team, source
+   * (auto|preview|manual), and the live score at fire time. Drives the
+   * sponsor proof-of-play report ("during this game, the GOLAZO cue
+   * fired 4 times in front of the Pool Supply sponsor banner").
+   *
+   * Public + rate-limited (16 Hz per game, ample headroom — typical
+   * water polo has < 0.05 Hz cue fires). The endpoint trusts the
+   * client's cueId/team/source values because:
+   *   - the player can already trigger arbitrary visuals (it's
+   *     rendering them); falsifying an audit row gains nothing
+   *   - the source field is purely informational (tells us "was this
+   *     auto-detected from CTS, manually pushed from the Properties
+   *     panel test button, or from a Stream Deck remote trigger")
+   *   - bad rows are still tenant-scoped via the game id
+   */
+  @Post(':id/cts-cue-fired')
+  async ctsCueFired(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      cueId?: string;
+      team?: 'home' | 'away' | 'horn';
+      source?: 'auto' | 'preview' | 'manual';
+      score?: string;
+    },
+  ) {
+    const now = Date.now();
+    const recent = (this.feedHits.get(`cue:${id}`) || []).filter(
+      (t) => t > now - SportsBoardController.FEED_WINDOW_MS,
+    );
+    if (recent.length >= SportsBoardController.FEED_MAX_PER_WINDOW) {
+      this.feedHits.set(`cue:${id}`, recent);
+      throw new HttpException('Cue audit rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    recent.push(now);
+    this.feedHits.set(`cue:${id}`, recent);
+
+    if (!body || typeof body !== 'object' || !body.cueId || typeof body.cueId !== 'string') {
+      throw new HttpException('cueId is required', HttpStatus.BAD_REQUEST);
+    }
+    try {
+      await this.sports.recordCueFired(id, {
+        cueId: String(body.cueId).slice(0, 64),
+        team: body.team === 'away' ? 'away' : body.team === 'horn' ? 'horn' : 'home',
+        source: body.source === 'manual' ? 'manual' : body.source === 'preview' ? 'preview' : 'auto',
+        score: typeof body.score === 'string' ? body.score.slice(0, 16) : undefined,
+      });
+    } catch {
+      // Best-effort — the kiosk already rendered. Don't fail it.
+    }
+    return { ok: true };
+  }
+
   @Post(':id/feed')
   async feed(
     @Param('id') id: string,

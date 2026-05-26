@@ -1546,6 +1546,89 @@ export class ScreensController {
     return { ok: true };
   }
 
+  /**
+   * Sprint 13 — CTS celebration MANUAL cue trigger.
+   *
+   * Operator (or Stream Deck button, or phone tap) wants to fire a
+   * specific celebration cue on a specific ribbon screen RIGHT NOW,
+   * regardless of what the CTS bridge sees. This endpoint takes the
+   * cueId and broadcasts a CTS_MANUAL_CUE on the device channel; the
+   * player page handles it by dispatching the same
+   * `edu:cts-celebration-preview` window event the orchestrator's
+   * Properties-panel test buttons fire.
+   *
+   * Auth: admin / contributor JWT. SUPER_ADMIN / DISTRICT_ADMIN /
+   * SCHOOL_ADMIN / CONTRIBUTOR — same scope as fireCue on the existing
+   * scoreboard celebration system.
+   *
+   * Stream Deck integration: configure a Stream Deck button with the
+   * Web Request action, POST to this URL with the Bearer token of a
+   * dashboard user that has CONTRIBUTOR+ role, body
+   * `{"cueId":"CEL_SOCCER_GOAL","team":"home"}`. Show caller hits
+   * one button → ribbon fires the cinematic instantly.
+   *
+   * AuditLog row written on every fire so a forensics review can
+   * answer "who fired which cue at what time on which screen".
+   */
+  @Post(':id/cts-manual-cue')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async ctsManualCue(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { cueId?: string; team?: 'home' | 'away' | 'horn' },
+  ) {
+    if (!body || typeof body !== 'object' || !body.cueId || typeof body.cueId !== 'string') {
+      throw new HttpException('cueId is required', HttpStatus.BAD_REQUEST);
+    }
+    const cueId = String(body.cueId).slice(0, 64);
+    const team: 'home' | 'away' | 'horn' = body.team === 'away' ? 'away' : body.team === 'horn' ? 'horn' : 'home';
+
+    // Verify the operator's tenant owns this screen — prevents a
+    // contributor on tenant A from firing a cue on tenant B's ribbon.
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+    });
+    if (!screen) {
+      throw new HttpException('Screen not found', HttpStatus.NOT_FOUND);
+    }
+
+    const signed = this.signer.signMessage('CTS_MANUAL_CUE', {
+      screenId: id,
+      cueId,
+      team,
+      source: 'manual',
+      firedByUserId: req.user.id,
+    });
+    try {
+      await this.redisService.publish(`device:${id}`, signed);
+    } catch {
+      // Redis blip: the operator can tap again; manual cues are not
+      // retried server-side (the next tap is the retry).
+    }
+    // Forensic audit — immutable record of every manual cue fire.
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user.id,
+          action: 'CTS_MANUAL_CUE_FIRED',
+          targetType: 'Screen',
+          targetId: id,
+          details: JSON.stringify({ cueId, team }),
+        },
+      });
+    } catch {
+      // Best-effort — never let an audit failure block the cue.
+    }
+    return { ok: true, cueId, team };
+  }
+
   // ─── Sprint 8 — set screen geo location (map view) ───
   // Admin types an address (or pastes lat/lng); we forward to the
   // OpenStreetMap Nominatim public endpoint to geocode, store all three.

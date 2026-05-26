@@ -483,6 +483,33 @@ export function CtsBridge({
               </pre>
             </details>
           )}
+          {/* Stream Deck / remote-cue setup hint. Surfacing the URL right
+              on the bridge panel so a show caller setting up their
+              Stream Deck the morning of the game finds it without
+              digging through docs. */}
+          <details style={{ marginTop: 4 }}>
+            <summary style={{ cursor: 'pointer' }}>Stream Deck / remote cue setup</summary>
+            <div style={{ marginTop: 4, color: '#cbd5e1', fontSize: 10, lineHeight: 1.5 }}>
+              <div style={{ marginBottom: 4 }}>
+                Configure a Stream Deck "Web Request" button to:
+              </div>
+              <code style={{ display: 'block', background: '#0f172a', padding: 6, borderRadius: 4, marginBottom: 4, wordBreak: 'break-all', fontSize: 9 }}>
+                POST {apiRoot}/api/v1/screens/{screenId}/cts-manual-cue
+              </code>
+              <div style={{ marginBottom: 4 }}>
+                Headers: <code>Authorization: Bearer YOUR_OPERATOR_TOKEN</code>
+              </div>
+              <div style={{ marginBottom: 4 }}>
+                Body:
+              </div>
+              <code style={{ display: 'block', background: '#0f172a', padding: 6, borderRadius: 4, fontSize: 9 }}>
+                {`{"cueId":"CEL_SOCCER_GOAL","team":"home"}`}
+              </code>
+              <div style={{ marginTop: 4, opacity: 0.75 }}>
+                Available cue ids live in the ribbon template's Celebration Overlay zone → Properties panel.
+              </div>
+            </div>
+          </details>
         </div>
       )}
 
