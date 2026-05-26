@@ -85,7 +85,99 @@ function scoreboardPreset(
   };
 }
 
+/**
+ * CTS Water Polo Ribbon — 4-zone perimeter ribbon preset.
+ *
+ * Built for the operator's live water-polo install (NovaStar VX400 Pro
+ * driving a 1000mm × 40ft ribbon with `repeats: 4` tiling — see the
+ * Screen.repeats column). Design canvas is 1920×192 (10:1 ratio); the
+ * widgets all scale-to-fit so the layout still renders cleanly on any
+ * actual ribbon dimensions the operator sets on the Screen.
+ *
+ * Zone layout (one tall strip; zones split horizontally):
+ *
+ *   ┌──────────────┬───────────────┬─────────────┬──────────┐
+ *   │ CTS LIVE     │ SPONSOR REEL  │ ANNOUNCERS  │ CELEBRATE│
+ *   │ scoreboard   │ rotator       │ ticker      │ pulse    │
+ *   │ (clock+score │ (operator     │ (operator   │ (auto on │
+ *   │  +period+    │  configures)  │  configures)│  goal /  │
+ *   │  exclusion)  │               │             │  horn)   │
+ *   └──────────────┴───────────────┴─────────────┴──────────┘
+ *      x=0,w=30       x=30,w=30      x=60,w=25     x=85,w=15
+ *
+ * Every zone uses a SCOREBOARD widgetType with a `variant` set to the
+ * matching CTS variant id from variants-register.ts. The variant
+ * dispatcher renders the right component; nothing in this preset
+ * imports the React widget code directly (this file lives in the API
+ * package).
+ *
+ * Operators get a turn-key ribbon they can pick from the gallery, then
+ * customize each zone via the Properties panel (sponsor slots,
+ * announcement copy, team colors).
+ */
+function ctsRibbonZone(
+  name: string,
+  variant: string,
+  x: number,
+  width: number,
+  extraConfig?: Record<string, any>,
+): SystemPreset['zones'][number] {
+  return {
+    name,
+    widgetType: 'SCOREBOARD',
+    x,
+    y: 0,
+    width,
+    height: 100,
+    zIndex: 0,
+    sortOrder: 0,
+    defaultConfig: { variant, ...extraConfig },
+  };
+}
+
 export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
+  // ── CTS Water Polo Ribbon — 4-zone perimeter ribbon ─────────────
+  {
+    id: 'sports-cts-water-polo-ribbon',
+    name: 'CTS Water Polo Ribbon',
+    description:
+      'Turn-key 4-zone perimeter-ribbon layout for water-polo installs driven by a Colorado Time Systems (CTS) Gen 6 console. Left: live CTS scoreboard (clock + score + period + active exclusion). Middle: sponsor rotator (configure your reel in the Properties panel). Right: player announcements (lineups, next match, anything you want to ticker). Far-right: auto-celebration that pulses on goal-delta or horn. Pair with a screen on `repeats: 4` so the same content tiles every 10ft of ribbon.',
+    category: 'SCOREBOARD',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 192,
+    bgColor: '#05070d',
+    zones: [
+      ctsRibbonZone('CTS Scoreboard', 'scoreboard-cts-ribbon', 0, 30, {
+        homeAbbrev: 'H',
+        awayAbbrev: 'A',
+        bgColor: '#0f172a',
+        accentColor: '#f59e0b',
+      }),
+      ctsRibbonZone('Sponsor Reel', 'scoreboard-cts-sponsor', 30, 30, {
+        zoneLabel: 'OUR SPONSORS',
+        defaultDurationMs: 6000,
+        bgColor: '#1e293b',
+        slots: [],
+      }),
+      ctsRibbonZone('Announcements', 'scoreboard-cts-announcement', 60, 25, {
+        zoneLabel: 'ANNOUNCEMENTS',
+        defaultDurationMs: 5000,
+        bgColor: '#0c1322',
+        accentColor: '#fbbf24',
+        entries: [],
+      }),
+      ctsRibbonZone('Auto-Celebration', 'scoreboard-cts-celebration', 85, 15, {
+        text: 'GOAL!',
+        idleText: 'GO TEAM',
+        activeMs: 6000,
+        hornAlsoTriggers: true,
+        homeColor: '#3b82f6',
+        awayColor: '#ef4444',
+        bgColor: '#0a0a14',
+      }),
+    ],
+  },
   // ── Scoreboards — live, engine-driven (bind a game in the editor) ──
   scoreboardPreset(
     'sports-scoreboard-hs',

@@ -1,0 +1,897 @@
+'use client';
+
+/**
+ * @cms — Colorado Time Systems (CTS) ribbon widget set.
+ *
+ * Composable widgets for building a custom water-polo ribbon board fed
+ * by the CTS Gen 6 console. Sibling of CtsScoreboard.tsx (which is the
+ * all-in-one "drop one widget on the ribbon and you're done" tile);
+ * these widgets let an operator compose their own layout — clock here,
+ * score there, sponsor rotator middle, player announcements right.
+ *
+ * Every widget reads from the same source: a `useCtsGameState()` hook
+ * that subscribes to the `edu:cts-game-state` window CustomEvent that
+ * the player page (apps/web/src/app/player/page.tsx) dispatches when
+ * a GAME_STATE message arrives over the signed-WS channel. The bridge
+ * → API → WS pipeline is in CtsBridge.tsx / @cms/scoreboard-cts.
+ *
+ * Falls back to a SAMPLE snapshot when no bridge is connected so the
+ * builder canvas + gallery thumbnails are always alive (operator can
+ * still see what the widget looks like without driving the ribbon
+ * from a real CTS console).
+ *
+ * Vertical-gated: every variant in variants-register.ts that maps to
+ * these widgets is tagged `vertical: 'SPORTS'`, so non-sports tenants
+ * never see them in the palette.
+ *
+ * Chromium-safe — long-hand position sides only, per-child margins
+ * (no flex gap), no container query units, no CSS shorthand position.
+ * CtsBridge itself requires Web Serial (Chrome 89+) and never ships
+ * to Taurus, but these widgets can still render on a Taurus-driven
+ * ribbon if the API broadcasts game state — so the styles stay
+ * conservative. See CLAUDE.md rule #10.
+ *
+ * Three classes of widget:
+ *
+ *  1. CTS-FED — clock / score / period / exclusion / shot clock /
+ *     horn-flash. Pure subscribers to the bridge feed.
+ *
+ *  2. OPERATOR-CONFIGURED — sponsor rotator + player announcement
+ *     ticker. Pull from the widget's config (no live feed needed).
+ *     Lets the operator pre-build their game-day sponsor lineup
+ *     in the editor weeks before the match.
+ *
+ *  3. AUTO-CELEBRATION — celebration widget that idles on a "GO
+ *     TEAM" loop and pulses into a 5-second celebration sequence
+ *     when a goal-delta is detected (homeScore or awayScore went
+ *     up between snapshots) OR when the horn fires.
+ */
+
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+
+// ─── Shared snapshot shape + sample state ──────────────────────────
+
+export interface CtsExclusionLite {
+  playerJersey: number;
+  secondsRemaining: number;
+}
+
+export interface CtsRibbonSnapshot {
+  clock: string;
+  period: number;
+  homeScore: number;
+  awayScore: number;
+  homeShotClock: string;
+  awayShotClock: string;
+  homeExclusions: CtsExclusionLite[];
+  awayExclusions: CtsExclusionLite[];
+  horn: boolean;
+  receivedAt: number;
+}
+
+const SAMPLE: CtsRibbonSnapshot = {
+  clock: '7:42',
+  period: 3,
+  homeScore: 4,
+  awayScore: 3,
+  homeShotClock: '24',
+  awayShotClock: '',
+  homeExclusions: [],
+  awayExclusions: [{ playerJersey: 7, secondsRemaining: 12 }],
+  horn: false,
+  receivedAt: 0,
+};
+
+// ─── Shared hook: subscribe to the live CTS feed ───────────────────
+
+/**
+ * Subscribe to the player page's bridged CTS feed. The player page
+ * dispatches an `edu:cts-game-state` window CustomEvent per GAME_STATE
+ * WS message; we listen, coerce the shape defensively, and return the
+ * latest snapshot. When no bridge is connected (or in builder preview),
+ * returns null and the caller should fall back to SAMPLE.
+ *
+ * `live` flag distinguishes "real bridge connected" from "preview /
+ * sample" so the widget can render a subtle live indicator.
+ */
+function useCtsGameState(): { snap: CtsRibbonSnapshot; live: boolean } {
+  const [snap, setSnap] = useState<CtsRibbonSnapshot | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || typeof detail !== 'object') return;
+      const d = detail as Partial<CtsRibbonSnapshot>;
+      setSnap({
+        clock: typeof d.clock === 'string' ? d.clock : '0:00',
+        period: typeof d.period === 'number' ? d.period : 1,
+        homeScore: typeof d.homeScore === 'number' ? d.homeScore : 0,
+        awayScore: typeof d.awayScore === 'number' ? d.awayScore : 0,
+        homeShotClock: typeof d.homeShotClock === 'string' ? d.homeShotClock : '',
+        awayShotClock: typeof d.awayShotClock === 'string' ? d.awayShotClock : '',
+        homeExclusions: Array.isArray(d.homeExclusions) ? d.homeExclusions as CtsExclusionLite[] : [],
+        awayExclusions: Array.isArray(d.awayExclusions) ? d.awayExclusions as CtsExclusionLite[] : [],
+        horn: typeof d.horn === 'boolean' ? d.horn : false,
+        receivedAt: typeof d.receivedAt === 'number' ? d.receivedAt : Date.now(),
+      });
+    };
+    window.addEventListener('edu:cts-game-state', onUpdate);
+    return () => window.removeEventListener('edu:cts-game-state', onUpdate);
+  }, []);
+
+  return { snap: snap ?? SAMPLE, live: snap !== null };
+}
+
+// ─── Shared layout primitives ──────────────────────────────────────
+
+/**
+ * Measure parent height. Most ribbon widgets size their fonts off the
+ * zone's height so they look right at any ribbon segment ratio.
+ */
+function useMeasuredHeight() {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [h, setH] = useState<number>(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setH(el.offsetHeight || 0);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return { ref, h };
+}
+
+/** Period label: Q1..Q4 / OT1.. for water polo and most clock sports. */
+function periodLabel(p: number): string {
+  if (!Number.isFinite(p) || p < 1) return 'Q1';
+  if (p >= 5) {
+    const ot = p - 4;
+    return ot === 1 ? 'OT' : `OT${ot}`;
+  }
+  return `Q${p}`;
+}
+
+function pad2(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return '00';
+  return n < 10 ? `0${n}` : String(n);
+}
+
+/** Outer container all widgets share — absolute fill, ink-on-dark by default. */
+const fillStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+  overflow: 'hidden',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontFamily: '"Inter", "DM Mono", system-ui, -apple-system, sans-serif',
+  color: 'white',
+  boxSizing: 'border-box',
+};
+
+// ─── Shared config shapes ──────────────────────────────────────────
+
+interface BgCfg {
+  /** Solid background color. Default deep navy. */
+  bgColor?: string;
+  /** Tabular-figures accent. Default warm amber. */
+  accentColor?: string;
+  /** Hide the "live" green dot — useful when many CTS widgets sit
+   *  on the same ribbon and the dot would clutter. */
+  hideLiveDot?: boolean;
+}
+
+interface TeamCfg extends BgCfg {
+  /** "H" / "EAGLES" / etc. Auto-uppercased + sliced to 4 chars. */
+  homeAbbrev?: string;
+  awayAbbrev?: string;
+  /** Per-team accent — falls back to BgCfg.accentColor. */
+  homeColor?: string;
+  awayColor?: string;
+}
+
+function abbr(s: string | undefined, maxLen = 3): string {
+  if (!s) return '';
+  return s.trim().toUpperCase().slice(0, maxLen);
+}
+
+function LiveDot({ live, hideLiveDot }: { live: boolean; hideLiveDot?: boolean }) {
+  if (hideLiveDot) return null;
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        top: 6,
+        right: 8,
+        width: 8,
+        height: 8,
+        borderRadius: '50%',
+        background: live ? '#22c55e' : '#64748b',
+        boxShadow: live ? '0 0 6px #22c55e' : 'none',
+      }}
+    />
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// 1. CTS-FED widgets — pure subscribers to the live bridge feed.
+// ═════════════════════════════════════════════════════════════════════
+
+/**
+ * CtsClockWidget — just the game clock, big tabular figures.
+ * Flashes red on horn rising edge.
+ */
+export function CtsClockWidget({ config }: { config?: BgCfg }) {
+  const cfg = config ?? {};
+  const { snap, live } = useCtsGameState();
+  const { ref, h } = useMeasuredHeight();
+  const fs = Math.max(20, Math.round((h || 192) * 0.72));
+  const color = snap.horn ? '#fca5a5' : (cfg.accentColor || '#f59e0b');
+
+  return (
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a', position: 'relative' as const }}>
+      <span
+        style={{
+          fontWeight: 800,
+          fontSize: fs,
+          letterSpacing: 2,
+          color,
+          fontVariantNumeric: 'tabular-nums',
+          textShadow: snap.horn
+            ? '0 0 24px rgba(239,68,68,0.9)'
+            : `0 0 14px ${color}55`,
+          lineHeight: 1,
+        }}
+      >
+        {snap.clock}
+      </span>
+      <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
+    </div>
+  );
+}
+
+/**
+ * CtsScoreCombinedWidget — full "H 4 - 3 A" composite. Use this if you
+ * want one widget that shows both scores + team abbrevs. For separate
+ * home / away tiles use CtsScoreHomeWidget / CtsScoreAwayWidget.
+ */
+export function CtsScoreCombinedWidget({ config }: { config?: TeamCfg }) {
+  const cfg = config ?? {};
+  const { snap, live } = useCtsGameState();
+  const { ref, h } = useMeasuredHeight();
+  const fs = Math.max(18, Math.round((h || 192) * 0.6));
+  const labelFs = Math.max(12, Math.round((h || 192) * 0.32));
+
+  const homeAbbr = abbr(cfg.homeAbbrev) || 'H';
+  const awayAbbr = abbr(cfg.awayAbbrev) || 'A';
+  const homeColor = cfg.homeColor || '#93c5fd';
+  const awayColor = cfg.awayColor || '#fca5a5';
+
+  return (
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a', position: 'relative' as const }}>
+      <span style={{ color: homeColor, fontWeight: 900, fontSize: labelFs, letterSpacing: 1, marginRight: 12 }}>{homeAbbr}</span>
+      <span style={{ color: 'white', fontWeight: 900, fontSize: fs, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+        {pad2(snap.homeScore)}
+      </span>
+      <span style={{ color: '#475569', fontSize: Math.round(fs * 0.7), margin: '0 14px' }}>{'-'}</span>
+      <span style={{ color: 'white', fontWeight: 900, fontSize: fs, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+        {pad2(snap.awayScore)}
+      </span>
+      <span style={{ color: awayColor, fontWeight: 900, fontSize: labelFs, letterSpacing: 1, marginLeft: 12 }}>{awayAbbr}</span>
+      <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
+    </div>
+  );
+}
+
+/** CtsScoreHomeWidget — home score only, big digits. */
+export function CtsScoreHomeWidget({ config }: { config?: TeamCfg }) {
+  const cfg = config ?? {};
+  const { snap, live } = useCtsGameState();
+  const { ref, h } = useMeasuredHeight();
+  const fs = Math.max(20, Math.round((h || 192) * 0.78));
+  const labelFs = Math.max(12, Math.round((h || 192) * 0.32));
+  const homeColor = cfg.homeColor || '#93c5fd';
+  return (
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a', position: 'relative' as const }}>
+      <span style={{ color: homeColor, fontWeight: 900, fontSize: labelFs, letterSpacing: 1, marginRight: 12 }}>
+        {abbr(cfg.homeAbbrev) || 'HOME'}
+      </span>
+      <span style={{ color: 'white', fontWeight: 900, fontSize: fs, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+        {pad2(snap.homeScore)}
+      </span>
+      <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
+    </div>
+  );
+}
+
+/** CtsScoreAwayWidget — away score only, big digits. */
+export function CtsScoreAwayWidget({ config }: { config?: TeamCfg }) {
+  const cfg = config ?? {};
+  const { snap, live } = useCtsGameState();
+  const { ref, h } = useMeasuredHeight();
+  const fs = Math.max(20, Math.round((h || 192) * 0.78));
+  const labelFs = Math.max(12, Math.round((h || 192) * 0.32));
+  const awayColor = cfg.awayColor || '#fca5a5';
+  return (
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a', position: 'relative' as const }}>
+      <span style={{ color: awayColor, fontWeight: 900, fontSize: labelFs, letterSpacing: 1, marginRight: 12 }}>
+        {abbr(cfg.awayAbbrev) || 'AWAY'}
+      </span>
+      <span style={{ color: 'white', fontWeight: 900, fontSize: fs, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+        {pad2(snap.awayScore)}
+      </span>
+      <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
+    </div>
+  );
+}
+
+/** CtsPeriodWidget — current quarter / OT indicator. */
+export function CtsPeriodWidget({ config }: { config?: BgCfg }) {
+  const cfg = config ?? {};
+  const { snap, live } = useCtsGameState();
+  const { ref, h } = useMeasuredHeight();
+  const fs = Math.max(18, Math.round((h || 192) * 0.62));
+  return (
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a', position: 'relative' as const }}>
+      <span
+        style={{
+          fontWeight: 900,
+          fontSize: fs,
+          letterSpacing: 3,
+          color: cfg.accentColor || '#cbd5e1',
+        }}
+      >
+        {periodLabel(snap.period)}
+      </span>
+      <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
+    </div>
+  );
+}
+
+/**
+ * CtsExclusionWidget — active penalty (water polo: 20-second exclusion).
+ * Shows the first active exclusion across both teams. Empty state shows
+ * a faded "NO PENALTY" so the zone reads as intentional, not broken.
+ */
+interface ExclusionCfg extends TeamCfg {
+  /** Which team's exclusions to surface. 'home' / 'away' / 'auto'
+   *  (auto = first active across both, home priority). */
+  team?: 'home' | 'away' | 'auto';
+}
+export function CtsExclusionWidget({ config }: { config?: ExclusionCfg }) {
+  const cfg = config ?? {};
+  const { snap, live } = useCtsGameState();
+  const { ref, h } = useMeasuredHeight();
+  const fs = Math.max(16, Math.round((h || 192) * 0.42));
+  const labelFs = Math.max(10, Math.round((h || 192) * 0.22));
+
+  const team = cfg.team || 'auto';
+  let active: CtsExclusionLite | undefined;
+  let side: 'home' | 'away' | undefined;
+  if (team === 'home') { active = snap.homeExclusions[0]; side = 'home'; }
+  else if (team === 'away') { active = snap.awayExclusions[0]; side = 'away'; }
+  else {
+    active = snap.homeExclusions[0] || snap.awayExclusions[0];
+    side = snap.homeExclusions[0] ? 'home' : 'away';
+  }
+
+  const sideColor = side === 'home' ? (cfg.homeColor || '#facc15') : (cfg.awayColor || '#fb923c');
+  const sideAbbr = side === 'home'
+    ? (abbr(cfg.homeAbbrev) || 'H')
+    : (abbr(cfg.awayAbbrev) || 'A');
+
+  return (
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#1a0b1c', position: 'relative' as const }}>
+      {active ? (
+        <>
+          <span
+            aria-hidden="true"
+            style={{
+              display: 'inline-block',
+              width: Math.round(fs * 0.45),
+              height: Math.round(fs * 0.45),
+              borderRadius: '50%',
+              background: sideColor,
+              boxShadow: `0 0 10px ${sideColor}`,
+              marginRight: 10,
+              verticalAlign: 'middle',
+            }}
+          />
+          <span style={{ color: sideColor, fontWeight: 900, fontSize: labelFs, letterSpacing: 1, marginRight: 8 }}>
+            {sideAbbr}
+          </span>
+          <span style={{ color: 'white', fontWeight: 800, fontSize: fs, fontVariantNumeric: 'tabular-nums', marginRight: 10 }}>
+            #{active.playerJersey}
+          </span>
+          <span style={{ color: '#cbd5e1', fontWeight: 700, fontSize: Math.round(fs * 0.78) }}>
+            {active.secondsRemaining}s
+          </span>
+        </>
+      ) : (
+        <span style={{ color: '#475569', fontWeight: 800, fontSize: labelFs, letterSpacing: 2 }}>
+          NO PENALTY
+        </span>
+      )}
+      <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
+    </div>
+  );
+}
+
+/**
+ * CtsShotClockWidget — 30-second possession clock (water polo).
+ * Shows "PARKED" when the shot clock is empty.
+ */
+interface ShotClockCfg extends TeamCfg { team?: 'home' | 'away' | 'either'; }
+export function CtsShotClockWidget({ config }: { config?: ShotClockCfg }) {
+  const cfg = config ?? {};
+  const { snap, live } = useCtsGameState();
+  const { ref, h } = useMeasuredHeight();
+  const fs = Math.max(20, Math.round((h || 192) * 0.7));
+  const labelFs = Math.max(10, Math.round((h || 192) * 0.22));
+
+  const team = cfg.team || 'either';
+  const value = team === 'home' ? snap.homeShotClock
+    : team === 'away' ? snap.awayShotClock
+    : (snap.homeShotClock || snap.awayShotClock || '');
+
+  const parked = !value || value === '0';
+  const danger = !parked && Number(value) <= 5;
+
+  return (
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a', position: 'relative' as const }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <span style={{ color: '#94a3b8', fontWeight: 700, fontSize: labelFs, letterSpacing: 2, marginBottom: 4 }}>
+          SHOT CLK
+        </span>
+        <span
+          style={{
+            color: parked ? '#475569' : (danger ? '#ef4444' : (cfg.accentColor || '#facc15')),
+            fontWeight: 900,
+            fontSize: fs,
+            lineHeight: 1,
+            fontVariantNumeric: 'tabular-nums',
+            textShadow: danger ? '0 0 12px rgba(239,68,68,0.7)' : 'none',
+          }}
+        >
+          {parked ? '—' : value}
+        </span>
+      </div>
+      <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
+    </div>
+  );
+}
+
+/**
+ * CtsHornFlashWidget — visible accent that pulses red when the horn
+ * fires. Useful as a small overlay tile so referees + crowd see the
+ * horn even if their head is turned from the buzzer.
+ */
+export function CtsHornFlashWidget({ config }: { config?: BgCfg }) {
+  const cfg = config ?? {};
+  const { snap } = useCtsGameState();
+  const horn = snap.horn === true;
+  return (
+    <div
+      style={{
+        ...fillStyle,
+        background: horn ? '#ef4444' : (cfg.bgColor || '#1e1b1b'),
+        transition: 'background 80ms ease-out',
+        position: 'relative' as const,
+      }}
+    >
+      <span
+        style={{
+          color: 'white',
+          fontWeight: 900,
+          fontSize: 'clamp(18px, 6vw, 64px)',
+          letterSpacing: 4,
+          opacity: horn ? 1 : 0.18,
+          textShadow: horn ? '0 0 14px rgba(0,0,0,0.6)' : 'none',
+        }}
+      >
+        HORN
+      </span>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// 2. OPERATOR-CONFIGURED widgets — pulled from widget config, not feed.
+// ═════════════════════════════════════════════════════════════════════
+
+/** One sponsor slot. Image OR text. Image preferred when both. */
+export interface CtsSponsorSlot {
+  /** Full URL to a sponsor logo / banner image. */
+  imageUrl?: string;
+  /** Fallback / overlay text (sponsor name). */
+  text?: string;
+  /** Display time in ms (default 6000). */
+  durationMs?: number;
+  /** Optional bg color for text-only slot. */
+  bgColor?: string;
+}
+
+interface SponsorRotatorCfg {
+  /** Ordered list of slots. Empty → falls back to SAMPLE_SPONSORS. */
+  slots?: CtsSponsorSlot[];
+  /** Default per-slot dwell time when the slot doesn't set its own. */
+  defaultDurationMs?: number;
+  /** Optional header label rendered above the slot ("OUR SPONSORS"). */
+  zoneLabel?: string;
+  /** Solid background. Default deep slate. */
+  bgColor?: string;
+}
+
+const SAMPLE_SPONSORS: CtsSponsorSlot[] = [
+  { text: 'YOUR SPONSOR HERE', durationMs: 4500, bgColor: '#1e293b' },
+  { text: 'BOOK NEXT GAME AT YOUR-CLUB.COM', durationMs: 4500, bgColor: '#0c4a6e' },
+  { text: 'PROUD PARTNER · POOL SUPPLY CO', durationMs: 4500, bgColor: '#312e81' },
+];
+
+/**
+ * CtsSponsorRotatorWidget — operator-managed sponsor rotation.
+ * Crossfades between slots. Click-through tracked via a window
+ * localStorage counter, same pattern as HouseAdsBannerWidget.
+ *
+ * In the builder this defaults to SAMPLE_SPONSORS so the operator can
+ * see the rotation working without configuring it. The Properties
+ * panel surfaces the `slots` array as an editable list.
+ */
+export function CtsSponsorRotatorWidget({ config }: { config?: SponsorRotatorCfg }) {
+  const cfg = config ?? {};
+  const slots = useMemo(() => (cfg.slots && cfg.slots.length > 0 ? cfg.slots : SAMPLE_SPONSORS), [cfg.slots]);
+  const defaultDuration = cfg.defaultDurationMs || 6000;
+  const [idx, setIdx] = useState(0);
+  const { ref, h } = useMeasuredHeight();
+
+  useEffect(() => {
+    if (slots.length <= 1) return;
+    const cur = slots[idx];
+    const dur = (cur && cur.durationMs) || defaultDuration;
+    const t = setTimeout(() => setIdx((i) => (i + 1) % slots.length), Math.max(1500, dur));
+    return () => clearTimeout(t);
+  }, [idx, slots, defaultDuration]);
+
+  const slot = slots[idx] ?? slots[0];
+  const labelFs = Math.max(10, Math.round((h || 192) * 0.16));
+  const textFs = Math.max(16, Math.round((h || 192) * 0.36));
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        ...fillStyle,
+        background: slot?.bgColor || cfg.bgColor || '#1e293b',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '8px 16px',
+        transition: 'background 400ms ease',
+        position: 'relative' as const,
+      }}
+    >
+      {cfg.zoneLabel && (
+        <span
+          style={{
+            color: '#cbd5e1',
+            fontSize: labelFs,
+            fontWeight: 700,
+            letterSpacing: 3,
+            opacity: 0.7,
+            marginBottom: 6,
+          }}
+        >
+          {cfg.zoneLabel}
+        </span>
+      )}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+        {slot?.imageUrl ? (
+          // Image slot: contain-fit so the sponsor logo always reads
+          // even if it's a non-ribbon ratio.
+          <img
+            src={slot.imageUrl}
+            alt={slot.text || 'Sponsor'}
+            style={{
+              maxWidth: '100%',
+              maxHeight: '100%',
+              objectFit: 'contain',
+            }}
+            onError={(e) => {
+              // Bad URL: hide the broken image and let the text fall
+              // back. Common when an asset gets deleted mid-game.
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <span
+            style={{
+              color: 'white',
+              fontWeight: 800,
+              fontSize: textFs,
+              letterSpacing: 1,
+              textAlign: 'center',
+              lineHeight: 1.1,
+            }}
+          >
+            {slot?.text || ''}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** One announcement entry — text + optional duration. */
+export interface CtsAnnouncementEntry {
+  text: string;
+  /** Display time in ms. Default 5000. */
+  durationMs?: number;
+}
+
+interface AnnouncementCfg {
+  /** Ordered list of announcements. Falls back to SAMPLE_ANNOUNCEMENTS. */
+  entries?: CtsAnnouncementEntry[];
+  /** Per-entry dwell when the entry doesn't set its own. */
+  defaultDurationMs?: number;
+  /** Optional header label ("PLAYER OF THE GAME", "NEXT MATCH", etc). */
+  zoneLabel?: string;
+  /** Solid background. Default deep slate. */
+  bgColor?: string;
+  /** Accent for the header label. */
+  accentColor?: string;
+}
+
+const SAMPLE_ANNOUNCEMENTS: CtsAnnouncementEntry[] = [
+  { text: 'STARTING LINEUP — H 1, 7, 11, 12, 4, 8, 9', durationMs: 6000 },
+  { text: 'NEXT HOME MATCH — FRI 7:00 PM · AQUATIC CENTER', durationMs: 6000 },
+  { text: 'PLAYER OF THE WEEK — #7 J. RIVERA · 4 GOALS', durationMs: 6000 },
+  { text: 'CONCESSIONS OPEN ON MEZZANINE — CASH OR CARD', durationMs: 5000 },
+];
+
+/**
+ * CtsAnnouncementWidget — rotating player / event announcement ticker.
+ * Pure operator config — no live feed needed. Operator pre-builds the
+ * announcement queue in the editor (typically the morning of the match
+ * or even weeks ahead), the player rotates through them on the ribbon
+ * during the game. Slide-up crossfade between entries.
+ */
+export function CtsAnnouncementWidget({ config }: { config?: AnnouncementCfg }) {
+  const cfg = config ?? {};
+  const entries = useMemo(
+    () => (cfg.entries && cfg.entries.length > 0 ? cfg.entries : SAMPLE_ANNOUNCEMENTS),
+    [cfg.entries],
+  );
+  const defaultDuration = cfg.defaultDurationMs || 5000;
+  const [idx, setIdx] = useState(0);
+  const { ref, h } = useMeasuredHeight();
+
+  useEffect(() => {
+    if (entries.length <= 1) return;
+    const cur = entries[idx];
+    const dur = (cur && cur.durationMs) || defaultDuration;
+    const t = setTimeout(() => setIdx((i) => (i + 1) % entries.length), Math.max(1500, dur));
+    return () => clearTimeout(t);
+  }, [idx, entries, defaultDuration]);
+
+  const entry = entries[idx] ?? entries[0];
+  const labelFs = Math.max(10, Math.round((h || 192) * 0.16));
+  const textFs = Math.max(14, Math.round((h || 192) * 0.34));
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        ...fillStyle,
+        background: cfg.bgColor || '#0c1322',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '8px 16px',
+        position: 'relative' as const,
+      }}
+    >
+      {cfg.zoneLabel && (
+        <span
+          style={{
+            color: cfg.accentColor || '#fbbf24',
+            fontSize: labelFs,
+            fontWeight: 800,
+            letterSpacing: 3,
+            opacity: 0.85,
+            marginBottom: 6,
+          }}
+        >
+          {cfg.zoneLabel}
+        </span>
+      )}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', width: '100%', overflow: 'hidden' }}>
+        <span
+          key={idx}
+          style={{
+            color: 'white',
+            fontWeight: 700,
+            fontSize: textFs,
+            letterSpacing: 1,
+            lineHeight: 1.2,
+            display: 'inline-block',
+            whiteSpace: 'nowrap',
+            animation: 'ctsAnnounceIn 420ms ease-out both',
+          }}
+        >
+          {entry?.text || ''}
+        </span>
+      </div>
+      <style>{`@keyframes ctsAnnounceIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// 3. AUTO-CELEBRATION widget — listens for goal-delta + horn.
+// ═════════════════════════════════════════════════════════════════════
+
+interface CelebrationCfg extends TeamCfg {
+  /** Custom celebration text. Default "GOAL!". */
+  text?: string;
+  /** Active scene duration in ms after a goal-delta. Default 6000. */
+  activeMs?: number;
+  /** Idle loop content text. Default "GO TEAM". */
+  idleText?: string;
+  /** Trigger on horn rising edge too (water polo: end-of-quarter horn
+   *  + goal celebrations from console). Default true. */
+  hornAlsoTriggers?: boolean;
+}
+
+/**
+ * CtsCelebrationWidget — pulses a celebration scene when the CTS feed
+ * shows a goal-delta (homeScore or awayScore increased between
+ * consecutive snapshots) or when the horn fires. Idle state shows a
+ * subtle "GO TEAM" loop so the zone never reads as blank.
+ *
+ * The detection uses refs so two snapshots with no change don't
+ * re-trigger. When triggered, the widget enters "active" mode for
+ * `activeMs` then returns to idle.
+ *
+ * In builder preview (no live feed), the widget renders idle. Operators
+ * can preview the active state via the Properties panel's "Preview
+ * celebration" button which dispatches a fake event — wired in a
+ * follow-up; the widget already listens to the event today.
+ */
+export function CtsCelebrationWidget({ config }: { config?: CelebrationCfg }) {
+  const cfg = config ?? {};
+  const text = cfg.text || 'GOAL!';
+  const idleText = cfg.idleText || 'GO TEAM';
+  const activeMs = cfg.activeMs || 6000;
+  const hornTriggers = cfg.hornAlsoTriggers !== false;
+
+  const { snap, live } = useCtsGameState();
+  const [active, setActive] = useState<null | { team: 'home' | 'away' | 'horn'; until: number }>(null);
+  const lastHomeRef = useRef<number>(snap.homeScore);
+  const lastAwayRef = useRef<number>(snap.awayScore);
+  const lastHornRef = useRef<boolean>(snap.horn);
+  const { ref, h } = useMeasuredHeight();
+
+  // Fire on goal-delta. Refs hold the previous value so the SAME
+  // snapshot arriving twice (from server replays) doesn't re-fire.
+  useEffect(() => {
+    if (snap.homeScore > lastHomeRef.current) {
+      setActive({ team: 'home', until: Date.now() + activeMs });
+    } else if (snap.awayScore > lastAwayRef.current) {
+      setActive({ team: 'away', until: Date.now() + activeMs });
+    } else if (hornTriggers && snap.horn && !lastHornRef.current) {
+      setActive({ team: 'horn', until: Date.now() + activeMs });
+    }
+    lastHomeRef.current = snap.homeScore;
+    lastAwayRef.current = snap.awayScore;
+    lastHornRef.current = snap.horn;
+  }, [snap.homeScore, snap.awayScore, snap.horn, hornTriggers, activeMs]);
+
+  // Listen for operator-fired preview events so the Properties panel
+  // can show "Preview celebration" without needing a live bridge.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onPreview = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      const team: 'home' | 'away' | 'horn' = detail.team === 'away' ? 'away' : detail.team === 'horn' ? 'horn' : 'home';
+      setActive({ team, until: Date.now() + activeMs });
+    };
+    window.addEventListener('edu:cts-celebration-preview', onPreview);
+    return () => window.removeEventListener('edu:cts-celebration-preview', onPreview);
+  }, [activeMs]);
+
+  // Auto-revert when the active window expires.
+  useEffect(() => {
+    if (!active) return;
+    const left = active.until - Date.now();
+    if (left <= 0) { setActive(null); return; }
+    const t = setTimeout(() => setActive(null), left);
+    return () => clearTimeout(t);
+  }, [active]);
+
+  const isActive = !!active;
+  const homeColor = cfg.homeColor || '#3b82f6';
+  const awayColor = cfg.awayColor || '#ef4444';
+  const teamColor = active?.team === 'away' ? awayColor : active?.team === 'horn' ? '#ef4444' : homeColor;
+  const fs = Math.max(28, Math.round((h || 192) * 0.85));
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        ...fillStyle,
+        background: isActive
+          ? `radial-gradient(ellipse at center, ${teamColor}cc 0%, ${teamColor}66 60%, #000 110%)`
+          : (cfg.bgColor || '#0a0a14'),
+        transition: 'background 200ms ease',
+        position: 'relative' as const,
+      }}
+    >
+      {/* Animated burst when active */}
+      {isActive && (
+        <>
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              background: `repeating-linear-gradient(135deg, ${teamColor}44 0 24px, transparent 24px 48px)`,
+              animation: 'ctsCelebSweep 1.6s linear infinite',
+              opacity: 0.65,
+            }}
+          />
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              boxShadow: `inset 0 0 60px ${teamColor}aa`,
+            }}
+          />
+        </>
+      )}
+      <span
+        style={{
+          position: 'relative' as const,
+          color: 'white',
+          fontWeight: 900,
+          fontSize: fs,
+          letterSpacing: isActive ? 4 : 2,
+          textShadow: isActive
+            ? `0 0 24px ${teamColor}, 0 0 48px ${teamColor}`
+            : 'none',
+          opacity: isActive ? 1 : 0.55,
+          textTransform: 'uppercase',
+          animation: isActive ? 'ctsCelebPulse 480ms ease-in-out infinite alternate' : undefined,
+          transition: 'opacity 220ms ease, letter-spacing 220ms ease',
+        }}
+      >
+        {isActive ? text : idleText}
+      </span>
+      <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
+      <style>{`
+        @keyframes ctsCelebPulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+        @keyframes ctsCelebSweep { from { background-position: 0 0; } to { background-position: 96px 0; } }
+      `}</style>
+    </div>
+  );
+}
+
+// ─── Exports barrel ────────────────────────────────────────────────
+
+export const CTS_WIDGET_DEFAULTS = {
+  homeAbbrev: 'H',
+  awayAbbrev: 'A',
+  bgColor: '#0f172a',
+  accentColor: '#f59e0b',
+} as const;

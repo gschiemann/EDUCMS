@@ -1001,6 +1001,183 @@ registerVariant({
   },
 });
 
+// ────────────────────────────────────────────────────────────────────
+// 2026-05-26 — Composable CTS ribbon widget set. Sibling of the all-
+// in-one CtsScoreboard above. Each tile is a single zone an operator
+// drops onto a custom-canvas ribbon to compose their own layout
+// (clock here, score there, sponsor middle, announcements right).
+// Every widget shares one window-CustomEvent subscriber, so they all
+// stay in sync across the ribbon with zero per-widget round trips.
+// All gated to the SPORTS vertical so non-sports tenants never see
+// them in the palette.
+// ────────────────────────────────────────────────────────────────────
+import {
+  CtsClockWidget,
+  CtsScoreCombinedWidget,
+  CtsScoreHomeWidget,
+  CtsScoreAwayWidget,
+  CtsPeriodWidget,
+  CtsExclusionWidget,
+  CtsShotClockWidget,
+  CtsHornFlashWidget,
+  CtsSponsorRotatorWidget,
+  CtsAnnouncementWidget,
+  CtsCelebrationWidget,
+} from './sports/CtsRibbonWidgets';
+
+registerVariant({
+  id: 'scoreboard-cts-clock',
+  widgetType: 'SCOREBOARD',
+  name: 'Clock (CTS)',
+  description: 'Live CTS game clock. Big tabular figures, amber by default, flashes red on horn.',
+  category: 'SPORTS',
+  render: CtsClockWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: { bgColor: '#0f172a', accentColor: '#f59e0b' },
+});
+
+registerVariant({
+  id: 'scoreboard-cts-score',
+  widgetType: 'SCOREBOARD',
+  name: 'Score H-A (CTS)',
+  description: 'Live combined score: home abbrev, score, dash, away score, away abbrev. Reads off the CTS feed.',
+  category: 'SPORTS',
+  render: CtsScoreCombinedWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: {
+    homeAbbrev: 'H',
+    awayAbbrev: 'A',
+    homeColor: '#93c5fd',
+    awayColor: '#fca5a5',
+    bgColor: '#0f172a',
+  },
+});
+
+registerVariant({
+  id: 'scoreboard-cts-score-home',
+  widgetType: 'SCOREBOARD',
+  name: 'Home Score (CTS)',
+  description: 'Home team’s live CTS score, by itself. Pair with the Away tile for a two-zone ribbon.',
+  category: 'SPORTS',
+  render: CtsScoreHomeWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: { homeAbbrev: 'HOME', homeColor: '#93c5fd', bgColor: '#0f172a' },
+});
+
+registerVariant({
+  id: 'scoreboard-cts-score-away',
+  widgetType: 'SCOREBOARD',
+  name: 'Away Score (CTS)',
+  description: 'Away team’s live CTS score, by itself. Pair with the Home tile for a two-zone ribbon.',
+  category: 'SPORTS',
+  render: CtsScoreAwayWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: { awayAbbrev: 'AWAY', awayColor: '#fca5a5', bgColor: '#0f172a' },
+});
+
+registerVariant({
+  id: 'scoreboard-cts-period',
+  widgetType: 'SCOREBOARD',
+  name: 'Period / Quarter (CTS)',
+  description: 'Q1–Q4 / OT readout from the CTS console.',
+  category: 'SPORTS',
+  render: CtsPeriodWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: { bgColor: '#0f172a', accentColor: '#cbd5e1' },
+});
+
+registerVariant({
+  id: 'scoreboard-cts-exclusion',
+  widgetType: 'SCOREBOARD',
+  name: 'Active Exclusion (CTS)',
+  description: 'Live water-polo penalty: side, jersey, seconds remaining. Idles "NO PENALTY" between exclusions.',
+  category: 'SPORTS',
+  render: CtsExclusionWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: {
+    team: 'auto',
+    homeAbbrev: 'H',
+    awayAbbrev: 'A',
+    homeColor: '#facc15',
+    awayColor: '#fb923c',
+    bgColor: '#1a0b1c',
+  },
+});
+
+registerVariant({
+  id: 'scoreboard-cts-shot-clock',
+  widgetType: 'SCOREBOARD',
+  name: 'Shot Clock (CTS)',
+  description: '30-second possession clock. Flashes red at ≤5s; shows "—" when parked.',
+  category: 'SPORTS',
+  render: CtsShotClockWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: { team: 'either', bgColor: '#0f172a', accentColor: '#facc15' },
+});
+
+registerVariant({
+  id: 'scoreboard-cts-horn-flash',
+  widgetType: 'SCOREBOARD',
+  name: 'Horn Flash (CTS)',
+  description: 'Whole-tile red flash whenever the CTS horn fires. Great as a 1080×80 visual cue for refs/crowd.',
+  category: 'SPORTS',
+  render: CtsHornFlashWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: { bgColor: '#1e1b1b' },
+});
+
+registerVariant({
+  id: 'scoreboard-cts-sponsor',
+  widgetType: 'SCOREBOARD',
+  name: 'Sponsor Rotator (CTS)',
+  description: 'Pre-built sponsor reel. Add image or text slots in the Properties panel; they rotate on the ribbon during the game. Falls back to sample sponsors in the builder.',
+  category: 'SPORTS',
+  render: CtsSponsorRotatorWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: {
+    zoneLabel: 'OUR SPONSORS',
+    defaultDurationMs: 6000,
+    bgColor: '#1e293b',
+    slots: [],
+  },
+});
+
+registerVariant({
+  id: 'scoreboard-cts-announcement',
+  widgetType: 'SCOREBOARD',
+  name: 'Player Announcements (CTS)',
+  description: 'Operator-curated announcement queue. Lineups, next match, player of the week, anything you want to roll on the ribbon during the game. Falls back to sample copy in the builder.',
+  category: 'SPORTS',
+  render: CtsAnnouncementWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: {
+    zoneLabel: 'ANNOUNCEMENTS',
+    defaultDurationMs: 5000,
+    bgColor: '#0c1322',
+    accentColor: '#fbbf24',
+    entries: [],
+  },
+});
+
+registerVariant({
+  id: 'scoreboard-cts-celebration',
+  widgetType: 'SCOREBOARD',
+  name: 'Auto-Celebration (CTS)',
+  description: 'Idles "GO TEAM"; pulses a big team-color "GOAL!" scene the moment the CTS score increases or the horn fires. Detection is delta-based so duplicate snapshots never re-trigger.',
+  category: 'SPORTS',
+  render: CtsCelebrationWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: {
+    text: 'GOAL!',
+    idleText: 'GO TEAM',
+    activeMs: 6000,
+    hornAlsoTriggers: true,
+    homeColor: '#3b82f6',
+    awayColor: '#ef4444',
+    bgColor: '#0a0a14',
+  },
+});
+
 registerVariant({
   id: 'score-home',
   widgetType: 'SCORE_HOME',
