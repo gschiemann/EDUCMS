@@ -218,10 +218,62 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
   // BrandStyleInjector repaint with the new row in lockstep — no
   // staleTime wait, no per-component fetch.
   const invalidateBranding = useInvalidateTenantBranding();
-  const [url, setUrl] = useState<string>(initial?.sourceUrl || '');
+  // 2026-05-26 — scan-cache: persist the FULL BrandingPreview shape
+  // (logos[], colors[], fonts.all[]) per tenant in localStorage so the
+  // "Logos found" grid + "Colors discovered" swatches stay visible
+  // after Adopt, after page reload, until the operator re-scrapes a
+  // new URL OR resets the brand. Operator: "i adopt it and those go
+  // away, dont have them go away, keep this visible always until i
+  // rescan a new site or i revert the branding."
+  //
+  // `initial` carries the TenantBranding shape (logoUrl, palette,
+  // fonts) but NOT the rich BrandingPreview (logos array, color
+  // candidates). Before this cache, those rich fields lived only in
+  // React state for the lifetime of the wizard mount — gone the
+  // moment you closed the page.
+  const scanCacheKey = useMemo(() => {
+    const tid = user?.tenantId || 'demo';
+    return `edu-cms-branding-scan-cache-v1:${tid}`;
+  }, [user?.tenantId]);
+  // Read cached scan ONCE on mount; subsequent renders use React state.
+  const hydratedScan = useMemo<BrandingPreview | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(scanCacheKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      // Sanity-check the shape so a corrupted cache doesn't crash render.
+      if (!parsed || typeof parsed !== 'object') return null;
+      if (!Array.isArray(parsed.logos) && !Array.isArray(parsed.colors)) return null;
+      return parsed as BrandingPreview;
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run-once on mount
+
+  const [url, setUrl] = useState<string>(initial?.sourceUrl || hydratedScan?.sourceUrl || '');
   const [scraping, setScraping] = useState(false);
   const [adopting, setAdopting] = useState(false);
-  const [preview, setPreview] = useState<BrandingPreview | null>((initial as any) || null);
+  // Prefer initial (just-adopted brand from /branding/me) for palette/logo,
+  // BUT merge in the cached scan results so logos[] + colors[] survive.
+  const [preview, setPreview] = useState<BrandingPreview | null>(() => {
+    const base = (initial as any) || null;
+    if (!base && !hydratedScan) return null;
+    if (!base) return hydratedScan;
+    if (!hydratedScan) return base;
+    return {
+      ...hydratedScan,
+      ...base,
+      // initial wins for ALREADY-ADOPTED fields (palette, displayName)
+      // hydratedScan wins for RICH-SCAN fields (logos, colors candidates,
+      // fonts.all). This way the wizard shows the adopted brand on the
+      // left + the picker grids on the right.
+      logos: (base.logos && base.logos.length) ? base.logos : hydratedScan.logos || [],
+      colors: (base.colors && base.colors.length) ? base.colors : hydratedScan.colors || [],
+      fonts: base.fonts || hydratedScan.fonts || { heading: null, body: null, all: [] },
+    };
+  });
   const [error, setError] = useState<string | null>(null);
   const [selectedLogoIdx, setSelectedLogoIdx] = useState(0);
   const [displayName, setDisplayName] = useState(initial?.displayName || '');
@@ -240,6 +292,10 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
   const [applyMode, setApplyMode] = useState<'fill-blanks' | 'override'>('fill-blanks');
   const [applyDoneMsg, setApplyDoneMsg] = useState<string | null>(null);
   const [applyErr, setApplyErr] = useState<string | null>(null);
+  // 2026-05-26 — operator wants to see WHICH templates got branded,
+  // not just a count. Server now returns the list; we stash it here
+  // to render below the success toast.
+  const [appliedTemplates, setAppliedTemplates] = useState<Array<{ id: string; name: string }>>([]);
   const isEditingAdopted = mode === 'authed' && !!initial;
 
   const debounceRef = useRef<any>(null);
@@ -272,13 +328,24 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
       setPrimary(p);
       if (a) setAccent(a);
       setDerivedPalette(data.palette);
+      // Persist the rich scan to localStorage so the "Logos found" +
+      // "Colors discovered" grids survive page reloads and post-Adopt
+      // re-renders. Operator can come back later to swap logo or pick
+      // a different accent without re-scraping.
+      try {
+        if (typeof window !== 'undefined' && mode === 'authed') {
+          localStorage.setItem(scanCacheKey, JSON.stringify(data));
+        }
+      } catch {
+        // QuotaExceededError, etc. — non-fatal, just lose the cache.
+      }
     } catch (e: any) {
       setError(e?.message || 'Scrape failed');
       setPreview(null);
     } finally {
       setScraping(false);
     }
-  }, [url, mode]);
+  }, [url, mode, scanCacheKey]);
 
   // ── Debounced palette recompute when user tweaks primary/accent ──
   useEffect(() => {
@@ -356,9 +423,11 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
   const onApplyToTemplates = useCallback(async () => {
     setApplyDoneMsg(null);
     setApplyErr(null);
+    setAppliedTemplates([]);
     try {
-      const res = await applyBrand.mutateAsync({ mode: applyMode });
+      const res: any = await applyBrand.mutateAsync({ mode: applyMode });
       setApplyDoneMsg(`Applied to ${res.count} template${res.count === 1 ? '' : 's'} · ${res.zonesPatched} zone${res.zonesPatched === 1 ? '' : 's'} updated.`);
+      setAppliedTemplates(Array.isArray(res.templates) ? res.templates : []);
     } catch (e: any) {
       setApplyErr(e?.message || 'Apply failed — try again.');
     }
@@ -675,8 +744,49 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                   </button>
                 </div>
                 {applyDoneMsg && (
-                  <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1 inline-flex items-center gap-1.5">
-                    <Check className="h-3 w-3" /> {applyDoneMsg}
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1 inline-flex items-center gap-1.5">
+                      <Check className="h-3 w-3" /> {applyDoneMsg}
+                    </div>
+                    {/* 2026-05-26 — show WHICH templates got branded.
+                        Operator: "it says it applied to 5 templates
+                        but i have no idea what templates". List the
+                        names with clickable deep-links into each
+                        template editor so they can verify the brand
+                        landed. Capped to ~15 to avoid eating the panel
+                        on big tenants. */}
+                    {appliedTemplates.length > 0 && (
+                      <div className="text-[11px] text-emerald-700 bg-emerald-50/40 border border-emerald-100 rounded-md px-2 py-1.5">
+                        <p className="font-bold mb-1 uppercase tracking-wider text-[10px]">
+                          Templates updated
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {appliedTemplates.slice(0, 15).map((t) => (
+                            <a
+                              key={t.id}
+                              href={`/${user?.tenantId ? user.tenantId : ''}/templates/${t.id}`}
+                              onClick={(e) => {
+                                // Use router so we don't lose React Query cache
+                                // on navigation. SchoolId comes from the user's
+                                // currently active tenant.
+                                e.preventDefault();
+                                if (user?.tenantId) {
+                                  router.push(`/${user.tenantId}/templates/${t.id}`);
+                                }
+                              }}
+                              className="inline-flex items-center px-2 py-0.5 rounded-md bg-white border border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50 text-emerald-800 font-semibold transition-colors"
+                            >
+                              {t.name}
+                            </a>
+                          ))}
+                          {appliedTemplates.length > 15 && (
+                            <span className="text-[10px] text-emerald-600 self-center">
+                              +{appliedTemplates.length - 15} more
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 {applyErr && (

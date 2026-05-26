@@ -99,6 +99,22 @@ export function BrandingSettingsCard({
       // Drop the shared cache so every subscriber (sidebar, dashboard
       // hero, brand-style injector) repaints with the default palette.
       invalidateBranding();
+      // 2026-05-26 — also clear the wizard's scan cache so the "Logos
+      // found" + "Colors discovered" grids don't keep showing the OLD
+      // brand's scan after reset. Match every tenant-scoped key plus
+      // the legacy un-scoped one.
+      try {
+        if (typeof window !== 'undefined') {
+          const toRemove: string[] = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith('edu-cms-branding-scan-cache-v1')) {
+              toRemove.push(k);
+            }
+          }
+          toRemove.forEach((k) => localStorage.removeItem(k));
+        }
+      } catch {}
       setConfirmReset(false);
       // Force a reload so all CSS variables / SSR-injected branding clear immediately.
       // Avoids a half-themed UI showing the old palette until the next navigation.

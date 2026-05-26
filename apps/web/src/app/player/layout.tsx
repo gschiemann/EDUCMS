@@ -107,9 +107,19 @@ export default function PlayerLayout({
           if(!(canvasW>0)){try{canvasW=parseInt(localStorage.getItem('edu_canvasW'),10)||0;}catch(e){}}
           if(!(canvasH>0)){try{canvasH=parseInt(localStorage.getItem('edu_canvasH'),10)||0;}catch(e){}}
           // Effective canvas: operator override wins; controller size
-          // fallback; nothing if neither is set (browser tab).
-          var effW=canvasW>0?canvasW:(w>0?w:0);
-          var effH=canvasH>0?canvasH:(h>0?h:0);
+          // fallback; viewport fallback when neither URL param is set.
+          // 2026-05-26 — previously fell through to nothing when no
+          // params were present, leaving --led-w / --led-h EMPTY.
+          // Operator photo showed "LED —×—" because of that. Now we
+          // ALWAYS publish a canvas to CSS — even if it's just the
+          // viewport. The narrow-stack data-led-narrow heuristic only
+          // fires for genuinely narrow LEDs.
+          var effW=canvasW>0?canvasW:(w>0?w:(typeof window!=='undefined'?window.innerWidth:0));
+          var effH=canvasH>0?canvasH:(h>0?h:(typeof window!=='undefined'?window.innerHeight:0));
+          // Operator escape hatch: ?narrow=1 forces narrow-stack mode
+          // regardless of detected dimensions. Useful when the LED is
+          // narrow but you haven't run "Resize for LED" yet.
+          var forceNarrow=(p.get('narrow')==='1');
           if(effW>0&&effH>0){
             var m=document.querySelector('meta[name="viewport"]');
             if(m)m.content='width='+effW+', height='+effH+', initial-scale=1, user-scalable=no';
@@ -155,9 +165,18 @@ export default function PlayerLayout({
             // Threshold: < 600 px wide OR taller than 2× wide is a
             // poster shape. Matches the operator's 320×1080 install
             // and the planned 480×1920 hallway pillars.
-            if(effW<600||effH>effW*2){
+            if(forceNarrow||effW<600||effH>effW*2){
               document.documentElement.setAttribute('data-led-narrow','1');
             }
+            // Mark whether canvas params were operator-supplied vs
+            // viewport-fallback. The diagnostic strip surfaces this so
+            // the operator can tell at a glance whether they need to
+            // run "Resize for LED". cfg=Y means configured; cfg=N
+            // means we're using the WebView viewport as a best guess.
+            document.documentElement.setAttribute(
+              'data-led-cfg',
+              (canvasW>0||canvasH>0)?'1':'0'
+            );
           }
         }catch(e){}})();`,
         }}

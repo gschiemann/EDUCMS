@@ -467,7 +467,7 @@ export function KioskSplash({
 function KioskDiagnostics({ mode }: { mode: Mode }) {
   const [debugOn, setDebugOn] = useState(false);
   const [dims, setDims] = useState<{
-    vw: number; vh: number; ledW: string; ledH: string; narrow: boolean;
+    vw: number; vh: number; ledW: string; ledH: string; narrow: boolean; cfg: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -487,6 +487,11 @@ function KioskDiagnostics({ mode }: { mode: Mode }) {
         ledW: style.getPropertyValue('--led-w').trim() || '—',
         ledH: style.getPropertyValue('--led-h').trim() || '—',
         narrow: root.hasAttribute('data-led-narrow'),
+        // 2026-05-26 — track whether the operator has configured the
+        // LED canvas (via "Resize for LED"). When false, we use the
+        // WebView viewport as a fallback — fine for landscape kiosks
+        // but won't render correctly for narrow LEDs.
+        cfg: root.getAttribute('data-led-cfg') === '1',
       });
     };
     measure();
@@ -522,8 +527,42 @@ function KioskDiagnostics({ mode }: { mode: Mode }) {
       >
         VP {dims.vw}×{dims.vh}{' '}
         LED {dims.ledW || '—'}×{dims.ledH || '—'}{' '}
-        {dims.narrow ? 'N' : '·'} · {mode[0]?.toUpperCase()}
+        {dims.narrow ? 'N' : '·'} · cfg{dims.cfg ? '✓' : '✗'} · {mode[0]?.toUpperCase()}
       </div>
+
+      {/* 2026-05-26 — "configure LED" prompt. When the LED canvas
+          isn't configured (cfg=false) the player is rendering against
+          the WebView viewport (usually 1920×1080 on a Taurus). If the
+          LED's visible region is smaller than that, splash content
+          falls off the edge. This banner tells the operator to run
+          "Resize for LED" + how to do it. Pairing/registering only;
+          plays alongside the always-on tiny strip below. */}
+      {!dims.cfg && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 8,
+            left: 8,
+            zIndex: 999997,
+            padding: '6px 10px',
+            background: 'rgba(251,146,60,0.95)',
+            color: '#1f1300',
+            fontSize: 11,
+            fontFamily: 'monospace',
+            lineHeight: 1.3,
+            borderRadius: 4,
+            maxWidth: 260,
+            pointerEvents: 'none',
+            fontWeight: 700,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          }}
+          aria-hidden="true"
+        >
+          ⚠️ LED CANVAS NOT SET<br />
+          Add <code style={{ background: 'rgba(0,0,0,0.15)', padding: '0 3px', borderRadius: 2 }}>?canvasW=320&canvasH=1080</code> to URL,<br />
+          or open Info → Resize for LED on this screen.
+        </div>
+      )}
 
       {/* ?debug=1 — giant vertical test stripes across the frame
           buffer. Each labeled with its x-range so the LED photo

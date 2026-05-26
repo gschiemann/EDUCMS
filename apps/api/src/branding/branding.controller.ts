@@ -715,10 +715,21 @@ export class BrandingController {
       },
     }).catch(() => {});
 
+    // 2026-05-26 — operator: "it says it applied to 5 templates but i
+    // have no idea what templates". Return the list of name+id pairs
+    // so the wizard's success toast can show "Applied to: Welcome
+    // Board, Cafeteria Menu, Hallway Schedule, ..." with deep-links
+    // back to each template's editor.
+    const templateList = templates.map((t) => ({
+      id: t.id,
+      name: t.name || 'Untitled',
+    }));
+
     return {
       count: templates.length,
       zonesPatched,
       mode,
+      templates: templateList,
       message: `Applied your brand to ${templates.length} template${templates.length === 1 ? '' : 's'} (${zonesPatched} zones updated).`,
     };
   }

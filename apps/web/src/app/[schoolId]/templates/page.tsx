@@ -16,7 +16,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical,
   Layers, ChevronUp, ChevronDown, Lock, Unlock, GripVertical,
   ZoomIn, ZoomOut, Maximize2, RotateCcw, RotateCw, Palette, MousePointer,
-  PanelLeft, Sparkles, Search, FolderOpen, ChevronRight,
+  PanelLeft, Sparkles, Search, FolderOpen, ChevronRight, Wand2,
 } from 'lucide-react';
 import {
   useTemplates, useCreateTemplate, useDeleteTemplate, useCreateFromPreset,
@@ -1595,6 +1595,49 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
   const sh = active.screenHeight || 2160;
   const isLandscape = sw >= sh;
 
+  // 2026-05-26 — "Branded" badge. Operator: "i dont see anything that
+  // looks branded, maybe we need a little indicator on the template
+  // preview that lets me know its been branded...i never seen a branded
+  // template actually work". We can't be 100% sure a zone is branded
+  // (the operator may have customized the brand color manually), but
+  // we CAN reliably detect when the template's bgGradient was painted
+  // by Apply-to-Templates: the server writes
+  // `linear-gradient(135deg, ${primary} 0%, ${accent} 100%)` AND/OR
+  // sets bgColor === primary. If either matches the current brand
+  // palette, we surface a green "Branded" pill on the card.
+  // System presets never get auto-branded so they don't get the badge.
+  // Shared React Query cache (60s staleTime) means every card uses
+  // the same /branding/me payload — no per-card fetch.
+  const brandingQ = useTenantBranding();
+  const brandPalette = (brandingQ.data?.palette as any) || null;
+  const isBranded = useMemo(() => {
+    if (active.isSystem) return false;
+    if (!brandPalette) return false;
+    const primary = (brandPalette.primary || '').toLowerCase();
+    const accent = (brandPalette.accent || '').toLowerCase();
+    if (!primary && !accent) return false;
+    const bgC = (active.bgColor || '').toLowerCase();
+    const bgG = (active.bgGradient || '').toLowerCase();
+    // Match the server-generated gradient shape — same string the
+    // applyBrandToTemplates handler writes.
+    if (primary && accent && bgG.includes(primary) && bgG.includes(accent)) {
+      return true;
+    }
+    if (primary && bgC === primary) return true;
+    if (accent && bgC === accent) return true;
+    // Also count "any zone's accentColor matches brand" as branded —
+    // covers templates where the bg is intentionally white but zones
+    // were re-painted.
+    for (const z of zones) {
+      try {
+        const cfg = z?.defaultConfig ? JSON.parse(z.defaultConfig as any) : null;
+        const zc = (cfg?.accentColor || '').toLowerCase();
+        if (zc && (zc === primary || zc === accent)) return true;
+      } catch {}
+    }
+    return false;
+  }, [active.isSystem, active.bgColor, active.bgGradient, brandPalette, zones]);
+
   const fire = onPreview ? () => onPreview(active) : undefined;
 
   return (
@@ -1723,7 +1766,22 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
 
       {/* Info */}
       <div className="p-4 pt-3">
-        <h3 className="text-sm font-bold text-slate-800 truncate">{template.name}</h3>
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="text-sm font-bold text-slate-800 truncate flex-1">{template.name}</h3>
+          {/* 2026-05-26 — "Branded" pill. Operator wanted a visual
+              indicator so they know which custom templates have been
+              re-painted by their brand kit. Sparkle/wand vocabulary
+              matches the wizard's Apply button. */}
+          {isBranded && (
+            <span
+              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-emerald-50 border border-emerald-200 text-emerald-700"
+              title="This template uses your brand kit colors"
+            >
+              <Wand2 className="w-2.5 h-2.5" />
+              Branded
+            </span>
+          )}
+        </div>
         {template.description && <p className="text-xs text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">{template.description}</p>}
         <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
           <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md text-[10px] font-bold">{template.category}</span>
