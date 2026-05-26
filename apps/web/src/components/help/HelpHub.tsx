@@ -58,7 +58,8 @@ export function HelpHub({ articles }: { articles: HelpArticle[] }) {
                 How can we help?
               </h1>
               <p className="mt-1.5 text-sm md:text-base text-slate-600 max-w-xl">
-                Guides, how-tos, and answers — written for teachers, techs, and district admins.
+                Guides, how-tos, and answers for every team — schools, gyms, bars,
+                restaurants, retail, hospitality, churches, stadiums, and clinics.
               </p>
             </div>
             <div className="relative w-full md:max-w-md">
@@ -98,7 +99,7 @@ export function HelpHub({ articles }: { articles: HelpArticle[] }) {
                   Getting Started Guide
                 </h2>
                 <p className="mt-1 text-sm md:text-[15px] text-white/85 leading-relaxed max-w-2xl">
-                  A printable walk-through for new districts: pair a screen, upload content, build &amp; publish a playlist, set up emergency alerts, and pick a template along the way. Read on screen or save as PDF.
+                  A printable walk-through for new venues: pair a screen, upload content, build &amp; publish a playlist, set up emergency alerts, and pick a template along the way. Read on screen or save as PDF.
                 </p>
               </div>
               <div className="flex flex-shrink-0 items-center gap-2 md:flex-col md:items-end">
@@ -171,8 +172,8 @@ export function HelpHub({ articles }: { articles: HelpArticle[] }) {
               <p className="text-slate-600">No articles match that search.</p>
               <p className="mt-2 text-sm text-slate-500">
                 Try a different term, or email{' '}
-                <a className="text-indigo-600 underline" href="mailto:support@edusignage.app">
-                  support@edusignage.app
+                <a className="text-indigo-600 underline" href="mailto:support@venue-os.app">
+                  support@venue-os.app
                 </a>
                 .
               </p>
@@ -211,11 +212,11 @@ export function HelpHub({ articles }: { articles: HelpArticle[] }) {
                 Can&apos;t find an answer?
               </h3>
               <p className="text-sm text-slate-600 mt-0.5">
-                Email support and a human will get back within one school day.
+                Email support and a human will get back within one business day.
               </p>
             </div>
             <a
-              href="mailto:support@edusignage.app"
+              href="mailto:support@venue-os.app"
               className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition flex-shrink-0"
             >
               Email support
