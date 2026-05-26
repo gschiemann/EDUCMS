@@ -180,9 +180,9 @@ export class SportsController {
   ) {
     // delta present → quick-button increment; otherwise → absolute set.
     if (typeof body.delta === 'number') {
-      return this.sports.adjustScore(req.user.tenantId, id, body);
+      return this.sports.adjustScore(req.user.tenantId, id, body, req?.user?.id);
     }
-    return this.sports.setScore(req.user.tenantId, id, body);
+    return this.sports.setScore(req.user.tenantId, id, body, req?.user?.id);
   }
 
   @Patch('games/:id/clock')

@@ -1099,13 +1099,18 @@ export class SportsService {
     tenantId: string,
     id: string,
     dto: { team?: string; delta?: number },
+    actorUserId?: string,
   ) {
-    await this.owned(tenantId, id);
+    const game = await this.owned(tenantId, id);
     const team = dto.team === 'away' ? 'away' : 'home';
     const delta = Number(dto.delta);
     if (!Number.isFinite(delta) || !Number.isInteger(delta)) {
       throw new BadRequestException('delta must be an integer');
     }
+    // Audit-Fix 1: snapshot prev scores BEFORE the mutation as primitives —
+    // the auto-celebrate delta must compare pre- vs post-update values,
+    // never alias the same mutable row object.
+    const prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
     // Atomic increment — two operators tapping a score button in the
     // same instant can't lose a point (a read-modify-write would).
     let updated = await this.prisma.client.game.update({
@@ -1140,6 +1145,22 @@ export class SportsService {
       homeScore: updated.homeScore,
       awayScore: updated.awayScore,
     });
+    // Audit-Fix 1: the +7 button (and every other manual quick-button) now
+    // fires AUTO celebrations — same path the feed uses. Without this, the
+    // operator taps +7 on the dashboard, the score jumps 14→21, and
+    // NOTHING animates. Translate (team, delta) into the (homeScore |
+    // awayScore) shape maybeAutoCelebrate consumes so the delta arithmetic
+    // matches the feed path. Source is attributed in the AuditLog row.
+    try {
+      const cueDto: { homeScore?: number; awayScore?: number } =
+        team === 'home' ? { homeScore: updated.homeScore } : { awayScore: updated.awayScore };
+      await this.maybeAutoCelebrate(id, prevScores, updated, cueDto, {
+        source: 'manual',
+        actorUserId,
+      });
+    } catch (e) {
+      this.logger.debug(`auto-celebrate skipped for game ${id}: ${(e as Error).message}`);
+    }
     // Sport rules: volleyball / pickleball set-and-match scoring runs
     // off the rally score the moment a team reaches the set target.
     const def = this.sportOf((updated as any).sport);
@@ -1154,6 +1175,7 @@ export class SportsService {
     tenantId: string,
     id: string,
     dto: { homeScore?: number; awayScore?: number },
+    actorUserId?: string,
   ) {
     const game = await this.owned(tenantId, id);
     const clamp = (v: unknown, fallback: number) => {
@@ -1163,11 +1185,29 @@ export class SportsService {
     const homeScore = clamp(dto.homeScore, game.homeScore);
     const awayScore = clamp(dto.awayScore, game.awayScore);
 
+    // Audit-Fix 1: snapshot prev scores BEFORE the mutation so a manual
+    // set fires the same AUTO celebration path as the feed.
+    const prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
+
     const updated = await this.prisma.client.game.update({
       where: { id },
       data: { homeScore, awayScore },
     });
     await this.record(id, 'SCORE', { team: 'set', homeScore, awayScore });
+    // Audit-Fix 1: manual score sets also fire AUTO celebrations. Only
+    // fields actually supplied by the operator are marked as "provided" so
+    // a typo-fix that leaves a team untouched doesn't spuriously celebrate.
+    try {
+      const cueDto: { homeScore?: number; awayScore?: number } = {};
+      if (dto.homeScore !== undefined) cueDto.homeScore = homeScore;
+      if (dto.awayScore !== undefined) cueDto.awayScore = awayScore;
+      await this.maybeAutoCelebrate(id, prevScores, updated, cueDto, {
+        source: 'manual',
+        actorUserId,
+      });
+    } catch (e) {
+      this.logger.debug(`auto-celebrate skipped for game ${id}: ${(e as Error).message}`);
+    }
     return updated;
   }
 
@@ -1866,7 +1906,7 @@ export class SportsService {
     // Best-effort: never let a celebration failure break the score sync.
     if (opts.auto && (data.homeScore !== undefined || data.awayScore !== undefined)) {
       try {
-        await this.maybeAutoCelebrate(id, prevScores, updated, dto);
+        await this.maybeAutoCelebrate(id, prevScores, updated, dto, { source: 'feed' });
       } catch (e) {
         this.logger.debug(`auto-celebrate skipped for game ${id}: ${(e as Error).message}`);
       }
@@ -1888,6 +1928,7 @@ export class SportsService {
     prev: { homeScore: number; awayScore: number },
     next: any,
     dto: { homeScore?: number; awayScore?: number },
+    opts: { source?: 'manual' | 'feed'; actorUserId?: string } = {},
   ): Promise<void> {
     if (!(await this.autoCelebrateEnabled(id))) return;
 
@@ -1913,6 +1954,10 @@ export class SportsService {
     }
     if (hits.length === 0) return;
 
+    // Audit-Fix 1: AuditLog attribution — 'feed' (machine ingest) or
+    // 'manual' (dashboard quick-buttons / typo-fix). SUPER_ADMIN forensic
+    // review can answer "which sponsor takeover fired off which path".
+    const source: 'manual' | 'feed' = opts.source === 'manual' ? 'manual' : 'feed';
     const snapshot = this.cueSnapshot(next);
     for (const h of hits) {
       const event = await this.record(id, 'CUE', {
@@ -1925,14 +1970,17 @@ export class SportsService {
         sponsorLogoUrl: null,
         auto: true,
         team: h.team,
+        source,
         snapshot,
       });
       // Lane-8 P1: AUTO cues also get an immutable AuditLog row (forensics).
+      // Audit-Fix 1: manual quick-button auto-fires now record `userId` so
+      // the actor is named; feed auto-fires have no user — machine-to-machine.
       try {
         await this.prisma.client.auditLog.create({
           data: {
             tenantId: next.tenantId,
-            userId: null, // AUTO has no user actor — it's score-feed-driven.
+            userId: opts.actorUserId || null,
             action: 'SPORTS_CUE_FIRED',
             targetType: 'Game',
             targetId: id,
@@ -1943,6 +1991,7 @@ export class SportsService {
               target: 'ALL',
               team: h.team,
               auto: true,
+              source,
             }),
           },
         });

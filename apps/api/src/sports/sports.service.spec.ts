@@ -86,7 +86,9 @@ function setup() {
   const sponsor = makeTable();
   const rosterPlayer = makeTable();
   const customCue = makeTable();
-  const prisma = { client: { game, gameEvent, screen, sponsor, rosterPlayer, customCue } };
+  // Audit-Fix 1: AuditLog mock table.
+  const auditLog = makeTable();
+  const prisma = { client: { game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog } };
   const redis = { publish: jest.fn().mockResolvedValue(undefined) };
   const signer = { signMessage: jest.fn(() => ({ eventId: 'e', signature: 's' })) };
   // SportsService gained a SponsorsService dependency (Phase 2 sponsorship)
@@ -99,7 +101,7 @@ function setup() {
     signer as any,
     sponsorsService as any,
   );
-  return { service, game, gameEvent, screen, sponsor, rosterPlayer, customCue, redis, signer };
+  return { service, game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, redis, signer };
 }
 
 async function newGame(service: SportsService, sport = 'football') {
@@ -820,5 +822,63 @@ describe('SportsService — AUTO celebration on score feed', () => {
     await service.setAutoCelebrate(TENANT, g.id, true);
     await service.ingestByFeed(g.id, { homeScore: 2 });
     expect(cues(gameEvent)).toHaveLength(1);
+  });
+
+  // Audit-Fix 1: the dashboard's +7 button (and every other manual quick-
+  // button) now fires AUTO celebrations too — same path as the feed.
+  // Without these tests, a regression that drops the manual path could
+  // sail through CI (the +7 demo would silently NOT animate).
+  it('MANUAL +7 (adjustScore) fires the touchdown celebration', async () => {
+    const { service, gameEvent, auditLog } = setup();
+    const g: any = await newGame(service, 'football'); // 0-0
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 7 }, 'user-1');
+    const fired = cues(gameEvent);
+    expect(fired).toHaveLength(1);
+    expect(fired[0].key).toBe('touchdown');
+    expect(fired[0].auto).toBe(true);
+    expect(fired[0].team).toBe('home');
+    expect(fired[0].source).toBe('manual');
+    const cueAudit = auditLog.rows.find((r: any) => r.action === 'SPORTS_CUE_FIRED');
+    expect(cueAudit).toBeTruthy();
+    const details = JSON.parse(cueAudit.details);
+    expect(details.source).toBe('manual');
+    expect(details.auto).toBe(true);
+    expect(cueAudit.userId).toBe('user-1');
+  });
+
+  it('MANUAL +3 (adjustScore) fires the field-goal celebration', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'football');
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 3 }, 'user-1');
+    const fired = cues(gameEvent);
+    expect(fired).toHaveLength(1);
+    expect(fired[0].key).toBe('fieldGoal');
+    expect(fired[0].team).toBe('away');
+    expect(fired[0].source).toBe('manual');
+  });
+
+  it('MANUAL +1 single point (safety) does NOT fire a celebration in football', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'football');
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 1 }, 'user-1');
+    expect(cues(gameEvent)).toHaveLength(0);
+  });
+
+  it('MANUAL adjustScore respects the per-game toggle — OFF suppresses', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'soccer');
+    await service.setAutoCelebrate(TENANT, g.id, false);
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 1 }, 'user-1');
+    expect(cues(gameEvent)).toHaveLength(0);
+  });
+
+  it('MANUAL setScore fires the matching celebration when a team\'s score jumps', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+    await service.setScore(TENANT, g.id, { homeScore: 3, awayScore: 0 }, 'user-1');
+    const fired = cues(gameEvent);
+    expect(fired).toHaveLength(1);
+    expect(fired[0].key).toBe('threePointer');
+    expect(fired[0].source).toBe('manual');
   });
 });
