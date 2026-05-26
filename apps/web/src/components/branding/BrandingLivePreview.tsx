@@ -141,8 +141,13 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
                 {(name?.[0] || 'E').toUpperCase()}
               </div>
             )}
-            <div className="leading-tight">
-              <div className="preview-heading text-[11px] font-bold truncate max-w-[110px]" title={name}>{name}</div>
+            <div className="leading-tight min-w-0">
+              {/* 2026-05-25 — was truncate + max-w-[110px], which
+                  guillotined names longer than ~13 chars on a 180px
+                  sidebar ("Los Angeles Do…"). Now wraps to at most
+                  2 lines with line-clamp-2. Hover still shows the
+                  full name via title attr. */}
+              <div className="preview-heading text-[10px] font-bold line-clamp-2 leading-tight max-w-[110px]" title={name}>{name}</div>
               <div className="text-[9px] text-slate-500">Signage</div>
             </div>
           </div>
@@ -167,7 +172,11 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
             <div>
               <h2 className="preview-heading text-lg font-bold" style={{ color: 'var(--bp-ink)' }}>Dashboard</h2>
               <div className="text-[11px]" style={{ color: 'var(--bp-ink-muted)' }}>
-                {branding?.tagline || 'Your district signage at a glance'}
+                {/* 2026-05-25 — vertical-neutral default. The old
+                    "Your district signage at a glance" was K-12-
+                    specific copy bleeding into a Sports tenant
+                    preview. */}
+                {branding?.tagline || 'Your signage at a glance'}
               </div>
             </div>
             <div className="flex items-center gap-2">

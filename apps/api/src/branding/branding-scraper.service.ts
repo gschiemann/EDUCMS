@@ -285,16 +285,43 @@ export class BrandingScraperService {
     //  3. For root URLs (URL path === "/"), keep the old order —
     //     ogSiteName is right when scraping the homepage.
     const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    let cleanedTitle = (pageTitle || '')
-      .replace(/\s*[|\-–—]\s*(Home|Welcome|Official Site|Home Page).*$/i, '')
-      .replace(/\s*[|\-–—]\s*$/g, '')
-      .trim();
-    if (ogSiteName && cleanedTitle) {
-      // Strip "| MLB.com", "- MLB.com", "– MLB.com", "— MLB.com" tail.
-      cleanedTitle = cleanedTitle
-        .replace(new RegExp(`\\s*[|\\-–—]\\s*${escapeRe(ogSiteName)}\\s*$`, 'i'), '')
-        .trim();
-    }
+    // 2026-05-25 — operator on the preview: "the sample view looks good
+    // but the preview looks bad" — mlb.com/dodgers returned the
+    // bloated og:title "Official Los Angeles Dodgers Website | MLB.com"
+    // and we routed it straight to displayName, sidebar, and the
+    // "Welcome back to ..." preview hero. Cleanup helper now applies
+    // to EVERY title candidate (ogTitle/twitterTitle/pageTitle), not
+    // just <title>:
+    //   1. Strip site-name suffix ("| MLB.com")
+    //   2. Strip generic boilerplate suffix
+    //      ("| Home", "| Welcome", "| Official Site", "| Home Page")
+    //   3. Strip filler words around the brand:
+    //      - leading "The ", "Official " (e.g. "Official Los Angeles
+    //        Dodgers Website" → "Los Angeles Dodgers Website")
+    //      - trailing " Website", " Official Site", " Home Page",
+    //        " Home" (→ "Los Angeles Dodgers")
+    //   4. Final trim of leftover hanging separators
+    const cleanTitleString = (raw: string | null | undefined): string => {
+      if (!raw) return '';
+      let s = raw;
+      // Strip site-name suffix first since it's the most reliable
+      // signal that everything after the pipe is metadata, not name.
+      if (ogSiteName) {
+        s = s.replace(new RegExp(`\\s*[|\\-–—]\\s*${escapeRe(ogSiteName)}\\s*$`, 'i'), '');
+      }
+      // Generic suffix: "X | Home", "X – Welcome", etc.
+      s = s.replace(/\s*[|\-–—]\s*(Home|Welcome|Official Site|Home Page|Official Website|Official|The Official Site)\b.*$/i, '');
+      // Trailing filler words attached to the brand name itself.
+      s = s.replace(/\s+(Official Website|Official Site|Home Page|Website)\s*$/i, '');
+      // Leading filler — "Official " / "The Official " prefix.
+      s = s.replace(/^(The\s+)?Official\s+/i, '');
+      // Stray hanging separator at the end.
+      s = s.replace(/\s*[|\-–—]\s*$/g, '');
+      return s.trim();
+    };
+    const cleanedTitle = cleanTitleString(pageTitle);
+    const cleanedOgTitle = cleanTitleString(ogTitle);
+    const cleanedTwitterTitle = cleanTitleString(twitterTitle);
     const hostDerivedName = (() => {
       try {
         const h = new URL(finalUrl).hostname.replace(/^www\./, '');
@@ -312,8 +339,8 @@ export class BrandingScraperService {
       } catch { return false; }
     })();
     const displayName = hasSubpath
-      ? (ogTitle || twitterTitle || cleanedTitle || ogSiteName || hostDerivedName || null)
-      : (ogSiteName || ogTitle || twitterTitle || cleanedTitle || hostDerivedName || null);
+      ? (cleanedOgTitle || cleanedTwitterTitle || cleanedTitle || ogSiteName || hostDerivedName || null)
+      : (ogSiteName || cleanedOgTitle || cleanedTwitterTitle || cleanedTitle || hostDerivedName || null);
 
     // 2026-05-07 — operator: "you ask for the name and tagline, and
     // it always just picks up the name twice".
