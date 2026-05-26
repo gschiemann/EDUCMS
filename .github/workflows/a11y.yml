@@ -1,6 +1,12 @@
 name: Accessibility (axe-core)
 
 on:
+  # A11y audit (2026-05-25, A4): also run on push to master so a
+  # hot-fix that bypasses code review can't skip the a11y gate.
+  # Previously this workflow only ran on PRs, leaving direct pushes
+  # (rebase-and-push, emergency hot-fixes, agent commits) unaudited.
+  push:
+    branches: [master]
   pull_request:
     branches: [main, master, develop]
 

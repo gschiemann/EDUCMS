@@ -18,12 +18,26 @@ import { AxeBuilder } from '@axe-core/playwright';
 
 const BASE_URL = process.env.A11Y_BASE_URL || 'http://localhost:3000';
 
+// A11y audit (2026-05-25, A4 expansion): added the 5 high-risk
+// life-safety + onboarding routes that were previously ungated:
+//   /panic                — mobile emergency trigger
+//   /[seed]/emergency/broadcast — desktop emergency console
+//   /[seed]/reviews       — CONTRIBUTOR review queue
+//   /onboarding/branding  — first-run onboarding wizard
+//   /[seed]/screens       — fleet map view (?view=map)
+// Seed tenant id matches packages/database/prisma/seed.ts line 88.
+const SEED_TENANT = '00000000-0000-0000-0000-000000000002';
 const ROUTES: string[] = [
   '/login',
   '/dashboard',
   '/screens',
-  '/00000000-0000-0000-0000-000000000002/templates',
+  `/${SEED_TENANT}/templates`,
   '/player',
+  '/panic',
+  `/${SEED_TENANT}/emergency/broadcast`,
+  `/${SEED_TENANT}/reviews`,
+  '/onboarding/branding',
+  `/${SEED_TENANT}/screens?view=map`,
 ];
 
 // Rules we intentionally ignore for now (document why in ACCESSIBILITY.md).
