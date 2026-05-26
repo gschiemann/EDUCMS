@@ -72,6 +72,16 @@ export class ScreenGroupsController {
             // for the kiosk). Add proactively to screen-groups
             // select for the same dashboard-bug reason.
             managerVersion: true, managerVersionAt: true,
+            // 2026-05-26 — orientation + canvasW/canvasH. Same bug
+            // class as the 2026-04-27 fix: dashboard ScreenDiagnostics
+            // reads these directly off screenGroup.screens[N], and a
+            // missing field reads as undefined → orientation always
+            // displayed as "Landscape" and the LED canvas picker
+            // always stuck on "Off". Operator hit the exact "burned
+            // 3 hours on a phantom kiosk-side bug" pattern AGAIN.
+            // Adding all 3 here so they're propagated to the list.
+            orientation: true,
+            canvasW: true, canvasH: true,
             // lastCrashStack deliberately omitted from the list
             // endpoint — 8KB per row × N screens is too much for a
             // dashboard that re-fetches every 10s. Stack lives on the
