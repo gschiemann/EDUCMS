@@ -65,6 +65,41 @@ const INTENT_PLACEHOLDERS: Record<AiIntent, string> = {
 
 interface AiOption { text: string; tag?: string }
 
+// 2026-05-26 audit AI-P0-3 — module-level cache of the /ai/key status
+// so the button can know upfront whether AI is configured, without
+// every <AiGenerateButton> instance firing its own GET on mount
+// (PropertiesPanel renders 4 of them — was 4 redundant calls). Cache
+// is invalidated on auth events; the worst case (stale cache after an
+// admin enables/disables AI in another tab) is a 60s window where the
+// button is hidden/shown incorrectly — the next mount refreshes.
+type AiStatusSource = 'platform' | 'tenant' | 'none';
+let __aiStatusCache: { source: AiStatusSource; fetchedAt: number } | null = null;
+let __aiStatusInflight: Promise<AiStatusSource> | null = null;
+const AI_STATUS_TTL_MS = 60_000;
+async function getAiStatusSource(): Promise<AiStatusSource> {
+  const now = Date.now();
+  if (__aiStatusCache && now - __aiStatusCache.fetchedAt < AI_STATUS_TTL_MS) {
+    return __aiStatusCache.source;
+  }
+  if (__aiStatusInflight) return __aiStatusInflight;
+  __aiStatusInflight = (async () => {
+    try {
+      const r = await apiFetch<{ usage?: AiUsage }>('/ai/key');
+      const src = (r?.usage?.source as AiStatusSource) || 'none';
+      __aiStatusCache = { source: src, fetchedAt: Date.now() };
+      return src;
+    } catch {
+      // Fail-open: if we can't reach the status endpoint, render the
+      // button (the modal's own error path will tell the operator
+      // what's wrong). Better than hiding a working feature.
+      return 'platform';
+    } finally {
+      __aiStatusInflight = null;
+    }
+  })();
+  return __aiStatusInflight;
+}
+
 export function AiGenerateButton({
   intent,
   onPick,
@@ -83,6 +118,21 @@ export function AiGenerateButton({
   defaultContext?: string;
 }) {
   const [open, setOpen] = useState(false);
+  // 2026-05-26 audit AI-P0-3 — don't render the sparkle button at all
+  // when the tenant has no AI configured AND there's no platform-tier
+  // fallback. Before this fix the button always rendered → operator
+  // clicked → modal opened → modal called /ai/generate → 503 "AI is
+  // not configured" → 3 clicks of wasted effort to learn what they
+  // should've known at button-render time. Initial state is `null`
+  // (loading); falsy → don't render. The status hook resolves within
+  // one round-trip and the button appears.
+  const [aiSource, setAiSource] = useState<AiStatusSource | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void getAiStatusSource().then((s) => { if (alive) setAiSource(s); });
+    return () => { alive = false; };
+  }, []);
+  if (aiSource === 'none') return null;
   return (
     <>
       <button

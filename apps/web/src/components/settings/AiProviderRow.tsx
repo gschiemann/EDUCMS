@@ -18,8 +18,16 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Sparkles, AlertCircle, Check, Loader2 } from 'lucide-react';
+import { Sparkles, AlertCircle, Check, Loader2, Lock } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { useAppStore } from '@/lib/store';
+
+// 2026-05-26 audit AI-P0-5 — server-side gate on /settings/ai is
+// SUPER_ADMIN | DISTRICT_ADMIN | SCHOOL_ADMIN. CONTRIBUTOR /
+// RESTRICTED_VIEWER who saw the Configure CTA on /settings would land
+// on a half-rendered page with an amber RoleGate message. Same set
+// of roles as the server gate so the FE doesn't drift.
+const AI_CONFIGURE_ROLES = new Set(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']);
 
 interface AiKeyStatus {
   configured: boolean;
@@ -41,6 +49,8 @@ interface AiProviderInfo {
 export function AiProviderRow() {
   const params = useParams();
   const schoolId = params?.schoolId as string;
+  const user = useAppStore((s) => s.user);
+  const canConfigure = AI_CONFIGURE_ROLES.has((user?.role || '').toUpperCase());
   const [status, setStatus] = useState<AiKeyStatus | null>(null);
   const [catalog, setCatalog] = useState<AiProviderInfo[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -156,12 +166,26 @@ export function AiProviderRow() {
           <span className="text-[11px] text-slate-500 truncate">{renderInlineCopy()}</span>
         </div>
       </div>
-      <Link
-        href={`/${schoolId}/settings/ai`}
-        className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors"
-      >
-        {status?.configured ? 'Manage' : 'Configure'}
-      </Link>
+      {/* 2026-05-26 audit AI-P0-5 — Configure link is gated on the
+          same role set the server uses (/settings/ai requires
+          SUPER_ADMIN / DISTRICT_ADMIN / SCHOOL_ADMIN). Lower roles
+          see a read-only "Admin only" pill instead of a dead link
+          that would land them on a half-rendered RoleGate page. */}
+      {canConfigure ? (
+        <Link
+          href={`/${schoolId}/settings/ai`}
+          className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors"
+        >
+          {status?.configured ? 'Manage' : 'Configure'}
+        </Link>
+      ) : (
+        <span
+          className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 text-slate-500 text-xs font-bold cursor-not-allowed"
+          title="Ask your admin to configure AI for this site"
+        >
+          <Lock className="w-3 h-3" /> Admin only
+        </span>
+      )}
     </div>
   );
 }
