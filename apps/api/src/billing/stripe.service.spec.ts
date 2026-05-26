@@ -1,0 +1,381 @@
+/**
+ * StripeService — webhook idempotency + out-of-order + audit-log tests.
+ *
+ * Covers the 2026-05-26 P0-7 audit fix:
+ *   1. Stripe redelivery of the same event.id is a no-op (P2002 ledger).
+ *   2. Stale events older than the last-applied one don't flip License
+ *      state (e.g. a late ACTIVE update can't undo a fresher PAST_DUE).
+ *   3. Customer Portal events lacking metadata.tenantId still sync via
+ *      a fallback lookup by stripeCustomerId.
+ *   4. Every License mutation writes an AuditLog row in the same
+ *      $transaction.
+ *
+ * The service is unit-tested with a hand-rolled Prisma mock — Jest can't
+ * spin up the real Prisma client in a 2-second unit test.
+ */
+import { StripeService, StripeWebhookEvent } from './stripe.service';
+
+type ProcessedStripeEventRow = {
+  id: string;
+  type: string;
+  processedAt: Date;
+};
+
+type LicenseRow = {
+  id: string;
+  tenantId: string;
+  status: string;
+  tier: string;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  stripeLastEventCreatedAt: Date | null;
+};
+
+type AuditLogRow = {
+  tenantId: string | null;
+  userId: string | null;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  details: string | null;
+};
+
+/** A hand-rolled in-memory Prisma stand-in. Models exactly the surface
+ *  StripeService.handleWebhookEvent touches; nothing else. */
+function makeFakePrisma() {
+  const processed = new Map<string, ProcessedStripeEventRow>();
+  const licenses = new Map<string, LicenseRow>(); // keyed by tenantId
+  const auditLogs: AuditLogRow[] = [];
+
+  const tx = {
+    license: {
+      upsert: jest.fn(async (args: any) => {
+        const tenantId = args.where.tenantId as string;
+        const existing = licenses.get(tenantId);
+        if (existing) {
+          const updated: LicenseRow = { ...existing, ...args.update };
+          licenses.set(tenantId, updated);
+          return updated;
+        }
+        const created: LicenseRow = {
+          id: 'lic_' + tenantId,
+          tenantId,
+          status: 'ACTIVE',
+          tier: 'MONTHLY',
+          stripeCustomerId: null,
+          stripeSubscriptionId: null,
+          stripeLastEventCreatedAt: null,
+          ...args.create,
+        };
+        licenses.set(tenantId, created);
+        return created;
+      }),
+      update: jest.fn(async (args: any) => {
+        // update by `where.id` is the only shape used by the new code
+        const id = args.where.id as string;
+        for (const [k, v] of licenses) {
+          if (v.id === id) {
+            const updated: LicenseRow = { ...v, ...args.data };
+            licenses.set(k, updated);
+            return updated;
+          }
+        }
+        throw Object.assign(new Error('not found'), { code: 'P2025' });
+      }),
+    },
+    auditLog: {
+      create: jest.fn(async (args: any) => {
+        auditLogs.push(args.data);
+        return args.data;
+      }),
+    },
+  };
+
+  const client = {
+    processedStripeEvent: {
+      create: jest.fn(async (args: any) => {
+        const { id, type } = args.data;
+        if (processed.has(id)) {
+          throw Object.assign(new Error('Unique constraint failed'), {
+            code: 'P2002',
+          });
+        }
+        const row: ProcessedStripeEventRow = {
+          id,
+          type,
+          processedAt: new Date(),
+        };
+        processed.set(id, row);
+        return row;
+      }),
+    },
+    license: {
+      findUnique: jest.fn(async (args: any) => {
+        const tenantId = args.where.tenantId as string;
+        return licenses.get(tenantId) ?? null;
+      }),
+      findFirst: jest.fn(async (args: any) => {
+        const { stripeCustomerId, stripeSubscriptionId } = args.where ?? {};
+        for (const v of licenses.values()) {
+          if (stripeCustomerId && v.stripeCustomerId === stripeCustomerId) {
+            return v;
+          }
+          if (
+            stripeSubscriptionId &&
+            v.stripeSubscriptionId === stripeSubscriptionId
+          ) {
+            return v;
+          }
+        }
+        return null;
+      }),
+    },
+    $transaction: jest.fn(async (fn: any) => fn(tx)),
+  };
+
+  return {
+    prismaService: { client } as any,
+    inspect: { processed, licenses, auditLogs, txMocks: tx, clientMocks: client },
+  };
+}
+
+/** Build a StripeWebhookEvent with sensible defaults. */
+function buildEvent(overrides: Partial<StripeWebhookEvent> = {}): StripeWebhookEvent {
+  return {
+    id: overrides.id ?? 'evt_test_' + Math.random().toString(36).slice(2, 10),
+    type: overrides.type ?? 'customer.subscription.updated',
+    created: overrides.created ?? Math.floor(Date.now() / 1000),
+    data: overrides.data ?? {
+      object: {
+        id: 'sub_test_1',
+        customer: 'cus_test_1',
+        status: 'active',
+        metadata: { tenantId: 'tenant_A' },
+        items: {
+          data: [
+            {
+              id: 'si_1',
+              price: { unit_amount: 1500, recurring: { interval: 'month' } },
+            },
+          ],
+        },
+        current_period_start: 1_700_000_000,
+        current_period_end: 1_702_500_000,
+      },
+    },
+  };
+}
+
+describe('StripeService.handleWebhookEvent — P0-7 audit fixes', () => {
+  let svc: StripeService;
+  let fake: ReturnType<typeof makeFakePrisma>;
+
+  beforeEach(() => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_unit';
+    fake = makeFakePrisma();
+    svc = new StripeService(fake.prismaService);
+  });
+
+  afterEach(() => {
+    delete process.env.STRIPE_SECRET_KEY;
+  });
+
+  it('idempotency: same event.id processed twice is a no-op on the second call', async () => {
+    const event = buildEvent({ id: 'evt_dup_1' });
+    const first = await svc.handleWebhookEvent(event);
+    const second = await svc.handleWebhookEvent(event);
+
+    expect(first).toEqual({});
+    expect(second).toEqual({ duplicate: true });
+
+    // First call wrote one License + one AuditLog. Second call wrote
+    // nothing additional — the ledger short-circuited before any
+    // mutation method was called a second time.
+    expect(fake.inspect.licenses.size).toBe(1);
+    expect(fake.inspect.auditLogs).toHaveLength(1);
+  });
+
+  it('out-of-order: a stale customer.subscription.updated cannot undo a fresher invoice.payment_failed', async () => {
+    // 1) First: invoice.payment_failed at t = NOW flips License → PAST_DUE.
+    const failureCreated = Math.floor(Date.now() / 1000);
+    const failureEvent: StripeWebhookEvent = {
+      id: 'evt_payment_failed',
+      type: 'invoice.payment_failed',
+      created: failureCreated,
+      data: {
+        object: {
+          id: 'in_1',
+          customer: 'cus_test_1',
+        },
+      },
+    };
+    // Seed a License row for the customer so the payment-failed path
+    // has something to update.
+    fake.inspect.licenses.set('tenant_A', {
+      id: 'lic_tenant_A',
+      tenantId: 'tenant_A',
+      status: 'ACTIVE',
+      tier: 'MONTHLY',
+      stripeCustomerId: 'cus_test_1',
+      stripeSubscriptionId: 'sub_test_1',
+      stripeLastEventCreatedAt: null,
+    });
+    await svc.handleWebhookEvent(failureEvent);
+    expect(fake.inspect.licenses.get('tenant_A')?.status).toBe('PAST_DUE');
+
+    // 2) Then: a STALE customer.subscription.updated (status=active) at
+    //    t = NOW - 60s arrives out-of-order. Without the guard, this
+    //    would flip the License back to ACTIVE. The guard must skip it.
+    const staleEvent = buildEvent({
+      id: 'evt_stale_active',
+      type: 'customer.subscription.updated',
+      created: failureCreated - 60,
+    });
+    const result = await svc.handleWebhookEvent(staleEvent);
+    expect(result).toEqual({ staleOutOfOrder: true });
+    expect(fake.inspect.licenses.get('tenant_A')?.status).toBe('PAST_DUE'); // unchanged
+  });
+
+  it('tenant fallback: subscription event with NO metadata.tenantId still syncs by stripeCustomerId', async () => {
+    // Seed a License linked to a customer but no tenantId metadata in
+    // the incoming event (the Customer Portal scenario from the audit).
+    fake.inspect.licenses.set('tenant_A', {
+      id: 'lic_tenant_A',
+      tenantId: 'tenant_A',
+      status: 'ACTIVE',
+      tier: 'MONTHLY',
+      stripeCustomerId: 'cus_portal',
+      stripeSubscriptionId: 'sub_portal',
+      stripeLastEventCreatedAt: null,
+    });
+
+    const portalEvent: StripeWebhookEvent = {
+      id: 'evt_portal_change',
+      type: 'customer.subscription.updated',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: 'sub_portal',
+          customer: 'cus_portal',
+          status: 'active',
+          metadata: {}, // <-- the bug: empty metadata
+          items: {
+            data: [
+              {
+                id: 'si_portal',
+                price: {
+                  unit_amount: 15000,
+                  recurring: { interval: 'year' },
+                },
+              },
+            ],
+          },
+        },
+      },
+    };
+    const result = await svc.handleWebhookEvent(portalEvent);
+
+    expect(result).toEqual({});
+    // The License was found by stripeCustomerId, upserted as ANNUAL.
+    expect(fake.inspect.licenses.get('tenant_A')?.tier).toBe('ANNUAL');
+  });
+
+  it('audit log: every License mutation writes a STRIPE_WEBHOOK_* AuditLog row', async () => {
+    // updated → expect one audit row
+    await svc.handleWebhookEvent(
+      buildEvent({ id: 'evt_audit_1', type: 'customer.subscription.updated' }),
+    );
+
+    expect(fake.inspect.auditLogs).toHaveLength(1);
+    const row = fake.inspect.auditLogs[0];
+    expect(row.action).toBe('STRIPE_WEBHOOK_CUSTOMER_SUBSCRIPTION_UPDATED');
+    expect(row.targetType).toBe('License');
+    expect(row.tenantId).toBe('tenant_A');
+    // details must be JSON-parseable and contain the event id +
+    // fromStatus / toStatus / fromTier / toTier per the audit spec.
+    const details = JSON.parse(row.details as string);
+    expect(details.eventId).toBe('evt_audit_1');
+    expect(details.toStatus).toBe('ACTIVE');
+    expect(details.toTier).toBe('MONTHLY');
+  });
+
+  it('audit log: invoice.payment_failed records fromStatus=ACTIVE → toStatus=PAST_DUE', async () => {
+    fake.inspect.licenses.set('tenant_A', {
+      id: 'lic_tenant_A',
+      tenantId: 'tenant_A',
+      status: 'ACTIVE',
+      tier: 'MONTHLY',
+      stripeCustomerId: 'cus_payfail',
+      stripeSubscriptionId: 'sub_payfail',
+      stripeLastEventCreatedAt: null,
+    });
+
+    await svc.handleWebhookEvent({
+      id: 'evt_payfail_1',
+      type: 'invoice.payment_failed',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'in_payfail', customer: 'cus_payfail' } },
+    });
+
+    expect(fake.inspect.auditLogs).toHaveLength(1);
+    const details = JSON.parse(fake.inspect.auditLogs[0].details as string);
+    expect(details.fromStatus).toBe('ACTIVE');
+    expect(details.toStatus).toBe('PAST_DUE');
+    expect(fake.inspect.auditLogs[0].action).toBe(
+      'STRIPE_WEBHOOK_INVOICE_PAYMENT_FAILED',
+    );
+  });
+
+  it('audit log: customer.subscription.deleted records fromStatus → CANCELLED', async () => {
+    fake.inspect.licenses.set('tenant_A', {
+      id: 'lic_tenant_A',
+      tenantId: 'tenant_A',
+      status: 'ACTIVE',
+      tier: 'ANNUAL',
+      stripeCustomerId: 'cus_del',
+      stripeSubscriptionId: 'sub_del',
+      stripeLastEventCreatedAt: null,
+    });
+
+    await svc.handleWebhookEvent({
+      id: 'evt_del_1',
+      type: 'customer.subscription.deleted',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'sub_del', customer: 'cus_del' } },
+    });
+
+    expect(fake.inspect.licenses.get('tenant_A')?.status).toBe('CANCELLED');
+    expect(fake.inspect.auditLogs).toHaveLength(1);
+    const details = JSON.parse(fake.inspect.auditLogs[0].details as string);
+    expect(details.fromStatus).toBe('ACTIVE');
+    expect(details.toStatus).toBe('CANCELLED');
+  });
+
+  it('no-tenant fallback: a subscription with no metadata AND no matching customer is a no-op', async () => {
+    const result = await svc.handleWebhookEvent({
+      id: 'evt_orphan',
+      type: 'customer.subscription.updated',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: 'sub_orphan',
+          customer: 'cus_unknown',
+          status: 'active',
+          metadata: {},
+          items: {
+            data: [
+              {
+                id: 'si_orphan',
+                price: { unit_amount: 1500, recurring: { interval: 'month' } },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(result).toEqual({ noTenantId: true });
+    expect(fake.inspect.licenses.size).toBe(0);
+    expect(fake.inspect.auditLogs).toHaveLength(0);
+  });
+});

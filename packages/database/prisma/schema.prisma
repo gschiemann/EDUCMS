@@ -484,11 +484,34 @@ model License {
   // Free-form notes from the SUPER_ADMIN (e.g. "manually comp'd 5 seats
   // through 2026-09-01 — ARRA grant").
   notes                String?
+  // 2026-05-26 P0-7 audit (Stripe webhook idempotency): the UNIX-second
+  // creation timestamp of the most-recent Stripe event that mutated this
+  // License. Stripe events are NOT ordered — a stale
+  // `customer.subscription.updated` (status=active) can land AFTER an
+  // `invoice.payment_failed` (status=past_due) and flip the License back
+  // to ACTIVE incorrectly. The webhook handler rejects any state-flipping
+  // event whose `event.created` is older than this stored value.
+  stripeLastEventCreatedAt DateTime? @map("stripe_last_event_created_at")
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at")
   tenant               Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("licenses")
+}
+
+// 2026-05-26 P0-7 audit (Stripe webhook idempotency): one row per Stripe
+// event id we've processed. Stripe retries on any 5xx and may re-deliver
+// the same event.id. At webhook entry we INSERT here first — the unique
+// primary key gives us atomic dedup at the database. A second delivery
+// hits a P2002 unique-constraint violation and the handler short-circuits.
+// `type` is kept purely for forensic readability of the table.
+model ProcessedStripeEvent {
+  id          String   @id // Stripe event.id (evt_*)
+  type        String // event.type for forensics
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@index([processedAt])
+  @@map("processed_stripe_events")
 }
 
 model UsbIngestEvent {

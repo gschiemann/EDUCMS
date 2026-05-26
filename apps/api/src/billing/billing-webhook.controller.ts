@@ -53,7 +53,13 @@ export class BillingWebhookController {
     }
 
     // A processing failure bubbles as 500 so Stripe retries the event.
-    await this.stripe.handleWebhookEvent(event);
-    return { received: true };
+    //
+    // The result distinguishes brand-new work from idempotent replays
+    // (Stripe re-deliveries) and out-of-order skips. Stripe ignores
+    // the response body for ack purposes — any 2xx is "received" — but
+    // surfacing the discriminator here makes the webhook test panel +
+    // tail logs readable.
+    const result = await this.stripe.handleWebhookEvent(event);
+    return { received: true, ...result };
   }
 }

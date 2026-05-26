@@ -41,10 +41,28 @@ export interface BillingInvoice {
 /** The slice of a Stripe webhook event this service consumes. The full
  *  payload's authenticity is verified by signature in
  *  constructWebhookEvent; the handler then only reads `type` and the
- *  well-known fields of `data.object`. */
+ *  well-known fields of `data.object`.
+ *
+ *  `id` and `created` were added on the 2026-05-26 P0-7 audit fix:
+ *    - `id` (evt_*) keys the idempotency ledger (processed_stripe_events)
+ *      so a Stripe retry of the same event is a 200 no-op.
+ *    - `created` (UNIX seconds) is compared against the License's
+ *      `stripeLastEventCreatedAt` so a stale, out-of-order subscription
+ *      update can't flip status back from PAST_DUE → ACTIVE. */
 export interface StripeWebhookEvent {
+  id: string;
   type: string;
+  created: number; // UNIX seconds, when Stripe minted the event
   data: { object: Record<string, any> };
+}
+
+/** Webhook handler result. `duplicate: true` means the event id was
+ *  already processed — caller still returns 200 (Stripe must not retry)
+ *  but logs / observability can distinguish replays from new work. */
+export interface WebhookHandlerResult {
+  duplicate?: boolean;
+  staleOutOfOrder?: boolean;
+  noTenantId?: boolean;
 }
 
 /** A paid per-screen subscription has no hard seat cap — the tenant
@@ -245,10 +263,46 @@ export class StripeService {
    * Apply a verified webhook event to the tenant's License row.
    * Unhandled event types are a no-op (acknowledged with 200). A DB
    * failure bubbles so the caller returns 500 and Stripe retries.
+   *
+   * 2026-05-26 P0-7 audit hardening:
+   *   1. IDEMPOTENCY — every handler entry inserts the event.id into
+   *      `processed_stripe_events`. Stripe retries on any 5xx and may
+   *      re-deliver the same event; a unique-key collision (P2002) here
+   *      means we've already done the work, so we ack and return without
+   *      side effects. This is the standard Stripe-recommended pattern.
+   *      https://docs.stripe.com/webhooks#handle-duplicate-events
+   *   2. OUT-OF-ORDER PROTECTION — Stripe does NOT guarantee event
+   *      ordering. A stale `customer.subscription.updated` (status=active)
+   *      can land AFTER an `invoice.payment_failed` (status=past_due)
+   *      and undo the past-due state. License-mutating handlers compare
+   *      `event.created` against `License.stripeLastEventCreatedAt` and
+   *      skip when the incoming event is older.
+   *   3. AUDIT LOG — every License mutation now writes an AuditLog row
+   *      in the same $transaction. SUPER_ADMIN gets a forensic trail of
+   *      every webhook-driven status / tier change.
    */
-  async handleWebhookEvent(event: StripeWebhookEvent): Promise<void> {
+  async handleWebhookEvent(event: StripeWebhookEvent): Promise<WebhookHandlerResult> {
     const stripe = this.getClient();
-    if (!stripe) return;
+    if (!stripe) return {};
+
+    // ── Idempotency gate ─────────────────────────────────────────
+    // INSERT-first dedup: the unique primary key on event.id makes
+    // this atomic at the database — no race between two pods
+    // processing concurrent retries.
+    try {
+      await this.prisma.client.processedStripeEvent.create({
+        data: { id: event.id, type: event.type },
+      });
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        this.logger.log(
+          `webhook: duplicate event ${event.id} (${event.type}) — already processed, acked`,
+        );
+        return { duplicate: true };
+      }
+      throw e;
+    }
+
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
@@ -258,42 +312,27 @@ export class StripeService {
             : session.subscription?.id;
         if (subId) {
           const sub = await stripe.subscriptions.retrieve(subId);
-          await this.syncLicenseFromSubscription(
+          return await this.syncLicenseFromSubscription(
             sub,
+            event,
             session.client_reference_id || session.metadata?.tenantId || null,
           );
         }
-        break;
+        return {};
       }
       case 'customer.subscription.created':
       case 'customer.subscription.updated': {
-        await this.syncLicenseFromSubscription(event.data.object);
-        break;
+        return await this.syncLicenseFromSubscription(event.data.object, event);
       }
       case 'customer.subscription.deleted': {
-        const sub = event.data.object;
-        await this.prisma.client.license.updateMany({
-          where: { stripeSubscriptionId: sub.id },
-          data: { status: 'CANCELLED' },
-        });
-        this.logger.log(`webhook: subscription ${sub.id} cancelled`);
-        break;
+        return await this.applySubscriptionDeleted(event);
       }
       case 'invoice.payment_failed': {
-        const inv = event.data.object;
-        const customerId =
-          typeof inv.customer === 'string' ? inv.customer : inv.customer?.id;
-        if (customerId) {
-          await this.prisma.client.license.updateMany({
-            where: { stripeCustomerId: customerId },
-            data: { status: 'PAST_DUE' },
-          });
-          this.logger.warn(`webhook: payment failed for customer ${customerId}`);
-        }
-        break;
+        return await this.applyPaymentFailed(event);
       }
       default:
         this.logger.debug(`webhook: ignoring ${event.type}`);
+        return {};
     }
   }
 
@@ -306,18 +345,65 @@ export class StripeService {
     return 'ACTIVE';
   }
 
-  /** Upsert the License row from a Stripe subscription — the single
-   *  place a subscription's state becomes license state. */
+  /** AuditLog action name for a Stripe-driven mutation, e.g.
+   *  `customer.subscription.updated` → `STRIPE_WEBHOOK_CUSTOMER_SUBSCRIPTION_UPDATED`.
+   *  Mirrors the SUPER_ADMIN-visible audit pattern used by
+   *  super-license.controller.ts so the /audit page renders consistently. */
+  private auditActionFor(eventType: string): string {
+    return 'STRIPE_WEBHOOK_' + eventType.toUpperCase().replace(/\./g, '_');
+  }
+
+  /**
+   * Upsert the License row from a Stripe subscription — the single
+   * place a subscription's state becomes license state.
+   *
+   * 2026-05-26 P0-7 audit hardening:
+   *   - Tenant fallback by `stripeCustomerId` when `metadata.tenantId`
+   *     is absent. Customer Portal-driven changes don't always
+   *     propagate the original Checkout `subscription_data.metadata`
+   *     onto every event payload — without this fallback, portal
+   *     plan changes silently fail to sync and the License row goes
+   *     stale forever.
+   *   - Out-of-order rejection. If `event.created` is older than
+   *     the License's stored `stripeLastEventCreatedAt`, we skip:
+   *     a stale ACTIVE update can't undo a fresher PAST_DUE.
+   *   - AuditLog row written in the same $transaction as the upsert.
+   */
   private async syncLicenseFromSubscription(
     sub: Record<string, any>,
+    event: StripeWebhookEvent,
     fallbackTenantId?: string | null,
-  ): Promise<void> {
-    const tenantId = sub.metadata?.tenantId || fallbackTenantId || null;
-    if (!tenantId) {
-      this.logger.warn(`webhook: subscription ${sub.id} carries no tenantId — skipped`);
-      return;
+  ): Promise<WebhookHandlerResult> {
+    const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
+    let tenantId: string | null =
+      sub.metadata?.tenantId || fallbackTenantId || null;
+
+    // Fallback for Customer Portal-driven events that arrive without
+    // the original Checkout `subscription_data.metadata`. We look the
+    // License up by stripeCustomerId (which we DID record at Checkout
+    // time) and reuse its tenantId. Warn-log so this is visible in
+    // observability — it should be rare except for portal flows.
+    if (!tenantId && customerId) {
+      const existing = await this.prisma.client.license.findFirst({
+        where: { stripeCustomerId: customerId },
+        select: { tenantId: true },
+      });
+      if (existing?.tenantId) {
+        tenantId = existing.tenantId;
+        this.logger.warn(
+          `webhook: subscription ${sub.id} carried no metadata.tenantId — ` +
+            `recovered tenant ${tenantId} via stripeCustomerId=${customerId}`,
+        );
+      }
     }
-    const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id;
+
+    if (!tenantId) {
+      this.logger.warn(
+        `webhook: subscription ${sub.id} carries no tenantId and no License ` +
+          `row matches stripeCustomerId=${customerId ?? 'unknown'} — skipped`,
+      );
+      return { noTenantId: true };
+    }
     const price = sub.items?.data?.[0]?.price;
     const interval = price?.recurring?.interval;
     const unit = price?.unit_amount ?? null;
@@ -331,32 +417,244 @@ export class StripeService {
     const periodEnd = sub.current_period_end
       ? new Date(sub.current_period_end * 1000)
       : null;
+    const eventCreatedAt = new Date(event.created * 1000);
 
-    await this.prisma.client.license.upsert({
+    // Out-of-order protection. Read the current License (if any) and
+    // refuse to apply a state-flipping event older than the most-recent
+    // one we already processed. `eventCreated == stored` is allowed —
+    // duplicate event ids are already rejected upstream by the
+    // idempotency ledger, so an equal timestamp here only happens
+    // when two events were minted within the same second (Stripe's
+    // resolution); applying both is fine.
+    const existing = await this.prisma.client.license.findUnique({
       where: { tenantId },
-      create: {
-        tenantId,
-        tier,
-        billingMode: 'CARD',
-        status,
-        seatLimit: PAID_SEAT_LIMIT,
-        monthlyPriceCents,
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: sub.id,
-        currentPeriodStart: periodStart,
-        currentPeriodEnd: periodEnd,
-      },
-      update: {
-        tier,
-        billingMode: 'CARD',
-        status,
-        monthlyPriceCents,
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: sub.id,
-        currentPeriodStart: periodStart,
-        currentPeriodEnd: periodEnd,
+      select: {
+        id: true,
+        status: true,
+        tier: true,
+        stripeLastEventCreatedAt: true,
       },
     });
-    this.logger.log(`webhook: License synced for tenant ${tenantId} → ${tier} / ${status}`);
+    if (
+      existing?.stripeLastEventCreatedAt &&
+      existing.stripeLastEventCreatedAt.getTime() > eventCreatedAt.getTime()
+    ) {
+      this.logger.warn(
+        `webhook: event ${event.id} (${event.type}) for tenant ${tenantId} ` +
+          `created ${eventCreatedAt.toISOString()} is older than last-applied ` +
+          `${existing.stripeLastEventCreatedAt.toISOString()} — skipped (out-of-order)`,
+      );
+      return { staleOutOfOrder: true };
+    }
+
+    const fromStatus = existing?.status ?? null;
+    const fromTier = existing?.tier ?? null;
+
+    await this.prisma.client.$transaction(async (tx) => {
+      const license = await tx.license.upsert({
+        where: { tenantId: tenantId! },
+        create: {
+          tenantId: tenantId!,
+          tier,
+          billingMode: 'CARD',
+          status,
+          seatLimit: PAID_SEAT_LIMIT,
+          monthlyPriceCents,
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: sub.id,
+          currentPeriodStart: periodStart,
+          currentPeriodEnd: periodEnd,
+          stripeLastEventCreatedAt: eventCreatedAt,
+        },
+        update: {
+          tier,
+          billingMode: 'CARD',
+          status,
+          monthlyPriceCents,
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: sub.id,
+          currentPeriodStart: periodStart,
+          currentPeriodEnd: periodEnd,
+          stripeLastEventCreatedAt: eventCreatedAt,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: tenantId!,
+          userId: null,
+          action: this.auditActionFor(event.type),
+          targetType: 'License',
+          targetId: license.id,
+          details: JSON.stringify({
+            eventId: event.id,
+            eventType: event.type,
+            eventCreated: event.created,
+            subscriptionId: sub.id,
+            stripeCustomerId: customerId,
+            fromStatus,
+            toStatus: status,
+            fromTier,
+            toTier: tier,
+            monthlyPriceCents,
+          }),
+        },
+      });
+    });
+    this.logger.log(
+      `webhook: License synced for tenant ${tenantId} → ${tier} / ${status} ` +
+        `(event ${event.id})`,
+    );
+    return {};
+  }
+
+  /**
+   * `customer.subscription.deleted` handler.
+   *
+   * 2026-05-26 P0-7 audit: was `updateMany` + log line, no audit row,
+   * no out-of-order protection. Now matches the License row by
+   * stripeSubscriptionId (still a single row in practice — the column
+   * isn't unique in schema but Stripe guarantees one subscription per
+   * License), respects out-of-order ordering, and writes an AuditLog
+   * row in the same $transaction.
+   */
+  private async applySubscriptionDeleted(
+    event: StripeWebhookEvent,
+  ): Promise<WebhookHandlerResult> {
+    const sub = event.data.object;
+    const license = await this.prisma.client.license.findFirst({
+      where: { stripeSubscriptionId: sub.id as string },
+    });
+    if (!license) {
+      this.logger.log(
+        `webhook: subscription ${sub.id} cancelled — no matching License row`,
+      );
+      return { noTenantId: true };
+    }
+    const eventCreatedAt = new Date(event.created * 1000);
+    if (
+      license.stripeLastEventCreatedAt &&
+      license.stripeLastEventCreatedAt.getTime() > eventCreatedAt.getTime()
+    ) {
+      this.logger.warn(
+        `webhook: event ${event.id} (${event.type}) for License ${license.id} ` +
+          `created ${eventCreatedAt.toISOString()} is older than last-applied ` +
+          `${license.stripeLastEventCreatedAt.toISOString()} — skipped (out-of-order)`,
+      );
+      return { staleOutOfOrder: true };
+    }
+    const fromStatus = license.status;
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.license.update({
+        where: { id: license.id },
+        data: {
+          status: 'CANCELLED',
+          stripeLastEventCreatedAt: eventCreatedAt,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: license.tenantId,
+          userId: null,
+          action: this.auditActionFor(event.type),
+          targetType: 'License',
+          targetId: license.id,
+          details: JSON.stringify({
+            eventId: event.id,
+            eventType: event.type,
+            eventCreated: event.created,
+            subscriptionId: sub.id,
+            stripeCustomerId: license.stripeCustomerId,
+            fromStatus,
+            toStatus: 'CANCELLED',
+            fromTier: license.tier,
+            toTier: license.tier,
+          }),
+        },
+      });
+    });
+    this.logger.log(
+      `webhook: subscription ${sub.id} cancelled for tenant ${license.tenantId} ` +
+        `(event ${event.id})`,
+    );
+    return {};
+  }
+
+  /**
+   * `invoice.payment_failed` handler.
+   *
+   * 2026-05-26 P0-7 audit: was `updateMany` keyed on stripeCustomerId
+   * with no audit + no out-of-order protection. Re-shaped here to
+   * (a) refuse to overwrite a fresher event's state and (b) leave an
+   * AuditLog row so the operator can answer "why did this tenant
+   * get downgraded to PAST_DUE Tuesday?".
+   */
+  private async applyPaymentFailed(
+    event: StripeWebhookEvent,
+  ): Promise<WebhookHandlerResult> {
+    const inv = event.data.object;
+    const customerId =
+      typeof inv.customer === 'string' ? inv.customer : inv.customer?.id;
+    if (!customerId) {
+      this.logger.warn(
+        `webhook: invoice ${inv.id} payment_failed but no customer id — skipped`,
+      );
+      return { noTenantId: true };
+    }
+    const license = await this.prisma.client.license.findFirst({
+      where: { stripeCustomerId: customerId },
+    });
+    if (!license) {
+      this.logger.warn(
+        `webhook: payment failed for customer ${customerId} but no License row matches`,
+      );
+      return { noTenantId: true };
+    }
+    const eventCreatedAt = new Date(event.created * 1000);
+    if (
+      license.stripeLastEventCreatedAt &&
+      license.stripeLastEventCreatedAt.getTime() > eventCreatedAt.getTime()
+    ) {
+      this.logger.warn(
+        `webhook: event ${event.id} (${event.type}) for License ${license.id} ` +
+          `created ${eventCreatedAt.toISOString()} is older than last-applied ` +
+          `${license.stripeLastEventCreatedAt.toISOString()} — skipped (out-of-order)`,
+      );
+      return { staleOutOfOrder: true };
+    }
+    const fromStatus = license.status;
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.license.update({
+        where: { id: license.id },
+        data: {
+          status: 'PAST_DUE',
+          stripeLastEventCreatedAt: eventCreatedAt,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: license.tenantId,
+          userId: null,
+          action: this.auditActionFor(event.type),
+          targetType: 'License',
+          targetId: license.id,
+          details: JSON.stringify({
+            eventId: event.id,
+            eventType: event.type,
+            eventCreated: event.created,
+            invoiceId: inv.id,
+            stripeCustomerId: customerId,
+            fromStatus,
+            toStatus: 'PAST_DUE',
+            fromTier: license.tier,
+            toTier: license.tier,
+          }),
+        },
+      });
+    });
+    this.logger.warn(
+      `webhook: payment failed for customer ${customerId} → tenant ` +
+        `${license.tenantId} PAST_DUE (event ${event.id})`,
+    );
+    return {};
   }
 }
