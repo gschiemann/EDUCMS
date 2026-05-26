@@ -164,7 +164,27 @@ export function Sidebar() {
   //      "VenueOS" branding everywhere when they signed up as
   //      something else entirely).
   const tenantCopyForBrand = useTenantCopy();
-  const brandName = (mounted && branding?.displayName) || tenantCopyForBrand.defaultBrandName;
+  // 2026-05-26 — operator: "the & sign shows in text in the actual app"
+  // after scraping dominos.com. Branding cached BEFORE the scraper's
+  // entity-decode fix may have "Pizza Delivery &amp; Carryout" sitting
+  // in the DB. Defensive client-side decode covers that AND any other
+  // surface that drops an undecoded meta-tag value into the brand.
+  // Belt-and-suspenders with the server-side decode in the scraper.
+  const decodeBrandText = (s: string | undefined | null): string => {
+    if (!s) return '';
+    return s
+      .replace(/&amp;|&#38;/gi, '&')
+      .replace(/&lt;|&#60;/gi, '<')
+      .replace(/&gt;|&#62;/gi, '>')
+      .replace(/&quot;|&#34;/gi, '"')
+      .replace(/&#39;|&apos;|&rsquo;|&lsquo;/gi, "'")
+      .replace(/&ldquo;|&rdquo;/gi, '"')
+      .replace(/&nbsp;|&#160;/gi, ' ')
+      .replace(/&ndash;/gi, '–')
+      .replace(/&mdash;/gi, '—');
+  };
+  const brandName = decodeBrandText((mounted && branding?.displayName) || tenantCopyForBrand.defaultBrandName);
+  const brandTagline = decodeBrandText(mounted ? branding?.tagline : '');
   const brandLogoUrl = mounted ? branding?.logoUrl || null : null;
   const brandLogoSvg = mounted && branding?.logoSvgInline
     ? (DOMPurify.sanitize(branding.logoSvgInline, {
@@ -411,12 +431,12 @@ export function Sidebar() {
               >
                 {brandName}
               </span>
-              {mounted && branding?.tagline && (
+              {brandTagline && (
                 <span
                   className="text-[11px] font-medium text-slate-500 leading-snug truncate"
-                  title={branding.tagline}
+                  title={brandTagline}
                 >
-                  {branding.tagline}
+                  {brandTagline}
                 </span>
               )}
             </div>

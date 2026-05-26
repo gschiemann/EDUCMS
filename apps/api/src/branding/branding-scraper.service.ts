@@ -265,10 +265,60 @@ export class BrandingScraperService {
     };
 
     // 2. Metadata: display name, tagline, og/twitter images.
-    const ogSiteName = $('meta[property="og:site_name"]').attr('content')?.trim();
-    const ogTitle = $('meta[property="og:title"]').attr('content')?.trim();
-    const twitterTitle = $('meta[name="twitter:title"]').attr('content')?.trim();
-    const pageTitle = $('title').first().text().trim();
+    //
+    // 2026-05-26 — operator caught "Pizza Delivery &amp; Carryout"
+    // rendering literally in the sidebar after scraping dominos.com.
+    // Cheerio's `.attr('content')` returns the RAW attribute value —
+    // HTML entities are NOT decoded. So `<meta property="og:title"
+    // content="Pizza Delivery &amp; Carryout">` came back as the
+    // literal string "Pizza Delivery &amp; Carryout" and got stored.
+    // The wizard's input field happens to render decoded (some path
+    // through React JSX), but the sidebar's <h1> + the rest of the
+    // chrome shows the raw entity. Fix: decode HTML entities on EVERY
+    // meta-attribute read at the source — one helper, all callers.
+    //
+    // Common entities the scraper hits in the wild (in priority order):
+    //   &amp; → &  /  &#38; → &
+    //   &lt; → <   /  &#60; → <
+    //   &gt; → >   /  &#62; → >
+    //   &quot; → " /  &#34; → "
+    //   &#39; → '  /  &apos; → '  /  &rsquo; → '
+    //   &nbsp; → (space)
+    //   &ldquo; / &rdquo; → " / "
+    // Use cheerio's text-decoding by routing through a hidden element,
+    // OR a tiny manual decoder. Manual is more deterministic.
+    const decodeEntities = (s: string | undefined | null): string | undefined => {
+      if (!s) return s ?? undefined;
+      return s
+        .replace(/&amp;|&#38;/gi, '&')
+        .replace(/&lt;|&#60;/gi, '<')
+        .replace(/&gt;|&#62;/gi, '>')
+        .replace(/&quot;|&#34;/gi, '"')
+        .replace(/&#39;|&apos;|&rsquo;|&lsquo;/gi, "'")
+        .replace(/&ldquo;|&rdquo;/gi, '"')
+        .replace(/&nbsp;|&#160;/gi, ' ')
+        .replace(/&ndash;/gi, '–')
+        .replace(/&mdash;/gi, '—')
+        // Generic numeric entities (decimal + hex) for anything we
+        // didn't list above (e.g. &#8211; em-dash, &#x2019; smart
+        // apostrophe). Limit to 4 hex digits / 5 decimal digits as a
+        // bound so a maliciously crafted &#9999999; can't OOM us.
+        .replace(/&#(\d{1,5});/g, (_, d) => {
+          const code = parseInt(d, 10);
+          return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : '';
+        })
+        .replace(/&#x([0-9a-f]{1,4});/gi, (_, h) => {
+          const code = parseInt(h, 16);
+          return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : '';
+        });
+    };
+    const ogSiteName = decodeEntities($('meta[property="og:site_name"]').attr('content')?.trim());
+    const ogTitle = decodeEntities($('meta[property="og:title"]').attr('content')?.trim());
+    const twitterTitle = decodeEntities($('meta[name="twitter:title"]').attr('content')?.trim());
+    // <title> uses .text() which DOES decode entities — but routing
+    // through decodeEntities is idempotent and defensive against any
+    // cheerio version that ever changes that contract.
+    const pageTitle = decodeEntities($('title').first().text().trim()) || '';
     // 2026-05-25 — operator: "is the name and tagline really what we
     // found? cant we do better than this?" — scraping mlb.com/dodgers
     // returned name="MLB.com" (og:site_name) when "Los Angeles Dodgers"
@@ -358,9 +408,11 @@ export class BrandingScraperService {
     //   4. "Home of the X" pattern anywhere in the page
     //   5. Schema.org slogan property if present
     //   6. null (don't fake one)
-    const metaDesc = $('meta[name="description"]').attr('content')?.trim();
-    const ogDesc = $('meta[property="og:description"]').attr('content')?.trim();
-    const twitterDesc = $('meta[name="twitter:description"]').attr('content')?.trim();
+    // 2026-05-26 — same HTML-entity decode as the title path above
+    // (decodeEntities defined earlier in this function).
+    const metaDesc = decodeEntities($('meta[name="description"]').attr('content')?.trim());
+    const ogDesc = decodeEntities($('meta[property="og:description"]').attr('content')?.trim());
+    const twitterDesc = decodeEntities($('meta[name="twitter:description"]').attr('content')?.trim());
     const firstH2 = $('h2').first().text().trim();
     // Schema.org JSON-LD slogan field — many school sites have it
     const schemaSlogan = (() => {

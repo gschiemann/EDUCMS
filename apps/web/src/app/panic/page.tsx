@@ -55,11 +55,45 @@ export default function MobilePanicPage() {
   const [holdingId, setHoldingId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
 
+  // A11y audit (2026-05-25): aria-live announcement string. Mirrored
+  // into a <div role="status" aria-live="assertive" sr-only> below so
+  // a screen-reader user follows the trigger lifecycle in audio. We
+  // also speak the message through Web Speech API when available
+  // (browser-permission-gated; degrades silently if blocked). ADA
+  // Title II / Section 504 — without this, an SR user gets nothing
+  // as phase flips idle → triggering → triggered → cleared.
+  const [announcement, setAnnouncement] = useState('');
+
   const [verifiedUser, setVerifiedUser] = useState<any>(null);
   const [verifiedToken, setVerifiedToken] = useState<string | null>(null);
 
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // A11y audit (2026-05-25): update the live region AND speak the
+  // text through Web Speech API. Speech is best-effort — older
+  // WebViews (Taurus Chromium 83) or browsers with TTS disabled
+  // throw or silently no-op. We swallow errors so SR + visible
+  // operators get the message even when speech can't fire.
+  const announce = (text: string) => {
+    setAnnouncement(text);
+    try {
+      const w = typeof window !== 'undefined' ? (window as any) : null;
+      if (w && w.speechSynthesis && typeof w.SpeechSynthesisUtterance === 'function') {
+        // Cancel any in-flight utterance so successive phase
+        // changes don't queue up and overlap.
+        w.speechSynthesis.cancel?.();
+        const u = new w.SpeechSynthesisUtterance(text);
+        u.rate = 1.0;
+        u.volume = 1.0;
+        u.lang = 'en-US';
+        w.speechSynthesis.speak(u);
+      }
+    } catch {
+      // No-op: SR users still get the aria-live region; visible
+      // operators still see the on-screen state. Speech is bonus.
+    }
+  };
 
   // Was-cleared flag — briefly surfaces an "All Clear" banner before
   // we transition back to idle so staff get visual confirmation that
@@ -94,6 +128,7 @@ export default function MobilePanicPage() {
           // Admin cleared it. Flash All Clear, then return to idle so
           // staff can re-fire if they need to.
           setJustCleared(true);
+          announce('All clear. An administrator cleared the alert. Returning to trigger panel.');
           setTimeout(() => {
             if (cancelled) return;
             setPhase('idle');
@@ -138,6 +173,7 @@ export default function MobilePanicPage() {
           setVerifiedUser(storeUser);
           setVerifiedToken(token);
           setPhase('idle');
+          announce('Emergency trigger panel ready. Press and hold any button for 3 seconds to broadcast.');
           return;
         }
       } catch {
@@ -175,6 +211,8 @@ export default function MobilePanicPage() {
     setHoldingId(typeId);
     setProgress(0);
     const startTime = Date.now();
+    const type = TYPES.find((t) => t.id === typeId);
+    if (type) announce(`Holding ${type.name} alert. Continue holding for 3 seconds to broadcast.`);
     progressTimerRef.current = setInterval(() => {
       const pct = Math.min(((Date.now() - startTime) / HOLD_DURATION_MS) * 100, 100);
       setProgress(pct);
@@ -222,6 +260,8 @@ export default function MobilePanicPage() {
     clearHold();
     setPhase('triggering');
     setFiredType(typeId);
+    const type = TYPES.find((t) => t.id === typeId);
+    if (type) announce(`Triggering ${type.name} alert. Broadcasting to all displays.`);
     try {
       if (!verifiedToken) throw new Error('No auth token. Please log in again.');
       if (!verifiedUser?.tenantId) throw new Error('No school ID. Please log in again.');
@@ -250,16 +290,37 @@ export default function MobilePanicPage() {
         throw new Error(result.error);
       }
       setPhase('triggered');
+      if (type) announce(`${type.name} alert sent to all displays. Waiting for an administrator to clear.`);
     } catch (e: any) {
       console.error('[PANIC] Emergency trigger failed:', e);
-      setErrorMsg(e.message || 'Could not reach the server. NOTIFY SECURITY MANUALLY now — your alert was NOT broadcast.');
+      const msg = e.message || 'Could not reach the server. NOTIFY SECURITY MANUALLY now — your alert was NOT broadcast.';
+      setErrorMsg(msg);
       setPhase('error');
+      announce(`Alert failed. Your alert was NOT broadcast. Notify security manually now. ${msg}`);
     }
   };
+
+  // A11y audit (2026-05-25): single live region rendered as the first
+  // child of every phase return. role="status" + aria-live="assertive"
+  // + aria-atomic="true" lets a screen reader speak the entire
+  // announcement on each phase change. The visible operator never sees
+  // it (sr-only). Kept inline here rather than extracted because it
+  // must appear in the DOM before the SR-visible content changes.
+  const LiveRegion = (
+    <div
+      role="status"
+      aria-live="assertive"
+      aria-atomic="true"
+      className="sr-only"
+    >
+      {announcement}
+    </div>
+  );
 
   if (phase === 'loading') {
     return (
       <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center">
+        {LiveRegion}
         <Loader2 className="w-12 h-12 text-red-500 animate-spin mb-4" />
         <p className="text-slate-400 text-sm">Verifying authorization...</p>
       </div>
@@ -272,6 +333,7 @@ export default function MobilePanicPage() {
   if (phase === 'misconfigured') {
     return (
       <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+        {LiveRegion}
         <AlertTriangle className="w-24 h-24 text-red-500 mb-6" />
         <h1 className="text-3xl font-black mb-2 text-red-500 uppercase text-center">Not Configured</h1>
         <p className="text-slate-300 mb-3 max-w-[300px] text-center text-sm font-bold">
@@ -292,6 +354,7 @@ export default function MobilePanicPage() {
   if (phase === 'unauthorized') {
     return (
       <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+        {LiveRegion}
         <ShieldOff className="w-24 h-24 text-amber-500 mb-6" />
         <h1 className="text-2xl font-black mb-2 text-amber-400 uppercase text-center">No Trigger Authority</h1>
         <p className="text-slate-300 mb-3 max-w-[300px] text-center text-sm font-bold">
@@ -314,6 +377,7 @@ export default function MobilePanicPage() {
   if (phase === 'error') {
     return (
       <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+        {LiveRegion}
         <AlertTriangle className="w-24 h-24 text-red-500 mb-6" />
         <h1 className="text-3xl font-black mb-2 text-red-500">FAILED</h1>
         {/* LIFE-SAFETY (audit P1 #7): error copy now spells out the
@@ -347,6 +411,7 @@ export default function MobilePanicPage() {
     if (justCleared) {
       return (
         <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+          {LiveRegion}
           <div className="relative mb-6">
             <div className="absolute top-0 right-0 bottom-0 left-0 bg-emerald-500 rounded-full animate-ping opacity-20 scale-150" />
             <CheckCircle2 className="w-24 h-24 text-emerald-400 relative z-10" />
@@ -361,6 +426,7 @@ export default function MobilePanicPage() {
 
     return (
       <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+        {LiveRegion}
         <div className="relative mb-6">
           <div className="absolute top-0 right-0 bottom-0 left-0 bg-red-600 rounded-full animate-ping opacity-20 scale-150" />
           <CheckCircle2 className="w-24 h-24 text-red-500 relative z-10" />
@@ -380,6 +446,7 @@ export default function MobilePanicPage() {
   // Main grid — 6 circles, 2 rows × 3 columns, each press-and-hold triggers
   return (
     <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col overscroll-none select-none">
+      {LiveRegion}
       {/* Header */}
       <div className="flex justify-between items-center px-5 pt-5 pb-3 opacity-60">
         <ShieldAlert className="w-5 h-5" />
