@@ -732,6 +732,18 @@ function LogoGalleryTile({
   onSelect: () => void;
   index: number;
 }) {
+  // 2026-05-25 — Operator: "the one highlighted is transparent here
+  // but looks good on the preview" — the Dodgers white wordmark
+  // disappeared into the WHITE squares of the gallery's white+gray
+  // checkerboard. Same root cause as the preview, same fix: detect
+  // the logo's tone and swap to a DARK checkerboard for light logos
+  // so white pixels always sit against a dark surface.
+  const tone = useLogoTone(logo.url || null, logo.svgInline || null);
+  const isLight = tone === 'light' || tone === 'unknown';
+  // For SVG logos that use currentColor, the wrapper's text color
+  // controls the line-art color. Dark backdrop → white text; light
+  // backdrop → slate-800 text.
+  const svgInkClass = isLight ? 'text-white' : 'text-slate-800';
   return (
     <button
       type="button"
@@ -741,28 +753,41 @@ function LogoGalleryTile({
         selected ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-slate-200',
       )}
       style={{
-        // 12px checkerboard. Two diagonal linear-gradients layered on
-        // top of a white base; the gradient stops paint half the cell
-        // gray and leave the other half transparent so the underlying
-        // white shows through.
-        backgroundColor: '#ffffff',
-        backgroundImage:
-          'linear-gradient(45deg, #e2e8f0 25%, transparent 25%), ' +
-          'linear-gradient(-45deg, #e2e8f0 25%, transparent 25%), ' +
-          'linear-gradient(45deg, transparent 75%, #e2e8f0 75%), ' +
-          'linear-gradient(-45deg, transparent 75%, #e2e8f0 75%)',
+        // 12px checkerboard, two flavors:
+        //  • light logos → slate-700 base + slate-800 gradient squares
+        //    (dark checkerboard) so white wordmarks show up everywhere
+        //  • dark logos  → white base + slate-200 gradient squares
+        //    (classic light checkerboard) so dark logos show up
+        backgroundColor: isLight ? '#334155' : '#ffffff',
+        backgroundImage: isLight
+          ? (
+              'linear-gradient(45deg, #1e293b 25%, transparent 25%), ' +
+              'linear-gradient(-45deg, #1e293b 25%, transparent 25%), ' +
+              'linear-gradient(45deg, transparent 75%, #1e293b 75%), ' +
+              'linear-gradient(-45deg, transparent 75%, #1e293b 75%)'
+            )
+          : (
+              'linear-gradient(45deg, #e2e8f0 25%, transparent 25%), ' +
+              'linear-gradient(-45deg, #e2e8f0 25%, transparent 25%), ' +
+              'linear-gradient(45deg, transparent 75%, #e2e8f0 75%), ' +
+              'linear-gradient(-45deg, transparent 75%, #e2e8f0 75%)'
+            ),
         backgroundSize: '12px 12px',
         backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0px',
       }}
       aria-label={`Choose logo ${index + 1}`}
     >
       {logo.svgInline ? (
-        // Many SVG wordmarks fill="currentColor" — set a dark text
-        // color on the wrapper so the mark actually shows against the
-        // checkerboard. XSS defense: sanitize before render; SVG came
-        // from an untrusted URL.
+        // SVG wordmarks using fill="currentColor" inherit from this
+        // wrapper. Use a contrasting color so currentColor SVGs are
+        // visible against the picked backdrop.
+        // XSS defense: sanitize before render; SVG came from an
+        // untrusted URL.
         <div
-          className="max-h-full max-w-full text-slate-800 [&_svg]:max-h-full [&_svg]:max-w-full [&_svg]:h-full [&_svg]:w-full"
+          className={cn(
+            'max-h-full max-w-full [&_svg]:max-h-full [&_svg]:max-w-full [&_svg]:h-full [&_svg]:w-full',
+            svgInkClass,
+          )}
           dangerouslySetInnerHTML={{ __html: sanitizeSvg(logo.svgInline) }}
         />
       ) : logo.url ? (
@@ -776,7 +801,13 @@ function LogoGalleryTile({
       {selected && (
         <Check className="absolute top-1 right-1 h-4 w-4 bg-indigo-600 text-white rounded-full p-0.5" />
       )}
-      <div className="absolute bottom-0 left-0 right-0 text-[10px] bg-white/85 backdrop-blur-sm py-0.5 text-slate-600 truncate">
+      {/* Kind chip — adapts to backdrop so the label stays readable. */}
+      <div
+        className={cn(
+          'absolute bottom-0 left-0 right-0 text-[10px] py-0.5 truncate backdrop-blur-sm',
+          isLight ? 'bg-slate-900/70 text-white' : 'bg-white/85 text-slate-600',
+        )}
+      >
         {logo.kind}
       </div>
     </button>
