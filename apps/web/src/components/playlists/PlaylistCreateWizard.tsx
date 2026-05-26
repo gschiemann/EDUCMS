@@ -60,6 +60,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useCallback,
   type CSSProperties,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -102,6 +103,28 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
+// 2026-05-26 — operator: "keep all the same editing components we
+// have in the main area like dragging and dropping in order".
+// Same dnd-kit primitives the main playlist editor uses, so a drag
+// in the wizard feels identical to a drag in the editor.
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
+import { CSS as DndCss } from '@dnd-kit/utilities';
+import { GripVertical } from 'lucide-react';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 
 // ─── Shared constants ──────────────────────────────────────────────────
@@ -163,18 +186,28 @@ function mimeIcon(mimeType?: string) {
 }
 
 function MiniAssetThumb({ asset }: { asset: any }) {
-  // 2026-05-26 round 3 — PDF preview is now hover-only via the
-  // shared PdfHoverThumb. Operator: "when you first hit the assets
-  // page the stupid settings pops up on the PDF files....they
-  // shouldnt auto trigger ever unless i highlight over them". The
-  // wizard's picker shows the same rose-gradient + FileText
-  // placeholder on page load; iframe mounts only when the operator
-  // hovers an individual tile. Same crop + no-sandbox tricks live
-  // inside PdfHoverThumb. Identical UX to the asset library tile.
+  // 2026-05-26 round 4 — operator screenshot showed Chrome's PDFium
+  // floating toolbar leaking through the wizard's PDF tile despite
+  // the masks in PdfHoverThumb. The wizard tiles are tiny
+  // (~150×85px aspect-video) so Chrome's toolbar lands inside the
+  // visible window AND blocks the checkbox click target. Different
+  // problem than the asset library where tiles are big enough for
+  // the masks to catch the toolbar.
+  //
+  // Decision: in the wizard's tight picker grid, render PDFs as a
+  // static rose-gradient + FileText icon. No iframe = no toolbar
+  // possible. Operators can preview the actual page content from
+  // the asset library (where tiles are bigger + masks work) or
+  // from the asset detail panel. Picking a PDF for a playlist
+  // doesn't need a full first-page render — name + PDF badge is
+  // enough context to identify it.
   if (asset?.mimeType === 'application/pdf' || (asset?.fileUrl || '').toLowerCase().endsWith('.pdf')) {
     return (
-      <div className="w-full h-full relative overflow-hidden bg-slate-100">
-        <PdfHoverThumb fileUrl={asset.fileUrl} title="PDF preview" />
+      <div className="w-full h-full relative overflow-hidden flex flex-col items-center justify-center bg-gradient-to-br from-rose-50 to-rose-100">
+        <FileText className="w-7 h-7 text-rose-500" aria-hidden="true" />
+        <span className="mt-1 text-[10px] font-bold text-rose-700/80 uppercase tracking-wider">
+          PDF
+        </span>
       </div>
     );
   }
@@ -532,6 +565,49 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
   // 2026-05-26 — toggleAsset now appends to / removes from the ordered
   // items array. Default per-item duration: 30s for video/audio, 10s
   // for everything else (same defaults the editor uses post-create).
+  // 2026-05-26 round 2 — auto-detect ACTUAL video duration via a
+  // hidden <video preload="metadata"> probe on add. Operator: "auto
+  // timing for videos". When the metadata loads (typically <500ms
+  // for cached + small clips), update the row's durationMs in place
+  // so the playlist plays the full video, not an arbitrary 30s clip.
+  // Fallback to 30s default if probe fails (CORS / offline / not a
+  // real video file).
+  const probeVideoDuration = useCallback((assetId: string, src: string) => {
+    if (typeof document === 'undefined') return;
+    try {
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      v.muted = true;
+      v.crossOrigin = 'anonymous';
+      const onMeta = () => {
+        v.removeEventListener('loadedmetadata', onMeta);
+        v.removeEventListener('error', onErr);
+        const dur = v.duration;
+        if (isFinite(dur) && dur > 0.1) {
+          setSelectedAssetItems((prev) =>
+            prev.map((i) =>
+              i.assetId === assetId && i.durationMs === 30000
+                ? // Only overwrite if still at the default 30s — if
+                  // the operator already typed a custom value, respect it.
+                  { ...i, durationMs: Math.round(dur * 1000) }
+                : i,
+            ),
+          );
+        }
+      };
+      const onErr = () => {
+        v.removeEventListener('loadedmetadata', onMeta);
+        v.removeEventListener('error', onErr);
+        // Default 30s already set — nothing more to do.
+      };
+      v.addEventListener('loadedmetadata', onMeta);
+      v.addEventListener('error', onErr);
+      v.src = src;
+    } catch {
+      /* noop */
+    }
+  }, []);
+
   const toggleAsset = (id: string) =>
     setSelectedAssetItems((prev) => {
       const existing = prev.findIndex((i) => i.assetId === id);
@@ -539,8 +615,15 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
         return prev.filter((_, i) => i !== existing);
       }
       const a = (assets || []).find((x: any) => x.id === id);
-      const isAV =
-        a?.mimeType?.startsWith('video/') || a?.mimeType?.startsWith('audio/');
+      const isVideo = a?.mimeType?.startsWith('video/');
+      const isAV = isVideo || a?.mimeType?.startsWith('audio/');
+      // Fire the metadata probe for videos. State update lands later
+      // when loadedmetadata fires.
+      if (isVideo && a?.fileUrl) {
+        const src = a.fileUrl.startsWith('http') ? a.fileUrl : `${apiBase}${a.fileUrl}`;
+        // Tick out so the setState completes before probe writes.
+        setTimeout(() => probeVideoDuration(id, src), 0);
+      }
       return [...prev, { assetId: id, durationMs: isAV ? 30000 : 10000 }];
     });
 
@@ -557,6 +640,19 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
       return next;
     });
 
+  // 2026-05-26 — dnd-kit reorder handler. Same drag-end pattern the
+  // main editor uses (arrayMove on the active vs. over ids).
+  const reorderAssets = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setSelectedAssetItems((prev) => {
+      const oldIdx = prev.findIndex((i) => i.assetId === String(active.id));
+      const newIdx = prev.findIndex((i) => i.assetId === String(over.id));
+      if (oldIdx < 0 || newIdx < 0) return prev;
+      return arrayMove(prev, oldIdx, newIdx);
+    });
+  }, []);
+
   const removeAssetItem = (assetId: string) =>
     setSelectedAssetItems((prev) => prev.filter((i) => i.assetId !== assetId));
 
@@ -571,6 +667,15 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
           : i,
       ),
     );
+
+  // 2026-05-26 — bulk "set all to N seconds". Operator: "applying
+  // the seconds to everything".
+  const setAllDurations = useCallback((seconds: number) => {
+    const clamped = Math.max(1, Math.min(600, isFinite(seconds) ? seconds : 10));
+    setSelectedAssetItems((prev) =>
+      prev.map((i) => ({ ...i, durationMs: clamped * 1000 })),
+    );
+  }, []);
 
   const toggleScreen = (id: string) =>
     setSelectedScreenIds((prev) => {
@@ -821,7 +926,6 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
           {step === 2 && kind === 'media' && (
             <Step2Media
               assets={filteredAssets}
-              allAssets={assets || []}
               folders={visibleFolders}
               breadcrumb={folderBreadcrumb}
               currentFolderId={currentFolderId}
@@ -831,11 +935,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
               filter={assetFilter}
               setFilter={setAssetFilter}
               selectedIds={selectedAssetIds}
-              selectedItems={selectedAssetItems}
               onToggle={toggleAsset}
-              onMove={moveAssetItem}
-              onRemove={removeAssetItem}
-              onDuration={setAssetDuration}
             />
           )}
           {step === 2 && kind === 'template' && (
@@ -917,6 +1017,24 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
             />
           )}
         </div>
+
+        {/* 2026-05-26 round 4 — Selected media drawer. Lives as a
+            SIBLING of the body div so it pins to the bottom of the
+            MODAL frame (not the body's scroll container). Operator:
+            "your floating the bar and i can see below it, pin it to
+            the bottom so the scrolling top section just scrolls into
+            the editing area". Only renders during Step 2 / media kind
+            / when items are picked. Footer below stays put. */}
+        {step === 2 && kind === 'media' && selectedAssetItems.length > 0 && (
+          <SelectedMediaDrawer
+            items={selectedAssetItems}
+            allAssets={assets || []}
+            onReorder={reorderAssets}
+            onRemove={removeAssetItem}
+            onDuration={setAssetDuration}
+            onSetAll={setAllDurations}
+          />
+        )}
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
@@ -1109,7 +1227,6 @@ function Step1NameAndType({
 
 function Step2Media({
   assets,
-  allAssets,
   folders,
   breadcrumb,
   currentFolderId,
@@ -1119,19 +1236,9 @@ function Step2Media({
   filter,
   setFilter,
   selectedIds,
-  selectedItems,
   onToggle,
-  onMove,
-  onRemove,
-  onDuration,
 }: {
   assets: any[];
-  // 2026-05-26 — `assets` is the FILTERED slice for the picker grid
-  // (folder + filter + search). `allAssets` is the full library used
-  // by the Selected media panel below — operator can pick item A from
-  // folder X, then navigate to folder Y and pick item B; both should
-  // still resolve to their full metadata in the selected panel.
-  allAssets: any[];
   folders: any[];
   breadcrumb: Array<{ id: string | null; name: string }>;
   currentFolderId: string | null;
@@ -1141,11 +1248,7 @@ function Step2Media({
   filter: 'all' | 'images' | 'videos' | 'audio' | 'urls';
   setFilter: (f: 'all' | 'images' | 'videos' | 'audio' | 'urls') => void;
   selectedIds: Set<string>;
-  selectedItems: Array<{ assetId: string; durationMs: number }>;
   onToggle: (id: string) => void;
-  onMove: (assetId: string, dir: -1 | 1) => void;
-  onRemove: (assetId: string) => void;
-  onDuration: (assetId: string, seconds: number) => void;
 }) {
   const filterChips: { id: typeof filter; label: string }[] = [
     { id: 'all', label: 'All' },
@@ -1356,120 +1459,236 @@ function Step2Media({
         </div>
       )}
 
-      {/* 2026-05-26 — "Selected media" panel. Operator: "ok i see
-          where you added it but its hidden until i scroll down, that
-          needs to be a locked window so i see items get added as i
-          click them." Now sticky-pinned to the BOTTOM of the modal
-          body scroll container so it stays visible at all times
-          while the picker grid scrolls above it.
+      {/* 2026-05-26 round 4 — the Selected drawer left this component
+          and now lives ALONGSIDE the modal body so it pins to the
+          true bottom of the modal frame (not the body's scroll
+          container). See <SelectedMediaDrawer /> rendered as a
+          sibling of the body div in the wizard's main render. */}
+    </div>
+  );
+}
 
-          position: sticky + bottom: 0 attaches to the nearest
-          scrolling ancestor (the modal body's overflow-y-auto div).
-          Negative horizontal margin (-mx-6) extends the panel to the
-          full body width (the body has px-6 padding); the inner
-          padding (px-6) re-aligns content to the same gutters as the
-          rest of the form. Top border + ring + shadow give the
-          drawer visual lift so it doesn't blur into the grid above.
+// ─── Step 2 — Selected media drawer (pinned to modal bottom) ──────────
 
-          Operator can drill across folders, search, pick + reorder
-          all without losing sight of what they've selected. */}
-      {selectedItems.length > 0 && (
-        <div
-          className="sticky bottom-0 -mx-6 mt-6 bg-white border-t-2 border-indigo-100 shadow-[0_-6px_16px_-6px_rgba(15,23,42,0.12)] px-6 pt-3 pb-3"
-          style={{ zIndex: 5 }}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-bold text-slate-800 inline-flex items-center gap-2">
-              Selected media
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white">
-                {selectedItems.length}
-              </span>
-              <span className="text-[11px] font-medium text-slate-500">— plays top to bottom</span>
-            </p>
-            <span className="text-[10px] text-slate-400">↑ ↓ to reorder · × to remove</span>
-          </div>
-          {/* Cap height so a 20-item selection doesn't shove the
-              picker grid off the top of the modal. Internal scroll
-              once it exceeds the cap. */}
+/**
+ * SelectedMediaDrawer — the always-visible "what have I picked" panel
+ * that lives below the modal body and above the footer. Operator:
+ * "your floating the bar and i can see below it, pin it to the
+ * bottom so the scrolling top section just scrolls into the editing
+ * area, also keep all the same editing components we have in the
+ * main area like dragging and dropping in order, applying the
+ * seconds to everything, auto timing for videos, etc...we are
+ * essentially moving the editing area into the wizard now".
+ *
+ * Mirrors the main playlist editor's row UX:
+ *  - dnd-kit drag-drop reorder (same DndContext / SortableContext /
+ *    arrayMove pattern as apps/web/src/app/[schoolId]/playlists/page.tsx
+ *    line 1082)
+ *  - Per-item duration input (seconds, 1-600 clamp)
+ *  - Bulk "Set all to N sec" control at the top
+ *  - Auto-detect video duration on add (probeVideoDuration in parent)
+ *  - Remove button per row
+ *
+ * Mounted as a SIBLING of the body div in the wizard so it pins to
+ * the bottom of the MODAL frame, not the body's scroll container.
+ * The body div above shrinks to fit, drawer is fixed-height (capped
+ * via max-h on inner ol), footer below stays put.
+ */
+function SelectedMediaDrawer({
+  items,
+  allAssets,
+  onReorder,
+  onRemove,
+  onDuration,
+  onSetAll,
+}: {
+  items: Array<{ assetId: string; durationMs: number }>;
+  allAssets: any[];
+  onReorder: (event: DragEndEvent) => void;
+  onRemove: (assetId: string) => void;
+  onDuration: (assetId: string, seconds: number) => void;
+  onSetAll: (seconds: number) => void;
+}) {
+  // Bulk-set input state. Default 10 (image default); operator can
+  // type any value 1-600 then hit Apply.
+  const [bulkSeconds, setBulkSeconds] = useState<number>(10);
+
+  // Sensors mirror the main editor — pointer for mouse/touch +
+  // keyboard for a11y. 8px activation distance so a click on the
+  // grip doesn't fight a normal click on adjacent controls.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const itemIds = items.map((i) => i.assetId);
+
+  return (
+    <div className="border-t-2 border-indigo-100 bg-white shadow-[0_-6px_16px_-6px_rgba(15,23,42,0.12)] px-6 pt-3 pb-3 shrink-0">
+      {/* Header row with count + bulk-set control */}
+      <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+        <p className="text-sm font-bold text-slate-800 inline-flex items-center gap-2">
+          Selected media
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white">
+            {items.length}
+          </span>
+          <span className="text-[11px] font-medium text-slate-500">— drag to reorder · plays top to bottom</span>
+        </p>
+        {/* Bulk "Set all" control */}
+        <div className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+            Set all
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={600}
+            value={bulkSeconds}
+            onChange={(e) => {
+              const n = parseInt(e.target.value, 10);
+              if (!isNaN(n)) setBulkSeconds(Math.max(1, Math.min(600, n)));
+            }}
+            aria-label="Set duration for every selected item"
+            className="w-14 text-xs text-right px-1.5 py-0.5 border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+            sec
+          </span>
+          <button
+            type="button"
+            onClick={() => onSetAll(bulkSeconds)}
+            className="ml-1 inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+            title="Apply this duration to every item below"
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+
+      {/* dnd-kit sortable list — capped height with internal scroll
+          so 20+ items don't push the picker grid off the modal. */}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onReorder}>
+        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
           <ol className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-            {selectedItems.map((sel, idx) => {
+            {items.map((sel, idx) => {
               const a = allAssets.find((x: any) => x.id === sel.assetId);
-              if (!a) return null; // assets list still loading or asset deleted mid-flow
-              const Icon = mimeIcon(a.mimeType);
-              const seconds = Math.round((sel.durationMs || 0) / 1000);
-              const atTop = idx === 0;
-              const atBottom = idx === selectedItems.length - 1;
+              if (!a) return null;
               return (
-                <li
+                <SortableMediaRow
                   key={sel.assetId}
-                  className="flex items-center bg-slate-50 border border-slate-200 rounded-lg p-1.5"
-                >
-                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 text-[10px] font-bold shrink-0 mr-2">
-                    {idx + 1}
-                  </span>
-                  <div className="w-12 h-8 rounded-md overflow-hidden bg-slate-100 shrink-0 mr-2">
-                    <MiniAssetThumb asset={a} />
-                  </div>
-                  <div className="min-w-0 flex-1 mr-2">
-                    <div className="flex items-center">
-                      <Icon className="w-3 h-3 text-slate-400 mr-1.5 shrink-0" />
-                      <p className="text-[11px] font-semibold text-slate-700 truncate">
-                        {a.originalName || a.title || 'Untitled'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center mr-1">
-                    <input
-                      type="number"
-                      min={1}
-                      max={600}
-                      value={seconds || 1}
-                      onChange={(e) => {
-                        const n = parseInt(e.target.value, 10);
-                        if (!isNaN(n)) onDuration(sel.assetId, n);
-                      }}
-                      aria-label={`Duration in seconds for ${a.originalName || 'item'}`}
-                      className="w-12 text-xs text-right px-1.5 py-0.5 border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    />
-                    <span className="text-[10px] font-bold text-slate-400 ml-1 uppercase tracking-wider">
-                      sec
-                    </span>
-                  </div>
-                  <div className="flex items-center">
-                    <button
-                      type="button"
-                      onClick={() => onMove(sel.assetId, -1)}
-                      disabled={atTop}
-                      aria-label="Move up"
-                      className="w-6 h-6 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-white disabled:text-slate-300 disabled:cursor-not-allowed"
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5 rotate-90" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onMove(sel.assetId, 1)}
-                      disabled={atBottom}
-                      aria-label="Move down"
-                      className="w-6 h-6 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-white disabled:text-slate-300 disabled:cursor-not-allowed"
-                    >
-                      <ChevronRight className="w-3.5 h-3.5 rotate-90" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onRemove(sel.assetId)}
-                      aria-label="Remove item"
-                      className="w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 ml-0.5"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </li>
+                  index={idx}
+                  item={sel}
+                  asset={a}
+                  onDuration={onDuration}
+                  onRemove={onRemove}
+                />
               );
             })}
           </ol>
-        </div>
-      )}
+        </SortableContext>
+      </DndContext>
     </div>
+  );
+}
+
+/**
+ * SortableMediaRow — a single draggable row inside the drawer.
+ * Uses dnd-kit's useSortable hook for transform + listeners.
+ */
+function SortableMediaRow({
+  index,
+  item,
+  asset,
+  onDuration,
+  onRemove,
+}: {
+  index: number;
+  item: { assetId: string; durationMs: number };
+  asset: any;
+  onDuration: (assetId: string, seconds: number) => void;
+  onRemove: (assetId: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.assetId,
+  });
+  const style: CSSProperties = {
+    transform: DndCss.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.55 : 1,
+    zIndex: isDragging ? 10 : 'auto',
+  };
+  const Icon = mimeIcon(asset.mimeType);
+  const seconds = Math.round((item.durationMs || 0) / 1000);
+  const isVideo = asset.mimeType?.startsWith('video/');
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center bg-slate-50 border border-slate-200 rounded-lg p-1.5 ${
+        isDragging ? 'shadow-md ring-2 ring-indigo-200 bg-white' : ''
+      }`}
+    >
+      {/* Drag handle — pointer cursor + grip icon. Listeners attached
+          only here so the rest of the row's controls still work
+          normally (input clicks, remove button, etc.). */}
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+        className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-700 cursor-grab active:cursor-grabbing shrink-0 mr-1.5 touch-none"
+      >
+        <GripVertical className="w-3.5 h-3.5" />
+      </button>
+      <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 text-[10px] font-bold shrink-0 mr-2">
+        {index + 1}
+      </span>
+      <div className="w-12 h-8 rounded-md overflow-hidden bg-slate-100 shrink-0 mr-2">
+        <MiniAssetThumb asset={asset} />
+      </div>
+      <div className="min-w-0 flex-1 mr-2">
+        <div className="flex items-center">
+          <Icon className="w-3 h-3 text-slate-400 mr-1.5 shrink-0" />
+          <p className="text-[11px] font-semibold text-slate-700 truncate">
+            {asset.originalName || asset.title || 'Untitled'}
+          </p>
+          {isVideo && (
+            <span
+              className="ml-1.5 text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-sm px-1 leading-tight"
+              title="Auto-detected from video metadata"
+            >
+              auto
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center mr-1">
+        <input
+          type="number"
+          min={1}
+          max={600}
+          value={seconds || 1}
+          onChange={(e) => {
+            const n = parseInt(e.target.value, 10);
+            if (!isNaN(n)) onDuration(item.assetId, n);
+          }}
+          aria-label={`Duration in seconds for ${asset.originalName || 'item'}`}
+          className="w-12 text-xs text-right px-1.5 py-0.5 border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        />
+        <span className="text-[10px] font-bold text-slate-400 ml-1 uppercase tracking-wider">
+          sec
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={() => onRemove(item.assetId)}
+        aria-label="Remove item"
+        className="w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 ml-0.5"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </li>
   );
 }
 
