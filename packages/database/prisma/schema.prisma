@@ -1502,6 +1502,26 @@ model PosCategory {
   @@map("pos_categories")
 }
 
+// 2026-05-25 — POS webhook idempotency. Square (and Toast / Clover when
+// wired) retry on any 5xx and may re-deliver the same event id. At
+// webhook entry we INSERT here first — the unique primary key gives us
+// atomic dedup at the DB. A second delivery hits a P2002 unique-
+// constraint violation and the handler short-circuits. Mirrors the
+// ProcessedStripeEvent table used by the Stripe webhook.
+model ProcessedPosEvent {
+  // Compound id: `${providerId}:${externalEventId}` — providers reuse
+  // event-id namespaces (a Square event_id could collide with a Toast
+  // one), so scope by provider before checking dedup.
+  id          String   @id
+  providerId  String   @map("provider_id")
+  eventType   String   @map("event_type")
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@index([processedAt])
+  @@index([providerId])
+  @@map("processed_pos_events")
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Ad-network integrations — Sprint 8d (2026-05-03)
 // ─────────────────────────────────────────────────────────────────────

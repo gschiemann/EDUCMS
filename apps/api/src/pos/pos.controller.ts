@@ -65,7 +65,7 @@ export class PosController {
   @Post('connections/:id/sync')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async sync(@Request() req: any, @Param('id') id: string) {
-    return this.svc.triggerSync(req.user.tenantId, id);
+    return this.svc.triggerSync(req.user.tenantId, id, req.user.id ?? null);
   }
 
   @Get('items')

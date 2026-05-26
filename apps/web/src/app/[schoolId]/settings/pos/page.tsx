@@ -332,7 +332,10 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
               <p className="text-[11px] text-slate-500">After connecting, post your catalog to <code>/api/v1/pos/webhook/{provider.id}</code> with this secret in the <code>X-Webhook-Secret</code> header.</p>
             </>
           )}
-          {provider.auth === 'oauth2' && (
+          {provider.auth === 'oauth2' && provider.id === 'square' && (
+            <SquareOAuthPanel onStart={onClose} />
+          )}
+          {provider.auth === 'oauth2' && provider.id !== 'square' && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
               OAuth flow not yet implemented for {provider.name}. Save the row now — the sync handler will activate once the OAuth callback ships in a follow-up release.
             </div>
@@ -347,17 +350,56 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
 
         <div className="flex gap-2 justify-end pt-2">
           <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg text-slate-600 hover:bg-slate-50">Cancel</button>
-          <button
-            onClick={submit}
-            disabled={submitting || provider.auth === 'oauth2'}
-            className="px-4 py-2 text-sm font-bold rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
-            title={provider.auth === 'oauth2' ? 'OAuth flow not yet implemented for this provider' : ''}
-          >
-            {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
-            Connect
-          </button>
+          {provider.auth !== 'oauth2' && (
+            <button
+              onClick={submit}
+              disabled={submitting}
+              className="px-4 py-2 text-sm font-bold rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+            >
+              {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
+              Connect
+            </button>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Square OAuth entry button. Fetches the authorize URL from the API
+ * (which mints CSRF state server-side) then redirects the operator to
+ * Square. After approval Square redirects back to
+ * /api/v1/pos/oauth/square/callback which redirects to
+ * /connect/square/done with a ?status flag.
+ */
+function SquareOAuthPanel({ onStart }: { onStart: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const start = async () => {
+    setLoading(true); setErr(null);
+    try {
+      const r = await apiFetch<{ url: string }>('/pos/oauth/square/authorize');
+      onStart();
+      window.location.href = r.url;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setLoading(false);
+    }
+  };
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800 space-y-2">
+      <p className="font-bold">Connect with Square</p>
+      <p>You&rsquo;ll be redirected to Square to authorize VenueOS to read your catalog. After approval Square sends you back here automatically and the first sync runs in the background.</p>
+      <button
+        onClick={start}
+        disabled={loading}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50"
+      >
+        {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
+        Sign in with Square
+      </button>
+      {err && <p className="text-rose-700 text-[11px]">{err}</p>}
     </div>
   );
 }
