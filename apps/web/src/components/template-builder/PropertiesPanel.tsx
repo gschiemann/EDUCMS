@@ -3573,6 +3573,77 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       }} />);
       break;
     }
+    // 2026-05-26 audit fix — sports composite widgets (SCORE_HOME,
+    // SCORE_AWAY, GAME_CLOCK, GAME_SEGMENT, GAME_STAT) had NO panel
+    // case. They register without a `variant` so the default-branch
+    // V2 generic editor never fires. Operator got only the Universal
+    // Text Style strip — couldn't edit the placeholder fallback text,
+    // the team side, the live-stat key binding, or the font size.
+    // Mirror the SCOREBOARD-variant pattern so each standalone sport
+    // widget exposes the same controls.
+    case 'SCORE_HOME':
+    case 'SCORE_AWAY': {
+      const team = zone.widgetType === 'SCORE_HOME' ? 'home' : 'away';
+      fields.push(<TextField key="placeholder" label={`Sample / fallback ${team} score`} value={cfg.placeholder || ''} placeholder="24" onChange={(v) => setField({ placeholder: v })} />);
+      fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
+      fields.push(<ColorField key="accentColor" label="Accent color (glow / underline)" value={cfg.accentColor || ''} onChange={(v) => setField({ accentColor: v })} allowTransparent />);
+      fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      fields.push(<NumField key="fontSize" id={`${team}-fontSize`} label="Font size (px)" value={typeof cfg.fontSize === 'number' ? cfg.fontSize : 128} onChange={(v) => setField({ fontSize: v })} min={16} max={480} step={2} />);
+      fields.push(<SelectField key="fontWeight" label="Font weight" value={String(cfg.fontWeight ?? 900)} options={[['400','Regular'],['600','Semibold'],['700','Bold'],['800','Extra-bold'],['900','Black']]} onChange={(v) => setField({ fontWeight: parseInt(v) })} />);
+      fields.push(<SelectField key="align" label="Align" value={String(cfg.align || 'center')} options={[['left','Left'],['center','Center'],['right','Right']]} onChange={(v) => setField({ align: v })} />);
+      break;
+    }
+    case 'GAME_CLOCK': {
+      fields.push(<TextField key="placeholder" label="Sample / fallback clock (no live game)" value={cfg.placeholder || ''} placeholder="07:42" onChange={(v) => setField({ placeholder: v })} />);
+      fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
+      fields.push(<ColorField key="accentColor" label="Accent color (low-time flash)" value={cfg.accentColor || ''} onChange={(v) => setField({ accentColor: v })} allowTransparent />);
+      fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      fields.push(<NumField key="fontSize" id="gc-fontSize" label="Font size (px)" value={typeof cfg.fontSize === 'number' ? cfg.fontSize : 96} onChange={(v) => setField({ fontSize: v })} min={16} max={480} step={2} />);
+      fields.push(<SelectField key="fontWeight" label="Font weight" value={String(cfg.fontWeight ?? 800)} options={[['400','Regular'],['600','Semibold'],['700','Bold'],['800','Extra-bold'],['900','Black']]} onChange={(v) => setField({ fontWeight: parseInt(v) })} />);
+      fields.push(<SelectField key="align" label="Align" value={String(cfg.align || 'center')} options={[['left','Left'],['center','Center'],['right','Right']]} onChange={(v) => setField({ align: v })} />);
+      break;
+    }
+    case 'GAME_SEGMENT': {
+      fields.push(<TextField key="placeholder" label="Sample / fallback period" value={cfg.placeholder || ''} placeholder="Q3" onChange={(v) => setField({ placeholder: v })} />);
+      fields.push(<TextField key="label" label="Label prefix (optional)" value={cfg.label || ''} placeholder="Period" onChange={(v) => setField({ label: v })} />);
+      fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
+      fields.push(<ColorField key="accentColor" label="Accent color" value={cfg.accentColor || ''} onChange={(v) => setField({ accentColor: v })} allowTransparent />);
+      fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      fields.push(<NumField key="fontSize" id="gs-fontSize" label="Font size (px)" value={typeof cfg.fontSize === 'number' ? cfg.fontSize : 64} onChange={(v) => setField({ fontSize: v })} min={12} max={320} step={2} />);
+      fields.push(<SelectField key="fontWeight" label="Font weight" value={String(cfg.fontWeight ?? 700)} options={[['400','Regular'],['600','Semibold'],['700','Bold'],['800','Extra-bold'],['900','Black']]} onChange={(v) => setField({ fontWeight: parseInt(v) })} />);
+      fields.push(<SelectField key="align" label="Align" value={String(cfg.align || 'center')} options={[['left','Left'],['center','Center'],['right','Right']]} onChange={(v) => setField({ align: v })} />);
+      break;
+    }
+    case 'GAME_STAT': {
+      // Live-bind selector — matches SCOREBOARD-variant statKey field.
+      // Covers the common sport stats per the Sprint 13 Sport Engine
+      // spec (down, balls/strikes/outs, sets, fouls, etc.).
+      fields.push(<TextField key="label" label="Label" value={cfg.label || ''} placeholder="Down" onChange={(v) => setField({ label: v })} />);
+      fields.push(<TextField key="placeholder" label="Sample / fallback value" value={cfg.placeholder || ''} placeholder="2" onChange={(v) => setField({ placeholder: v })} />);
+      fields.push(<SelectField key="statKey" label="Stat key (live bind)" value={cfg.statKey || ''} options={[
+        ['','— pick a stat —'],
+        ['down','down (football)'],
+        ['distance','distance (football)'],
+        ['ballOn','ball on (football)'],
+        ['balls','balls (baseball/softball)'],
+        ['strikes','strikes (baseball/softball)'],
+        ['outs','outs (baseball/softball)'],
+        ['sets','sets (volleyball/tennis)'],
+        ['serve','serve (volleyball/tennis)'],
+        ['fouls','team fouls (basketball)'],
+        ['bonus','bonus (basketball)'],
+        ['possession','possession arrow (basketball)'],
+        ['timeoutsHome','timeouts — home'],
+        ['timeoutsAway','timeouts — away'],
+      ]} onChange={(v) => setField({ statKey: v })} />);
+      fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
+      fields.push(<ColorField key="accentColor" label="Accent color" value={cfg.accentColor || ''} onChange={(v) => setField({ accentColor: v })} allowTransparent />);
+      fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      fields.push(<NumField key="fontSize" id="gst-fontSize" label="Font size (px)" value={typeof cfg.fontSize === 'number' ? cfg.fontSize : 56} onChange={(v) => setField({ fontSize: v })} min={12} max={320} step={2} />);
+      fields.push(<SelectField key="fontWeight" label="Font weight" value={String(cfg.fontWeight ?? 700)} options={[['400','Regular'],['600','Semibold'],['700','Bold'],['800','Extra-bold'],['900','Black']]} onChange={(v) => setField({ fontWeight: parseInt(v) })} />);
+      fields.push(<SelectField key="align" label="Align" value={String(cfg.align || 'center')} options={[['left','Left'],['center','Center'],['right','Right']]} onChange={(v) => setField({ align: v })} />);
+      break;
+    }
     case 'FITNESS_AD_BANNER': {
       // Rotating gym promo creative. Each creative is { headline, sub,
       // ctaText, ctaUrl?, durationMs? }; we render a small array editor.
