@@ -343,10 +343,21 @@ export function Sidebar() {
               // the wizard preview and the real sidebar match
               // exactly. The chip has its own h-12 box; the inner
               // image's max-h-full keeps it scaled to the box height.
+              // 2026-05-26 — defensive sizing fix. The chip was
+              // collapsing to 0px wide when the inner img loaded with
+              // bad / tiny / not-yet-loaded dimensions (flex container
+              // with no min-width takes the width of its content; an
+              // img scaling to `max-w-full` of a 0-wide parent stays 0).
+              // Result: operator saw NO logo, no fallback, no chip —
+              // just blank space next to the brand name. Adding
+              // min-w-[48px] AND a backdrop on every chip (light OR
+              // dark tone) guarantees something visible always renders.
+              // Also widened the silent-zero check from 0px → <16px so
+              // a near-zero natural dimension trips the fallback too.
               <div
                 className={cn(
-                  'flex-shrink-0 h-12 max-w-[140px] flex items-center justify-center overflow-hidden',
-                  logoNeedsDarkBacking ? 'rounded-lg px-2' : '',
+                  'flex-shrink-0 h-12 min-w-[48px] max-w-[140px] flex items-center justify-center overflow-hidden rounded-lg px-2',
+                  logoNeedsDarkBacking ? '' : 'bg-slate-50 border border-slate-200',
                 )}
                 style={
                   logoNeedsDarkBacking
@@ -360,9 +371,8 @@ export function Sidebar() {
                   alt=""
                   onError={() => setLogoImgBroken(true)}
                   onLoad={(e) => {
-                    // Silent-zero fallback (CORS-tainted 200 OK case)
                     const img = e.currentTarget;
-                    if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+                    if (img.naturalWidth < 16 || img.naturalHeight < 16) {
                       setLogoImgBroken(true);
                     }
                   }}
@@ -372,10 +382,12 @@ export function Sidebar() {
             ) : brandLogoSvg && /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(brandLogoSvg) ? (
               <div
                 className={cn(
-                  'flex-shrink-0 h-12 max-w-[140px] flex items-center justify-center [&_svg]:h-full [&_svg]:max-h-12 [&_svg]:w-auto',
+                  'flex-shrink-0 h-12 min-w-[48px] max-w-[140px] flex items-center justify-center rounded-lg px-2 [&_svg]:h-full [&_svg]:max-h-12 [&_svg]:w-auto',
                   // currentColor-using SVGs inherit text color → set
-                  // white on dark chip, slate-800 on transparent.
-                  logoNeedsDarkBacking ? 'rounded-lg px-2 text-white' : 'text-slate-800',
+                  // white on dark chip, slate-800 on light chip.
+                  logoNeedsDarkBacking
+                    ? 'text-white'
+                    : 'bg-slate-50 border border-slate-200 text-slate-800',
                 )}
                 style={
                   logoNeedsDarkBacking
