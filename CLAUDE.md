@@ -1820,6 +1820,76 @@ This is now the standing rule for every parallel-agent deployment:
 
 7. **Agents are tools, not authors.** Lead is responsible for what ships. "An agent did it" is never a defense for a regression.
 
+### Pre-dispatch checklist (run EVERY time before spawning agents)
+
+Operator (2026-05-26 follow-up): *"who is the boss? you or them? how are we going to control this shit moving forward? i want an army of agents working all the time but they cant be stepping all over each other and you the entire time."*
+
+The chaos that prompted this rule wasn't agents disobeying — it was the lead skipping pre-flight discipline. Every parallel-agent dispatch MUST start with:
+
+```bash
+# 1. Confirm on master (not on a leftover agent branch).
+git branch --show-current  # must print "master"
+
+# 2. Confirm clean tree. If dirty, commit to a wip/<topic> branch first.
+git status --short  # must be empty
+
+# 3. Confirm origin is up-to-date.
+git fetch origin master && git log master..origin/master --oneline  # must be empty
+
+# 4. Clean up old worktrees so the new dispatch starts fresh.
+git worktree prune
+git worktree list  # should only show /Users/.../EDU CMS for master
+```
+
+If ANY of those four fail, **stop and fix the workspace before spawning agents.** A dirty tree means a previous session left untracked work that the next agent batch will appear to "wipe" — that was the source of every "agents are stomping me" panic.
+
+### Mid-flight monitoring (agents running in background)
+
+```bash
+# List all live agent worktrees with commit counts + dirty file counts.
+for w in /Users/gschiemann/Desktop/EDU\ CMS/.claude/worktrees/agent-*; do
+  br=$(git -C "$w" branch --show-current 2>/dev/null)
+  cnt=$(git -C "$w" log master..HEAD --oneline | wc -l | xargs)
+  sts=$(git -C "$w" status --short | wc -l | xargs)
+  echo "${br}: commits=${cnt} dirty=${sts}"
+done
+```
+
+Don't tail agent transcript files — they overflow context. Trust the harness notifications.
+
+### Merge cycle (when an agent reports complete)
+
+```bash
+# 1. Read the agent's diff against master FIRST. No exceptions.
+git diff master..worktree-agent-<id>
+
+# 2. Cherry-pick clean commits one at a time. Per-commit, not bulk.
+git cherry-pick <agent-commit-sha>
+
+# 3. Run tsc on whatever they touched.
+rm -f apps/api/tsconfig.build.tsbuildinfo
+pnpm --filter api exec tsc --noEmit --project tsconfig.build.json
+pnpm --filter web exec tsc --noEmit | grep -v "test\.\|@testing-library"
+
+# 4. Verify branch is master before push.
+git branch --show-current  # MUST be "master"
+git push origin master --no-verify   # --no-verify only when preflight has been done manually
+```
+
+### Things that look like "agents stomping me" but aren't
+
+- **File modified timestamps in the main tree.** Pre-existing uncommitted work from previous sessions. Run `git stash list` — if there are entries, those are the culprits, not the agents.
+- **A new commit appearing on a branch named `agent/...`.** You drifted onto that branch by committing without confirming current branch. Switch back to master and cherry-pick.
+- **Files reappearing as "M" after a stash pop.** The stash didn't fully clear them. Use `git checkout HEAD -- <file>` to force-revert.
+- **An untracked file from an agent worktree appearing in the main tree.** Worktrees share `.git/objects` not working trees — this can't happen. If it looks like it did, the file existed in the main tree BEFORE the agent dispatch and you didn't notice.
+
+### Anti-patterns that cause real contention (and DID cause the 2026-05-26 chaos)
+
+- **Spawning agents without `isolation: "worktree"`.** They all write to the same tree and stomp each other's untracked files. The IntegrationDiscoveryService was wiped TWICE this way before the rule landed.
+- **Committing before checking current branch.** Your commit lands on an agent branch, master stays behind, push appears to succeed (you pushed master's HEAD), but the commit isn't actually on master.
+- **Cherry-picking the same logical work from two agents.** Two agents writing similar fixes (e.g. PropertiesPanel HOUSE_AD_BANNER case) will conflict at merge. Pick one, skip the other.
+- **`git push --no-verify` without running preflight locally.** The pre-push hook exists for a reason; bypassing it means breaking master via the cascade of CI workflows.
+
 ## AI Integration Concierge — vision
 
 Operator vision (2026-05-26): *"make shit not so overwhelming for people that they don't need to get an IT guy or consultants that cost so much money to just configure an integration with their POS, or streaming service for a gym, or template creation, make the path so automated that they don't know how they worked without VenueOS in the past."*
