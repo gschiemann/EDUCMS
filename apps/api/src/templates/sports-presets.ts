@@ -148,34 +148,81 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
     screenHeight: 192,
     bgColor: '#05070d',
     zones: [
-      ctsRibbonZone('CTS Scoreboard', 'scoreboard-cts-ribbon', 0, 30, {
-        homeAbbrev: 'H',
-        awayAbbrev: 'A',
-        bgColor: '#0f172a',
-        accentColor: '#f59e0b',
-      }),
-      ctsRibbonZone('Sponsor Reel', 'scoreboard-cts-sponsor', 30, 30, {
-        zoneLabel: 'OUR SPONSORS',
-        defaultDurationMs: 6000,
-        bgColor: '#1e293b',
-        slots: [],
-      }),
-      ctsRibbonZone('Announcements', 'scoreboard-cts-announcement', 60, 25, {
-        zoneLabel: 'ANNOUNCEMENTS',
-        defaultDurationMs: 5000,
-        bgColor: '#0c1322',
-        accentColor: '#fbbf24',
-        entries: [],
-      }),
-      ctsRibbonZone('Auto-Celebration', 'scoreboard-cts-celebration', 85, 15, {
-        text: 'GOAL!',
-        idleText: 'GO TEAM',
-        activeMs: 6000,
-        hornAlsoTriggers: true,
-        homeColor: '#3b82f6',
-        awayColor: '#ef4444',
-        bgColor: '#0a0a14',
-      }),
+      ctsRibbonZone(
+        'Live CTS Scoreboard (clock + score + period + exclusion)',
+        'scoreboard-cts-ribbon',
+        0, 30,
+        { homeAbbrev: 'H', awayAbbrev: 'A', bgColor: '#0f172a', accentColor: '#f59e0b' },
+      ),
+      ctsRibbonZone(
+        'Sponsor Reel — Properties panel: type slots or switch to Auto',
+        'scoreboard-cts-sponsor',
+        30, 30,
+        {
+          zoneLabel: 'OUR SPONSORS',
+          defaultDurationMs: 6000,
+          bgColor: '#1e293b',
+          // Auto-pull sponsors from the Sponsor table by default — operator
+          // adds sponsors at /[schoolId]/sports/sponsors and they appear
+          // here without ever editing this widget. Operator can flip back
+          // to manual mode in the Properties panel + paste slots if they
+          // want this ribbon to show different sponsors than the rest of
+          // the fleet.
+          dataSource: 'auto',
+          // Sample slots used when the Auto fetch returns empty (e.g.
+          // builder preview with no Game bound). Keep generic so they
+          // read as obviously editable to the operator.
+          slots: [
+            { text: 'YOUR SPONSOR HERE', durationMs: 4500, bgColor: '#1e293b' },
+            { text: 'PROUD PARTNER · POOL SUPPLY CO', durationMs: 4500, bgColor: '#0c4a6e' },
+            { text: 'GO TEAM · BOOK FUTURE GAMES AT YOUR-CLUB.COM', durationMs: 4500, bgColor: '#312e81' },
+          ],
+        },
+      ),
+      ctsRibbonZone(
+        'Player Announcements — Auto-pulls from this game’s roster',
+        'scoreboard-cts-announcement',
+        60, 25,
+        {
+          zoneLabel: 'ANNOUNCEMENTS',
+          defaultDurationMs: 5000,
+          bgColor: '#0c1322',
+          accentColor: '#fbbf24',
+          // Auto-generate intros from the live game's roster — operator
+          // adds players at /[schoolId]/sports/<gameId> → Roster panel
+          // and this widget rolls "NOW IN · #7 J. RIVERA" through every
+          // starter, plus a lineup overview + closing cheer.
+          dataSource: 'auto',
+          autoTemplates: {
+            homeLineup: 'HOME LINEUP — {team} · {numbers}',
+            awayLineup: 'AWAY LINEUP — {team} · {numbers}',
+            perPlayer: 'NOW IN · #{number} {name}',
+            closer: "LET'S GO {team}!",
+          },
+          autoDurationMs: 4000,
+          // Sample entries used when no roster is bound (builder preview
+          // before a Game exists). Keep generic + on-brand for water polo.
+          entries: [
+            { text: 'STARTING LINEUP — H 1, 7, 11, 12, 4, 8, 9', durationMs: 6000 },
+            { text: 'NEXT HOME MATCH — FRI 7:00 PM · AQUATIC CENTER', durationMs: 6000 },
+            { text: 'PLAYER OF THE WEEK — #7 J. RIVERA · 4 GOALS', durationMs: 6000 },
+          ],
+        },
+      ),
+      ctsRibbonZone(
+        'Goal Pulse (lightweight "GOAL!" text on score/horn)',
+        'scoreboard-cts-celebration',
+        85, 15,
+        {
+          text: 'GOAL!',
+          idleText: 'GO TEAM',
+          activeMs: 6000,
+          hornAlsoTriggers: true,
+          homeColor: '#3b82f6',
+          awayColor: '#ef4444',
+          bgColor: '#0a0a14',
+        },
+      ),
       // FULL-BLEED celebration overlay — invisible until a goal-delta /
       // horn / period change fires, then takes over the entire ribbon
       // with a cinematic celebration scene from the v2/Celebrations*
@@ -184,7 +231,7 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
       // the moment the scene ends. This is the bridge between the
       // already-built CEL_* widget library and the live CTS feed.
       {
-        name: 'Celebration Overlay',
+        name: 'Cinematic Celebration Overlay (auto-fires on goal / horn / period change)',
         widgetType: 'SCOREBOARD',
         x: 0,
         y: 0,

@@ -504,7 +504,104 @@ export function CtsHornFlashWidget({ config }: { config?: BgCfg }) {
 
 // ═════════════════════════════════════════════════════════════════════
 // 2. OPERATOR-CONFIGURED widgets — pulled from widget config, not feed.
+//
+// Each widget supports TWO data sources via `dataSource` in config:
+//   • 'manual' (default in builder): widget reads `slots` / `entries`
+//     from its own config; operator types entries directly.
+//   • 'auto':  widget pulls live data off the public board endpoint
+//     /api/v1/sports/board/:gameId. Sponsors come from the Sponsor
+//     table (managed at /[schoolId]/sports/sponsors). Roster comes
+//     from RosterPlayer (managed at /[schoolId]/sports/<gameId> →
+//     Roster panel; bulk-import via CSV is supported there).
+//
+// The `gameId` is resolved automatically from the URL when the player
+// page is at /ribbon/[gameId] or /board/[gameId]; can also be set
+// explicitly in widget config for off-route preview.
+//
+// Builder preview (no URL gameId, no auto-fetch resolution): falls
+// back to the SAMPLE arrays below so the canvas + thumbnails always
+// render meaningful content even before the operator hooks anything
+// up.
 // ═════════════════════════════════════════════════════════════════════
+
+// ─── Shared: gameId resolution + public-board fetcher ─────────────
+
+/** Resolve the live gameId from URL or config. */
+function resolveGameId(explicit?: string): string | null {
+  if (explicit && explicit.length > 8) return explicit;
+  if (typeof window === 'undefined') return null;
+  const m = window.location.pathname.match(/\/(?:ribbon|board|scorebug)\/([^/?#]+)/);
+  return m ? m[1] ?? null : null;
+}
+
+/** Get the API root the same way CtsBridge does. */
+function ribbonApiRoot(): string {
+  if (typeof window === 'undefined') return '';
+  // Same precedence as apps/web/src/app/player/page.tsx getApiRoot():
+  // NEXT_PUBLIC_API_URL → window.__VENUEOS_API_URL → relative.
+  const fromEnv = (process.env.NEXT_PUBLIC_API_URL as string | undefined) || '';
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+  // Cast: window is augmented by the player page at runtime, but we
+  // don't pull in that ambient module here to keep this file portable.
+  const fromWindow = ((window as unknown) as { __VENUEOS_API_URL?: string }).__VENUEOS_API_URL;
+  if (fromWindow) return fromWindow.replace(/\/$/, '');
+  return '/api/v1';
+}
+
+interface RibbonBoardData {
+  sponsors?: Array<{
+    id: string;
+    name: string;
+    logoUrl?: string | null;
+    tagline?: string | null;
+    color?: string | null;
+    tier?: string | null;
+    weight?: number;
+    active?: boolean;
+  }>;
+  roster?: Array<{
+    id: string;
+    team: string;
+    name: string;
+    number?: string | null;
+    position?: string | null;
+    photoUrl?: string | null;
+  }>;
+  homeTeam?: string;
+  awayTeam?: string;
+}
+
+/**
+ * Fetch /sports/board/:id every `pollMs` ms and return the JSON.
+ * Returns null while the gameId is unknown (e.g. builder preview).
+ * Errors are swallowed (logged once) — the consuming widget falls
+ * back to its sample content rather than rendering a broken state.
+ */
+function useRibbonBoardData(gameId: string | null, pollMs = 30_000): RibbonBoardData | null {
+  const [data, setData] = useState<RibbonBoardData | null>(null);
+  useEffect(() => {
+    if (!gameId) { setData(null); return; }
+    let cancelled = false;
+    const root = ribbonApiRoot();
+    const tick = async () => {
+      try {
+        const url = root.endsWith('/api/v1')
+          ? `${root}/sports/board/${encodeURIComponent(gameId)}`
+          : `${root}/api/v1/sports/board/${encodeURIComponent(gameId)}`;
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok || cancelled) return;
+        const json = await res.json();
+        if (!cancelled) setData(json as RibbonBoardData);
+      } catch {
+        // Network blip: keep stale data, retry on next tick.
+      }
+    };
+    tick();
+    const id = setInterval(tick, Math.max(5_000, pollMs));
+    return () => { cancelled = true; clearInterval(id); };
+  }, [gameId, pollMs]);
+  return data;
+}
 
 /** One sponsor slot. Image OR text. Image preferred when both. */
 export interface CtsSponsorSlot {
@@ -519,8 +616,21 @@ export interface CtsSponsorSlot {
 }
 
 interface SponsorRotatorCfg {
-  /** Ordered list of slots. Empty → falls back to SAMPLE_SPONSORS. */
+  /** Where the slot list comes from:
+   *   • 'manual' (default) — `slots` array below is the source of truth
+   *   • 'auto' — fetched live from the tenant's Sponsor table via
+   *     /api/v1/sports/board/:gameId (gameId resolved from URL or
+   *     `gameId` config below). Operator manages sponsors at
+   *     /[schoolId]/sports/sponsors. */
+  dataSource?: 'manual' | 'auto';
+  /** Override gameId (auto mode only). When unset, resolves from
+   *  /ribbon/{id} or /board/{id} URL automatically. */
+  gameId?: string;
+  /** Ordered list of slots (manual mode). Empty → SAMPLE_SPONSORS. */
   slots?: CtsSponsorSlot[];
+  /** Auto mode — restrict to sponsors with `tier` matching this
+   *  literal (e.g. 'Title'). Empty = all tiers. */
+  autoTierFilter?: string;
   /** Default per-slot dwell time when the slot doesn't set its own. */
   defaultDurationMs?: number;
   /** Optional header label rendered above the slot ("OUR SPONSORS"). */
@@ -546,7 +656,41 @@ const SAMPLE_SPONSORS: CtsSponsorSlot[] = [
  */
 export function CtsSponsorRotatorWidget({ config }: { config?: SponsorRotatorCfg }) {
   const cfg = config ?? {};
-  const slots = useMemo(() => (cfg.slots && cfg.slots.length > 0 ? cfg.slots : SAMPLE_SPONSORS), [cfg.slots]);
+  const isAuto = cfg.dataSource === 'auto';
+  const gameId = isAuto ? resolveGameId(cfg.gameId) : null;
+  const board = useRibbonBoardData(gameId);
+
+  // Resolve the effective slot list:
+  //   • auto + board available → map Sponsor rows → slots (filtered by tier)
+  //   • manual + cfg.slots set → cfg.slots
+  //   • otherwise → SAMPLE_SPONSORS so the builder + offline state always renders
+  const slots = useMemo<CtsSponsorSlot[]>(() => {
+    if (isAuto && board && Array.isArray(board.sponsors) && board.sponsors.length) {
+      let pool = board.sponsors.filter((s) => s.active !== false);
+      if (cfg.autoTierFilter && cfg.autoTierFilter.trim()) {
+        const t = cfg.autoTierFilter.trim().toLowerCase();
+        pool = pool.filter((s) => (s.tier || '').toLowerCase() === t);
+      }
+      if (!pool.length) return SAMPLE_SPONSORS;
+      // Expand by `weight` (Title sponsor with weight 3 takes 3 slots).
+      const expanded: CtsSponsorSlot[] = [];
+      for (const s of pool) {
+        const reps = Math.max(1, Math.min(8, s.weight ?? 1));
+        for (let i = 0; i < reps; i++) {
+          expanded.push({
+            imageUrl: s.logoUrl || undefined,
+            text: s.logoUrl ? undefined : s.name,
+            bgColor: s.color || undefined,
+            durationMs: cfg.defaultDurationMs || 6000,
+          });
+        }
+      }
+      return expanded;
+    }
+    if (cfg.slots && cfg.slots.length > 0) return cfg.slots;
+    return SAMPLE_SPONSORS;
+  }, [isAuto, board, cfg.slots, cfg.autoTierFilter, cfg.defaultDurationMs]);
+
   const defaultDuration = cfg.defaultDurationMs || 6000;
   const [idx, setIdx] = useState(0);
   const { ref, h } = useMeasuredHeight();
@@ -635,7 +779,41 @@ export interface CtsAnnouncementEntry {
 }
 
 interface AnnouncementCfg {
-  /** Ordered list of announcements. Falls back to SAMPLE_ANNOUNCEMENTS. */
+  /** Where entries come from:
+   *   • 'manual' (default) — `entries` below is the source of truth
+   *   • 'auto' — auto-generated from the current game's roster via
+   *     /api/v1/sports/board/:gameId. Use this to do team introductions
+   *     during pre-game — operator just curates the roster at
+   *     /[schoolId]/sports/<gameId> → Roster panel and the ribbon
+   *     auto-rolls "NOW INTRODUCING #7 J. RIVERA · DRIVER" through
+   *     every starter. */
+  dataSource?: 'manual' | 'auto';
+  /** Override gameId (auto mode only). Resolves from URL when unset. */
+  gameId?: string;
+  /** Auto mode — entry templates. Each template is formatted per
+   *  player with these tokens replaced:
+   *    {abbrev}  — home/away (H/A)
+   *    {number}  — jersey
+   *    {name}    — player name
+   *    {nameLast}— last name only
+   *    {position}— position
+   *    {team}    — full team name (Eagles / Cougars)
+   *  Default templates produce a team-intro reel: starting lineup +
+   *  per-player intro lines + a closing "GO {team}" cheer. Operator
+   *  can override these per ribbon. */
+  autoTemplates?: {
+    /** One line listing all home jersey numbers ("HOME — 1, 7, 11..."). */
+    homeLineup?: string;
+    /** One line listing all away jersey numbers. */
+    awayLineup?: string;
+    /** Per-player template (fires once per player). */
+    perPlayer?: string;
+    /** Closing cheer template. */
+    closer?: string;
+  };
+  /** Auto mode — entry dwell time per template (default 4000). */
+  autoDurationMs?: number;
+  /** Ordered list of entries (manual mode). Empty → SAMPLE_ANNOUNCEMENTS. */
   entries?: CtsAnnouncementEntry[];
   /** Per-entry dwell when the entry doesn't set its own. */
   defaultDurationMs?: number;
@@ -645,6 +823,18 @@ interface AnnouncementCfg {
   bgColor?: string;
   /** Accent for the header label. */
   accentColor?: string;
+}
+
+/** Default per-game intro templates for the auto data source. */
+const DEFAULT_AUTO_TEMPLATES = {
+  homeLineup: 'HOME LINEUP — {team} · {numbers}',
+  awayLineup: 'AWAY LINEUP — {team} · {numbers}',
+  perPlayer: 'NOW IN · #{number} {name}',
+  closer: "LET'S GO {team}!",
+} as const;
+
+function applyTemplate(tpl: string, vars: Record<string, string>): string {
+  return tpl.replace(/\{(\w+)\}/g, (_m, k) => (k in vars ? vars[k] ?? '' : `{${k}}`));
 }
 
 const SAMPLE_ANNOUNCEMENTS: CtsAnnouncementEntry[] = [
@@ -663,10 +853,72 @@ const SAMPLE_ANNOUNCEMENTS: CtsAnnouncementEntry[] = [
  */
 export function CtsAnnouncementWidget({ config }: { config?: AnnouncementCfg }) {
   const cfg = config ?? {};
-  const entries = useMemo(
-    () => (cfg.entries && cfg.entries.length > 0 ? cfg.entries : SAMPLE_ANNOUNCEMENTS),
-    [cfg.entries],
-  );
+  const isAuto = cfg.dataSource === 'auto';
+  const gameId = isAuto ? resolveGameId(cfg.gameId) : null;
+  const board = useRibbonBoardData(gameId);
+
+  // Resolve the effective entry list:
+  //   • auto + roster available → generate intros from templates
+  //   • manual + cfg.entries set → cfg.entries
+  //   • otherwise → SAMPLE_ANNOUNCEMENTS so editor preview renders
+  const entries = useMemo<CtsAnnouncementEntry[]>(() => {
+    if (isAuto && board && Array.isArray(board.roster) && board.roster.length) {
+      const tpls = { ...DEFAULT_AUTO_TEMPLATES, ...(cfg.autoTemplates || {}) };
+      const dur = cfg.autoDurationMs || 4000;
+      const home = board.roster.filter((p) => p.team !== 'away');
+      const away = board.roster.filter((p) => p.team === 'away');
+      const homeTeam = board.homeTeam || 'HOME';
+      const awayTeam = board.awayTeam || 'AWAY';
+      const homeNums = home.map((p) => `#${p.number || '—'}`).join(' · ') || '—';
+      const awayNums = away.map((p) => `#${p.number || '—'}`).join(' · ') || '—';
+      const out: CtsAnnouncementEntry[] = [];
+      // Lineup overview entries.
+      if (tpls.homeLineup) {
+        out.push({
+          text: applyTemplate(tpls.homeLineup, { abbrev: 'H', team: homeTeam, numbers: homeNums }),
+          durationMs: dur,
+        });
+      }
+      if (tpls.awayLineup) {
+        out.push({
+          text: applyTemplate(tpls.awayLineup, { abbrev: 'A', team: awayTeam, numbers: awayNums }),
+          durationMs: dur,
+        });
+      }
+      // Per-player intro entries (interleave home/away for crowd
+      // energy: H1, A1, H2, A2, …). Cap at 24 total so the reel
+      // doesn't run all game.
+      if (tpls.perPlayer) {
+        const maxLen = Math.max(home.length, away.length);
+        for (let i = 0; i < maxLen && out.length < 24 + 2; i++) {
+          for (const [side, list, teamName] of ([['home', home, homeTeam], ['away', away, awayTeam]] as const)) {
+            const p = list[i];
+            if (!p) continue;
+            const name = p.name || 'PLAYER';
+            const last = name.split(' ').slice(-1)[0] || name;
+            out.push({
+              text: applyTemplate(tpls.perPlayer, {
+                abbrev: side === 'home' ? 'H' : 'A',
+                number: p.number || '—',
+                name: name.toUpperCase(),
+                nameLast: last.toUpperCase(),
+                position: (p.position || '').toUpperCase(),
+                team: teamName,
+              }),
+              durationMs: dur,
+            });
+          }
+        }
+      }
+      if (tpls.closer) {
+        out.push({ text: applyTemplate(tpls.closer, { team: homeTeam }), durationMs: dur });
+      }
+      return out.length ? out : SAMPLE_ANNOUNCEMENTS;
+    }
+    if (cfg.entries && cfg.entries.length > 0) return cfg.entries;
+    return SAMPLE_ANNOUNCEMENTS;
+  }, [isAuto, board, cfg.entries, cfg.autoTemplates, cfg.autoDurationMs]);
+
   const defaultDuration = cfg.defaultDurationMs || 5000;
   const [idx, setIdx] = useState(0);
   const { ref, h } = useMeasuredHeight();
@@ -964,6 +1216,11 @@ const CUE_CATALOG = {
 export type CtsCueId = keyof typeof CUE_CATALOG;
 
 export const CTS_CUE_IDS: CtsCueId[] = Object.keys(CUE_CATALOG) as CtsCueId[];
+
+/** Human-readable cue labels for the Properties-panel picker. */
+export const CTS_CUE_LABELS: Record<CtsCueId, string> = Object.fromEntries(
+  (Object.keys(CUE_CATALOG) as CtsCueId[]).map((k) => [k, CUE_CATALOG[k].label]),
+) as Record<CtsCueId, string>;
 
 interface OrchestratorCueDeck {
   /** Cues to rotate on a home-team goal (round-robin). */

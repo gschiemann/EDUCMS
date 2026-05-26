@@ -11,6 +11,10 @@ import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { useBuilderStore } from './useBuilderStore';
 import { widgetLabel } from './constants';
 import { ALL_V2_WIDGETS } from '@/components/widgets/v2/registry';
+// 2026-05-26 — exported map of CTS celebration cue id → human label.
+// Used by the SCOREBOARD case below to render the cue-deck reference
+// in the orchestrator's Properties editor.
+import { CTS_CUE_LABELS as CTS_CUE_LABELS_LOCAL } from '@/components/widgets/sports/CtsRibbonWidgets';
 import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
 import { ColorPickerField } from '@/components/ui/color-picker';
@@ -2219,6 +2223,259 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         fields.push(<NumField key="fontSize" id="sb-fontSize" label="Font size (px)" value={typeof cfg.fontSize === 'number' ? cfg.fontSize : 48} onChange={(v) => setField({ fontSize: v })} min={8} max={480} step={2} />);
         fields.push(<SelectField key="fontWeight" label="Font weight" value={String(cfg.fontWeight ?? 800)} options={[['400', 'Regular'], ['600', 'Semibold'], ['700', 'Bold'], ['800', 'Extra-bold'], ['900', 'Black']]} onChange={(v) => setField({ fontWeight: parseInt(v) })} />);
         fields.push(<SelectField key="align" label="Align" value={String(cfg.align || 'center')} options={[['left', 'Left'], ['center', 'Center'], ['right', 'Right']]} onChange={(v) => setField({ align: v })} />);
+        break;
+      }
+      // ── CTS RIBBON WIDGETS — Colorado Time Systems live feed + ops controls
+      // Operator (2026-05-26): "this Properties panel just shows generic
+      // Status / Period / Home team fields — that's not what the CTS
+      // ribbon needs". Detect every CTS variant and render a real editor
+      // for each. The 12 variants come from CtsRibbonWidgets.tsx.
+      if (sbVariant.startsWith('scoreboard-cts-')) {
+        // ── Helper: small explanatory banner so the operator knows what feeds the zone
+        const ctsBanner = (text: string, accent: 'live' | 'config' | 'auto' = 'live') => {
+          const color = accent === 'live' ? '#22c55e' : accent === 'config' ? '#fbbf24' : '#a855f7';
+          const label = accent === 'live' ? 'Live from CTS' : accent === 'config' ? 'You configure this' : 'Auto-fires';
+          return (
+            <div key="cts-banner" style={{
+              marginBottom: 12, padding: '10px 12px', borderRadius: 8,
+              background: '#0f172a', color: '#e2e8f0', fontSize: 12, lineHeight: 1.5,
+              border: `1px solid ${color}66`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: color, marginRight: 8 }} />
+                <strong style={{ color, letterSpacing: 1, fontSize: 11 }}>{label.toUpperCase()}</strong>
+              </div>
+              <div>{text}</div>
+            </div>
+          );
+        };
+        // ── Helper: simple test-trigger button used by the orchestrator
+        const ctsTestButton = (label: string, team: 'home' | 'away' | 'horn', cueId?: string) => (
+          <button
+            key={`test-${team}-${cueId || ''}`}
+            type="button"
+            onClick={() => {
+              if (typeof window === 'undefined') return;
+              try {
+                window.dispatchEvent(new CustomEvent('edu:cts-celebration-preview', { detail: { team, cueId } }));
+              } catch { /* ignore */ }
+            }}
+            style={{
+              marginTop: 6, marginRight: 6, padding: '6px 12px',
+              background: '#2563eb', color: 'white', border: 'none',
+              borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            ▶ Test: {label}
+          </button>
+        );
+        // ── Per-variant fields
+        switch (sbVariant) {
+          case 'scoreboard-cts-clock':
+            fields.push(ctsBanner('The CTS console drives this clock over the USB-RS232 bridge. Below you customize how it looks; the live clock value comes from the console itself.'));
+            fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#0f172a'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+            fields.push(<ColorField key="accentColor" label="Clock color" value={cfg.accentColor || '#f59e0b'} onChange={(v) => setField({ accentColor: v })} />);
+            break;
+          case 'scoreboard-cts-period':
+            fields.push(ctsBanner('Q1–Q4 / OT readout from the CTS console.'));
+            fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#0f172a'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+            fields.push(<ColorField key="accentColor" label="Period text color" value={cfg.accentColor || '#cbd5e1'} onChange={(v) => setField({ accentColor: v })} />);
+            break;
+          case 'scoreboard-cts-ribbon':
+            fields.push(ctsBanner('All-in-one CTS scoreboard zone — clock, score, period, exclusion. Set the team abbreviations + colors below; the live values come from the CTS console.'));
+            fields.push(<TextField key="homeAbbrev" label="Home abbreviation (1–3 chars)" value={cfg.homeAbbrev || 'H'} placeholder="EAG" onChange={(v) => setField({ homeAbbrev: v })} />);
+            fields.push(<TextField key="awayAbbrev" label="Away abbreviation (1–3 chars)" value={cfg.awayAbbrev || 'A'} placeholder="COU" onChange={(v) => setField({ awayAbbrev: v })} />);
+            fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#0f172a'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+            fields.push(<ColorField key="accentColor" label="Clock color" value={cfg.accentColor || '#f59e0b'} onChange={(v) => setField({ accentColor: v })} />);
+            break;
+          case 'scoreboard-cts-score':
+            fields.push(ctsBanner('Live combined score from the CTS console. Set team abbreviations + colors below.'));
+            fields.push(<TextField key="homeAbbrev" label="Home abbreviation" value={cfg.homeAbbrev || 'H'} placeholder="EAG" onChange={(v) => setField({ homeAbbrev: v })} />);
+            fields.push(<TextField key="awayAbbrev" label="Away abbreviation" value={cfg.awayAbbrev || 'A'} placeholder="COU" onChange={(v) => setField({ awayAbbrev: v })} />);
+            fields.push(<ColorField key="homeColor" label="Home abbreviation color" value={cfg.homeColor || '#93c5fd'} onChange={(v) => setField({ homeColor: v })} />);
+            fields.push(<ColorField key="awayColor" label="Away abbreviation color" value={cfg.awayColor || '#fca5a5'} onChange={(v) => setField({ awayColor: v })} />);
+            fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#0f172a'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+            break;
+          case 'scoreboard-cts-score-home':
+            fields.push(ctsBanner('Home team score only — live from the CTS console.'));
+            fields.push(<TextField key="homeAbbrev" label="Label" value={cfg.homeAbbrev || 'HOME'} placeholder="EAGLES" onChange={(v) => setField({ homeAbbrev: v })} />);
+            fields.push(<ColorField key="homeColor" label="Label color" value={cfg.homeColor || '#93c5fd'} onChange={(v) => setField({ homeColor: v })} />);
+            fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#0f172a'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+            break;
+          case 'scoreboard-cts-score-away':
+            fields.push(ctsBanner('Away team score only — live from the CTS console.'));
+            fields.push(<TextField key="awayAbbrev" label="Label" value={cfg.awayAbbrev || 'AWAY'} placeholder="COUGARS" onChange={(v) => setField({ awayAbbrev: v })} />);
+            fields.push(<ColorField key="awayColor" label="Label color" value={cfg.awayColor || '#fca5a5'} onChange={(v) => setField({ awayColor: v })} />);
+            fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#0f172a'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+            break;
+          case 'scoreboard-cts-exclusion':
+            fields.push(ctsBanner('Water-polo exclusion (20-second penalty) — live from the CTS console. Auto-shows the first active exclusion across both teams; switch to one-sided in the picker below.'));
+            fields.push(<SelectField key="team" label="Which team's exclusions" value={String(cfg.team || 'auto')} options={[['auto', 'Auto (first active across both)'], ['home', 'Home only'], ['away', 'Away only']]} onChange={(v) => setField({ team: v })} />);
+            fields.push(<TextField key="homeAbbrev" label="Home abbreviation" value={cfg.homeAbbrev || 'H'} placeholder="EAG" onChange={(v) => setField({ homeAbbrev: v })} />);
+            fields.push(<TextField key="awayAbbrev" label="Away abbreviation" value={cfg.awayAbbrev || 'A'} placeholder="COU" onChange={(v) => setField({ awayAbbrev: v })} />);
+            fields.push(<ColorField key="homeColor" label="Home accent" value={cfg.homeColor || '#facc15'} onChange={(v) => setField({ homeColor: v })} />);
+            fields.push(<ColorField key="awayColor" label="Away accent" value={cfg.awayColor || '#fb923c'} onChange={(v) => setField({ awayColor: v })} />);
+            fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#1a0b1c'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+            break;
+          case 'scoreboard-cts-shot-clock':
+            fields.push(ctsBanner('Shot clock (30-second possession) from the CTS console. Flashes red at ≤5s; shows "—" when parked.'));
+            fields.push(<SelectField key="team" label="Which team's shot clock" value={String(cfg.team || 'either')} options={[['either', 'Either side'], ['home', 'Home only'], ['away', 'Away only']]} onChange={(v) => setField({ team: v })} />);
+            fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#0f172a'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+            fields.push(<ColorField key="accentColor" label="Number color" value={cfg.accentColor || '#facc15'} onChange={(v) => setField({ accentColor: v })} />);
+            break;
+          case 'scoreboard-cts-horn-flash':
+            fields.push(ctsBanner('Whole-zone red flash whenever the CTS horn fires. Use as a small visual cue for refs/crowd.'));
+            fields.push(<ColorField key="bgColor" label="Idle background" value={cfg.bgColor || '#1e1b1b'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+            break;
+
+          case 'scoreboard-cts-sponsor': {
+            const dataSource = String(cfg.dataSource || 'manual');
+            const isAuto = dataSource === 'auto';
+            fields.push(ctsBanner(
+              isAuto
+                ? 'Auto-pulls sponsors from your tenant Sponsor table (managed at Sports → Sponsors). They rotate during the game, expanded by `weight` so a Title sponsor shows more often than a Community one.'
+                : 'Manual mode — type sponsor slots below (image URL or text + sponsor name + dwell time per slot). To pull from your live sponsor table instead, switch the data source to Auto.',
+              isAuto ? 'auto' : 'config',
+            ));
+            fields.push(<SelectField key="dataSource" label="Data source" value={dataSource} options={[['manual', 'Manual — type slots below'], ['auto', 'Auto — pull from Sponsor table']]} onChange={(v) => setField({ dataSource: v })} />);
+            if (isAuto) {
+              fields.push(<TextField key="gameId" label="Game ID (optional)" value={cfg.gameId || ''} placeholder="auto-detected from /ribbon/:id URL" onChange={(v) => setField({ gameId: v })} />);
+              fields.push(<TextField key="autoTierFilter" label="Tier filter (optional, e.g. Title / Gold / Community)" value={cfg.autoTierFilter || ''} placeholder="all tiers" onChange={(v) => setField({ autoTierFilter: v })} />);
+            } else {
+              const slotsText = Array.isArray(cfg.slots)
+                ? cfg.slots.map((s: any) => `${s.imageUrl || ''} | ${s.text || ''} | ${s.durationMs ?? 6000}`).join('\n')
+                : '';
+              fields.push(<TextAreaField key="slots" label="Sponsor slots (image URL | text | duration ms — one per line)" value={slotsText} placeholder="https://cdn.example.com/pool-supply.png | POOL SUPPLY CO | 6000&#10; | YOUR SPONSOR HERE | 4500" onChange={(v) => {
+                const parsed = v.split('\n').filter(Boolean).map((line) => {
+                  const [imageUrl = '', text = '', durRaw = ''] = line.split('|').map((s) => s.trim());
+                  const durationMs = parseInt(durRaw, 10);
+                  return {
+                    ...(imageUrl ? { imageUrl } : {}),
+                    ...(text ? { text } : {}),
+                    ...(Number.isFinite(durationMs) && durationMs > 0 ? { durationMs } : {}),
+                  };
+                }).filter((s) => s.imageUrl || s.text);
+                setField({ slots: parsed });
+              }} rows={6} />);
+            }
+            fields.push(<TextField key="zoneLabel" label="Zone header label (optional)" value={cfg.zoneLabel || ''} placeholder="OUR SPONSORS" onChange={(v) => setField({ zoneLabel: v })} />);
+            fields.push(<NumField key="defaultDurationMs" id="cts-sponsor-dur" label="Default slot duration (ms)" value={typeof cfg.defaultDurationMs === 'number' ? cfg.defaultDurationMs : 6000} onChange={(v) => setField({ defaultDurationMs: v })} min={1500} max={60000} step={500} />);
+            fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#1e293b'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+            break;
+          }
+
+          case 'scoreboard-cts-announcement': {
+            const dataSource = String(cfg.dataSource || 'manual');
+            const isAuto = dataSource === 'auto';
+            fields.push(ctsBanner(
+              isAuto
+                ? 'Auto-introductions from the game roster. Add players at Sports → <Game> → Roster panel; this widget auto-rolls "NOW IN · #7 J. RIVERA" through every starter on both teams. Templates below let you tailor the copy.'
+                : 'Manual mode — type announcement lines below (text + dwell time). To auto-generate intros from your roster instead, switch the data source to Auto.',
+              isAuto ? 'auto' : 'config',
+            ));
+            fields.push(<SelectField key="dataSource" label="Data source" value={dataSource} options={[['manual', 'Manual — type entries below'], ['auto', 'Auto — generate from roster']]} onChange={(v) => setField({ dataSource: v })} />);
+            if (isAuto) {
+              fields.push(<TextField key="gameId" label="Game ID (optional)" value={cfg.gameId || ''} placeholder="auto-detected from /ribbon/:id URL" onChange={(v) => setField({ gameId: v })} />);
+              const tpls = cfg.autoTemplates || {};
+              fields.push(<TextField key="tplHomeLineup" label='Home lineup template (tokens: {team} {numbers})' value={tpls.homeLineup ?? 'HOME LINEUP — {team} · {numbers}'} placeholder="HOME LINEUP — {team} · {numbers}" onChange={(v) => setField({ autoTemplates: { ...tpls, homeLineup: v } })} />);
+              fields.push(<TextField key="tplAwayLineup" label='Away lineup template' value={tpls.awayLineup ?? 'AWAY LINEUP — {team} · {numbers}'} placeholder="AWAY LINEUP — {team} · {numbers}" onChange={(v) => setField({ autoTemplates: { ...tpls, awayLineup: v } })} />);
+              fields.push(<TextField key="tplPerPlayer" label='Per-player template (tokens: {abbrev} {number} {name} {nameLast} {position} {team})' value={tpls.perPlayer ?? 'NOW IN · #{number} {name}'} placeholder="NOW IN · #{number} {name}" onChange={(v) => setField({ autoTemplates: { ...tpls, perPlayer: v } })} />);
+              fields.push(<TextField key="tplCloser" label='Closing cheer template' value={tpls.closer ?? "LET'S GO {team}!"} placeholder="LET'S GO {team}!" onChange={(v) => setField({ autoTemplates: { ...tpls, closer: v } })} />);
+              fields.push(<NumField key="autoDurationMs" id="cts-ann-auto-dur" label="Per-template dwell (ms)" value={typeof cfg.autoDurationMs === 'number' ? cfg.autoDurationMs : 4000} onChange={(v) => setField({ autoDurationMs: v })} min={1500} max={20000} step={500} />);
+            } else {
+              const entriesText = Array.isArray(cfg.entries)
+                ? cfg.entries.map((e: any) => `${e.text || ''} | ${e.durationMs ?? 5000}`).join('\n')
+                : '';
+              fields.push(<TextAreaField key="entries" label="Announcements (text | duration ms — one per line)" value={entriesText} placeholder="STARTING LINEUP — #1, 7, 11, 12 | 6000&#10;PLAYER OF THE WEEK — #7 J. RIVERA | 5000&#10;NEXT MATCH — FRI 7PM | 5000" onChange={(v) => {
+                const parsed = v.split('\n').filter(Boolean).map((line) => {
+                  const [text = '', durRaw = ''] = line.split('|').map((s) => s.trim());
+                  const durationMs = parseInt(durRaw, 10);
+                  return {
+                    text,
+                    ...(Number.isFinite(durationMs) && durationMs > 0 ? { durationMs } : {}),
+                  };
+                }).filter((e) => e.text);
+                setField({ entries: parsed });
+              }} rows={6} />);
+            }
+            fields.push(<TextField key="zoneLabel" label="Zone header label (optional)" value={cfg.zoneLabel || ''} placeholder="ANNOUNCEMENTS" onChange={(v) => setField({ zoneLabel: v })} />);
+            fields.push(<NumField key="defaultDurationMs" id="cts-ann-dur" label="Default dwell time (ms)" value={typeof cfg.defaultDurationMs === 'number' ? cfg.defaultDurationMs : 5000} onChange={(v) => setField({ defaultDurationMs: v })} min={1500} max={60000} step={500} />);
+            fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#0c1322'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+            fields.push(<ColorField key="accentColor" label="Header accent color" value={cfg.accentColor || '#fbbf24'} onChange={(v) => setField({ accentColor: v })} />);
+            break;
+          }
+
+          case 'scoreboard-cts-celebration':
+            fields.push(ctsBanner('Simple text-pulse celebration. For full cinematic celebrations, use the "Celebration Orchestrator" tile instead.', 'auto'));
+            fields.push(<TextField key="text" label="Active text (on goal/horn)" value={cfg.text || 'GOAL!'} placeholder="GOAL!" onChange={(v) => setField({ text: v })} />);
+            fields.push(<TextField key="idleText" label="Idle text (between events)" value={cfg.idleText || 'GO TEAM'} placeholder="GO TEAM" onChange={(v) => setField({ idleText: v })} />);
+            fields.push(<NumField key="activeMs" id="cts-cel-active" label="Active duration (ms)" value={typeof cfg.activeMs === 'number' ? cfg.activeMs : 6000} onChange={(v) => setField({ activeMs: v })} min={1000} max={30000} step={500} />);
+            fields.push(<SelectField key="hornAlsoTriggers" label="Trigger on horn too?" value={cfg.hornAlsoTriggers === false ? 'false' : 'true'} options={[['true', 'Yes (recommended)'], ['false', 'No — score-delta only']]} onChange={(v) => setField({ hornAlsoTriggers: v === 'true' })} />);
+            fields.push(<ColorField key="homeColor" label="Home team color" value={cfg.homeColor || '#3b82f6'} onChange={(v) => setField({ homeColor: v })} />);
+            fields.push(<ColorField key="awayColor" label="Away team color" value={cfg.awayColor || '#ef4444'} onChange={(v) => setField({ awayColor: v })} />);
+            fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#0a0a14'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+            // Test buttons fire the orchestrator preview event; the simple
+            // CtsCelebrationWidget also listens, so both fire together if
+            // both are mounted on the same canvas.
+            fields.push(
+              <div key="cts-test-buttons" style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap' }}>
+                {ctsTestButton('Home goal', 'home')}
+                {ctsTestButton('Away goal', 'away')}
+                {ctsTestButton('Horn', 'horn')}
+              </div>,
+            );
+            break;
+
+          case 'scoreboard-cts-celebration-orchestrator': {
+            fields.push(ctsBanner('Full-coverage overlay that fires CINEMATIC celebrations from your library when the CTS bridge reports a goal / horn / period change. Decks below = which celebrations rotate for each event. Test buttons preview without a real bridge.', 'auto'));
+            fields.push(<TextField key="homeTeamName" label="Home team name (shown in cue copy)" value={cfg.homeTeamName || ''} placeholder="EAGLES" onChange={(v) => setField({ homeTeamName: v })} />);
+            fields.push(<TextField key="awayTeamName" label="Away team name (shown in cue copy)" value={cfg.awayTeamName || ''} placeholder="COUGARS" onChange={(v) => setField({ awayTeamName: v })} />);
+            fields.push(<ColorField key="homeColor" label="Home celebration color" value={cfg.homeColor || '#3b82f6'} onChange={(v) => setField({ homeColor: v })} />);
+            fields.push(<ColorField key="awayColor" label="Away celebration color" value={cfg.awayColor || '#ef4444'} onChange={(v) => setField({ awayColor: v })} />);
+            fields.push(<NumField key="durationMs" id="cts-orch-dur" label="Scene duration (ms)" value={typeof cfg.durationMs === 'number' ? cfg.durationMs : 6000} onChange={(v) => setField({ durationMs: v })} min={2000} max={30000} step={500} />);
+            // Per-event cue decks. Each is a textarea of cue IDs, one per line.
+            const cuesObj = (cfg.cues && typeof cfg.cues === 'object') ? cfg.cues : {};
+            const decks: Array<{ key: 'homeGoal' | 'awayGoal' | 'periodEnd' | 'horn'; label: string; testTeam: 'home' | 'away' | 'horn'; testLabel: string; defaults: string[] }> = [
+              { key: 'homeGoal', label: 'On home goal — cue rotation', testTeam: 'home', testLabel: 'Home goal', defaults: ['CEL_SOCCER_GOAL', 'CEL_HOCKEY_GOAL', 'CEL_LX_GOAL'] },
+              { key: 'awayGoal', label: 'On away goal — cue rotation', testTeam: 'away', testLabel: 'Away goal', defaults: ['CEL_HOCKEY_GOAL', 'CEL_SOCCER_GOAL'] },
+              { key: 'periodEnd', label: 'On period change — cue rotation', testTeam: 'horn', testLabel: 'Period end', defaults: ['CEL_FOOTBALL_TOUCHDOWN', 'CEL_BASKETBALL_BUZZER'] },
+              { key: 'horn', label: 'On horn rising edge — cue rotation', testTeam: 'horn', testLabel: 'Horn', defaults: ['CEL_FOOTBALL_TOUCHDOWN'] },
+            ];
+            for (const d of decks) {
+              const list = Array.isArray((cuesObj as any)[d.key]) ? (cuesObj as any)[d.key] as string[] : d.defaults;
+              const text = list.join('\n');
+              fields.push(<TextAreaField key={`cues-${d.key}`} label={d.label} value={text} placeholder={d.defaults.join('\n')} rows={3} onChange={(v) => {
+                const newList = v.split('\n').map((s) => s.trim()).filter(Boolean);
+                setField({ cues: { ...cuesObj, [d.key]: newList } });
+              }} />);
+              fields.push(
+                <div key={`cues-${d.key}-test`} style={{ marginTop: -4, marginBottom: 8 }}>
+                  {ctsTestButton(d.testLabel, d.testTeam)}
+                </div>,
+              );
+            }
+            // Cue ID reference — show every available cue so operators
+            // know what they can type into the deck textareas.
+            const cueLabelsMap = CTS_CUE_LABELS_LOCAL as unknown as Record<string, string>;
+            const allCues = Object.keys(cueLabelsMap);
+            fields.push(
+              <details key="cue-ref" style={{ marginTop: 12, padding: 8, background: '#0f172a', borderRadius: 6, color: '#cbd5e1' }}>
+                <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Available cue IDs ({allCues.length})</summary>
+                <ul style={{ margin: '8px 0 0 0', padding: '0 0 0 16px', fontSize: 11, lineHeight: 1.5 }}>
+                  {allCues.map((id) => (
+                    <li key={id}><code style={{ background: '#1e293b', padding: '1px 5px', borderRadius: 3 }}>{id}</code> — {cueLabelsMap[id]}</li>
+                  ))}
+                </ul>
+              </details>,
+            );
+            break;
+          }
+
+          default:
+            // Unknown CTS variant — show the legacy fields as a fallback.
+            fields.push(ctsBanner('Unknown CTS variant. Fields below are generic.', 'config'));
+            break;
+        }
         break;
       }
       // Legacy generic scoreboard widget — literal fields.
