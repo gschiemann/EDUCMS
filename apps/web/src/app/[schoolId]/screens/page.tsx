@@ -1460,9 +1460,16 @@ export default function ScreensPage() {
                     </div>
                   </div>
                   <div className="flex gap-2.5">
+                    {/* 2026-05-26 — operator: "just add a pair screen
+                        to group button in the top right of each group
+                        so it makes more sense, maybe a little + sign
+                        and the word Pair". Replaced the Wifi-icon
+                        "Pair to Group" label with a clearer "+ Pair"
+                        affordance. */}
                     <button onClick={() => { setShowPairModal(true); setPairGroupId(group.id); setPairCode(''); setPairName(''); setPairError(''); }}
-                      className="screens-pair-btn px-4 py-2 transition-colors text-xs font-bold rounded-xl flex items-center gap-1.5">
-                      <Wifi className="w-4 h-4" /> Pair to Group
+                      className="screens-pair-btn px-4 py-2 transition-colors text-xs font-bold rounded-xl flex items-center gap-1.5"
+                      title="Pair a screen to this group">
+                      <Plus className="w-4 h-4" /> Pair
                     </button>
                     <button onClick={async () => { if (await appConfirm({ title: 'Delete group?', message: `"${group.name}" will be deleted. Screens in it won't be deleted.`, tone: 'danger', confirmLabel: 'Delete' })) deleteGroup.mutate(group.id); }}
                       className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors">
@@ -1625,12 +1632,17 @@ export default function ScreensPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="px-5 py-8 text-center">
-                    <p className="text-xs text-slate-400">No screens paired to this group yet.</p>
-                    <button onClick={() => { setShowPairModal(true); setPairGroupId(group.id); setPairCode(''); setPairName(''); setPairError(''); }}
-                      className="text-xs font-semibold text-emerald-600 hover:underline mt-1">
-                      Pair a screen →
-                    </button>
+                  // 2026-05-26 — operator: "the groups window is too
+                  // large, it should be small and grow as you add
+                  // more and more screens to it". Previous empty
+                  // state was a `py-8` block with redundant "No
+                  // screens paired" copy + a second "Pair a screen →"
+                  // link in addition to the top-right Pair button.
+                  // Collapsed to a single thin row so the card sizes
+                  // to its content — the "+ Pair" button in the
+                  // header is the only CTA the operator needs.
+                  <div className="px-5 py-2 text-center">
+                    <p className="text-[11px] text-slate-400">No screens yet — use <span className="font-semibold text-slate-500">+ Pair</span> above.</p>
                   </div>
                 )}
 

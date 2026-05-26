@@ -501,6 +501,24 @@ export default function AssetsPage() {
   };
   const isVideo = (a: any) => a.mimeType?.startsWith('video/');
   const isUrl = (a: any) => a.mimeType === 'text/html';
+  // 2026-05-26 — operator: "the PDF still doesnt have a preview under
+  // the asset section but it does now under the playlist section".
+  // Same lazy-PDF-iframe pattern used in PlaylistPreviewThumb's
+  // LazyPdfThumb. Inlined here for now; refactor to shared component
+  // if a third surface needs it.
+  const isPdf = (a: any) => {
+    if (!a) return false;
+    const m = a.mimeType || '';
+    if (m === 'application/pdf' || m === 'application/x-pdf') return true;
+    const url = String(a.fileUrl || '').split('?')[0].split('#')[0].toLowerCase();
+    return url.endsWith('.pdf');
+  };
+  const pdfPreviewUrl = (a: any) => {
+    const url = a.fileUrl?.startsWith('http') ? a.fileUrl : `${apiBase}${a.fileUrl}`;
+    // Strip viewer chrome so the tile reads as a thumbnail. Matches
+    // the playlist-tile pattern from commit 3a04653.
+    return url + (url.includes('#') ? '&' : '#') + 'view=Fit&toolbar=0&navpanes=0&scrollbar=0';
+  };
   const assetName = (a: any) => a.originalName || (a.mimeType === 'text/html' ? a.fileUrl : a.fileUrl?.split('/').pop()) || 'Untitled';
 
   const selectedThumb = selectedAsset ? thumbUrl(selectedAsset) : null;
@@ -768,7 +786,14 @@ export default function AssetsPage() {
           max-height scroll region. A Files heading sits below to
           establish the boundary visually. */}
       {currentFolderChildren.length > 0 && (
-        <section className="bg-slate-50/60 rounded-2xl border border-slate-100 p-4 mb-2">
+        // 2026-05-26 — operator: "line the files and folders text and
+        // icons up with each other, just move folders out to the left
+        // a little so it lines up". The previous section wrapper had
+        // bg-slate-50/60 + border + p-4 which pushed the Folders
+        // header in by 16px relative to the Files header below.
+        // Dropped the card chrome; visual separation still comes from
+        // mb-2 + the inline scroll cap when expanded.
+        <section className="mb-2">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
               <Folder className="w-3.5 h-3.5 text-amber-500" />
@@ -984,6 +1009,24 @@ export default function AssetsPage() {
                       onError={(e) => {
                         (e.currentTarget as HTMLImageElement).style.display = 'none';
                       }}
+                    />
+                  ) : isPdf(a) ? (
+                    // PDF tile: browser-native first-page render via
+                    // an iframe with viewer chrome stripped. Sandbox
+                    // is DELIBERATELY omitted — Chrome's PDFium
+                    // refuses to render inside ANY sandboxed iframe,
+                    // even with allow-* flags. See commit 3a04653 for
+                    // the headed-Chrome 3-way comparison that proved
+                    // this. pointer-events:none routes clicks through
+                    // to the parent button so the preview-on-click
+                    // flow still works.
+                    <iframe
+                      src={pdfPreviewUrl(a)}
+                      title={name}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full"
+                      style={{ border: 0, pointerEvents: 'none' }}
                     />
                   ) : (
                     typeIcon(a.mimeType, 'w-8 h-8')
