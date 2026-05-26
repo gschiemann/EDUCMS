@@ -74,6 +74,10 @@ import {
   Music,
   Globe,
   File as FileIcon,
+  FileText,
+  Folder,
+  FolderOpen,
+  Home,
   Monitor,
   Wifi,
   WifiOff,
@@ -87,8 +91,10 @@ import {
 } from 'lucide-react';
 import {
   useAssets,
+  useAssetFolders,
   useTemplates,
   useScreens,
+  useScreenGroups,
   useCreatePlaylist,
   useReorderPlaylistItems,
   useCreateSchedule,
@@ -132,6 +138,40 @@ function mimeIcon(mimeType?: string) {
 }
 
 function MiniAssetThumb({ asset }: { asset: any }) {
+  // 2026-05-26 — PDF preview parity. Operator: "your picker is not
+  // showing previews of the PDF's make sure the preview fixes for
+  // documents, videos, and templates apply to every single area we
+  // have that shows previews." Renders the same cropped-iframe trick
+  // LazyPdfThumb uses in PlaylistPreviewThumb + the asset library
+  // tile (commits 1d736de + f234566): top:-56px + overflow:hidden
+  // crops Chrome's PDFium hover toolbar which renders in a native
+  // compositor layer that bypasses CSS z-index. NO sandbox attribute
+  // — Chrome refuses to render PDFs under any sandbox value.
+  if (asset?.mimeType === 'application/pdf') {
+    const pdfUrl = asset?.fileUrl?.startsWith('http')
+      ? asset.fileUrl
+      : `${apiBase}${asset.fileUrl}`;
+    const src = pdfUrl + (pdfUrl.includes('#') ? '&' : '#') + 'view=Fit&toolbar=0&navpanes=0&scrollbar=0';
+    return (
+      <div className="w-full h-full relative overflow-hidden bg-slate-100">
+        <iframe
+          src={src}
+          title="PDF preview"
+          referrerPolicy="no-referrer"
+          loading="lazy"
+          style={{
+            position: 'absolute',
+            top: '-56px',
+            left: 0,
+            width: '100%',
+            height: 'calc(100% + 56px)',
+            border: 0,
+            pointerEvents: 'none',
+          }}
+        />
+      </div>
+    );
+  }
   const url = assetThumbUrl(asset);
   if (!url) {
     const Icon = mimeIcon(asset?.mimeType);
@@ -149,6 +189,10 @@ function MiniAssetThumb({ asset }: { asset: any }) {
         muted
         playsInline
         preload="metadata"
+        // 2026-05-26 — #t=0.5 hash makes the first-frame poster paint
+        // in every browser (Safari + Firefox honor the Media Fragments
+        // URI fragment, Chrome already showed it via the onLoadedMetadata
+        // currentTime hack). Belt + suspenders.
         className="w-full h-full object-cover"
         onLoadedMetadata={(e) => {
           try {
@@ -258,6 +302,11 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [assetSearch, setAssetSearch] = useState('');
   const [assetFilter, setAssetFilter] = useState<'all' | 'images' | 'videos' | 'audio' | 'urls'>('all');
+  // 2026-05-26 — operator: "when i get to step two you need to show
+  // the folders as well so i can select a folder if i want to find my
+  // content." Tracks the folder the operator is currently browsing.
+  // null = root (top-level assets + top-level folders).
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [templateFilter, setTemplateFilter] = useState<'all' | 'custom' | 'system'>('all');
   const [templateSearch, setTemplateSearch] = useState('');
 
@@ -279,8 +328,10 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
 
   // Hooks
   const { data: assets } = useAssets();
+  const { data: folders } = useAssetFolders();
   const { data: templates } = useTemplates();
   const { data: screens } = useScreens();
+  const { data: screenGroups } = useScreenGroups();
   const createPlaylist = useCreatePlaylist();
   const saveItems = useReorderPlaylistItems();
   const createSchedule = useCreateSchedule();
@@ -298,6 +349,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
     setSelectedTemplateId(null);
     setAssetSearch('');
     setAssetFilter('all');
+    setCurrentFolderId(null);
     setTemplateFilter('all');
     setTemplateSearch('');
     setSelectedScreenIds(new Set());
@@ -370,6 +422,15 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
   // ─── Derived data ──────────────────────────────────────────────────
 
   const filteredAssets = (assets || []).filter((a: any) => {
+    // 2026-05-26 — when the operator picks a folder we scope assets to
+    // that folder. When they search we span ALL folders so they can
+    // find content without first finding the right folder. Root level
+    // (currentFolderId === null) shows assets with `folderId === null`
+    // OR undefined (legacy rows).
+    if (!assetSearch) {
+      const aFolder = a.folderId ?? null;
+      if (aFolder !== currentFolderId) return false;
+    }
     if (assetFilter === 'images' && !a.mimeType?.startsWith('image/')) return false;
     if (assetFilter === 'videos' && !a.mimeType?.startsWith('video/')) return false;
     if (assetFilter === 'audio' && !a.mimeType?.startsWith('audio/')) return false;
@@ -381,6 +442,30 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
     }
     return true;
   });
+
+  // 2026-05-26 — folders visible at the current level. Used by Step2Media
+  // to render folder tiles above the asset grid. Top-level when
+  // currentFolderId is null; otherwise children of the open folder.
+  const visibleFolders = (folders || []).filter((f: any) => {
+    if (assetSearch) return false; // search mode flattens folders
+    return (f.parentId ?? null) === currentFolderId;
+  });
+
+  // Breadcrumb chain from root → currentFolderId. Used in Step2Media
+  // header so the operator always knows where they are + can hop back.
+  const folderBreadcrumb: Array<{ id: string | null; name: string }> = (() => {
+    const out: Array<{ id: string | null; name: string }> = [];
+    let cursor: any = currentFolderId
+      ? (folders || []).find((x: any) => x.id === currentFolderId)
+      : null;
+    while (cursor) {
+      out.unshift({ id: cursor.id, name: cursor.name || 'Folder' });
+      cursor = cursor.parentId
+        ? (folders || []).find((x: any) => x.id === cursor.parentId)
+        : null;
+    }
+    return out;
+  })();
 
   const visibleTemplates = (templates || []).filter((t: any) => {
     if (templateFilter === 'custom' && t.isSystem) return false;
@@ -636,6 +721,10 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
           {step === 2 && kind === 'media' && (
             <Step2Media
               assets={filteredAssets}
+              folders={visibleFolders}
+              breadcrumb={folderBreadcrumb}
+              currentFolderId={currentFolderId}
+              onFolderOpen={setCurrentFolderId}
               search={assetSearch}
               setSearch={setAssetSearch}
               filter={assetFilter}
@@ -662,10 +751,26 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
             <Step3Screens
               screens={filteredScreens}
               total={(screens || []).length}
+              groups={screenGroups || []}
               search={screenSearch}
               setSearch={setScreenSearch}
               selectedIds={selectedScreenIds}
               onToggle={toggleScreen}
+              onPickGroup={(group: any) => {
+                const ids: string[] = (group.screens || [])
+                  .map((s: any) => s.id)
+                  .filter(Boolean);
+                if (!ids.length) return;
+                // If every screen in the group is already selected → toggle off.
+                // Otherwise → select all members. Operator gets one-click "all".
+                setSelectedScreenIds((prev) => {
+                  const allSelected = ids.every((id) => prev.has(id));
+                  const next = new Set(prev);
+                  if (allSelected) ids.forEach((id) => next.delete(id));
+                  else ids.forEach((id) => next.add(id));
+                  return next;
+                });
+              }}
               onSkip={() => {
                 setSelectedScreenIds(new Set());
                 goNext();
@@ -899,6 +1004,10 @@ function Step1NameAndType({
 
 function Step2Media({
   assets,
+  folders,
+  breadcrumb,
+  currentFolderId,
+  onFolderOpen,
   search,
   setSearch,
   filter,
@@ -907,6 +1016,10 @@ function Step2Media({
   onToggle,
 }: {
   assets: any[];
+  folders: any[];
+  breadcrumb: Array<{ id: string | null; name: string }>;
+  currentFolderId: string | null;
+  onFolderOpen: (id: string | null) => void;
   search: string;
   setSearch: (s: string) => void;
   filter: 'all' | 'images' | 'videos' | 'audio' | 'urls';
@@ -938,6 +1051,44 @@ function Step2Media({
         </div>
       </div>
 
+      {/* 2026-05-26 — Folder breadcrumb. Always shows "All folders"
+          (root) at the start. Click any segment to hop back. Search
+          mode hides the breadcrumb because search spans every folder.
+          Operator: "you need to show the folders as well so i can
+          select a folder if i want to find my content." */}
+      {!search && (
+        <div className="flex items-center flex-wrap text-xs text-slate-500 mb-3">
+          <button
+            type="button"
+            onClick={() => onFolderOpen(null)}
+            className={`inline-flex items-center px-2 py-1 rounded-md mr-1 transition-colors ${
+              currentFolderId === null
+                ? 'bg-indigo-100 text-indigo-700 font-bold'
+                : 'hover:bg-slate-100 text-slate-500 font-semibold'
+            }`}
+          >
+            <Home className="w-3.5 h-3.5 mr-1" />
+            All folders
+          </button>
+          {breadcrumb.map((b) => (
+            <span key={b.id} className="inline-flex items-center">
+              <ChevronRight className="w-3 h-3 text-slate-300 mr-1" aria-hidden />
+              <button
+                type="button"
+                onClick={() => onFolderOpen(b.id)}
+                className={`px-2 py-1 rounded-md mr-1 transition-colors ${
+                  b.id === currentFolderId
+                    ? 'bg-indigo-100 text-indigo-700 font-bold'
+                    : 'hover:bg-slate-100 text-slate-500 font-semibold'
+                }`}
+              >
+                {b.name}
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-center mb-3">
         <div className="relative flex-1 mr-3">
           <Search className="absolute top-1/2 left-3 -translate-y-1/2 w-4 h-4 text-slate-300" />
@@ -945,7 +1096,7 @@ function Step2Media({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search filename…"
+            placeholder={search ? 'Searching all folders…' : 'Search every folder…'}
             className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400"
           />
         </div>
@@ -968,12 +1119,52 @@ function Step2Media({
         ))}
       </div>
 
+      {/* Folder tiles — sit above the asset grid. Click opens the folder
+          (recursive). Hidden in search mode (flat results). */}
+      {!search && folders.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+            Folders
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4">
+            {folders.map((f: any) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => onFolderOpen(f.id)}
+                className="text-left rounded-xl border-2 border-slate-200 hover:border-amber-300 hover:bg-amber-50/30 transition-all p-3 mr-2 mb-2"
+              >
+                <div className="flex items-start">
+                  <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mr-3">
+                    <Folder className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-slate-800 truncate">
+                      {f.name || 'Untitled folder'}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Open folder
+                    </p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {assets.length === 0 ? (
         <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl">
           <ImageIcon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-sm font-semibold text-slate-600">No matching assets</p>
+          <p className="text-sm font-semibold text-slate-600">
+            {folders.length > 0 && !search
+              ? 'No files in this folder'
+              : 'No matching assets'}
+          </p>
           <p className="text-xs text-slate-400 mt-1">
-            Try clearing the filter or uploading from the Assets page first.
+            {folders.length > 0 && !search
+              ? 'Open a folder above or upload more from the Assets page.'
+              : 'Try clearing the filter or uploading from the Assets page first.'}
           </p>
         </div>
       ) : (
@@ -1163,27 +1354,38 @@ function Step2Template({
 function Step3Screens({
   screens,
   total,
+  groups,
   search,
   setSearch,
   selectedIds,
   onToggle,
+  onPickGroup,
   onSkip,
 }: {
   screens: any[];
   total: number;
+  groups: any[];
   search: string;
   setSearch: (s: string) => void;
   selectedIds: Set<string>;
   onToggle: (id: string) => void;
+  onPickGroup: (group: any) => void;
   onSkip: () => void;
 }) {
+  // 2026-05-26 — operator: "make sure the screen groups are visible
+  // form the wizard." Filter to groups that have at least one screen
+  // member — empty groups create no schedules so showing them is just
+  // noise. Status counts drive the per-group "online" pill below.
+  const groupsWithScreens = (groups || []).filter(
+    (g: any) => Array.isArray(g.screens) && g.screens.length > 0,
+  );
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
         <div>
           <p className="text-base font-bold text-slate-800">Where should it play?</p>
           <p className="text-xs text-slate-500 mt-0.5">
-            Pick the screens this playlist should run on. You can skip this and assign screens later from the playlist detail page.
+            Pick a screen group (one click adds all its screens) or pick individual screens. Skip to assign later.
           </p>
         </div>
         <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100">
@@ -1194,6 +1396,71 @@ function Step3Screens({
         </div>
       </div>
 
+      {/* Screen groups — sit above the individual screens grid. Click
+          a group → selects every screen it contains (toggle behavior:
+          if every screen in the group is already selected, clicking
+          deselects them all). Layers icon + status counts match the
+          /screens page card UI so it feels familiar. Operator:
+          "make sure the screen groups are visible form the wizard." */}
+      {groupsWithScreens.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+            Screen groups
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2">
+            {groupsWithScreens.map((g: any) => {
+              const memberIds = (g.screens || []).map((s: any) => s.id).filter(Boolean);
+              const onlineCount = (g.screens || []).filter((s: any) => s.status === 'ONLINE').length;
+              const allMembersSelected = memberIds.length > 0 && memberIds.every((id: string) => selectedIds.has(id));
+              const someMembersSelected = !allMembersSelected && memberIds.some((id: string) => selectedIds.has(id));
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => onPickGroup(g)}
+                  aria-pressed={allMembersSelected}
+                  className={`text-left rounded-xl border-2 transition-all p-3 mr-2 mb-2 ${
+                    allMembersSelected
+                      ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-100'
+                      : someMembersSelected
+                        ? 'border-emerald-300 bg-emerald-50/20'
+                        : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/30'
+                  }`}
+                >
+                  <div className="flex items-start">
+                    <div
+                      className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 mr-3 ${
+                        allMembersSelected ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-700'
+                      }`}
+                    >
+                      <Layers className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-800 truncate">{g.name || 'Group'}</p>
+                      <div className="flex items-center mt-1">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          {memberIds.length} screen{memberIds.length === 1 ? '' : 's'}
+                        </span>
+                        {onlineCount > 0 && (
+                          <span className="text-[10px] text-emerald-600 ml-2 font-semibold">
+                            • {onlineCount} online
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {allMembersSelected && (
+                      <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center shadow-sm shrink-0 ml-2">
+                        <Check className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {total > 0 && (
         <div className="relative mb-3">
           <Search className="absolute top-1/2 left-3 -translate-y-1/2 w-4 h-4 text-slate-300" />
@@ -1201,10 +1468,16 @@ function Step3Screens({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search screens…"
+            placeholder="Search individual screens…"
             className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-400"
           />
         </div>
+      )}
+
+      {total > 0 && groupsWithScreens.length > 0 && (
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+          Individual screens
+        </p>
       )}
 
       {total === 0 ? (

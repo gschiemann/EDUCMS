@@ -419,7 +419,195 @@ export function KioskSplash({
           ) : null}
         </div>
       </div>
+
+      {/* 2026-05-26 — Diagnostic overlay. Operator: "what about
+          writing text all the way across it for a test and ill send a
+          pic of what the screen shows so you can pinpoint what the
+          issue is and adjust it." Two layers:
+
+          1. Always-on tiny strip at the bottom-left showing viewport
+             width × height and LED canvas (--led-w × --led-h). 11px
+             white-on-black, 60% opacity. So small it doesn't compete
+             with the splash content but ALWAYS photographable if the
+             operator points a camera at the LED. If the LED captures
+             "1920x1080 LED:320x1080" in this strip, the pin script is
+             working and the bug is elsewhere; if it captures only
+             the aurora background and no strip, the pin didn't run.
+
+          2. Test stripes triggered by appending `?debug=1` to the
+             player URL. Renders 4 huge vertical bands across the FULL
+             frame with their x-coordinate labeled — operator photo-
+             graphs the LED and we instantly see what x-range the LED
+             is capturing (e.g. if the LED only shows the "0-320"
+             band, we know the LED is mirroring the leftmost 320 px
+             of the controller's 1920 frame buffer). Also prints a
+             diagonal "VENUEOS DEBUG" wordmark so the photo is
+             unambiguously the debug overlay (not stale screen
+             content). */}
+      <KioskDiagnostics mode={mode} />
     </div>
+  );
+}
+
+/**
+ * KioskDiagnostics — debug overlay for diagnosing LED canvas-vs-
+ * viewport mismatches on locked-firmware controllers (NovaStar Taurus,
+ * etc.) where the WebView reports a viewport size different from what
+ * the LED panel physically captures.
+ *
+ * - Always-on: a tiny bottom-left strip with viewport+LED dimensions
+ *   so any operator photo of the kiosk contains the proof-of-state.
+ * - On `?debug=1`: full-screen vertical bands at 0/480/960/1440 px
+ *   labeled with their x-coordinate, so the photo unambiguously shows
+ *   which slice of the frame buffer the LED is mirroring.
+ *
+ * Chromium-83 safe: no aspect-ratio, no :where(), no inset shorthand,
+ * no backdrop-filter. Inline styles to bypass the splash CSS scaling.
+ */
+function KioskDiagnostics({ mode }: { mode: Mode }) {
+  const [debugOn, setDebugOn] = useState(false);
+  const [dims, setDims] = useState<{
+    vw: number; vh: number; ledW: string; ledH: string; narrow: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    // Pull debug=1 from the URL once on mount. SSR-safe.
+    if (typeof window === 'undefined') return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      setDebugOn(params.get('debug') === '1');
+    } catch {}
+
+    const measure = () => {
+      const root = document.documentElement;
+      const style = window.getComputedStyle(root);
+      setDims({
+        vw: window.innerWidth || 0,
+        vh: window.innerHeight || 0,
+        ledW: style.getPropertyValue('--led-w').trim() || '—',
+        ledH: style.getPropertyValue('--led-h').trim() || '—',
+        narrow: root.hasAttribute('data-led-narrow'),
+      });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+
+  if (!dims) return null;
+
+  return (
+    <>
+      {/* Always-on tiny dimension strip. position:fixed so it bypasses
+          the .kiosk-splash containing block + sits at the bottom-left
+          regardless of the splash's data-led-narrow re-layout. */}
+      <div
+        style={{
+          position: 'fixed',
+          left: 4,
+          bottom: 4,
+          zIndex: 999999,
+          padding: '2px 5px',
+          background: 'rgba(0,0,0,0.55)',
+          color: '#fff',
+          fontSize: 10,
+          fontFamily: 'monospace',
+          lineHeight: 1.2,
+          opacity: 0.65,
+          borderRadius: 2,
+          pointerEvents: 'none',
+          letterSpacing: 0,
+        }}
+        aria-hidden="true"
+      >
+        VP {dims.vw}×{dims.vh}{' '}
+        LED {dims.ledW || '—'}×{dims.ledH || '—'}{' '}
+        {dims.narrow ? 'N' : '·'} · {mode[0]?.toUpperCase()}
+      </div>
+
+      {/* ?debug=1 — giant vertical test stripes across the frame
+          buffer. Each labeled with its x-range so the LED photo
+          tells us exactly which x-slice is captured. Black tag in
+          the center of each band so it photographs cleanly even
+          against the saturated band color. */}
+      {debugOn && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            zIndex: 999998,
+            pointerEvents: 'none',
+          }}
+          aria-hidden="true"
+        >
+          {[
+            { x: 0,    w: 480, color: '#ef4444', label: '0–480' },
+            { x: 480,  w: 480, color: '#22c55e', label: '480–960' },
+            { x: 960,  w: 480, color: '#3b82f6', label: '960–1440' },
+            { x: 1440, w: 480, color: '#eab308', label: '1440–1920' },
+          ].map((band) => (
+            <div
+              key={band.x}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: band.x,
+                width: band.w,
+                height: '100%',
+                background: band.color,
+                opacity: 0.85,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#000',
+                fontFamily: 'monospace',
+                fontSize: 36,
+                fontWeight: 900,
+                textShadow: '0 0 6px rgba(255,255,255,0.9)',
+              }}
+            >
+              {band.label}
+            </div>
+          ))}
+          {/* Diagonal wordmark proves the overlay IS what's being
+              photographed (not a stale frame). */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '40%',
+              left: 0,
+              width: '100%',
+              textAlign: 'center',
+              color: '#fff',
+              fontFamily: 'monospace',
+              fontSize: 64,
+              fontWeight: 900,
+              textShadow: '0 0 12px rgba(0,0,0,0.9)',
+              letterSpacing: 4,
+            }}
+          >
+            VENUEOS DEBUG
+          </div>
+          {/* Big readable summary at the bottom — viewport + LED + flags. */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 16,
+              left: 0,
+              width: '100%',
+              textAlign: 'center',
+              color: '#fff',
+              fontFamily: 'monospace',
+              fontSize: 22,
+              fontWeight: 700,
+              textShadow: '0 0 8px rgba(0,0,0,0.95)',
+            }}
+          >
+            VP {dims.vw}×{dims.vh} · LED {dims.ledW}×{dims.ledH} · narrow={dims.narrow ? 'YES' : 'no'} · mode={mode}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
