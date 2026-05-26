@@ -47,7 +47,7 @@
  *     up between snapshots) OR when the horn fires.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // ─── Shared snapshot shape + sample state ──────────────────────────
 
@@ -883,6 +883,280 @@ export function CtsCelebrationWidget({ config }: { config?: CelebrationCfg }) {
         @keyframes ctsCelebPulse { from { transform: scale(1); } to { transform: scale(1.08); } }
         @keyframes ctsCelebSweep { from { background-position: 0 0; } to { background-position: 96px 0; } }
       `}</style>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// 4. CELEBRATION ORCHESTRATOR — fires the cinematic CEL_* library on
+//    goal-delta / horn / period-change detected from the CTS feed.
+// ═════════════════════════════════════════════════════════════════════
+//
+// Why this exists: CtsCelebrationWidget above is a SIMPLE "GOAL!" text
+// pulse. The actual cinematic library (CelSoccerGoalWidget,
+// CelHockeyGoalWidget, CelFootballTouchdownWidget, etc — ~50 widgets
+// in apps/web/src/components/widgets/v2/Celebrations*Widgets.tsx) was
+// shipping as drop-on-canvas tiles but NEVER fired automatically from
+// score events. Operator (2026-05-26): "did you wire in all of our
+// new celebrations? doesnt seem like those are working".
+//
+// The orchestrator closes that — it watches the CTS bridge feed for
+// home/away goal-deltas + horn rising edges + period changes, picks
+// a cue from the operator-configured deck for that event, and renders
+// the matching cinematic widget full-coverage over the ribbon for N
+// seconds, then auto-reverts. Operator-configurable cue deck per
+// event type — so a home goal can roll through SOCCER → HOCKEY →
+// LACROSSE goal scenes round-robin, never repeating the same one
+// twice in a row.
+//
+// Operator preview: any zone with the orchestrator listens for
+//   window.dispatchEvent(new CustomEvent('edu:cts-celebration-preview',
+//     { detail: { team: 'home' | 'away' | 'horn', cueId?: string } }))
+// so a Properties-panel "Test celebration" button (follow-up) fires
+// without needing a real bridge connection.
+
+// Static import of the cinematic library — bundled with the SPORTS
+// vertical only since these widgets are SPORTS-gated end-to-end.
+import { CelSoccerGoalWidget, CelSoccerGolazoWidget, CelSoccerFreeKickWidget, CelSoccerHatTrickWidget } from '../v2/CelebrationsSoccerWidgets';
+import { CelHockeyGoalWidget, CelHockeyHatTrickWidget, CelHockeyPowerPlayWidget, CelHockeyEmptyNetWidget } from '../v2/CelebrationsHockeyWidgets';
+import { CelFootballTouchdownWidget, CelFootballFieldGoalWidget } from '../v2/CelebrationsFootballWidgets';
+import { CelBasketballThreeWidget, CelBasketballBuzzerWidget, CelBasketballDunkWidget } from '../v2/CelebrationsBasketballWidgets';
+import { ScGoalRetroWidget, ScGoalNeonWidget, HkGoalNeonWidget, HkGoalRetroWidget, LxGoalWidget, LxBehindTheBackWidget } from '../v2/CelebrationsOtherSportsWidgets';
+
+/**
+ * Available cue catalog. Operator picks cue IDs from this list to
+ * build their per-event deck. Every entry is a real, shipping
+ * celebration widget that already renders cleanly at any zone size
+ * (sized off the `height` prop and wrapped via the
+ * `withMeasuredHeight` HOC pattern further down).
+ *
+ * For water polo the "goal in a net" cues map cleanly even though no
+ * widget is literally labeled "water polo" — a soccer / hockey /
+ * lacrosse goal scene reads correctly on a water-polo ribbon and the
+ * operator overrides the scorer / team / score copy via per-cue
+ * config (`cueOverrides` below).
+ */
+const CUE_CATALOG = {
+  // ─── Goal / score scenes (best for water polo + soccer + hockey) ─
+  CEL_SOCCER_GOAL: { Component: CelSoccerGoalWidget, label: 'Soccer "GOOOOAL"', defaults: { scorer: 'SCORER', score: '1-0' } },
+  CEL_SOCCER_GOLAZO: { Component: CelSoccerGolazoWidget, label: 'Soccer "GOLAZO"', defaults: { player: 'SCORER', kind: 'WHAT A STRIKE' } },
+  CEL_SOCCER_FREEKICK: { Component: CelSoccerFreeKickWidget, label: 'Soccer Free Kick Goal', defaults: { player: 'SCORER', distance: '25 YD' } },
+  CEL_SOCCER_HATTRICK: { Component: CelSoccerHatTrickWidget, label: 'Soccer Hat Trick', defaults: { player: 'SCORER', goals: ["12'", "38'", "81'"] } },
+  CEL_HOCKEY_GOAL: { Component: CelHockeyGoalWidget, label: 'Hockey GOAL (red lamp)', defaults: { scorer: 'SCORER', assists: [], score: '1-0' } },
+  CEL_HOCKEY_HATTRICK: { Component: CelHockeyHatTrickWidget, label: 'Hockey Hat Trick', defaults: { player: 'SCORER' } },
+  CEL_HOCKEY_POWERPLAY: { Component: CelHockeyPowerPlayWidget, label: 'Hockey Power-Play Goal', defaults: { scorer: 'SCORER', strength: '6-on-5', score: '1-0' } },
+  CEL_HOCKEY_EMPTYNET: { Component: CelHockeyEmptyNetWidget, label: 'Empty Net Goal', defaults: { scorer: 'SCORER', finalScore: '5-3' } },
+  CEL_SC_GOAL_RETRO: { Component: ScGoalRetroWidget, label: 'Soccer Goal · Retro', defaults: { scorer: 'SCORER', minute: "42'" } },
+  CEL_SC_GOAL_NEON: { Component: ScGoalNeonWidget, label: 'Soccer Goal · Neon', defaults: { scorer: 'SCORER', minute: "63'" } },
+  CEL_HK_GOAL_NEON: { Component: HkGoalNeonWidget, label: 'Hockey Goal · Neon', defaults: { scorer: 'SCORER' } },
+  CEL_HK_GOAL_RETRO: { Component: HkGoalRetroWidget, label: 'Hockey Goal · Retro', defaults: { scorer: 'SCORER', period: 1 } },
+  CEL_LX_GOAL: { Component: LxGoalWidget, label: 'Lacrosse Goal', defaults: { scorer: 'SCORER', number: '7', score: '1-0' } },
+  CEL_LX_BEHINDTHEBACK: { Component: LxBehindTheBackWidget, label: 'Behind-the-Back Goal', defaults: { player: 'SCORER', distance: '10 YD' } },
+  // ─── End-of-period / horn / big-moment scenes ───────────────────
+  CEL_FOOTBALL_TOUCHDOWN: { Component: CelFootballTouchdownWidget, label: 'Football TOUCHDOWN', defaults: { player: 'TEAM', distance: 'END OF PERIOD', score: '' } },
+  CEL_FOOTBALL_FIELDGOAL: { Component: CelFootballFieldGoalWidget, label: 'Football Field Goal', defaults: { kicker: '', distance: '' } },
+  CEL_BASKETBALL_BUZZER: { Component: CelBasketballBuzzerWidget, label: 'Buzzer Beater', defaults: { player: '', clock: '0.0', kind: 'END OF PERIOD' } },
+  // ─── Misc cinematic that work as a general "BIG MOMENT" ─────────
+  CEL_BASKETBALL_THREE: { Component: CelBasketballThreeWidget, label: '3-Pointer (visual reuse)', defaults: { player: 'SCORER', threesTonight: 1 } },
+  CEL_BASKETBALL_DUNK: { Component: CelBasketballDunkWidget, label: 'Slam Dunk (visual reuse)', defaults: { player: 'SCORER', kind: 'POSTER' } },
+} as const;
+
+export type CtsCueId = keyof typeof CUE_CATALOG;
+
+export const CTS_CUE_IDS: CtsCueId[] = Object.keys(CUE_CATALOG) as CtsCueId[];
+
+interface OrchestratorCueDeck {
+  /** Cues to rotate on a home-team goal (round-robin). */
+  homeGoal?: CtsCueId[];
+  /** Cues to rotate on an away-team goal (round-robin). */
+  awayGoal?: CtsCueId[];
+  /** Cues to fire on a period change (period number increased). */
+  periodEnd?: CtsCueId[];
+  /** Cues to fire on a horn rising edge. */
+  horn?: CtsCueId[];
+}
+
+export interface CtsCelebrationOrchestratorCfg {
+  /** Per-event cue decks. Empty → sensible water-polo defaults. */
+  cues?: OrchestratorCueDeck;
+  /** Active scene duration in ms. Default 6000. */
+  durationMs?: number;
+  /** Optional team copy / colors applied to every cue (cue widgets
+   *  resolve these as their `homeColor` / `awayColor` / `score`). */
+  homeTeamName?: string;
+  awayTeamName?: string;
+  homeColor?: string;
+  awayColor?: string;
+  /** Per-cue config overrides (deep-merged into the cue defaults).
+   *  Operator uses this to set the scorer text per cue if they want
+   *  something other than the generic "SCORER" placeholder. */
+  cueOverrides?: Partial<Record<CtsCueId, Record<string, unknown>>>;
+  /** Disable horn-based trigger (rare — most installs want it on). */
+  ignoreHorn?: boolean;
+  /** Disable period-end trigger (some operators only want score-driven). */
+  ignorePeriodEnd?: boolean;
+}
+
+/** Water-polo defaults — goal-in-net scenes for the score events, an
+ *  end-of-period "TOUCHDOWN" / "BUZZER" for the horn + period change. */
+const DEFAULT_CUE_DECK: Required<OrchestratorCueDeck> = {
+  homeGoal: ['CEL_SOCCER_GOAL', 'CEL_HOCKEY_GOAL', 'CEL_LX_GOAL', 'CEL_SC_GOAL_NEON'],
+  awayGoal: ['CEL_HOCKEY_GOAL', 'CEL_SOCCER_GOAL', 'CEL_HK_GOAL_RETRO', 'CEL_LX_GOAL'],
+  periodEnd: ['CEL_FOOTBALL_TOUCHDOWN', 'CEL_BASKETBALL_BUZZER'],
+  horn: ['CEL_FOOTBALL_TOUCHDOWN', 'CEL_BASKETBALL_BUZZER'],
+};
+
+/**
+ * CtsCelebrationOrchestratorWidget — full-coverage overlay that fires
+ * a cinematic celebration scene whenever the CTS feed shows a
+ * goal-delta, horn, or period change. Idle = invisible
+ * (pointer-events: none, opacity: 0) so the rest of the ribbon shows
+ * through. Active = full-coverage cinematic for `durationMs`, then
+ * auto-revert.
+ *
+ * Drop this on the ribbon as a high-z-index full-bleed zone (the
+ * "CTS Water Polo Ribbon" preset does this at z-index 50). It does
+ * not block clicks when idle.
+ */
+export function CtsCelebrationOrchestratorWidget({ config }: { config?: CtsCelebrationOrchestratorCfg }) {
+  const cfg = config ?? {};
+  const durationMs = cfg.durationMs || 6000;
+  const cues = cfg.cues || {};
+  const homeDeck = (cues.homeGoal && cues.homeGoal.length ? cues.homeGoal : DEFAULT_CUE_DECK.homeGoal).filter((c) => c in CUE_CATALOG);
+  const awayDeck = (cues.awayGoal && cues.awayGoal.length ? cues.awayGoal : DEFAULT_CUE_DECK.awayGoal).filter((c) => c in CUE_CATALOG);
+  const periodDeck = (cues.periodEnd && cues.periodEnd.length ? cues.periodEnd : DEFAULT_CUE_DECK.periodEnd).filter((c) => c in CUE_CATALOG);
+  const hornDeck = (cues.horn && cues.horn.length ? cues.horn : DEFAULT_CUE_DECK.horn).filter((c) => c in CUE_CATALOG);
+
+  const { snap } = useCtsGameState();
+  const [active, setActive] = useState<null | { cueId: CtsCueId; until: number; team: 'home' | 'away' | 'horn' }>(null);
+
+  // Round-robin indices per deck. Refs (not state) because we don't
+  // need re-render — we just advance on the next fire.
+  const homeIdxRef = useRef<number>(0);
+  const awayIdxRef = useRef<number>(0);
+  const periodIdxRef = useRef<number>(0);
+  const hornIdxRef = useRef<number>(0);
+
+  // Last-seen refs for delta detection.
+  const lastHomeRef = useRef<number>(snap.homeScore);
+  const lastAwayRef = useRef<number>(snap.awayScore);
+  const lastPeriodRef = useRef<number>(snap.period);
+  const lastHornRef = useRef<boolean>(snap.horn);
+
+  const fire = useCallback((deck: CtsCueId[], idxRef: { current: number }, team: 'home' | 'away' | 'horn') => {
+    if (!deck.length) return;
+    const cueId = deck[idxRef.current % deck.length] as CtsCueId;
+    idxRef.current = (idxRef.current + 1) % deck.length;
+    setActive({ cueId, until: Date.now() + durationMs, team });
+  }, [durationMs]);
+
+  // Goal / horn / period detection on every snapshot update.
+  useEffect(() => {
+    let fired = false;
+    if (snap.homeScore > lastHomeRef.current) {
+      fire(homeDeck, homeIdxRef, 'home');
+      fired = true;
+    } else if (snap.awayScore > lastAwayRef.current) {
+      fire(awayDeck, awayIdxRef, 'away');
+      fired = true;
+    }
+    // Horn + period changes are checked SECOND so a goal-with-horn
+    // (rare but possible) shows the goal scene, not the period scene.
+    if (!fired) {
+      if (!cfg.ignoreHorn && snap.horn && !lastHornRef.current) {
+        fire(hornDeck, hornIdxRef, 'horn');
+      } else if (!cfg.ignorePeriodEnd && snap.period > lastPeriodRef.current) {
+        fire(periodDeck, periodIdxRef, 'horn');
+      }
+    }
+    lastHomeRef.current = snap.homeScore;
+    lastAwayRef.current = snap.awayScore;
+    lastPeriodRef.current = snap.period;
+    lastHornRef.current = snap.horn;
+  }, [snap.homeScore, snap.awayScore, snap.period, snap.horn, homeDeck, awayDeck, periodDeck, hornDeck, fire, cfg.ignoreHorn, cfg.ignorePeriodEnd]);
+
+  // Operator-preview event — lets a Properties-panel button trigger a
+  // celebration without needing a real bridge connection. Detail can
+  // pin a specific cueId; otherwise it round-robins through the
+  // appropriate deck for the team.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onPreview = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      const team: 'home' | 'away' | 'horn' = detail.team === 'away' ? 'away' : detail.team === 'horn' ? 'horn' : 'home';
+      let cueId: CtsCueId | undefined = typeof detail.cueId === 'string' && detail.cueId in CUE_CATALOG ? detail.cueId : undefined;
+      if (!cueId) {
+        const deck = team === 'home' ? homeDeck : team === 'away' ? awayDeck : hornDeck;
+        const idxRef = team === 'home' ? homeIdxRef : team === 'away' ? awayIdxRef : hornIdxRef;
+        if (!deck.length) return;
+        cueId = deck[idxRef.current % deck.length] as CtsCueId;
+        idxRef.current = (idxRef.current + 1) % deck.length;
+      }
+      setActive({ cueId, until: Date.now() + durationMs, team });
+    };
+    window.addEventListener('edu:cts-celebration-preview', onPreview);
+    return () => window.removeEventListener('edu:cts-celebration-preview', onPreview);
+  }, [homeDeck, awayDeck, hornDeck, durationMs]);
+
+  // Auto-revert when the window expires.
+  useEffect(() => {
+    if (!active) return;
+    const left = active.until - Date.now();
+    if (left <= 0) { setActive(null); return; }
+    const t = setTimeout(() => setActive(null), left);
+    return () => clearTimeout(t);
+  }, [active]);
+
+  // Compose the final cue config: catalog defaults + cueOverrides +
+  // team colors + score (so the celebration's "score" string reflects
+  // the live game when the orchestrator fires).
+  const cueProps = useMemo(() => {
+    if (!active) return null;
+    const entry = CUE_CATALOG[active.cueId];
+    if (!entry) return null;
+    const baseDefaults = (entry as { defaults: Record<string, unknown> }).defaults || {};
+    const override = (cfg.cueOverrides && cfg.cueOverrides[active.cueId]) || {};
+    return {
+      ...baseDefaults,
+      ...override,
+      // Inject team copy / colors so cues without explicit values pull
+      // them from the orchestrator's tenant-wide config. Cues that
+      // don't read these fields just ignore them.
+      homeColor: cfg.homeColor || (override as any).homeColor || '#3b82f6',
+      awayColor: cfg.awayColor || (override as any).awayColor || '#ef4444',
+      teamName: active.team === 'away' ? cfg.awayTeamName : cfg.homeTeamName,
+      // Live score string — many cues render `score` somewhere.
+      score: `${snap.homeScore}-${snap.awayScore}`,
+    } as Record<string, unknown>;
+  }, [active, cfg.cueOverrides, cfg.homeColor, cfg.awayColor, cfg.homeTeamName, cfg.awayTeamName, snap.homeScore, snap.awayScore]);
+
+  // Measured overlay container so the cue widgets get a real `height`
+  // prop (they size their typography off it). When idle the overlay
+  // is still mounted but invisible — keeps the layout stable.
+  const { ref, h } = useMeasuredHeight();
+  const isActive = !!active && !!cueProps;
+  const Active = isActive && active ? CUE_CATALOG[active.cueId]?.Component : null;
+
+  return (
+    <div
+      ref={ref}
+      aria-hidden={!isActive}
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        overflow: 'hidden',
+        pointerEvents: isActive ? 'auto' : 'none',
+        opacity: isActive ? 1 : 0,
+        transition: 'opacity 220ms ease',
+        background: isActive ? '#000' : 'transparent',
+      }}
+    >
+      {Active && h > 0 && (
+        <Active config={cueProps as never} live={true} height={h} />
+      )}
     </div>
   );
 }

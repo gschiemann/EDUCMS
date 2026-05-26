@@ -1023,6 +1023,7 @@ import {
   CtsSponsorRotatorWidget,
   CtsAnnouncementWidget,
   CtsCelebrationWidget,
+  CtsCelebrationOrchestratorWidget,
 } from './sports/CtsRibbonWidgets';
 
 registerVariant({
@@ -1162,8 +1163,8 @@ registerVariant({
 registerVariant({
   id: 'scoreboard-cts-celebration',
   widgetType: 'SCOREBOARD',
-  name: 'Auto-Celebration (CTS)',
-  description: 'Idles "GO TEAM"; pulses a big team-color "GOAL!" scene the moment the CTS score increases or the horn fires. Detection is delta-based so duplicate snapshots never re-trigger.',
+  name: 'Auto-Celebration (CTS, simple)',
+  description: 'Idles "GO TEAM"; pulses a big team-color "GOAL!" scene the moment the CTS score increases or the horn fires. Detection is delta-based so duplicate snapshots never re-trigger. Lightweight text-only — for the full cinematic celebration library, use the Celebration Orchestrator tile below.',
   category: 'SPORTS',
   render: CtsCelebrationWidget as any,
   vertical: 'SPORTS',
@@ -1175,6 +1176,29 @@ registerVariant({
     homeColor: '#3b82f6',
     awayColor: '#ef4444',
     bgColor: '#0a0a14',
+  },
+});
+
+registerVariant({
+  id: 'scoreboard-cts-celebration-orchestrator',
+  widgetType: 'SCOREBOARD',
+  name: 'Celebration Orchestrator (CTS)',
+  description: 'Full-coverage overlay that fires a CINEMATIC celebration from the existing celebration library (soccer GOOOOAL, hockey red-lamp, lacrosse stick-up, football TD, etc.) the moment the CTS feed shows a home/away goal, period change, or horn. Picks from operator-configured cue decks; round-robins so the same scene doesn’t repeat twice in a row. Drop this on the ribbon as a full-bleed, high-z-index zone — it stays invisible until something fires.',
+  category: 'SPORTS',
+  render: CtsCelebrationOrchestratorWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: {
+    durationMs: 6000,
+    homeTeamName: 'HOME',
+    awayTeamName: 'AWAY',
+    homeColor: '#3b82f6',
+    awayColor: '#ef4444',
+    cues: {
+      homeGoal: ['CEL_SOCCER_GOAL', 'CEL_HOCKEY_GOAL', 'CEL_LX_GOAL', 'CEL_SC_GOAL_NEON'],
+      awayGoal: ['CEL_HOCKEY_GOAL', 'CEL_SOCCER_GOAL', 'CEL_HK_GOAL_RETRO', 'CEL_LX_GOAL'],
+      periodEnd: ['CEL_FOOTBALL_TOUCHDOWN', 'CEL_BASKETBALL_BUZZER'],
+      horn: ['CEL_FOOTBALL_TOUCHDOWN', 'CEL_BASKETBALL_BUZZER'],
+    },
   },
 });
 

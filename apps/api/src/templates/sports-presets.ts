@@ -176,6 +176,37 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
         awayColor: '#ef4444',
         bgColor: '#0a0a14',
       }),
+      // FULL-BLEED celebration overlay — invisible until a goal-delta /
+      // horn / period change fires, then takes over the entire ribbon
+      // with a cinematic celebration scene from the v2/Celebrations*
+      // library. z-index 50 so it draws above every other ribbon zone;
+      // auto-reverts after `durationMs` so the live scoreboard returns
+      // the moment the scene ends. This is the bridge between the
+      // already-built CEL_* widget library and the live CTS feed.
+      {
+        name: 'Celebration Overlay',
+        widgetType: 'SCOREBOARD',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        zIndex: 50,
+        sortOrder: 1,
+        defaultConfig: {
+          variant: 'scoreboard-cts-celebration-orchestrator',
+          durationMs: 6000,
+          homeTeamName: 'HOME',
+          awayTeamName: 'AWAY',
+          homeColor: '#3b82f6',
+          awayColor: '#ef4444',
+          cues: {
+            homeGoal: ['CEL_SOCCER_GOAL', 'CEL_HOCKEY_GOAL', 'CEL_LX_GOAL', 'CEL_SC_GOAL_NEON'],
+            awayGoal: ['CEL_HOCKEY_GOAL', 'CEL_SOCCER_GOAL', 'CEL_HK_GOAL_RETRO', 'CEL_LX_GOAL'],
+            periodEnd: ['CEL_FOOTBALL_TOUCHDOWN', 'CEL_BASKETBALL_BUZZER'],
+            horn: ['CEL_FOOTBALL_TOUCHDOWN', 'CEL_BASKETBALL_BUZZER'],
+          },
+        },
+      },
     ],
   },
   // ── Scoreboards — live, engine-driven (bind a game in the editor) ──
