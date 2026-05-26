@@ -198,6 +198,73 @@ describe('RealtimeGateway', () => {
       expect(frame.payload.type).toBe('LOCKDOWN');
     });
 
+    /**
+     * Regression test for 2026-05-26 audit P0-1.
+     *
+     * Before the fix, broadcastToScope did NOT pass the envelope's
+     * timestamp to send(), and send() rewrote `timestamp` as
+     * Math.floor(Date.now() / 1000) — SECONDS. Every other consumer of
+     * msg.timestamp in this codebase uses MILLISECONDS (player freshness
+     * gate, WebsocketSignerService.verifyMessage, ws-signature.ts). The
+     * difference between an ms value (~1.7e12) and a seconds value
+     * (~1.7e9) is always >30_000, so the player dropped every signed
+     * SENSITIVE_TYPES message with "[Player WS] dropped stale/future
+     * event" — and emergency fan-out fell back to the 5–10s HTTP poll
+     * instead of the advertised 200ms WS path.
+     *
+     * Two assertions:
+     *  1. Signed-envelope path: frame.timestamp === signedEnvelope.timestamp
+     *     (the signature is computed against the envelope's timestamp;
+     *     anything else is fiction).
+     *  2. Unit sanity: timestamp is in milliseconds for both signed +
+     *     unsigned, i.e. close to Date.now() in ms, not seconds.
+     */
+    it('P0-1: preserves envelope timestamp in ms (not seconds) for signed messages', () => {
+      process.env.DEVICE_SECRET_KEY = 'test_device_secret_key_at_least_32_chars_xx';
+
+      const signer = new WebsocketSignerService();
+      const signedEnvelope = signer.signMessage('EMERGENCY_OVERRIDE', {
+        type: 'LOCKDOWN',
+        severity: 'CRITICAL',
+      });
+
+      const mockWs = { send: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
+      const clients = (gateway as any).clients;
+      clients.set(mockWs, { isAuthenticated: true, tenantId: 'tenant_abc', socket: mockWs });
+
+      gateway.broadcastToScope('tenant', 'tenant_abc', signedEnvelope);
+
+      const frame = JSON.parse((mockWs.send as jest.Mock).mock.calls[0][0]);
+
+      // 1. Timestamp pass-through: must exactly equal what the signature covers.
+      expect(frame.timestamp).toBe(signedEnvelope.timestamp);
+
+      // 2. Unit sanity: ms (close to Date.now()), not seconds.
+      //    ms today is ~1.7e12, seconds is ~1.7e9 — 1000x apart.
+      expect(frame.timestamp).toBeGreaterThan(1e12);
+      expect(Math.abs(Date.now() - frame.timestamp)).toBeLessThan(2_000);
+    });
+
+    it('P0-1: unsigned control messages get fresh Date.now() in ms', () => {
+      const mockWs = { send: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
+      const clients = (gateway as any).clients;
+      clients.set(mockWs, { isAuthenticated: true, tenantId: 'tenant_abc', socket: mockWs });
+
+      gateway.broadcastToScope('tenant', 'tenant_abc', {
+        type: 'CHECK_FOR_UPDATES',
+        payload: { version: 2 },
+      });
+
+      const frame = JSON.parse((mockWs.send as jest.Mock).mock.calls[0][0]);
+
+      // Unsigned messages don't have an envelope timestamp to preserve —
+      // gateway generates a fresh Date.now() in ms. Player doesn't gate
+      // on timestamp for non-SENSITIVE_TYPES, but unit consistency keeps
+      // any future client-side timestamp-using code from breaking.
+      expect(frame.timestamp).toBeGreaterThan(1e12);
+      expect(Math.abs(Date.now() - frame.timestamp)).toBeLessThan(2_000);
+    });
+
     it('should not include signature/eventId on unsigned control messages', () => {
       const mockWs = { send: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
       const clients = (gateway as any).clients;

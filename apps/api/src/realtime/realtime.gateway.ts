@@ -254,9 +254,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       if (type === 'device' && ctx.deviceId === id) match = true;
 
       if (match) {
-        // Preserve signature + eventId from the signed envelope so players
-        // can verify message authenticity. Previously these were silently
-        // dropped — P0 life-safety bug, see audit fix #6.
+        // Preserve signature + eventId AND the envelope timestamp from
+        // the signed message. Previously signature/eventId were dropped
+        // (audit fix #6); the timestamp was REWRITTEN to seconds in
+        // send() while the player's freshness check uses milliseconds —
+        // so every SENSITIVE_TYPES message (OVERRIDE, TENANT_CHANGED)
+        // was silently dropped client-side and the "200ms fan-out"
+        // claim was effectively a 5-10s HTTP-poll backstop in practice.
+        // The signature is computed over the envelope's timestamp —
+        // anything else is fiction. (Audit 2026-05-26, P0-1.)
         this.send(
           ctx.socket,
           message.type,
@@ -264,6 +270,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
           crypto.randomUUID(),
           message.signature,
           message.eventId,
+          message.timestamp,
         );
         sent++;
       }
@@ -272,8 +279,21 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   // ─── Send a typed message to a single client ───
-  // signature and eventId are optional — present for signed emergency
-  // envelopes, absent for internal control messages (AUTH_OK, etc.).
+  // signature, eventId, and signedTimestamp are optional — present for
+  // signed emergency envelopes, absent for internal control messages
+  // (AUTH_OK, HEARTBEAT_ACK, etc.).
+  //
+  // CRITICAL (audit fix 2026-05-26, P0-1): every other consumer of
+  // msg.timestamp in this codebase expects MILLISECONDS:
+  //   - Player freshness gate at apps/web/.../player/page.tsx:3424
+  //     uses `Math.abs(Date.now() + offset - msg.timestamp) > 30_000`
+  //   - WebsocketSignerService.verifyMessage uses Date.now()-message.timestamp
+  //   - ws-signature.ts:71 uses Date.now()-message.timestamp
+  // Only this `send` was emitting seconds, which made every signed
+  // SENSITIVE_TYPES message land ~1.7×10¹² ms "in the past" on the
+  // player and get dropped. Default is now Date.now() in ms; for
+  // signed envelopes we pass the envelope's ORIGINAL signed timestamp
+  // through unchanged (since that's what the signature covers).
   private send(
     client: WebSocket,
     type: string,
@@ -281,13 +301,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     idempotencyKey?: string,
     signature?: string,
     eventId?: string,
+    signedTimestamp?: number,
   ) {
     if (client.readyState === WebSocket.OPEN) {
       const frame: Record<string, unknown> = {
         type,
         payload,
         idempotencyKey: idempotencyKey || crypto.randomUUID(),
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp: typeof signedTimestamp === 'number' ? signedTimestamp : Date.now(),
       };
       // Include signing fields only when present so unsigned control
       // messages (AUTH_OK, HEARTBEAT_ACK, etc.) are not affected.
