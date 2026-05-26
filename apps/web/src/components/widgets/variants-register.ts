@@ -100,6 +100,49 @@ registerVariant({
   render: ExternalHtmlTile,
   previewOnly: true,
 });
+
+// 2026-05-25 monetize-audit — the one ad-network we can integrate
+// without partnership sign-off. Drops a rotating sponsor banner that
+// reads from the operator's own asset library. Sponsor disclosure
+// label baked in for FTC native-advertising compliance.
+import { HouseAdsBannerTile, MusicPlayerTile } from './variant-tiles/monetize-music-tiles';
+registerVariant({
+  id: 'house-ad-banner-basic',
+  widgetType: 'HOUSE_AD_BANNER',
+  name: 'House Ads',
+  description: 'Rotate your own sponsor creatives. No third-party network. Pick slots + interval in Properties.',
+  category: 'MODERN',
+  render: HouseAdsBannerTile,
+  previewOnly: true,
+  defaultConfig: {
+    intervalMs: 8000,
+    showSponsorLabel: true,
+    placement: 'banner',
+    slots: [],
+  },
+});
+
+// 2026-05-25 music-overhaul — venue background music with multi-
+// provider support: SomaFM (free, public), NPR local-station finder
+// (free, by lat/lng), NTS Radio (free, public), Apple Music for
+// Business / Spotify for Business (placeholders pending OAuth), and
+// generic Icecast/Shoutcast/HLS audio URL for tenant-supplied streams.
+registerVariant({
+  id: 'music-player-basic',
+  widgetType: 'MUSIC_PLAYER',
+  name: 'Music Player',
+  description: 'Venue background music. SomaFM · NPR · NTS · custom stream. Schedule windows, emergency-silenced.',
+  category: 'MODERN',
+  render: MusicPlayerTile,
+  previewOnly: true,
+  defaultConfig: {
+    source: 'somafm',
+    somafmStationId: 'groovesalad',
+    defaultVolume: 70,
+    autoResume: true,
+    pauseDuringEmergency: true,
+  },
+});
 import {
   ClockGradientDigital, ClockDarkPill, ClockMinimalAnalog, ClockStackedCard,
   TextBigBold, TextGradient, TextHighlight, TextOutlined,

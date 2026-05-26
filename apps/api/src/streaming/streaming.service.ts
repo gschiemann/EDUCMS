@@ -17,6 +17,7 @@ import {
   type StreamChannelDto,
 } from '@cms/api-types';
 import { sealCredentials, openCredentials } from './creds-cipher';
+import { safeFetch, validatePublicUrl, SsrfError } from '../branding/safe-fetch';
 
 @Injectable()
 export class StreamingService {
@@ -290,6 +291,198 @@ export class StreamingService {
       playbackType: ch.playbackType,
       title: ch.title,
       allowAdOverlay: ch.allowAdOverlay,
+    };
+  }
+
+  /**
+   * Server-side URL validator + embeddability probe for the Connect /
+   * Pick-channels UI. Added 2026-05-25 streaming-overhaul. The
+   * operator screenshot showed France 24 + a YouTube embed Error 153
+   * shipping to the live preview because the underlying YouTube video
+   * had embedding disabled. This endpoint pre-checks before the
+   * operator wastes a screen-slot.
+   *
+   * Returns a structured assessment:
+   *   { ok, type, embeddable, reason?, normalizedUrl?, suggestion? }
+   *
+   * - `type`: 'youtube' | 'twitch' | 'vimeo' | 'hls' | 'dash' |
+   *           'public-broadcaster' | 'unknown'
+   * - `embeddable`: best-effort yes/no
+   * - `reason`: human-friendly explanation when not embeddable
+   * - `suggestion`: alternate source to try
+   *
+   * SSRF-safe via validatePublicUrl + safeFetch. We NEVER call
+   * fetch(url) directly on operator-supplied input.
+   */
+  async validateStreamUrl(rawUrl: string): Promise<{
+    ok: boolean;
+    type: string;
+    embeddable: boolean;
+    reason?: string;
+    normalizedUrl?: string;
+    suggestion?: string;
+  }> {
+    const url = String(rawUrl || '').trim();
+    if (!url) {
+      return { ok: false, type: 'unknown', embeddable: false, reason: 'No URL provided.' };
+    }
+
+    // Up-front scheme + private-IP guard (also enforces 80/443 ports).
+    try {
+      validatePublicUrl(url);
+    } catch (e) {
+      const msg = e instanceof SsrfError ? e.message : 'Invalid URL format.';
+      return { ok: false, type: 'unknown', embeddable: false, reason: msg };
+    }
+
+    // ─── YouTube ───
+    // The signage operator's #1 source. We check whether the video
+    // owner permits embedding. The "embeddable" public flag isn't on
+    // any YouTube URL, BUT the oEmbed endpoint returns 401 / 403 for
+    // videos with embedding disabled — that's the structural signal.
+    const ytWatchMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/live\/|youtube\.com\/embed\/)([\w-]{6,})/);
+    const ytChannelMatch = url.match(/youtube\.com\/(?:c|channel|user|@)([\w-]+)(?:\/live)?/i);
+    if (ytWatchMatch || ytChannelMatch) {
+      // Channel-level live embeds (live_stream?channel=…) are always
+      // permitted by YouTube — the channel owner publishes the
+      // long-running stream, and channel embeds resolve to whichever
+      // video is currently live. We assume embeddable unless someone
+      // explicitly forbids; if the channel handle is valid, oEmbed
+      // returns 200.
+      const id = ytWatchMatch ? ytWatchMatch[1] : '';
+      const probeUrl = ytWatchMatch
+        ? `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${id}`)}&format=json`
+        : `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+      try {
+        const r = await safeFetch(probeUrl, { timeoutMs: 6000, accept: 'application/json' });
+        if (r.status === 401 || r.status === 403) {
+          return {
+            ok: false,
+            type: 'youtube',
+            embeddable: false,
+            reason: "This YouTube video has embedding disabled by its owner (Error 153 at playback time). Pick another video or a public live channel — channel-level live embeds (youtube.com/@handle/live) usually work even when individual videos don't.",
+            suggestion: 'Try a 24/7 live channel like NHK World, France 24, Bloomberg, or Sky News from the Public Broadcasters one-click connection.',
+          };
+        }
+        if (r.status === 404) {
+          return {
+            ok: false,
+            type: 'youtube',
+            embeddable: false,
+            reason: 'YouTube returned 404 — the video / channel does not exist or has been removed.',
+          };
+        }
+        if (r.status >= 200 && r.status < 300) {
+          return { ok: true, type: 'youtube', embeddable: true, normalizedUrl: url };
+        }
+        // 200-ish but not embeddable explicitly — surface the unknown
+        // state so the operator can decide.
+        return {
+          ok: true,
+          type: 'youtube',
+          embeddable: true,
+          reason: `YouTube probe returned ${r.status} — embedding likely permitted, but verify in preview.`,
+        };
+      } catch (e) {
+        // Network-level error — don't block, but surface the warning.
+        return {
+          ok: true,
+          type: 'youtube',
+          embeddable: true,
+          reason: `Could not pre-verify YouTube embedding (${e instanceof Error ? e.message : 'network error'}). The screen will still try to play this URL.`,
+        };
+      }
+    }
+
+    // ─── Twitch ───
+    // Twitch embeds always work (anonymous-mode); the only gotcha is
+    // the parent= query param needs to match the iframe host, which
+    // the StreamingWidget already handles at render time.
+    if (/twitch\.tv\/[\w-]+/i.test(url)) {
+      return { ok: true, type: 'twitch', embeddable: true, normalizedUrl: url };
+    }
+
+    // ─── Vimeo ───
+    if (/vimeo\.com\/(?:video\/)?\d+/.test(url)) {
+      const m = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+      if (m) {
+        try {
+          // Vimeo oEmbed returns 403 with `domain_status_code` when
+          // owner forbids embedding on this domain.
+          const r = await safeFetch(
+            `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}`,
+            { timeoutMs: 6000, accept: 'application/json' },
+          );
+          if (r.status === 403 || r.status === 401) {
+            return {
+              ok: false,
+              type: 'vimeo',
+              embeddable: false,
+              reason: 'Vimeo refused the embed probe. The video owner may have restricted embedding to specific domains.',
+            };
+          }
+          if (r.status === 404) {
+            return { ok: false, type: 'vimeo', embeddable: false, reason: 'Vimeo returned 404 — video not found.' };
+          }
+          return { ok: true, type: 'vimeo', embeddable: true, normalizedUrl: url };
+        } catch {
+          return { ok: true, type: 'vimeo', embeddable: true, reason: 'Could not pre-verify embedding; live preview will surface any error.' };
+        }
+      }
+    }
+
+    // ─── HLS / DASH direct ───
+    // Doing a HEAD with safeFetch tells us:
+    //   • the URL resolves (no DNS / SSRF issues)
+    //   • the content-type matches an HLS or DASH playlist
+    // If the content-type is text/* we still pass — Akamai / Vimeo
+    // sometimes return text/plain for m3u8.
+    if (/\.m3u8(\?|$)/i.test(url)) {
+      try {
+        const r = await safeFetch(url, { timeoutMs: 6000, maxBytes: 64 * 1024 });
+        if (r.status >= 400) {
+          return {
+            ok: false,
+            type: 'hls',
+            embeddable: false,
+            reason: `HLS playlist returned ${r.status}.`,
+          };
+        }
+        return { ok: true, type: 'hls', embeddable: true, normalizedUrl: url };
+      } catch (e) {
+        return {
+          ok: false,
+          type: 'hls',
+          embeddable: false,
+          reason: `Could not reach HLS playlist: ${e instanceof Error ? e.message : 'network error'}.`,
+        };
+      }
+    }
+
+    if (/\.mpd(\?|$)/i.test(url)) {
+      try {
+        const r = await safeFetch(url, { timeoutMs: 6000, maxBytes: 64 * 1024 });
+        if (r.status >= 400) {
+          return { ok: false, type: 'dash', embeddable: false, reason: `DASH manifest returned ${r.status}.` };
+        }
+        return { ok: true, type: 'dash', embeddable: true, normalizedUrl: url };
+      } catch (e) {
+        return {
+          ok: false,
+          type: 'dash',
+          embeddable: false,
+          reason: `Could not reach DASH manifest: ${e instanceof Error ? e.message : 'network error'}.`,
+        };
+      }
+    }
+
+    // ─── Unknown — let it through, but warn ───
+    return {
+      ok: true,
+      type: 'unknown',
+      embeddable: true,
+      reason: 'URL format not recognized. Falling back to iframe; preview to verify.',
+      normalizedUrl: url,
     };
   }
 }

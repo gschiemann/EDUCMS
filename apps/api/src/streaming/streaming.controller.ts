@@ -109,4 +109,19 @@ export class StreamingController {
   async resolvePlayback(@Request() req: any, @Param('id') id: string) {
     return this.svc.resolvePlayback(req.user.tenantId, id);
   }
+
+  // 2026-05-25 streaming-overhaul — operator screenshot showed
+  // "France 24 — Français NEWS · iframe · Ad overlay OK" then on
+  // the live preview "Watch video on YouTube · Error 153 · Video
+  // player configuration error" — YouTube embed error 153 = video
+  // owner has disabled embedding on that specific video / live
+  // stream. This endpoint pre-probes the URL server-side so the
+  // operator finds out BEFORE the screen does. SSRF-safe via the
+  // existing safeFetch path; never exposes tenant IPs to the
+  // third-party embed.
+  @Post('validate')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async validateUrl(@Body() body: { url: string }) {
+    return this.svc.validateStreamUrl(body?.url || '');
+  }
 }

@@ -55,6 +55,10 @@ import { SampleDataModule } from './sample-data/sample-data.module';
 import { ImportsModule } from './imports/imports.module';
 // 2026-05-03 — Claude-backed AI content generation.
 import { AiModule } from './ai/ai.module';
+// 2026-05-26 — venue background music: SomaFM / NPR-by-geo / NTS /
+// custom Icecast/HLS stream + Apple-for-Business + Spotify-for-Business
+// placeholders. Backs the MusicPlayerWidget.
+import { MusicModule } from './music/music.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
@@ -100,6 +104,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     SampleDataModule,
     ImportsModule,
     AiModule,
+    MusicModule,
     AnalyticsModule,
     // 2026-05-06 — operator: kiosk wedged on "429 trying to
     // reconnect" right after fresh APK install. Cause: a fresh kiosk

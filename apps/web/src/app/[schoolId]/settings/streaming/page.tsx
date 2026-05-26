@@ -688,6 +688,17 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
   // Manual entry for providers without a preset list (custom HLS, YouTube, Twitch)
   const [manualUrl, setManualUrl] = useState('');
   const [manualTitle, setManualTitle] = useState('');
+  // 2026-05-25 streaming-overhaul — operator screenshot showed a
+  // YouTube embed Error 153 going live because no one had pre-checked
+  // embeddability. validationState captures the server's structured
+  // probe result so the operator sees it BEFORE the screen does.
+  const [validationState, setValidationState] = useState<
+    | null
+    | { kind: 'checking' }
+    | { kind: 'ok'; type: string; note?: string }
+    | { kind: 'warn'; type: string; reason: string; suggestion?: string }
+    | { kind: 'block'; type: string; reason: string; suggestion?: string }
+  >(null);
 
   const pick = useMutation({
     mutationFn: async (data: any) => apiFetch('/streaming/channels', { method: 'POST', body: JSON.stringify(data) }),
@@ -699,8 +710,52 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
     onSuccess: () => onChanged(),
   });
 
-  const handleManualAdd = () => {
+  const handleManualAdd = async () => {
     if (!manualUrl) return;
+    // Always run the server-side embeddability probe BEFORE saving.
+    // If the URL is broken / embedding-disabled, we block the save so
+    // the operator can't ship a known-bad channel to their screen.
+    setValidationState({ kind: 'checking' });
+    let probe: any = null;
+    try {
+      probe = await apiFetch<any>('/streaming/validate', {
+        method: 'POST',
+        body: JSON.stringify({ url: manualUrl }),
+      });
+    } catch (e) {
+      // Validator down is not a save-blocker; let the operator
+      // continue but show a soft warning.
+      probe = {
+        ok: true,
+        type: 'unknown',
+        embeddable: true,
+        reason: 'Could not pre-verify (validator unreachable). The screen will still try to play.',
+      };
+    }
+
+    if (probe.ok === false && probe.embeddable === false) {
+      // Hard fail — surface the structural problem and DON'T save.
+      setValidationState({
+        kind: 'block',
+        type: probe.type || 'unknown',
+        reason: probe.reason || 'This URL cannot be embedded on a screen.',
+        suggestion: probe.suggestion,
+      });
+      return;
+    }
+
+    if (probe.reason) {
+      // Soft warning — save but show the note.
+      setValidationState({
+        kind: 'warn',
+        type: probe.type || 'unknown',
+        reason: probe.reason,
+        suggestion: probe.suggestion,
+      });
+    } else {
+      setValidationState({ kind: 'ok', type: probe.type || 'unknown' });
+    }
+
     let playbackType = 'hls';
     let externalId = manualUrl;
     if (/youtube\.com|youtu\.be/i.test(manualUrl) || /twitch\.tv|vimeo\.com/i.test(manualUrl)) playbackType = 'iframe';
@@ -776,10 +831,50 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Add a channel by URL</h3>
             <div className="space-y-2">
               <Field label="Title" placeholder="ESPN" value={manualTitle} onChange={setManualTitle} />
-              <Field label="URL" placeholder="https://example.com/live.m3u8 or https://youtube.com/watch?v=..." value={manualUrl} onChange={setManualUrl} />
+              <Field label="URL" placeholder="https://example.com/live.m3u8 or https://youtube.com/watch?v=..." value={manualUrl} onChange={(v) => { setManualUrl(v); setValidationState(null); }} />
+              {/* 2026-05-25 streaming-overhaul — server-side
+                  embeddability probe result. Blocks save when the
+                  channel is provably not playable (YouTube Error 153,
+                  HLS 404, etc.). Lets the operator fix the URL or
+                  switch to a working source instead of finding out
+                  after the screen goes black. */}
+              {validationState?.kind === 'checking' && (
+                <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-xs text-slate-600 inline-flex items-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Checking this URL for embeddability…
+                </div>
+              )}
+              {validationState?.kind === 'ok' && (
+                <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-800 inline-flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Looks good — detected {validationState.type.toUpperCase()}.
+                </div>
+              )}
+              {validationState?.kind === 'warn' && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5" /> Heads up
+                  </div>
+                  <div className="mt-1">{validationState.reason}</div>
+                  {validationState.suggestion && (
+                    <div className="mt-1.5 text-amber-700">→ {validationState.suggestion}</div>
+                  )}
+                </div>
+              )}
+              {validationState?.kind === 'block' && (
+                <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-800">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5" /> This URL won't play on the screen
+                  </div>
+                  <div className="mt-1">{validationState.reason}</div>
+                  {validationState.suggestion && (
+                    <div className="mt-1.5 text-rose-700">→ {validationState.suggestion}</div>
+                  )}
+                </div>
+              )}
               <button
                 onClick={handleManualAdd}
-                disabled={!manualUrl || pick.isPending}
+                disabled={!manualUrl || pick.isPending || validationState?.kind === 'checking'}
                 className="px-4 py-2 text-sm font-bold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 inline-flex items-center gap-2"
               >
                 <Plus className="w-4 h-4" /> Add channel
@@ -953,11 +1048,8 @@ function BridgeSetupModal({ provider, onClose, onContinue }: {
         {/* Help box */}
         <div className="px-6 pb-2">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 leading-relaxed">
-            {/* 2026-05-26 fix — `/docs/HARDWARE_BRIDGE.md` 404s
-                because the docs/ folder is at the repo root, not
-                inside apps/web/public/. Point at GitHub. */}
             <strong className="text-slate-800">Need help wiring this up?</strong> See{' '}
-            <a href="https://github.com/gschiemann/EDUCMS/blob/master/docs/HARDWARE_BRIDGE.md" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-0.5">
+            <a href="/docs/HARDWARE_BRIDGE.md" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-0.5">
               docs/HARDWARE_BRIDGE.md <ExternalLink className="w-2.5 h-2.5" />
             </a>{' '}
             for the full guide, including the one-line ffmpeg command and our{' '}
@@ -1148,9 +1240,7 @@ function WhyClosedModal({
             </ul>
             <p className="pt-2">
               Full setup guide:{' '}
-              {/* 2026-05-26 fix — see comment above on the other
-                  HARDWARE_BRIDGE.md callsite. */}
-              <a href="https://github.com/gschiemann/EDUCMS/blob/master/docs/HARDWARE_BRIDGE.md" target="_blank" rel="noreferrer" className="text-indigo-600 underline inline-flex items-center gap-0.5">
+              <a href="/docs/HARDWARE_BRIDGE.md" target="_blank" rel="noreferrer" className="text-indigo-600 underline inline-flex items-center gap-0.5">
                 docs/HARDWARE_BRIDGE.md <ExternalLink className="w-3 h-3" />
               </a>
             </p>
