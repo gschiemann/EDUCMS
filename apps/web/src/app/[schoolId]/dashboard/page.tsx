@@ -255,6 +255,15 @@ export default function DashboardPage() {
     setHintDismissed(true);
     try { localStorage.setItem('edu_dashboard_hint_dismissed', '1'); } catch {}
   };
+  // 2026-05-26 — operator: "once i close the quick startup steps on
+  // the dashboard, how do i ever pull it back up again." Add a
+  // restoreHint() handler + render a small "Show getting started"
+  // link in place of the card when dismissed, so the operator can
+  // always re-open the 3-step guide from where it disappeared.
+  const restoreHint = () => {
+    setHintDismissed(false);
+    try { localStorage.removeItem('edu_dashboard_hint_dismissed'); } catch {}
+  };
   const showOnboarding = !hintDismissed;
   const tenantName = (tenant as any)?.name || (user as any)?.tenantName || 'Your Organization';
   // 2026-05-11 — operator: "say Hi Greg not gschiemann." Helper
@@ -483,7 +492,21 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ─── Getting started — 3-step guide ────────────────────── */}
+      {/* ─── Getting started — 3-step guide ──────────────────────
+          2026-05-26: when dismissed, render a tiny "Show getting
+          started" pill in its place so the operator can always pull
+          the guide back up. Without this, dismissing was a one-way
+          door — operators who closed it early lost the 3-step
+          onramp for good. */}
+      {!showOnboarding && (
+        <button
+          type="button"
+          onClick={restoreHint}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 text-xs font-semibold transition-colors"
+        >
+          <span aria-hidden>↺</span> Show getting started
+        </button>
+      )}
       {showOnboarding && (
         <div className="relative bg-gradient-to-br from-indigo-50 via-white to-violet-50 rounded-2xl border border-indigo-100 p-8 shadow-sm">
           <button
