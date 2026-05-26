@@ -1933,11 +1933,28 @@ function VideoWidget({ config, live }: { config: any; live?: boolean }) {
   }, [shouldAutoplay, config.assetUrl]);
 
   if (config.assetUrl) {
+    // 2026-05-26 — operator: "the custom template i added has a video
+    // widget and a video added to the widget but it doesnt preview in
+    // the playlist or in the custom template editor when i add the
+    // video, both should show previews of what i added."
+    //
+    // In non-live mode (template editor + scaled thumbnails in the
+    // playlist + template gallery cards), the video has no autoplay
+    // and would otherwise render as a solid black box. Appending
+    // `#t=0.5` to the URL makes the browser paint the frame at 0.5s
+    // without playing — works in Chrome, Safari, Firefox. Live mode
+    // keeps the raw URL so the player's autoplay loops cleanly from
+    // 0:00. JS seek added as a fallback for browsers that strip the
+    // fragment.
+    const baseUrl = resolveUrl(config.assetUrl);
+    const src = !live && baseUrl && !baseUrl.includes('#t=')
+      ? `${baseUrl}#t=0.5`
+      : baseUrl;
     return (
       <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden bg-black">
         <video
           ref={videoRef}
-          src={resolveUrl(config.assetUrl)}
+          src={src}
           className="w-full h-full"
           // Default to fill-the-zone (operator: "drop a video in and it
           // should go full screen"). 'contain' (letterbox) is opt-in via
@@ -1947,8 +1964,16 @@ function VideoWidget({ config, live }: { config: any; live?: boolean }) {
           autoPlay={shouldAutoplay}
           muted={shouldMute}
           loop={shouldLoop}
-          preload={live ? 'auto' : 'metadata'}
+          // Bump preload to 'auto' in non-live too so the first frame
+          // actually paints; the difference is negligible (a few KB)
+          // for the editor preview but huge for visible-vs-black.
+          preload={live ? 'auto' : 'auto'}
           playsInline
+          onLoadedMetadata={(e) => {
+            if (!live) {
+              try { (e.currentTarget as HTMLVideoElement).currentTime = 0.5; } catch { /* ignore */ }
+            }
+          }}
         />
         {/* Play button overlay — only show in editor preview, not on live player */}
         {!live && (

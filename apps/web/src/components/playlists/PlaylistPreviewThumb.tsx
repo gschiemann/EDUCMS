@@ -187,16 +187,32 @@ function StaticAssetFrame({ asset, className }: { asset: any; className?: string
     );
   }
   if (asset?.mimeType?.startsWith('video/')) {
+    // 2026-05-26 — operator: "a video playlist should at least show
+    // the initial image of the video so you have a preview thats
+    // worth something to you and not just the play icon."
+    //
+    // The previous code relied on onLoadedMetadata → currentTime=0.1
+    // to paint the first frame. That's flaky across browsers — Safari
+    // and some Chromium variants won't paint a seeked frame on a paused
+    // video without user interaction.
+    //
+    // The reliable cross-browser fix is the `#t=0.5` URL fragment —
+    // tells the browser to display the frame at 0.5s without playing.
+    // Works in Chrome, Safari, Firefox. The onLoadedMetadata seek
+    // stays as belt-and-suspenders for browsers that strip fragments.
+    // 0.5s (not 0.1s) gives the codec time to past any black-flash
+    // intro common in clip exports.
+    const posterUrl = url.includes('#t=') ? url : `${url}#t=0.5`;
     return (
       // eslint-disable-next-line jsx-a11y/media-has-caption
       <video
-        src={url}
+        src={posterUrl}
         muted
         playsInline
-        preload="metadata"
+        preload="auto"
         className={className}
         onLoadedMetadata={(e) => {
-          try { (e.currentTarget as HTMLVideoElement).currentTime = 0.1; } catch { /* ignore */ }
+          try { (e.currentTarget as HTMLVideoElement).currentTime = 0.5; } catch { /* ignore */ }
         }}
       />
     );
