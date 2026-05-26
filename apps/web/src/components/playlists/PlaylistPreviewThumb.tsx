@@ -80,14 +80,40 @@ export type PlaylistContentLabel = 'Image' | 'Video' | 'Template' | 'Mixed conte
 // through every (image/video/html/audio) bucket and hit the generic
 // Layers icon fallback. Recognize PDF + PPTX + DOCX as 'Document'
 // and render a real iframe-of-the-PDF preview below.
-function isDocumentMime(m: string): boolean {
-  return (
+//
+// 2026-05-26 round 2 — operator reports still no preview. Widened the
+// detection: also catch `application/octet-stream` + `.pdf` filename
+// (some browsers / file pickers send PDFs as octet-stream when the
+// OS file-type registry doesn't recognize the extension), and check
+// the fileUrl for `.pdf` / `.pptx` / `.docx` suffixes as fallback.
+function isDocumentMime(m: string, fileUrl?: string): boolean {
+  if (
     m === 'application/pdf' ||
+    m === 'application/x-pdf' || // non-standard but observed in the wild
     m === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
     m === 'application/vnd.ms-powerpoint' ||
     m === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
     m === 'application/msword'
-  );
+  ) {
+    return true;
+  }
+  // octet-stream fallback only when filename gives us a confident extension.
+  if (typeof fileUrl === 'string' && fileUrl.length > 0) {
+    const clean = fileUrl.split('?')[0].split('#')[0].toLowerCase();
+    if (/\.(pdf|pptx?|docx?)$/.test(clean)) return true;
+  }
+  return false;
+}
+
+// Convenience helper: just-the-PDF check (rendering branch uses this
+// to decide between iframe vs styled card).
+function isPdfAsset(asset: any): boolean {
+  if (!asset) return false;
+  const m = asset.mimeType || '';
+  if (m === 'application/pdf' || m === 'application/x-pdf') return true;
+  const url = String(asset.fileUrl || '');
+  const clean = url.split('?')[0].split('#')[0].toLowerCase();
+  return clean.endsWith('.pdf');
 }
 
 /** Returns the content-type label for a playlist. */
@@ -101,11 +127,12 @@ export function derivePlaylistContentLabel(playlist: any): PlaylistContentLabel 
   const kinds = new Set<string>();
   for (const it of items) {
     const mime = it?.asset?.mimeType || '';
+    const url = it?.asset?.fileUrl;
     if (mime.startsWith('image/')) kinds.add('image');
     else if (mime.startsWith('video/')) kinds.add('video');
     else if (mime.startsWith('audio/')) kinds.add('audio');
     else if (mime === 'text/html') kinds.add('webpage');
-    else if (isDocumentMime(mime)) kinds.add('document');
+    else if (isDocumentMime(mime, url)) kinds.add('document');
     else kinds.add('other');
   }
 
@@ -479,7 +506,7 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
   const videoAssets = previewAssets.filter((a) => a.mimeType?.startsWith('video/'));
   const htmlAssets = previewAssets.filter((a) => a.mimeType === 'text/html');
   const audioAssets = previewAssets.filter((a) => a.mimeType?.startsWith('audio/'));
-  const documentAssets = previewAssets.filter((a) => isDocumentMime(a.mimeType || ''));
+  const documentAssets = previewAssets.filter((a) => isDocumentMime(a.mimeType || '', a.fileUrl));
 
   // ── Empty playlist ───────────────────────────────────────────
   if (previewAssets.length === 0) {
@@ -628,7 +655,9 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
   // thumbnail looks like a thumbnail, not a mini reader.
   if (documentAssets.length === previewAssets.length && documentAssets.length > 0) {
     const first = documentAssets[0];
-    const isPdf = first.mimeType === 'application/pdf';
+    // 2026-05-26 round 2 — broaden the PDF check via isPdfAsset()
+    // so we catch octet-stream uploads with .pdf filename too.
+    const isPdf = isPdfAsset(first);
     return (
       <div
         className={shellClasses(size, className)}

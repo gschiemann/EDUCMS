@@ -1577,7 +1577,17 @@ export default function PlaylistsPage() {
                   Schedule it to your screens using the Schedules tab.
                 </p>
                 <button
-                  onClick={() => { window.location.href = window.location.pathname.replace('/playlists', '/templates') + '?edit=' + selectedPlaylist.template.id; }}
+                  onClick={() => {
+                    // 2026-05-26 — was navigating to /templates?edit=<id>
+                    // (the templates LIST page, which ignored the query
+                    // param) instead of the actual builder route. Operator:
+                    // "when i click on a playlist and open up the editor
+                    // and hit edit template, it takes me to the main template
+                    // page and not into the template i just clicked edit on."
+                    // The builder route is /[schoolId]/templates/builder/[id].
+                    const schoolSlug = window.location.pathname.split('/')[1] || '';
+                    window.location.href = `/${schoolSlug}/templates/builder/${selectedPlaylist.template.id}`;
+                  }}
                   className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors"
                 >
                   <Pencil className="w-3.5 h-3.5" /> Edit Template
