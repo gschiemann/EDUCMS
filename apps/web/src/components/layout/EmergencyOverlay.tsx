@@ -80,8 +80,32 @@ export function EmergencyOverlay() {
       aria-modal="true"
       aria-labelledby="emergency-overlay-title"
       aria-describedby="emergency-overlay-desc"
+      // A11y audit (2026-05-25): mirror the player overlay's
+      // role="alert" + aria-live="assertive" pattern (see
+      // apps/web/src/components/player/EmergencyOverlay.tsx). The
+      // dashboard overlay already declared alertdialog which is great
+      // for modal semantics but does NOT itself trigger an SR
+      // announcement when the overlay mounts. Adding role="alert" on
+      // a nested wrapper + aria-live="assertive" + aria-atomic ensures
+      // the SR speaks the title+desc the moment the overlay appears
+      // (which is exactly the life-safety moment we need it to).
       className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-red-950/90 backdrop-blur-3xl border-8 border-red-500 transition-all duration-300"
     >
+      {/* Inner alert region — announces the title + description on mount.
+          The outer alertdialog handles focus + modal semantics; this
+          inner role="alert" handles the live announcement. Per WAI-ARIA
+          authoring practices, alertdialog is for confirmation prompts
+          and does not imply aria-live="assertive". */}
+      <div
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        Emergency active. All screens are currently locked and displaying the
+        emergency override broadcast. Normal scheduling is suspended. To restore
+        normal screen scheduling, type CLEAR and authorize the all-clear signal.
+      </div>
       {/* Flashing global indicator — clamped by the
           @media (prefers-reduced-motion: reduce) rule in globals.css
           so users with vestibular / photosensitive sensitivity
