@@ -158,6 +158,48 @@ export function useSetScreenOrientation() {
   });
 }
 
+/**
+ * 2026-05-26 — per-screen LED canvas dims (canvasW × canvasH).
+ *
+ * Operator picks N panels (1-6 × 320 = canvasW) on the dashboard;
+ * server persists + signed-WS broadcasts (CANVAS_CHANGE); player
+ * applies live within ~150ms. Null clears the override (defaults
+ * back to the controller's native viewport).
+ */
+export function useSetScreenCanvas() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, canvasW, canvasH, reason }: {
+      id: string;
+      canvasW: number | null;
+      canvasH: number | null;
+      reason?: string;
+    }) =>
+      apiFetch(`/screens/${id}/canvas`, {
+        method: 'PUT',
+        body: JSON.stringify({ canvasW, canvasH, reason }),
+      }),
+    onMutate: async ({ id, canvasW, canvasH }) => {
+      await qc.cancelQueries({ queryKey: ['screens'] });
+      const prev = qc.getQueryData<any>(['screens']);
+      qc.setQueryData<any>(['screens'], (old: any) => {
+        const apply = (s: any) => (s?.id === id ? { ...s, canvasW, canvasH } : s);
+        if (Array.isArray(old)) return old.map(apply);
+        if (Array.isArray(old?.screens)) return { ...old, screens: old.screens.map(apply) };
+        return old;
+      });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['screens'], ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['screens'] });
+      qc.invalidateQueries({ queryKey: ['screen-groups'] });
+    },
+  });
+}
+
 export function useUpdateScreen() {
   const qc = useQueryClient();
   return useMutation({

@@ -2,7 +2,7 @@
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation } from '@/hooks/use-api';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
@@ -360,7 +360,18 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
   // sideways-mounted Goodview / Taurus screen can flip orientation in
   // one click without climbing a ladder.
   const setOrientation = useSetScreenOrientation();
+  const setCanvas = useSetScreenCanvas();
   const currentOrientation: string = screen?.orientation || 'LANDSCAPE';
+  // 2026-05-26 — LED canvas (N-panel daisy-chain). Operator clicks a
+  // panel count; we resolve to canvasW = 320 × N, canvasH = 1080.
+  // null = clear override (uses the controller's native viewport,
+  // fine for standard landscape kiosks).
+  const currentCanvasW: number | null = typeof screen?.canvasW === 'number' ? screen.canvasW : null;
+  const currentCanvasH: number | null = typeof screen?.canvasH === 'number' ? screen.canvasH : null;
+  const currentPanelN: number | null =
+    currentCanvasW && currentCanvasH === 1080 && currentCanvasW % 320 === 0
+      ? currentCanvasW / 320
+      : null;
   const cache: any = screen?.lastCacheReport || null;
   const cacheLine = cache
     ? `${cache.totalAssets ?? '?'} assets · ${cache.totalBytes != null ? Math.round(cache.totalBytes / 1024 / 1024) + ' MB' : '? size'}`
@@ -416,6 +427,64 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
             <option value="PORTRAIT">Portrait</option>
             <option value="AUTO">Auto (sensor)</option>
           </select>
+        </div>
+        {/* 2026-05-26 — LED canvas (daisy-chained 320×1080 panels).
+            Operator: "put it on the screen settings from the dashboard
+            itself". Each click = 1-panel-step. Signed-WS pushes the
+            new canvas to the kiosk in ~150ms; on-screen splash +
+            content immediately resize to fit. "Off" clears the
+            override (back to controller's native viewport). */}
+        <div className="flex flex-col min-w-0 col-span-2">
+          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+            LED canvas (320×1080 panels)
+          </div>
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
+            <button
+              type="button"
+              onClick={() => {
+                if (currentCanvasW === null && currentCanvasH === null) return;
+                setCanvas.mutate({ id: screen.id, canvasW: null, canvasH: null });
+              }}
+              disabled={setCanvas.isPending}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                currentPanelN === null && currentCanvasW === null
+                  ? 'bg-slate-700 text-white border-slate-700'
+                  : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+              }`}
+              title="Clear the LED canvas override. Player uses the controller's native viewport (fine for landscape kiosks)."
+            >
+              Off
+            </button>
+            {[1, 2, 3, 4, 5, 6].map((n) => {
+              const w = 320 * n;
+              const h = 1080;
+              const active = currentPanelN === n;
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => {
+                    if (active) return;
+                    setCanvas.mutate({ id: screen.id, canvasW: w, canvasH: h });
+                  }}
+                  disabled={setCanvas.isPending}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    active
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:border-indigo-200'
+                  }`}
+                  title={`${n} panel${n === 1 ? '' : 's'} = ${w}×${h}`}
+                >
+                  {n}
+                </button>
+              );
+            })}
+            <span className="text-[10px] text-slate-400 ml-1 font-mono">
+              {currentCanvasW && currentCanvasH
+                ? `${currentCanvasW}×${currentCanvasH}`
+                : 'native'}
+            </span>
+          </div>
         </div>
         {row(
           'Player APK',

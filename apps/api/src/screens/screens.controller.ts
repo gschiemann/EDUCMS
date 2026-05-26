@@ -1263,6 +1263,95 @@ export class ScreensController {
   }
 
   /**
+   * 2026-05-26 — per-screen LED canvas dimensions. Operator:
+   * "put it on the screen settings from the dashboard itself".
+   *
+   * Some LED controllers (NovaStar Taurus, SMART LED POSTER) ship a
+   * frame buffer (typically 1920×1080) that's wider than the physical
+   * LED's visible pixel range. A single 320×1080 portrait panel only
+   * lights the leftmost 320 px of the 1920-wide source. Daisy-chained
+   * panels add 320 to the visible width per panel (1=320, 2=640, ...
+   * 6=1920). When the operator picks the panel count on the dashboard,
+   * we persist canvasW/canvasH here AND signed-WS broadcast to the
+   * device so the kiosk applies the new canvas without waiting for
+   * the next manifest poll.
+   *
+   * canvasW / canvasH null = use the controller's native viewport
+   * (fine for regular landscape kiosks; only narrow LED chains need
+   * the override).
+   */
+  @Put(':id/canvas')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setCanvas(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { canvasW?: number | null; canvasH?: number | null; reason?: string },
+  ) {
+    // Accept null to CLEAR; otherwise clamp to a sane range. 32px floor
+    // catches typo "0", 8192px ceiling catches typo "32000" — anything
+    // outside that range is almost certainly wrong.
+    const validate = (n: any): number | null => {
+      if (n === null || n === undefined || n === '') return null;
+      const parsed = parseInt(String(n), 10);
+      if (!isFinite(parsed) || parsed < 32 || parsed > 8192) {
+        throw new HttpException(
+          'canvasW/canvasH must be null OR an integer between 32 and 8192',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      return parsed;
+    };
+    const w = validate(body.canvasW);
+    const h = validate(body.canvasH);
+
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+      select: { id: true, name: true, tenantId: true, canvasW: true, canvasH: true },
+    });
+    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    const updated = await this.prisma.client.$transaction(async (tx) => {
+      const u = await tx.screen.update({
+        where: { id },
+        data: { canvasW: w, canvasH: h },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user?.id ?? null,
+          action: 'SCREEN_CANVAS_CHANGED',
+          targetType: 'Screen',
+          targetId: id,
+          details: JSON.stringify({
+            from: { w: screen.canvasW, h: screen.canvasH },
+            to: { w, h },
+            reason: body.reason ?? null,
+          }),
+        },
+      });
+      return u;
+    });
+
+    // Signed WS broadcast — kiosk applies the new canvas immediately
+    // (sets --led-w / --led-h CSS vars + reloads splash) without
+    // waiting for the next 10s manifest poll. Same pattern as
+    // ORIENTATION_CHANGE.
+    const signed = this.signer.signMessage('CANVAS_CHANGE', {
+      screenId: id,
+      canvasW: w,
+      canvasH: h,
+      reason: body.reason ?? null,
+    });
+    try {
+      await this.redisService.publish(`device:${id}`, signed);
+    } catch {
+      // Manifest poll converges within ~10s.
+    }
+
+    return updated;
+  }
+
+  /**
    * 2026-05-25 — device-authenticated companion to PUT /:id/orientation.
    *
    * The pairing-splash orientation picker on the player runs BEFORE an
@@ -2550,6 +2639,14 @@ export class ScreensController {
       // calls setRequestedOrientation if the value changed). Older APKs
       // (no orientation field expected) ignore unknown fields.
       orientation: (screen as any).orientation || 'LANDSCAPE',
+      // 2026-05-26 — LED canvas dimensions for narrow-chain panels.
+      // Null = use controller's native viewport. Player reads these
+      // on every manifest poll and applies via document.documentElement
+      // CSS vars + reloads splash. Operator sets via dashboard
+      // /screens UI; signed WS broadcast (CANVAS_CHANGE) also pushes
+      // the new value within ~150ms of the operator's tap.
+      canvasW: (screen as any).canvasW ?? null,
+      canvasH: (screen as any).canvasH ?? null,
       playlists: dynamicPlaylists
     };
 

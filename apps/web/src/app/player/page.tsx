@@ -2639,6 +2639,55 @@ function PlayerPage() {
         setManifestOrientation(orient);
       }
 
+      // 2026-05-26 — LED canvas override from manifest. Operator sets
+      // canvasW/canvasH on the dashboard /screens UI per-screen; the
+      // manifest pushes the values here within ~10s of the change (or
+      // ~150ms via CANVAS_CHANGE WS broadcast). We apply the values
+      // by writing localStorage AND setting CSS vars + html/body
+      // dimensions LIVE, then setting data-led-narrow so the splash
+      // CSS overrides activate immediately. The localStorage write
+      // ensures the next page load (via the pin script in
+      // apps/web/src/app/player/layout.tsx) picks them up before
+      // first paint. Same priority chain the pin script uses, just
+      // applied at runtime.
+      const cw = typeof manifest.canvasW === 'number' && manifest.canvasW > 0 ? manifest.canvasW : null;
+      const ch = typeof manifest.canvasH === 'number' && manifest.canvasH > 0 ? manifest.canvasH : null;
+      if (cw && ch && typeof document !== 'undefined') {
+        try {
+          // Persist for the next boot — pin script reads this from
+          // localStorage when URL params are absent.
+          localStorage.setItem('edu_canvasW', String(cw));
+          localStorage.setItem('edu_canvasH', String(ch));
+          const root = document.documentElement;
+          const currentW = root.style.getPropertyValue('--led-w').trim();
+          const targetW = `${cw}px`;
+          // Only mutate when the value actually changed (cheap setter
+          // pattern, same as the bridge.setOrientation gate above).
+          if (currentW !== targetW) {
+            root.style.width = `${cw}px`;
+            root.style.height = `${ch}px`;
+            root.style.overflow = 'hidden';
+            root.style.setProperty('--led-w', `${cw}px`);
+            root.style.setProperty('--led-h', `${ch}px`);
+            root.setAttribute('data-led-cfg', '1');
+            // Narrow heuristic matches the pin script in layout.tsx.
+            if (cw < 600 || ch > cw * 2) {
+              root.setAttribute('data-led-narrow', '1');
+            } else {
+              root.removeAttribute('data-led-narrow');
+            }
+            if (document.body) {
+              document.body.style.width = `${cw}px`;
+              document.body.style.height = `${ch}px`;
+              document.body.style.overflow = 'hidden';
+              document.body.style.background = '#000';
+            }
+            const meta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
+            if (meta) meta.content = `width=${cw}, height=${ch}, initial-scale=1, user-scalable=no`;
+          }
+        } catch { /* localStorage / DOM mutation guards */ }
+      }
+
       // Push every asset URL to the offline-cache Service Worker. Safe no-op
       // when SW isn't available. HIGH-5 fix: short-circuit when the URL set
       // hasn't changed since our last push (cheap content-hash compare),

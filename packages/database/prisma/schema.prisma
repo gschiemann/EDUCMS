@@ -584,6 +584,18 @@ model Screen {
   // LANDSCAPE matches the pre-2026-05-24 effective behavior so every
   // already-paired kiosk continues to behave the same after migrate.
   orientation                         String       @default("LANDSCAPE")
+  // 2026-05-26 — LED canvas dimensions. Some LED controllers (NovaStar
+  // Taurus, SMART LED POSTER) report a frame buffer (typically 1920×1080)
+  // that's WIDER than the physical LED's visible pixels — e.g. a single
+  // 320×1080 portrait LED panel renders the leftmost 320 px and discards
+  // the rest. Daisy-chained panels add 320 to the visible width per
+  // panel (1=320, 2=640, ... 6=1920). The operator picks this on the
+  // dashboard screen card (N-panel selector); manifest pushes it to the
+  // player which sets --led-w / --led-h CSS vars so splash + content
+  // anchor to the actual visible canvas. Null = use controller's native
+  // viewport (no scaling, fine for regular landscape kiosks).
+  canvasW                             Int?         @map("canvas_w")
+  canvasH                             Int?         @map("canvas_h")
   osInfo                              String?      @map("os_info")
   browserInfo                         String?      @map("browser_info")
   ipAddress                           String?      @map("ip_address")
