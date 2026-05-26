@@ -5,6 +5,14 @@ import '@/components/widgets/variants-register'; // Boot-time registration for c
 import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Pause, Monitor, Info, Power, RefreshCw, Download, LogOut } from 'lucide-react';
 import { KioskSplash, type LoadProgress } from '@/components/player/KioskSplash';
 import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay';
+// Sprint 5 SOS / TEXT_BROADCAST / MEDIA_ALERT renderer. Audit P0-3
+// (2026-05-26) — the API persisted + signed + published these events
+// but the player never mounted any consumer for them, so wall screens
+// never displayed staff SOS, typed broadcasts, or media alerts. Now
+// mounted at the bottom of the main return, self-polls /emergency/
+// status when WS is unavailable, and accepts WS-pushed messages via
+// the `message` prop.
+import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 import { isFlexGapSupported, applyFlexGapPolyfill } from '@/lib/flex-gap-polyfill';
@@ -2077,6 +2085,13 @@ function PlayerPage() {
   const emergencyPollRef = useRef<NodeJS.Timeout | null>(null);
   const cachedAuthTokenRef = useRef<string | null>(null);
   const [activeEmergency, setActiveEmergency] = useState<any | null>(null);
+  // 2026-05-26 P0-3 — Sprint 5 emergency-message overlay state.
+  // SOS / TEXT_BROADCAST / MEDIA_ALERT pushed via WS land here; the
+  // mounted <EmergencyOverlay> also self-polls /emergency/status every
+  // 10s as a fallback. Separate from `activeEmergency` (which tracks
+  // tenant-wide LOCKDOWN-style overrides) so the two systems can
+  // coexist — a SOS can fire on a screen that's already in lockdown.
+  const [pushedEmergencyMessage, setPushedEmergencyMessage] = useState<EmergencyMessageView | null>(null);
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
 
   // Phase D1.5 — touch builder overlay layer. The dispatcher in
@@ -3449,7 +3464,20 @@ function PlayerPage() {
             // we still pass the message through the same OVERRIDE-type
             // sanity logic (cacheEmergency(null), setActiveEmergency(null))
             // and the next 10s poll re-confirms via /emergency/status.
-            const SENSITIVE_TYPES = new Set(['OVERRIDE', 'TENANT_CHANGED']);
+            // 2026-05-26 P0-3 — Sprint 5 emergency messages (SOS,
+            // TEXT_BROADCAST, MEDIA_ALERT) are signed at
+            // emergency.controller.ts:739/821/907 and travel the same
+            // life-safety pub/sub channel as OVERRIDE — they MUST go
+            // through the same signature + freshness gate, not just
+            // be trusted on type.
+            const SENSITIVE_TYPES = new Set([
+              'OVERRIDE',
+              'TENANT_CHANGED',
+              'SOS',
+              'TEXT_BROADCAST',
+              'MEDIA_ALERT',
+              'ALL_CLEAR_MESSAGE',
+            ]);
             if (SENSITIVE_TYPES.has(msg.type)) {
               if (!msg.signature || typeof msg.signature !== 'string') {
                 console.warn('[Player WS] dropped unsigned sensitive event:', msg.type);
@@ -3515,6 +3543,28 @@ function PlayerPage() {
             }
             if (msg.type === 'SYNC' || msg.type === 'OVERRIDE' || msg.type === 'ALL_CLEAR') {
               fetchContent();
+            }
+            // 2026-05-26 P0-3 — Sprint 5 emergency messages (SOS,
+            // TEXT_BROADCAST, MEDIA_ALERT). API signs + publishes these
+            // (emergency.controller.ts:739/821/907) but before this fix
+            // no player handler consumed them. The EmergencyOverlay
+            // component renders the matching UI; we just set the
+            // pushed-message state from the WS payload. ALL_CLEAR_MESSAGE
+            // (emergency.controller.ts:981) clears.
+            if (msg.type === 'SOS' || msg.type === 'TEXT_BROADCAST' || msg.type === 'MEDIA_ALERT') {
+              const p = msg.payload || {};
+              setPushedEmergencyMessage({
+                id: p.id || msg.eventId || `msg-${Date.now()}`,
+                type: msg.type as 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT',
+                severity: (p.severity as 'INFO' | 'WARN' | 'CRITICAL') || 'CRITICAL',
+                textBlob: typeof p.textBlob === 'string' ? p.textBlob : null,
+                mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [],
+                audioUrl: typeof p.audioUrl === 'string' ? p.audioUrl : null,
+                expiresAt: typeof p.expiresAt === 'number' ? p.expiresAt : null,
+                createdAt: p.createdAt || new Date().toISOString(),
+              });
+            } else if (msg.type === 'ALL_CLEAR_MESSAGE') {
+              setPushedEmergencyMessage(null);
             }
             // Sprint 11 Phase B — REFRESH_WEB: admin pushed a "reload
             // kiosks" command from the dashboard. Solves the chicken-
@@ -6470,6 +6520,23 @@ function PlayerPage() {
         <TouchNavOverlay
           template={touchNavigatedTemplate}
           onBack={() => setTouchNavigatedTemplate(null)}
+        />
+      )}
+      {/* 2026-05-26 P0-3 — Sprint 5 emergency-message renderer.
+          WS-pushed messages (via SOS / TEXT_BROADCAST / MEDIA_ALERT
+          types) land in `pushedEmergencyMessage`. When that's null,
+          the overlay falls back to polling /emergency/status every
+          10s so screens still receive these alerts when the WS path
+          is down. Wrapped in tenantId check because the overlay's
+          self-poll needs both tenantId AND apiUrl to fire.
+          The component renders nothing when there's no active
+          message — zero-cost when no emergency is happening. */}
+      {tenantId && (
+        <EmergencyOverlay
+          message={pushedEmergencyMessage}
+          tenantId={tenantId}
+          apiUrl={`${getApiRoot()}/api/v1`}
+          pollMs={10_000}
         />
       )}
     </div>
