@@ -221,6 +221,116 @@ export class UsersController {
     return updated;
   }
 
+  /**
+   * 2026-05-26 audit fix — close the "documented-but-unwritable
+   * canTriggerPanic" gap.
+   *
+   * CLAUDE.md "Emergency System" section says: an admin in the
+   * dashboard (Settings → Team Members → toggle "Can trigger panic")
+   * grants a non-admin user (receptionist, security guard, nurse,
+   * physical panic-button operator) the ability to fire emergency
+   * triggers WITHOUT meeting the @RequireRoles requirement on
+   * /emergency/trigger. The bypass path in RbacGuard
+   * (apps/api/src/auth/rbac.guard.ts:69) correctly reads
+   * `typedUser.canTriggerPanic` and grants when true — but no writer
+   * endpoint existed, so the field was always `false` in the JWT and
+   * the bypass was UNREACHABLE in production. Documented capability
+   * with no writer = audit theater. This endpoint is the missing
+   * writer.
+   *
+   * Rules:
+   *   - Only DISTRICT_ADMIN / SCHOOL_ADMIN / SUPER_ADMIN can flip
+   *     the flag (same as /:id/role).
+   *   - Target must belong to the caller's tenant (RBAC guard +
+   *     tenantId scoping).
+   *   - RESTRICTED_VIEWER is read-only by definition — flipping the
+   *     flag on a RESTRICTED_VIEWER is rejected to keep the
+   *     defense-in-depth invariant from RbacGuard intact.
+   *   - SUPER_ADMIN can act cross-tenant; everyone else is tenant-
+   *     scoped via the user lookup.
+   *   - Every flip writes an immutable AuditLog row with
+   *     before/after so privilege creep is detectable post-hoc.
+   *   - JWT-claim staleness caveat: the user's CURRENT JWT keeps the
+   *     old value until refresh / re-login. That's acceptable in v1
+   *     because the bypass only widens AT login time, never tightens
+   *     past it. To revoke immediately, the admin can also force a
+   *     /auth/logout on the target user (Sprint 2+ feature) or the
+   *     target user can sign out + back in. Documented in the
+   *     emergency-system help doc.
+   */
+  @Put(':id/can-trigger-panic')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setCanTriggerPanic(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { canTriggerPanic: boolean },
+  ) {
+    if (typeof body?.canTriggerPanic !== 'boolean') {
+      throw new BadRequestException('canTriggerPanic must be a boolean.');
+    }
+    const callerTenantId = req.user.tenantId;
+    const isSuper = req.user.role === AppRole.SUPER_ADMIN;
+
+    // Tenant scoping: SUPER_ADMIN may target any user; others are
+    // confined to their own tenant. Mirrors the /:id/role endpoint.
+    const target = await this.prisma.client.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, role: true, tenantId: true, canTriggerPanic: true } as any,
+    });
+    if (!target) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+    if (!isSuper && (target as any).tenantId !== callerTenantId) {
+      throw new ForbiddenException('Target user is not in your tenant.');
+    }
+
+    // Defense-in-depth: never let a RESTRICTED_VIEWER carry the
+    // bypass flag, regardless of how they got it. RbacGuard already
+    // refuses the bypass for this role at request time
+    // (rbac.guard.ts:72), but storing `canTriggerPanic=true` on a
+    // RESTRICTED_VIEWER would be a footgun if that defense ever
+    // regressed — refuse at the writer too.
+    if (
+      body.canTriggerPanic &&
+      (target as any).role === AppRole.RESTRICTED_VIEWER
+    ) {
+      throw new ForbiddenException(
+        'RESTRICTED_VIEWER cannot receive panic-trigger capability.',
+      );
+    }
+
+    const auditTenantId = (target as any).tenantId || callerTenantId;
+    const fromValue = !!(target as any).canTriggerPanic;
+    const toValue = body.canTriggerPanic;
+
+    // No-op if already at the desired value — still audit-log it so
+    // a forensic timeline shows "admin attempted to flip but it was
+    // already there". Cheap; the value is small.
+    const updated = await this.prisma.client.$transaction(async (tx: any) => {
+      const u = await tx.user.update({
+        where: { id },
+        data: { canTriggerPanic: toValue } as any,
+        select: { id: true, email: true, role: true, canTriggerPanic: true } as any,
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: auditTenantId,
+          userId: req.user.id,
+          action: 'USER_CAN_TRIGGER_PANIC_CHANGED',
+          targetType: 'user',
+          targetId: id,
+          details: JSON.stringify({
+            email: (target as any).email,
+            fromValue,
+            toValue,
+            byTenant: callerTenantId,
+          }),
+        },
+      });
+      return u;
+    });
+
+    return updated;
+  }
+
   @Delete(':id')
   @RequireRoles(AppRole.SUPER_ADMIN)
   async remove(@Request() req: any, @Param('id') id: string) {
