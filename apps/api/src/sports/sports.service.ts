@@ -25,16 +25,20 @@ import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
 /**
  * VenueOS Sports — Sprint 13. The game engine service.
  *
- * Every game mutation does three things, in order:
+ * Every game mutation does two things, in order:
  *   1. update the `games` row (the system-of-record),
  *   2. append a `game_events` row (the append-only forensic log +
- *      the celebration-cue feed the board page polls),
- *   3. publish a signed message to the `game:<id>` Redis channel.
+ *      the celebration-cue feed the board page polls).
  *
- * Step 3 is future-proofing: the board page polls today (dead simple,
- * works on the offline-first player and every browser), but the signed
- * pub/sub fan-out is already wired so a WS-driven board is a drop-in
- * later with no protocol change — same pattern the emergency system uses.
+ * Real-time delivery is the 750ms polling path on the public board
+ * endpoint (with a 1s in-memory cache + per-write invalidation). There
+ * is intentionally NO pub/sub fan-out for game-state events: an earlier
+ * draft published a signed `game:<id>` message on every write, but
+ * RedisService.psubscribe only listens on `tenant:* | group:* | device:*`,
+ * so the signed message landed on the bus and died — theater, not
+ * delivery. If a true WS-driven board lands later, register `game:*` on
+ * the RedisService psubscribe list at THAT point (and verify the gate
+ * with verifyWsHmac the way the broadcast bus does). Audit-Fix 2.
  *
  * THE CLOCK IS AN ANCHOR. We never tick on the server. `clockMs` is the
  * clock reading at `clockUpdatedAt`; `clockRunning` says whether it is
@@ -60,9 +64,15 @@ export class SportsService {
   // the persisted event, so an operator's OFF survives a restart.
   private readonly autoCelebrateCache = new Map<string, boolean>();
 
+  // Audit-Fix 2: `redis` + `signer` are kept on the DI signature so the
+  // existing module wiring (and the spec setup) stays compatible. They
+  // are currently unused — see record() and the class-level note. If a
+  // WS-driven board lands, restore the publish at THAT point.
   constructor(
     private readonly prisma: PrismaService,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private readonly redis: RedisService,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private readonly signer: WebsocketSignerService,
     @Inject(forwardRef(() => SponsorsService))
     private readonly sponsorsService: SponsorsService,
@@ -104,7 +114,19 @@ export class SportsService {
     return game.clockMs; // 'none'
   }
 
-  /** Append an event row + best-effort signed pub/sub broadcast. */
+  /**
+   * Append a game_events row + invalidate the board cache.
+   *
+   * Audit-Fix 2: real-time delivery is the 750ms polling path; no pub/sub
+   * fan-out for game-state events. We previously signed every GAME_EVENT
+   * and published to `game:<gameId>` — but RedisService.psubscribe only
+   * listens on `tenant:* | group:* | device:*`, so the signed message
+   * landed on the bus and DIED. The board cache is invalidated explicitly
+   * on every write here, and the public board controller's 750ms poll +
+   * 1s in-memory cache carries the data within a perceived sub-second.
+   * (If a true WS-driven board lands later, add `game:*` to the
+   * RedisService psubscribe list at THAT point — not before.)
+   */
   private async record(gameId: string, type: string, payload: Record<string, unknown>) {
     const event = await this.prisma.client.gameEvent.create({
       data: { gameId, type, payload: payload as any },
@@ -113,18 +135,6 @@ export class SportsService {
     // ribbon) flows through this method — invalidate the board cache so the
     // next poll sees the change instantly instead of waiting up to 1s.
     this.invalidateBoardCache(gameId);
-    try {
-      const signed = this.signer.signMessage('GAME_EVENT', {
-        gameId,
-        eventId: event.id,
-        type,
-        payload,
-      });
-      await this.redis.publish(`game:${gameId}`, signed);
-    } catch (e) {
-      // Pub/sub is an optimization — the board polls regardless.
-      this.logger.debug(`game:${gameId} publish skipped: ${(e as Error).message}`);
-    }
     return event;
   }
 
@@ -1803,10 +1813,11 @@ export class SportsService {
    * box or a league-feed adapter. Any subset of fields may be provided;
    * only the fields present in the dto are written. Clock fields are
    * re-anchored (clockUpdatedAt = now) whenever clockMs or clockRunning
-   * is supplied, exactly as the 'set' clock action does. A GAME_EVENT
-   * of type 'INGEST' is appended for the audit trail, and the update is
-   * broadcast via the signed pub/sub fan-out so every board surface
-   * picks it up without polling.
+   * is supplied, exactly as the 'set' clock action does. A GameEvent
+   * row of type 'INGEST' is appended for the audit trail; the public
+   * board's 750ms poll + invalidated cache then picks it up within a
+   * perceived sub-second. (Audit-Fix 2: there is no pub/sub fan-out —
+   * see record() and the class-level note.)
    */
   /**
    * Feed-authorized ingest: the caller proved possession of the game's feed

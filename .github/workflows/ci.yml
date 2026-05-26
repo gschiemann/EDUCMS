@@ -87,6 +87,37 @@ jobs:
           fi
           echo "OK: a11y errors did not increase"
 
+  secret-scan:
+    name: Secret Leak Scan (gitleaks)
+    # Operational gap O2 (2026-05-25): no automated secret-leak gate
+    # — a future agent commit could leak a token (Stripe, Supabase
+    # service-role, Anthropic API key, Twilio, etc.) and we'd find
+    # out from a billing alert hours/days later. gitleaks scans the
+    # diff on PRs and full history on master push. Sub-30s runtime
+    # against this repo size; fails the job on any HIGH-confidence
+    # finding so a tagged secret can't merge without explicit override.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          # gitleaks needs the full history on master push so it can
+          # scan everything that's been added since the last
+          # known-clean commit. On PRs it scans the diff only — fast
+          # by default.
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # gitleaks-action looks for GITHUB_TOKEN by default; we
+          # pass the workflow's auto-issued token (read-only above).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_ENABLE_UPLOAD_ARTIFACT defaults to true; that's
+          # fine — failures upload a SARIF artifact for triage.
+
   security-scan:
     name: Container Security Scanning
     runs-on: ubuntu-latest
