@@ -371,8 +371,15 @@ export function Sidebar() {
                   alt=""
                   onError={() => setLogoImgBroken(true)}
                   onLoad={(e) => {
+                    // 2026-05-26 round 7 — loosened threshold from `<16`
+                    // to `===0`. Operator's Dodgers PNG was tripping the
+                    // <16 check (real-world 14×30 favicon variants exist)
+                    // and falling all the way to "LA" initials despite
+                    // the URL being perfectly fine. LogoThumbnail on the
+                    // same page uses ===0; the divergence is what kept
+                    // breaking the sidebar specifically. Match it.
                     const img = e.currentTarget;
-                    if (img.naturalWidth < 16 || img.naturalHeight < 16) {
+                    if (img.naturalWidth === 0 || img.naturalHeight === 0) {
                       setLogoImgBroken(true);
                     }
                   }}
@@ -397,11 +404,26 @@ export function Sidebar() {
                 aria-hidden
                 dangerouslySetInnerHTML={{ __html: brandLogoSvg }}
               />
+            ) : brandLogoUrl && logoImgBroken ? (
+              // 2026-05-26 round 7 — IMG failed to load (404 from
+              // Supabase rehost, CORS-blocked, etc) but the operator
+              // DID adopt a brand. Don't punish them by reverting to
+              // "LA" initials — show a brand-primary chip with the
+              // Paintbrush icon, matching LogoThumbnail's fallback
+              // visual. The operator at least sees "your brand color
+              // is being honored" instead of "we forgot you exist".
+              <div className="flex-shrink-0 h-12 min-w-[48px] max-w-[140px] flex items-center justify-center overflow-hidden rounded-lg px-2"
+                style={{ background: 'var(--brand-primary, #4f46e5)' }}
+                aria-hidden
+                title={brandName}
+              >
+                <span className="text-white text-[13px] font-bold tracking-wider">
+                  {brandName.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
+                </span>
+              </div>
             ) : brandName && brandName !== tenantCopyForBrand.defaultBrandName ? (
-              // Last-resort: branded tenant but logo scrape failed or
-              // hasn't been adopted yet. Show initials in a circle using
-              // the brand primary color so the chrome still feels like
-              // their tenant, not like a broken-image placeholder.
+              // No logo set OR brand has only a name. Show initials on
+              // brand-primary so the chrome still feels like their tenant.
               <div className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center text-white text-[15px] font-black shadow-sm"
                 style={{ background: 'var(--brand-primary, #4f46e5)' }}
                 aria-hidden

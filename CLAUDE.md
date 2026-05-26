@@ -1756,12 +1756,115 @@ If a feature is on this list and we don't ship it, flag as a competitive gap wit
 - Color-blind-safe pin colors on fleet map
 - Sufficient contrast on all brand-injected palettes (WCAG AA minimum)
 
+### 19. Template + Widget Editability Standard
+
+Operator complaint (2026-05-26): *"none of the fucking templates are even editable, you can't edit a single word"*. The audit must grade every widget A-F against these criteria. Anything below B is a launch blocker.
+
+For each widget under `apps/web/src/components/widgets/`:
+- **Text** addressable: content, font family, font size, font color, font weight, alignment, line-height (use `StyleableField`)
+- **Image** replaceable: asset picker OR URL paste, fit/position controls (cover / contain / fill)
+- **Background**: solid color, gradient (2-stop minimum), image upload — all editable in PropertiesPanel
+- **Clock**: timezone selector, 12/24-hour, second-hand toggle, date-format
+- **Countdown**: target date/time picker, units shown (days/hours/min/sec), label customizable
+- **Charts / lists / menus**: items addable / removable / reorderable
+- **Position + sizing**: x/y, w/h, rotation, z-index, opacity (canvas-relative percentages)
+- **Brand-palette honoring**: every color field offers "Brand primary" / "Brand accent" preset that resolves to `var(--brand-primary)` / `var(--brand-accent)`
+
+Audits MUST list every widget + the missing fields. Adding entries to a registry without wiring them into `PropertiesPanel` does not count — the operator must actually be able to click the text and edit it.
+
+### 20. Design + UX + Functionality lenses
+
+Every "audit the entire app" pass MUST score every Standard Audit Surface section (1-19) across three lenses:
+- **DESIGN**: does it look like a $$$ product? Would a superintendent show this to their board?
+- **UX**: can a non-IT operator complete the task in 30 seconds without help / docs / a Loom video?
+- **FUNCTIONALITY**: does it actually work end-to-end? Or is it "Coming soon" wearing a real-button costume?
+
+The audit report's page 1 coverage table now has 3 columns (D / UX / F) × 19 rows. Anything ≤ B in any column is a gap.
+
+### 21. Verification Before Claim — discipline
+
+The "logo bug, round 7" from 2026-05-26 was the lesson: I told the user "fixed" six times in a row without verifying. The cost: trust burned, time wasted, anger earned.
+
+Before telling the user a fix shipped, you MUST do one of:
+1. Load the rendered page in Playwright, screenshot, eyeball it
+2. Use the Chrome MCP / Preview MCP to navigate to the live Vercel URL and click through
+3. Fetch the deployed asset (`curl ...vercel.app/path`) and grep for the change
+4. Read a fresh git log on master and confirm your commit landed AND CI is green AND Vercel deployment shows "Ready" timestamp newer than your push
+
+If you can't verify, SAY SO. "Pushed, awaiting verification" beats "Done!" every time. The user has explicitly named this: *"stop wasting my time and make sure shit is actually working before you fucking blindly tell me shit is done."*
+
 ### How to invoke this checklist
 
 Every audit prompt sent to an agent OR run interactively MUST start with:
-> "Use the Standard Audit Surface checklist in CLAUDE.md as your domain map. For every numbered section, report covered/N-A/deferred. If you scope down, say so on the first page."
+> "Use the Standard Audit Surface checklist in CLAUDE.md as your domain map. For every numbered section (1-21), report covered/N-A/deferred across the Design/UX/Functionality lenses. If you scope down, say so on the first page."
 
-The audit report's first section MUST be a table showing all 18 sections and their coverage status. Anything missing from the table is a gap.
+The audit report's first section MUST be a table showing all 21 sections × 3 lenses and their coverage status. Anything missing from the table is a gap.
+
+## Agent Dispatch Protocol — parallel agents in isolated worktrees
+
+Operator demand (2026-05-26): *"kick off the agents again and run this like a professional lead developer, have the agents work in their own tree if that's the best most professional way then you take their code back, you audit it all and then you alone commit and push to the main tree, you always have the ownership."*
+
+This is now the standing rule for every parallel-agent deployment:
+
+1. **Worktree isolation is mandatory.** Every Agent call that writes code MUST pass `isolation: "worktree"`. Without it, agents share the same working tree and stomp each other's untracked files. The Integration Concierge service files were wiped twice from contention before this rule landed.
+
+2. **Lead agent (me) owns the merge.** Agents return their branch name. Lead reviews the diff (`git diff master..agent-branch`), audits, cherry-picks or merges, then commits + pushes to master. Agents never push to master directly.
+
+3. **Commit before dispatch.** Any uncommitted local work must be committed (even WIP) before parallel agents fire. Untracked files survive nothing.
+
+4. **Single-domain scope per agent.** Don't give two parallel agents overlapping files. Agent A touches widgets; Agent B touches branding; Agent C touches playlists. The worktrees isolate filesystem but logical conflicts can still surface at merge.
+
+5. **Recovery via transcripts.** Every agent's full transcript is at `/private/tmp/claude-501/<project>/<session>/tasks/<agentId>.output`. If a fix vanishes, grep there first — anything the agent wrote before crashing is recoverable.
+
+6. **Audit before merge.** Lead reads the agent's diff, runs tsc + lint + the agent's target tests, screenshots the affected page if UI-touching. No merge without proof.
+
+7. **Agents are tools, not authors.** Lead is responsible for what ships. "An agent did it" is never a defense for a regression.
+
+## AI Integration Concierge — vision
+
+Operator vision (2026-05-26): *"make shit not so overwhelming for people that they don't need to get an IT guy or consultants that cost so much money to just configure an integration with their POS, or streaming service for a gym, or template creation, make the path so automated that they don't know how they worked without VenueOS in the past."*
+
+The Integration Concierge is the AI-driven discovery + setup layer that sits between the operator and the integration surface. Goal: an operator pastes their website URL OR describes their business in one sentence, and the Concierge proposes the integration stack, wires up the connectors, and auto-seeds the first templates.
+
+### Workstreams
+
+1. **`POST /api/v1/integrations/discover`** — pasted URL → scraped homepage + meta → classifier returns a ranked list of provider candidates per category. (POS, reservations, payments, streaming, calendar, email, fitness, identity, SIS, social, music, sponsorship.) Provider rules carry regex signals + weighted score + plain-English blurb the Concierge UI shows.
+
+2. **`POST /api/v1/integrations/describe`** — free-text description → keyword extraction → ranked provider candidates. Catches operators who don't have a public URL yet (new venues, planned openings).
+
+3. **Concierge UI**: after onboarding's branding step, a "Recommended integrations" wizard step. Each suggestion has: badge ("we found Toast on your site"), confidence, blurb, "Connect" / "Skip" buttons. Connect launches the provider's OAuth or guided setup. Skip remembers and won't re-suggest.
+
+4. **Auto-seeded templates per vertical**: when an integration connects (e.g., Toast POS), the Concierge offers to drop a Menu Board template pre-wired to that integration's live data. One click → operator has a working board on screen.
+
+5. **AI as the explainer**: if the operator hovers an unfamiliar integration ("what's Square Catalog?") the Concierge calls the platform AI (see Economic Model below) for a 1-sentence plain-English explanation. Free tier, capped at 100 calls/tenant/day.
+
+6. **Diagnostic concierge**: if an integration goes RED, the AI assistant explains the likely cause + a 3-step fix in plain English instead of dumping a stack trace.
+
+7. **Build-it-for-me**: an operator describes a template in one sentence ("a soccer scoreboard with our sponsors rotating on the bottom strip and a fan-cam upper-right") and the Concierge proposes a Template draft with widgets + zones + brand-palette applied, ready for the operator to tweak. Underlying call: the existing AI touch-template service, exposed in a guided wizard instead of a free-text modal.
+
+### Economic Model (3 tiers)
+
+Operator's intent (2026-05-26): *"we would have to use our own AI integration that our setup agent would use but use would be minimal and then the customer pays for their areas that we can call more creative AI...we will evolve that piece of the app further to where they can do a subscription and then we set them up with AI so they don't need their own API keys."*
+
+| Tier | AI provider | Who pays | Usage cap |
+|---|---|---|---|
+| **Platform Concierge** (setup-time) | VenueOS's `ANTHROPIC_API_KEY` | VenueOS | Per-tenant ≤ 50 calls / lifetime + 100 calls / day during onboarding |
+| **Customer BYOK Creative** (everyday) | Tenant's own Anthropic/OpenAI/Google key | Tenant pays their provider | Subject to their provider's rate limits + our 30/hr/tenant cap |
+| **Managed-AI Subscription** (future) | VenueOS's keys, pooled | Tenant pays VenueOS a subscription line item | Per-tier monthly quotas; spillover billed |
+
+The Concierge calls live on Tier 1. Sparkle button on widgets + Touch Template Generator + AI alt-text live on Tier 2. Tier 3 unlocks once we have enterprise contracts that justify the spend pool.
+
+The platform must NEVER silently spend Tier-1 budget on Tier-2 actions. If a tenant has no BYOK and is on the Free tier, sparkle should say "Configure your AI provider — settings → AI" not "fall back to platform key."
+
+## Design Imports = Template Feature (not a Setting)
+
+Operator demand (2026-05-26): *"design imports... this entire settings page should not be under settings, it should be under the template section itself, it's not a setting it's a feature."*
+
+Imports live at `/[schoolId]/templates/imports`, not `/[schoolId]/settings/imports`. The old path stays as a permanent redirect for muscle memory. The Templates page has a primary "Import design" button next to "New template."
+
+The UX is upload → preview every page → choose "Create as Template" or "Create as Playlist" → confirm. After confirm, the operator lands on the Templates index with the new template selected, OR the Playlists index with the new playlist selected. No more "I uploaded something, where did it go?"
+
+The page renders inside the brand shell — same chrome, same palette, same fonts as the rest of `/templates`. Not a stranded slate-colored sub-page.
 
 ## For AI Assistants
 
