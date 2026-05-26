@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { appConfirm } from '@/components/ui/app-dialog';
-import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, FolderInput, ChevronRight, Pencil, Home, MoreVertical, Check, Trash, AlertCircle, RefreshCw } from 'lucide-react';
+import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, FolderInput, ChevronRight, Pencil, Home, MoreVertical, Check, Trash, AlertCircle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder, useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
@@ -139,6 +139,14 @@ export default function AssetsPage() {
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [folderMenuOpen, setFolderMenuOpen] = useState<string | null>(null);
+  // 2026-05-26 — operator: "the folders are bleeding into the content
+  // ... when I have 100 folders how will I be able to see them all?"
+  // Folder section is now a contained card with a header, a "Show all"
+  // collapse, and inner scroll. First 12 visible by default; the
+  // expand button reveals every folder with a 480px capped scroll
+  // region. Files section sits clearly below with its own heading.
+  const [showAllFolders, setShowAllFolders] = useState(false);
+  const FOLDERS_PREVIEW_LIMIT = 12;
   // Searchable folder picker state:
   //   - showFolderPicker: 'upload' | 'bulk-move' | null — which flow requested it
   //   - pendingFiles: files dragged onto the drop zone that need a
@@ -751,10 +759,42 @@ export default function AssetsPage() {
         </div>
       )}
 
-      {/* Folder tiles */}
+      {/* 2026-05-26 — Folders section: contained card with header,
+          counter, expand toggle, and inner scroll cap. Operator: "the
+          folders are bleeding into the content...keep those sections
+          separated...when I have 100 folders how will I be able to see
+          them all? thinking about the UX and resolve". First 12 visible
+          by default; "Show all (N)" reveals the rest inside a 480px
+          max-height scroll region. A Files heading sits below to
+          establish the boundary visually. */}
       {currentFolderChildren.length > 0 && (
-        <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 list-none p-0 m-0">
-          {currentFolderChildren.map((f: any) => (
+        <section className="bg-slate-50/60 rounded-2xl border border-slate-100 p-4 mb-2">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <Folder className="w-3.5 h-3.5 text-amber-500" />
+              Folders <span className="text-slate-400">({currentFolderChildren.length})</span>
+            </h2>
+            {currentFolderChildren.length > FOLDERS_PREVIEW_LIMIT && (
+              <button
+                onClick={() => setShowAllFolders(v => !v)}
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+              >
+                {showAllFolders ? (
+                  <>Collapse <ChevronUp className="w-3 h-3" /></>
+                ) : (
+                  <>Show all ({currentFolderChildren.length}) <ChevronDown className="w-3 h-3" /></>
+                )}
+              </button>
+            )}
+          </div>
+          <ul
+            className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 list-none p-0 m-0 ${
+              showAllFolders && currentFolderChildren.length > FOLDERS_PREVIEW_LIMIT
+                ? 'max-h-[480px] overflow-y-auto pr-1'
+                : ''
+            }`}
+          >
+          {(showAllFolders ? currentFolderChildren : currentFolderChildren.slice(0, FOLDERS_PREVIEW_LIMIT)).map((f: any) => (
             // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
             <li
               key={f.id}
@@ -825,7 +865,18 @@ export default function AssetsPage() {
               </div>
             </li>
           ))}
-        </ul>
+          </ul>
+        </section>
+      )}
+
+      {/* Files section header — only when folders are present, to make
+          the boundary explicit. When there are no folders the file grid
+          is the whole page and a separate heading would just be noise. */}
+      {currentFolderChildren.length > 0 && filtered.length > 0 && !isLoading && !isError && (
+        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5 mt-1">
+          <File className="w-3.5 h-3.5 text-slate-400" />
+          Files <span className="text-slate-400">({filtered.length})</span>
+        </h2>
       )}
 
       {/* Asset grid */}
