@@ -330,12 +330,17 @@ function LoginContent() {
           New here? <Link href="/signup" className="text-indigo-600 hover:text-indigo-700 font-semibold">Create a workspace</Link>
         </p>
 
-        <nav className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] text-slate-400">
-          <Link href="/" className="hover:text-slate-600 transition">Home</Link>
-          <Link href="/pricing" className="hover:text-slate-600 transition">Pricing</Link>
-          <Link href="/help" className="hover:text-slate-600 transition">Help</Link>
-          <Link href="/privacy" className="hover:text-slate-600 transition">Privacy</Link>
-          <Link href="/terms" className="hover:text-slate-600 transition">Terms</Link>
+        {/* a11y (2026-05-26): bumped text-slate-400 (2.53:1 fail on #fafbfc bg)
+            up to text-slate-600 (~7.86:1, comfortably above WCAG AA 4.5:1).
+            Hover state bumped slate-600 → slate-800 to preserve the
+            darken-on-hover affordance. Same source renders on every
+            unauthenticated redirect, so this fixes all 9 axe routes at once. */}
+        <nav className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] text-slate-600">
+          <Link href="/" className="hover:text-slate-800 transition">Home</Link>
+          <Link href="/pricing" className="hover:text-slate-800 transition">Pricing</Link>
+          <Link href="/help" className="hover:text-slate-800 transition">Help</Link>
+          <Link href="/privacy" className="hover:text-slate-800 transition">Privacy</Link>
+          <Link href="/terms" className="hover:text-slate-800 transition">Terms</Link>
         </nav>
       </div>
     </div>
