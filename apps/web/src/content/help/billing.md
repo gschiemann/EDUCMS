@@ -50,8 +50,8 @@ We offer prorated refunds for annual plans if you cancel within the first 60 day
 
 ## Who to contact
 
-- Billing questions: billing@edusignage.app
-- PO setup / W-9: ap@edusignage.app
-- Refund requests: must come from a SCHOOL_ADMIN or higher via billing@edusignage.app
+- Billing questions: billing@venue-os.app
+- PO setup / W-9: ap@venue-os.app
+- Refund requests: must come from a SCHOOL_ADMIN or higher via billing@venue-os.app
 
 (Email addresses are placeholders — the user will fill in real support contacts before launch.)

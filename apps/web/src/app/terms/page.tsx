@@ -117,7 +117,7 @@ export default function TermsPage() {
       <h2>14. Contact</h2>
       <p>
         Questions about these Terms? Email{' '}
-        <a href="mailto:legal@edusignage.app">legal@edusignage.app</a>.
+        <a href="mailto:legal@venue-os.app">legal@venue-os.app</a>.
       </p>
     </LegalPage>
   );

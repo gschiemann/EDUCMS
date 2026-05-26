@@ -93,7 +93,7 @@ export default function PrivacyPage() {
       <p>
         Depending on where you reside, you may have rights to access, correct, delete, or export your
         personal information. To exercise these rights, contact us at{' '}
-        <a href="mailto:privacy@edusignage.app">privacy@edusignage.app</a>. We will respond within 30 days.
+        <a href="mailto:privacy@venue-os.app">privacy@venue-os.app</a>. We will respond within 30 days.
       </p>
       <p>
         For school accounts, your district administrator is the primary contact for your data. We will
@@ -124,9 +124,9 @@ export default function PrivacyPage() {
       <h2>11. Contact</h2>
       <p>
         For privacy questions, contact{' '}
-        <a href="mailto:privacy@edusignage.app">privacy@edusignage.app</a>. For data access requests,
+        <a href="mailto:privacy@venue-os.app">privacy@venue-os.app</a>. For data access requests,
         email{' '}
-        <a href="mailto:dsr@edusignage.app">dsr@edusignage.app</a>.
+        <a href="mailto:dsr@venue-os.app">dsr@venue-os.app</a>.
       </p>
     </LegalPage>
   );

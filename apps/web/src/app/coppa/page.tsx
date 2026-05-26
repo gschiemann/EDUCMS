@@ -54,7 +54,7 @@ export default function CoppaPage() {
         further collection or use, and request deletion. Because we act on behalf of the school, these
         requests are normally routed through your district&apos;s records office. Parents who have been
         directed to contact us can email{' '}
-        <a href="mailto:coppa@edusignage.app">coppa@edusignage.app</a> and we will coordinate with the
+        <a href="mailto:coppa@venue-os.app">coppa@venue-os.app</a> and we will coordinate with the
         district.
       </p>
 
@@ -76,7 +76,7 @@ export default function CoppaPage() {
       <h2>Contact</h2>
       <p>
         For COPPA-related questions, contact{' '}
-        <a href="mailto:coppa@edusignage.app">coppa@edusignage.app</a>.
+        <a href="mailto:coppa@venue-os.app">coppa@venue-os.app</a>.
       </p>
     </LegalPage>
   );

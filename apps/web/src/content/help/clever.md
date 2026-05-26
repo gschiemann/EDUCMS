@@ -50,4 +50,4 @@ Disconnect from **Settings → Integrations → Clever → Disconnect**. Existin
 - We receive only the scopes you approve in the Clever consent screen
 - Data is stored encrypted at rest
 - We never redistribute Clever-sourced data to third parties
-- You can request a full data deletion by contacting privacy@edusignage.app — see our [privacy policy](/privacy)
+- You can request a full data deletion by contacting privacy@venue-os.app — see our [privacy policy](/privacy)

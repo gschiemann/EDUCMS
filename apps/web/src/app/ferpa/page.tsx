@@ -61,7 +61,7 @@ export default function FerpaPage() {
         Because we operate on behalf of your school, requests from parents should go through your
         district&apos;s records office in the first instance. If you are a parent and have been directed
         to contact us, email{' '}
-        <a href="mailto:ferpa@edusignage.app">ferpa@edusignage.app</a> and we will coordinate with your
+        <a href="mailto:ferpa@venue-os.app">ferpa@venue-os.app</a> and we will coordinate with your
         district.
       </p>
 
@@ -84,9 +84,9 @@ export default function FerpaPage() {
       <h2>Contact</h2>
       <p>
         For FERPA-related questions, contact{' '}
-        <a href="mailto:ferpa@edusignage.app">ferpa@edusignage.app</a>. Districts requiring a signed data
+        <a href="mailto:ferpa@venue-os.app">ferpa@venue-os.app</a>. Districts requiring a signed data
         processing agreement or data sharing addendum can request one at{' '}
-        <a href="mailto:contracts@edusignage.app">contracts@edusignage.app</a>.
+        <a href="mailto:contracts@venue-os.app">contracts@venue-os.app</a>.
       </p>
     </LegalPage>
   );

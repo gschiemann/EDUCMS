@@ -24,7 +24,7 @@ VenueOS supports three SSO paths on District and Enterprise plans:
 1. Go to **Settings → Authentication → Add identity provider**.
 2. Pick **Google**.
 3. In your Google Admin console, add VenueOS as an OAuth client. The redirect URI we require is:
-   `https://your-domain.edusignage.app/api/v1/auth/oidc/callback`
+   `https://your-domain.venue-os.app/api/v1/auth/oidc/callback`
 4. Paste the client ID and secret back into the VenueOS dashboard.
 5. Restrict sign-in to users whose email ends in your district domain (e.g. `@lincolnusd.org`).
 6. Click **Test connection**, then **Enable**.

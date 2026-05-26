@@ -275,7 +275,7 @@ function Chapter1Pair() {
 
       <div className="guide-steps">
         <Step n={1} title="Open the player URL on the screen">
-          On your TV or Chromebook, open <code>edusignage.app/player</code>.
+          On your TV or Chromebook, open <code>venue-os.app/player</code>.
           You&rsquo;ll see a 6-character pairing code on a branded splash
           screen.
         </Step>
@@ -299,7 +299,7 @@ function Chapter1Pair() {
       <Tip>
         <strong>Test it from your laptop browser — no hardware needed.</strong>
         On a second tab (or a second window), open
-        <code> edusignage.app/player</code> exactly like you would on a TV.
+        <code> venue-os.app/player</code> exactly like you would on a TV.
         Pair it from the dashboard the same way. That browser tab now
         behaves as a real screen — anything you publish from the dashboard
         plays in it within a few seconds. It&rsquo;s the fastest way to
@@ -309,7 +309,7 @@ function Chapter1Pair() {
 
       <Tip>
         <strong>Want to use the Android player APK instead?</strong> Sideload
-        the APK from <code>edusignage.app/api/v1/player/apk/latest</code>,
+        the APK from <code>venue-os.app/api/v1/player/apk/latest</code>,
         open it once, and it will pair the same way — except every future
         update lands automatically with no reinstall. See the APK install
         notes on your dashboard&rsquo;s Settings → Devices page.
@@ -559,17 +559,17 @@ function SupportPage() {
         <div className="guide-support-card">
           <h3>Help Center</h3>
           <p>Step-by-step articles, video walkthroughs, and a searchable knowledge base.</p>
-          <p className="guide-support-link">edusignage.app/help</p>
+          <p className="guide-support-link">venue-os.app/help</p>
         </div>
         <div className="guide-support-card">
           <h3>Email Support</h3>
           <p>Get a real human, not a ticket bot. Most replies within the school day.</p>
-          <p className="guide-support-link">support@edusignage.app</p>
+          <p className="guide-support-link">support@venue-os.app</p>
         </div>
         <div className="guide-support-card">
           <h3>Status Page</h3>
           <p>Live system health for every region. Bookmark this on every IT laptop.</p>
-          <p className="guide-support-link">edusignage.app/status</p>
+          <p className="guide-support-link">venue-os.app/status</p>
         </div>
         <div className="guide-support-card">
           <h3>Pilot Concierge</h3>

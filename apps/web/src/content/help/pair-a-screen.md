@@ -21,7 +21,7 @@ VenueOS doesn't require special hardware. Any device with a modern web browser c
 
 1. In the dashboard, go to **Screens → Add screen**. Give it a name (e.g. "Cafeteria TV") and optionally assign it to a screen group.
 2. Click **Generate pairing code**. You'll get a 6-character code like `A3F9K2` that expires in 10 minutes.
-3. On the physical display, open `https://edusignage.app/player` in a browser.
+3. On the physical display, open `https://venue-os.app/player` in a browser.
 4. Enter the pairing code on the player page. The display registers itself with your tenant and starts polling for assignments.
 5. The screen card in your dashboard flips from **Unpaired** to **Online** within a few seconds.
 
@@ -46,5 +46,5 @@ For Chromebooks, we recommend setting up **Chrome OS managed kiosk mode** with t
 ## Troubleshooting
 
 - **Code doesn't work**: Codes expire after 10 minutes. Generate a new one.
-- **Screen shows "Unpaired"**: Network/firewall may be blocking WebSocket. We fall back to HTTP polling automatically, but double-check your content filter allows `edusignage.app` and `*.edusignage.app` on ports 443 and 80.
+- **Screen shows "Unpaired"**: Network/firewall may be blocking WebSocket. We fall back to HTTP polling automatically, but double-check your content filter allows `venue-os.app` and `*.venue-os.app` on ports 443 and 80.
 - **Screen is blank**: No schedule applies right now. Assign a default template from the screen's detail page.

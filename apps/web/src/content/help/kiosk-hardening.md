@@ -24,14 +24,14 @@ Disable developer mode at the hardware level with a **cr50 lock** if possible.
 ## Amazon Fire TV
 
 1. Install the **Silk browser** or Firefox.
-2. Navigate to `https://edusignage.app/player` and pair.
+2. Navigate to `https://venue-os.app/player` and pair.
 3. Use an Android kiosk app (e.g. **Fully Kiosk Browser**) to lock the home button.
 4. Disable the Alexa button on the remote.
 
 ## Raspberry Pi (Chromium kiosk)
 
 1. Use **Raspberry Pi OS Lite** with Chromium installed.
-2. Set Chromium to autostart in `--kiosk` mode with `--noerrdialogs --disable-infobars --incognito --app=https://edusignage.app/player?code=YOUR_CODE`.
+2. Set Chromium to autostart in `--kiosk` mode with `--noerrdialogs --disable-infobars --incognito --app=https://venue-os.app/player?code=YOUR_CODE`.
 3. Use `xset s off; xset -dpms; xset s noblank` to disable screen blanking.
 4. Put the Pi behind a locked enclosure — students will unplug things.
 
@@ -48,9 +48,9 @@ For ADA: don't mount touch displays higher than 48" from the floor (reachable fr
 
 Whitelist in your district's content filter:
 
-- `edusignage.app` and `*.edusignage.app` (ports 443 and 80)
-- `wss://edusignage.app` and `ws://edusignage.app` for WebSocket
-- Your CDN for uploaded assets (`cdn.edusignage.app`)
+- `venue-os.app` and `*.venue-os.app` (ports 443 and 80)
+- `wss://venue-os.app` and `ws://venue-os.app` for WebSocket
+- Your CDN for uploaded assets (`cdn.venue-os.app`)
 - Any third-party widget sources you enable (RSS feeds, weather APIs)
 
 ## Preventing easy takedowns
