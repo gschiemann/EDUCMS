@@ -26,9 +26,18 @@ import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useAppStore } from '@/lib/store';
 import { useApplyBrandToTemplates } from '@/hooks/use-api';
 import { pushBrandingPreview } from '@/components/branding/BrandStyleInjector';
+import { useLogoTone } from '@/components/branding/useLogoTone';
 import type { TenantBranding } from '@/lib/branding';
 
-export function BrandingSettingsCard() {
+// 2026-05-26 — operator: "why bring all of these settings outside int
+// the main settings page these should have been in the settings menu
+// for the branding." Card now has TWO modes:
+//   - slimOnly: header + Configure/Re-skin button only (for /settings
+//     so it matches the Emergency / AI / Industry row pattern)
+//   - default: header + details block (current logo + palette +
+//     Apply-to-templates + Reset) — used inside /settings/branding
+//     where the operator actually configures the brand.
+export function BrandingSettingsCard({ slimOnly = false }: { slimOnly?: boolean }) {
   // 2026-05-25 — useTenant() dropped (was only used for the
   // tenant-name pill that's no longer rendered).
   // 2026-05-25 — manual-mode state (inline file picker + color
@@ -154,21 +163,21 @@ export function BrandingSettingsCard() {
           When branding IS set we still render the logo preview +
           apply-to-templates + reset controls; that information is
           worth keeping below the header. */}
-      {(loading || branding) && <div className="p-6">
+      {!slimOnly && (loading || branding) && <div className="p-6">
         {loading ? (
           <div className="text-sm text-slate-400">Loading…</div>
         ) : branding ? (
           <>
             <div className="flex items-center gap-4">
-              <div className="h-14 w-14 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden text-slate-800">
-                {safeLogoSvg ? (
-                  <div dangerouslySetInnerHTML={{ __html: safeLogoSvg }} className="max-h-12 max-w-12 [&_svg]:max-h-12 [&_svg]:max-w-12" />
-                ) : branding.logoUrl ? (
-                  <img src={branding.logoUrl} alt="logo" className="max-h-12 max-w-12 object-contain" />
-                ) : (
-                  <Paintbrush className="h-6 w-6 text-slate-300" />
-                )}
-              </div>
+              {/* 2026-05-26 — logo thumbnail uses tone-detection +
+                  brand-primary chip when the logo is light. White-on-
+                  white was making the Dodgers wordmark invisible here
+                  AND in the sidebar (separate fix on Sidebar.tsx).
+                  Same pattern as BrandingLivePreview wizard chip. */}
+              <LogoThumbnail
+                logoUrl={branding.logoUrl || null}
+                logoSvg={safeLogoSvg || null}
+              />
               <div className="flex-1 min-w-0">
                 <div className="font-semibold">{branding.displayName || 'Unnamed'}</div>
                 {branding.tagline && <div className="text-xs text-slate-500 truncate max-w-md">{branding.tagline}</div>}
@@ -337,6 +346,68 @@ function ApplyBrandToTemplatesRow() {
         <div className="mt-3 text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-1.5">
           {errMsg}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 2026-05-26 — LogoThumbnail renders the current brand logo with the
+ * same tone-aware backdrop the wizard preview + sidebar use.
+ *
+ *  - Inline SVG path: text color flips to white on dark chip / slate-800
+ *    on light chip so currentColor-fill marks always show.
+ *  - Raster path: white wordmarks (Dodgers script, etc.) land on a
+ *    var(--brand-primary) chip so they have contrast.
+ *  - Dark logos render on a subtle slate-50 backdrop (legacy default).
+ *  - Silent-zero fallback: img that loads 200 OK but with 0×0 dimensions
+ *    (CORS-tainted hot-link) flips to a fallback icon.
+ */
+function LogoThumbnail({
+  logoUrl,
+  logoSvg,
+}: {
+  logoUrl: string | null;
+  logoSvg: string | null;
+}) {
+  const [imgBroken, setImgBroken] = useState(false);
+  const tone = useLogoTone(logoUrl, logoSvg);
+  const needsDarkBacking = tone === 'light' || tone === 'unknown';
+  const useSvg = logoSvg && /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(logoSvg);
+
+  // Style — dark chip uses brand-primary, light chip uses slate-50.
+  const chipStyle: React.CSSProperties = needsDarkBacking
+    ? { background: 'var(--brand-primary, #4f46e5)' }
+    : {};
+  const chipClass = `h-14 w-14 rounded-lg ${
+    needsDarkBacking ? '' : 'bg-slate-50 border border-slate-200'
+  } flex items-center justify-center overflow-hidden ${
+    needsDarkBacking ? 'text-white' : 'text-slate-800'
+  }`;
+
+  return (
+    <div className={chipClass} style={chipStyle}>
+      {useSvg ? (
+        <div
+          dangerouslySetInnerHTML={{ __html: logoSvg! }}
+          className="max-h-12 max-w-12 [&_svg]:max-h-12 [&_svg]:max-w-12"
+        />
+      ) : logoUrl && !imgBroken ? (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          src={logoUrl}
+          alt="logo"
+          onError={() => setImgBroken(true)}
+          onLoad={(e) => {
+            const img = e.currentTarget;
+            if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+              setImgBroken(true);
+            }
+          }}
+          className="max-h-12 max-w-12 object-contain"
+        />
+      ) : (
+        <Paintbrush className="h-6 w-6 opacity-60" />
       )}
     </div>
   );

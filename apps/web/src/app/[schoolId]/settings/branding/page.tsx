@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import { BrandingWizard, BrandingPreview } from '@/components/branding/BrandingWizard';
+import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Trash2, Paintbrush } from 'lucide-react';
 import { pushBrandingPreview } from '@/components/branding/BrandStyleInjector';
@@ -117,6 +118,16 @@ export default function SettingsBrandingPage() {
         )}
       </header>
 
+      {/* 2026-05-26 — moved off /settings per operator: "why bring
+          all of these settings outside int the main settings page
+          these should have been in the settings menu for the
+          branding." Current-brand summary + palette + Apply-to-
+          templates + Reset all live here now, above the wizard. */}
+      {!loading && (
+        <div className="mb-6">
+          <BrandingSettingsCard />
+        </div>
+      )}
       {loading ? (
         <div className="p-10 text-center text-slate-500">Loading…</div>
       ) : (

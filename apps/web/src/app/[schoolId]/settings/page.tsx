@@ -185,9 +185,15 @@ export default function SettingsPage() {
           <PanicContentGate />
         </RoleGate>
 
-        {/* Auto-branding — paste URL → CMS re-skins (Sprint 9) */}
+        {/* Auto-branding — paste URL → CMS re-skins (Sprint 9).
+            2026-05-26 — slimOnly: main /settings only renders the
+            header row + Configure/Re-skin button (matches Emergency
+            / AI / Industry row pattern). The full details block
+            (current logo + palette + Apply-to-templates + Reset)
+            lives on /settings/branding now where the operator
+            actually configures the brand. */}
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
-          <BrandingSettingsCard />
+          <BrandingSettingsCard slimOnly />
         </RoleGate>
 
         {/* BYOK AI integration — operator pastes their own provider
