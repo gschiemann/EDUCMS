@@ -1,0 +1,100 @@
+name: Emergency Path
+
+# Policy: the emergency path is life-safety-critical. Three simultaneous
+# P0 bugs (timestamp-units, manifest-shape, missing SOS handler) shipped to
+# production and were only found by reading the call graph end-to-end on
+# 2026-05-26 — every unit/integration test was green. This workflow exists
+# to make sure that class of regression fails CI BEFORE it reaches Railway.
+#
+# What it runs: apps/web/tests/e2e/emergency-path.spec.ts — 9 self-contained
+# Playwright assertions, fully mocked (no API/DB needed), against Chromium
+# AND WebKit. Per CLAUDE.md "Cross-browser support — non-negotiable" the
+# WebKit run is the canary for engine-specific regressions on the life-
+# safety surface (the holiday-bridge canary covers ONLY the holiday
+# templates, not the player).
+#
+# Runtime budget: under 5 minutes per browser. The actual test takes
+# <30s; the rest is browser install + Next compile cache cold start.
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emergency-path:
+    name: ${{ matrix.browser }} · Emergency path
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      # Both engines, in parallel. WebKit is the canary; Chromium is the
+      # primary target. A bug that only repros in WebKit is exactly what
+      # the holiday-bridge canary was built to catch — same principle here.
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build workspace TypeScript packages — apps/web's `next dev`
+      # imports @cms/api-types / @cms/auth-core / @cms/ws-events whose
+      # `main` points at `dist/index.js`. The deploy-reliability workflow
+      # documents this requirement; same pattern here so the dev server
+      # boots clean.
+      - name: Build workspace packages
+        run: |
+          pnpm --filter @cms/api-types build
+          pnpm --filter @cms/auth-core build
+          pnpm --filter @cms/ws-events build
+
+      # Cache Playwright browser binaries between runs to keep the
+      # cold-cache install closer to ~1 min instead of ~4 min.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ matrix.browser }}-${{ hashFiles('apps/web/package.json', 'pnpm-lock.yaml') }}
+
+      - name: Install Playwright browser
+        run: pnpm --filter web exec playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run emergency-path E2E
+        run: pnpm --filter web run test:e2e:emergency-path -- --project ${{ matrix.browser }}
+        env:
+          CI: 'true'
+          # Force the API base URL onto an unroutable host so any
+          # mock that's missed NXDOMAINs instead of silently hitting
+          # production. The Playwright config sets this too, but we
+          # belt-and-suspender it here in case the env override path
+          # changes.
+          NEXT_PUBLIC_API_URL: http://api.invalid/api/v1
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emergency-path-report-${{ matrix.browser }}
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          if-no-files-found: ignore
