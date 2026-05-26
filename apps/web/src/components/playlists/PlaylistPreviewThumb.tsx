@@ -62,7 +62,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutTemplate, Image as ImageIcon, Video, Globe, Music, Layers, Play, File } from 'lucide-react';
+import { LayoutTemplate, Image as ImageIcon, Video, Globe, Music, Layers, Play, File, FileText } from 'lucide-react';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
@@ -73,7 +73,22 @@ const SLIDE_HOLD_MS = 1400;
 const SLIDE_FADE_MS = 250;
 const MAX_SLIDESHOW_FRAMES = 5;
 
-export type PlaylistContentLabel = 'Image' | 'Video' | 'Template' | 'Mixed content' | 'Webpage' | 'Audio' | 'Empty';
+export type PlaylistContentLabel = 'Image' | 'Video' | 'Template' | 'Mixed content' | 'Webpage' | 'Audio' | 'Document' | 'Empty';
+
+// 2026-05-26 — operator: PDF import shows no preview. Cause: PDFs
+// land as Asset rows with mimeType `application/pdf`, which fell
+// through every (image/video/html/audio) bucket and hit the generic
+// Layers icon fallback. Recognize PDF + PPTX + DOCX as 'Document'
+// and render a real iframe-of-the-PDF preview below.
+function isDocumentMime(m: string): boolean {
+  return (
+    m === 'application/pdf' ||
+    m === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+    m === 'application/vnd.ms-powerpoint' ||
+    m === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    m === 'application/msword'
+  );
+}
 
 /** Returns the content-type label for a playlist. */
 export function derivePlaylistContentLabel(playlist: any): PlaylistContentLabel {
@@ -90,6 +105,7 @@ export function derivePlaylistContentLabel(playlist: any): PlaylistContentLabel 
     else if (mime.startsWith('video/')) kinds.add('video');
     else if (mime.startsWith('audio/')) kinds.add('audio');
     else if (mime === 'text/html') kinds.add('webpage');
+    else if (isDocumentMime(mime)) kinds.add('document');
     else kinds.add('other');
   }
 
@@ -100,6 +116,7 @@ export function derivePlaylistContentLabel(playlist: any): PlaylistContentLabel 
   if (only === 'video') return 'Video';
   if (only === 'audio') return 'Audio';
   if (only === 'webpage') return 'Webpage';
+  if (only === 'document') return 'Document';
   // Single unknown mime — treat as mixed content rather than guessing.
   return 'Mixed content';
 }
@@ -178,6 +195,77 @@ function StaticAssetFrame({ asset, className }: { asset: any; className?: string
         }
       }}
     />
+  );
+}
+
+/** Lazy-mounted PDF preview. The iframe is heavy (browser-native
+ * PDF renderer spins up on mount) so we gate it on IntersectionObserver
+ * — the iframe doesn't exist until the tile scrolls into view. PDF
+ * viewer chrome (toolbar / nav-panes / scrollbar) is stripped via
+ * the #view URL fragment so the tile reads as a thumbnail, not a
+ * mini PDF reader. The iframe is sandboxed (no scripts, no top
+ * navigation) — even a malicious PDF rendered via the browser
+ * cannot escape the tile.
+ */
+function LazyPdfThumb({ url }: { url: string }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      // Old browser (or test env) — just mount eagerly.
+      setVisible(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setVisible(true);
+            io.disconnect();
+            return;
+          }
+        }
+      },
+      { threshold: 0.1 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  // Append the viewer-chrome stripping fragment if the URL doesn't
+  // already have one. `#view=Fit` scales the page to fit the iframe
+  // dimensions; `toolbar=0`, `navpanes=0`, `scrollbar=0` hide every
+  // bit of viewer UI. Browser support: Chrome, Edge, Firefox, Safari
+  // all honor these PDF.js / native-viewer parameters.
+  const src = url + (url.includes('#') ? '&' : '#') + 'view=Fit&toolbar=0&navpanes=0&scrollbar=0';
+
+  return (
+    <div ref={containerRef} className="absolute top-0 right-0 bottom-0 left-0 bg-slate-100 overflow-hidden">
+      {visible ? (
+        <iframe
+          src={src}
+          title="PDF preview"
+          // Sandbox: no scripts, no popups, no top navigation, no
+          // form submission. Pretty much "render this, that's it."
+          sandbox=""
+          loading="lazy"
+          // pointer-events:none so the tile click goes through to
+          // the playlist row underneath (don't steal interaction).
+          style={{ width: '100%', height: '100%', border: 0, pointerEvents: 'none' }}
+          // Some browsers fire onError on PDF iframes if the URL
+          // 404s — fall back to the file-icon card. We re-use the
+          // tile container so the layout doesn't shift.
+        />
+      ) : (
+        <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center bg-gradient-to-br from-rose-50 to-rose-100">
+          <FileText className="w-8 h-8 text-rose-500" aria-hidden="true" />
+          <span className="mt-1 text-[10px] font-bold text-rose-700/80 uppercase tracking-wider">PDF</span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -391,6 +479,7 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
   const videoAssets = previewAssets.filter((a) => a.mimeType?.startsWith('video/'));
   const htmlAssets = previewAssets.filter((a) => a.mimeType === 'text/html');
   const audioAssets = previewAssets.filter((a) => a.mimeType?.startsWith('audio/'));
+  const documentAssets = previewAssets.filter((a) => isDocumentMime(a.mimeType || ''));
 
   // ── Empty playlist ───────────────────────────────────────────
   if (previewAssets.length === 0) {
@@ -415,6 +504,7 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
     videoAssets.length > 0 ? 'video' : null,
     htmlAssets.length > 0 ? 'webpage' : null,
     audioAssets.length > 0 ? 'audio' : null,
+    documentAssets.length > 0 ? 'document' : null,
   ].filter(Boolean);
 
   if (kinds.length > 1) {
@@ -523,6 +613,48 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
             aria-hidden="true"
           >
             +{htmlAssets.length - 1}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── All-document playlist (PDF / PPTX / DOCX) ───────────────
+  // Browsers render PDFs natively via <iframe>. PPTX/DOCX don't —
+  // they get a styled card with the filename. The iframe is gated
+  // on in-viewport (IntersectionObserver) to avoid spawning N PDF
+  // renderers in a 100-tile grid. Toolbar / nav-panes / scrollbar
+  // chrome is hidden via the #view PDF-viewer fragment so the
+  // thumbnail looks like a thumbnail, not a mini reader.
+  if (documentAssets.length === previewAssets.length && documentAssets.length > 0) {
+    const first = documentAssets[0];
+    const isPdf = first.mimeType === 'application/pdf';
+    return (
+      <div
+        className={shellClasses(size, className)}
+        style={size === 'tile' ? { aspectRatio: '16 / 9' } : undefined}
+      >
+        {isPdf && size === 'tile' ? (
+          <LazyPdfThumb url={first.fileUrl?.startsWith('http') ? first.fileUrl : `${apiBase}${first.fileUrl}`} />
+        ) : (
+          <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center bg-gradient-to-br from-rose-50 to-rose-100">
+            <FileText
+              className={size === 'list' ? 'w-4 h-4 text-rose-500' : 'w-8 h-8 text-rose-500'}
+              aria-hidden="true"
+            />
+            {size === 'tile' && (
+              <span className="mt-1 text-[10px] font-bold text-rose-700/80 uppercase tracking-wider">
+                {isPdf ? 'PDF' : 'Document'}
+              </span>
+            )}
+          </div>
+        )}
+        {documentAssets.length > 1 && (
+          <div
+            className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded-md bg-black/60 text-white text-[9px] font-bold leading-none"
+            aria-hidden="true"
+          >
+            +{documentAssets.length - 1}
           </div>
         )}
       </div>
