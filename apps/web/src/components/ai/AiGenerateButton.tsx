@@ -254,7 +254,18 @@ function AiGenerateModal({
       // that don't yet emit a code.
       const code = String(e?.code || '');
       const status = Number(e?.status || 0);
-      if (code === 'AI_CAP_REACHED' || status === 402) {
+      // 2026-05-26 audit AI-P0-1 — provider-side "out of credit" is
+      // distinct from "I'm out of platform free credits" (AI_CAP_REACHED).
+      // The server's mapProviderQuotaError() helper recognizes OpenAI
+      // insufficient_quota / Anthropic credit_balance_too_low / Google
+      // RESOURCE_EXHAUSTED and emits AI_PROVIDER_OUT_OF_CREDIT. The
+      // message it ships already contains the right "go add money at
+      // platform.openai.com / console.anthropic.com / etc." instructions
+      // so we just display it. keySource tells us whether to point the
+      // operator at THEIR provider (BYOK) or escalate to admin (platform).
+      if (code === 'AI_PROVIDER_OUT_OF_CREDIT') {
+        setError(e?.body?.message || msg || 'Your AI provider is out of credit. Add credits with your provider and try again.');
+      } else if (code === 'AI_CAP_REACHED' || status === 402) {
         setCapHit(true);
         setError(null);
       } else if (code === 'AI_FAILURE_CAP_REACHED' || (status === 429 && /failed AI/i.test(msg))) {

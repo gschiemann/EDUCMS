@@ -33,7 +33,7 @@ import { AppRole } from '@cms/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { sealAiKey, openAiKey, maskAiKey } from './ai-key-cipher';
 import {
-  coerceProvider, validateApiKeyShape, dispatchAi,
+  coerceProvider, validateApiKeyShape, dispatchAi, mapProviderQuotaError,
   AI_PROVIDERS, isKnownModel, defaultModelFor,
 } from './ai-providers';
 import { AiService } from './ai.service';
@@ -210,32 +210,21 @@ export class AiKeyController {
         provider === 'anthropic' ? 'Anthropic'
         : provider === 'openai' ? 'OpenAI'
         : 'Google';
-      if (testResult.errorStatus === 401) {
+      // 2026-05-26 audit AI-P0-1 — out-of-credit disambiguation now
+      // lives in the shared mapProviderQuotaError() helper used by
+      // both this controller AND ai.service.ts:generate. Single source
+      // of truth for "your API balance is $0" vs "you got throttled."
+      const quotaErr = mapProviderQuotaError(provider, testResult.errorStatus, testResult.errorBody);
+      if (quotaErr) {
+        detail = quotaErr.message;
+      } else if (testResult.errorStatus === 401) {
         detail = `That ${providerLabel} key was rejected. Double-check you copied the full key from your provider dashboard.`;
       } else if (testResult.errorStatus === 403) {
         detail = `Key works but doesn't have access to the "${model}" model. Pick a different model from the dropdown, or check your ${providerLabel} plan.`;
       } else if (testResult.errorStatus === 404) {
         detail = `The model "${model}" wasn't found on your ${providerLabel} account. Some models are gated by org / region — try a different one.`;
       } else if (testResult.errorStatus === 429) {
-        // 2026-05-25 — OpenAI uses HTTP 429 for TWO different
-        // situations: actual rate-limit AND "your API account has $0
-        // in credits." They're disambiguated by `error.type` in the
-        // body: 'insufficient_quota' = no money, 'rate_limit_exceeded'
-        // / 'requests' = actual throttle. Common operator confusion:
-        // ChatGPT Plus ($20/mo) is the chat website only, NOT API
-        // credits — those are a separate balance at
-        // platform.openai.com/settings/organization/billing.
-        const body = testResult.errorBody || '';
-        const isOutOfCredit =
-          /insufficient_quota|exceeded your current quota|billing_hard_limit_reached|"type"\s*:\s*"insufficient_quota"/i.test(body);
-        if (isOutOfCredit && provider === 'openai') {
-          detail =
-            `Your OpenAI API account has no credit balance. Heads up: ChatGPT Plus ($20/mo) only covers the chat website — API access is a separate balance. Add credits at platform.openai.com → Settings → Billing → Add to credit balance (minimum $5), then try again.`;
-        } else if (isOutOfCredit) {
-          detail = `Your ${providerLabel} account has no credit balance. Add funds to your billing settings and try again.`;
-        } else {
-          detail = `Provider rate-limited the test request. Try again in a moment — the key itself may be fine.`;
-        }
+        detail = `Provider rate-limited the test request. Try again in a moment — the key itself may be fine.`;
       }
       throw new HttpException(detail, HttpStatus.BAD_REQUEST);
     }

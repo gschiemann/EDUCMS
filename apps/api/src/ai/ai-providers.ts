@@ -415,3 +415,92 @@ export async function dispatchAi(
   // the type-checker happy.
   return { raw: '', errorStatus: 400, errorBody: `Unsupported provider: ${provider}` };
 }
+
+/**
+ * Recognize provider-side "out of credit / quota exhausted" responses.
+ *
+ * Every provider conflates "rate-limited (try again in seconds)" with
+ * "you're out of money (add credits)" on the SAME HTTP status code,
+ * disambiguated only by the response body's error.type / status. The
+ * audit on 2026-05-26 found we only disambiguated this at test-on-save,
+ * not at generate-time — so an operator burning through credits on a
+ * real generation got an unactionable "rate-limited, try again" toast
+ * forever. This helper is the single source of truth, called from
+ * BOTH ai-key.controller.ts (test-on-save) AND ai.service.ts (every
+ * generate). Adding a new provider quirk = adding a branch here.
+ *
+ *  OpenAI:    HTTP 429, body has error.type === 'insufficient_quota'
+ *  Anthropic: HTTP 400, body has error.type === 'invalid_request_error'
+ *             AND message contains 'credit balance is too low'.
+ *             (Anthropic also rarely uses HTTP 402 — handle both.)
+ *  Google:    HTTP 429, body has status === 'RESOURCE_EXHAUSTED' or
+ *             error.status === 'RESOURCE_EXHAUSTED'. Note that
+ *             'RESOURCE_EXHAUSTED' here can mean EITHER per-minute
+ *             rate limit OR daily/monthly quota — Google doesn't
+ *             distinguish in the API response, only in the docs.
+ *             We surface a Google-specific message that covers both.
+ *
+ * Returns a structured envelope when matched, null otherwise. Caller
+ * is expected to map null → use generic error handling.
+ */
+export interface ProviderQuotaError {
+  code: 'AI_PROVIDER_OUT_OF_CREDIT' | 'AI_PROVIDER_RATE_LIMIT';
+  message: string;
+  /** Provider that emitted the error. Useful for FE branching by brand. */
+  provider: AiProvider;
+}
+export function mapProviderQuotaError(
+  provider: AiProvider,
+  errorStatus: number,
+  errorBody: string | undefined,
+): ProviderQuotaError | null {
+  const body = errorBody || '';
+
+  if (provider === 'openai' && errorStatus === 429) {
+    const isOutOfCredit =
+      /insufficient_quota|exceeded your current quota|billing_hard_limit_reached|"type"\s*:\s*"insufficient_quota"/i.test(body);
+    if (isOutOfCredit) {
+      return {
+        code: 'AI_PROVIDER_OUT_OF_CREDIT',
+        provider,
+        message:
+          'Your OpenAI API account has no credit balance. Heads up: ChatGPT Plus only covers the chat website — API access is a separate balance. Add credits at platform.openai.com → Settings → Billing → Add to credit balance (minimum $5), then try again.',
+      };
+    }
+    // Real rate-limit (per-minute throttle). Return null so caller
+    // falls through to the generic "try again in a moment" message.
+    return null;
+  }
+
+  if (provider === 'anthropic') {
+    if (
+      errorStatus === 402 ||
+      (errorStatus === 400 &&
+        /credit_balance_too_low|credit balance is too low|"type"\s*:\s*"credit_balance_too_low"/i.test(body))
+    ) {
+      return {
+        code: 'AI_PROVIDER_OUT_OF_CREDIT',
+        provider,
+        message:
+          'Your Anthropic API account has run out of credit. Add credits at console.anthropic.com → Settings → Billing → Buy credits, then try again.',
+      };
+    }
+    return null;
+  }
+
+  if (provider === 'google' && errorStatus === 429) {
+    const isQuota =
+      /RESOURCE_EXHAUSTED|quotaExceeded|"status"\s*:\s*"RESOURCE_EXHAUSTED"/i.test(body);
+    if (isQuota) {
+      return {
+        code: 'AI_PROVIDER_OUT_OF_CREDIT',
+        provider,
+        message:
+          "Your Google Gemini quota is exhausted. The free tier resets daily; if you keep hitting the cap, enable billing at console.cloud.google.com → Billing for higher limits. Or wait until tomorrow and try again.",
+      };
+    }
+    return null;
+  }
+
+  return null;
+}

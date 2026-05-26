@@ -788,19 +788,32 @@ export default function TemplatesPage() {
                         setAiError('Generation succeeded but returned no template id. Try again?');
                       }
                     } catch (e: any) {
-                      // Translate the raw API error message into copy
-                      // the operator can act on. Pattern-match on the
-                      // backend's own error strings (defined in
-                      // AiService.generateTouchTemplate) so each error
-                      // class gets the right next-step guidance.
+                      // 2026-05-26 audit AI-P0-2 — was matching on
+                      // the human error string (e.g. `raw.includes(
+                      // 'monthly free')`), which breaks the moment an
+                      // i18n pass or copy edit touches the message.
+                      // The sparkle button (AiGenerateButton.tsx) was
+                      // migrated to STRUCTURED `code` checks back in
+                      // 2026-05-25 (audit-W8). This modal was missed.
+                      // Branch on the code first, fall back to message
+                      // patterns only for legacy paths.
+                      const code = String(e?.code || '');
+                      const status = Number(e?.status || 0);
                       const raw = (e?.message || '').toLowerCase();
                       let friendly = 'Generation failed. Try rephrasing or try again later.';
-                      if (raw.includes('not configured')) {
-                        friendly = "AI isn't enabled for this site. Ask your administrator to add an API key in Settings → AI provider.";
-                      } else if (raw.includes('hourly') || raw.includes('rate-limited')) {
-                        friendly = "You've hit this hour's AI generation limit. Try again in a few minutes.";
-                      } else if (raw.includes('monthly free')) {
+                      if (code === 'AI_PROVIDER_OUT_OF_CREDIT') {
+                        // Server-shipped message is already operator-
+                        // actionable (includes the right billing URL
+                        // for whichever provider).
+                        friendly = e?.body?.message || e?.message || 'Your AI provider is out of credit. Add credits with your provider and try again.';
+                      } else if (code === 'AI_CAP_REACHED' || status === 402) {
                         friendly = 'Monthly free AI quota used up. Add your own provider key in Settings → AI provider, or wait until next month.';
+                      } else if (code === 'AI_FAILURE_CAP_REACHED') {
+                        friendly = 'Too many failed AI requests in the last hour. Wait an hour, or contact support if you think this is wrong.';
+                      } else if (status === 503 || raw.includes('not configured')) {
+                        friendly = "AI isn't enabled for this site. Ask your administrator to add an API key in Settings → AI provider.";
+                      } else if (status === 429 || raw.includes('hourly') || raw.includes('rate-limited')) {
+                        friendly = "You've hit this hour's AI generation limit. Try again in a few minutes.";
                       } else if (raw.includes('unparseable')) {
                         friendly = 'The AI returned something unusable. Try rephrasing your prompt with more concrete details.';
                       } else if (raw.includes('rejected')) {

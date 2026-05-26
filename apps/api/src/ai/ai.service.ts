@@ -28,7 +28,7 @@
 
 import { Injectable, Logger, BadRequestException, ServiceUnavailableException, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { dispatchAi, type AiProvider, coerceProvider } from './ai-providers';
+import { dispatchAi, mapProviderQuotaError, type AiProvider, coerceProvider } from './ai-providers';
 import { openAiKey } from './ai-key-cipher';
 import { isVertical } from '@cms/api-types';
 // SECURITY (audit-B4 fix, 2026-05-25) — AI-generated touch actions
@@ -451,6 +451,24 @@ export class AiService {
         this.logger.warn(
           `${resolved.provider} non-2xx (${resolved.source}): ${out.errorStatus} ${(out.errorBody || '').slice(0, 200)}`,
         );
+        // 2026-05-26 audit AI-P0-1 — disambiguate "out of credit" from
+        // "rate-limited" at generate-time (was only at test-on-save).
+        // Returns structured envelope with code: 'AI_PROVIDER_OUT_OF_CREDIT'
+        // so the FE can show the right "add money / wait for quota"
+        // copy and CTA. Falls through to the generic paths below when
+        // null (= it really IS a rate-limit, not out-of-credit).
+        const quotaErr = mapProviderQuotaError(resolved.provider, out.errorStatus, out.errorBody);
+        if (quotaErr) {
+          throw new HttpException(
+            {
+              message: quotaErr.message,
+              code: quotaErr.code,
+              provider: quotaErr.provider,
+              keySource: resolved.source, // 'tenant' = BYOK; 'platform' = our key
+            },
+            HttpStatus.PAYMENT_REQUIRED, // 402 — same as AI_CAP_REACHED, "pay to continue"
+          );
+        }
         // 401 from a tenant BYOK key → it's invalid. Tell the operator
         // exactly that so they re-paste in Settings instead of bouncing
         // around looking for a config issue. Other statuses get a
@@ -660,6 +678,21 @@ export class AiService {
         maxTokens: 1500,
       });
       if (out.errorStatus) {
+        // 2026-05-26 audit AI-P0-1 — out-of-credit disambiguation on
+        // the touch-template path too. Same shared helper as the
+        // text-snippet generate(), same FE handling.
+        const quotaErr = mapProviderQuotaError(resolved.provider, out.errorStatus, out.errorBody);
+        if (quotaErr) {
+          throw new HttpException(
+            {
+              message: quotaErr.message,
+              code: quotaErr.code,
+              provider: quotaErr.provider,
+              keySource: resolved.source,
+            },
+            HttpStatus.PAYMENT_REQUIRED,
+          );
+        }
         if (out.errorStatus === 401 && resolved.source === 'tenant') {
           throw new ServiceUnavailableException(
             `Your ${providerDisplayName(resolved.provider)} API key was rejected. Re-enter it in Settings → Integrations.`,
