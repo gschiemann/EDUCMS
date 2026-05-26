@@ -59,6 +59,11 @@ import { AiModule } from './ai/ai.module';
 // custom Icecast/HLS stream + Apple-for-Business + Spotify-for-Business
 // placeholders. Backs the MusicPlayerWidget.
 import { MusicModule } from './music/music.module';
+// 2026-05-26 — AI Integration Concierge: scrape an operator's URL or
+// take a free-text description, classify, return ranked provider
+// candidates (POS, music, streaming, calendar, etc.). See CLAUDE.md
+// "AI Integration Concierge — vision" section.
+import { IntegrationsModule } from './integrations/integrations.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
@@ -105,6 +110,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     ImportsModule,
     AiModule,
     MusicModule,
+    IntegrationsModule,
     AnalyticsModule,
     // 2026-05-06 — operator: kiosk wedged on "429 trying to
     // reconnect" right after fresh APK install. Cause: a fresh kiosk
