@@ -2402,6 +2402,10 @@ export class ScreensController {
         tenantId: screen.tenantId,
         tenantName: (screen as any).tenant?.name || null,
         playlists: [],
+        // 2026-05-26 P0-2 — be explicit about no-emergency so the
+        // player's manifest handler can clear any stale local state
+        // without needing to infer from absence-of-fields.
+        isEmergency: false,
         emergencyStatus: 'INACTIVE',
         emptyReason: 'NO_SCHEDULE',
         message: 'This screen is paired but no playlist is scheduled. Assign a playlist from the dashboard.',
@@ -2522,6 +2526,12 @@ export class ScreensController {
       tenantId: screen.tenantId,
       tenantName: (screen as any).tenant?.name || null,
       generatedAt: now.toISOString(),
+      // 2026-05-26 P0-2 — explicit no-emergency signal so the player
+      // can confidently clear any stale local emergency state without
+      // inferring from absence-of-fields. The "isEmergency: true" branch
+      // above (line ~2277) returns early; reaching this normal-manifest
+      // path means there's definitively no emergency.
+      isEmergency: false,
       // 2026-05-24 — operator-controlled orientation lock. Player APK
       // applies on boot and on every manifest poll (cheap setter — only
       // calls setRequestedOrientation if the value changed). Older APKs

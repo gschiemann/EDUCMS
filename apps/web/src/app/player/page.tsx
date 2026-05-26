@@ -2662,16 +2662,53 @@ function PlayerPage() {
         }
       } catch { /* defensive — SW push failures must never break playback */ }
 
-      // Detect emergency override (server may surface as `emergency`, `override`,
-      // or via Tenant.emergencyStatus / emergencyPlaylistId on the manifest).
-      const em = manifest.emergency || manifest.override || null;
-      if (em && (em.active === true || em.status === 'ACTIVE' || em.type)) {
-        setActiveEmergency(em);
-        cacheEmergency(em);
-      } else if (manifest.allClear === true || manifest.emergencyStatus === 'NONE') {
-        setActiveEmergency(null);
-        cacheEmergency(null);
+      // Detect emergency override.
+      //
+      // 2026-05-26 P0-2 fix: the API at apps/api/src/screens/screens.
+      // controller.ts:2274 returns FLAT fields on the manifest when an
+      // emergency is active (isEmergency, emergencyType, emergencySeverity,
+      // emergencyScopeNote, emergencyScope), NOT a nested `emergency` or
+      // `override` envelope. Before this fix, we only checked the nested
+      // shape — which never existed — so `setActiveEmergency(em)` never
+      // fired and three documented safeguards were silently dead:
+      //   1. Emergency-aware polling cadence (line 3649) stayed at 10s
+      //      during real lockdowns instead of 5s.
+      //   2. Power-cycle-ride-through cache (cacheEmergency below) was
+      //      never written — reboot mid-lockdown lost the overlay.
+      //   3. URL-overlay suppression (line 4191) — scheduled HTML
+      //      widgets rendered ON TOP of the emergency content.
+      //
+      // We now build the envelope from the flat fields first, keep the
+      // legacy nested-shape path as a fallback for back-compat with any
+      // tool still emitting it, and treat any non-emergency state as a
+      // clear signal (covers the "no schedule" 200 OK at controller
+      // line 2400 which omits the emergency fields entirely).
+      let em: any = null;
+      if (manifest.isEmergency === true) {
+        em = {
+          active: true,
+          type: manifest.emergencyType,
+          severity: manifest.emergencySeverity,
+          scopeNote: manifest.emergencyScopeNote || null,
+          scope: manifest.emergencyScope || 'tenant',
+          // expiresAt only present on per-screen overrides; absent for
+          // tenant-wide alerts (which last until explicit ALL_CLEAR).
+          expiresAt: manifest.emergencyExpiresAt || null,
+        };
+      } else if (manifest.emergency || manifest.override) {
+        // Legacy nested envelope — keep for back-compat.
+        const legacy = manifest.emergency || manifest.override;
+        if (legacy && (legacy.active === true || legacy.status === 'ACTIVE' || legacy.type)) {
+          em = legacy;
+        }
       }
+      // Manifest is the SOLE arbiter of emergency state (per the
+      // life-safety comment near line 3443 below — server-of-record is
+      // the only thing we trust to flip the overlay). If `em` is null
+      // here, the server is telling us there's no emergency. Calling
+      // setActiveEmergency(null) when already null is idempotent.
+      setActiveEmergency(em);
+      cacheEmergency(em);
       if (manifest.playlists && manifest.playlists.length > 0) {
         // Reset the empty-manifest streak the second we get real
         // content back — a blip that lasted < REQUIRE_EMPTY_STREAK
