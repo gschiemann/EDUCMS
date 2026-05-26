@@ -1575,6 +1575,194 @@ new tables + nullable pointers, safe to ship to live pilot tenants.
   - **Phase 5 — God-tier:** auto-celebration, fan engagement,
     district ops, replay.
 
+## Standard Audit Surface — every audit MUST cover this list explicitly
+
+Lead's rule (2026-05-26): *"when i say audit the entire app … every streaming integration, every AI template, every POS integration, every AI tool that exists or should exist needs to be discovered."* When the lead asks to audit "the app" / "every integration" / anything implying full coverage, the audit MUST explicitly enumerate **every** domain below and mark each: **covered** / **N-A (not yet built)** / **deferred-with-reason**. Silently scoping down is forbidden — if a domain is skipped, the audit report MUST say so on the first page.
+
+This list is the floor, not the ceiling. Add to it when a new integration domain appears in the codebase. Future audits should grep `## Standard Audit Surface` in CLAUDE.md and check every bullet.
+
+### 1. Real-time + signed pub/sub
+- Emergency trigger / all-clear / per-screen overrides
+- WebSocket gateway signing + verification (timestamp unit, signature pass-through, freshness window)
+- Redis fan-out gate (verifyWsHmac on every replica's pmessage)
+- HTTP polling backstop via manifest endpoint
+- SSE controller fallback
+- Player WS message-type handlers (OVERRIDE, ALL_CLEAR, TENANT_CHANGED, SOS, TEXT_BROADCAST, MEDIA_ALERT, REFRESH_WEB, CHECK_FOR_UPDATES, SYNC)
+- Hold-to-trigger + typed-confirm UX consistency
+- Per-eventId dedup at every layer
+
+### 2. Storage + content pipeline
+- Supabase asset upload + Cache-Control / egress
+- Service-worker offline cache tiers (playlist + emergency, never-evict floor)
+- USB sneakernet ingest (signed manifest, SHA verify, operator PIN)
+- Floor plan upload (Sprint 8b)
+- Asset re-cache backfill jobs
+- Image / video transcoding pipeline (if/when built)
+
+### 3. AI providers — every entry point × every provider
+For each of the 3 providers (**Anthropic / OpenAI / Google**):
+- Test-on-save error mapping (every status code, quota disambiguation)
+- Generate-time error mapping (same disambiguation, NOT separate code)
+- Out-of-credit vs rate-limit signature recognition
+- AuditLog row on success AND on failed key tests
+- BYOK key encryption + rotation + revocation
+- Platform free-tier usage accounting (multi-replica safe)
+- Model catalog freshness (deprecated-model graceful fallback)
+- AbortSignal timeout on every fetch
+- Prompt caching where supported (Anthropic ephemeral)
+- Temperature parity across providers
+
+### 4. AI feature surfaces — every place AI does work
+- Sparkle button (text generation in widgets — PropertiesPanel mount sites)
+- Touch-template generation (full-template synthesis)
+- AI image generation (DALL-E / Imagen / Stable Diffusion) — if/when built
+- AI background removal — if/when built
+- AI translation for multilingual templates — if/when built
+- TTS for emergency announcements (V2 spec — Voice synthesis)
+- Auto-celebration trigger via score-feed (Sprint 13 AUTO)
+- AI summarization of incoming context (V2 controlled assist)
+- AI-from-CMS-data (lunch menu copy from POS, schedule descriptions)
+- AI alt-text / caption auto-generation
+- AI anomaly detection (offline-screen pattern, abnormal playback)
+- Voice-to-text for SOS voice notes — if/when built
+
+### 5. AI-tool comparative scan
+Each "audit the entire app" pass MUST list AI features industry leaders ship that we DON'T yet have, and grade competitive parity. Examples to check:
+- Yodeck / Rise Vision / OptiSigns / ScreenCloud / BrightSign AI features
+- Canva Magic Write equivalent for content fields
+- Smart playlist suggestions ("for a Tuesday lunch crowd")
+- Content scheduling AI ("post this video next Tuesday")
+- CV asset tagging on upload
+- AI-generated celebration animations (Sprint 13 stretch)
+- AI-suggested template themes from logo color extraction
+- Computer-vision people-counting for sponsor proof-of-impressions
+
+If a feature is on this list and we don't ship it, flag as a competitive gap with severity.
+
+### 6. Streaming integrations
+- RTSP camera feed widgets (V2 Responder Bridge)
+- HLS / DASH / M3U8 live streams in player
+- Embedded YouTube live / Twitch / Facebook Live / Periscope
+- NFHS Network broadcast overlay (Sprint 13 streaming)
+- Webcam URL widget
+- Streaming asset playlist support (treat as Asset, schedule rules)
+- IP camera RTSP share-links for responders (V2 Phase 2)
+
+### 7. Sports score / data integrations (Sprint 13)
+- Daktronics All Sport console tap-off
+- Sportzcast / Scorebird
+- Genius Sports / Sportradar live feeds
+- MaxPreps
+- GameChanger
+- Game-state console publishing
+- Auto-celebration from score delta
+- Per-sport widget set parity (every sport in the Sport Engine spec)
+
+### 8. POS / commerce integrations
+- Square (restaurants / retail)
+- Toast (restaurants)
+- Clover (restaurants / retail)
+- Lightspeed (retail)
+- Shopify (retail)
+- Stripe Terminal (in-venue checkout, distinct from billing)
+- Pull-from-POS for menu boards (price + availability)
+- Pull-from-POS for inventory signage
+- Pull-from-POS for promo / happy-hour automation
+
+### 9. Communications integrations
+- Twilio SMS / voice (V2 multi-modal output)
+- Sendgrid email
+- APNs / FCM push notifications (mobile panic page)
+- Slack outbound notifications
+- Microsoft Teams outbound notifications
+- PagerDuty / OpsGenie (V2 responder escalation)
+- Webhook outbound (custom integrations)
+
+### 10. Auth + identity
+- JWT issuance + revocation (jwt_revoked_list)
+- Argon2 password hashing
+- express-session cookies
+- TOTP MFA (pending)
+- WebAuthn passkeys (pending)
+- SSO (OIDC / SAML / Google / Okta) — Sprint 2
+- Clever SIS — Sprint 2
+- Role staleness (canTriggerPanic JWT-claim vs live row)
+
+### 11. Billing + commerce
+- Stripe Checkout / Customer Portal / Invoices
+- Stripe webhook idempotency + ordering + audit
+- License seat enforcement (SERIALIZABLE pair-tx)
+- Multi-vertical pricing tiers
+- Free pilot lifecycle (14-day trial activation, conversion)
+- Dunning / past-due UX
+- Refunds + comp seats (SUPER_ADMIN paths)
+- PCI scope (every form, every log line — no PAN anywhere)
+
+### 12. Design import integrations
+- PDF / PPTX upload → playlist (Sprint 10)
+- Canva Connect (Sprint 11)
+- Google Slides via Drive API (Sprint 11)
+- Microsoft PowerPoint Online via Graph (Sprint 11)
+- Figma (Sprint 11)
+- Keynote (fallback to PDF export)
+
+### 13. Public alert integrations (V2)
+- CAP (Common Alerting Protocol) inbound
+- IPAWS inbound consumption (FEMA national alerts)
+- IPAWS outbound origination (FEMA-authorized — explicit decision needed)
+- Raptor SOS integration
+- RapidSOS integration
+- PA / IP-speaker (Valcom / Atlas / SingleWire InformaCast Fusion)
+
+### 14. Multi-vertical surface
+- Every vertical in `packages/api-types/src/verticals.ts` has matching copy in DistrictSchoolsCard COPY
+- Vertical-specific default templates (Sports gets scoreboards, Retail gets promos, etc.)
+- Sample data per vertical (signup + onboarding flows)
+- Vertical-aware billing tier names (no "EDU District" on a Sports tenant)
+- Per-vertical AI prompts (announcement style for school vs gym vs restaurant)
+- Per-vertical sample URLs for branding wizard
+- Brand-applyToTemplates covers vertical-specific widget sets (Sports, Retail, etc.)
+- "Add a [noun]" buttons match the vertical (School / Location / Store / Gym / Office / Restaurant / Boutique / Bar / Venue / Hotel / Parish)
+
+### 15. Cross-browser + Chromium-83
+- Safari (WebKit) — every customer-facing surface
+- Chromium 83 (NovaStar Taurus) — every player-shipped surface
+- Tailwind class sweep (gap-*, inset-*, backdrop-blur-*, has-*, container-type, oklch, color-mix, aspect-ratio, text-wrap-balance)
+- Cross-browser CI baseline ratchet (only DOWN, never UP)
+- Per-template WebKit smoke check (not just 18 holiday templates)
+- Older Android System WebView for kiosk APKs
+
+### 16. Forensic / audit coverage
+- AuditLog row on EVERY privileged action (every mutation, every key change, every login attempt, every payment event)
+- DB-level immutability triggers (UPDATE/DELETE blocked at storage)
+- Cross-tenant scope verification on every actor-id check
+- Replay-attack defense (per-eventId dedup, idempotency tables)
+- Cron-triggered consistency checks (License vs Stripe quantity, Tenant.address vs lat/lng)
+
+### 17. Operational + DX
+- Health endpoints (liveness, readiness, emergency-path)
+- Pre-deploy CI gates (preflight, taurus-safety, cross-browser, a11y)
+- Pre-push hooks (lockfile drift, secret scan)
+- Rollback procedure (git tag + tarball discipline)
+- Multi-replica safety (in-memory caches → Redis when load-bearing)
+- Connection pool sizing (`connection_limit=10` + `pool_timeout=20` on DATABASE_URL)
+- Boot-time required-secret enforcement
+
+### 18. Accessibility + a11y
+- axe-core CI baseline (Sprint 1 work)
+- Screen-reader live regions on emergency surfaces
+- Keyboard-only navigation through every flow
+- aria-live announcements on hold-to-trigger
+- Color-blind-safe pin colors on fleet map
+- Sufficient contrast on all brand-injected palettes (WCAG AA minimum)
+
+### How to invoke this checklist
+
+Every audit prompt sent to an agent OR run interactively MUST start with:
+> "Use the Standard Audit Surface checklist in CLAUDE.md as your domain map. For every numbered section, report covered/N-A/deferred. If you scope down, say so on the first page."
+
+The audit report's first section MUST be a table showing all 18 sections and their coverage status. Anything missing from the table is a gap.
+
 ## For AI Assistants
 
 1. **Model tier:** Default to Haiku for boilerplate, syntax fixes, test stubs. Use Sonnet for feature work. Use Opus for emergency system, security issues, template builder design, or ambiguous architecture calls.
