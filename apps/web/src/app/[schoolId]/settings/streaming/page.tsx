@@ -1049,7 +1049,7 @@ function BridgeSetupModal({ provider, onClose, onContinue }: {
         <div className="px-6 pb-2">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 leading-relaxed">
             <strong className="text-slate-800">Need help wiring this up?</strong> See{' '}
-            <a href="/docs/HARDWARE_BRIDGE.md" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-0.5">
+            <a href="https://github.com/gschiemann/EDUCMS/blob/master/docs/HARDWARE_BRIDGE.md" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-0.5">
               docs/HARDWARE_BRIDGE.md <ExternalLink className="w-2.5 h-2.5" />
             </a>{' '}
             for the full guide, including the one-line ffmpeg command and our{' '}
@@ -1240,7 +1240,7 @@ function WhyClosedModal({
             </ul>
             <p className="pt-2">
               Full setup guide:{' '}
-              <a href="/docs/HARDWARE_BRIDGE.md" target="_blank" rel="noreferrer" className="text-indigo-600 underline inline-flex items-center gap-0.5">
+              <a href="https://github.com/gschiemann/EDUCMS/blob/master/docs/HARDWARE_BRIDGE.md" target="_blank" rel="noreferrer" className="text-indigo-600 underline inline-flex items-center gap-0.5">
                 docs/HARDWARE_BRIDGE.md <ExternalLink className="w-3 h-3" />
               </a>
             </p>
