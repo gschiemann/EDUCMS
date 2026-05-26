@@ -711,7 +711,31 @@ function ClockWidget({ config, compact }: { config: any; compact: boolean }) {
   const hours = is24 ? rawHour : (rawHour % 12 || 12);
   const mins = fmt({ minute: '2-digit' }).padStart(2, '0');
   const secs = fmt({ second: '2-digit' }).padStart(2, '0');
-  const dateStr = fmt({ weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  // Date format honors the panel `dateFormat` select (long / short /
+  // weekday / numeric / iso). 'long' stays the legacy default so
+  // existing templates render exactly as before.
+  const dateFormat = config.dateFormat || 'long';
+  const dateStr = (() => {
+    switch (dateFormat) {
+      case 'short':
+        return fmt({ weekday: 'short', month: 'short', day: 'numeric' });
+      case 'weekday':
+        return fmt({ weekday: 'long' });
+      case 'numeric':
+        return fmt({ month: 'numeric', day: 'numeric', year: 'numeric' });
+      case 'iso':
+        // YYYY-MM-DD — strip separators from numeric and pad.
+        return (() => {
+          const y = fmt({ year: 'numeric' });
+          const m = fmt({ month: '2-digit' });
+          const d = fmt({ day: '2-digit' });
+          return `${y}-${m}-${d}`;
+        })();
+      case 'long':
+      default:
+        return fmt({ weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    }
+  })();
 
   const color = config.color || '#1e293b';
   const bg = config.bgColor || 'transparent';

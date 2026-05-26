@@ -190,10 +190,16 @@ export default function DeveloperSettingsPage() {
             blurb="District directory integration for staff login."
             href={`/${schoolId}/settings/sso`}
           />
+          {/* 2026-05-25 — Design imports moved out of Settings into
+              the Templates section ("its not a setting its a feature"
+              — operator). The Developer integrations index still
+              surfaces it because operators with the developer mindset
+              expect to find every integration in one place, but the
+              link now points at the new home. */}
           <IntegrationCard
             name="Design imports"
-            blurb="PDF / Canva / Slides → playlist."
-            href={`/${schoolId}/settings/imports`}
+            blurb="PDF / Canva / Slides → template (or playlist)."
+            href={`/${schoolId}/templates/imports`}
           />
           <IntegrationCard
             name="USB ingest"

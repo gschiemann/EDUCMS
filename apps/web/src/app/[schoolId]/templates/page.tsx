@@ -625,6 +625,19 @@ export default function TemplatesPage() {
           </div>
           <div className="flex items-center gap-2">
             <ApplyBrandButton disabled={isViewer} />
+            {/* 2026-05-25 — Operator wanted design imports surfaced
+                INSIDE Templates ("its not a setting its a feature").
+                Distinct from the existing "Import .educms-template.json"
+                button below: this one routes to /templates/imports for
+                PDF / Canva / Slides → Template (or Playlist) flow. */}
+            <button
+              onClick={() => router.push(`/${params?.schoolId ?? ''}/templates/imports`)}
+              disabled={isViewer}
+              title={isViewer ? 'Read-only — viewer role' : 'Import a PDF / Canva / Slides export as a template or playlist'}
+              className="px-4 py-3 bg-white/10 text-white font-bold text-sm rounded-xl border border-white/30 hover:bg-white/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <FileText className="w-5 h-5" /> Import design
+            </button>
             {/* Import a template exported from another account. Subdued
                 outline style so it doesn't compete with the primary CTAs. */}
             <button
@@ -633,7 +646,7 @@ export default function TemplatesPage() {
               title={isViewer ? 'Read-only — viewer role' : 'Import a template from a .educms-template.json file'}
               className="px-4 py-3 bg-white/10 text-white font-bold text-sm rounded-xl border border-white/30 hover:bg-white/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Upload className="w-5 h-5" /> Import
+              <Upload className="w-5 h-5" /> Import .json
             </button>
             {/* Phase D3 — AI generate button. Sits next to "New Template"
                 so operators discover it without it stealing the primary

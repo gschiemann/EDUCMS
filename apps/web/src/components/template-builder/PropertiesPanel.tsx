@@ -1891,6 +1891,16 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         // themes (clock face is baked into the SVG).
         fields.push(<ToggleField key="showSeconds" label="Show seconds" value={!!cfg.showSeconds} onChange={(v) => setField({ showSeconds: v })} />);
         fields.push(<ToggleField key="showDays" label="Show day & date" value={cfg.showDays !== false} onChange={(v) => setField({ showDays: v })} />);
+        // Date display style — operator: "i want the date as just the
+        // day name, not the full long date". `dateFormat` writes into
+        // the ClockWidget renderer (and the v2 themed clocks fall
+        // through to it via the shared theme renderer registry).
+        // 'long' = Monday, May 25, 2026  (legacy default)
+        // 'short' = Mon, May 25
+        // 'weekday' = Monday
+        // 'numeric' = 5/25/2026
+        // 'iso' = 2026-05-25
+        fields.push(<SelectField key="dateFormat" label="Date format" value={cfg.dateFormat || 'long'} options={[['long','Monday, May 25, 2026'],['short','Mon, May 25'],['weekday','Monday'],['numeric','5/25/2026'],['iso','2026-05-25']]} onChange={(v) => setField({ dateFormat: v })} />);
         // Optional eyebrow text — v2 widgets show this above the time
         // when set ("HOMEROOM IN", "BELL @", etc.). Legacy widgets ignore.
         fields.push(<TextField key="label" label="Eyebrow (optional)" value={cfg.label || ''} placeholder="" onChange={(v) => setField({ label: v })} />);
@@ -3596,13 +3606,25 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
     case 'RESTAURANT_MENU_BOARD': {
       // Widget reads `posSync` + `posCategory` (see MenuBoardWidget.tsx
       // line 110). When posSync is on it ignores config.items and pulls
-      // live PosMenuItem rows from /api/v1/pos/items?category=X.
+      // live PosMenuItem rows from /api/v1/pos/items?category=X. When
+      // posSync is OFF the operator MUST be able to edit items[] — this
+      // is the operator's primary complaint about restaurant templates:
+      // "you can't edit a single word." The items[] JSON editor below
+      // surfaces the array shape MenuBoardWidget actually reads
+      // (name / desc / price / dietary / emoji).
       fields.push(<TextField key="title" label="Board title" value={cfg.title || ''} placeholder="Menu" onChange={(v) => setField({ title: v })} />);
       fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="made fresh daily" onChange={(v) => setField({ subtitle: v })} />);
       fields.push(<ToggleField key="posSync" label="Pull live items from connected POS" value={!!cfg.posSync} onChange={(v) => setField({ posSync: v })} />);
       if (cfg.posSync) {
         fields.push(<PosCategoryPickerField key="posCategory" label="Category (optional — leave blank for all)" value={cfg.posCategory || ''} onChange={(v) => setField({ posCategory: v || undefined })} />);
         fields.push(<TextField key="maxItems" label="Max items to show" value={String(cfg.maxItems || 12)} placeholder="12" onChange={(v) => setField({ maxItems: parseInt(v) || 12 })} />);
+      } else {
+        // Manual editor: each menu item as a separate row. Operators
+        // shouldn't need to hand-edit JSON to update a price.
+        fields.push(<ColorPickerField key="accentColor" label="Accent color" value={cfg.accentColor || '#e8b94a'} onChange={(v) => setField({ accentColor: v })} />);
+        fields.push(<TextAreaField key="itemsJson" label="Menu items (JSON array of { name, desc, price, emoji, dietary })" value={typeof cfg.items === 'string' ? cfg.items : JSON.stringify(cfg.items || [], null, 2)} rows={12} onChange={(v) => {
+          try { setField({ items: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
+        }} />);
       }
       fields.push(<TextField key="columns" label="Columns (1–5)" value={String(cfg.columns || 3)} placeholder="3" onChange={(v) => setField({ columns: parseInt(v) || 3 })} />);
       fields.push(<SelectField key="theme" label="Color theme" value={cfg.theme || 'cream'} options={[['cream','Cream'],['charcoal','Charcoal'],['red','Red']]} onChange={(v) => setField({ theme: v })} />);
