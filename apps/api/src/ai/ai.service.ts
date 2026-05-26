@@ -313,7 +313,7 @@ export class AiService {
     return null;
   }
 
-  async generate(opts: AiGenerateRequest & { tenantId: string }): Promise<AiGenerateResponse> {
+  async generate(opts: AiGenerateRequest & { tenantId: string; userId?: string }): Promise<AiGenerateResponse> {
     // Audit-W1 wrap: any throw out of the rest of this method
     // (bad input, provider 4xx/5xx, cap-reached, decryption fail)
     // counts as a failure against the per-tenant cap. The wrapper
@@ -328,7 +328,7 @@ export class AiService {
     }
   }
 
-  private async generateInner(opts: AiGenerateRequest & { tenantId: string }): Promise<AiGenerateResponse> {
+  private async generateInner(opts: AiGenerateRequest & { tenantId: string; userId?: string }): Promise<AiGenerateResponse> {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
@@ -544,6 +544,31 @@ export class AiService {
       const u = await this.readPlatformUsage(opts.tenantId);
       usage = { used: u.used, cap: u.cap, resetAt: u.resetAt };
     }
+    // 2026-05-26 audit AI-P0-4 — log every successful generation.
+    // SUPER_ADMIN can now answer "which tenant burned through 199 of
+    // 200 platform credits this month?" via the audit log. Captures
+    // dimensions (no prompt content — operator-supplied free text
+    // could contain student names / PII; intent + tone + vertical
+    // are the privacy-safe forensic fields). Source tells us whether
+    // it was platform credit or BYOK.
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AI_GENERATE',
+        targetType: 'tenant',
+        targetId: opts.tenantId,
+        tenantId: opts.tenantId,
+        userId: opts.userId || null,
+        details: JSON.stringify({
+          intent: opts.intent,
+          tone: opts.tone || null,
+          vertical: opts.vertical || null,
+          provider: resolved.provider,
+          model: resolved.model,
+          source: resolved.source,
+          optionsReturned: options.length,
+        }),
+      },
+    }).catch(() => { /* audit best-effort — never fail the generation on log error */ });
     return { options, intent: opts.intent, source: resolved.source, usage } as any;
   }
 
@@ -572,6 +597,7 @@ export class AiService {
    */
   async generateTouchTemplate(opts: {
     tenantId: string;
+    userId?: string; // 2026-05-26 audit AI-P0-4 — for AuditLog row
     prompt: string;
     screenWidth?: number;
     screenHeight?: number;
@@ -608,6 +634,7 @@ export class AiService {
 
   private async generateTouchTemplateInner(opts: {
     tenantId: string;
+    userId?: string;
     prompt: string;
     screenWidth?: number;
     screenHeight?: number;
@@ -740,6 +767,27 @@ export class AiService {
       const u = await this.readPlatformUsage(opts.tenantId);
       usage = { used: u.used, cap: u.cap, resetAt: u.resetAt };
     }
+    // 2026-05-26 audit AI-P0-4 — touch-template generations also
+    // audit-logged. SUPER_ADMIN can attribute every "AI-built
+    // interactive template" to a specific user+tenant.
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AI_TEMPLATE_GENERATED',
+        targetType: 'tenant',
+        targetId: opts.tenantId,
+        tenantId: opts.tenantId,
+        userId: opts.userId || null,
+        details: JSON.stringify({
+          vertical: opts.vertical || null,
+          screenWidth: opts.screenWidth || null,
+          screenHeight: opts.screenHeight || null,
+          provider: resolved.provider,
+          model: resolved.model,
+          source: resolved.source,
+          zoneCount: Array.isArray(sanitized?.zones) ? sanitized.zones.length : 0,
+        }),
+      },
+    }).catch(() => { /* audit best-effort */ });
     return { parsed: sanitized, source: resolved.source, usage };
   }
 }

@@ -60,6 +60,7 @@ export class AiController {
     return this.ai.generate({
       ...body,
       tenantId: req.user.tenantId,
+      userId: req.user.id, // 2026-05-26 audit AI-P0-4 — required for AuditLog
     });
   }
 }

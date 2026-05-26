@@ -765,6 +765,7 @@ export class TemplatesController {
   ) {
     const result = await this.ai.generateTouchTemplate({
       tenantId: req.user.tenantId,
+      userId: req.user.id, // 2026-05-26 audit AI-P0-4 — required for AuditLog
       prompt: body.prompt,
       screenWidth: body.screenWidth,
       screenHeight: body.screenHeight,

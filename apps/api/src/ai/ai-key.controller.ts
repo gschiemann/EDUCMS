@@ -226,6 +226,28 @@ export class AiKeyController {
       } else if (testResult.errorStatus === 429) {
         detail = `Provider rate-limited the test request. Try again in a moment — the key itself may be fine.`;
       }
+      // 2026-05-26 audit AI-P0-4 — log failed test-on-save attempts.
+      // Without this, an attacker with a SCHOOL_ADMIN account can
+      // silently probe arbitrary OpenAI / Anthropic / Google keys at
+      // ~$0.0001/test, validating other people's credentials with no
+      // forensic record. We log the PROVIDER + upstream STATUS only,
+      // never the key (even masked — a partial key in the audit log
+      // would be a credential leak through a different surface).
+      await this.prisma.client.auditLog.create({
+        data: {
+          action: 'AI_KEY_TEST_FAILED',
+          targetType: 'tenant',
+          targetId: req.user.tenantId,
+          tenantId: req.user.tenantId,
+          userId: req.user.id,
+          details: JSON.stringify({
+            provider,
+            model,
+            upstreamStatus: testResult.errorStatus,
+            quotaError: !!quotaErr,
+          }),
+        },
+      }).catch(() => { /* audit best-effort */ });
       throw new HttpException(detail, HttpStatus.BAD_REQUEST);
     }
 
