@@ -809,9 +809,18 @@ export class PlayerOtaController {
       }
       res.setHeader('Content-Type', 'application/vnd.android.package-archive');
       res.setHeader('Content-Length', String(buf.length));
+      // 2026-05-26 — operator: "the apk downloads as edu cms player
+      // from settings, that should say VenueOS Player". The legacy
+      // filename was a holdover from the EDU CMS rebrand era. Only
+      // the OPERATOR-FACING download filename changes here — the
+      // GitHub release asset name (line 859) + artifact name (line
+      // 912) + Android UA regex in screens.controller.ts stay
+      // untouched because they're coordinated with CI + the Kotlin
+      // UA emit and renaming them without that coordination would
+      // break OTA for the existing fleet.
       res.setHeader(
         'Content-Disposition',
-        `attachment; filename="edu-cms-player-vc${vc}.apk"`,
+        `attachment; filename="venue-os-player-vc${vc}.apk"`,
       );
       // 24h cache is fine — content is immutable per versionCode.
       res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
