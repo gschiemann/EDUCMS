@@ -1577,16 +1577,59 @@ export function useUsbIngestEvents() {
 }
 
 // ─── Brand Kit ──────────────────────────────────────────────────
+//
+// Canonical fetcher for the current tenant's branding row.
+//
+// Performance note (2026-05-26): the same route used to ping
+// `/branding/me` ~8 times per navigation because every component that
+// needed branding (Sidebar self-heal, BrandStyleInjector mount,
+// BrandingSettingsCard, BrandingProvider, dashboard / templates pages,
+// settings/branding page) ran its own raw `apiFetch`. None of them
+// shared a cache. Consolidating all those reads through this hook with
+// a 60s staleTime collapses the burst to a SINGLE network call per
+// minute per tab.
+//
+// Branding changes rarely. The Adopt / Reset / Revert paths invalidate
+// the key explicitly via `useInvalidateTenantBranding()` below, so
+// updates surface instantly without the cache holding stale state.
+//
+// 2026-05-04 — endpoint was wrong (`/tenants/me/branding`); fixed to
+// `/branding/me` to match Sidebar / BrandStyleInjector.
+import type { TenantBranding } from '@/lib/branding';
+export const TENANT_BRANDING_QUERY_KEY = ['branding', 'me'] as const;
+
 export function useTenantBranding() {
-  // 2026-05-04 — was hitting /tenants/me/branding which doesn't exist
-  // (silently 404'd, BrandingProvider received null forever, the whole
-  // brand context system was inert). Real endpoint is /branding/me —
-  // matches what BrandingSettingsCard and BrandStyleInjector use.
-  return useQuery<any>({
-    queryKey: ['tenant-branding'],
-    queryFn: () => apiFetch('/branding/me'),
-    retry: false,
+  return useQuery<TenantBranding | null>({
+    queryKey: TENANT_BRANDING_QUERY_KEY,
+    queryFn: () => apiFetch<TenantBranding | null>('/branding/me'),
+    // 60s — branding is operator-changed via Adopt/Reset, not background
+    // process; the explicit invalidator below covers writes.
+    staleTime: 60_000,
+    // Hold in cache for 5 minutes after the last subscriber unmounts so
+    // route changes that re-mount a consumer hit the cache.
+    gcTime: 5 * 60_000,
+    // Self-heal: 3 attempts with backoff so a transient Supabase /
+    // Redis blip doesn't strand the Sidebar / BrandStyleInjector on
+    // default chrome. Mirrors the old Sidebar inline retry (600 →
+    // 1500 → 4000 ms) that this hook subsumes.
+    retry: 3,
+    retryDelay: (attempt) => [600, 1500, 4000][attempt] ?? 4000,
   });
+}
+
+/**
+ * Invalidate the shared `/branding/me` cache so every subscriber
+ * (sidebar header, dashboard hero, brand-style injector, branding
+ * settings card, Apply-to-templates button) refetches in unison.
+ *
+ * Call from any Adopt / Reset / Revert mutation. Pairs with the
+ * `branding:update` window event that BrandStyleInjector still listens
+ * to for live-preview repaint — the event is for sub-second visual
+ * feedback; this invalidation is the authoritative refetch.
+ */
+export function useInvalidateTenantBranding() {
+  const qc = useQueryClient();
+  return () => qc.invalidateQueries({ queryKey: TENANT_BRANDING_QUERY_KEY });
 }
 
 /**

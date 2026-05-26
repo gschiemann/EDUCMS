@@ -10,7 +10,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { usePathname } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
@@ -24,7 +24,7 @@ import { apiFetch } from '@/lib/api-client';
 import { Paintbrush, RotateCcw, AlertTriangle, Check, Loader2, Wand2 } from 'lucide-react';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useAppStore } from '@/lib/store';
-import { useApplyBrandToTemplates } from '@/hooks/use-api';
+import { useApplyBrandToTemplates, useTenantBranding, useInvalidateTenantBranding } from '@/hooks/use-api';
 import { pushBrandingPreview } from '@/components/branding/BrandStyleInjector';
 import { useLogoTone } from '@/components/branding/useLogoTone';
 import type { TenantBranding } from '@/lib/branding';
@@ -49,8 +49,15 @@ export function BrandingSettingsCard({ slimOnly = false }: { slimOnly?: boolean 
   // manualAccent, manualLogoFile, manualLogoUrl, manualSaving,
   // manualStatus, handleManualSave (~50 lines of dead code dropped).
 
-  const [branding, setBranding] = useState<TenantBranding | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Single shared `/branding/me` subscription — same hook every other
+  // branding-aware component uses (60s staleTime + 5min gcTime). The
+  // raw `apiFetch` this used to do was the 4th of ~8 duplicate calls
+  // per navigation; now it dedupes through React Query.
+  const featureEnabled = isFeatureEnabled(FLAGS.AUTO_BRANDING);
+  const brandingQuery = useTenantBranding();
+  const invalidateBranding = useInvalidateTenantBranding();
+  const branding = featureEnabled ? (brandingQuery.data ?? null) : null;
+  const loading = featureEnabled && brandingQuery.isLoading;
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -70,22 +77,14 @@ export function BrandingSettingsCard({ slimOnly = false }: { slimOnly?: boolean 
     [branding?.logoSvgInline],
   );
 
-  useEffect(() => {
-    if (!isFeatureEnabled(FLAGS.AUTO_BRANDING)) { setLoading(false); return; }
-    (async () => {
-      try {
-        const b = await apiFetch<TenantBranding | null>('/branding/me');
-        setBranding(b);
-      } finally { setLoading(false); }
-    })();
-  }, []);
-
   const handleReset = async () => {
     setResetting(true);
     setResetError(null);
     try {
       await apiFetch('/branding/me', { method: 'DELETE' });
-      setBranding(null);
+      // Drop the shared cache so every subscriber (sidebar, dashboard
+      // hero, brand-style injector) repaints with the default palette.
+      invalidateBranding();
       setConfirmReset(false);
       // Force a reload so all CSS variables / SSR-injected branding clear immediately.
       // Avoids a half-themed UI showing the old palette until the next navigation.

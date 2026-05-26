@@ -13,11 +13,11 @@
  */
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAppStore } from '@/lib/store';
-import { apiFetch } from '@/lib/api-client';
 import { TenantBranding, cssVarsFromPalette, brandDefaultPalette } from '@/lib/branding';
 import { getClientBrand } from '@/lib/brand';
+import { useTenantBranding } from '@/hooks/use-api';
 
 // Per-tenant cache prefix. The key used to be a single global
 // `edu-cms-branding-cache-v1` which caused a cross-tenant theme bleed:
@@ -38,9 +38,22 @@ export function BrandStyleInjector() {
   const user = useAppStore((s) => s.user);
   const tenantId = user?.tenantId || null;
 
+  // Shared cache fetch — same hook every other branding consumer uses.
+  // 60s staleTime + 5min gcTime means the Sidebar's self-heal, the
+  // BrandingProvider context, the dashboard hero, and the
+  // BrandingSettingsCard all dedupe to ONE network call. See
+  // `useTenantBranding()` in `hooks/use-api.ts`.
+  //
+  // 2026-05-26 dedup pass: before this, each component called
+  // /branding/me independently → ~8 round trips per navigation. The
+  // hook holds the result; effects below react to it.
+  const { data: brandingFromQuery, isSuccess, isError } = useTenantBranding();
+
+  // Pre-paint phase — runs on every tenant change. Synchronous; happens
+  // before the network round-trip resolves so the user sees the cached
+  // palette instantly. Separated from the query-result effect so the
+  // sync paint isn't gated on React Query's lifecycle.
   useEffect(() => {
-    // One-time migration: purge the legacy global cache on every mount.
-    // Harmless once it's gone; prevents the old value ever being applied.
     try { localStorage.removeItem(LS_KEY_LEGACY); } catch {}
 
     // Repaint the vendor default palette before painting the current
@@ -51,52 +64,24 @@ export function BrandStyleInjector() {
 
     if (!tenantId || !user) return;
 
-    const key = cacheKeyFor(tenantId);
-
-    // Paint from this tenant's cache first (zero-flicker on route changes)
+    // Paint from this tenant's LS cache first (zero-flicker on route
+    // changes). LS is intentionally a separate layer from the React
+    // Query cache — it survives page reloads / new tabs where the
+    // in-memory query cache is cold.
     try {
-      const cached = localStorage.getItem(key);
+      const cached = localStorage.getItem(cacheKeyFor(tenantId));
       if (cached) applyBranding(JSON.parse(cached));
     } catch {}
 
-    let cancelled = false;
-    (async () => {
-      try {
-        const branding = await apiFetch<TenantBranding | null>('/branding/me');
-        if (cancelled) return;
-        if (branding) {
-          localStorage.setItem(key, JSON.stringify(branding));
-          applyBranding(branding);
-          // Notify other components (Sidebar logo/name, header) that
-          // depend on the LS cache. Without this dispatch, components
-          // that read the cache only on mount stay on their default
-          // brand for the entire session on a fresh device — the LS
-          // cache was empty when they mounted, and `applyBranding`
-          // only sets CSS vars on `:root`, which Sidebar doesn't read.
-          // First seen on a clean Mac migration where colors painted
-          // correctly via CSS vars but logo + displayName stayed at
-          // defaults until the user reloaded. (gh #branding-mac-bug)
-          window.dispatchEvent(new CustomEvent('branding:update', { detail: branding }));
-        } else {
-          localStorage.removeItem(key);
-          applyBrandDefault();
-        }
-      } catch {
-        // Fetch failed — drop this tenant's stale cache so a broken
-        // backend can't leave a neighbor-tenant's theme on screen.
-        localStorage.removeItem(key);
-        applyBrandDefault();
-      }
-    })();
-
-    // Listen for live updates from the wizard
+    // Listen for live updates from the wizard (Adopt button) — fires
+    // immediately so the operator sees the new palette before the
+    // React Query refetch lands.
     const onUpdate = (e: Event) => {
       const b = (e as CustomEvent<TenantBranding>).detail;
       applyBranding(b);
     };
     window.addEventListener('branding:update', onUpdate as EventListener);
     return () => {
-      cancelled = true;
       window.removeEventListener('branding:update', onUpdate as EventListener);
       // Repaint the vendor default on unmount — when the user signs out
       // and the dashboard unmounts, the public marketing site / login
@@ -107,6 +92,53 @@ export function BrandStyleInjector() {
       applyBrandDefault();
     };
   }, [tenantId, activeTenant, user]);
+
+  // React-Query-result effect: when the shared `/branding/me` query
+  // resolves, mirror the result into LS cache + apply CSS vars +
+  // dispatch the `branding:update` event so subscribers that listen
+  // for the event (Sidebar, etc.) repaint without their own fetch.
+  //
+  // Tracks the last applied row so we don't re-dispatch on every
+  // re-render — only when the query data actually changes.
+  const lastAppliedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!tenantId || !user) return;
+    if (!isSuccess && !isError) return;
+    const key = cacheKeyFor(tenantId);
+
+    // Error path mirrors the original behavior: drop this tenant's
+    // stale cache so a broken backend can't leave a neighbor-tenant's
+    // theme on screen, and repaint vendor defaults.
+    if (isError) {
+      try { localStorage.removeItem(key); } catch {}
+      applyBrandDefault();
+      lastAppliedRef.current = null;
+      return;
+    }
+
+    const branding = brandingFromQuery ?? null;
+    const serialized = branding ? JSON.stringify(branding) : '__null__';
+    if (lastAppliedRef.current === serialized) return;
+    lastAppliedRef.current = serialized;
+
+    if (branding) {
+      try { localStorage.setItem(key, JSON.stringify(branding)); } catch {}
+      applyBranding(branding);
+      // Notify other components (Sidebar logo/name, header) that
+      // depend on the LS cache or the event bus. Without this dispatch,
+      // components that read the cache only on mount stay on their
+      // default brand for the entire session on a fresh device — the LS
+      // cache was empty when they mounted, and `applyBranding` only
+      // sets CSS vars on `:root`, which Sidebar doesn't read. First
+      // seen on a clean Mac migration where colors painted correctly
+      // via CSS vars but logo + displayName stayed at defaults until
+      // the user reloaded. (gh #branding-mac-bug)
+      window.dispatchEvent(new CustomEvent('branding:update', { detail: branding }));
+    } else {
+      try { localStorage.removeItem(key); } catch {}
+      applyBrandDefault();
+    }
+  }, [brandingFromQuery, isSuccess, isError, tenantId, user]);
 
   return null;
 }

@@ -10,10 +10,9 @@ import { fullName as userFullName, initials as userInitials } from '@/lib/user-d
 import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
-import { usePendingAssets, useSubmissions } from '@/hooks/use-api';
+import { usePendingAssets, useSubmissions, useTenantBranding } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useTenantStatus } from '@/hooks/use-api';
-import { apiFetch } from '@/lib/api-client';
 import type { TenantBranding } from '@/lib/branding';
 import { useLogoTone } from '@/components/branding/useLogoTone';
 
@@ -68,17 +67,31 @@ export function Sidebar() {
   // tenant. The cache key depends on the active tenantId; re-reads
   // whenever that changes so tenant-switch picks up the other
   // tenant's brand immediately.
+  //
+  // Network self-heal goes through the shared `useTenantBranding()`
+  // hook (60s staleTime + 3-retry backoff). Pre-2026-05-26 every
+  // branding-aware component ran its own raw `/branding/me` fetch on
+  // mount — Sidebar, BrandStyleInjector, BrandingProvider, dashboard,
+  // templates, settings card. That added up to ~8 round trips per
+  // navigation. The hook collapses them to ONE per minute per tab.
   const userTenantId = user?.tenantId || null;
   const [branding, setBranding] = useState<TenantBranding | null>(null);
+  // Shared cache subscription. If another component has already loaded
+  // /branding/me within the last 60s, this returns instantly without a
+  // network call. Otherwise React Query fires one fetch with the
+  // 3-retry backoff that used to live inline in this file.
+  const { data: brandingFromQuery } = useTenantBranding();
+
+  // LS-first read (zero-flicker on route changes / new tabs where the
+  // React Query cache is still cold). Same per-tenant key the
+  // BrandStyleInjector writes to.
   useEffect(() => {
-    let cacheHadBranding = false;
     const read = () => {
       try {
         if (userTenantId) {
           const raw = localStorage.getItem(BRAND_LS_PREFIX + userTenantId);
           if (raw) {
             setBranding(JSON.parse(raw));
-            cacheHadBranding = true;
             return;
           }
         }
@@ -88,61 +101,12 @@ export function Sidebar() {
         const legacy = localStorage.getItem(BRAND_LS_LEGACY);
         if (legacy) {
           setBranding(JSON.parse(legacy));
-          cacheHadBranding = true;
         } else {
           setBranding(null);
         }
       } catch { setBranding(null); }
     };
     read();
-
-    // SELF-HEAL: when localStorage was empty (new device, cleared
-    // browser data, incognito), fetch /branding/me ourselves instead
-    // of waiting for BrandStyleInjector's event. Defense in depth —
-    // this guarantees sidebar branding shows up on first login of
-    // every fresh session, regardless of mount order, race
-    // conditions, or event-listener bugs. Without this, the bug we
-    // saw on the Mac migration (Sidebar stuck on default "VenueOS"
-    // because LS was empty and BrandStyleInjector's dispatch was
-    // missed) could re-occur any time the cache is cold.
-    // 2026-05-09 — operator: "it went back to VenueOS." Real-world
-    // /branding/me requests fail transiently (Supabase pool blips,
-    // Redis-unavailable warnings, brief deploy windows). Pre-fix the
-    // self-fetch had no retry: one 500 / 502 / network drop during
-    // the post-login window left the sidebar stuck on the VenueOS
-    // default until the user manually refreshed. With short
-    // exponential backoff (0.6s, 1.5s, 4s) we ride out the typical
-    // 30s Supabase blip without the operator ever noticing.
-    //
-    // Also retries when /branding/me returns null but the cache had
-    // a value (rare race where API momentarily can't see the row).
-    let cancelled = false;
-    let attempt = 0;
-    const tryFetch = () => {
-      if (cancelled || !userTenantId) return;
-      apiFetch<TenantBranding | null>('/branding/me')
-        .then((b) => {
-          if (cancelled) return;
-          if (!b) {
-            // Empty body = tenant has no branding row. Don't retry
-            // (legitimate state). The default VenueOS brand is correct.
-            return;
-          }
-          setBranding(b);
-          try {
-            localStorage.setItem(BRAND_LS_PREFIX + userTenantId, JSON.stringify(b));
-          } catch {}
-        })
-        .catch(() => {
-          // Retry on transient failure — fixed backoffs, max 3 attempts.
-          if (cancelled || attempt >= 3) return;
-          const delays = [600, 1500, 4000];
-          const wait = delays[attempt] ?? 4000;
-          attempt += 1;
-          setTimeout(tryFetch, wait);
-        });
-    };
-    if (userTenantId && !cacheHadBranding) tryFetch();
 
     const onUpdate = (e: Event) => {
       const detail = (e as CustomEvent<TenantBranding>).detail;
@@ -151,11 +115,27 @@ export function Sidebar() {
     window.addEventListener('branding:update', onUpdate as EventListener);
     window.addEventListener('storage', read);
     return () => {
-      cancelled = true;
       window.removeEventListener('branding:update', onUpdate as EventListener);
       window.removeEventListener('storage', read);
     };
   }, [userTenantId]);
+
+  // Cross-tab self-heal: when the shared React Query fetch lands (or
+  // returns from cache), reflect it into local state + LS cache.
+  // Mirrors the old inline self-fetch but with one network call shared
+  // across the whole app instead of one per component.
+  //
+  // Null is a legitimate state (tenant has no branding row) — fall
+  // back to VenueOS default by clearing the state. Errors are handled
+  // by useTenantBranding's retry config so we don't need a catch.
+  useEffect(() => {
+    if (brandingFromQuery && userTenantId) {
+      setBranding(brandingFromQuery);
+      try {
+        localStorage.setItem(BRAND_LS_PREFIX + userTenantId, JSON.stringify(brandingFromQuery));
+      } catch {}
+    }
+  }, [brandingFromQuery, userTenantId]);
 
   // 2026-05-03 — VenueOS rebrand. Brand name fallback chain:
   //   1. Tenant's custom branding.displayName (if they set one)

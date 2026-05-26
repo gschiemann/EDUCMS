@@ -14,64 +14,73 @@ import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Trash2, Paintbrush } from 'lucide-react';
 import { pushBrandingPreview } from '@/components/branding/BrandStyleInjector';
-import { useTenant } from '@/hooks/use-api';
+import { useTenant, useTenantBranding, useInvalidateTenantBranding } from '@/hooks/use-api';
 
 export default function SettingsBrandingPage() {
   const { data: tenant } = useTenant();
   const params = useParams();
   const schoolId = params?.schoolId as string;
   const [current, setCurrent] = useState<BrandingPreview | null>(null);
-  const [loading, setLoading] = useState(true);
   const [confirmRevert, setConfirmRevert] = useState(false);
 
+  // Shared cache subscription instead of a raw apiFetch on mount.
+  // This page is one of ~4 sites that used to fire its own
+  // `/branding/me` request, contributing to the 8x-per-nav burst.
+  // Now it reads through useTenantBranding so the BrandStyleInjector
+  // + Sidebar + BrandingSettingsCard + BrandingProvider all share the
+  // same in-flight or already-resolved query.
+  const { data: brandingRow, isLoading: brandingLoading } = useTenantBranding();
+  const invalidateBranding = useInvalidateTenantBranding();
+  const loading = brandingLoading;
+
+  // Shape-coerce the stored record into a BrandingPreview enough for
+  // the wizard's editing mode. Re-runs when the shared cache changes
+  // (Adopt mutation invalidates → this effect re-fires).
   useEffect(() => {
-    (async () => {
-      try {
-        const b = await apiFetch<any>('/branding/me');
-        if (b) {
-          // Shape-coerce the stored record into a BrandingPreview enough for
-          // the wizard's editing mode
-          setCurrent({
-            sourceUrl: b.sourceUrl || '',
-            finalUrl: b.sourceUrl || '',
-            displayName: b.displayName,
-            tagline: b.tagline,
-            // IMPORTANT: never prefill svgInline from b.logoSvgInline —
-            // the stored value is the DOMPurify-sanitized version, which
-            // has had <image>/<use> refs stripped out. If the user hits
-            // Adopt without re-scanning, the wizard would POST that
-            // stripped string and the server rejects it ("no shape
-            // primitives"). Prefill URL-only so the adopt endpoint
-            // preserves the existing Supabase logo rather than trying
-            // to re-validate a stripped svg.
-            logos: b.logoUrl ? [{ url: b.logoUrl, kind: 'icon', score: 100 }] : [],
-            favicon: b.faviconUrl,
-            ogImage: b.ogImageUrl,
-            colors: [],
-            palette: b.palette,
-            fonts: {
-              heading: b.fontHeading ? { family: b.fontHeading, googleFont: b.fontHeading, score: 1 } : null,
-              body: b.fontBody ? { family: b.fontBody, googleFont: b.fontBody, score: 1 } : null,
-              all: [],
-            },
-            fontsCssUrl: b.fontHeadingUrl || b.fontBodyUrl || null,
-            heroImages: b.heroImages || [],
-            confidence: b.confidenceScores || { logo: 1, palette: 1, fonts: 1, displayName: 1, overall: 1 },
-            warnings: [],
-            scrapedAt: b.scrapedAt || new Date().toISOString(),
-            durationMs: 0,
-          });
-        }
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+    if (!brandingRow) {
+      setCurrent(null);
+      return;
+    }
+    const b = brandingRow as any;
+    setCurrent({
+      sourceUrl: b.sourceUrl || '',
+      finalUrl: b.sourceUrl || '',
+      displayName: b.displayName,
+      tagline: b.tagline,
+      // IMPORTANT: never prefill svgInline from b.logoSvgInline —
+      // the stored value is the DOMPurify-sanitized version, which
+      // has had <image>/<use> refs stripped out. If the user hits
+      // Adopt without re-scanning, the wizard would POST that
+      // stripped string and the server rejects it ("no shape
+      // primitives"). Prefill URL-only so the adopt endpoint
+      // preserves the existing Supabase logo rather than trying
+      // to re-validate a stripped svg.
+      logos: b.logoUrl ? [{ url: b.logoUrl, kind: 'icon', score: 100 }] : [],
+      favicon: b.faviconUrl,
+      ogImage: b.ogImageUrl,
+      colors: [],
+      palette: b.palette,
+      fonts: {
+        heading: b.fontHeading ? { family: b.fontHeading, googleFont: b.fontHeading, score: 1 } : null,
+        body: b.fontBody ? { family: b.fontBody, googleFont: b.fontBody, score: 1 } : null,
+        all: [],
+      },
+      fontsCssUrl: b.fontHeadingUrl || b.fontBodyUrl || null,
+      heroImages: b.heroImages || [],
+      confidence: b.confidenceScores || { logo: 1, palette: 1, fonts: 1, displayName: 1, overall: 1 },
+      warnings: [],
+      scrapedAt: b.scrapedAt || new Date().toISOString(),
+      durationMs: 0,
+    });
+  }, [brandingRow]);
 
   const revert = async () => {
     try {
       await apiFetch('/branding/me', { method: 'DELETE' });
       setCurrent(null);
+      // Drop the shared cache so every subscriber repaints with the
+      // default palette without waiting for staleTime to expire.
+      invalidateBranding();
       pushBrandingPreview({ palette: null, displayName: null, tagline: null, logoUrl: null, faviconUrl: null, fontHeading: null, fontBody: null });
       setConfirmRevert(false);
     } catch (e) {

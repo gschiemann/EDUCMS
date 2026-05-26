@@ -68,7 +68,12 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
 
   const snapshot: BrandSnapshot | null = data
     ? {
-        palette: (data.palette as Record<string, string>) || null,
+        // Cast via `unknown` — BrandPalette has named keys (primary,
+        // accent, etc.) but consumers iterate by arbitrary string key
+        // via `palette[name]`. The two type shapes are structurally
+        // compatible at runtime (BrandPalette values are all strings)
+        // but the type system needs an explicit bridge.
+        palette: (data.palette as unknown as Record<string, string>) || null,
         fontHeading: data.fontHeading || null,
         fontBody: data.fontBody || null,
         logoUrl: data.logoUrl || null,

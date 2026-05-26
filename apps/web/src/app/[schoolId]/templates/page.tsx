@@ -3092,7 +3092,7 @@ function ApplyBrandButton({ disabled }: { disabled: boolean }) {
             {branding.data?.palette && (
               <div className="flex items-center gap-1.5">
                 {(['primary', 'primaryHover', 'accent', 'ink', 'surface', 'surfaceAlt'] as const).map((k) => {
-                  const v = branding.data.palette[k];
+                  const v = branding.data?.palette?.[k];
                   if (!v) return null;
                   return (
                     <div key={k} className="w-7 h-7 rounded shadow-sm border border-slate-200" style={{ background: v }} title={`${k}: ${v}`} />

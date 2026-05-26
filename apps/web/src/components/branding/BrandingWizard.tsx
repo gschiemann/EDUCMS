@@ -26,6 +26,7 @@ import { Alert } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import { pushBrandingPreview } from './BrandStyleInjector';
 import { useAppStore } from '@/lib/store';
+import { useInvalidateTenantBranding } from '@/hooks/use-api';
 import { BrandingLivePreview } from './BrandingLivePreview';
 import { useLogoTone } from './useLogoTone';
 // 2026-05-25 — Operator chose to remove both AI sparkle icons +
@@ -207,6 +208,11 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
   // (the "every deploy wipes my custom logo" bug). Fall back to the
   // legacy single key in demo mode where there is no user.
   const user = useAppStore((s) => s.user);
+  // Refresh the shared `/branding/me` cache after a successful Adopt
+  // so the Sidebar header, dashboard hero, BrandingSettingsCard, and
+  // BrandStyleInjector repaint with the new row in lockstep — no
+  // staleTime wait, no per-component fetch.
+  const invalidateBranding = useInvalidateTenantBranding();
   const [url, setUrl] = useState<string>(initial?.sourceUrl || '');
   const [scraping, setScraping] = useState(false);
   const [adopting, setAdopting] = useState(false);
@@ -313,13 +319,18 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
         else localStorage.setItem('edu-cms-branding-cache-v1', json);
       } catch {}
       pushBrandingPreview(res.branding);
+      // Tell the shared `/branding/me` cache to refetch so every
+      // subscriber (Sidebar, dashboard hero, settings card, brand
+      // style injector) gets the post-adopt row from the server — not
+      // a 60-second-stale view of the pre-adopt state.
+      invalidateBranding();
       onAdopted?.(res.branding);
     } catch (e: any) {
       setError(e?.message || 'Adopt failed');
     } finally {
       setAdopting(false);
     }
-  }, [preview, derivedPalette, selectedLogoIdx, displayName, tagline, onAdopted]);
+  }, [preview, derivedPalette, selectedLogoIdx, displayName, tagline, onAdopted, invalidateBranding, user?.tenantId]);
 
   // Load fonts into this page too for the live preview
   useEffect(() => {
