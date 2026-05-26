@@ -319,9 +319,27 @@ function LazyPdfThumb({ url }: { url: string }) {
           // kills the viewer without adding real security.
           referrerPolicy="no-referrer"
           loading="lazy"
-          // pointer-events:none so the tile click goes through to
-          // the playlist row underneath (don't steal interaction).
-          style={{ width: '100%', height: '100%', border: 0, pointerEvents: 'none' }}
+          // 2026-05-26 — operator: "the preview tool bar you built is
+          // showing thru onto the new popup window". Chrome's PDFium
+          // hover toolbar renders in a NATIVE compositor layer that
+          // bypasses CSS z-index — so the toolbar from a playlist
+          // tile leaked on top of the New Playlist modal. Same crop
+          // fix as commit 1d736de for the asset library tile: shift
+          // the iframe up by 56px (height: calc(100%+56px)) so the
+          // toolbar bar lands above the visible window and gets
+          // clipped by the parent's overflow:hidden.
+          //
+          // pointer-events:none stays so the tile click goes through
+          // to the playlist row underneath.
+          style={{
+            position: 'absolute',
+            top: '-56px',
+            left: 0,
+            width: '100%',
+            height: 'calc(100% + 56px)',
+            border: 0,
+            pointerEvents: 'none',
+          }}
         />
       ) : (
         <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center bg-gradient-to-br from-rose-50 to-rose-100">

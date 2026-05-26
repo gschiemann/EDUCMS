@@ -62,6 +62,7 @@ import {
   useRef,
   type CSSProperties,
 } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Play,
@@ -578,7 +579,14 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
 
   // ─── Render ────────────────────────────────────────────────────────
 
-  return (
+  // 2026-05-26 — operator: "new playlist popup doesnt center when the
+  // screen isnt maximized". Cause: inline mount + an ancestor with
+  // `transform`/`filter`/`backdrop-filter` makes `position: fixed`
+  // containing-block-relative to that ancestor instead of the
+  // viewport. Standard React modal fix is to portal to document.body
+  // so the dialog escapes any DashboardLayout / sidebar transform.
+  if (typeof window === 'undefined') return null; // SSR guard
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -758,7 +766,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
