@@ -198,30 +198,35 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     description: 'Cheapest. Generous free tier.',
     getKeyUrl: 'https://aistudio.google.com/apikey',
     models: [
-      // SECURITY/COMPAT (audit-B3 fix, 2026-05-25) — default is
-      // gemini-1.5-flash, not 2.0. 2.0 is region-gated on
-      // aistudio.google.com free-tier accounts and would refuse
-      // to save with a confusing 404. 1.5-flash is available
-      // everywhere and identical price.
+      // 2026-05-25 — Google retired the gemini-1.5-* family for newly-
+      // created AI Studio projects. A fresh key (created after April
+      // 2025) only sees the 2.x catalog; testing against 1.5-flash
+      // returned a 404 "model not found on your Google account" for
+      // the operator's brand-new key. Catalog is now 2.x-only, with
+      // 2.5-flash as the default (free tier, same generous limits
+      // 1.5-flash used to have: 15 req/min, 1500 req/day).
+      //
+      // 2.5-pro is gated behind paid tier on AI Studio — flagged in
+      // its tagline so the operator knows before picking it.
       {
-        id: 'gemini-1.5-flash',
-        label: 'Standard — Gemini 1.5 Flash',
-        tagline: 'Best for everyday copy and announcements.',
+        id: 'gemini-2.5-flash',
+        label: 'Standard — Gemini 2.5 Flash',
+        tagline: 'Best for everyday copy and announcements. Free tier covers 1500 calls/day.',
         inputPer1M: 0.075, outputPer1M: 0.30,
         estCostPerCallUsd: estCost(0.075, 0.30),
         default: true,
       },
       {
-        id: 'gemini-1.5-pro',
-        label: 'Balanced — Gemini 1.5 Pro',
-        tagline: 'Better for longer copy.',
-        inputPer1M: 1.25, outputPer1M: 5.00,
-        estCostPerCallUsd: estCost(1.25, 5.00),
+        id: 'gemini-2.0-flash',
+        label: 'Balanced — Gemini 2.0 Flash',
+        tagline: 'Older flash model — pick this if 2.5 is unavailable in your region.',
+        inputPer1M: 0.10, outputPer1M: 0.40,
+        estCostPerCallUsd: estCost(0.10, 0.40),
       },
       {
         id: 'gemini-2.5-pro',
         label: 'Premium — Gemini 2.5 Pro',
-        tagline: 'Best for AI-generated template designs.',
+        tagline: 'Best for AI-generated template designs. Requires paid AI Studio tier.',
         inputPer1M: 2.50, outputPer1M: 10.00,
         estCostPerCallUsd: estCost(2.50, 10.00),
       },
@@ -367,8 +372,9 @@ export async function dispatchAi(
     //
     // System instruction is a sibling of `contents` in this API,
     // not a message role. maxOutputTokens is camelCase (not
-    // max_tokens). gemini-1.5-flash + later support `systemInstruction`;
-    // older gemini-pro (which we don't list in the catalog) does not.
+    // max_tokens). Every model in the catalog (gemini-2.x family)
+    // supports `systemInstruction`; legacy gemini-pro (which we don't
+    // list) does not — moot since we control the catalog.
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}` +
       `:generateContent`;
