@@ -3675,13 +3675,25 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       break;
     }
     case 'RETAIL_PRODUCT_GRID': {
-      fields.push(<TextField key="title" label="Grid title" value={cfg.title || ''} placeholder="New Arrivals" onChange={(v) => setField({ title: v })} />);
+      // 2026-05-25 audit — gap fix: previously only title/posSync/
+      // columns/showSaleBadges were exposed. The widget actually
+      // reads heading/subheading/products[]/bgColor/inkColor/accentColor.
+      // Without these the manual-mode operator can't edit the grid.
+      fields.push(<TextField key="heading" label="Heading" value={cfg.heading || cfg.title || ''} placeholder="New Arrivals" onChange={(v) => setField({ heading: v, title: v })} />);
+      fields.push(<TextField key="subheading" label="Subheading / tagline" value={cfg.subheading || ''} placeholder="Spring drop · while supplies last" onChange={(v) => setField({ subheading: v })} />);
       fields.push(<ToggleField key="posSync" label="Pull live products from connected POS" value={!!cfg.posSync} onChange={(v) => setField({ posSync: v })} />);
       if (cfg.posSync) {
         fields.push(<PosCategoryPickerField key="posCategory" label="Department / category (optional)" value={cfg.posCategory || ''} onChange={(v) => setField({ posCategory: v || undefined })} />);
+      } else {
+        fields.push(<TextAreaField key="productsJson" label="Products (JSON array of { name, price, salePrice, imageUrl, emoji, swatchColor, badge, category })" value={typeof cfg.products === 'string' ? cfg.products : JSON.stringify(cfg.products || [], null, 2)} rows={12} onChange={(v) => {
+          try { setField({ products: JSON.parse(v) }); } catch { /* keep previous valid value */ }
+        }} />);
       }
       fields.push(<TextField key="columns" label="Columns" value={String(cfg.columns || 4)} placeholder="4" onChange={(v) => setField({ columns: parseInt(v) || 4 })} />);
       fields.push(<ToggleField key="showSaleBadges" label="Show sale badges" value={cfg.showSaleBadges !== false} onChange={(v) => setField({ showSaleBadges: v })} />);
+      fields.push(<ColorPickerField key="bgColor" label="Background color" value={cfg.bgColor || '#faf6f1'} onChange={(v) => setField({ bgColor: v })} />);
+      fields.push(<ColorPickerField key="inkColor" label="Headline + body ink" value={cfg.inkColor || '#1a1411'} onChange={(v) => setField({ inkColor: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Sale badge + price accent" value={cfg.accentColor || '#9a2d2d'} onChange={(v) => setField({ accentColor: v })} />);
       break;
     }
     // editor-BUG-004 fix (cycle 3) — explicit cases for the 6 RETAIL
