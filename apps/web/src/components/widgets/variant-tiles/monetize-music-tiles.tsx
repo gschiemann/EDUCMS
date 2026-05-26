@@ -67,7 +67,7 @@ export function MusicPlayerTile() {
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: 3,
+            paddingLeft: 3,
             marginTop: 6,
             padding: '2px 8px',
             background: 'rgba(16, 185, 129, 0.15)',

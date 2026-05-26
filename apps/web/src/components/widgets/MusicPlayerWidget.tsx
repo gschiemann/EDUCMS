@@ -348,7 +348,7 @@ function PlayerShell({
       className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center"
       style={{
         background: 'linear-gradient(135deg, #0b0f1a 0%, #1e293b 100%)',
-        padding: 'clamp(12px, 3cqh, 24px)',
+        padding: 20,
         overflow: 'hidden',
         fontFamily: "'Inter', system-ui, sans-serif",
       }}
@@ -357,12 +357,12 @@ function PlayerShell({
         <div
           style={{
             position: 'absolute',
-            top: 'clamp(8px, 2cqh, 16px)',
-            left: 'clamp(8px, 2cqw, 16px)',
+            top: 12,
+            left: 12,
             padding: '4px 10px',
             background: 'rgba(255,255,255,0.06)',
             color: '#cbd5e1',
-            fontSize: 'clamp(9px, 1.3cqh, 12px)',
+            fontSize: 11,
             fontWeight: 700,
             letterSpacing: '0.18em',
             textTransform: 'uppercase',
@@ -373,16 +373,16 @@ function PlayerShell({
           {zoneLabel}
         </div>
       )}
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 4 }}>
         {children}
       </div>
       <div
         style={{
           position: 'absolute',
-          bottom: 'clamp(6px, 1.6cqh, 10px)',
-          right: 'clamp(8px, 2cqw, 16px)',
+          bottom: 8,
+          right: 12,
           color: '#475569',
-          fontSize: 'clamp(8px, 1cqh, 10px)',
+          fontSize: 9,
           fontWeight: 600,
           letterSpacing: '0.06em',
           textTransform: 'uppercase',

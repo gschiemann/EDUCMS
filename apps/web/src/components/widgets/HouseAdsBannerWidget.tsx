@@ -89,7 +89,7 @@ export function HouseAdsBannerWidget({
         style={{
           background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
           color: '#94a3b8',
-          fontSize: 'clamp(11px, 1.4cqh, 14px)',
+          fontSize: 13,
           textAlign: 'center',
           padding: 16,
         }}
@@ -151,7 +151,7 @@ export function HouseAdsBannerWidget({
             padding: '4px 10px',
             background: 'rgba(15, 23, 42, 0.72)',
             color: '#f8fafc',
-            fontSize: 'clamp(9px, 1.2cqh, 12px)',
+            fontSize: 11,
             fontWeight: 600,
             letterSpacing: '0.04em',
             borderRadius: 4,
@@ -174,7 +174,7 @@ export function HouseAdsBannerWidget({
             padding: '6px 12px',
             background: '#10b981',
             color: '#ffffff',
-            fontSize: 'clamp(10px, 1.4cqh, 14px)',
+            fontSize: 13,
             fontWeight: 700,
             letterSpacing: '0.02em',
             borderRadius: 6,
