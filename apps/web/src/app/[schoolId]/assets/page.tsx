@@ -8,6 +8,7 @@ import { useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAsse
 import { useUIStore } from '@/store/ui-store';
 import { clog } from '@/lib/client-logger';
 import { FolderPicker } from '@/components/assets/FolderPicker';
+import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 
 // Match the server limit (apps/api/src/assets/assets.controller.ts).
 // 200MB was rejecting any reasonably-sized video before it even tried to
@@ -1011,44 +1012,19 @@ export default function AssetsPage() {
                       }}
                     />
                   ) : isPdf(a) ? (
-                    // PDF tile: browser-native first-page render via
-                    // an iframe with viewer chrome stripped. Sandbox
-                    // is DELIBERATELY omitted — Chrome's PDFium
-                    // refuses to render inside ANY sandboxed iframe,
-                    // even with allow-* flags. See commit 3a04653.
-                    //
-                    // 2026-05-26 — operator: "you have this new weird
-                    // viewer menu for documents, lets stay consistent
-                    // with everything... why have a download on this
-                    // one and not the other media and template types".
-                    // Chrome's "always-visible" hover toolbar (zoom +
-                    // download + page-nav floating bar at the top of
-                    // the PDF view) ignores `toolbar=0` in some
-                    // recent Chrome versions. CSS fix: oversize the
-                    // iframe and shift it up so the toolbar bar gets
-                    // clipped above the visible window. The parent
-                    // div already has overflow:hidden so the cropped
-                    // chrome is invisible. The actual document content
-                    // is centered in-window by the same shift.
-                    //
-                    // pointer-events:none keeps clicks routed to the
-                    // parent button so the "view details" interaction
-                    // still works.
-                    <iframe
-                      src={pdfPreviewUrl(a)}
-                      title={name}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      style={{
-                        position: 'absolute',
-                        top: '-56px',
-                        left: 0,
-                        width: '100%',
-                        height: 'calc(100% + 56px)',
-                        border: 0,
-                        pointerEvents: 'none',
-                      }}
-                    />
+                    // PDF tile: hover-only iframe mount so Chrome's
+                    // PDFium toolbar never auto-fades-in on initial
+                    // page load. Operator (2026-05-26): "when you
+                    // first hit the assets page the stupid settings
+                    // pops up on the PDF files....they shouldnt auto
+                    // trigger ever unless i highlight over them."
+                    // PdfHoverThumb renders a static rose-gradient +
+                    // FileText placeholder until the operator hovers,
+                    // then mounts the iframe (same -56px crop trick
+                    // applies for the brief moment the toolbar appears
+                    // on hover). No more N concurrent PDF fetches on
+                    // page load either — bandwidth win.
+                    <PdfHoverThumb fileUrl={a.fileUrl} title={name} />
                   ) : (
                     typeIcon(a.mimeType, 'w-8 h-8')
                   )}

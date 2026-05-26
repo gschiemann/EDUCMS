@@ -64,6 +64,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutTemplate, Image as ImageIcon, Video, Globe, Music, Layers, Play, File, FileText } from 'lucide-react';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
+import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
 
@@ -272,81 +273,21 @@ function StaticAssetFrame({ asset, className }: { asset: any; className?: string
  * don't leak the operator's playlist page URL to Supabase logs.
  */
 function LazyPdfThumb({ url }: { url: string }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    if (typeof IntersectionObserver === 'undefined') {
-      // Old browser (or test env) — just mount eagerly.
-      setVisible(true);
-      return;
-    }
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setVisible(true);
-            io.disconnect();
-            return;
-          }
-        }
-      },
-      { threshold: 0.1 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
-
-  // Append the viewer-chrome stripping fragment if the URL doesn't
-  // already have one. `#view=Fit` scales the page to fit the iframe
-  // dimensions; `toolbar=0`, `navpanes=0`, `scrollbar=0` hide every
-  // bit of viewer UI. Browser support: Chrome, Edge, Firefox, Safari
-  // all honor these PDF.js / native-viewer parameters.
-  const src = url + (url.includes('#') ? '&' : '#') + 'view=Fit&toolbar=0&navpanes=0&scrollbar=0';
-
+  // 2026-05-26 round 3 — switched from IntersectionObserver+always-
+  // mount to hover-only via PdfHoverThumb. Operator: "when you first
+  // hit the assets page the stupid settings pops up on the PDF
+  // files....they shouldnt auto trigger ever unless i highlight over
+  // them". The IO-gate already kept off-screen tiles from mounting,
+  // but ONSCREEN tiles mounted immediately AND showed Chrome's
+  // PDFium toolbar fade-in on first paint. PdfHoverThumb defers the
+  // iframe mount until mouse-enter / focus / tap — placeholder
+  // (rose gradient + FileText icon) is what the operator sees on
+  // page load. Tile only swaps to the live iframe on intentional
+  // hover. Same -56px crop + no-sandbox tricks live inside the
+  // shared component.
   return (
-    <div ref={containerRef} className="absolute top-0 right-0 bottom-0 left-0 bg-slate-100 overflow-hidden">
-      {visible ? (
-        <iframe
-          src={src}
-          title="PDF preview"
-          // Intentionally NO `sandbox` attribute — Chrome's PDFium
-          // viewer refuses to render under ANY sandbox value (verified
-          // in headed Chrome 2026-05-26). The browser already sandboxes
-          // the PDF viewer at the engine level; an iframe-level sandbox
-          // kills the viewer without adding real security.
-          referrerPolicy="no-referrer"
-          loading="lazy"
-          // 2026-05-26 — operator: "the preview tool bar you built is
-          // showing thru onto the new popup window". Chrome's PDFium
-          // hover toolbar renders in a NATIVE compositor layer that
-          // bypasses CSS z-index — so the toolbar from a playlist
-          // tile leaked on top of the New Playlist modal. Same crop
-          // fix as commit 1d736de for the asset library tile: shift
-          // the iframe up by 56px (height: calc(100%+56px)) so the
-          // toolbar bar lands above the visible window and gets
-          // clipped by the parent's overflow:hidden.
-          //
-          // pointer-events:none stays so the tile click goes through
-          // to the playlist row underneath.
-          style={{
-            position: 'absolute',
-            top: '-56px',
-            left: 0,
-            width: '100%',
-            height: 'calc(100% + 56px)',
-            border: 0,
-            pointerEvents: 'none',
-          }}
-        />
-      ) : (
-        <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center bg-gradient-to-br from-rose-50 to-rose-100">
-          <FileText className="w-8 h-8 text-rose-500" aria-hidden="true" />
-          <span className="mt-1 text-[10px] font-bold text-rose-700/80 uppercase tracking-wider">PDF</span>
-        </div>
-      )}
+    <div className="absolute top-0 right-0 bottom-0 left-0 bg-slate-100 overflow-hidden">
+      <PdfHoverThumb fileUrl={url} title="PDF preview" />
     </div>
   );
 }

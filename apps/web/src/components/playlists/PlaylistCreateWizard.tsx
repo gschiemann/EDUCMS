@@ -101,6 +101,7 @@ import {
 } from '@/hooks/use-api';
 import { useQueryClient } from '@tanstack/react-query';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
+import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 
 // ─── Shared constants ──────────────────────────────────────────────────
@@ -162,37 +163,18 @@ function mimeIcon(mimeType?: string) {
 }
 
 function MiniAssetThumb({ asset }: { asset: any }) {
-  // 2026-05-26 — PDF preview parity. Operator: "your picker is not
-  // showing previews of the PDF's make sure the preview fixes for
-  // documents, videos, and templates apply to every single area we
-  // have that shows previews." Renders the same cropped-iframe trick
-  // LazyPdfThumb uses in PlaylistPreviewThumb + the asset library
-  // tile (commits 1d736de + f234566): top:-56px + overflow:hidden
-  // crops Chrome's PDFium hover toolbar which renders in a native
-  // compositor layer that bypasses CSS z-index. NO sandbox attribute
-  // — Chrome refuses to render PDFs under any sandbox value.
-  if (asset?.mimeType === 'application/pdf') {
-    const pdfUrl = asset?.fileUrl?.startsWith('http')
-      ? asset.fileUrl
-      : `${apiBase}${asset.fileUrl}`;
-    const src = pdfUrl + (pdfUrl.includes('#') ? '&' : '#') + 'view=Fit&toolbar=0&navpanes=0&scrollbar=0';
+  // 2026-05-26 round 3 — PDF preview is now hover-only via the
+  // shared PdfHoverThumb. Operator: "when you first hit the assets
+  // page the stupid settings pops up on the PDF files....they
+  // shouldnt auto trigger ever unless i highlight over them". The
+  // wizard's picker shows the same rose-gradient + FileText
+  // placeholder on page load; iframe mounts only when the operator
+  // hovers an individual tile. Same crop + no-sandbox tricks live
+  // inside PdfHoverThumb. Identical UX to the asset library tile.
+  if (asset?.mimeType === 'application/pdf' || (asset?.fileUrl || '').toLowerCase().endsWith('.pdf')) {
     return (
       <div className="w-full h-full relative overflow-hidden bg-slate-100">
-        <iframe
-          src={src}
-          title="PDF preview"
-          referrerPolicy="no-referrer"
-          loading="lazy"
-          style={{
-            position: 'absolute',
-            top: '-56px',
-            left: 0,
-            width: '100%',
-            height: 'calc(100% + 56px)',
-            border: 0,
-            pointerEvents: 'none',
-          }}
-        />
+        <PdfHoverThumb fileUrl={asset.fileUrl} title="PDF preview" />
       </div>
     );
   }
