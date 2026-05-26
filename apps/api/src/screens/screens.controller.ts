@@ -1197,6 +1197,7 @@ export class ScreensController {
   // If a stubborn ROM ignores setRequestedOrientation, the /player route
   // applies a CSS transform:rotate fallback within 2s.
   @Put(':id/orientation')
+  @UseGuards(JwtAuthGuard, RbacGuard)
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async setOrientation(
     @Request() req: any,
@@ -1281,6 +1282,7 @@ export class ScreensController {
    * the override).
    */
   @Put(':id/canvas')
+  @UseGuards(JwtAuthGuard, RbacGuard)
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async setCanvas(
     @Request() req: any,
