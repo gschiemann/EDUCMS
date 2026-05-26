@@ -19,7 +19,24 @@ import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
-import { ArrowLeft, Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, Pause, Play, DollarSign, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, Pause, Play, DollarSign, TrendingUp, Sparkles } from 'lucide-react';
+
+/**
+ * 2026-05-25 monetize-audit — fire-and-forget click tracker. Every
+ * CTA on this page (network tile, partnership-apply, docs link,
+ * disconnect, even the House-Ads-widget add) writes one AuditLog row
+ * with userId + networkId + intent. The operator complaint that
+ * triggered this rebuild: "it tracks every single click across the
+ * board". The endpoint is best-effort — if the audit insert fails we
+ * still navigate, we don't block the operator's action on a
+ * non-essential analytic.
+ */
+function trackMonetizeClick(networkId: string, intent: string, href?: string): void {
+  apiFetch('/ads/monetize-click', {
+    method: 'POST',
+    body: JSON.stringify({ networkId, intent, href }),
+  }).catch(() => { /* audit-write is best-effort; never block the click */ });
+}
 
 interface AdNetwork {
   id: string;
@@ -164,6 +181,7 @@ export default function MonetizeSettingsPage() {
                 connection={c}
                 onTogglePause={async () => {
                   const next = c.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+                  trackMonetizeClick(c.networkId, next === 'PAUSED' ? 'pause' : 'resume');
                   await apiFetch(`/ads/connections/${c.id}/status`, {
                     method: 'PATCH',
                     body: JSON.stringify({ status: next }),
@@ -177,6 +195,7 @@ export default function MonetizeSettingsPage() {
                     confirmLabel: 'Disconnect',
                     tone: 'danger',
                   }))) return;
+                  trackMonetizeClick(c.networkId, 'disconnect');
                   await apiFetch(`/ads/connections/${c.id}`, { method: 'DELETE' });
                   qc.invalidateQueries({ queryKey: ['ads-connections'] });
                 }}
@@ -282,21 +301,36 @@ function NetworkTile({ network, connected, onConnect }: { network: AdNetwork; co
     : null;
   const isClosed = network.integrationTier === 'CLOSED';
   const isPartner = network.integrationTier === 'PARTNER';
+  // 2026-05-25 monetize-audit — operator: "I click on the links in
+  // there and it takes me to bad pages as well". Three publisher
+  // URLs in the catalog returned 404 (Vistar /publishers, Place
+  // Exchange /publishers/, Broadsign /products/broadsign-reach/).
+  // Those are repointed to verified-live pages in the catalog now,
+  // and every click writes one AuditLog row so the operator can see
+  // / export the click trail.
+  //
   // Cycle-2 BUG-004 fix (2026-05-03) — PARTNER networks (Hivestack,
   // Vistar, Place Exchange, Broadsign Reach, Loop Media) all require
   // a publisher contract before activation. Opening the same Connect
   // form as DIRECT tiles created empty-cred PENDING rows that never
   // resolved. Now PARTNER tiles open the vendor's publisher page in
   // a new tab so the operator can apply for partnership instead.
-  const handleClick = isClosed
-    ? () => network.docsUrl && window.open(network.docsUrl, '_blank')
-    : isPartner
-      ? () => {
-          const url = network.docsUrl || network.websiteUrl;
-          if (url) window.open(url, '_blank', 'noopener,noreferrer');
-          else window.location.href = `mailto:partners@venueos.com?subject=${encodeURIComponent(`Partnership inquiry — ${network.name}`)}`;
-        }
-      : onConnect;
+  const handleClick = () => {
+    if (isClosed) {
+      trackMonetizeClick(network.id, 'docs', network.docsUrl);
+      if (network.docsUrl) window.open(network.docsUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (isPartner) {
+      const url = network.docsUrl || network.websiteUrl;
+      trackMonetizeClick(network.id, 'apply-partnership', url);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      else window.location.href = `mailto:partners@venueos.com?subject=${encodeURIComponent(`Partnership inquiry — ${network.name}`)}`;
+      return;
+    }
+    trackMonetizeClick(network.id, 'open-connect-modal');
+    onConnect();
+  };
   return (
     <button
       onClick={handleClick}
@@ -313,7 +347,11 @@ function NetworkTile({ network, connected, onConnect }: { network: AdNetwork; co
         <div className="flex items-center gap-1">
           {connected && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
           {isClosed && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 uppercase tracking-wider">Info only</span>}
-          {isPartner && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">Partnership</span>}
+          {/* 2026-05-25 monetize-audit — PARTNER networks have a real
+              API but require partnership sign-off; surface that as
+              "Coming soon" so the operator sees the gap honestly
+              instead of expecting an instant on-button activation. */}
+          {isPartner && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">Coming soon</span>}
           {network.integrationTier === 'DIRECT' && !connected && (
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase tracking-wider">Self-serve</span>
           )}
@@ -329,8 +367,13 @@ function NetworkTile({ network, connected, onConnect }: { network: AdNetwork; co
         {network.takeRateBps != null && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">we take {network.takeRateBps / 100}%</span>}
       </div>
       {isPartner && !connected && (
-        <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-amber-700">
+        <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-amber-700" title="Integration in progress — partnership sign-off pending. Tap to start the application with this partner.">
           <ExternalLink className="w-2.5 h-2.5" /> Apply for partnership
+        </div>
+      )}
+      {network.integrationTier === 'DIRECT' && !connected && (
+        <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
+          <Sparkles className="w-2.5 h-2.5" /> Has a drop-in widget
         </div>
       )}
     </button>
@@ -355,6 +398,7 @@ function ConnectModal({ network, onClose, onConnected }: { network: AdNetwork; o
 
   const submit = async () => {
     setSubmitting(true); setErr(null);
+    trackMonetizeClick(network.id, 'submit-connect');
     try {
       await apiFetch('/ads/connections', {
         method: 'POST',
@@ -387,7 +431,13 @@ function ConnectModal({ network, onClose, onConnected }: { network: AdNetwork; o
         </div>
 
         {network.docsUrl && (
-          <a href={network.docsUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:underline">
+          <a
+            href={network.docsUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => trackMonetizeClick(network.id, 'docs', network.docsUrl)}
+            className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:underline"
+          >
             <ExternalLink className="w-3 h-3" /> Network documentation
           </a>
         )}

@@ -86,4 +86,30 @@ export class AdsController {
   async earnings(@Request() req: any) {
     return this.svc.earningsSummary(req.user.tenantId);
   }
+
+  // 2026-05-25 monetize-audit — every monetize-page CTA writes one
+  // row here. Operator complaint: "if you apply for partnership it
+  // has got to plug right back into our app and have its own widget
+  // to place anywhere in your template, don't send people to signup
+  // if we don't even have a working template where they can get the
+  // pay back and it tracks every single click across the board".
+  // Click-tracking is the across-the-board piece. The dedicated
+  // widgets ship via apps/web/src/components/widgets/
+  // HouseAdsBannerWidget.tsx (the partners we CAN integrate today) —
+  // the rest still flow through the partnership-application CTA the
+  // operator sees.
+  @Post('monetize-click')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR, AppRole.RESTRICTED_VIEWER)
+  async trackClick(
+    @Request() req: any,
+    @Body() body: { networkId: string; intent: string; href?: string },
+  ) {
+    return this.svc.trackMonetizeClick({
+      tenantId: req.user.tenantId,
+      userId: req.user.id ?? null,
+      networkId: body.networkId,
+      intent: body.intent,
+      href: body.href,
+    });
+  }
 }

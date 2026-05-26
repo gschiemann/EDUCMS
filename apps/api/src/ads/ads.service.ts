@@ -227,6 +227,43 @@ export class AdsService {
     };
   }
 
+  // 2026-05-25 monetize-audit — operator: "tracks every single click
+  // across the board". One AuditLog row per CTA click on
+  // /settings/monetize. The action string is MONETIZE_CLICK plus the
+  // intent (apply, learn, docs, connect, widget-add) so the operator
+  // can audit conversion later (rows are visible at /[schoolId]/audit
+  // and exportable via /audit/export). Bounded inputs so a forged
+  // body can't write a 10MB row.
+  async trackMonetizeClick(opts: {
+    tenantId: string;
+    userId: string | null;
+    networkId: string;
+    intent: string;
+    href?: string;
+  }) {
+    const networkId = String(opts.networkId || '').slice(0, 64);
+    const intent = String(opts.intent || '').slice(0, 32);
+    const href = opts.href ? String(opts.href).slice(0, 2048) : undefined;
+    const network = getAdNetwork(networkId);
+    await (this.prisma.client as any).auditLog.create({
+      data: {
+        tenantId: opts.tenantId,
+        userId: opts.userId,
+        action: 'MONETIZE_CLICK',
+        targetType: 'AdNetwork',
+        targetId: networkId,
+        details: JSON.stringify({
+          networkId,
+          networkName: network?.name || networkId,
+          integrationTier: network?.integrationTier || 'UNKNOWN',
+          intent,
+          href,
+        }),
+      },
+    });
+    return { ok: true };
+  }
+
   /** Internal helper called by per-network impression handlers (server-side
    *  only). Records one impression and updates running tallies + the
    *  daily aggregate row. */

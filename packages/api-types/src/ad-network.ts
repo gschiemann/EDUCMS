@@ -132,13 +132,17 @@ export const AD_NETWORKS: ReadonlyArray<AdNetworkDef> = [
     pricingModel: 'cpm',
     typicalCpmCents: { low: 600, high: 2000 },
     takeRateBps: 1500,
-    docsUrl: 'https://www.vistarmedia.com/publishers',
+    // 2026-05-25 monetize-audit — /publishers + /publisher + /inventory
+    // all 404. /contact is the only live "talk to us" page on
+    // vistarmedia.com today. Routing the docsUrl there until they
+    // publish a real publisher landing page.
+    docsUrl: 'https://www.vistarmedia.com/contact',
     websiteUrl: 'https://www.vistarmedia.com',
     pricingNote: '~$6-20 CPM, we take 15%',
     bestFor: ['GYM', 'BAR', 'RESTAURANT', 'QSR', 'RETAIL'],
     capabilities: { creativeFetch: true, impressionReporting: true, daypartTargeting: true, contentSafety: true, realtimeFill: true },
     k12Forbidden: true,
-    tierReason: 'Vistar has a real Open Direct API, but only after their publisher review approves your venue network. Apply at vistarmedia.com/publishers.',
+    tierReason: 'Vistar has a real Open Direct API, but only after their publisher review approves your venue network. Reach out via their contact form to start the application.',
   },
   {
     id: 'place-exchange',
@@ -151,7 +155,9 @@ export const AD_NETWORKS: ReadonlyArray<AdNetworkDef> = [
     pricingModel: 'cpm',
     typicalCpmCents: { low: 400, high: 1200 },
     takeRateBps: 1200,
-    docsUrl: 'https://placeexchange.com/publishers/',
+    // 2026-05-25 monetize-audit — /publishers/ 404s. /inventory is
+    // live and is the closest page to "what publishers see".
+    docsUrl: 'https://placeexchange.com/inventory',
     websiteUrl: 'https://placeexchange.com',
     pricingNote: '~$4-12 CPM, we take 12%',
     bestFor: ['GYM', 'BAR', 'RESTAURANT', 'QSR', 'RETAIL'],
@@ -170,7 +176,11 @@ export const AD_NETWORKS: ReadonlyArray<AdNetworkDef> = [
     pricingModel: 'cpm',
     typicalCpmCents: { low: 500, high: 1500 },
     takeRateBps: 1500,
-    docsUrl: 'https://broadsign.com/products/broadsign-reach/',
+    // 2026-05-25 monetize-audit — /products/broadsign-reach/ 404s.
+    // Broadsign rearranged their site; every product slug we tried
+    // (/reach, /products/reach, /publisher) also 404s. /contact is
+    // live, so route partnership inquiries there.
+    docsUrl: 'https://broadsign.com/contact',
     websiteUrl: 'https://broadsign.com',
     pricingNote: '~$5-15 CPM, we take 15%',
     bestFor: ['RETAIL', 'CORPORATE', 'RESTAURANT'],
