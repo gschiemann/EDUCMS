@@ -138,22 +138,39 @@ export function useSetScreenOrientation() {
         method: 'PUT',
         body: JSON.stringify({ orientation, reason }),
       }),
+    // 2026-05-26 — patch BOTH caches. /screens page reads from
+    // useScreenGroups (grouped card view), and the original hook only
+    // touched ['screens'] so the dropdown change never lit up
+    // optimistically. Same fix class as useSetScreenCanvas.
     onMutate: async ({ id, orientation }) => {
-      await qc.cancelQueries({ queryKey: ['screens'] });
-      const prev = qc.getQueryData<any>(['screens']);
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ['screens'] }),
+        qc.cancelQueries({ queryKey: ['screen-groups'] }),
+      ]);
+      const prevScreens = qc.getQueryData<any>(['screens']);
+      const prevGroups = qc.getQueryData<any>(['screen-groups']);
+      const apply = (s: any) => (s?.id === id ? { ...s, orientation } : s);
       qc.setQueryData<any>(['screens'], (old: any) => {
-        const apply = (s: any) => (s?.id === id ? { ...s, orientation } : s);
         if (Array.isArray(old)) return old.map(apply);
         if (Array.isArray(old?.screens)) return { ...old, screens: old.screens.map(apply) };
         return old;
       });
-      return { prev };
+      qc.setQueryData<any>(['screen-groups'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((g: any) => ({
+          ...g,
+          screens: Array.isArray(g?.screens) ? g.screens.map(apply) : g?.screens,
+        }));
+      });
+      return { prevScreens, prevGroups };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(['screens'], ctx.prev);
+      if (ctx?.prevScreens !== undefined) qc.setQueryData(['screens'], ctx.prevScreens);
+      if (ctx?.prevGroups !== undefined) qc.setQueryData(['screen-groups'], ctx.prevGroups);
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['screens'] });
+      qc.invalidateQueries({ queryKey: ['screen-groups'] });
     },
   });
 }
@@ -179,19 +196,37 @@ export function useSetScreenCanvas() {
         method: 'PUT',
         body: JSON.stringify({ canvasW, canvasH, reason }),
       }),
+    // 2026-05-26 — patch BOTH ['screens'] AND ['screen-groups'] caches.
+    // The dashboard's /screens page reads from useScreenGroups (the
+    // grouped card view, screens nested under group.screens), so the
+    // original screens-only optimistic update never lit up the button.
+    // Operator: "i click 1 but it doesnt switch from off". Same fix
+    // class as the orientation hook below.
     onMutate: async ({ id, canvasW, canvasH }) => {
-      await qc.cancelQueries({ queryKey: ['screens'] });
-      const prev = qc.getQueryData<any>(['screens']);
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ['screens'] }),
+        qc.cancelQueries({ queryKey: ['screen-groups'] }),
+      ]);
+      const prevScreens = qc.getQueryData<any>(['screens']);
+      const prevGroups = qc.getQueryData<any>(['screen-groups']);
+      const apply = (s: any) => (s?.id === id ? { ...s, canvasW, canvasH } : s);
       qc.setQueryData<any>(['screens'], (old: any) => {
-        const apply = (s: any) => (s?.id === id ? { ...s, canvasW, canvasH } : s);
         if (Array.isArray(old)) return old.map(apply);
         if (Array.isArray(old?.screens)) return { ...old, screens: old.screens.map(apply) };
         return old;
       });
-      return { prev };
+      qc.setQueryData<any>(['screen-groups'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((g: any) => ({
+          ...g,
+          screens: Array.isArray(g?.screens) ? g.screens.map(apply) : g?.screens,
+        }));
+      });
+      return { prevScreens, prevGroups };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(['screens'], ctx.prev);
+      if (ctx?.prevScreens !== undefined) qc.setQueryData(['screens'], ctx.prevScreens);
+      if (ctx?.prevGroups !== undefined) qc.setQueryData(['screen-groups'], ctx.prevGroups);
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['screens'] });
