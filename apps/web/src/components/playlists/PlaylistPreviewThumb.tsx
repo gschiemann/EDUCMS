@@ -312,17 +312,19 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
     // via ScaledTemplateThumbnail. The component IO-gates its own
     // mount so we don't spin up 100 widget trees at once.
     if (entry && size === 'tile') {
-      // aspect-video target. ScaledTemplateThumbnail picks its size
-      // from parentWidth + maxHeight + screen aspect, so we wrap it
-      // in a fixed aspect-ratio container and let it fit.
+      // 2026-05-26 — operator (round 8): "the playlist tiles are
+      // massive, they would all be a set size like before, we just
+      // added a preview". Pre-fix used the template's own aspect
+      // ratio (e.g. 9:16 portrait → super-tall tile breaking the
+      // uniform grid). Force every tile to 16:9 regardless of source
+      // and let ScaledTemplateThumbnail letterbox inside. Tile grid
+      // stays uniform; portrait templates show a portrait card
+      // letterboxed in a 16:9 box (recognizable, not enormous).
       return (
         <div
           className={shellClasses(size, className)}
-          style={{ aspectRatio: `${entry.screenWidth} / ${entry.screenHeight}` }}
+          style={{ aspectRatio: '16 / 9' }}
         >
-          {/* The component renders its own outer rounded box; nest
-              ours behind it with overflow:hidden so the corners
-              line up. */}
           <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center">
             <ScaledTemplateThumbnail
               zones={entry.zones as any}
@@ -331,7 +333,7 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
               bgImage={entry.bgImage}
               bgGradient={entry.bgGradient}
               bgColor={entry.bgColor}
-              maxHeight={420}
+              maxHeight={180}
             />
           </div>
         </div>
