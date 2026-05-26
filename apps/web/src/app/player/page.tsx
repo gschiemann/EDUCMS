@@ -13,6 +13,13 @@ import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay'
 // status when WS is unavailable, and accepts WS-pushed messages via
 // the `message` prop.
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
+// Sprint 13 — Colorado Time Systems (CTS) System 6/Gen 6 scoreboard
+// bridge. Mounts on the player page when the URL carries `?cts=1` (so
+// regular signage screens never see the bridge UI). The bridge reads
+// the CTS console via Web Serial on the Beelink mini PC, parses the
+// scoreboard protocol, and POSTs each game-state snapshot to the API
+// for signed-WS fan-out. See packages/scoreboard-cts/README.md.
+import { CtsBridge } from '@/components/player/CtsBridge';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 import { isFlexGapSupported, applyFlexGapPolyfill } from '@/lib/flex-gap-polyfill';
@@ -2102,6 +2109,17 @@ function PlayerPage() {
   // coexist — a SOS can fire on a screen that's already in lockdown.
   const [pushedEmergencyMessage, setPushedEmergencyMessage] = useState<EmergencyMessageView | null>(null);
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
+  // Sprint 13 — live CTS scoreboard state pushed from the CtsBridge via
+  // the API's signed-WS broadcast on `device:<screenId>` channel. Any
+  // mounted scoreboard widget can consume this through a future
+  // context provider; for now we just hold the latest snapshot so
+  // CtsScoreboard reads it from a window-level event the same way
+  // EmergencyOverlay does. State type is `any` because the snapshot
+  // shape is owned by @cms/scoreboard-cts CtsFullSnapshot — we don't
+  // want this 7400-line file importing the package types when the
+  // bridge already does.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [currentGameState, setCurrentGameState] = useState<any | null>(null);
 
   // Phase D1.5 — touch builder overlay layer. The dispatcher in
   // dispatchTouchAction() publishes `edu:touch-overlay` /
@@ -3642,6 +3660,29 @@ function PlayerPage() {
               });
             } else if (msg.type === 'ALL_CLEAR_MESSAGE') {
               setPushedEmergencyMessage(null);
+            }
+            // Sprint 13 — CTS scoreboard updates broadcast from the
+            // bridge. The payload carries one CtsFullSnapshot per
+            // emit; the player just stores it for downstream widget
+            // consumers. Not in SENSITIVE_TYPES — a forged GAME_STATE
+            // is a UX nuisance, not a safety failure (worst case: the
+            // ribbon shows a wrong score for one cycle until the next
+            // legit update overwrites it). Same threat tier as a
+            // canvas/orientation broadcast.
+            if (msg.type === 'GAME_STATE') {
+              const snap = (msg.payload && (msg.payload as any).snapshot) || null;
+              if (snap && typeof snap === 'object') {
+                setCurrentGameState(snap);
+                try {
+                  // Fan out to any widget mounted outside the React
+                  // tree (e.g. an iframe-rendered scoreboard) via a
+                  // window-level CustomEvent — same pattern used by
+                  // the touch-overlay dispatcher.
+                  window.dispatchEvent(
+                    new CustomEvent('edu:cts-game-state', { detail: snap }),
+                  );
+                } catch { /* CustomEvent unsupported — ignore */ }
+              }
             }
             // Sprint 11 Phase B — REFRESH_WEB: admin pushed a "reload
             // kiosks" command from the dashboard. Solves the chicken-
@@ -6732,6 +6773,21 @@ function PlayerPage() {
           tenantId={tenantId}
           apiUrl={`${getApiRoot()}/api/v1`}
           pollMs={10_000}
+        />
+      )}
+      {/* Sprint 13 — CTS scoreboard bridge. Mounted only when:
+        *   - URL carries ?cts=1 (operator opt-in; regular kiosks
+        *     never see the panel)
+        *   - The screen is paired (screenId + tenantId both set, so
+        *     a device token exists for the POST)
+        *
+        * The bridge handles Web Serial detection internally — on
+        * Safari / Firefox / Chromium 83 it renders nothing. */}
+      {tenantId && screenId && qp('cts') === '1' && (
+        <CtsBridge
+          screenId={screenId}
+          apiRoot={getApiRoot()}
+          deviceToken={getDeviceToken()}
         />
       )}
     </div>

@@ -1,0 +1,29 @@
+{
+  "name": "@cms/scoreboard-cts",
+  "version": "1.0.0",
+  "description": "Colorado Time Systems (CTS) System 6 / Gen 6 serial-protocol decoder for VenueOS Sprint 13.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "rootDir": "src",
+    "testRegex": ".*\\.test\\.ts$"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.0.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.4.5"
+  }
+}

@@ -966,6 +966,13 @@ import {
 // primitive layout. This is a faithful BoardScene reproduction that
 // reads live game state from the GameStateProvider.
 import { MainScoreboardWidget } from './sports/MainScoreboardWidget';
+// 2026-05-26 — CTS-fed ribbon scoreboard. Live game state flows from
+// the CtsBridge (Beelink mini PC reading the CTS console via Web
+// Serial) → API → signed WS → window CustomEvent → this widget.
+// Designed for a 480×208 px ribbon panel; transform:scale lets it
+// resize for any LED canvas the operator drops it on. See
+// packages/scoreboard-cts/README.md for the protocol details.
+import { CtsScoreboard } from './sports/CtsScoreboard';
 
 registerVariant({
   id: 'scoreboard-main',
@@ -976,6 +983,22 @@ registerVariant({
   render: MainScoreboardWidget as any,
   vertical: 'SPORTS',
   defaultConfig: {},
+});
+
+registerVariant({
+  id: 'scoreboard-cts-ribbon',
+  widgetType: 'SCOREBOARD',
+  name: 'Water Polo Ribbon (CTS)',
+  description: 'Live ribbon scoreboard fed by a Colorado Time Systems (CTS) System 6 / Gen 6 console. Plug the USB-RS232 dongle in, open the player with ?cts=1, click Connect once — every clock tick / goal / exclusion shows up here.',
+  category: 'SPORTS',
+  render: CtsScoreboard as any,
+  vertical: 'SPORTS',
+  defaultConfig: {
+    homeAbbrev: 'H',
+    awayAbbrev: 'A',
+    bgColor: '#0f172a',
+    accentColor: '#f59e0b',
+  },
 });
 
 registerVariant({

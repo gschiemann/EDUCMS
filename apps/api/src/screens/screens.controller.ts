@@ -112,6 +112,13 @@ export const _registerFpCooldown = new Map<string, number>(); // fingerprint →
 // actually work for legitimate kiosks.
 export const REGISTER_FP_COOLDOWN_MS = 5 * 1000; // 5 seconds (was 60 s, was 15 min)
 
+// Sprint 13 — per-screen rate floor for CTS game-state POSTs. Map
+// of screenId → last accepted POST timestamp (ms). Read + written
+// only by the postGameState handler. Map is bounded at 500 entries
+// with a 60s eviction sweep inside the handler.
+// Exported for unit-test access only — do not use outside this module.
+export const _gameStateRateMap = new Map<string, number>();
+
 @Controller('api/v1/screens')
 export class ScreensController {
   constructor(
@@ -1458,6 +1465,85 @@ export class ScreensController {
     } catch { /* non-fatal — manifest poll converges */ }
 
     return updated;
+  }
+
+  /**
+   * Sprint 13 — CTS scoreboard bridge POST endpoint.
+   *
+   * The Beelink mini PC running the CTS bridge POSTs decoded
+   * snapshots here (see apps/web/src/components/player/CtsBridge.tsx).
+   * The API signs + publishes a GAME_STATE message on the
+   * `device:<screenId>` Redis channel; every player connected to
+   * that screen receives the snapshot via WS within ~150ms and the
+   * scoreboard widget re-renders.
+   *
+   * Auth: device JWT (verifyDeviceForScreen) — same model as the
+   * existing /:id/manifest + /:id/emergency-assets endpoints. The
+   * Beelink already holds a device token from pairing. We deliberately
+   * do NOT also accept the admin JwtAuthGuard path; the bridge is the
+   * only legit caller and it authenticates as the device.
+   *
+   * Persistence: NONE in v1. Game state is ephemeral (full snapshot
+   * arrives every ~125ms while a game is live); persisting every
+   * update would write ~30,000 rows / hour with no downstream reader
+   * needing them. Replay is captured via the existing AuditLog stream
+   * when a future Sprint 13 phase adds a `GameEvent` table.
+   *
+   * Rate limit: SkipThrottle + an in-handler floor (max 16 Hz per
+   * screen) so a misbehaving bridge can't DOS the WS bus. The bridge
+   * already throttles at 8 Hz client-side; 16 Hz here is double that
+   * to absorb burst.
+   */
+  @Post(':id/game-state')
+  @SkipThrottle()
+  async postGameState(
+    @Param('id') id: string,
+    @Req() req: ExpressReq,
+    @Body() body: { source?: string; snapshot?: Record<string, unknown> },
+  ) {
+    const auth = verifyDeviceForScreen(req, id);
+    if (!auth.ok) {
+      throw new HttpException(`Device auth required (${auth.reason})`, HttpStatus.UNAUTHORIZED);
+    }
+    if (!body || typeof body !== 'object' || !body.snapshot || typeof body.snapshot !== 'object') {
+      throw new HttpException('snapshot is required', HttpStatus.BAD_REQUEST);
+    }
+
+    // Per-screen rate floor: 16 Hz max. Reuses the in-memory rate
+    // pattern from manifest-hot-cache.ts (single replica safe; multi-
+    // replica is fine because Redis is the broadcast bus, not the
+    // dedup point). Misbehaving bridges get silently capped — we
+    // return 200 with `throttled: true` rather than 429 so the
+    // bridge's `postCount` UI doesn't redline visually.
+    const now = Date.now();
+    const last = _gameStateRateMap.get(id) ?? 0;
+    if (now - last < 62) {
+      return { ok: true, throttled: true };
+    }
+    _gameStateRateMap.set(id, now);
+    // Cap the in-memory map at a sane bound — most installs have <50
+    // screens with CTS bridges, but in case someone bulk-installs:
+    if (_gameStateRateMap.size > 500) {
+      const cutoff = now - 60_000;
+      for (const [k, v] of _gameStateRateMap) {
+        if (v < cutoff) _gameStateRateMap.delete(k);
+      }
+    }
+
+    const signed = this.signer.signMessage('GAME_STATE', {
+      screenId: id,
+      source: typeof body.source === 'string' ? body.source : 'cts',
+      snapshot: body.snapshot,
+    });
+    try {
+      await this.redisService.publish(`device:${id}`, signed);
+    } catch {
+      // Redis blip: snapshot is ephemeral, the next snapshot (≤ 125ms
+      // away) will retry. No fallback needed for game state — unlike
+      // emergencies, a dropped frame is a missed render, not a safety
+      // issue.
+    }
+    return { ok: true };
   }
 
   // ─── Sprint 8 — set screen geo location (map view) ───
