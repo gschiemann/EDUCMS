@@ -26,14 +26,19 @@ import { Alert } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import { pushBrandingPreview } from './BrandStyleInjector';
 import { useAppStore } from '@/lib/store';
-import { useInvalidateTenantBranding } from '@/hooks/use-api';
+import { useInvalidateTenantBranding, useApplyBrandToTemplates } from '@/hooks/use-api';
 import { BrandingLivePreview } from './BrandingLivePreview';
 import { useLogoTone } from './useLogoTone';
 // 2026-05-25 — Operator chose to remove both AI sparkle icons +
 // the Wand2 magic icons here. The /settings/branding page header
 // has the Paintbrush; the wizard inside doesn't need to repeat
 // any icon vocabulary.
-import { Search, Palette, Check, Loader2, ExternalLink, AlertTriangle, RefreshCw, Monitor, Eye } from 'lucide-react';
+// 2026-05-26 — Wand2 re-added: operator asked to relocate the
+// "Apply brand to all templates" action OUT of the bottom card
+// and INTO the wizard as a compact inline row above the Re-scan /
+// Adopt toolbar. Wand2 = "magic auto-paint" (non-AI automation),
+// matches the icon used previously in BrandingSettingsCard.
+import { Search, Palette, Check, Loader2, ExternalLink, AlertTriangle, RefreshCw, Monitor, Eye, Wand2 } from 'lucide-react';
 
 // Scraped SVGs come from arbitrary third-party URLs — treat every one
 // as hostile until proven otherwise. Server also sanitizes on adopt,
@@ -225,6 +230,18 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
   const [accent, setAccent] = useState<string>((initial as any)?.palette?.accent || '#ec4899');
   const [derivedPalette, setDerivedPalette] = useState<any>((initial as any)?.palette || null);
 
+  // 2026-05-26 — Apply-to-templates (Wand2) state. Lives inside the
+  // wizard now (was in BrandingSettingsCard's bottom card) so the
+  // re-paint-templates action sits immediately above Re-scan / Adopt
+  // where the operator's eye already is. Only rendered when `initial`
+  // is set (= a brand has already been adopted — applying to templates
+  // before adoption would race the Adopt POST).
+  const applyBrand = useApplyBrandToTemplates();
+  const [applyMode, setApplyMode] = useState<'fill-blanks' | 'override'>('fill-blanks');
+  const [applyDoneMsg, setApplyDoneMsg] = useState<string | null>(null);
+  const [applyErr, setApplyErr] = useState<string | null>(null);
+  const isEditingAdopted = mode === 'authed' && !!initial;
+
   const debounceRef = useRef<any>(null);
 
   // ── Scrape handler ──────────────────────────────────────────────
@@ -331,6 +348,21 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
       setAdopting(false);
     }
   }, [preview, derivedPalette, selectedLogoIdx, displayName, tagline, onAdopted, invalidateBranding, user?.tenantId]);
+
+  // 2026-05-26 — Apply-to-templates: repaint every template the tenant
+  // owns with the current palette + fonts. Fill-blanks (default) only
+  // touches zones still on stock generic defaults; override force-paints
+  // every zone. Same backend mutation BrandingSettingsCard used to call.
+  const onApplyToTemplates = useCallback(async () => {
+    setApplyDoneMsg(null);
+    setApplyErr(null);
+    try {
+      const res = await applyBrand.mutateAsync({ mode: applyMode });
+      setApplyDoneMsg(`Applied to ${res.count} template${res.count === 1 ? '' : 's'} · ${res.zonesPatched} zone${res.zonesPatched === 1 ? '' : 's'} updated.`);
+    } catch (e: any) {
+      setApplyErr(e?.message || 'Apply failed — try again.');
+    }
+  }, [applyBrand, applyMode]);
 
   // Load fonts into this page too for the live preview
   useEffect(() => {
@@ -586,6 +618,74 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                 <Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="Tagline (shown on login page)" />
               </div>
             </Card>
+
+            {/* Apply brand to templates — 2026-05-26 operator: "put
+                apply branding to templates right above the rescan and
+                adopt branding and make the menu small to fit in with
+                the rest." Only rendered when editing an already-
+                adopted brand (`isEditingAdopted`) — applying before
+                adoption would race the Adopt POST, and there's
+                nothing to apply yet. The bottom card's
+                ApplyBrandToTemplatesRow was removed in the matching
+                edit to BrandingSettingsCard so this is now the single
+                home for the action. Compact-row style mirrors the
+                Re-scan / Adopt toolbar below: slate-50 card, p-3,
+                small icons, mode toggle + apply button on one line. */}
+            {isEditingAdopted && (
+              <div className="bg-slate-50 rounded-md p-3 border border-slate-200 shadow-sm space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Wand2 className="h-4 w-4 text-indigo-500 shrink-0" />
+                  <span className="text-xs font-bold text-slate-700 shrink-0">Apply brand to templates</span>
+                  <div className="flex-1 min-w-[120px]" />
+                  <div className="inline-flex bg-white rounded-md p-0.5 border border-slate-200 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setApplyMode('fill-blanks')}
+                      className={cn(
+                        'px-2 py-1 text-[10px] font-bold rounded transition-colors',
+                        applyMode === 'fill-blanks' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+                      )}
+                      title="Only zones still using stock generic colors"
+                    >
+                      Fill blanks
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setApplyMode('override')}
+                      className={cn(
+                        'px-2 py-1 text-[10px] font-bold rounded transition-colors',
+                        applyMode === 'override' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+                      )}
+                      title="Force-repaint every zone"
+                    >
+                      Override
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onApplyToTemplates}
+                    disabled={applyBrand.isPending}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors shrink-0"
+                  >
+                    {applyBrand.isPending ? (
+                      <><Loader2 className="h-3 w-3 animate-spin" /> Applying…</>
+                    ) : (
+                      <><Wand2 className="h-3 w-3" /> Apply</>
+                    )}
+                  </button>
+                </div>
+                {applyDoneMsg && (
+                  <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1 inline-flex items-center gap-1.5">
+                    <Check className="h-3 w-3" /> {applyDoneMsg}
+                  </div>
+                )}
+                {applyErr && (
+                  <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-2 py-1">
+                    {applyErr}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Actions — 2026-05-26 operator screenshot showed the
                 Re-scan / Adopt toolbar floating over page content

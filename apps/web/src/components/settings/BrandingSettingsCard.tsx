@@ -112,14 +112,19 @@ export function BrandingSettingsCard({
 
   if (!isFeatureEnabled(FLAGS.AUTO_BRANDING)) return null;
 
-  // 2026-05-26 applyOnly mode — only show Apply-to-templates + Reset.
-  // No header, no logo, no source URL, no Re-skin button — those are
-  // ALL already visible in the BrandingWizard rendered above this on
-  // /settings/branding. Operator: "the only option this should be is
-  // to brand your templates right?"
+  // 2026-05-26 applyOnly mode — JUST the Reset link now. Operator
+  // (round 3): "reset defaults should replace the rescan button on
+  // the last adopt branding menu. the scan is already up further so
+  // no need to rescan a second time." The Apply-to-templates row
+  // moved into BrandingWizard, immediately above the Re-scan / Adopt
+  // toolbar where the eye already lives. This card collapses to its
+  // smallest useful surface: "wipe and start over." Logo, palette,
+  // source URL, Re-skin all live in the wizard above on
+  // /settings/branding — surfacing them a second time was operator-
+  // flagged redundancy.
   //
   // If no brand is adopted yet, render NOTHING — the wizard above
-  // takes over the full page. There's nothing to apply yet.
+  // takes over the full page. There's nothing to reset yet.
   if (applyOnly) {
     if (loading) {
       return (
@@ -131,11 +136,8 @@ export function BrandingSettingsCard({
     if (!branding) return null;
     return (
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        {/* APPLY TO TEMPLATES — same component used in default mode. */}
-        <ApplyBrandToTemplatesRow />
-
-        {/* NUKE / Reset row */}
-        <div className="mt-5 pt-4 border-t border-slate-100">
+        {/* NUKE / Reset row — the single action on this card now. */}
+        <div>
           {!confirmReset ? (
             <button
               type="button"
