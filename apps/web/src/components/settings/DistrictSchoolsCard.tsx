@@ -35,7 +35,13 @@ interface ListResponse {
 // 2026-05-03 — VenueOS launch set: K12 / GYM / RETAIL / CORPORATE / QSR /
 // FASHION. Legacy names (RESTAURANT, HEALTHCARE, FITNESS, OTHER) kept
 // for forward-compat with any tenants on those strings.
-type Vertical = 'K12' | 'GYM' | 'RETAIL' | 'CORPORATE' | 'QSR' | 'FASHION' | 'RESTAURANT' | 'HEALTHCARE' | 'FITNESS' | 'OTHER';
+// 2026-05-26 — Audit gap: BAR / HOSPITALITY / SPORTS / WORSHIP were in
+// packages/api-types/src/verticals.ts but missing here, so admins in
+// those verticals saw the generic OTHER fallback ("location/group")
+// instead of bar/venue/property/church. Added vertical-tuned copy that
+// matches VERTICAL_LABELS + VERTICAL_GROUP_NOUN nouns from the
+// canonical taxonomy.
+type Vertical = 'K12' | 'GYM' | 'RETAIL' | 'CORPORATE' | 'QSR' | 'FASHION' | 'RESTAURANT' | 'HEALTHCARE' | 'FITNESS' | 'BAR' | 'HOSPITALITY' | 'SPORTS' | 'WORSHIP' | 'OTHER';
 interface Copy {
   parentNoun: string;       // "district", "franchise", "group"
   childNoun: string;        // "school", "location", "gym"
@@ -131,6 +137,45 @@ const COPY: Record<Vertical, Copy> = {
     exampleName: 'SoHo Studio', exampleSlug: 'soho',
     emptyState: 'No boutiques yet. Click + Boutique to onboard your first location.',
     inheritanceNote: 'Each boutique gets its own lookbook signage and storefront screens — but inherits your brand styling.',
+  },
+  // 2026-05-26 — Audit fix: added BAR / HOSPITALITY / SPORTS / WORSHIP.
+  // Nouns line up with packages/api-types/src/verticals.ts so the team
+  // page, multi-location card, and "Add a [noun]" buttons all speak
+  // the same vertical-tuned language. K12 still says "school"; a bar
+  // chain now says "bar" instead of "location"; a hotel group says
+  // "property" instead of "location"; a stadium operator says
+  // "venue"; a worship admin says "church."
+  BAR: {
+    parentNoun: 'group', childNoun: 'bar', childNounPlural: 'bars',
+    cardHeading: 'Bars in this group',
+    addButton: 'Bar',
+    exampleName: 'Downtown Taproom', exampleSlug: 'downtown',
+    emptyState: 'No bars yet. Click + Bar to onboard your first location.',
+    inheritanceNote: 'Each bar gets its own tap lists, drink specials, and game-day signage — but inherits your group branding.',
+  },
+  HOSPITALITY: {
+    parentNoun: 'group', childNoun: 'property', childNounPlural: 'properties',
+    cardHeading: 'Properties in this group',
+    addButton: 'Property',
+    exampleName: 'Downtown Marriott', exampleSlug: 'downtown',
+    emptyState: 'No properties yet. Click + Property to onboard your first hotel.',
+    inheritanceNote: 'Each property gets its own lobby boards, event calendars, and wayfinding — but inherits your group branding.',
+  },
+  SPORTS: {
+    parentNoun: 'league', childNoun: 'venue', childNounPlural: 'venues',
+    cardHeading: 'Venues in this league',
+    addButton: 'Venue',
+    exampleName: 'Memorial Stadium', exampleSlug: 'memorial-stadium',
+    emptyState: 'No venues yet. Click + Venue to onboard your first stadium or arena.',
+    inheritanceNote: 'Each venue gets its own scoreboards, ribbon boards, and game-day cues — but inherits your league branding.',
+  },
+  WORSHIP: {
+    parentNoun: 'ministry', childNoun: 'church', childNounPlural: 'churches',
+    cardHeading: 'Churches in this ministry',
+    addButton: 'Church',
+    exampleName: 'Main Campus', exampleSlug: 'main-campus',
+    emptyState: 'No churches yet. Click + Church to onboard your first location.',
+    inheritanceNote: 'Each church gets its own service times, sermon cards, and giving signage — but inherits your ministry branding.',
   },
 };
 function copyFor(v?: string): Copy {
