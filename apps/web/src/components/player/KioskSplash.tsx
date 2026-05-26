@@ -225,6 +225,21 @@ export function KioskSplash({
       data-mode={mode}
       role="status"
       aria-live="polite"
+      style={{
+        // 2026-05-26 — pairing splash root explicitly honors the LED
+        // canvas (set by the pin script in layout.tsx). Top-left
+        // anchored at 0,0 so daisy-chained panels see content
+        // starting at the leftmost pixel of the chain. Operator:
+        // "1 panel = 320×1080, 2 = 640×1080, 3 = 960×1080, ... up
+        // to 6 = 1920×1080". Each chain size resolves --led-w to
+        // the matching total width.
+        width: 'var(--led-w, 100vw)',
+        height: 'var(--led-h, 100vh)',
+        top: 0,
+        left: 0,
+        right: 'auto',
+        bottom: 'auto',
+      }}
     >
       <style>{CSS}</style>
 
@@ -581,9 +596,6 @@ function KioskDiagnostics({ mode }: { mode: Mode }) {
           type="button"
           onClick={() => {
             setSetupOpen(true);
-            // Pre-fill with reasonable defaults so the operator
-            // sees a starting point and doesn't have to type from
-            // scratch on a kiosk keyboard.
             if (!setupW) setSetupW('320');
             if (!setupH) setSetupH('1080');
           }}
@@ -609,15 +621,18 @@ function KioskDiagnostics({ mode }: { mode: Mode }) {
         >
           ⚠️ LED CANVAS NOT SET<br />
           <span style={{ fontWeight: 600, fontSize: 11 }}>
-            Tap to configure your LED&apos;s actual pixel size
+            Tap to set how many panels you have
           </span>
         </button>
       )}
 
       {/* Inline canvas-setup form. Opens when the orange banner is
-          tapped. Two number inputs + Apply button. Writes to
-          localStorage AND appends URL params so the pin script
-          immediately re-runs with the new values on reload. */}
+          tapped. The PRIMARY flow is now "how many panels do you
+          have" — one tap = canvas configured. Custom W/H form is
+          a fold-out for non-standard LEDs. Operator: "i have 3
+          screens connected together... 1 panel = 320×1080, 2 = 640
+          ×1080, 3 = 960×1080... all the way up until 6 screens at
+          1920×1080". */}
       {!dims.cfg && setupOpen && (
         <div
           style={{
@@ -625,7 +640,7 @@ function KioskDiagnostics({ mode }: { mode: Mode }) {
             top: 8,
             left: 8,
             right: 8,
-            maxWidth: 360,
+            maxWidth: 380,
             zIndex: 999997,
             padding: '14px 16px',
             background: 'rgba(255,255,255,0.98)',
@@ -645,123 +660,137 @@ function KioskDiagnostics({ mode }: { mode: Mode }) {
               fontSize: 13,
             }}
           >
-            Set your LED&apos;s pixel size
+            How many LED panels are daisy-chained?
           </div>
           <div
             style={{
               fontSize: 11,
               color: '#475569',
-              marginBottom: 12,
+              marginBottom: 10,
               lineHeight: 1.4,
             }}
           >
-            Enter the LED panel&apos;s actual visible width and height in
-            pixels. Common portrait LEDs: 320×1080, 480×1920, 640×1920.
+            Each panel is 320×1080. Tap how many you have to set the
+            total canvas — the splash + your content will scale to fit
+            the entire chain.
           </div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <label style={{ flex: 1 }}>
-              <span
-                style={{
-                  display: 'block',
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: '#475569',
-                  textTransform: 'uppercase',
-                  letterSpacing: 1,
-                  marginBottom: 4,
-                }}
-              >
-                Width (px)
-              </span>
-              <input
-                type="number"
-                inputMode="numeric"
-                min={32}
-                max={8192}
-                value={setupW}
-                onChange={(e) => setSetupW(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '8px 10px',
-                  fontSize: 16,
-                  border: '1px solid #cbd5e1',
-                  borderRadius: 6,
-                  background: 'white',
-                  color: '#0f172a',
-                }}
-              />
-            </label>
-            <label style={{ flex: 1 }}>
-              <span
-                style={{
-                  display: 'block',
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: '#475569',
-                  textTransform: 'uppercase',
-                  letterSpacing: 1,
-                  marginBottom: 4,
-                }}
-              >
-                Height (px)
-              </span>
-              <input
-                type="number"
-                inputMode="numeric"
-                min={32}
-                max={8192}
-                value={setupH}
-                onChange={(e) => setSetupH(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '8px 10px',
-                  fontSize: 16,
-                  border: '1px solid #cbd5e1',
-                  borderRadius: 6,
-                  background: 'white',
-                  color: '#0f172a',
-                }}
-              />
-            </label>
-          </div>
-          {/* Quick-pick chips for common LED sizes — one tap fills
-              both fields. */}
+          {/* N-PANEL PRIMARY PICKER — 1..6 grid. One tap fills both
+              W (= 320 × N) and H (= 1080). */}
           <div
             style={{
-              display: 'flex',
-              flexWrap: 'wrap',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(6, 1fr)',
               gap: 6,
-              marginBottom: 12,
+              marginBottom: 10,
             }}
           >
-            {[
-              { w: 320, h: 1080, label: '320×1080' },
-              { w: 480, h: 1920, label: '480×1920' },
-              { w: 640, h: 1920, label: '640×1920' },
-              { w: 960, h: 1920, label: '960×1920' },
-              { w: 1080, h: 1920, label: '1080×1920' },
-            ].map((opt) => (
-              <button
-                key={opt.label}
-                type="button"
-                onClick={() => {
-                  setSetupW(String(opt.w));
-                  setSetupH(String(opt.h));
-                }}
-                style={{
-                  padding: '4px 8px',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  background: '#f1f5f9',
-                  color: '#475569',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
+            {[1, 2, 3, 4, 5, 6].map((n) => {
+              const w = 320 * n;
+              const h = 1080;
+              const isActive = setupW === String(w) && setupH === String(h);
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => {
+                    setSetupW(String(w));
+                    setSetupH(String(h));
+                  }}
+                  style={{
+                    padding: '12px 4px',
+                    fontSize: 18,
+                    fontWeight: 800,
+                    background: isActive ? '#c2410c' : '#f1f5f9',
+                    color: isActive ? 'white' : '#475569',
+                    border: isActive ? '2px solid #c2410c' : '1px solid #cbd5e1',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    lineHeight: 1,
+                  }}
+                  title={`${n} panel${n === 1 ? '' : 's'} = ${w}×${h}`}
+                >
+                  {n}
+                  <span style={{ display: 'block', fontSize: 9, fontWeight: 700, marginTop: 4, opacity: 0.85 }}>
+                    {w}px
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {/* Custom dimensions fold-out (for non-standard LEDs). */}
+          <details style={{ marginBottom: 10 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 11, color: '#64748b', fontWeight: 700, userSelect: 'none' }}>
+              Non-standard panel? Set custom width × height
+            </summary>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <label style={{ flex: 1 }}>
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: '#475569',
+                    textTransform: 'uppercase',
+                    letterSpacing: 1,
+                    marginBottom: 4,
+                  }}
+                >
+                  Width (px)
+                </span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={32}
+                  max={8192}
+                  value={setupW}
+                  onChange={(e) => setSetupW(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    fontSize: 16,
+                    border: '1px solid #cbd5e1',
+                    borderRadius: 6,
+                    background: 'white',
+                    color: '#0f172a',
+                  }}
+                />
+              </label>
+              <label style={{ flex: 1 }}>
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: '#475569',
+                    textTransform: 'uppercase',
+                    letterSpacing: 1,
+                    marginBottom: 4,
+                  }}
+                >
+                  Height (px)
+                </span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={32}
+                  max={8192}
+                  value={setupH}
+                  onChange={(e) => setSetupH(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    fontSize: 16,
+                    border: '1px solid #cbd5e1',
+                    borderRadius: 6,
+                    background: 'white',
+                    color: '#0f172a',
+                  }}
+                />
+              </label>
+            </div>
+          </details>
+          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 10 }}>
+            Selected: <strong style={{ color: '#0f172a' }}>{setupW || '—'} × {setupH || '—'} px</strong>
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button

@@ -5519,7 +5519,7 @@ function PlayerPage() {
         </div>
       ) : (
         <div
-          className="absolute top-0 right-0 bottom-0 left-0 bg-slate-50 flex items-stretch justify-center p-8 overflow-hidden cursor-default"
+          className="absolute top-0 right-0 bottom-0 left-0 bg-slate-50 flex items-stretch justify-center overflow-hidden cursor-default"
           onClick={(e) => e.stopPropagation()}
           role="presentation"
           // 2026-05-13 — Inline-style fallback for Taurus WebViews where
@@ -5530,14 +5530,23 @@ function PlayerPage() {
           // the card landed at the default block-level top-left position.
           // Declaring the same layout inline guarantees centering even
           // when the CSS bundle never arrives.
+          //
+          // 2026-05-26 — outer container honors --led-w / --led-h set
+          // by the pin script in layout.tsx, so the entire splash
+          // anchors to the LED canvas instead of the controller's
+          // (often wider) frame buffer. clamp() padding shrinks on
+          // narrow LEDs (320×1080) but stays comfortable on wider
+          // chains (1920×1080).
           style={{
             position: 'absolute',
             top: 0, left: 0, right: 0, bottom: 0,
+            width: 'var(--led-w, 100%)',
+            height: 'var(--led-h, 100%)',
             background: '#f8fafc',
             display: 'flex',
             alignItems: 'stretch',
             justifyContent: 'center',
-            padding: '32px',
+            padding: 'clamp(8px, 3vw, 32px)',
             overflow: 'hidden',
             cursor: 'default',
           }}
@@ -5576,19 +5585,39 @@ function PlayerPage() {
                   room on partial-chain LED installs.
               */}
           <div
-            className="w-full max-w-5xl max-h-full bg-white/80 backdrop-blur-3xl rounded-[3rem] shadow-[0_20px_60px_rgb(0,0,0,0.06)] border border-white p-8 flex flex-col items-center z-10 animate-in fade-in zoom-in-95 duration-700 overflow-hidden"
-            // Tailwind-fallback inline styles — keeps the inner card
-            // centered + flex-column when the utility classes never
-            // applied. Width/max-width set so the card actually has
-            // room to breathe on a 960×1080 LED.
+            className="w-full max-w-5xl max-h-full bg-white/80 backdrop-blur-3xl rounded-[3rem] shadow-[0_20px_60px_rgb(0,0,0,0.06)] border border-white flex flex-col items-center z-10 animate-in fade-in zoom-in-95 duration-700 overflow-hidden"
+            // 2026-05-26 — operator: "i have 3 screens connected
+            // together... 320x1080 with one then 640x1080 with two
+            // then 960x1080 with 3, you need to make it work
+            // dynamically all the way up until 6 screens at 1920x1080".
+            //
+            // Card sizes itself to the LED canvas — width derived
+            // from --led-w (set by the pin script in layout.tsx) so
+            // padding + border-radius scale linearly with the chain
+            // size. min(MAX, max(MIN, calc(LED * RATIO))) keeps
+            // Chromium-83 (NovaStar Taurus) compatibility — min/max
+            // are Chrome 79+, calc + var are universal, NO cqi/cqw
+            // (container queries are Chrome 105+ and would crash
+            // the Taurus). CLAUDE.md rule #10 territory.
+            //
+            // Padding: 8px min, 32px max, 2.5% of canvas width.
+            //   320 panel → 8px (clamped to min)
+            //   640 chain → 16px
+            //   960 chain → 24px
+            //   1280+     → 32px (clamped to max)
+            // Border-radius: 12px min, 48px max, 4% of canvas.
+            //   320 → 12.8 → 13
+            //   1920 → 76.8 → 48
             style={{
               width: '100%',
-              maxWidth: '1024px',
+              maxWidth: '100%',
               maxHeight: '100%',
               background: 'rgba(255,255,255,0.8)',
-              borderRadius: '48px',
+              borderRadius:
+                'min(48px, max(12px, calc(var(--led-w, 1024px) * 0.04)))',
               border: '1px solid white',
-              padding: '32px',
+              padding:
+                'min(32px, max(8px, calc(var(--led-w, 1024px) * 0.025)))',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -5616,25 +5645,32 @@ function PlayerPage() {
                 <div
                   className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-indigo-100 to-indigo-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white"
                   style={{
-                    width: '96px', height: '96px',
-                    borderRadius: '32px',
+                    // 2026-05-26 — scale with --led-w. On 320 single
+                    // panel, hero shrinks to 48px; on 1920 6-panel
+                    // chain, stays at 96px. Chromium-83-safe via
+                    // min/max/calc/var (no clamp shorthand needed —
+                    // operator's Taurus is Chrome 83). See the outer
+                    // card style block above for the strategy.
+                    width: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
+                    height: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
+                    borderRadius: 'min(32px, max(12px, calc(var(--led-w, 1024px) * 0.025)))',
                     background: 'linear-gradient(135deg, #e0e7ff 0%, #eef2ff 100%)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    marginBottom: '24px',
+                    marginBottom: 'min(24px, max(8px, calc(var(--led-w, 1024px) * 0.018)))',
                     boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.05), 0 0 0 4px white',
                   }}
                 >
-                  <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" style={{ width: '48px', height: '48px', color: '#6366f1' }} />
+                  <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" style={{ width: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', height: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', color: '#6366f1' }} />
                 </div>
                 <h1
                   className="text-4xl font-extrabold text-slate-800 tracking-tight"
-                  style={{ fontSize: '36px', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center' }}
+                  style={{ fontSize: 'min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028)))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
                 >
                   Connecting to your CMS
                 </h1>
                 <p
                   className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center"
-                  style={{ fontSize: '18px', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: '40px', textAlign: 'center' }}
+                  style={{ fontSize: 'min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014)))', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: 'min(40px, max(8px, calc(var(--led-w, 1024px) * 0.03)))', textAlign: 'center', lineHeight: 1.3 }}
                 >
                   {loadProgress?.phase === 'manifest' ? 'Fetching your playlist…' :
                    loadProgress?.phase === 'assets' ? 'Downloading content…' :
@@ -5658,25 +5694,32 @@ function PlayerPage() {
                 <div
                   className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-amber-100 to-amber-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white"
                   style={{
-                    width: '96px', height: '96px',
-                    borderRadius: '32px',
+                    // 2026-05-26 — scale with --led-w. On 320 single
+                    // panel, hero shrinks to 48px; on 1920 6-panel
+                    // chain, stays at 96px. Chromium-83-safe via
+                    // min/max/calc/var (no clamp shorthand needed —
+                    // operator's Taurus is Chrome 83). See the outer
+                    // card style block above for the strategy.
+                    width: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
+                    height: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
+                    borderRadius: 'min(32px, max(12px, calc(var(--led-w, 1024px) * 0.025)))',
                     background: 'linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    marginBottom: '24px',
+                    marginBottom: 'min(24px, max(8px, calc(var(--led-w, 1024px) * 0.018)))',
                     boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.05), 0 0 0 4px white',
                   }}
                 >
-                  <Pause className="w-12 h-12 text-amber-500" style={{ width: '48px', height: '48px', color: '#f59e0b' }} />
+                  <Pause className="w-12 h-12 text-amber-500" style={{ width: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', height: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', color: '#f59e0b' }} />
                 </div>
                 <h1
                   className="text-4xl font-extrabold text-slate-800 tracking-tight"
-                  style={{ fontSize: '36px', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center' }}
+                  style={{ fontSize: 'min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028)))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
                 >
                   Playback Paused
                 </h1>
                 <p
                   className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center"
-                  style={{ fontSize: '18px', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: '40px', textAlign: 'center' }}
+                  style={{ fontSize: 'min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014)))', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: 'min(40px, max(8px, calc(var(--led-w, 1024px) * 0.03)))', textAlign: 'center', lineHeight: 1.3 }}
                 >
                   {exitUnavailable
                     ? 'Use your remote’s Home button to return to the launcher.'
@@ -5688,25 +5731,32 @@ function PlayerPage() {
                 <div
                   className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-emerald-100 to-emerald-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white"
                   style={{
-                    width: '96px', height: '96px',
-                    borderRadius: '32px',
+                    // 2026-05-26 — scale with --led-w. On 320 single
+                    // panel, hero shrinks to 48px; on 1920 6-panel
+                    // chain, stays at 96px. Chromium-83-safe via
+                    // min/max/calc/var (no clamp shorthand needed —
+                    // operator's Taurus is Chrome 83). See the outer
+                    // card style block above for the strategy.
+                    width: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
+                    height: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
+                    borderRadius: 'min(32px, max(12px, calc(var(--led-w, 1024px) * 0.025)))',
                     background: 'linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    marginBottom: '24px',
+                    marginBottom: 'min(24px, max(8px, calc(var(--led-w, 1024px) * 0.018)))',
                     boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.05), 0 0 0 4px white',
                   }}
                 >
-                  <CheckCircle2 className="w-12 h-12 text-emerald-500" style={{ width: '48px', height: '48px', color: '#10b981' }} />
+                  <CheckCircle2 className="w-12 h-12 text-emerald-500" style={{ width: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', height: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', color: '#10b981' }} />
                 </div>
                 <h1
                   className="text-4xl font-extrabold text-slate-800 tracking-tight"
-                  style={{ fontSize: '36px', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center' }}
+                  style={{ fontSize: 'min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028)))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
                 >
                   Screen Paired Successfully
                 </h1>
                 <p
                   className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center"
-                  style={{ fontSize: '18px', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: '40px', textAlign: 'center' }}
+                  style={{ fontSize: 'min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014)))', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: 'min(40px, max(8px, calc(var(--led-w, 1024px) * 0.03)))', textAlign: 'center', lineHeight: 1.3 }}
                 >
                   Waiting for a schedule to be assigned from the dashboard...
                 </p>
