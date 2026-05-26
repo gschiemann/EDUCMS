@@ -71,6 +71,16 @@ import { FitnessTrainingVideoWidget } from './fitness/FitnessTrainingVideoWidget
 // playback URL via /streaming/channels/:id (server-side signed URLs
 // for providers that need auth).
 import { StreamingWidget } from './StreamingWidget';
+// 2026-05-25 monetize-audit — drop-in widget for the "house-only"
+// ad network. Operator-uploaded creatives rotate with sponsor
+// disclosure + optional CTA chip. NOT wired to the paid impression
+// endpoint — running up impression counts for house ads would
+// distort revenue reporting.
+import { HouseAdsBannerWidget } from './HouseAdsBannerWidget';
+// 2026-05-25 music-overhaul — Spotify-for-Business / Apple Music for
+// Business / SomaFM / NPR / NTS / generic stream. One widget, many
+// source providers, server-resolved station list.
+import { MusicPlayerWidget } from './MusicPlayerWidget';
 import { FitnessWorkoutTimerWidget } from './fitness/FitnessWorkoutTimerWidget';
 import { FitnessMotivationalQuoteWidget } from './fitness/FitnessMotivationalQuoteWidget';
 import { FitnessAppLibraryWidget } from './fitness/FitnessAppLibraryWidget';
@@ -431,6 +441,16 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     // metadata + signed playback URL are pre-resolved by the API
     // (apps/api/src/streaming/) so this renderer just plays.
     case 'STREAMING':    return <StreamingWidget config={cfg} live={live} />;
+    // 2026-05-25 monetize-audit — House ads (operator's own creatives).
+    // Different from STREAMING ad overlay: this is a STANDALONE widget
+    // the operator drops on a template — the streaming-widget ads
+    // overlay an existing video; this one IS the content.
+    case 'HOUSE_AD_BANNER': return <HouseAdsBannerWidget config={cfg} live={live} />;
+    // 2026-05-25 music-overhaul — venue background music. SomaFM (free,
+    // public), NPR local-station finder, NTS (free, public), Apple /
+    // Spotify for Business (placeholder until OAuth lands), generic
+    // Icecast / Shoutcast / M3U8 stream.
+    case 'MUSIC_PLAYER':    return <MusicPlayerWidget config={cfg} live={live} />;
     case 'LOGO':         return <LogoWidget config={cfg} />;
     case 'WEBPAGE':      return <WebpageWidget config={cfg} live={live} />;
     // 2026-05-16 — EXTERNAL_HTML: a self-contained HTML template
@@ -2639,32 +2659,53 @@ function QrCodeVariant({ config, bgColor, color }: { config: any; bgColor: strin
 function ExternalHtmlWidget({ config }: { config: any }) {
   const url = typeof config?.url === 'string' ? config.url.trim() : '';
 
-  // Rebrand passthrough. config.brand is a flat map of semantic
-  // controls (background / surface / text / muted / primary / accent
-  // / fontDisplay / fontBody / fontCondensed). We base64url-encode it
-  // onto the iframe URL as `?brand=`; the per-template brand shim
-  // (apps/web/scripts/inject-brand-shim.cjs) reads it on load and
-  // overrides the template's CSS custom properties. Only non-empty
-  // keys are sent so a template's own defaults show through for
-  // anything the operator hasn't customized.
-  const srcWithBrand = useMemo(() => {
+  // Passthrough payload — base64url-encoded JSON on three URL params:
+  //   ?brand=…       CSS custom-property overrides (colors, fonts)
+  //   ?text=…        per-data-field text overrides
+  //   ?textStyles=…  per-data-field inline-style overrides
+  // The V2 shim (apps/web/scripts/inject-brand-shim.cjs) reads all
+  // three and applies them at first paint. Only non-empty keys are
+  // sent so a template's own defaults show through for anything the
+  // operator hasn't customized.
+  //
+  // textStyles is the canonical source for per-field inline-style
+  // overrides; cfg._styles is the source the editor's bottom-bar
+  // writes to (shared with HS widgets). Send EITHER, picking the
+  // canonical one first and falling back to _styles so the bottom-bar
+  // experience works without operator-facing schema churn.
+  const srcWithOverrides = useMemo(() => {
     if (!url) return '';
-    const brand = config?.brand;
-    if (!brand || typeof brand !== 'object') return url;
-    const clean: Record<string, string> = {};
-    for (const k of Object.keys(brand)) {
-      const v = brand[k];
-      if (typeof v === 'string' && v.trim()) clean[k] = v.trim();
+    const styles = config?.textStyles ?? config?._styles;
+    const params: Array<[string, unknown]> = [
+      ['brand', config?.brand],
+      ['text', config?.textOverrides],
+      ['textStyles', styles],
+    ];
+    const segments: string[] = [];
+    for (const [name, raw] of params) {
+      if (!raw || typeof raw !== 'object') continue;
+      // Drop empty / blank values so the template defaults show through.
+      const clean: Record<string, unknown> = {};
+      for (const k of Object.keys(raw)) {
+        const v = (raw as Record<string, unknown>)[k];
+        if (v == null) continue;
+        if (typeof v === 'string' && !v.trim()) continue;
+        if (typeof v === 'object' && Object.keys(v as object).length === 0) continue;
+        clean[k] = v;
+      }
+      if (Object.keys(clean).length === 0) continue;
+      try {
+        const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(clean))))
+          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        segments.push(`${name}=${b64}`);
+      } catch {
+        /* ignore — fall through with whatever segments did encode */
+      }
     }
-    if (Object.keys(clean).length === 0) return url;
-    try {
-      const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(clean))))
-        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-      return `${url}${url.includes('?') ? '&' : '?'}brand=${b64}`;
-    } catch {
-      return url;
-    }
-  }, [url, config?.brand]);
+    if (segments.length === 0) return url;
+    const joiner = url.includes('?') ? '&' : '?';
+    return `${url}${joiner}${segments.join('&')}`;
+  }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles]);
 
   if (!url) {
     return (
@@ -2682,9 +2723,9 @@ function ExternalHtmlWidget({ config }: { config: any }) {
   }
   return (
     <iframe
-      // key on the branded src so a brand change reloads the frame
-      key={srcWithBrand}
-      src={srcWithBrand}
+      // key on the full overrides URL so any edit reloads the frame.
+      key={srcWithOverrides}
+      src={srcWithOverrides}
       title="Signage template"
       loading="lazy"
       sandbox="allow-scripts"

@@ -109,15 +109,19 @@
   .success .lbl { color:rgba(255,255,255,0.85); }
   .success .val { color:#fff; }
 </style>
-<script>/*EDUCMS-BRAND-SHIM*/(function(){try{
-var p=new URLSearchParams(location.search).get('brand');if(!p)return;
-var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
-var b=JSON.parse(json),r=document.documentElement.style;
-var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
-text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
-primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
-fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
-Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+<script>/*EDUCMS-SHIM-V2*/(function(){try{
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas'],surface:['--paper','--brand-paper','--surface'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text'],muted:['--mute','--brand-mute','--text-muted'],
+primary:['--primary','--brand-primary','--color-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent'],
+fontDisplay:['--font-display','--font-headline'],fontBody:['--font-grotesk','--font-body','--font-sans'],fontCondensed:['--font-condensed','--font-numeric']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k])BRAND_MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){if(el.children.length===0){el.textContent=text[k];}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=text[k];}else{el.insertBefore(document.createTextNode(text[k]),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+addEventListener('message',function(e){try{var d=e.data;if(d&&d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});}}catch(_){}});
 }catch(e){}})();</script>
 </head>
 <body>

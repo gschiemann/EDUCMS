@@ -62,7 +62,17 @@ export type WidgetType =
   // VenueOS universal packs — drop-in template backgrounds and live
   // data feeds (markets, news, weather, transit). Variant-rendered;
   // each canonical type groups its pack under one picker chip.
-  | 'BACKGROUND' | 'LIVE_DATA';
+  | 'BACKGROUND' | 'LIVE_DATA'
+  // 2026-05-25 monetize-audit — drop-in widget for the house-only
+  // ad network. Renders a rotation of the operator's own uploaded
+  // creatives with sponsor disclosure label + optional CTA chip.
+  // Lives next to the third-party programmatic networks but does
+  // NOT call the impression endpoint (those are paid only).
+  | 'HOUSE_AD_BANNER'
+  // 2026-05-25 music-overhaul — Spotify-for-Business / Apple Music
+  // for Business / SomaFM / NPR / NTS / generic stream. One widget,
+  // many source providers, server-resolved station list.
+  | 'MUSIC_PLAYER';
 
 export interface ThemeWidgetProps {
   config: any;

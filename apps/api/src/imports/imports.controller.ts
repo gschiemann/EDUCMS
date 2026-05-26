@@ -2,11 +2,32 @@
  * ImportsController — design-import endpoint for the Canva / Slides /
  * PowerPoint / Figma / Adobe Express bring-your-own-design flow.
  *
- *   POST /api/v1/imports/design   — multipart upload of a PDF / PPTX /
- *                                   image. Stores the file as an Asset
- *                                   and creates an auto-named Playlist
- *                                   that points at it. Operator drops
- *                                   the playlist on any screen → done.
+ *   POST /api/v1/imports/design   — multipart upload of a PDF / image.
+ *                                   Stores the file as an Asset and,
+ *                                   depending on `targetType`, either
+ *                                   creates an auto-named Playlist
+ *                                   (default; backward-compat) or a
+ *                                   Template with a single IMAGE zone.
+ *
+ * 2026-05-25 operator pushback ("we are suppose to take a pptx, a pdf,
+ * a canva design and bring it right in as a template but for some
+ * reason we drop it into the playlist menu"): the original v1 only
+ * produced a Playlist. Now the caller picks the output target.
+ *
+ *   Body fields (multipart/form-data):
+ *     file        — the upload (PDF / PNG / JPG / WEBP, ≤50 MB)
+ *     source      — optional 'canva' | 'slides' | 'pptx' | 'image' |
+ *                   'pdf' for analytics; pass-through, no validation
+ *     targetType  — optional 'template' | 'playlist' (default
+ *                   'playlist' — keeps existing callers working). When
+ *                   'template' we ALSO build a Template row with one
+ *                   IMAGE zone covering 0–100% × 0–100% of the canvas
+ *                   pointing at the uploaded Asset's fileUrl.
+ *
+ *   Returns: `{ ok, message, asset, playlist, template?, targetType,
+ *   source }`. The `template` field is only present when
+ *   targetType=template. Front-end uses it to navigate the operator
+ *   straight into the template builder if they want to keep editing.
  *
  * Sprint 10 / Canva integration stage 1 (2026-05-03). Operator: "we
  * talked about adding a full canva integration, will that happen?
@@ -15,13 +36,11 @@
  *
  * What stage 1 ships (this commit):
  *   ✅ Single-page PDFs and image files (PNG/JPG/WEBP) work
- *      end-to-end. Asset row + 1-item Playlist created.
+ *      end-to-end. Asset row + 1-item Playlist created (and Template
+ *      when targetType=template).
  *   ✅ Multi-page PDFs upload as a single Asset; the front-end nudges
  *      the operator to "split into single-page exports for now"
  *      until the page-split worker ships in a follow-up.
- *   ✅ PPTX uploads accepted; routed through the LibreOffice→PDF
- *      pipeline if it's wired up, otherwise stored as-is with a
- *      friendly message.
  *
  * What stage 2 will add (pending Canva partner approval):
  *   - OAuth Canva Connect — design picker + auto-resync
@@ -143,7 +162,7 @@ export class ImportsController {
   async importDesign(
     @Request() req: any,
     @UploadedFile() file: Express.Multer.File,
-    @Body() body: { source?: string } = {},
+    @Body() body: { source?: string; targetType?: string } = {},
   ) {
     if (!file) {
       throw new HttpException(
@@ -156,6 +175,13 @@ export class ImportsController {
         HttpStatus.BAD_REQUEST,
       );
     }
+
+    // 2026-05-25 — `targetType` is sanitized to one of the two known
+    // values; anything else (or missing) falls back to 'playlist' so
+    // existing /settings/imports callers keep the legacy behavior.
+    const rawTarget = String(body?.targetType || '').toLowerCase();
+    const targetType: 'template' | 'playlist' =
+      rawTarget === 'template' ? 'template' : 'playlist';
 
     const tenantId = req.user.tenantId;
     const userId = req.user.id;
@@ -261,8 +287,109 @@ export class ImportsController {
     const isPdf = file.mimetype === 'application/pdf';
     const isImage = file.mimetype.startsWith('image/');
 
+    // 2026-05-25 — Operator wants imports to land in /templates as
+    // first-class designs, not as playlists. When the front-end asks
+    // for targetType=template we ALSO create a Template row with a
+    // single IMAGE zone (covering the full canvas) that points at the
+    // uploaded Asset. We continue to create the Playlist too — that
+    // way operators who want to drop the design on a screen directly
+    // (without first attaching the template) still can. Same idea as
+    // create-from-preset: design + a play-ready playlist in one shot.
+    //
+    // Canvas defaults to 1920×1080 landscape — the operator can
+    // resize in the builder after the fact. We don't try to read PDF
+    // dimensions here (would require pdfjs-dist, which we deliberately
+    // didn't add to apps/api/package.json — keeping the import path
+    // dependency-light until we ship the real page-split worker).
+    let template: { id: string; name: string } | null = null;
+    if (targetType === 'template') {
+      // Templates have a (tenantId, name) implicit uniqueness via the
+      // gallery UX even though the schema doesn't enforce it. Re-use
+      // the same playlistName/suffix logic so a re-import lands as
+      // "Foo (2)" instead of two indistinguishable "Foo" cards.
+      const existingTpls = await this.prisma.client.template.findMany({
+        where: {
+          tenantId,
+          OR: [
+            { name: niceName },
+            { name: { startsWith: `${niceName} (` } },
+          ],
+        },
+        select: { name: true },
+      });
+      let tplName = niceName;
+      if (existingTpls.length > 0) {
+        const usedSuffixes = new Set<number>();
+        for (const p of existingTpls) {
+          if (p.name === niceName) usedSuffixes.add(0);
+          const m = p.name.match(/ \((\d+)\)$/);
+          if (m) usedSuffixes.add(parseInt(m[1], 10));
+        }
+        let n = 2;
+        while (usedSuffixes.has(n)) n++;
+        tplName = `${niceName} (${n})`;
+      }
+
+      // Single full-canvas zone whose widgetType + defaultConfig depend
+      // on the upload format:
+      //   - image (PNG/JPG/WEBP) → IMAGE widget with `assetUrl` set
+      //     (canonical key the ImageWidget renderer reads at
+      //     apps/web/src/components/widgets/WidgetRenderer.tsx ~1691).
+      //   - PDF                  → WEBPAGE widget with `url` set
+      //     (config.url is what WebpageWidget reads at ~2739). PDFs
+      //     can't render in an <img> tag — the browser renders them
+      //     natively inside an iframe, which is what WebpageWidget
+      //     mounts. This mirrors the player's behavior for PDF
+      //     PlaylistItems (apps/web/src/app/player/page.tsx:5321).
+      //
+      // Using 'contain' (not 'cover') so PDF/Canva pages exported at
+      // their native aspect ratio aren't cropped when the operator
+      // drops the template on a different screen size. They can flip
+      // to 'cover' in the inspector if they want.
+      const widgetType = isPdf ? 'WEBPAGE' : 'IMAGE';
+      const zoneConfig: Record<string, unknown> = isPdf
+        ? { url: asset.fileUrl, refreshIntervalMs: 0 }
+        : { assetUrl: asset.fileUrl, fit: 'contain' };
+
+      const created = await this.prisma.client.template.create({
+        data: {
+          tenantId,
+          name: tplName,
+          description: `Imported from ${body?.source || 'design upload'} on ${new Date().toISOString().slice(0, 10)}`,
+          category: 'CUSTOM',
+          orientation: 'LANDSCAPE',
+          screenWidth: 1920,
+          screenHeight: 1080,
+          bgColor: '#ffffff',
+          isSystem: false,
+          status: 'ACTIVE',
+          createdById: userId,
+          zones: {
+            create: [
+              {
+                name: niceName,
+                widgetType,
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+                zIndex: 0,
+                sortOrder: 0,
+                defaultConfig: JSON.stringify(zoneConfig),
+              },
+            ],
+          },
+        },
+        select: { id: true, name: true },
+      });
+      template = { id: created.id, name: created.name };
+    }
+
     let message: string;
-    if (isImage) {
+    if (template) {
+      const sourceFmt = isImage ? 'image' : isPdf ? 'PDF' : 'file';
+      message = `Imported "${niceName}" as ${sourceFmt}. A new template "${template.name}" is in your Templates gallery (and a Playlist "${playlistName}" is queued for quick drag-onto-screen use).`;
+    } else if (isImage) {
       message = `Imported "${niceName}". The image is ready as an Asset and a 1-page Playlist named "${playlistName}". Drop the playlist on any screen, or use the asset directly in an IMAGE widget.`;
     } else if (isPdf) {
       message = `Imported "${niceName}" as PDF. Multi-page page-split rendering is on a follow-up commit — the file is uploaded and a 1-item Playlist named "${playlistName}" exists. For multi-page decks today, export each page individually from Canva (Download → PDF Print → Select pages) and re-import each as its own asset.`;
@@ -273,6 +400,7 @@ export class ImportsController {
     return {
       ok: true,
       message,
+      targetType,
       asset: {
         id: asset.id,
         fileUrl: asset.fileUrl,
@@ -282,6 +410,10 @@ export class ImportsController {
         id: playlist.id,
         name: playlist.name,
       },
+      // Only present when targetType=template. Front-end uses this to
+      // route the operator straight into the template builder if they
+      // want to keep editing.
+      template,
       // Surface the source-tool tag the front-end sent so future
       // analytics can split conversion by Canva vs. Slides vs. PPT etc.
       source: body?.source || 'unknown',

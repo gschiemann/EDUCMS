@@ -27,15 +27,19 @@
 .off .nm{font:600 56px/1 var(--font-display)}
 .off .price{font:500 36px/1.1 var(--font-display);color:var(--accent);margin-top:6px}
 .off .price del{color:var(--mute);font-size:28px;margin-right:18px}
-</style><script>/*EDUCMS-BRAND-SHIM*/(function(){try{
-var p=new URLSearchParams(location.search).get('brand');if(!p)return;
-var json=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));
-var b=JSON.parse(json),r=document.documentElement.style;
-var MAP={background:['--bg','--brand-canvas','--brand-bg'],surface:['--paper','--brand-paper'],
-text:['--ink','--fg','--brand-ink','--brand-fg'],muted:['--mute','--brand-mute'],
-primary:['--primary','--brand-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold'],
-fontDisplay:['--font-display'],fontBody:['--font-grotesk'],fontCondensed:['--font-condensed']};
-Object.keys(MAP).forEach(function(k){if(b[k])MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});
+</style><script>/*EDUCMS-SHIM-V2*/(function(){try{
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas'],surface:['--paper','--brand-paper','--surface'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text'],muted:['--mute','--brand-mute','--text-muted'],
+primary:['--primary','--brand-primary','--color-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent'],
+fontDisplay:['--font-display','--font-headline'],fontBody:['--font-grotesk','--font-body','--font-sans'],fontCondensed:['--font-condensed','--font-numeric']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k])BRAND_MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){if(el.children.length===0){el.textContent=text[k];}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=text[k];}else{el.insertBefore(document.createTextNode(text[k]),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+addEventListener('message',function(e){try{var d=e.data;if(d&&d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});}}catch(_){}});
 }catch(e){}})();</script>
 </head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Charleston · since 2014</span></div><div class="title" data-field="board.title">Happy hour.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="hero">
 <div class="copy"><div class="eye"><span data-field="hh.eye">Now serving · 5 to 7 PM</span></div><h1><span data-field="hh.t1">$2 </span><em data-field="hh.t2">everything.</em></h1><p class="lede" data-field="hh.lede">Off draft beer. Off house wine. Off our signature pours. Until seven o'clock — then we're back to full price, sorry.</p></div>
