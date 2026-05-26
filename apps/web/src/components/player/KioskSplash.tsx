@@ -35,7 +35,7 @@
  * down on narrow viewports so the code never overflows a phone.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Wifi, QrCode, MonitorPlay } from 'lucide-react';
 
 type Mode = 'registering' | 'pairing';
@@ -466,9 +466,48 @@ export function KioskSplash({
  */
 function KioskDiagnostics({ mode }: { mode: Mode }) {
   const [debugOn, setDebugOn] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupW, setSetupW] = useState<string>('');
+  const [setupH, setSetupH] = useState<string>('');
   const [dims, setDims] = useState<{
     vw: number; vh: number; ledW: string; ledH: string; narrow: boolean; cfg: boolean;
   } | null>(null);
+
+  // 2026-05-26 — operator: "how much fucking time do you need to get
+  // this to work right". The orange banner was useless because the
+  // operator can't navigate to "Info → Resize for LED" from the
+  // splash itself. Clicking the banner now opens this inline setup
+  // form. They type W + H + tap Apply. We write localStorage edu_
+  // canvasW / edu_canvasH AND append the params to the URL so a
+  // reload picks them up via the pin script. No dashboard trip
+  // required.
+  const applyCanvasSetup = useCallback(() => {
+    const w = parseInt(setupW, 10);
+    const h = parseInt(setupH, 10);
+    if (!w || !h || w < 32 || h < 32 || w > 8192 || h > 8192) {
+      // Don't accept obviously bad values. Inline error feedback
+      // would be nicer but operator's in a hurry; reject silently
+      // + leave fields in place so they can correct.
+      return;
+    }
+    try {
+      // 1. Persist to localStorage — the pin script reads this on
+      //    every subsequent load even when URL params are absent.
+      localStorage.setItem('edu_canvasW', String(w));
+      localStorage.setItem('edu_canvasH', String(h));
+      // 2. Append to current URL so a reload picks them up
+      //    immediately + so the operator can SEE the params if they
+      //    inspect the URL (debugging aid).
+      const url = new URL(window.location.href);
+      url.searchParams.set('canvasW', String(w));
+      url.searchParams.set('canvasH', String(h));
+      window.location.replace(url.toString());
+    } catch {
+      // localStorage / URL APIs not available — extremely rare, just
+      // reload with the URL params.
+      window.location.search = `?canvasW=${w}&canvasH=${h}`;
+    }
+  }, [setupW, setupH]);
 
   useEffect(() => {
     // Pull debug=1 from the URL once on mount. SSR-safe.
@@ -537,30 +576,227 @@ function KioskDiagnostics({ mode }: { mode: Mode }) {
           falls off the edge. This banner tells the operator to run
           "Resize for LED" + how to do it. Pairing/registering only;
           plays alongside the always-on tiny strip below. */}
-      {!dims.cfg && (
-        <div
+      {!dims.cfg && !setupOpen && (
+        <button
+          type="button"
+          onClick={() => {
+            setSetupOpen(true);
+            // Pre-fill with reasonable defaults so the operator
+            // sees a starting point and doesn't have to type from
+            // scratch on a kiosk keyboard.
+            if (!setupW) setSetupW('320');
+            if (!setupH) setSetupH('1080');
+          }}
           style={{
             position: 'fixed',
             top: 8,
             left: 8,
             zIndex: 999997,
-            padding: '6px 10px',
-            background: 'rgba(251,146,60,0.95)',
+            padding: '8px 12px',
+            background: 'rgba(251,146,60,0.97)',
             color: '#1f1300',
-            fontSize: 11,
-            fontFamily: 'monospace',
+            fontSize: 12,
+            fontFamily: 'system-ui, sans-serif',
             lineHeight: 1.3,
-            borderRadius: 4,
-            maxWidth: 260,
-            pointerEvents: 'none',
+            borderRadius: 6,
+            maxWidth: 280,
             fontWeight: 700,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
+            border: '2px solid #c2410c',
+            cursor: 'pointer',
+            textAlign: 'left',
           }}
-          aria-hidden="true"
         >
           ⚠️ LED CANVAS NOT SET<br />
-          Add <code style={{ background: 'rgba(0,0,0,0.15)', padding: '0 3px', borderRadius: 2 }}>?canvasW=320&canvasH=1080</code> to URL,<br />
-          or open Info → Resize for LED on this screen.
+          <span style={{ fontWeight: 600, fontSize: 11 }}>
+            Tap to configure your LED&apos;s actual pixel size
+          </span>
+        </button>
+      )}
+
+      {/* Inline canvas-setup form. Opens when the orange banner is
+          tapped. Two number inputs + Apply button. Writes to
+          localStorage AND appends URL params so the pin script
+          immediately re-runs with the new values on reload. */}
+      {!dims.cfg && setupOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 8,
+            left: 8,
+            right: 8,
+            maxWidth: 360,
+            zIndex: 999997,
+            padding: '14px 16px',
+            background: 'rgba(255,255,255,0.98)',
+            color: '#0f172a',
+            fontSize: 13,
+            fontFamily: 'system-ui, sans-serif',
+            borderRadius: 10,
+            border: '2px solid #c2410c',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 800,
+              marginBottom: 6,
+              color: '#9a3412',
+              fontSize: 13,
+            }}
+          >
+            Set your LED&apos;s pixel size
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: '#475569',
+              marginBottom: 12,
+              lineHeight: 1.4,
+            }}
+          >
+            Enter the LED panel&apos;s actual visible width and height in
+            pixels. Common portrait LEDs: 320×1080, 480×1920, 640×1920.
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <label style={{ flex: 1 }}>
+              <span
+                style={{
+                  display: 'block',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: '#475569',
+                  textTransform: 'uppercase',
+                  letterSpacing: 1,
+                  marginBottom: 4,
+                }}
+              >
+                Width (px)
+              </span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={32}
+                max={8192}
+                value={setupW}
+                onChange={(e) => setSetupW(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  fontSize: 16,
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 6,
+                  background: 'white',
+                  color: '#0f172a',
+                }}
+              />
+            </label>
+            <label style={{ flex: 1 }}>
+              <span
+                style={{
+                  display: 'block',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: '#475569',
+                  textTransform: 'uppercase',
+                  letterSpacing: 1,
+                  marginBottom: 4,
+                }}
+              >
+                Height (px)
+              </span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={32}
+                max={8192}
+                value={setupH}
+                onChange={(e) => setSetupH(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  fontSize: 16,
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 6,
+                  background: 'white',
+                  color: '#0f172a',
+                }}
+              />
+            </label>
+          </div>
+          {/* Quick-pick chips for common LED sizes — one tap fills
+              both fields. */}
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 6,
+              marginBottom: 12,
+            }}
+          >
+            {[
+              { w: 320, h: 1080, label: '320×1080' },
+              { w: 480, h: 1920, label: '480×1920' },
+              { w: 640, h: 1920, label: '640×1920' },
+              { w: 960, h: 1920, label: '960×1920' },
+              { w: 1080, h: 1920, label: '1080×1920' },
+            ].map((opt) => (
+              <button
+                key={opt.label}
+                type="button"
+                onClick={() => {
+                  setSetupW(String(opt.w));
+                  setSetupH(String(opt.h));
+                }}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  background: '#f1f5f9',
+                  color: '#475569',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={() => setSetupOpen(false)}
+              style={{
+                padding: '8px 14px',
+                fontSize: 12,
+                fontWeight: 700,
+                background: 'white',
+                color: '#475569',
+                border: '1px solid #cbd5e1',
+                borderRadius: 6,
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={applyCanvasSetup}
+              style={{
+                padding: '8px 14px',
+                fontSize: 12,
+                fontWeight: 800,
+                background: '#c2410c',
+                color: 'white',
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+              }}
+            >
+              Apply &amp; reload
+            </button>
+          </div>
         </div>
       )}
 
