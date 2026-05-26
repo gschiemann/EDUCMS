@@ -1599,6 +1599,27 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         </div>,
       );
 
+      // 2026-05-25 — Editable text fields. Until now, dropping a
+      // restaurant / QSR / signage template gave the operator color +
+      // font overrides but ZERO text editing — they couldn't change a
+      // single menu item, headline, or price. The 80 packaged templates
+      // already mark every editable text node with `data-field=…`; we
+      // fetch the active HTML, walk those elements, and surface one
+      // editable input per data-field. The widget then sends the
+      // overrides through the iframe URL (`?text=…`) where the V2
+      // brand shim applies them at first paint, on both the editor
+      // preview AND every player at runtime.
+      if (cfg.url) {
+        fields.push(SH('ext-text', 'Edit text'));
+        fields.push(
+          <ExternalHtmlTextEditor
+            key="ext-text-editor"
+            cfg={cfg}
+            setField={setField}
+          />,
+        );
+      }
+
       fields.push(SH('brand-colors', 'Brand colors'));
       fields.push(
         <div key="brand-note" className="text-[11px] text-slate-500 px-1 leading-relaxed">
@@ -4543,6 +4564,202 @@ function StyleableAreaField({
         rows={rows}
         onFocus={handleFocus}
       />
+    </div>
+  );
+}
+
+/**
+ * ExternalHtmlTextEditor — make every data-field in a signage template
+ * editable from the panel.
+ *
+ * The 80 signage / HS templates are self-contained HTML rendered in a
+ * sandboxed iframe (no allow-same-origin), so we cannot reach into
+ * them from React. Instead we fetch the template HTML (same-origin
+ * static file in /public/templates), parse it with DOMParser, walk
+ * every `[data-field]` to discover its key + default text, and render
+ * an editable field per one. The operator's edits write to
+ * cfg.textOverrides[fieldKey] — the ExternalHtmlWidget then encodes
+ * that map into the `?text=` URL param, and the V2 brand shim inside
+ * the iframe applies the overrides at first paint (both in the editor
+ * preview and on every player at runtime).
+ *
+ * Style overrides flow through the same path: the StyleableField
+ * wrapper threads `cfg._styles` (the shared schema HS widgets already
+ * use; the editor's bottom-bar reads + writes this map). The widget's
+ * URL-encoder picks up `_styles` and sends it as `?textStyles=`, so a
+ * font-size or color change applied via the bottom bar is visible on
+ * the iframe immediately AND propagates to every screen.
+ *
+ * Why fetch + parse instead of postMessage-bridge: the bridge approach
+ * has a race condition (panel mounts before iframe → first message
+ * lost). Static fetch + parse is deterministic — every data-field
+ * shows up in the panel within ~50ms of the operator selecting the
+ * EXTERNAL_HTML zone, regardless of iframe load order.
+ */
+function ExternalHtmlTextEditor({
+  cfg,
+  setField,
+}: {
+  cfg: any;
+  setField: (patch: Record<string, any>) => void;
+}) {
+  const url = typeof cfg?.url === 'string' ? cfg.url.trim() : '';
+  // discoveredFields: ordered list of {key, defaultText, sectionKey}
+  // null = still loading, [] = no fields (or fetch failed gracefully).
+  const [discoveredFields, setDiscoveredFields] = useState<
+    Array<{ key: string; defaultText: string; sectionKey: string; isShortish: boolean }> | null
+  >(null);
+
+  useEffect(() => {
+    if (!url) {
+      setDiscoveredFields([]);
+      return;
+    }
+    let cancelled = false;
+    setDiscoveredFields(null);
+    fetch(url, { credentials: 'omit' })
+      .then((res) => res.ok ? res.text() : '')
+      .then((html) => {
+        if (cancelled) return;
+        if (!html) {
+          setDiscoveredFields([]);
+          return;
+        }
+        try {
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const seen = new Set<string>();
+          const out: Array<{ key: string; defaultText: string; sectionKey: string; isShortish: boolean }> = [];
+          const nodes = doc.querySelectorAll('[data-field]');
+          nodes.forEach((el) => {
+            const key = (el as HTMLElement).getAttribute('data-field');
+            if (!key || seen.has(key)) return;
+            seen.add(key);
+            // Use the FIRST text node only — many fields wrap nested
+            // child elements (e.g. <small>) we don't want to flatten
+            // into the editable text. Falls back to textContent for
+            // simple leaf elements.
+            let defaultText = '';
+            for (let i = 0; i < el.childNodes.length; i++) {
+              const c = el.childNodes[i];
+              if (c.nodeType === 3) {
+                defaultText = (c.textContent || '').trim();
+                if (defaultText) break;
+              }
+            }
+            if (!defaultText) defaultText = (el.textContent || '').trim();
+            const dotIdx = key.indexOf('.');
+            const sectionKey = dotIdx > 0 ? key.slice(0, dotIdx) : key;
+            const isShortish = defaultText.length < 60;
+            out.push({ key, defaultText, sectionKey, isShortish });
+          });
+          setDiscoveredFields(out);
+        } catch {
+          setDiscoveredFields([]);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDiscoveredFields([]);
+      });
+    return () => { cancelled = true; };
+  }, [url]);
+
+  // Pull current overrides + styles map. textOverrides is the canonical
+  // per-key string map (what the V2 shim applies); _styles is the
+  // canonical per-key inline-style map (HS schema, also applied by the
+  // V2 shim via the textStyles URL param).
+  const textOverrides: Record<string, string> =
+    (cfg?.textOverrides && typeof cfg.textOverrides === 'object') ? cfg.textOverrides : {};
+  const styles: FieldStyleMap =
+    (cfg?._styles && typeof cfg._styles === 'object') ? (cfg._styles as FieldStyleMap) : {};
+
+  if (!url) {
+    return (
+      <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-500">
+        Pick a template above to expose its editable text.
+      </div>
+    );
+  }
+  if (discoveredFields === null) {
+    return (
+      <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-500">
+        Scanning template…
+      </div>
+    );
+  }
+  if (discoveredFields.length === 0) {
+    return (
+      <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
+        This template has no editable text hooks yet. Recolor / restyle via the controls below; we&apos;ll add inline text editing to this template in a future update.
+      </div>
+    );
+  }
+
+  // Group by sectionKey so a 70-field template (QSR drive-thru) shows
+  // sections instead of a 70-row flat list.
+  const sections: Record<string, typeof discoveredFields> = {};
+  for (const f of discoveredFields) {
+    if (!sections[f.sectionKey]) sections[f.sectionKey] = [];
+    sections[f.sectionKey].push(f);
+  }
+  const sectionOrder = Object.keys(sections);
+
+  const setOverride = (key: string, value: string, defaultText: string) => {
+    const next = { ...textOverrides };
+    // Empty string OR matches the template default → remove the override
+    // so the template's own copy shows through (lets operators easily
+    // reset a field by clearing the input).
+    if (!value || value === defaultText) {
+      delete next[key];
+    } else {
+      next[key] = value;
+    }
+    setField({ textOverrides: Object.keys(next).length ? next : undefined });
+  };
+  const setStylesMap = (s: FieldStyleMap) => {
+    setField({ _styles: Object.keys(s).length ? s : undefined });
+  };
+
+  return (
+    <div className="space-y-3">
+      {sectionOrder.map((sec) => (
+        <div key={sec} className="rounded-xl border border-slate-200 bg-white/70 p-3 space-y-2">
+          <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">
+            {prettySectionLabel(sec)}
+          </div>
+          {sections[sec].map((f) => {
+            const current = textOverrides[f.key] ?? f.defaultText;
+            const label = prettyFieldLabel(f.key);
+            // Long text → textarea; short → single-line input. Heuristic
+            // is just len < 60 in the source default; works well across
+            // titles (short), descriptions (medium), and copy blocks
+            // (long, multi-line).
+            return f.isShortish ? (
+              <StyleableField
+                key={f.key}
+                fieldName={f.key}
+                styles={styles}
+                onStylesChange={setStylesMap}
+                label={label}
+                value={current}
+                placeholder={f.defaultText}
+                onChange={(v) => setOverride(f.key, v, f.defaultText)}
+              />
+            ) : (
+              <StyleableAreaField
+                key={f.key}
+                fieldName={f.key}
+                styles={styles}
+                onStylesChange={setStylesMap}
+                label={label}
+                value={current}
+                placeholder={f.defaultText}
+                rows={3}
+                onChange={(v) => setOverride(f.key, v, f.defaultText)}
+              />
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
