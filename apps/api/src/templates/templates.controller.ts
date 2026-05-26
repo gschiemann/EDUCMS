@@ -139,6 +139,21 @@ export class TemplatesController {
     if (brand.ink && cfg.color === undefined) cfg.color = brand.ink;
     if (brand.fontHeading && cfg.fontFamily === undefined) cfg.fontFamily = brand.fontHeading;
 
+    // 2026-05-26 audit fix — paint the tenant palette onto widgets
+    // that read accentColor (restaurant menu boards, retail grids,
+    // sports composite elements, fitness widgets, themed clocks /
+    // tickers). Strict fill-blanks: only writes when the preset's
+    // own designed accent was undefined, so existing-customized zones
+    // stay untouched. accentColor is a near-universal widget key
+    // across all of those packs — grep
+    //   apps/web/src/components/widgets -rn 'c.accentColor\|config.accentColor'
+    // returns 60+ consumers spanning restaurant, retail, sports,
+    // fitness, themed clock, weather, ticker, motivational, music.
+    const palette = brand.palette || {};
+    if (palette.accent && cfg.accentColor === undefined) {
+      cfg.accentColor = palette.accent;
+    }
+
     // HS-specific identity fill: every HS widget shares the same
     // school-identity field names (schoolName, schoolInitials,
     // schoolEst, department, greetingEyebrow). Pre-populate with the
@@ -168,8 +183,8 @@ export class TemplatesController {
 
       // Optional brand-color tints for HS widgets that read primary/
       // accent from config. Strict fill-blanks; preset's own theme
-      // wins.
-      const palette = brand.palette || {};
+      // wins. (palette is the same hoisted var declared above for
+      // the cross-widget accentColor pass.)
       if (palette.primary && cfg.brandPrimary === undefined) cfg.brandPrimary = palette.primary;
       if (palette.accent && cfg.brandAccent === undefined) cfg.brandAccent = palette.accent;
     }
