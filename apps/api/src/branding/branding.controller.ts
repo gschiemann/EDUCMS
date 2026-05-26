@@ -652,18 +652,32 @@ export class BrandingController {
 
     await this.prisma.client.$transaction(async (tx) => {
       for (const tpl of templates) {
-        // Background fill
+        // Background fill. When the palette has BOTH primary AND
+        // accent, paint a primary→accent gradient instead of the flat
+        // surface — superintendents who scrape with two strong school
+        // colors get the boldest possible "this is us" backdrop.
+        // Fallback to flat surface for monochrome palettes.
+        // (2026-05-26 audit fix.)
         const bgPatch: any = {};
         if (mode === 'override' || (!tpl.bgColor && !tpl.bgGradient && !tpl.bgImage)) {
-          bgPatch.bgColor = surface;
-          bgPatch.bgGradient = null;
+          if (palette.primary && palette.accent && palette.primary !== palette.accent) {
+            bgPatch.bgGradient = `linear-gradient(135deg, ${palette.primary} 0%, ${palette.accent} 100%)`;
+            bgPatch.bgColor = palette.primary; // fallback for clients that ignore bgGradient
+          } else {
+            bgPatch.bgColor = surface;
+            bgPatch.bgGradient = null;
+          }
         }
         if (Object.keys(bgPatch).length > 0) {
           await tx.template.update({ where: { id: tpl.id }, data: bgPatch });
         }
 
         // Zone-level brand override — universal text-style keys read
-        // by the BuilderZone scoped <style> override.
+        // by the BuilderZone scoped <style> override, plus accentColor
+        // which 60+ widgets across restaurant / retail / sports /
+        // fitness packs consume directly. Strict fill-blanks unless
+        // operator picked override mode.
+        const accent = palette.accent || palette.primary || null;
         for (const z of tpl.zones) {
           const cfg = (() => {
             try { return z.defaultConfig ? JSON.parse(z.defaultConfig as any) : {}; } catch { return {}; }
@@ -671,6 +685,15 @@ export class BrandingController {
           const patch: Record<string, any> = {};
           if (mode === 'override' || cfg.color === undefined) patch.color = ink;
           if ((mode === 'override' || cfg.fontFamily === undefined) && fontHeading) patch.fontFamily = fontHeading;
+          // 2026-05-26 audit fix — extend the brand paint to cover
+          // accentColor (the most-consumed brand-tint key across the
+          // widget library). Without this, "Apply Brand" left every
+          // restaurant / retail / sports / fitness widget on its
+          // designed accent forever; the operator had to recolor
+          // each one manually.
+          if (accent && (mode === 'override' || cfg.accentColor === undefined)) {
+            patch.accentColor = accent;
+          }
           // fontBody not currently consumed but kept on the zone so a
           // future "apply body font separately" toggle can pick it up.
           if (Object.keys(patch).length === 0) continue;
