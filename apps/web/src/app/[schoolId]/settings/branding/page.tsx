@@ -157,8 +157,13 @@ export default function SettingsBrandingPage() {
             initial={current || undefined}
             vertical={(tenant as any)?.vertical || 'K12'}
           />
+          {/* applyOnly mode: just Apply-to-templates + Reset. The
+              logo + source URL + Re-skin header would be redundant
+              here — the wizard above already shows those. Operator:
+              "the only option this should be is to brand your
+              templates right?" */}
           <div className="mt-6">
-            <BrandingSettingsCard />
+            <BrandingSettingsCard applyOnly />
           </div>
         </>
       )}

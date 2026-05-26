@@ -31,13 +31,27 @@ import type { TenantBranding } from '@/lib/branding';
 
 // 2026-05-26 — operator: "why bring all of these settings outside int
 // the main settings page these should have been in the settings menu
-// for the branding." Card now has TWO modes:
+// for the branding." Card now has THREE modes:
 //   - slimOnly: header + Configure/Re-skin button only (for /settings
 //     so it matches the Emergency / AI / Industry row pattern)
-//   - default: header + details block (current logo + palette +
-//     Apply-to-templates + Reset) — used inside /settings/branding
-//     where the operator actually configures the brand.
-export function BrandingSettingsCard({ slimOnly = false }: { slimOnly?: boolean }) {
+//   - applyOnly: just the Apply-to-templates section + Reset link
+//     (for /settings/branding BELOW the wizard — the wizard above
+//     already shows the adopted brand summary; surfacing logo + Re-skin
+//     a second time was redundant). Operator (2026-05-26 round 2):
+//     "why are we saying reskin and showing the logo even, the only
+//     option this should be is to brand your templates right? the
+//     reskin option should replace the scan option once you have
+//     adopted the branding."
+//   - default: header + full details block — kept for any callers
+//     that depended on the legacy shape; new call sites should pick
+//     slimOnly or applyOnly explicitly.
+export function BrandingSettingsCard({
+  slimOnly = false,
+  applyOnly = false,
+}: {
+  slimOnly?: boolean;
+  applyOnly?: boolean;
+}) {
   // 2026-05-25 — useTenant() dropped (was only used for the
   // tenant-name pill that's no longer rendered).
   // 2026-05-25 — manual-mode state (inline file picker + color
@@ -97,6 +111,83 @@ export function BrandingSettingsCard({ slimOnly = false }: { slimOnly?: boolean 
   };
 
   if (!isFeatureEnabled(FLAGS.AUTO_BRANDING)) return null;
+
+  // 2026-05-26 applyOnly mode — only show Apply-to-templates + Reset.
+  // No header, no logo, no source URL, no Re-skin button — those are
+  // ALL already visible in the BrandingWizard rendered above this on
+  // /settings/branding. Operator: "the only option this should be is
+  // to brand your templates right?"
+  //
+  // If no brand is adopted yet, render NOTHING — the wizard above
+  // takes over the full page. There's nothing to apply yet.
+  if (applyOnly) {
+    if (loading) {
+      return (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          <div className="text-sm text-slate-400">Loading…</div>
+        </div>
+      );
+    }
+    if (!branding) return null;
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+        {/* APPLY TO TEMPLATES — same component used in default mode. */}
+        <ApplyBrandToTemplatesRow />
+
+        {/* NUKE / Reset row */}
+        <div className="mt-5 pt-4 border-t border-slate-100">
+          {!confirmReset ? (
+            <button
+              type="button"
+              onClick={() => { setConfirmReset(true); setResetError(null); }}
+              className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-rose-600 transition-colors"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Reset to default branding
+            </button>
+          ) : (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-rose-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-semibold text-rose-900 text-sm">
+                    Wipe custom branding and revert to VenueOS defaults?
+                  </div>
+                  <div className="text-xs text-rose-700/90 mt-1">
+                    Logo, colors, fonts, display name, and tagline will all reset. This is reversible — you can re-scan any time.
+                  </div>
+                  {resetError && (
+                    <div className="text-xs text-rose-800 mt-2 font-mono bg-rose-100 px-2 py-1 rounded">
+                      {resetError}
+                    </div>
+                  )}
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleReset}
+                      disabled={resetting}
+                      className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      {resetting ? 'Resetting…' : 'Yes, wipe and reset'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmReset(false)}
+                      disabled={resetting}
+                      className="px-3 py-1.5 rounded-md bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
