@@ -385,6 +385,41 @@ export class ImportsController {
       template = { id: created.id, name: created.name };
     }
 
+    // 2026-05-26 audit gap — imports.controller wasn't writing an
+    // AuditLog row, so an operator couldn't see "who imported what
+    // PDF, when". Every other privileged-mutation surface writes
+    // one (ads/monetize-click, ai/generate, branding/adopt). Bring
+    // this one into line. Best-effort write — if the audit insert
+    // fails, the import still succeeds (don't block the operator
+    // on a non-essential analytic), but the failure is logged.
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId,
+          action: 'IMPORT_DESIGN',
+          targetType: targetType === 'template' ? 'Template' : 'Playlist',
+          targetId: template?.id || playlist.id,
+          details: JSON.stringify({
+            source: body?.source || 'upload',
+            targetType,
+            assetId: asset.id,
+            playlistId: playlist.id,
+            templateId: template?.id || null,
+            fileName: file.originalname?.slice(0, 200) || null,
+            fileSize: file.size,
+            mimeType: file.mimetype,
+            pages: 1, // page-split worker is on the Sprint 10 roadmap
+          }),
+        },
+      });
+    } catch (e) {
+      // Don't block the import on audit-write failure; surface in
+      // logs so it's visible during incident review.
+      // eslint-disable-next-line no-console
+      console.warn('[imports] AuditLog write failed (non-blocking):', e);
+    }
+
     let message: string;
     if (template) {
       const sourceFmt = isImage ? 'image' : isPdf ? 'PDF' : 'file';
