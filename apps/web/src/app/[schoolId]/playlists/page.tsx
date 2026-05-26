@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings, Upload, AlertCircle, Download, Usb, Check, RefreshCw } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { PlaylistPreviewThumb, derivePlaylistContentLabel, type TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
+import { PlaylistCreateWizard } from '@/components/playlists/PlaylistCreateWizard';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   DndContext, closestCenter, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, DragEndEvent
@@ -707,8 +708,22 @@ export default function PlaylistsPage() {
   const [publishMode, setPublishMode] = useState<'append' | 'replace'>('replace');
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // 2026-05-26 — `showCreate` now drives the modal <PlaylistCreateWizard>
+  // mounted at the bottom of the page. The legacy mid-page card with
+  // its `createMode` / `newName` / `selectedTemplateId` state was retired
+  // because the operator wanted a proper guided modal:
+  //   "i dont like how hitting new playlist just pops open a menu in
+  //    the middle of the playlist dashboard, it should open a window
+  //    inside the dashboard area where i do all of my playlist
+  //    configuration, so i click new playlist popup comes up, i name
+  //    it, i pick asset or template, then it takes me to select the
+  //    media, then it take me to select the screen or screens, then it
+  //    take me to the publishing section....just flows through so
+  //    clean it makes sense to everyone"
+  // The wizard self-contains every step (name + type → content →
+  // screens → publish → review). When it returns onCreated, we drop
+  // straight into the new playlist's editor.
   const [showCreate, setShowCreate] = useState(false);
-  const [createMode, setCreateMode] = useState<'choose' | 'blank' | 'template'>('choose');
   const [showPicker, setShowPicker] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
   // Submit-for-review (Sprint 1.5). CONTRIBUTOR role can submit a
@@ -837,11 +852,10 @@ export default function PlaylistsPage() {
       });
     }
   };
-  const [newName, setNewName] = useState('');
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-
-  // Filter to non-system custom templates for the picker
-  const customTemplates = (templates || []).filter((t: any) => !t.isSystem && t.tenantId);
+  // (Retired 2026-05-26) The legacy create flow tracked `newName`,
+  // `selectedTemplateId`, and `customTemplates` here. All three now
+  // live inside <PlaylistCreateWizard /> — see the showCreate state
+  // declaration above for context.
   const [localItems, setLocalItems] = useState<any[]>([]);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [hasChanges, setHasChanges] = useState(false);
@@ -862,14 +876,9 @@ export default function PlaylistsPage() {
   const pickerFileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'editor' | 'schedules'>('editor');
-  const createNameInputRef = useRef<HTMLInputElement>(null);
-
-  // Focus the playlist name input when create form is in naming mode
-  useEffect(() => {
-    if (showCreate && (createMode === 'blank' || (createMode === 'template' && selectedTemplateId))) {
-      createNameInputRef.current?.focus();
-    }
-  }, [showCreate, createMode, selectedTemplateId]);
+  // (Retired 2026-05-26) The legacy `createNameInputRef` + focus
+  // effect lived here. The wizard now manages its own name-input
+  // focus internally on Step 1 mount.
 
   // Schedule form state
   const [schedTargets, setSchedTargets] = useState<string[]>([]);
@@ -1082,19 +1091,11 @@ export default function PlaylistsPage() {
     }
   };
 
-  const handleCreate = async () => {
-    if (!newName.trim()) return;
-    const data: { name: string; templateId?: string } = { name: newName };
-    if (createMode === 'template' && selectedTemplateId) {
-      data.templateId = selectedTemplateId;
-    }
-    const created = await createPlaylist.mutateAsync(data);
-    setNewName('');
-    setShowCreate(false);
-    setCreateMode('choose');
-    setSelectedTemplateId(null);
-    handleSelect({ ...created, items: [] });
-  };
+  // (Retired 2026-05-26) `handleCreate` is now owned by
+  // <PlaylistCreateWizard>. The wizard's onCreated callback
+  // hands the finished playlist back to handleSelect so we drop
+  // straight into the editor — see the wizard mount near the bottom
+  // of this component.
 
   const handleAddAsset = (asset: any) => {
     const dur = asset.mimeType?.startsWith('video/') || asset.mimeType?.startsWith('audio/') ? 30000 : 10000;
@@ -2502,7 +2503,7 @@ export default function PlaylistsPage() {
             </button>
           </div>
           <button
-            onClick={() => { setShowCreate(true); setCreateMode('choose'); setNewName(''); setSelectedTemplateId(null); }}
+            onClick={() => setShowCreate(true)}
             disabled={isViewer}
             title={isViewer ? 'Read-only — viewer role' : undefined}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2615,115 +2616,24 @@ export default function PlaylistsPage() {
         </div>
       )}
 
-      {showCreate && (
-        <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
-          {createMode === 'choose' && (
-            <div className="p-5">
-              <p className="text-sm font-semibold text-slate-700 mb-3">What kind of playlist?</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button onClick={() => setCreateMode('blank')}
-                  className="flex items-start gap-3 p-4 rounded-xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 transition-all text-left group">
-                  <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0 group-hover:bg-indigo-200 transition-colors">
-                    <Play className="w-5 h-5 text-indigo-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-700">Media Playlist</p>
-                    <p className="text-xs text-slate-400 mt-0.5">Add images, videos, and web content as slides</p>
-                  </div>
-                </button>
-                <button onClick={() => setCreateMode('template')}
-                  className="flex items-start gap-3 p-4 rounded-xl border-2 border-slate-200 hover:border-violet-400 hover:bg-violet-50/50 transition-all text-left group">
-                  <div className="w-10 h-10 rounded-lg bg-violet-100 flex items-center justify-center shrink-0 group-hover:bg-violet-200 transition-colors">
-                    <LayoutTemplate className="w-5 h-5 text-violet-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-700">From Template</p>
-                    <p className="text-xs text-slate-400 mt-0.5">Use a saved layout with live widgets (clock, weather, etc.)</p>
-                  </div>
-                </button>
-              </div>
-              <div className="mt-3 text-right">
-                <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 text-xs text-slate-400 hover:text-slate-600">Cancel</button>
-              </div>
-            </div>
-          )}
+      {/* 2026-05-26 — Mid-page card replaced with a proper centered
+          modal wizard. See <PlaylistCreateWizard /> mount at the
+          bottom of this component. Operator quote driving the change
+          is in the showCreate-state comment block above. */}
+      <PlaylistCreateWizard
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={(created) => {
+          setShowCreate(false);
+          // Drop straight into the editor for the new playlist —
+          // same behavior as the retired flow's handleCreate. The
+          // wizard already created any items + schedules, so the
+          // editor opens with the right state and we don't need
+          // to re-write items here.
+          handleSelect({ ...created, items: [] });
+        }}
+      />
 
-          {createMode === 'blank' && (
-            <div className="p-5">
-              <p className="text-sm font-semibold text-slate-700 mb-3">Name your playlist</p>
-              <div className="flex gap-3">
-                <input ref={createNameInputRef} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Playlist name..."
-                  className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                  onKeyDown={(e) => e.key === 'Enter' && handleCreate()} />
-                <button
-                  onClick={handleCreate}
-                  disabled={createPlaylist.isPending || !newName.trim() || isViewer}
-                  title={isViewer ? 'Read-only — viewer role' : undefined}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg"
-                >
-                  {createPlaylist.isPending ? 'Creating...' : 'Create'}
-                </button>
-                <button onClick={() => setCreateMode('choose')} className="px-3 py-2 text-slate-400 hover:text-slate-600 text-sm">Back</button>
-              </div>
-            </div>
-          )}
-
-          {createMode === 'template' && (
-            <div className="p-5">
-              <p className="text-sm font-semibold text-slate-700 mb-3">
-                {selectedTemplateId ? 'Name your playlist' : 'Pick a template'}
-              </p>
-
-              {!selectedTemplateId && (
-                <>
-                  {customTemplates.length === 0 ? (
-                    <div className="text-center py-8">
-                      <LayoutTemplate className="w-10 h-10 text-slate-200 mx-auto mb-2" />
-                      <p className="text-sm text-slate-400">No templates saved yet</p>
-                      <p className="text-xs text-slate-300 mt-1">Create one from the Templates page first</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
-                      {customTemplates.map((t: any) => (
-                        <button key={t.id} onClick={() => { setSelectedTemplateId(t.id); setNewName(t.name); }}
-                          className="flex items-center gap-3 p-3 rounded-xl border-2 border-slate-200 hover:border-violet-400 hover:bg-violet-50/30 transition-all text-left">
-                          <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
-                            <Layers className="w-4 h-4 text-violet-600" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-700 truncate">{t.name}</p>
-                            <p className="text-[10px] text-slate-400">{t.screenWidth}x{t.screenHeight} · {t._count?.zones || t.zones?.length || 0} zones</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-3 text-right">
-                    <button onClick={() => setCreateMode('choose')} className="px-3 py-1.5 text-xs text-slate-400 hover:text-slate-600">Back</button>
-                  </div>
-                </>
-              )}
-
-              {selectedTemplateId && (
-                <div className="flex gap-3">
-                  <input ref={createNameInputRef} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Playlist name..."
-                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-500"
-                    onKeyDown={(e) => e.key === 'Enter' && handleCreate()} />
-                  <button
-                    onClick={handleCreate}
-                    disabled={createPlaylist.isPending || !newName.trim() || isViewer}
-                    title={isViewer ? 'Read-only — viewer role' : undefined}
-                    className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg"
-                  >
-                    {createPlaylist.isPending ? 'Creating...' : 'Create'}
-                  </button>
-                  <button onClick={() => { setSelectedTemplateId(null); setNewName(''); }} className="px-3 py-2 text-slate-400 hover:text-slate-600 text-sm">Back</button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
       {isLoading && <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>}
 
@@ -2940,7 +2850,7 @@ export default function PlaylistsPage() {
           <h3 className="text-base font-bold text-slate-600 mb-1">No playlists yet</h3>
           <p className="text-sm text-slate-400 mb-5 max-w-sm">Create your first playlist to start scheduling content to your screens.</p>
           <button
-            onClick={() => { setShowCreate(true); setCreateMode('choose'); }}
+            onClick={() => setShowCreate(true)}
             disabled={isViewer}
             title={isViewer ? 'Read-only — viewer role' : undefined}
             className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
