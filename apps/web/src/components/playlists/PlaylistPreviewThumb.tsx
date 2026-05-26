@@ -230,9 +230,30 @@ function StaticAssetFrame({ asset, className }: { asset: any; className?: string
  * — the iframe doesn't exist until the tile scrolls into view. PDF
  * viewer chrome (toolbar / nav-panes / scrollbar) is stripped via
  * the #view URL fragment so the tile reads as a thumbnail, not a
- * mini PDF reader. The iframe is sandboxed (no scripts, no top
- * navigation) — even a malicious PDF rendered via the browser
- * cannot escape the tile.
+ * mini PDF reader.
+ *
+ * 2026-05-26 round 3 — operator: STILL no preview. Verified the
+ * actual cause via a headed-Chrome iframe sandbox test (three side-by-
+ * side iframes loading the same Supabase PDF: empty `sandbox=""`,
+ * no `sandbox`, and `sandbox="allow-scripts allow-same-origin"`).
+ * Result:
+ *   - `sandbox=""`                                  → BLANK + "sad file" icon
+ *   - no sandbox attribute                          → PDF renders perfectly
+ *   - `sandbox="allow-scripts allow-same-origin"`   → BLANK + "sad file" icon
+ *
+ * Chrome's PDFium viewer is a plugin-style document, not a script-only
+ * document — ANY value of the `sandbox` attribute (even allow-scripts
+ * + allow-same-origin) blocks it from rendering. The previous "the
+ * iframe is sandboxed for safety" comment was theater: the browser's
+ * PDF viewer is already deeply sandboxed by the browser itself
+ * (chrome-untrusted://, content-process isolation, PDFium's own
+ * sandbox). Adding an iframe-level sandbox kills the viewer without
+ * adding any real security — the browser was already protecting us.
+ *
+ * Fix: render the iframe with NO sandbox attribute. PointerEvents
+ * stays at none so the tile click still falls through to the playlist
+ * row underneath. The `referrerpolicy` is set to `no-referrer` so we
+ * don't leak the operator's playlist page URL to Supabase logs.
  */
 function LazyPdfThumb({ url }: { url: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -275,16 +296,16 @@ function LazyPdfThumb({ url }: { url: string }) {
         <iframe
           src={src}
           title="PDF preview"
-          // Sandbox: no scripts, no popups, no top navigation, no
-          // form submission. Pretty much "render this, that's it."
-          sandbox=""
+          // Intentionally NO `sandbox` attribute — Chrome's PDFium
+          // viewer refuses to render under ANY sandbox value (verified
+          // in headed Chrome 2026-05-26). The browser already sandboxes
+          // the PDF viewer at the engine level; an iframe-level sandbox
+          // kills the viewer without adding real security.
+          referrerPolicy="no-referrer"
           loading="lazy"
           // pointer-events:none so the tile click goes through to
           // the playlist row underneath (don't steal interaction).
           style={{ width: '100%', height: '100%', border: 0, pointerEvents: 'none' }}
-          // Some browsers fire onError on PDF iframes if the URL
-          // 404s — fall back to the file-icon card. We re-use the
-          // tile container so the layout doesn't shift.
         />
       ) : (
         <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center bg-gradient-to-br from-rose-50 to-rose-100">
