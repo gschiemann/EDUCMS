@@ -576,8 +576,16 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
               </div>
             </Card>
 
-            {/* Actions */}
-            <div className="sticky bottom-0 bg-slate-50/80 backdrop-blur rounded-md p-3 -mx-2 border border-slate-200 shadow-sm flex gap-2 items-center">
+            {/* Actions — 2026-05-26 operator screenshot showed the
+                Re-scan / Adopt toolbar floating over page content
+                underneath. It was `sticky bottom-0` + `backdrop-blur`,
+                which landed on top of the source / duration footer
+                below. Switched to a normal-flow card sitting inline
+                at the bottom of the left column. `backdrop-blur`
+                also dropped — Chromium 83 (NovaStar Taurus) doesn't
+                honor it reliably and modern engines render this fine
+                with a solid bg. See CLAUDE.md rule #10. */}
+            <div className="bg-slate-50 rounded-md p-3 border border-slate-200 shadow-sm flex gap-2 items-center">
               <Button variant="outline" onClick={() => runScrape()} disabled={scraping}>
                 <RefreshCw className={cn('h-4 w-4 mr-1.5', scraping && 'animate-spin')} />
                 Re-scan
