@@ -15,7 +15,7 @@
  * Square's OAuth app. Embedding it inside [schoolId] coupling would
  * require Square to know the schoolId — which it doesn't, and won't.
  */
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { CheckCircle2, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
@@ -23,7 +23,24 @@ import { API_URL } from '@/lib/api-url';
 
 interface MeResponse { tenant?: { id?: string; slug?: string } | null }
 
+// 2026-05-26 — Next 16 requires `useSearchParams()` to be inside a
+// Suspense boundary; otherwise `next build` fails on static
+// prerender ("missing-suspense-with-csr-bailout"). The default export
+// now just provides the boundary; the original component lives below
+// it and runs on the client only.
 export default function SquareConnectDonePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+      </div>
+    }>
+      <SquareConnectDoneInner />
+    </Suspense>
+  );
+}
+
+function SquareConnectDoneInner() {
   const params = useSearchParams();
   const status = params?.get('status') || 'ok';
   const reason = params?.get('reason') || '';
