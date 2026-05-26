@@ -159,7 +159,20 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       }
 
       emit('ok', attempt, fullUrl);
-      return res.json();
+      // 2026-05-26 — Some NestJS controllers return JS null on "not
+      // found" (e.g. /branding/me when a tenant has no branding row).
+      // NestJS serializes that as a 200 with EMPTY body, not the
+      // string "null", so res.json() throws `SyntaxError: Unexpected
+      // end of JSON input`. Was spamming pageerror across every
+      // dashboard load. Read text first, treat empty as null.
+      const text = await res.text();
+      if (!text) return null as unknown as T;
+      try {
+        return JSON.parse(text) as T;
+      } catch (parseErr) {
+        clog.error('api', 'Failed to parse JSON response', { url: fullUrl, textSample: text.slice(0, 200) });
+        throw parseErr;
+      }
     } catch (err) {
       lastErr = err;
       // TypeError from fetch = network error (DNS fail, connection refused,
