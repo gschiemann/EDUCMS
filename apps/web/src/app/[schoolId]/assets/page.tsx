@@ -1015,18 +1015,39 @@ export default function AssetsPage() {
                     // an iframe with viewer chrome stripped. Sandbox
                     // is DELIBERATELY omitted — Chrome's PDFium
                     // refuses to render inside ANY sandboxed iframe,
-                    // even with allow-* flags. See commit 3a04653 for
-                    // the headed-Chrome 3-way comparison that proved
-                    // this. pointer-events:none routes clicks through
-                    // to the parent button so the preview-on-click
-                    // flow still works.
+                    // even with allow-* flags. See commit 3a04653.
+                    //
+                    // 2026-05-26 — operator: "you have this new weird
+                    // viewer menu for documents, lets stay consistent
+                    // with everything... why have a download on this
+                    // one and not the other media and template types".
+                    // Chrome's "always-visible" hover toolbar (zoom +
+                    // download + page-nav floating bar at the top of
+                    // the PDF view) ignores `toolbar=0` in some
+                    // recent Chrome versions. CSS fix: oversize the
+                    // iframe and shift it up so the toolbar bar gets
+                    // clipped above the visible window. The parent
+                    // div already has overflow:hidden so the cropped
+                    // chrome is invisible. The actual document content
+                    // is centered in-window by the same shift.
+                    //
+                    // pointer-events:none keeps clicks routed to the
+                    // parent button so the "view details" interaction
+                    // still works.
                     <iframe
                       src={pdfPreviewUrl(a)}
                       title={name}
                       loading="lazy"
                       referrerPolicy="no-referrer"
-                      className="w-full h-full"
-                      style={{ border: 0, pointerEvents: 'none' }}
+                      style={{
+                        position: 'absolute',
+                        top: '-56px',
+                        left: 0,
+                        width: '100%',
+                        height: 'calc(100% + 56px)',
+                        border: 0,
+                        pointerEvents: 'none',
+                      }}
                     />
                   ) : (
                     typeIcon(a.mimeType, 'w-8 h-8')
