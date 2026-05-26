@@ -719,6 +719,31 @@ export default function PlaylistsPage() {
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [submitNote, setSubmitNote] = useState('');
   const [submitReviewerIds, setSubmitReviewerIds] = useState<string[]>([]);
+  // 2026-05-26 P0-4 — Submit-for-Review must deliver the partner's
+  // verbatim ask from CLAUDE.md: "they should be able to add assets,
+  // customize templates, then CREATE AND SCHEDULE the playlist." Before
+  // this fix the frontend hard-coded `scheduleIds: []` so the schedule
+  // half of that sentence never happened — admin approves, playlist
+  // never plays. The Submit modal now carries an optional target +
+  // schedule-mode picker. If the contributor fills it in, draft
+  // Schedule rows are created (isActive=false) and their ids ride
+  // along in createSubmission(); the backend's approve handler
+  // (submissions.controller.ts) flips them to isActive=true on
+  // approval. If left empty, behavior is unchanged — admin picks
+  // targets after approval.
+  const [submitTargets, setSubmitTargets] = useState<string[]>([]);
+  const [submitSchedMode, setSubmitSchedMode] = useState<'always' | 'scheduled'>('always');
+  const [submitSchedDays, setSubmitSchedDays] = useState<string[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+  const [submitSchedTimeStart, setSubmitSchedTimeStart] = useState<string>('08:00');
+  const [submitSchedTimeEnd, setSubmitSchedTimeEnd] = useState<string>('17:00');
+  const toggleSubmitTarget = (target: string) =>
+    setSubmitTargets((prev) =>
+      prev.includes(target) ? prev.filter((t) => t !== target) : [...prev, target],
+    );
+  const toggleSubmitDay = (day: string) =>
+    setSubmitSchedDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day],
+    );
   const currentUser = useUIStore((s) => s.user);
   const isContributor = currentUser?.role === 'CONTRIBUTOR';
   const isViewer = currentUser?.role === 'RESTRICTED_VIEWER';
@@ -750,19 +775,59 @@ export default function PlaylistsPage() {
         setHasChanges(false);
       }
       const assetIds = localItems.map((it: any) => it.assetId || it.asset?.id).filter(Boolean);
+      // 2026-05-26 P0-4 — Create draft Schedule rows (isActive=false)
+      // for each picked target so the admin's approve flips them live
+      // automatically. Empty targets = no schedule pre-staged (admin
+      // chooses on approval) — preserves the old behavior. Failures
+      // here surface as an error so the contributor doesn't think a
+      // schedule was attached when it wasn't.
+      const draftScheduleIds: string[] = [];
+      if (selectedId && submitTargets.length > 0) {
+        const draftScheduleParamsFor = (target: string) => {
+          const isGroup = target.startsWith('group-');
+          const targetId = target.replace(/^(group-|screen-)/, '');
+          return {
+            playlistId: selectedId,
+            screenGroupId: isGroup ? targetId : undefined,
+            screenId: !isGroup ? targetId : undefined,
+            startTime: new Date().toISOString(),
+            daysOfWeek: submitSchedMode === 'scheduled' ? submitSchedDays.join(',') : undefined,
+            timeStart: submitSchedMode === 'scheduled' ? submitSchedTimeStart : undefined,
+            timeEnd: submitSchedMode === 'scheduled' ? submitSchedTimeEnd : undefined,
+            priority: 0,
+            mode: 'ADD' as const,
+            // CRITICAL: draft state. Backend's submissions.approve handler
+            // (apps/api/src/submissions/submissions.controller.ts:271-273)
+            // flips this to true on approval. CONTRIBUTOR can't accidentally
+            // publish content live — the gate IS the admin's click.
+            isActive: false,
+          };
+        };
+        const results = await Promise.all(
+          submitTargets.map((t) => createSchedule.mutateAsync(draftScheduleParamsFor(t) as any)),
+        );
+        for (const r of results) {
+          const id = (r as any)?.id;
+          if (typeof id === 'string') draftScheduleIds.push(id);
+        }
+      }
       await createSubmission.mutateAsync({
         note: submitNote.trim() || undefined,
         notifyUserIds: submitReviewerIds,
         assetIds: Array.from(new Set(assetIds)),
         playlistIds: [selectedId],
-        scheduleIds: [],
+        scheduleIds: draftScheduleIds,
       });
       setShowSubmitModal(false);
       setSubmitNote('');
       setSubmitReviewerIds([]);
+      setSubmitTargets([]);
+      setSubmitSchedMode('always');
       await appAlert({
         title: 'Submitted for review',
-        message: 'The reviewer(s) you picked will see it on their Reviews page. You’ll be notified once they approve or send it back.',
+        message: draftScheduleIds.length > 0
+          ? `Sent to your reviewer with ${draftScheduleIds.length} draft schedule${draftScheduleIds.length === 1 ? '' : 's'}. The schedule${draftScheduleIds.length === 1 ? '' : 's'} will activate automatically when they approve.`
+          : 'The reviewer(s) you picked will see it on their Reviews page. You’ll be notified once they approve or send it back.',
         tone: 'info',
         confirmLabel: 'Got it',
       });
@@ -1963,8 +2028,109 @@ export default function PlaylistsPage() {
                 onChange={(e) => setSubmitNote(e.target.value)}
                 placeholder="Quick context — what is this playlist for, anything to look at first…"
                 rows={3}
-                className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 mb-5"
+                className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 mb-4"
               />
+
+              {/* 2026-05-26 P0-4 — Where + when to play (optional).
+                  Mirrors the Publish modal's mental model but lighter
+                  weight: just targets + always/scheduled. If picked,
+                  draft Schedule rows are created with isActive=false
+                  and ride along in the submission. Admin's approve
+                  flips them live. Empty = admin picks on approval. */}
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                Where should it play? <span className="font-normal normal-case tracking-normal text-slate-400 lowercase">(optional — admin can pick)</span>
+              </label>
+              <div className="max-h-32 overflow-y-auto rounded-lg border border-slate-200 mb-3">
+                {(!screens || screens.length === 0) && (!screenGroups || screenGroups.length === 0) ? (
+                  <div className="p-3 text-xs text-slate-400">No screens or groups yet.</div>
+                ) : (
+                  <>
+                    {(screenGroups || []).map((g: any) => (
+                      <label key={`group-${g.id}`} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-xs border-b border-slate-100 last:border-b-0">
+                        <input
+                          type="checkbox"
+                          checked={submitTargets.includes(`group-${g.id}`)}
+                          onChange={() => toggleSubmitTarget(`group-${g.id}`)}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"
+                        />
+                        <span className="font-semibold text-slate-700">{g.name}</span>
+                        <span className="text-[10px] text-slate-400 uppercase ml-auto">Group</span>
+                      </label>
+                    ))}
+                    {(screens || []).map((s: any) => (
+                      <label key={`screen-${s.id}`} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-xs border-b border-slate-100 last:border-b-0">
+                        <input
+                          type="checkbox"
+                          checked={submitTargets.includes(`screen-${s.id}`)}
+                          onChange={() => toggleSubmitTarget(`screen-${s.id}`)}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"
+                        />
+                        <span className="font-semibold text-slate-700">{s.name}</span>
+                        <span className="text-[10px] text-slate-400 uppercase ml-auto">Screen</span>
+                      </label>
+                    ))}
+                  </>
+                )}
+              </div>
+
+              {submitTargets.length > 0 && (
+                <>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">When?</label>
+                  <div className="inline-flex rounded-md bg-slate-100 p-1 mb-3">
+                    <button
+                      type="button"
+                      onClick={() => setSubmitSchedMode('always')}
+                      className={`px-3 py-1 text-xs font-semibold rounded ${submitSchedMode === 'always' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}
+                    >
+                      Always
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSubmitSchedMode('scheduled')}
+                      className={`px-3 py-1 text-xs font-semibold rounded ${submitSchedMode === 'scheduled' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}
+                    >
+                      Specific days / hours
+                    </button>
+                  </div>
+                  {submitSchedMode === 'scheduled' && (
+                    <div className="mb-3 space-y-2">
+                      <div className="flex flex-wrap">
+                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => toggleSubmitDay(day)}
+                            className={`mr-1 mb-1 px-2.5 py-1 text-[11px] font-semibold rounded ${
+                              submitSchedDays.includes(day)
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            }`}
+                          >
+                            {day}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex items-center text-xs text-slate-600">
+                        <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mr-2">From</span>
+                        <input
+                          type="time"
+                          value={submitSchedTimeStart}
+                          onChange={(e) => setSubmitSchedTimeStart(e.target.value)}
+                          className="px-2 py-1 rounded border border-slate-200 bg-white"
+                        />
+                        <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mx-2">to</span>
+                        <input
+                          type="time"
+                          value={submitSchedTimeEnd}
+                          onChange={(e) => setSubmitSchedTimeEnd(e.target.value)}
+                          className="px-2 py-1 rounded border border-slate-200 bg-white"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              <div className="mb-5" />
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowSubmitModal(false)}
