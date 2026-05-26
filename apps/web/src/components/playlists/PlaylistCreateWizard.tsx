@@ -99,6 +99,7 @@ import {
   useReorderPlaylistItems,
   useCreateSchedule,
 } from '@/hooks/use-api';
+import { useQueryClient } from '@tanstack/react-query';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 
@@ -109,10 +110,33 @@ const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v
 
 type PlaylistKind = 'media' | 'template';
 
+// 2026-05-26 — `items` is what the wizard JUST wrote to the server in
+// `PUT /playlists/:id/items`. The parent's editor view reads from this
+// to render the dropped-into-editor state IMMEDIATELY without waiting
+// for a refetch round-trip. Operator: "when i hit create playlist, it
+// showed blank, its saving it but not refreshing the window."
+export interface PlaylistCreatedItem {
+  id: string;
+  assetId: string;
+  durationMs: number;
+  sequenceOrder: number;
+  asset: {
+    id: string;
+    fileUrl: string;
+    mimeType: string;
+    originalName: string;
+  };
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
-  onCreated: (playlist: { id: string; name: string; templateId?: string | null }) => void;
+  onCreated: (playlist: {
+    id: string;
+    name: string;
+    templateId?: string | null;
+    items?: PlaylistCreatedItem[];
+  }) => void;
 }
 
 // ─── Small helpers ─────────────────────────────────────────────────────
@@ -298,7 +322,19 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
   const [kind, setKind] = useState<PlaylistKind | null>(null);
 
   // Step 2 — content
-  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
+  // 2026-05-26 — operator: "i didnt see where i could update the order
+  // of the content and set the timing of each asset in the carousel,
+  // that need to be part of the wizard." selectedAssetIds was a Set
+  // — no order, no per-item duration. Replaced with an ordered array
+  // of { assetId, durationMs }. A derived Set drives the picker's
+  // selection check; the array drives the new "Selected media" panel
+  // below the picker grid (reorder + duration controls + remove).
+  type WizardItem = { assetId: string; durationMs: number };
+  const [selectedAssetItems, setSelectedAssetItems] = useState<WizardItem[]>([]);
+  const selectedAssetIds = useMemo(
+    () => new Set(selectedAssetItems.map((i) => i.assetId)),
+    [selectedAssetItems],
+  );
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [assetSearch, setAssetSearch] = useState('');
   const [assetFilter, setAssetFilter] = useState<'all' | 'images' | 'videos' | 'audio' | 'urls'>('all');
@@ -335,6 +371,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
   const createPlaylist = useCreatePlaylist();
   const saveItems = useReorderPlaylistItems();
   const createSchedule = useCreateSchedule();
+  const qc = useQueryClient();
 
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -345,7 +382,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
     setHighestVisited(1);
     setName('');
     setKind(null);
-    setSelectedAssetIds(new Set());
+    setSelectedAssetItems([]);
     setSelectedTemplateId(null);
     setAssetSearch('');
     setAssetFilter('all');
@@ -381,11 +418,11 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
   const hasProgress = useMemo(() => {
     if (name.trim()) return true;
     if (kind) return true;
-    if (selectedAssetIds.size > 0) return true;
+    if (selectedAssetItems.length > 0) return true;
     if (selectedTemplateId) return true;
     if (selectedScreenIds.size > 0) return true;
     return false;
-  }, [name, kind, selectedAssetIds, selectedTemplateId, selectedScreenIds]);
+  }, [name, kind, selectedAssetItems, selectedTemplateId, selectedScreenIds]);
 
   const tryClose = async () => {
     if (creating) return; // can't bail mid-creation
@@ -491,7 +528,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
 
   const canAdvanceFromStep1 = name.trim().length > 0 && kind !== null;
   const canAdvanceFromStep2 = kind === 'media'
-    ? selectedAssetIds.size > 0
+    ? selectedAssetItems.length > 0
     : selectedTemplateId !== null;
   // Step 3 always advanceable — "Skip" is a valid choice.
   // Step 4 always advanceable.
@@ -510,13 +547,48 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
 
   // ─── Step toggles ──────────────────────────────────────────────────
 
+  // 2026-05-26 — toggleAsset now appends to / removes from the ordered
+  // items array. Default per-item duration: 30s for video/audio, 10s
+  // for everything else (same defaults the editor uses post-create).
   const toggleAsset = (id: string) =>
-    setSelectedAssetIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+    setSelectedAssetItems((prev) => {
+      const existing = prev.findIndex((i) => i.assetId === id);
+      if (existing >= 0) {
+        return prev.filter((_, i) => i !== existing);
+      }
+      const a = (assets || []).find((x: any) => x.id === id);
+      const isAV =
+        a?.mimeType?.startsWith('video/') || a?.mimeType?.startsWith('audio/');
+      return [...prev, { assetId: id, durationMs: isAV ? 30000 : 10000 }];
+    });
+
+  const moveAssetItem = (assetId: string, dir: -1 | 1) =>
+    setSelectedAssetItems((prev) => {
+      const idx = prev.findIndex((i) => i.assetId === assetId);
+      if (idx < 0) return prev;
+      const target = idx + dir;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = prev.slice();
+      const tmp = next[idx];
+      next[idx] = next[target];
+      next[target] = tmp;
       return next;
     });
+
+  const removeAssetItem = (assetId: string) =>
+    setSelectedAssetItems((prev) => prev.filter((i) => i.assetId !== assetId));
+
+  const setAssetDuration = (assetId: string, seconds: number) =>
+    setSelectedAssetItems((prev) =>
+      prev.map((i) =>
+        i.assetId === assetId
+          ? // clamp to 1s..600s — anything below 1s flickers, anything
+            // above 600s is almost certainly a typo and the editor caps
+            // there too. Default to 10s if NaN sneaks through.
+            { ...i, durationMs: Math.max(1, Math.min(600, isFinite(seconds) ? seconds : 10)) * 1000 }
+          : i,
+      ),
+    );
 
   const toggleScreen = (id: string) =>
     setSelectedScreenIds((prev) => {
@@ -550,24 +622,51 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
       //    saveItems is the bulk reorder endpoint (PUT /playlists/:id/items)
       //    which is what the legacy editor uses — same code path, fewer
       //    surprises in audit logs.
-      if (kind === 'media' && selectedAssetIds.size > 0) {
-        const assetList = (assets || []).filter((a: any) => selectedAssetIds.has(a.id));
-        // Preserve operator's selection order when known — fall back to
-        // the asset library order.
-        const items = assetList.map((a: any, i: number) => {
-          const dur = a.mimeType?.startsWith('video/') || a.mimeType?.startsWith('audio/') ? 30000 : 10000;
+      //
+      // 2026-05-26 — operator now picks the order + per-item duration
+      // in Step 2's "Selected media" panel. selectedAssetItems carries
+      // both. The items array preserves THAT order (not asset library
+      // order) and uses the operator's durations.
+      let editorItems: PlaylistCreatedItem[] = [];
+      if (kind === 'media' && selectedAssetItems.length > 0) {
+        const items = selectedAssetItems.map((sel, i) => {
+          const a = (assets || []).find((x: any) => x.id === sel.assetId);
           return {
-            assetId: a.id,
-            durationMs: dur,
+            assetId: sel.assetId,
+            durationMs: sel.durationMs,
             sequenceOrder: i,
             daysOfWeek: null,
             timeStart: null,
             timeEnd: null,
             transitionType: null,
-            muted: a.mimeType?.startsWith('video/') ? true : true,
+            muted: a?.mimeType?.startsWith('video/') ? true : true,
           };
         });
         await saveItems.mutateAsync({ playlistId, items });
+        // Build the parent-shaped items so the editor renders the
+        // dropped-into-state instantly. Without this, the wizard's
+        // onCreated handed back an empty items[] and the editor went
+        // blank until React Query refetched on its own schedule.
+        // Operator: "it showed blank, its saving it but not refreshing
+        // the window."
+        editorItems = selectedAssetItems
+          .map((sel, i) => {
+            const a = (assets || []).find((x: any) => x.id === sel.assetId);
+            if (!a) return null;
+            return {
+              id: `pending-${i}-${sel.assetId}`,
+              assetId: sel.assetId,
+              durationMs: sel.durationMs,
+              sequenceOrder: i,
+              asset: {
+                id: a.id,
+                fileUrl: a.fileUrl || '',
+                mimeType: a.mimeType || '',
+                originalName: a.originalName || a.title || 'Untitled',
+              },
+            };
+          })
+          .filter((x): x is PlaylistCreatedItem => x !== null);
       }
 
       // 3. Build schedules.
@@ -602,9 +701,28 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
         await Promise.all(schedules.map((s) => createSchedule.mutateAsync(s)));
       }
 
-      // 4. Hand the operator back to the dashboard with the new playlist
-      //    selected. Parent decides whether to deep-link to the editor.
-      onCreated({ id: playlistId, name: created.name || name.trim(), templateId: created.templateId ?? null });
+      // 4. Refresh the playlists dashboard cache + the per-id cache so
+      //    the parent page re-renders with the new row. The mutation
+      //    hooks already invalidate on success, but we add explicit
+      //    refetches here so the dashboard list is up to date the
+      //    moment the wizard hands control back to the parent — no
+      //    stale "loading…" or "blank list" flash.
+      qc.invalidateQueries({ queryKey: ['playlists'] });
+      qc.refetchQueries({ queryKey: ['playlists'] });
+      qc.invalidateQueries({ queryKey: ['playlists', playlistId] });
+
+      // 5. Hand the operator back to the dashboard with the new playlist
+      //    selected — INCLUDING the items just saved. The parent's
+      //    handleSelect uses `pl.items` to seed its localItems state;
+      //    when items is empty the editor renders blank until React
+      //    Query refetches. By passing the items here the editor opens
+      //    populated immediately — no flash of empty state.
+      onCreated({
+        id: playlistId,
+        name: created.name || name.trim(),
+        templateId: created.templateId ?? null,
+        items: editorItems,
+      });
       // Don't call onClose() here — onCreated is expected to either
       // dismiss or take over (deep-link into the playlist editor).
     } catch (err: any) {
@@ -721,6 +839,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
           {step === 2 && kind === 'media' && (
             <Step2Media
               assets={filteredAssets}
+              allAssets={assets || []}
               folders={visibleFolders}
               breadcrumb={folderBreadcrumb}
               currentFolderId={currentFolderId}
@@ -730,7 +849,11 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
               filter={assetFilter}
               setFilter={setAssetFilter}
               selectedIds={selectedAssetIds}
+              selectedItems={selectedAssetItems}
               onToggle={toggleAsset}
+              onMove={moveAssetItem}
+              onRemove={removeAssetItem}
+              onDuration={setAssetDuration}
             />
           )}
           {step === 2 && kind === 'template' && (
@@ -798,7 +921,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
             <Step5Review
               name={name.trim()}
               kind={kind!}
-              itemCount={kind === 'media' ? selectedAssetIds.size : 0}
+              itemCount={kind === 'media' ? selectedAssetItems.length : 0}
               template={selectedTemplate}
               screenNames={(screens || [])
                 .filter((s: any) => selectedScreenIds.has(s.id))
@@ -1004,6 +1127,7 @@ function Step1NameAndType({
 
 function Step2Media({
   assets,
+  allAssets,
   folders,
   breadcrumb,
   currentFolderId,
@@ -1013,9 +1137,19 @@ function Step2Media({
   filter,
   setFilter,
   selectedIds,
+  selectedItems,
   onToggle,
+  onMove,
+  onRemove,
+  onDuration,
 }: {
   assets: any[];
+  // 2026-05-26 — `assets` is the FILTERED slice for the picker grid
+  // (folder + filter + search). `allAssets` is the full library used
+  // by the Selected media panel below — operator can pick item A from
+  // folder X, then navigate to folder Y and pick item B; both should
+  // still resolve to their full metadata in the selected panel.
+  allAssets: any[];
   folders: any[];
   breadcrumb: Array<{ id: string | null; name: string }>;
   currentFolderId: string | null;
@@ -1025,7 +1159,11 @@ function Step2Media({
   filter: 'all' | 'images' | 'videos' | 'audio' | 'urls';
   setFilter: (f: 'all' | 'images' | 'videos' | 'audio' | 'urls') => void;
   selectedIds: Set<string>;
+  selectedItems: Array<{ assetId: string; durationMs: number }>;
   onToggle: (id: string) => void;
+  onMove: (assetId: string, dir: -1 | 1) => void;
+  onRemove: (assetId: string) => void;
+  onDuration: (assetId: string, seconds: number) => void;
 }) {
   const filterChips: { id: typeof filter; label: string }[] = [
     { id: 'all', label: 'All' },
@@ -1203,6 +1341,105 @@ function Step2Media({
               </button>
             );
           })}
+        </div>
+      )}
+
+      {/* 2026-05-26 — "Selected media" panel. Operator: "i didnt see
+          where i could update the order of the content and set the
+          timing of each asset in the carousel, that need to be part
+          of the wizard." Renders the ORDERED list of picked items
+          with: thumbnail + name + duration input (seconds) +
+          up/down reorder + remove. Plays first → bottom plays last.
+          Mirrors the post-create editor's row UX so muscle memory
+          carries over. Mounted regardless of folder navigation so
+          the operator can drill across folders without losing sight
+          of what they've already picked. */}
+      {selectedItems.length > 0 && (
+        <div className="mt-6 border-t border-slate-200 pt-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-bold text-slate-800">
+              Selected media — plays in this order
+            </p>
+            <span className="text-[11px] text-slate-500">
+              Top plays first · drag-free reorder with ↑ ↓
+            </span>
+          </div>
+          <ol className="space-y-2">
+            {selectedItems.map((sel, idx) => {
+              const a = allAssets.find((x: any) => x.id === sel.assetId);
+              if (!a) return null; // assets list still loading or asset deleted mid-flow
+              const Icon = mimeIcon(a.mimeType);
+              const seconds = Math.round((sel.durationMs || 0) / 1000);
+              const atTop = idx === 0;
+              const atBottom = idx === selectedItems.length - 1;
+              return (
+                <li
+                  key={sel.assetId}
+                  className="flex items-center bg-white border border-slate-200 rounded-lg p-2"
+                >
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-indigo-100 text-indigo-700 text-[11px] font-bold shrink-0 mr-2">
+                    {idx + 1}
+                  </span>
+                  <div className="w-14 h-10 rounded-md overflow-hidden bg-slate-100 shrink-0 mr-3">
+                    <MiniAssetThumb asset={a} />
+                  </div>
+                  <div className="min-w-0 flex-1 mr-3">
+                    <div className="flex items-center">
+                      <Icon className="w-3 h-3 text-slate-400 mr-1.5 shrink-0" />
+                      <p className="text-xs font-semibold text-slate-700 truncate">
+                        {a.originalName || a.title || 'Untitled'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center mr-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={600}
+                      value={seconds || 1}
+                      onChange={(e) => {
+                        const n = parseInt(e.target.value, 10);
+                        if (!isNaN(n)) onDuration(sel.assetId, n);
+                      }}
+                      aria-label={`Duration in seconds for ${a.originalName || 'item'}`}
+                      className="w-14 text-xs text-right px-2 py-1 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    />
+                    <span className="text-[10px] font-bold text-slate-400 ml-1.5 uppercase tracking-wider">
+                      sec
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => onMove(sel.assetId, -1)}
+                      disabled={atTop}
+                      aria-label="Move up"
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:text-slate-300 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft className="w-4 h-4 rotate-90" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onMove(sel.assetId, 1)}
+                      disabled={atBottom}
+                      aria-label="Move down"
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:text-slate-300 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRight className="w-4 h-4 rotate-90" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRemove(sel.assetId)}
+                      aria-label="Remove item"
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 ml-1"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       )}
     </div>

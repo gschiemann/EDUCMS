@@ -2625,12 +2625,20 @@ export default function PlaylistsPage() {
         onClose={() => setShowCreate(false)}
         onCreated={(created) => {
           setShowCreate(false);
-          // Drop straight into the editor for the new playlist —
-          // same behavior as the retired flow's handleCreate. The
-          // wizard already created any items + schedules, so the
-          // editor opens with the right state and we don't need
-          // to re-write items here.
-          handleSelect({ ...created, items: [] });
+          // 2026-05-26 — operator: "when i hit create playlist, it
+          // showed blank, its saving it but not refreshing the
+          // window." Was passing `items: []` here which clobbered
+          // anything the wizard handed back, so the editor opened
+          // empty until React Query refetched the playlist on its
+          // own schedule. Now: take items from the wizard payload
+          // (built from the operator's just-picked, just-ordered,
+          // just-timed list) so the editor renders populated
+          // instantly. Server write is already in-flight; this is
+          // optimistic + accurate.
+          handleSelect({
+            ...created,
+            items: created.items ?? [],
+          });
         }}
       />
 
