@@ -228,6 +228,27 @@ const INDUSTRIES: Industry[] = [
       label: 'Tap List',
     },
   },
+  // 2026-05-26 — WORSHIP vertical was in packages/api-types/src/verticals.ts
+  // but missing from the marketing showcase (only 11 of 12 verticals shown).
+  // Audit gap from the multi-vertical agent. Church template falls back to
+  // a corporate-style lobby board until the dedicated worship pack ships.
+  {
+    vertical: 'WORSHIP',
+    emoji: '⛪',
+    name: 'Churches & Ministries',
+    tagline: 'Sanctuaries, lobbies, fellowship halls',
+    pitch: 'Service times, sermon series cards, lyric slides, and giving QR codes — without a Sunday-morning tech team.',
+    benefits: [
+      'Service schedule + announcements across every campus',
+      'Lyric / scripture slides driven from your worship deck',
+      'Giving QR codes that update with each series',
+    ],
+    template: {
+      src: '/templates/signage/corporate/01-lobby-welcome-flagship.html',
+      staticImage: '/demo/templates/corporate-lobby.jpg',
+      label: 'Welcome Board',
+    },
+  },
 ];
 
 export function IndustryShowcase() {
