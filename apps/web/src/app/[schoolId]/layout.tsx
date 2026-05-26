@@ -5,6 +5,17 @@ import { useAppStore } from '@/lib/store';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 
+// 2026-05-26 — every /[schoolId]/* route was returning HTTP 500 from
+// Vercel SSR (browser content still rendered, but uptime monitors,
+// link-previews, and server-side renderers saw 500s). Live-audit
+// agent caught it. Root cause is Next 16's strict static-generation
+// behavior with `useParams()` in a `'use client'` layout — same
+// family as the `/connect/square/done` `useSearchParams()` SSR
+// bailout fixed in e4a2764. Force dynamic rendering so Next doesn't
+// try to statically prerender authed tenant routes (they're per-
+// session anyway; there's no static value to extract).
+export const dynamic = 'force-dynamic';
+
 /**
  * SchoolLayout — wraps every /[schoolId]/* page in the DashboardLayout
  * chrome (sidebar + top toolbar + mobile tab bar + notifications +
