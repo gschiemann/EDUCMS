@@ -1310,61 +1310,106 @@ function Step2Media({
           {assets.map((a: any) => {
             const selected = selectedIds.has(a.id);
             const Icon = mimeIcon(a.mimeType);
+            const name = a.originalName || a.title || 'Untitled';
             return (
-              <button
+              // 2026-05-26 — operator: "add the check boxes to the
+              // assets so i know i cant select multipl units, just
+              // match what we do on the main area already with the
+              // little check boxes on the asset previews." Mirrors
+              // the asset library's tile pattern (apps/web/src/app/
+              // [schoolId]/assets/page.tsx line 939) — top-left
+              // checkbox that's visible on hover OR when selected,
+              // checked-state = filled indigo with Check icon. The
+              // whole tile still clicks to toggle (familiar from the
+              // previous wizard behavior), the checkbox is a visual
+              // affordance.
+              <div
                 key={a.id}
-                type="button"
                 onClick={() => onToggle(a.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onToggle(a.id);
+                  }
+                }}
                 aria-pressed={selected}
-                className={`relative text-left rounded-xl overflow-hidden border-2 transition-all mr-2 mb-2 ${
+                aria-label={selected ? `Deselect ${name}` : `Select ${name}`}
+                className={`group relative text-left rounded-xl overflow-hidden border-2 transition-all mr-2 mb-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
                   selected
                     ? 'border-indigo-500 shadow-md ring-2 ring-indigo-200'
                     : 'border-slate-200 hover:border-indigo-300'
                 }`}
               >
+                {/* Top-left checkbox — matches the asset library tile
+                    style exactly. Hidden until hover OR selected (so
+                    the grid doesn't look cluttered when nothing is
+                    picked). */}
+                <span
+                  aria-hidden="true"
+                  className={`absolute top-2 left-2 z-20 w-5 h-5 rounded flex items-center justify-center transition-all pointer-events-none ${
+                    selected
+                      ? 'bg-indigo-500 border border-indigo-500 opacity-100 scale-100'
+                      : 'bg-white border border-slate-300 opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 shadow-sm'
+                  }`}
+                >
+                  {selected && <Check className="w-3.5 h-3.5 text-white" />}
+                </span>
+
                 <div className="aspect-video bg-slate-100">
                   <MiniAssetThumb asset={a} />
                 </div>
-                {selected && (
-                  <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shadow-md">
-                    <Check className="w-4 h-4 text-white" />
-                  </div>
-                )}
                 <div className="px-2 py-1.5 bg-white">
                   <div className="flex items-center">
                     <Icon className="w-3 h-3 text-slate-400 mr-1.5 shrink-0" />
                     <p className="text-[11px] font-semibold text-slate-700 truncate">
-                      {a.originalName || a.title || 'Untitled'}
+                      {name}
                     </p>
                   </div>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
       )}
 
-      {/* 2026-05-26 — "Selected media" panel. Operator: "i didnt see
-          where i could update the order of the content and set the
-          timing of each asset in the carousel, that need to be part
-          of the wizard." Renders the ORDERED list of picked items
-          with: thumbnail + name + duration input (seconds) +
-          up/down reorder + remove. Plays first → bottom plays last.
-          Mirrors the post-create editor's row UX so muscle memory
-          carries over. Mounted regardless of folder navigation so
-          the operator can drill across folders without losing sight
-          of what they've already picked. */}
+      {/* 2026-05-26 — "Selected media" panel. Operator: "ok i see
+          where you added it but its hidden until i scroll down, that
+          needs to be a locked window so i see items get added as i
+          click them." Now sticky-pinned to the BOTTOM of the modal
+          body scroll container so it stays visible at all times
+          while the picker grid scrolls above it.
+
+          position: sticky + bottom: 0 attaches to the nearest
+          scrolling ancestor (the modal body's overflow-y-auto div).
+          Negative horizontal margin (-mx-6) extends the panel to the
+          full body width (the body has px-6 padding); the inner
+          padding (px-6) re-aligns content to the same gutters as the
+          rest of the form. Top border + ring + shadow give the
+          drawer visual lift so it doesn't blur into the grid above.
+
+          Operator can drill across folders, search, pick + reorder
+          all without losing sight of what they've selected. */}
       {selectedItems.length > 0 && (
-        <div className="mt-6 border-t border-slate-200 pt-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-bold text-slate-800">
-              Selected media — plays in this order
+        <div
+          className="sticky bottom-0 -mx-6 mt-6 bg-white border-t-2 border-indigo-100 shadow-[0_-6px_16px_-6px_rgba(15,23,42,0.12)] px-6 pt-3 pb-3"
+          style={{ zIndex: 5 }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-bold text-slate-800 inline-flex items-center gap-2">
+              Selected media
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white">
+                {selectedItems.length}
+              </span>
+              <span className="text-[11px] font-medium text-slate-500">— plays top to bottom</span>
             </p>
-            <span className="text-[11px] text-slate-500">
-              Top plays first · drag-free reorder with ↑ ↓
-            </span>
+            <span className="text-[10px] text-slate-400">↑ ↓ to reorder · × to remove</span>
           </div>
-          <ol className="space-y-2">
+          {/* Cap height so a 20-item selection doesn't shove the
+              picker grid off the top of the modal. Internal scroll
+              once it exceeds the cap. */}
+          <ol className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
             {selectedItems.map((sel, idx) => {
               const a = allAssets.find((x: any) => x.id === sel.assetId);
               if (!a) return null; // assets list still loading or asset deleted mid-flow
@@ -1375,23 +1420,23 @@ function Step2Media({
               return (
                 <li
                   key={sel.assetId}
-                  className="flex items-center bg-white border border-slate-200 rounded-lg p-2"
+                  className="flex items-center bg-slate-50 border border-slate-200 rounded-lg p-1.5"
                 >
-                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-indigo-100 text-indigo-700 text-[11px] font-bold shrink-0 mr-2">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 text-[10px] font-bold shrink-0 mr-2">
                     {idx + 1}
                   </span>
-                  <div className="w-14 h-10 rounded-md overflow-hidden bg-slate-100 shrink-0 mr-3">
+                  <div className="w-12 h-8 rounded-md overflow-hidden bg-slate-100 shrink-0 mr-2">
                     <MiniAssetThumb asset={a} />
                   </div>
-                  <div className="min-w-0 flex-1 mr-3">
+                  <div className="min-w-0 flex-1 mr-2">
                     <div className="flex items-center">
                       <Icon className="w-3 h-3 text-slate-400 mr-1.5 shrink-0" />
-                      <p className="text-xs font-semibold text-slate-700 truncate">
+                      <p className="text-[11px] font-semibold text-slate-700 truncate">
                         {a.originalName || a.title || 'Untitled'}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center mr-2">
+                  <div className="flex items-center mr-1">
                     <input
                       type="number"
                       min={1}
@@ -1402,9 +1447,9 @@ function Step2Media({
                         if (!isNaN(n)) onDuration(sel.assetId, n);
                       }}
                       aria-label={`Duration in seconds for ${a.originalName || 'item'}`}
-                      className="w-14 text-xs text-right px-2 py-1 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      className="w-12 text-xs text-right px-1.5 py-0.5 border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
                     />
-                    <span className="text-[10px] font-bold text-slate-400 ml-1.5 uppercase tracking-wider">
+                    <span className="text-[10px] font-bold text-slate-400 ml-1 uppercase tracking-wider">
                       sec
                     </span>
                   </div>
@@ -1414,26 +1459,26 @@ function Step2Media({
                       onClick={() => onMove(sel.assetId, -1)}
                       disabled={atTop}
                       aria-label="Move up"
-                      className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:text-slate-300 disabled:cursor-not-allowed"
+                      className="w-6 h-6 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-white disabled:text-slate-300 disabled:cursor-not-allowed"
                     >
-                      <ChevronLeft className="w-4 h-4 rotate-90" />
+                      <ChevronLeft className="w-3.5 h-3.5 rotate-90" />
                     </button>
                     <button
                       type="button"
                       onClick={() => onMove(sel.assetId, 1)}
                       disabled={atBottom}
                       aria-label="Move down"
-                      className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:text-slate-300 disabled:cursor-not-allowed"
+                      className="w-6 h-6 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-white disabled:text-slate-300 disabled:cursor-not-allowed"
                     >
-                      <ChevronRight className="w-4 h-4 rotate-90" />
+                      <ChevronRight className="w-3.5 h-3.5 rotate-90" />
                     </button>
                     <button
                       type="button"
                       onClick={() => onRemove(sel.assetId)}
                       aria-label="Remove item"
-                      className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 ml-1"
+                      className="w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 ml-0.5"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </li>
