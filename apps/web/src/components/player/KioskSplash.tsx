@@ -970,30 +970,55 @@ const CSS = `
    even at 32px tile width — they'd touch and read as one blob.
    Below 480px viewport width the code row stacks VERTICALLY: each
    tile is full-width, 1/8 of the viewport height, so six fit
-   comfortably with hero text above + status footer below. */
+   comfortably with hero text above + status footer below.
+
+   2026-05-26 round 2 — operator on player v1.0.71 reports the
+   splash isn't visible at all on a 320×1080 Taurus. Root cause:
+   `.kiosk-stage` is `justify-content: center` (vertical-center).
+   When the stacked content exceeds 1080px the overflow lands BOTH
+   at top AND bottom of the viewport — including the brand row at
+   the top, which is what the operator looks for to confirm the
+   splash is live. Fix: switch to `justify-content: flex-start` on
+   ultra-narrow + add `overflow-y: auto` so anything that still
+   overflows is at least scrollable. Also tightened logo + brand
+   sizing so the whole pairing UI fits in 1080px without scroll on
+   the common Taurus dimensions. */
 @media (max-width: 480px) {
-  /* 2026-05-13 — targets the actual class names defined in this
-     file (kiosk-stage, kiosk-brand-name, etc.) — not "kiosk-frame"
-     which doesn't exist. Earlier version was a no-op. */
-  .kiosk-stage { padding: 4vw 2vw !important; gap: 2vh !important; }
+  /* Top-anchor + overflow-safe. Center was hiding the top portion
+     of the splash when total content exceeded viewport height. */
+  .kiosk-stage {
+    padding: 2vh 4vw !important;
+    gap: 1.6vh !important;
+    justify-content: flex-start !important;
+    overflow-y: auto !important;
+  }
+  /* Shrink the brand block so the pairing code dominates the
+     1080px-tall viewport (operator's primary action). */
+  .kiosk-brand { margin-bottom: 1.5vh !important; }
+  .kiosk-logo-ring {
+    width: clamp(72px, 8vh, 110px) !important;
+    height: clamp(72px, 8vh, 110px) !important;
+    margin-bottom: 8px !important;
+  }
+  .kiosk-brand-name { font-size: 5vw !important; }
   .kiosk-instructions { font-size: 4vw !important; }
   .kiosk-instruction-label { font-size: 3vw !important; }
   .kiosk-instruction-line { font-size: 4vw !important; }
   .kiosk-code-row {
     flex-direction: column !important;
-    gap: 1.5vh !important;
+    gap: 1vh !important;
     width: 90% !important;
   }
   .kiosk-code-tile {
     width: 100% !important;
-    height: 10vh !important;
-    min-height: 60px !important;
-    max-height: 110px !important;
+    height: 8vh !important;
+    min-height: 56px !important;
+    max-height: 90px !important;
   }
-  .kiosk-code-char { font-size: 6.5vh !important; }
+  .kiosk-code-char { font-size: 5.5vh !important; }
   .kiosk-qr-hint { font-size: 3vw !important; }
-  /* Brand row + status footer compress so the pairing code dominates. */
-  .kiosk-brand-name { font-size: 4.5vw !important; }
+  /* Status footer compresses + wraps so it always reaches the
+     bottom of the visible viewport on 320×1080. */
   .kiosk-status-row { font-size: 2.8vw !important; gap: 1vw !important; flex-wrap: wrap; }
 }
 `;
