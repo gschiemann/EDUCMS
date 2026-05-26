@@ -441,12 +441,26 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
           <div className="flex items-center gap-1 mt-1 flex-wrap">
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                // 2026-05-26 — operator: "its stuck on 1 now and i cant
+                // switch it to anything else". Zero PUT requests in the
+                // audit log despite the operator clicking. Suspected
+                // setCanvas.isPending stuck true (hung first request)
+                // OR document-mousedown outside-handler in the popover
+                // closing the menu before the React click fires.
+                // Defenses:
+                //   - stopPropagation so the popover's document-mouseup
+                //     outside-handler can't see this and close the
+                //     menu mid-click
+                //   - Dropped `disabled={setCanvas.isPending}` — relying
+                //     on React Query's internal queueing instead
+                e.stopPropagation();
                 if (currentCanvasW === null && currentCanvasH === null) return;
+                // eslint-disable-next-line no-console
+                console.log('[LED canvas] clicking Off', { screenId: screen.id, current: { w: currentCanvasW, h: currentCanvasH } });
                 setCanvas.mutate({ id: screen.id, canvasW: null, canvasH: null });
               }}
-              disabled={setCanvas.isPending}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
                 currentPanelN === null && currentCanvasW === null
                   ? 'bg-slate-700 text-white border-slate-700'
                   : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
@@ -463,12 +477,14 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
                 <button
                   key={n}
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (active) return;
+                    // eslint-disable-next-line no-console
+                    console.log('[LED canvas] clicking', n, { screenId: screen.id, w, h });
                     setCanvas.mutate({ id: screen.id, canvasW: w, canvasH: h });
                   }}
-                  disabled={setCanvas.isPending}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
                     active
                       ? 'bg-indigo-600 text-white border-indigo-600'
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:border-indigo-200'
@@ -483,6 +499,8 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
               {currentCanvasW && currentCanvasH
                 ? `${currentCanvasW}×${currentCanvasH}`
                 : 'native'}
+              {setCanvas.isPending && ' · saving…'}
+              {setCanvas.isError && ' · error'}
             </span>
           </div>
         </div>
