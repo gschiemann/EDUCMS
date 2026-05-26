@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import Script from 'next/script';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 
 export const metadata: Metadata = {
@@ -50,9 +49,35 @@ export default function PlayerLayout({
           first-paint flash.
 
           Browser players (no URL params) keep the device-width default.
+
+          2026-05-26 — switched from <Script strategy="beforeInteractive">
+          to a raw inline <script dangerouslySetInnerHTML>. Per Next.js
+          16 App Router docs, `beforeInteractive` is ONLY honored in the
+          ROOT layout (apps/web/src/app/layout.tsx); when used in a
+          NESTED layout (which this is, /app/player/layout.tsx) it
+          silently falls back to `afterInteractive`, which means the
+          script is queued via `__next_s.push(...)` and runs AFTER React
+          hydration. By that point KioskSplash has already measured its
+          viewport (1920×1080 on Taurus) and laid out — the pin's
+          html/body resize comes too late to affect first paint, and the
+          operator saw the splash content (logo, code, status) rendered
+          centered in a 1920px-wide frame while the LED panel only
+          showed the leftmost 320px = no readable content. A raw inline
+          script runs synchronously at parse time, so the resize lands
+          BEFORE the splash measures `vw/vh`. Verified via Playwright
+          probe at 1920×1080 viewport with `?w=1920&h=1080&canvasW=320
+          &canvasH=1080`: before-fix `htmlWidth=1920px`, after-fix
+          `htmlWidth=320px` and `matchesMaxWidth480: true`.
+
+          Also: when `effW > 0 && effH > 0` we set a `data-led-narrow`
+          attribute on <html> for the splash's CSS to consume. This
+          unlocks the narrow-stack layout EVEN when the Android WebView
+          reports its viewport at the controller's frame buffer
+          dimensions (1920×1080) rather than the LED canvas dimensions.
        */}
-      <Script id="player-viewport-pin" strategy="beforeInteractive">
-        {`(function(){try{
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `(function(){try{
           var p=new URLSearchParams(location.search);
           // Two pairs of size params:
           //   w / h        — what Android reports as the controller's
@@ -98,26 +123,45 @@ export default function PlayerLayout({
             document.documentElement.style.width=effW+'px';
             document.documentElement.style.height=effH+'px';
             document.documentElement.style.overflow='hidden';
-            // Body styles deferred to DOMContentLoaded — body element
-            // may not exist yet when beforeInteractive runs.
-            document.addEventListener('DOMContentLoaded',function(){
-              if(document.body){
-                document.body.style.width=effW+'px';
-                document.body.style.height=effH+'px';
-                document.body.style.margin='0';
-                document.body.style.padding='0';
-                document.body.style.background='#000';
-                document.body.style.overflow='hidden';
-              }
-            });
+            // Body styles applied IMMEDIATELY when body already exists
+            // (this raw inline script runs after <body> opens but
+            // before any siblings). Falls back to a DOMContentLoaded
+            // listener if body somehow isn't ready yet.
+            function pinBody(){
+              if(!document.body)return false;
+              document.body.style.width=effW+'px';
+              document.body.style.height=effH+'px';
+              document.body.style.margin='0';
+              document.body.style.padding='0';
+              document.body.style.background='#000';
+              document.body.style.overflow='hidden';
+              return true;
+            }
+            if(!pinBody()){
+              document.addEventListener('DOMContentLoaded',pinBody);
+            }
             // Expose to CSS as custom props so any layout that wants
             // to honor the canvas explicitly (instead of vw/vh) can
             // read --led-w / --led-h.
             document.documentElement.style.setProperty('--led-w',effW+'px');
             document.documentElement.style.setProperty('--led-h',effH+'px');
+            // 2026-05-26 — narrow-LED hint for the splash CSS. A
+            // 320×1080 portrait LED panel pinned via canvasW/canvasH
+            // would set effW=320; we flag it so the splash stacks
+            // vertically EVEN when (a) the operator never explicitly
+            // picks a narrow layout AND (b) the Android WebView reports
+            // its viewport at 1920×1080 (Taurus frame-buffer minimum)
+            // so the (max-width: 480px) CSS media query never matches.
+            // Threshold: < 600 px wide OR taller than 2× wide is a
+            // poster shape. Matches the operator's 320×1080 install
+            // and the planned 480×1920 hallway pillars.
+            if(effW<600||effH>effW*2){
+              document.documentElement.setAttribute('data-led-narrow','1');
+            }
           }
-        }catch(e){}})();`}
-      </Script>
+        }catch(e){}})();`,
+        }}
+      />
       {/* 2026-05-13 — Chromium-83 CSS-inset polyfill.
           NovaStar Taurus controllers ship Chromium 83. The CSS `inset`
           shorthand was added in Chrome 87, so EVERY widget that uses
@@ -150,14 +194,32 @@ export default function PlayerLayout({
           bottom: 0 !important;
           left: 0 !important;
         }
+
+        /* 2026-05-26 — The player-root-wrapper (a few lines below this
+           style block) uses width:var(--led-w,100vw); height:var(--led-h,
+           100vh). When the pin script set --led-w/--led-h to the LED
+           canvas, the wrapper resizes to match — the connected-splash
+           inside it then centers in the LED canvas instead of the
+           controller's frame buffer. No CSS-attribute override needed.
+
+           Documented here so a future agent doesn't put width: 100vw
+           back on the wrapper "for safety" — that's the bug that
+           caused the 2026-05-26 round-3 splash regression. */
       `}</style>
       <div
-        className="fixed top-0 right-0 bottom-0 left-0 bg-black overflow-hidden"
+        className="fixed top-0 right-0 bottom-0 left-0 bg-black overflow-hidden player-root-wrapper"
         style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          width: '100vw',
-          height: '100vh',
+          // 2026-05-26 — width/height use --led-w/--led-h when the pin
+          // script set them (narrow LED canvas), falling back to 100vw/
+          // 100vh on browsers (no canvas info). var(--name, fallback)
+          // is the CSS spec way to do this; older Chromium honors it.
+          // Without this, the wrapper sized 100vw=1920 even on a 320 ×
+          // 1080 LED, anchoring `flex justify-center` content around
+          // x=960 = off the LED's leftmost 320 px = invisible content.
+          width: 'var(--led-w, 100vw)',
+          height: 'var(--led-h, 100vh)',
           background: '#000',
           overflow: 'hidden',
         }}

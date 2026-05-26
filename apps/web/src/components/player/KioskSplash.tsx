@@ -1021,4 +1021,147 @@ const CSS = `
      bottom of the visible viewport on 320×1080. */
   .kiosk-status-row { font-size: 2.8vw !important; gap: 1vw !important; flex-wrap: wrap; }
 }
+
+/* ─── Narrow-LED canvas override (2026-05-26 round 3) ─────────────
+   The two previous fix-rounds (276b361, 2c66b58) BOTH targeted only
+   the (max-width: 480px) media query above. Operator on Player v1.0.71
+   STILL reports the splash invisible on a 320×1080 Taurus.
+
+   The actual root cause confirmed via Playwright probe against
+   https://venue-os.app/player at 1920×1080 (Taurus controller's
+   native frame buffer, NOT the 320×1080 LED): the Player APK passes
+   ?w=1920&h=1080 because that's what Android reports the display
+   to be; the LED panel is 320×1080 but the WebView's CSS viewport
+   is the controller's 1920×1080. (max-width: 480px) NEVER MATCHES
+   on this device. The splash renders centered in 1920px — brand at
+   x=928, code tiles at x=495..1425 — and the LED captures only
+   pixels x=0..320, which contain ONLY the aurora-gradient background.
+   No text, no logo, no code tiles. That's the "purple and white but
+   no text" the operator photographs.
+
+   Fix: when the layout.tsx pin script detects a narrow LED canvas
+   (effW < 600 OR effH > effW * 2) it sets data-led-narrow="1" on
+   <html>. Below, we constrain the splash to render in a column at
+   the LEFT edge of the viewport, sized to the LED's actual
+   canvas (--led-w × --led-h). All vw/vh units inside the splash
+   are recalibrated to that canvas via overrides below.
+
+   The narrow-stack layout (same as max-width 480 path) is forced
+   regardless of viewport width because the visible LED region IS
+   narrow even when the CSS viewport reports wide. */
+[data-led-narrow] .kiosk-splash {
+  /* Anchor splash to top-left of the viewport — that's where the LED
+     captures from. Width/height match the LED canvas, not the
+     controller frame buffer. */
+  width: var(--led-w, 100vw) !important;
+  height: var(--led-h, 100vh) !important;
+  left: 0 !important;
+  top: 0 !important;
+  right: auto !important;
+  bottom: auto !important;
+}
+[data-led-narrow] .kiosk-stage {
+  /* Stage now lives inside a --led-w wide column. Padding + gap use
+     percentage of LED canvas so they scale to the actual visible
+     region rather than the 1920px frame buffer. */
+  padding: 2% 4% !important;
+  gap: 1.6% !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  overflow-y: auto !important;
+}
+[data-led-narrow] .kiosk-brand { margin-bottom: 1.5% !important; }
+[data-led-narrow] .kiosk-logo-ring {
+  /* Logo sized off LED width (8% of e.g. 320 = 25.6px is too small;
+     use 25% of LED width to give a presence on the poster). Width +
+     height both computed off --led-w to keep it square; aspect-ratio
+     CSS property is Chrome 88+ and Taurus is Chromium 83. */
+  width: calc(var(--led-w, 320px) * 0.25) !important;
+  height: calc(var(--led-w, 320px) * 0.25) !important;
+  max-width: 110px !important;
+  min-width: 56px !important;
+  margin-bottom: 8px !important;
+}
+[data-led-narrow] .kiosk-brand-name {
+  /* Brand-name needs to be visible — 12% of LED width gives ~38px on
+     a 320 LED, large enough to read at 5-foot distance. Computed off
+     --led-w so the size tracks the actual LED canvas instead of the
+     wider viewport (which on a Taurus is 1920×1080 = far too big). */
+  font-size: calc(var(--led-w, 320px) * 0.12) !important;
+}
+[data-led-narrow] .kiosk-brand-sub {
+  font-size: calc(var(--led-w, 320px) * 0.04) !important;
+}
+[data-led-narrow] .kiosk-instructions {
+  margin-bottom: 1.5% !important;
+}
+[data-led-narrow] .kiosk-instruction-label {
+  font-size: calc(var(--led-w, 320px) * 0.035) !important;
+}
+[data-led-narrow] .kiosk-instruction-line {
+  font-size: calc(var(--led-w, 320px) * 0.045) !important;
+}
+[data-led-narrow] .kiosk-code-row {
+  flex-direction: column !important;
+  gap: 1% !important;
+  width: 90% !important;
+}
+[data-led-narrow] .kiosk-code-tile {
+  width: 100% !important;
+  height: calc(var(--led-h, 1080px) * 0.075) !important;
+  min-height: 56px !important;
+  max-height: 90px !important;
+}
+[data-led-narrow] .kiosk-code-char {
+  font-size: calc(var(--led-h, 1080px) * 0.055) !important;
+}
+[data-led-narrow] .kiosk-qr-hint {
+  font-size: calc(var(--led-w, 320px) * 0.035) !important;
+}
+[data-led-narrow] .kiosk-status-row {
+  font-size: calc(var(--led-w, 320px) * 0.035) !important;
+  gap: 1% !important;
+  flex-wrap: wrap;
+}
+/* Decorative orbs are positioned via %, which off the LED canvas are
+   still in their right relative positions, but at 1920px viewport
+   each orb would be 280px wide — bigger than the LED. Shrink them. */
+[data-led-narrow] .kiosk-orb-1,
+[data-led-narrow] .kiosk-orb-2,
+[data-led-narrow] .kiosk-orb-3,
+[data-led-narrow] .kiosk-orb-4,
+[data-led-narrow] .kiosk-orb-5 {
+  /* Orbs become small accent dots, sized off LED-w. */
+  width: calc(var(--led-w, 320px) * 0.4) !important;
+  height: calc(var(--led-w, 320px) * 0.4) !important;
+}
+/* Tech-chips shrink so they fit the narrow column. */
+[data-led-narrow] .kiosk-tech-chips {
+  bottom: 2% !important;
+  flex-wrap: wrap;
+  gap: 4px !important;
+  max-width: 95% !important;
+}
+[data-led-narrow] .kiosk-chip {
+  padding: 4px 8px !important;
+  font-size: calc(var(--led-w, 320px) * 0.025) !important;
+}
+[data-led-narrow] .kiosk-chip-label {
+  font-size: calc(var(--led-w, 320px) * 0.022) !important;
+}
+[data-led-narrow] .kiosk-chip-value {
+  font-size: calc(var(--led-w, 320px) * 0.025) !important;
+}
+/* Orientation picker stacks vertically + shrinks. */
+[data-led-narrow] .kiosk-orient-buttons {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+[data-led-narrow] .kiosk-orient-btn {
+  padding: 4px 8px !important;
+  font-size: calc(var(--led-w, 320px) * 0.035) !important;
+}
+[data-led-narrow] .kiosk-orient-label {
+  font-size: calc(var(--led-w, 320px) * 0.03) !important;
+}
 `;
