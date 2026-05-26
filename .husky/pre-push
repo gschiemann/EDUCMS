@@ -1,0 +1,48 @@
+#!/bin/sh
+# Pre-push preflight — catches the failure modes that broke production on
+# 2026-04-26 (9-hour Vercel outage from agent commits that passed
+# pre-commit but had TS errors).
+#
+# `pnpm preflight` runs the same non-Docker checks CI does:
+#   - lockfile sync   (pnpm install --frozen-lockfile --lockfile-only)
+#   - workspace TS package builds (@cms/api-types, @cms/auth-core, @cms/ws-events)
+#   - api TS build    (catches TS errors that survived pre-commit)
+#   - web TS build    (catches Next.js prerender / type errors)
+# Budget: ~90 seconds per CLAUDE.md "Deploy Reliability" section.
+#
+# Emergency bypass:
+#   git push --no-verify
+# Don't make this a habit. Every --no-verify push is a chance to ship
+# a broken deploy because something we tested in dev didn't survive a
+# clean build. The CI will catch it ~3 minutes later but Railway will
+# already have started a doomed rebuild.
+
+# Skip on delete pushes (`git push origin :branch`).
+if [ "$1" = "delete" ]; then exit 0; fi
+
+# Skip if nothing's being pushed (read protocol per githooks(5)).
+# `git push` writes ref-update lines to stdin: <local-ref> <local-sha> <remote-ref> <remote-sha>.
+# When local-sha is all zeros, the ref is being deleted — already covered above.
+input=$(cat)
+if [ -z "$input" ]; then
+  exit 0
+fi
+
+echo ""
+echo "→ Running pnpm preflight (api + web TS builds, ~90s)..."
+echo "  Bypass with 'git push --no-verify' if this is a real emergency."
+echo ""
+
+if ! pnpm preflight; then
+  echo ""
+  echo "✗ pre-push blocked: pnpm preflight failed."
+  echo ""
+  echo "  Fix the build error above. If you absolutely must push (real"
+  echo "  emergency only — broken master means the pilot tenant is down):"
+  echo "    git push --no-verify"
+  echo ""
+  echo "  See CLAUDE.md 'Deploy Reliability' section for the failure modes"
+  echo "  this hook catches."
+  echo ""
+  exit 1
+fi
