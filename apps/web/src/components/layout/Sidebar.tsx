@@ -307,11 +307,27 @@ export function Sidebar() {
               // being squished into a 44px square.  max-w-[140px] caps
               // the width so a ridiculously wide logo can't push the
               // tenant name off the sidebar.
+              //
+              // 2026-05-26 — operator: "the dodgers logo didnt load
+              // even though the preview looked good". onError ONLY
+              // fires on HTTP-level failure (404, network drop). A
+              // hot-linked CDN that returns 200 OK with an empty body
+              // (CORS-tainted, referrer-blocked, etc.) loads "fine"
+              // but the img has naturalWidth=0 and renders invisibly.
+              // The fallback initials chip never gets a chance.
+              // Fix: onLoad inspects natural dimensions and flips
+              // logoImgBroken=true when zero so the chip kicks in.
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={brandLogoUrl}
                 alt=""
                 onError={() => setLogoImgBroken(true)}
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+                    setLogoImgBroken(true);
+                  }
+                }}
                 className="flex-shrink-0 h-12 max-w-[140px] object-contain"
               />
             ) : brandLogoSvg && /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(brandLogoSvg) ? (

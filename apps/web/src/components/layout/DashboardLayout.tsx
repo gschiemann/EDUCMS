@@ -99,9 +99,40 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         Skip to main content
       </a>
 
-      {/* Decorative blob for pure EDU feel */}
-      <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-100/50 rounded-full blur-[100px] pointer-events-none -z-0" />
-      <div className="absolute bottom-0 left-64 w-[500px] h-[500px] bg-emerald-50/50 rounded-full blur-[120px] pointer-events-none -z-0" />
+      {/* Decorative blobs — brand-aware ambient lighting.
+          2026-05-26 — operator: "the gradient box is square but the
+          menu is rounded, you see the gradient bleed over the outline
+          of the menu box in the top menu." Two problems with the
+          previous version:
+            1. Hard-coded `bg-indigo-100/50` (K-12 default) and
+               `bg-emerald-50/50` (school-y green) — wrong color for
+               every non-K-12 tenant. A branded Dodgers tenant saw
+               indigo blobs bleeding through the topbar's semi-
+               transparent backdrop, fighting the Dodger-blue chrome.
+            2. The top-right blob sat AT top-0 — directly BEHIND the
+               h-[73px] TopToolbar. The topbar's `bg-white/60
+               backdrop-blur-xl` revealed the blob as a soft halo
+               around the rounded "Dodgers" pill / bell / avatar,
+               making the rectangular topbar visually leak past its
+               own rounded children.
+          Fixes:
+            • Both blobs now read `var(--brand-primary)` via
+              color-mix toward white at low opacity — picks up the
+              tenant's color, falls back to indigo when no brand.
+            • Top blob pushed to `top-[100px]` so it sits BELOW the
+              73px topbar, no more bleed into the menu zone. */}
+      <div
+        className="absolute top-[100px] right-0 w-96 h-96 rounded-full blur-[100px] pointer-events-none -z-0"
+        style={{
+          background: 'color-mix(in srgb, var(--brand-primary, #6366f1) 12%, transparent)',
+        }}
+      />
+      <div
+        className="absolute bottom-0 left-64 w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none -z-0"
+        style={{
+          background: 'color-mix(in srgb, var(--brand-primary, #10b981) 8%, transparent)',
+        }}
+      />
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 relative">
         <SuperAdminBanner />

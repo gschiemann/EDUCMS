@@ -79,7 +79,15 @@ jobs:
         run: pnpm --filter web exec playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run emergency-path E2E
-        run: pnpm --filter web run test:e2e:emergency-path -- --project ${{ matrix.browser }}
+        # Invoke playwright directly (not through the pnpm script) so the
+        # `--project=<browser>` filter actually reaches Playwright. Going
+        # through `pnpm run -- --project X` placed the args after the
+        # script's own positional path argument, which Playwright treated
+        # as a literal test path and ignored as a flag — running BOTH
+        # projects on every matrix runner. The chromium runner has only
+        # the chromium binary installed, so webkit failed with
+        # "Executable doesn't exist" (and vice-versa).
+        run: pnpm --filter web exec playwright test --config playwright.config.ts tests/e2e/emergency-path.spec.ts --project=${{ matrix.browser }}
         env:
           CI: 'true'
           # Force the API base URL onto an unroutable host so any
