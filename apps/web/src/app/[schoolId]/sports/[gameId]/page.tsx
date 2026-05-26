@@ -55,6 +55,7 @@ import {
 import { findSport, PLAYER_STATS } from '@cms/api-types';
 import type { SportDefinition, SportStatField } from '@cms/api-types';
 import { RosterPanel } from './RosterPanel';
+import { CtsCuePanel } from './CtsCuePanel';
 import { CueLaunchpad } from './CueLaunchpad';
 import { SponsorPanel } from './SponsorPanel';
 import { RibbonPanel } from './RibbonPanel';
@@ -73,7 +74,7 @@ const GAME_STATUSES: { key: string; label: string }[] = [
   { key: 'FINAL', label: 'Final' },
 ];
 
-type ConsoleMode = 'run' | 'setup' | 'roster';
+type ConsoleMode = 'run' | 'setup' | 'roster' | 'cts-cues';
 
 // ── clock helpers ──────────────────────────────────────────────
 
@@ -288,6 +289,7 @@ function GameControl() {
             { key: 'run', label: 'Run game', icon: '▶' },
             { key: 'setup', label: 'Set up', icon: '⚙' },
             { key: 'roster', label: 'Roster', icon: '👥' },
+            { key: 'cts-cues', label: 'CTS Cues', icon: '🎬' },
           ] as { key: ConsoleMode; label: string; icon: string }[]
         ).map((tab) => (
           <button
@@ -439,6 +441,21 @@ function GameControl() {
                 awayTeam={g.awayTeam}
                 statKeys={PLAYER_STATS[g.sport] || []}
               />
+            </Section>
+          </div>
+        </div>
+      )}
+
+      {/* CTS CUES MODE — phone-friendly remote cue trigger. Show caller
+          opens this on a phone during the game and taps cues to fire the
+          cinematic celebrations on any ribbon screen instantly. Backed by
+          POST /api/v1/screens/:id/cts-manual-cue (admin auth), every fire
+          is audit-logged. See CtsCuePanel for the full UX. */}
+      {mode === 'cts-cues' && (
+        <div className="flex-1 overflow-auto bg-slate-50">
+          <div className="max-w-2xl mx-auto p-4">
+            <Section title="CTS Celebration Cues — phone-friendly remote trigger">
+              <CtsCuePanel />
             </Section>
           </div>
         </div>
