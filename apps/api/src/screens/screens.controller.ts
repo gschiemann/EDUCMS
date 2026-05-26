@@ -2286,6 +2286,19 @@ export class ScreensController {
           // Tells the player whether it's running a per-screen or
           // tenant-wide override. Useful for the Stopped splash too.
           emergencyScope: activeScreenOverride ? 'screen' : 'tenant',
+          // 2026-05-26 audit — surface the per-screen override's expiry
+          // (UNIX seconds) so the player's emergency-cache layer at
+          // apps/web/.../player/page.tsx:451 anchors the cache TTL to
+          // the server-issued absolute time instead of the device's
+          // wall clock. The reader (page.tsx:2711) already expects this
+          // field; only emit it when there's actually a per-screen
+          // override with an expiry (tenant-wide alerts don't auto-
+          // expire — they last until explicit ALL_CLEAR). Null when
+          // absent so the player falls through to its 4h fallback TTL,
+          // matching pre-existing behavior for tenant-wide alerts.
+          emergencyExpiresAt: activeScreenOverride?.expiresAt
+            ? Math.floor(new Date(activeScreenOverride.expiresAt).getTime() / 1000)
+            : null,
           orientation: isPortrait ? 'portrait' : 'landscape',
           playlists
         });
