@@ -460,7 +460,13 @@ export function Sidebar() {
                 className={cn(
                   'bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700',
                   'line-clamp-2 leading-[1.1] break-words',
-                  brandName.length > 18 ? 'text-[15px]' : 'text-xl',
+                  // 2026-05-26 — "Los Angeles Dodgers" (19 chars) was
+                  // tripping the smaller font at >18 and looked tiny
+                  // next to the logo chip. Bumped threshold to >24
+                  // (covers names like "Los Medanos Community College")
+                  // and softened the shrink to text-base so the visual
+                  // weight stays consistent with the logo.
+                  brandName.length > 24 ? 'text-base' : 'text-xl',
                 )}
               >
                 {brandName}
