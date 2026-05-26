@@ -973,13 +973,13 @@ const CSS = `
    comfortably with hero text above + status footer below.
 
    2026-05-26 round 2 — operator on player v1.0.71 reports the
-   splash isn't visible at all on a 320×1080 Taurus. Root cause:
-   `.kiosk-stage` is `justify-content: center` (vertical-center).
-   When the stacked content exceeds 1080px the overflow lands BOTH
-   at top AND bottom of the viewport — including the brand row at
+   splash isn't visible at all on a 320x1080 Taurus. Root cause:
+   .kiosk-stage is justify-content: center (vertical-center). When
+   the stacked content exceeds 1080px the overflow lands BOTH at
+   top AND bottom of the viewport — including the brand row at
    the top, which is what the operator looks for to confirm the
-   splash is live. Fix: switch to `justify-content: flex-start` on
-   ultra-narrow + add `overflow-y: auto` so anything that still
+   splash is live. Fix: switch to justify-content: flex-start on
+   ultra-narrow + add overflow-y: auto so anything that still
    overflows is at least scrollable. Also tightened logo + brand
    sizing so the whole pairing UI fits in 1080px without scroll on
    the common Taurus dimensions. */
