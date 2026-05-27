@@ -915,7 +915,19 @@ export function CelebrationDeckScene({
     }
     rafId = requestAnimationFrame(frame);
     return () => { cancelled = true; cancelAnimationFrame(rafId); };
-  }, [cfg, team]);
+    // 2026-05-27 — deps were `[cfg, team]`, but `cfg` is an OBJECT that
+    // pickDeckCue rebuilds on every parent render (it does
+    // `{...direct, ...overrides}` when a `liveSub1` override is passed
+    // in). The parent (ribbon page) re-renders every 750ms on each
+    // /sports/board poll → new cfg reference → useEffect cleanup +
+    // re-run → canvas re-mount → cinematic plays from t=0 again.
+    // Operator saw save/exclusion/powerplay "trigger multiple times"
+    // during their 4500ms hold. Goal works because
+    // CelebrationWaterPoloGoal's deps are primitives that don't change
+    // reference. Fix: serialize cfg into a stable signature so only
+    // ACTUAL content changes restart the animation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(cfg), team]);
 
   return (
     <div
@@ -935,12 +947,15 @@ export function CelebrationDeckScene({
         ref={canvasRef}
         width={1920}
         height={1080}
-        // 2026-05-27 — back to `contain`. Operator reported `cover`
-        // was clipping the top of the goal frame on the ultrawide
-        // ribbon. The wrapping mount in ribbon page.tsx tints the
-        // letterbox bars with the cue's accent color so the bars
-        // look intentional (brand frame) instead of empty.
-        style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+        // 2026-05-27 — back to `cover`. Operator preferred the
+        // bigger full-ribbon render over the 711×400 letterbox. The
+        // top-of-goal clipping was a content-positioning issue
+        // (compose action mid-height-centered so cover crop catches
+        // it), not a containment-mode issue. Each cinematic's scene
+        // is being retuned to keep its action band in canvas rows
+        // ~400-680 of 1080 so the visible cover-cropped strip on a
+        // 7.5:1 ribbon catches every element.
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
       />
     </div>
   );
