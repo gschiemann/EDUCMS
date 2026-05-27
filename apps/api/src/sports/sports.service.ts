@@ -1386,11 +1386,18 @@ export class SportsService {
       return Math.max(0, ms - (Date.now() - at));
     };
 
+    // 2026-05-27 — Honor the sport's shot-clock options (lacrosse uses
+    // 60/80s, water polo 20/30s). Previously hardcoded to the basketball
+    // set, which silently turned the shot clock OFF when an operator
+    // picked 60s for lacrosse or 20s for water polo.
+    const sportDef = this.sportOf(game.sport);
+    const allowedOptions = sportDef.shotClock?.options ?? [0, 24, 30, 35];
     switch (action) {
       case 'configure': {
-        // value = shot-clock length in seconds: 0 (off) | 24 | 30 | 35.
+        // value = shot-clock length in seconds — must be one of the
+        // sport's configured options.
         const v = Math.round(Number(dto.value));
-        len = [0, 24, 30, 35].includes(v) ? v : 0;
+        len = allowedOptions.includes(v) ? v : 0;
         ms = len * 1000;
         running = false;
         break;
@@ -1405,7 +1412,9 @@ export class SportsService {
         running = false;
         break;
       case 'reset': {
-        // value = seconds to reset to (full length, or a 14 / 20 partial).
+        // value = seconds to reset to (full length, or a partial reset
+        // like 14s for basketball offensive rebound). Bounded by the
+        // configured length so the clock can't reset beyond `len`.
         const v = Math.round(Number(dto.value));
         const sec = Number.isFinite(v) && v > 0 ? v : len;
         ms = Math.min(sec, len || sec) * 1000;

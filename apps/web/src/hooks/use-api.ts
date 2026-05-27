@@ -2386,8 +2386,12 @@ export function useGameControl(gameId: string) {
 
   const ribbon = useMutation({
     // Operator's custom ribbon messages — scroll on the stadium ribbon.
+    // 2026-05-27 — invalidate after save so the SurfacePreview iframe +
+    // RibbonPanel re-pull `game.ribbonMessages` within the next poll
+    // window instead of waiting up to 4s on the React Query cache.
     mutationFn: (body: { messages: string[] }) =>
       apiFetch(`/sports/games/${gameId}/ribbon`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-game', gameId] }),
   });
 
   const ribbonPresets = useMutation({

@@ -804,14 +804,63 @@ export default function RibbonPage() {
   // physical run, so software never multiplies the anchor). This is the
   // simple "everything scrolls, only the score is pinned" model the
   // operator asked for; it bypasses the rotating-"looks" model below.
+  //
+  // 2026-05-27 — Operator: "i have a lot of settings i can enable for
+  // the ribbon screen but seems none of them work, just the score and
+  // the ribbon media play nothing else". Root cause: this early-return
+  // ABSORBED every game into media-scroll mode the moment ANY slide
+  // OR sponsor existed — silently dropping crowd messages, roster
+  // cards, and the per-sport situational look the operator had toggled
+  // ON in `Ribbon content`. Two corrections below:
+  //   1. The presence test now honors the `slides`/`sponsors` toggles
+  //      from the Ribbon content panel (toggling them OFF removes them
+  //      from the marquee, matching the operator's expectation).
+  //   2. We only take this short-circuit when none of the other
+  //      engagement presets (prompts / roster / situation) have content
+  //      to show — otherwise we fall through to the looks-rotation path
+  //      below, which already mixes slides+sponsors WITH messages,
+  //      roster cards, and the live game situation.
+  // The enabled set + content presence flags pre-compute once here so
+  // both this gate and the inner RibbonMediaScroll honor the same
+  // toggles consistently.
+  const ribbonEnabled = new Set<string>(
+    Array.isArray(data.ribbonPresets) ? data.ribbonPresets : defaultRibbonPresets(def),
+  );
+  const slidesOn = ribbonEnabled.has('slides');
+  const sponsorsOn = ribbonEnabled.has('sponsors');
+  const promptsOn = ribbonEnabled.has('prompts');
+  const rosterOn = ribbonEnabled.has('roster');
+  const situationOn = ribbonEnabled.has('situation');
+  const hasSlides = slidesOn && (data.ribbonSlides || []).filter(Boolean).length > 0;
+  const hasSponsors = sponsorsOn && (data.sponsors || []).length > 0;
+  const hasMessages =
+    promptsOn && (data.ribbonMessages || []).map((m) => m.trim()).filter(Boolean).length > 0;
+  const hasRoster = rosterOn && (data.roster || []).length > 0;
+  const hasSituation =
+    situationOn && !!ribbonSituational(def, (data.stats || {}) as Record<string, unknown>);
+  // Take the marquee-only path when there IS media/sponsor content AND
+  // no other engagement-look has content. Operator-typed crowd messages
+  // count as engagement content too — so a custom message like
+  // "GO LIONS!" reliably shows up even when sponsors are uploaded.
   if (
     def &&
-    ((data.ribbonSlides || []).filter(Boolean).length > 0 ||
-      (data.sponsors || []).length > 0)
+    (hasSlides || hasSponsors) &&
+    !hasMessages &&
+    !hasRoster &&
+    !hasSituation
   ) {
     const ribbonBody = (
       <>
-        <RibbonMediaScroll data={data} def={def} vp={vp} clockMs={clockMs} />
+        <RibbonMediaScroll
+          data={data}
+          def={def}
+          vp={vp}
+          clockMs={clockMs}
+          slidesOn={slidesOn}
+          sponsorsOn={sponsorsOn}
+          segmentOn={ribbonEnabled.has('segment')}
+          clockOn={ribbonEnabled.has('clock')}
+        />
         {/* Celebrations must still take over the ribbon in media mode.
             The old looks path rendered this; the early return above
             dropped it (operator: "triggered celebrations and nothing
@@ -933,7 +982,9 @@ export default function RibbonPage() {
         const segLeft = Math.round(s * segWf);
         return (
           <div key={s}>
-            {/* score / clock anchor — never moves; digits update in place */}
+            {/* score / clock anchor — never moves; digits update in place.
+                2026-05-27 — clock/segment toggles in Ribbon content now
+                actually hide those fields from the anchor status line. */}
             <ScoreZone
               data={data}
               def={def}
@@ -941,6 +992,8 @@ export default function RibbonPage() {
               w={scoreZoneW}
               h={vp.h}
               clockMs={clockMs}
+              segmentOn={ribbonEnabled.has('segment')}
+              clockOn={ribbonEnabled.has('clock')}
             />
             {/* rotating content zone — held-static looks, fast crossfades.
                 Every anchor shares one rotation index, so the whole
@@ -1009,14 +1062,32 @@ function RibbonMediaScroll({
   def,
   vp,
   clockMs,
+  slidesOn,
+  sponsorsOn,
+  segmentOn = true,
+  clockOn = true,
 }: {
   data: BoardData;
   def: SportDefinition;
   vp: { w: number; h: number };
   clockMs: number;
+  /** Operator toggles in `Ribbon content` — when false the corresponding
+   *  items drop out of the marquee even if uploaded. */
+  slidesOn: boolean;
+  sponsorsOn: boolean;
+  /** Honored by the pinned ScoreZone anchor — flipping clock/segment
+   *  off in setup hides those fields from the badge. */
+  segmentOn?: boolean;
+  clockOn?: boolean;
 }) {
-  const slides = (data.ribbonSlides || []).filter(Boolean);
-  const sponsors = (data.sponsors || []).filter((sp) => sp && (sp.logoUrl || sp.name));
+  // 2026-05-27 — Respect the Ribbon content panel toggles so flipping
+  // "Image slides" off in setup actually removes the slides from the
+  // marquee (previously this component pulled both arrays directly,
+  // ignoring the toggles).
+  const slides = slidesOn ? (data.ribbonSlides || []).filter(Boolean) : [];
+  const sponsors = sponsorsOn
+    ? (data.sponsors || []).filter((sp) => sp && (sp.logoUrl || sp.name))
+    : [];
   // The scroll lane carries BOTH the operator's uploaded ribbon media
   // AND the tenant's sponsor logos — everything rides one seamless
   // marquee at native ribbon height (operator: "make sure it works for
@@ -1256,8 +1327,18 @@ function RibbonMediaScroll({
       {/* pinned score badge — overlays the left of the run on TOP of the
           scrolling media; never scrolls, digits update in place. Its
           solid background occludes the media behind it so it stays
-          readable over a busy scroll. */}
-      <ScoreZone data={data} def={def} left={0} w={scoreZoneW} h={vp.h} clockMs={clockMs} />
+          readable over a busy scroll. 2026-05-27 — segment/clock toggles
+          pass through from the Ribbon content panel. */}
+      <ScoreZone
+        data={data}
+        def={def}
+        left={0}
+        w={scoreZoneW}
+        h={vp.h}
+        clockMs={clockMs}
+        segmentOn={segmentOn}
+        clockOn={clockOn}
+      />
     </div>
   );
 }
@@ -1276,6 +1357,8 @@ function ScoreZone({
   w,
   h,
   clockMs,
+  segmentOn = true,
+  clockOn = true,
 }: {
   data: BoardData;
   def: SportDefinition;
@@ -1283,6 +1366,11 @@ function ScoreZone({
   w: number;
   h: number;
   clockMs: number;
+  /** Operator toggles in `Ribbon content`. When false the segment/clock
+   *  is suppressed from the score-anchor status line. Default true to
+   *  keep every existing call site unchanged. */
+  segmentOn?: boolean;
+  clockOn?: boolean;
 }) {
   const homeColor = data.homeColor || DEFAULT_HOME;
   const awayColor = data.awayColor || DEFAULT_AWAY;
@@ -1291,19 +1379,23 @@ function ScoreZone({
   const awayInk = readableInk(awayColor);
   const live = data.status === 'LIVE';
   const seg = segmentLabel(def, data);
-  const hasClock = def.clock.type !== 'none';
+  // 2026-05-27 — `clock` and `segment` are toggleable presets in
+  // `Ribbon content`. We honor them here so flipping them OFF actually
+  // removes the segment / clock from the ribbon's status line. Score
+  // itself is non-negotiable (the ribbon must never go blank) so it
+  // stays rendered regardless.
+  const hasClock = def.clock.type !== 'none' && clockOn;
   const clk = fmtClock(clockMs, def.clock.type === 'countdown');
-  const statusText = live
-    ? hasClock
-      ? `${seg} · ${clk}`
-      : seg
-    : data.status === 'FINAL'
-      ? 'FINAL'
-      : data.status === 'HALFTIME'
-        ? 'HALFTIME'
-        : data.status === 'PRE_GAME'
-          ? 'PRE-GAME'
-          : (data.status || 'SCHEDULED').replace(/_/g, ' ');
+  let statusText: string;
+  if (live) {
+    if (segmentOn && hasClock) statusText = `${seg} · ${clk}`;
+    else if (segmentOn) statusText = seg;
+    else if (hasClock) statusText = clk;
+    else statusText = '';
+  } else if (data.status === 'FINAL') statusText = 'FINAL';
+  else if (data.status === 'HALFTIME') statusText = 'HALFTIME';
+  else if (data.status === 'PRE_GAME') statusText = 'PRE-GAME';
+  else statusText = (data.status || 'SCHEDULED').replace(/_/g, ' ');
 
   // The score is the hero — size it off the zone HEIGHT, with a width
   // cap that widens with the score's digit count so a 3-digit

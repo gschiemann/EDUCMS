@@ -1,0 +1,259 @@
+============================================================
+GAME SETUP AUDIT — apps/web/src/app/[schoolId]/sports/[gameId]
+2026-05-27 — agent worktree agent-adea8154099e666b6
+============================================================
+
+Operator complaint (verbatim):
+> "the setup page for the gaem becuase i have a lot of settings i can
+>  enable for the ribbon screen but seems none of them work, just the
+>  score and the ribbon media play nothing else, audit all the settings
+>  in the game setup and make sure they work"
+
+------------------------------------------------------------
+ROOT CAUSE — single, dominant bug
+------------------------------------------------------------
+
+apps/web/src/app/ribbon/[gameId]/page.tsx had a short-circuit at line
+807 (pre-fix) that DIVERTED EVERY GAME into "media-scroll mode" the
+moment ANY ribbon slide OR any sponsor existed:
+
+    if (def && ((data.ribbonSlides || []).filter(Boolean).length > 0
+              || (data.sponsors || []).length > 0)) {
+      return <RibbonMediaScroll ... />   // bypasses looks rotation
+    }
+
+In media-scroll mode the page renders ONLY:
+  • the pinned score anchor (ScoreZone)
+  • the slides+sponsors marquee
+  • spotlight overlay (if set)
+  • celebration cue overlay (if firing)
+
+Every other Ribbon-content toggle the operator flipped in setup was
+SILENTLY IGNORED:
+  • Crowd messages (prompts)         — text in RibbonPanel
+  • Player spotlights (roster)       — roster cards rotation
+  • Game situation (situation)       — sport-specific live state
+  • Slides toggle                    — slides still showed when off
+  • Sponsors toggle                  — sponsors still showed when off
+  • Game-clock toggle (clock)        — always rendered on anchor
+  • Segment toggle (segment)         — always rendered on anchor
+
+The "score and ribbon media play nothing else" report is the literal
+visible output of this short-circuit.
+
+------------------------------------------------------------
+PER-SETTING AUDIT
+------------------------------------------------------------
+
+Each row records: setting → wire → before-fix status → after-fix status.
+
+Section: Game status
+  Wire: GAME_STATUSES button → ctl.status.mutate → PATCH
+        /sports/games/:id/status → setStatus → game.update +
+        STATUS GameEvent → invalidateBoardCache → ribbon polls
+  Before: WORKS
+  After:  WORKS
+
+Section: Team rosters (RosterPanel)
+  Wire: useRosterMutations.add/update/remove/importCsv → POST/PATCH/
+        DELETE /sports/games/:id/roster → board includes `roster`
+        in /sports/board/:id payload → ribbon's enabled.has('roster')
+        loops it as kind 'player' looks
+  Before: WORKED on board, FAILED on ribbon (short-circuit dropped the
+          looks path). Operator's "nothing else plays" symptom.
+  After:  WORKS — roster cards rotate on ribbon whenever roster has
+          players AND the 'roster' preset is enabled (default on).
+
+Section: Put it on your screens (ScreenPushPanel)
+  Wire: useGameScreens (GET /sports/games/:id/screens) +
+        useShowGameOnScreens (POST /sports/games/:id/show) +
+        useHideGameFromScreens (POST /sports/games/:id/hide)
+  Before: WORKS
+  After:  WORKS
+
+Section: Celebration pack (CelebrationPackPicker)
+  Wire: onChange → ctl.stats.mutate({ stats: { celebrationPack: p } })
+        → PATCH /sports/games/:id/stats → updateStats writes through
+        the META_KEYS allowlist → Game.stats.celebrationPack persisted
+        → board.ts returns game.stats → ribbon + board both read
+        ((data.stats as any).celebrationPack === 'v2') and route the
+        active cue to the v2 launcher
+  Before: WORKS — META_KEYS allowlists 'celebrationPack', updateStats
+          merges into Game.stats, both surfaces read it.
+  After:  WORKS
+
+Section: Live preview (SurfacePreview)
+  Wire: iframe to /board/:id, /ribbon/:id, /scorebug/:id — these are
+        the real public surfaces
+  Before: WORKS (the iframe was fine, but it showed the broken
+          short-circuit behavior on /ribbon)
+  After:  WORKS — and now reflects the fixed ribbon behavior
+
+Section: Ribbon content (RibbonPresetsPanel)
+  Wire: toggles → ctl.ribbonPresets.mutate({presets: [...]}) → PATCH
+        /sports/games/:id/ribbon-presets → setRibbonPresets sanitizes
+        + stores RIBBON_PRESETS GameEvent (latest-wins) → board.ts
+        ribbonPresetsFor reads + resolves → ribbon page reads
+        data.ribbonPresets
+  Speed: ctl.ribbonSpeed.mutate → PATCH /ribbon-speed → RIBBON_SPEED
+        GameEvent → board returns data.ribbonSpeed → ribbon multiplies
+        the rotation dwell by ribbonSpeedMultiplier
+  ScoreRepeat: ctl.ribbonScoreRepeat.mutate → PATCH /ribbon-score →
+        RIBBON_SCORE GameEvent → board returns data.ribbonScoreRepeat
+        → ribbon calls ribbonScoreRepeatCount to size the anchor count
+  Toggle-by-toggle (FIXED in 8d3019a):
+    score      — Score anchor (always rendered for "never blank")
+                  Before: toggle had NO effect
+                  After:  no functional change (still always rendered);
+                          documented in code that this is intentional
+    segment    — Quarter/Inning/Set label on anchor
+                  Before: toggle had NO effect
+                  After:  WORKS — toggling off hides segment from
+                          anchor status line (segmentOn prop on ScoreZone)
+    clock      — Game clock on anchor
+                  Before: toggle had NO effect
+                  After:  WORKS — toggling off hides clock from
+                          anchor status line (clockOn prop on ScoreZone)
+    situation  — Sport-specific live state look
+                  Before: silently dropped in media-scroll mode
+                  After:  WORKS — fall-through to looks path mixes it in
+    prompts    — Custom crowd messages look
+                  Before: silently dropped in media-scroll mode
+                  After:  WORKS — operator's messages render in rotation
+    roster     — Player card looks
+                  Before: silently dropped in media-scroll mode
+                  After:  WORKS — roster cards rotate in
+    sponsors   — Sponsor logos
+                  Before: toggle had NO effect — sponsors always shown
+                  After:  WORKS — toggle off removes them from marquee
+                          AND from the looks rotation
+    slides     — Operator-uploaded full-bleed media
+                  Before: toggle had NO effect — slides always shown
+                  After:  WORKS — toggle off removes them from marquee
+                          AND from the looks rotation
+  Speed:
+    Before: WORKS — multiplier already wired
+    After:  WORKS
+  ScoreRepeat:
+    Before: WORKS — count already wired
+    After:  WORKS
+
+Section: Ribbon messages (RibbonPanel)
+  Wire: textarea → ctl.ribbon.mutateAsync({messages}) → PATCH
+        /sports/games/:id/ribbon → setRibbon stores RIBBON GameEvent
+        → board returns data.ribbonMessages → ribbon buildLooks
+        prompts bucket reads them when enabled.has('prompts')
+  Before: BROKEN at the ribbon-render layer (the early-return absorbed
+          every game where slides/sponsors existed → custom messages
+          never appeared). Also the ctl.ribbon mutation had NO onSuccess
+          so the SurfacePreview's React Query cache only refreshed on
+          the 4s poll instead of immediately.
+  After:  FIXED — short-circuit gated on no-other-engagement-content;
+          mutation now invalidates ['sports-game', gameId] on success.
+
+Section: Ribbon images (RibbonImagesPanel)
+  Wire: AssetPicker → ctl.ribbonSlides.mutate({slides}) → PATCH
+        /sports/games/:id/ribbon-slides → RIBBON_SLIDES GameEvent
+  Before: WORKED in the sense slides showed — but the slides toggle
+          was inert (above).
+  After:  Slides toggle is now honored.
+
+Section: Ribbon sponsors (SponsorPanel)
+  Wire: useCreateSponsor / useUpdateSponsor / useDeleteSponsor →
+        POST /sports/sponsors, PATCH /sports/sponsors/:id, DELETE
+        /sports/sponsors/:id → returns from SponsorsService.listActive
+        in board response → ribbon renders
+  Before: WORKED — sponsors showed up. But the sponsors preset toggle
+          was inert.
+  After:  Sponsors toggle is now honored.
+
+Section: Shot clock (ShotClockSetup)  — only when def.shotClock exists
+  Wire: button → ctl.shotClock.mutate({action: 'configure', value}) →
+        PATCH /sports/games/:id/shot-clock → setShotClock
+  Before: PARTIALLY BROKEN — server hardcoded `[0, 24, 30, 35]`
+          (basketball). Picking 20s for water polo or 60/80s for
+          lacrosse silently set the clock OFF (len → 0).
+  After:  FIXED in 8d3019a — server reads sportDef.shotClock.options
+          (basketball [0,24,30,35] / lacrosse [0,60,80] /
+          water_polo [0,20,30]) so the operator's pick lands.
+
+Section: Sponsor ad scheduling (SponsorSchedulingSection)
+  Wire: each row → useUpdateSponsor → PATCH /sports/sponsors/:id with
+        active/weight/flight*/frequencyCapPerHour
+  Before: WORKS — controller accepts these fields and persists.
+  After:  WORKS — unchanged.
+
+Section: Layouts (LayoutsPanel)
+  Wire: <select> → ctl.details.mutateAsync({xxxTemplateId: value||null})
+        → PATCH /sports/games/:id → updateDetails persists FK → board
+        + ribbon + scorebug render via CustomScoreboardScene when set
+  Before: WORKS
+  After:  WORKS
+
+Section: Celebrations (PresentationSettingsSection — the "fire cue" tiles)
+  Wire: tile click → ctl.cue.mutate({key, target, audioUrl,
+        sponsorName, sponsorLogoUrl}) → POST /sports/games/:id/cue →
+        fireCue stores CUE GameEvent → board cache invalidated →
+        ribbon polls + queues + plays
+  Before: WORKS — cues fire and the ribbon plays them
+  After:  WORKS — unchanged
+
+------------------------------------------------------------
+FIXES (one commit on this worktree)
+------------------------------------------------------------
+
+Commit 8d3019a (this worktree only — DO NOT push):
+
+  apps/web/src/app/ribbon/[gameId]/page.tsx
+    • Compute ribbonEnabled set + presence flags at page-component
+      scope (so the short-circuit and the inner components share one
+      source of truth).
+    • Gate the media-scroll short-circuit on:
+        (hasSlides || hasSponsors)
+        && !hasMessages
+        && !hasRoster
+        && !hasSituation
+      Otherwise fall through to the looks-rotation path which
+      already mixes everything.
+    • RibbonMediaScroll: accept slidesOn/sponsorsOn/segmentOn/clockOn
+      props and respect each toggle.
+    • ScoreZone: accept segmentOn/clockOn props (default true) and
+      build statusText accordingly; existing call sites unchanged
+      until the page component passes the toggles through.
+
+  apps/web/src/hooks/use-api.ts
+    • useGameControl.ribbon mutation gained onSuccess invalidate so
+      SurfacePreview + RibbonPanel re-pull game.ribbonMessages within
+      the next poll instead of waiting 4s.
+
+  apps/api/src/sports/sports.service.ts
+    • setShotClock now reads `sportDef.shotClock.options` instead of
+      the basketball-only hardcoded `[0,24,30,35]`. Water polo's 20s
+      and lacrosse's 60/80s now persist as configured lengths.
+
+------------------------------------------------------------
+DEFERRED / OUT-OF-SCOPE
+------------------------------------------------------------
+
+  • `score` preset toggle remains a no-op (the score anchor is
+    mandatory for the "never blank" guarantee at ribbon/[gameId]/
+    page.tsx:558 fallback). Removing it from the catalog would
+    drift the toggleable surface; left in place with the
+    documented intent.
+
+  • Default ribbon presets include every catalog key. On first visit
+    the operator sees every toggle ON; tweaking is additive. No fix
+    needed — matches existing onboarding.
+
+  • The ribbon control panel does not visually group the toggles by
+    `group: core | engagement` from the catalog. Operator-facing nit,
+    not load-bearing.
+
+  • The `ribbon` mutation invalidates the entire game query rather
+    than write-back — server returns `{messages}` not a full game.
+    Could be tightened by having setRibbon return the merged game,
+    but the invalidate is correct + cheap.
+
+============================================================
+END OF AUDIT
+============================================================
