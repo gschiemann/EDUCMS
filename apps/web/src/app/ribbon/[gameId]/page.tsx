@@ -53,6 +53,32 @@ import {
   ribbonScoreRepeatCount,
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
+// 2026-05-26 — replace the procedural CueBurst on the legacy ribbon
+// path with the cinematic CEL_* library. Operator (2026-05-26):
+// "should my cues trigger? the goal was to just replace all the
+// dumb old cues with our redesigned ones". Same buttons, new scene.
+import {
+  CelSoccerGoalWidget, CelSoccerHatTrickWidget, CelSoccerGolazoWidget,
+  CelSoccerRedCardWidget, CelSoccerFreeKickWidget,
+} from '@/components/widgets/v2/CelebrationsSoccerWidgets';
+import {
+  CelHockeyGoalWidget, CelHockeyHatTrickWidget, CelHockeyPowerPlayWidget,
+  CelHockeyShortyWidget, CelHockeyBigSaveWidget, CelHockeyEmptyNetWidget,
+} from '@/components/widgets/v2/CelebrationsHockeyWidgets';
+import {
+  CelFootballTouchdownWidget, CelFootballFieldGoalWidget, CelFootballPickSixWidget,
+  CelFootballSackWidget, CelFootballInterceptionWidget, CelFootballSafetyWidget,
+} from '@/components/widgets/v2/CelebrationsFootballWidgets';
+import {
+  CelBasketballThreeWidget, CelBasketballDunkWidget, CelBasketballBuzzerWidget,
+  CelBasketballBlockWidget, CelBasketballStealWidget,
+} from '@/components/widgets/v2/CelebrationsBasketballWidgets';
+import {
+  CelBaseballHomeRunWidget, CelBaseballStrikeoutWidget, CelBaseballGrandSlamWidget,
+  CelBaseballWalkOffWidget, CelBaseballStolenBaseWidget,
+} from '@/components/widgets/v2/CelebrationsBaseballWidgets';
+import { LxGoalWidget, TnAceWidget } from '@/components/widgets/v2/CelebrationsOtherSportsWidgets';
+import type { ComponentType } from 'react';
 
 interface Sponsor {
   id: string;
@@ -91,6 +117,11 @@ interface Cue {
   // attribution renders in the overlay (tasteful, energy-color accent).
   sponsorName?: string | null;
   sponsorLogoUrl?: string | null;
+  // 2026-05-26 — scoring team for cinematic team-color routing. The
+  // existing fireCue service includes this on the server payload
+  // (Lane-8 P1 in sports.service.ts); the interface just needed to
+  // surface it so pickCinematic can pull the right home/away cue.
+  team?: 'home' | 'away' | null;
   // The score frozen at cue-fire time, captured server-side.
   snapshot?: {
     homeTeam: string;
@@ -676,7 +707,7 @@ export default function RibbonPage() {
             triggered on the ribbon"). One full-width burst — the
             operator's hardware repeater replicates it down the run. */}
         {activeCue && (
-          <RibbonCueOverlay cue={activeCue} h={vp.h} segCount={1} segWf={vp.w} />
+          <RibbonCueOverlay cue={activeCue} h={vp.h} segCount={1} segWf={vp.w} sport={data?.sport} />
         )}
       </>
     );
@@ -792,7 +823,7 @@ export default function RibbonPage() {
       {/* celebration cue overlay — a fired cue takes the ribbon over,
           tiled once per score anchor for the full-bowl wrap */}
       {activeCue && (
-        <RibbonCueOverlay cue={activeCue} h={vp.h} segCount={segCount} segWf={segWf} />
+        <RibbonCueOverlay cue={activeCue} h={vp.h} segCount={segCount} segWf={segWf} sport={data?.sport} />
       )}
     </div>
   );
@@ -875,10 +906,17 @@ function RibbonMediaScroll({
 
   // A sponsor renders as a full-height card — logo (native aspect) above
   // its name. Capped logo height + max width so a huge asset can't
-  // dominate the run; flexShrink:0 keeps native size in the flex row.
-  const sLogoH = Math.round(vp.h * 0.5);
-  const sNameSize = Math.max(12, Math.round(vp.h * 0.15));
-  const sPad = Math.round(vp.h * 0.45);
+  // 2026-05-26 — operator screenshot showed sponsor zone filling
+  // ~30% of the ribbon height while the scoreboard area filled 100%.
+  // Root cause was sLogoH = vp.h * 0.5 — half the ribbon was just
+  // empty padding. Bumped logo to 0.88 of zone height and name to
+  // 0.30 so the sponsor zone reads as big and confident as the
+  // scoreboard does. Padding tightened from 0.45 → 0.12 so logos
+  // sit closer together (a wide-aspect logo can still breathe via
+  // its own intrinsic ratio).
+  const sLogoH = Math.round(vp.h * 0.88);
+  const sNameSize = Math.max(18, Math.round(vp.h * 0.30));
+  const sPad = Math.round(vp.h * 0.12);
   const renderSponsor = (sp: Sponsor, key: string) => (
     <div
       key={key}
@@ -897,18 +935,33 @@ function RibbonMediaScroll({
         <img
           src={sp.logoUrl}
           alt=""
-          style={{ height: sLogoH, width: 'auto', maxWidth: vp.h * 3, objectFit: 'contain', display: 'block' }}
+          style={{
+            // Set BOTH height AND a generous max-width so an
+            // intrinsically narrow logo (square / portrait) renders
+            // big AND a wide logo doesn't blow past the ribbon. The
+            // old `height: sLogoH` alone left short-and-wide logos
+            // looking small.
+            height: sLogoH,
+            maxHeight: '100%',
+            width: 'auto',
+            maxWidth: vp.h * 5,
+            objectFit: 'contain',
+            display: 'block',
+          }}
         />
       ) : null}
-      {sp.name ? (
+      {sp.name && !sp.logoUrl ? (
+        // Only show the text when there's NO logo — when there IS a
+        // logo, the name underneath duplicates the brand and steals
+        // vertical space from the logo itself.
         <span
           style={{
-            marginTop: Math.round(vp.h * 0.04),
             fontSize: sNameSize,
             fontWeight: 900,
             color: '#fff',
             whiteSpace: 'nowrap',
             letterSpacing: 1,
+            lineHeight: 1,
           }}
         >
           {sp.name}
@@ -1812,16 +1865,103 @@ function LookUnit({
  * Chromium-83 safe (NovaStar Taurus): long-hand insets, per-child
  * margin (no flex `gap`), animation is transform / opacity only.
  */
+// 2026-05-26 — sport-celebration key → cinematic CEL_* component
+// mapping. Replaces the procedural <CueBurst> (emoji + slammed label
+// + glow rings) with a real cinematic scene from the celebrations
+// library so the operator's existing GOAL / Save / Exclusion / Power
+// Play buttons fire the new look on every ribbon, no template-picker
+// dance required.
+//
+// `sport` from the BoardData tells us which sport's celebrations
+// pool to draw from when a key like 'goal' is ambiguous (soccer
+// goal vs hockey goal vs lacrosse goal — all visually distinct).
+function pickCinematic(
+  cue: Cue,
+  sport: string | undefined,
+): { Component: ComponentType<any>; defaults: Record<string, unknown> } | null {
+  const key = (cue.key || '').toLowerCase();
+  const snap = cue.snapshot;
+  const homeScore = snap?.homeScore ?? 0;
+  const awayScore = snap?.awayScore ?? 0;
+  const score = `${homeScore}-${awayScore}`;
+  const team = cue.team || null;
+
+  // Common props every cinematic accepts. The Cel*Widget shapes vary
+  // (scorer / player / pitcher / kicker etc.) but every one of them
+  // tolerates extra fields gracefully — pass them all, the widget
+  // reads what it needs.
+  const common: Record<string, unknown> = {
+    score,
+    team,
+    homeColor: cue.color || '#3b82f6',
+    awayColor: '#ef4444',
+    sponsorName: cue.sponsorName ?? undefined,
+    sponsorLogoUrl: cue.sponsorLogoUrl ?? undefined,
+  };
+
+  // ─── Goal-class keys (universal "ball/puck in net") ────────────
+  if (key === 'goal') {
+    if (sport === 'hockey')   return { Component: CelHockeyGoalWidget,  defaults: { ...common, scorer: 'GOAL', assists: [] } };
+    if (sport === 'lacrosse') return { Component: LxGoalWidget,         defaults: { ...common, scorer: 'GOAL', number: '' } };
+    // Soccer / water polo / field hockey / handball — soccer GOAL
+    // scene reads cleanly across all "ball in goal" sports.
+    return { Component: CelSoccerGoalWidget, defaults: { ...common, scorer: 'GOAL', minute: '' } };
+  }
+  if (key === 'hattrick' || key === 'hat-trick') {
+    if (sport === 'hockey') return { Component: CelHockeyHatTrickWidget, defaults: { ...common, player: 'HAT TRICK' } };
+    return { Component: CelSoccerHatTrickWidget, defaults: { ...common, player: 'HAT TRICK', goals: [] } };
+  }
+  if (key === 'golazo')      return { Component: CelSoccerGolazoWidget,    defaults: { ...common, player: 'GOLAZO', kind: '' } };
+  if (key === 'freekick' || key === 'free-kick') return { Component: CelSoccerFreeKickWidget, defaults: { ...common, player: 'FREE KICK', distance: '' } };
+  if (key === 'powerplay' || key === 'power-play') return { Component: CelHockeyPowerPlayWidget, defaults: { ...common, scorer: 'POWER PLAY', strength: team === 'home' ? '6-on-5' : '5-on-6' } };
+  if (key === 'shorty' || key === 'shorthanded') return { Component: CelHockeyShortyWidget, defaults: { ...common, scorer: 'SHORTHANDED', strength: '4-on-5' } };
+  if (key === 'emptynet' || key === 'empty-net') return { Component: CelHockeyEmptyNetWidget, defaults: { ...common, scorer: 'EMPTY NET', finalScore: score } };
+  if (key === 'save') return { Component: CelHockeyBigSaveWidget, defaults: { ...common, goalie: 'SAVE', saves: 0 } };
+  if (key === 'exclusion' || key === 'redcard' || key === 'red-card') return { Component: CelSoccerRedCardWidget, defaults: { ...common, player: 'EXCLUSION', number: '', reason: '' } };
+
+  // ─── Football ──────────────────────────────────────────────────
+  if (key === 'touchdown')   return { Component: CelFootballTouchdownWidget,  defaults: { ...common, player: 'TOUCHDOWN', distance: '' } };
+  if (key === 'fieldgoal' || key === 'field-goal') return { Component: CelFootballFieldGoalWidget, defaults: { ...common, kicker: 'FIELD GOAL', distance: '' } };
+  if (key === 'picksix' || key === 'pick-six') return { Component: CelFootballPickSixWidget, defaults: { ...common, player: 'PICK SIX', distance: '' } };
+  if (key === 'sack')        return { Component: CelFootballSackWidget,       defaults: { ...common, player: 'SACK', sacks: 0 } };
+  if (key === 'interception' || key === 'int') return { Component: CelFootballInterceptionWidget, defaults: { ...common, player: 'INTERCEPTION', count: 0 } };
+  if (key === 'safety')      return { Component: CelFootballSafetyWidget,     defaults: { ...common } };
+
+  // ─── Basketball ────────────────────────────────────────────────
+  if (key === 'threepointer' || key === 'three-pointer' || key === 'three') return { Component: CelBasketballThreeWidget, defaults: { ...common, player: 'THREE', threesTonight: 1 } };
+  if (key === 'dunk')        return { Component: CelBasketballDunkWidget,    defaults: { ...common, player: 'SLAM', kind: 'DUNK' } };
+  if (key === 'buzzerbeater' || key === 'buzzer-beater' || key === 'buzzer') return { Component: CelBasketballBuzzerWidget, defaults: { ...common, player: 'BUZZER BEATER', clock: '0.0', kind: 'GAME WINNER' } };
+  if (key === 'block')       return { Component: CelBasketballBlockWidget,   defaults: { ...common, player: 'BLOCK', blocksTonight: 1 } };
+  if (key === 'steal')       return { Component: CelBasketballStealWidget,   defaults: { ...common, player: 'STEAL', stealsTonight: 1 } };
+
+  // ─── Baseball / softball ───────────────────────────────────────
+  if (key === 'homerun' || key === 'home-run' || key === 'hr') return { Component: CelBaseballHomeRunWidget, defaults: { ...common, player: 'HOME RUN', distance: '', exitVelo: '' } };
+  if (key === 'grandslam' || key === 'grand-slam') return { Component: CelBaseballGrandSlamWidget, defaults: { ...common, player: 'GRAND SLAM' } };
+  if (key === 'strikeout' || key === 'k')         return { Component: CelBaseballStrikeoutWidget,  defaults: { ...common, pitcher: 'STRIKEOUT', kCount: 1 } };
+  if (key === 'walkoff' || key === 'walk-off')    return { Component: CelBaseballWalkOffWidget,    defaults: { ...common, teamName: '', hero: '', finalScore: score, innings: 9 } };
+  if (key === 'stolenbase' || key === 'stolen-base' || key === 'sb') return { Component: CelBaseballStolenBaseWidget, defaults: { ...common, runner: 'STOLEN BASE', base: '2ND', seasonSb: 1 } };
+
+  // ─── Tennis / pickleball ───────────────────────────────────────
+  if (key === 'ace')         return { Component: TnAceWidget, defaults: { ...common, player: 'ACE', speed: '', aces: 1 } };
+
+  // No mapping — let the caller fall back to the procedural CueBurst
+  // so unknown / custom keys still SHOW something instead of going
+  // blank. (Audit-log entry is still written either way.)
+  return null;
+}
+
 function RibbonCueOverlay({
   cue,
   h,
   segCount,
   segWf,
+  sport,
 }: {
   cue: Cue;
   h: number;
   segCount: number;
   segWf: number;
+  sport?: string;
 }) {
   // Edges of each score segment, rounded so the tiles never sub-pixel gap.
   const segs = Array.from({ length: segCount }, (_, s) => {
@@ -1866,6 +2006,50 @@ function RibbonCueOverlay({
               alt=""
               style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
             />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // 2026-05-26 — try to route the cue to a cinematic CEL_*
+  // component first; only fall back to the procedural CueBurst for
+  // keys we haven't mapped yet (custom operator-defined cues, edge
+  // sports without a CEL_* variant). Operator GOAL / Save /
+  // Exclusion / Power Play buttons all hit the cinematic path now.
+  const cinematic = pickCinematic(cue, sport);
+  if (cinematic) {
+    const Cinematic = cinematic.Component;
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          overflow: 'hidden',
+          zIndex: 60,
+          background: '#000',
+          animation: 'rbnFade 0.4s ease-out',
+        }}
+      >
+        {/* Tile the cinematic once per score anchor — operator wraps
+            the ribbon with score repeats (segCount=4 typical at 40ft)
+            so each visible chunk gets its own playthrough. */}
+        {segs.map((seg, s) => (
+          <div
+            key={s}
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: seg.left,
+              width: seg.width,
+              overflow: 'hidden',
+            }}
+          >
+            <Cinematic config={cinematic.defaults} live={true} height={h} />
           </div>
         ))}
       </div>
