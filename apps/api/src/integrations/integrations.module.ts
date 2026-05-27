@@ -9,12 +9,13 @@
 import { Module } from '@nestjs/common';
 import { IntegrationsController } from './integrations.controller';
 import { IntegrationDiscoveryService } from './discovery.service';
+import { HardwareRecommenderService } from './hardware-recommender.service';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
   imports: [PrismaModule],
   controllers: [IntegrationsController],
-  providers: [IntegrationDiscoveryService],
-  exports: [IntegrationDiscoveryService],
+  providers: [IntegrationDiscoveryService, HardwareRecommenderService],
+  exports: [IntegrationDiscoveryService, HardwareRecommenderService],
 })
 export class IntegrationsModule {}

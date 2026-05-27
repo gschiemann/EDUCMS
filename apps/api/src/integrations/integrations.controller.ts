@@ -21,7 +21,7 @@
  * file twice. Now isolated under `apps/api/src/integrations/` which
  * no other agent touches.
  */
-import { Body, Controller, Post, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -30,6 +30,8 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { IntegrationDiscoveryService } from './discovery.service';
+import { HardwareRecommenderService } from './hardware-recommender.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 const DiscoverFromUrlSchema = z.object({
   url: z.string().url().min(8).max(2_048),
@@ -42,7 +44,30 @@ const DescribeSchema = z.object({
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('api/v1/integrations')
 export class IntegrationsController {
-  constructor(private readonly svc: IntegrationDiscoveryService) {}
+  constructor(
+    private readonly svc: IntegrationDiscoveryService,
+    private readonly hardware: HardwareRecommenderService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  /**
+   * Look up the calling user's tenant vertical so we can attach a
+   * hardware recommendation to the discovery output. Returns null when
+   * the tenant has no recorded vertical yet.
+   */
+  private async tenantVertical(req: any): Promise<string | null> {
+    const tenantId: string | undefined = req?.user?.tenantId;
+    if (!tenantId) return null;
+    try {
+      const tenant = await this.prisma.client.tenant.findUnique({
+        where: { id: tenantId },
+        select: { vertical: true },
+      });
+      return tenant?.vertical || null;
+    } catch {
+      return null;
+    }
+  }
 
   @Post('discover')
   @Throttle({ default: { ttl: 60_000 * 60, limit: 20 } })
@@ -56,7 +81,10 @@ export class IntegrationsController {
     @Request() req: any,
     @Body(new ZodValidationPipe(DiscoverFromUrlSchema)) body: { url: string },
   ) {
-    return this.svc.discoverFromUrl(body.url);
+    const result = await this.svc.discoverFromUrl(body.url);
+    const vertical = await this.tenantVertical(req);
+    const recommendedHardware = this.hardware.recommend(vertical);
+    return { ...result, recommendedHardware };
   }
 
   @Post('describe')
@@ -71,6 +99,59 @@ export class IntegrationsController {
     @Request() req: any,
     @Body(new ZodValidationPipe(DescribeSchema)) body: { text: string },
   ) {
-    return this.svc.discoverFromDescription(body.text);
+    const result = await this.svc.discoverFromDescription(body.text);
+    const vertical = await this.tenantVertical(req);
+    const recommendedHardware = this.hardware.recommend(vertical);
+    return { ...result, recommendedHardware };
+  }
+
+  /**
+   * GET /api/v1/integrations/hardware/recommend?vertical=SPORTS
+   *
+   * Returns the recommended hardware for a vertical (or the caller's
+   * tenant vertical when the query param is omitted). Used by the
+   * pair-screen "What hardware?" picker + the per-vertical onboarding
+   * wizard's "Recommended hardware" step.
+   *
+   * Returns `null` when the vertical has no recommendation yet — the UI
+   * uses that to fall through to the manual picker without a pinned
+   * suggestion.
+   */
+  @Get('hardware/recommend')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+    AppRole.RESTRICTED_VIEWER,
+  )
+  async recommendHardware(
+    @Request() req: any,
+    @Query('vertical') vertical?: string,
+  ) {
+    const v = vertical || (await this.tenantVertical(req));
+    return {
+      vertical: v,
+      recommendation: this.hardware.recommend(v),
+    };
+  }
+
+  /**
+   * GET /api/v1/integrations/hardware/catalog
+   *
+   * Full hardware catalog — used by the pair-screen picker so the list
+   * of supported models stays in sync with `packages/api-types/src/
+   * hardware.ts` without the frontend hard-coding it.
+   */
+  @Get('hardware/catalog')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+    AppRole.RESTRICTED_VIEWER,
+  )
+  catalogHardware() {
+    return { catalog: this.hardware.catalog() };
   }
 }

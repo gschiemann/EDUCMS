@@ -616,7 +616,15 @@ export * from './streaming-presets';
 export * from './billing';
 export * from './pos';
 export * from './ad-network';
-// 2026-05-27 — player-hardware catalog. Drives Screen.hardwareModel,
-// the dashboard's Hardware panel, and capability-gated UI (GPIO,
-// dual-RS232, HDMI-IN). See docs/EP6N_HARDWARE_EVAL.md.
+// 2026-05-27 — player-hardware module pair:
+//   ./hardware-models  (Agent A, commit c175aab) — canonical capability
+//      catalog: HardwareModel union, HardwareCapabilities, HARDWARE_CATALOG,
+//      resolveHardwareModel(), capabilitiesFor(). Backs Screen.hardwareModel,
+//      the per-screen Hardware panel, and GET /hardware/catalog.
+//   ./hardware         (Agent D, commit 88fac59) — vertical → recommended-
+//      hardware lookup + I/O upsell metadata for the pair-screen wizard
+//      and AI Integration Concierge.
+// Both re-export here so consumers import via `@cms/api-types`. See
+// docs/EP6N_HARDWARE_EVAL.md for the EP6N rationale.
 export * from './hardware-models';
+export * from './hardware';

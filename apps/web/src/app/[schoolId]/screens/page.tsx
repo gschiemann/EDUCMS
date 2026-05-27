@@ -7,6 +7,8 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
 import { FloorPlansView } from '@/components/screens/FloorPlansView';
+import { PairScreenHardwareStep } from '@/components/screens/PairScreenHardwareStep';
+import type { HardwareModel } from '@cms/api-types';
 import { apiFetch } from '@/lib/api-client';
 import { useUIStore } from '@/store/ui-store';
 import { useParams, useRouter } from 'next/navigation';
@@ -1352,6 +1354,27 @@ export default function ScreensPage() {
   const [pairName, setPairName] = useState('');
   const [pairing, setPairing] = useState(false);
   const [pairError, setPairError] = useState('');
+  // 2026-05-27 — Hardware model picker added BEFORE the pair-code entry
+  // so we know what we're pairing (Goodview EP6N, ECBox3576, Taurus,
+  // Pi5, generic-android, or web). Drives vertical-specific
+  // recommendations + the EP6N upsell cards. Casts through `any` on the
+  // API body so this lands cleanly whether or not Agent A has shipped
+  // Screen.hardwareModel into the schema yet — the field is dropped at
+  // the API boundary if the column doesn't exist (passthrough behavior
+  // on the pair endpoint already accepts unknown body fields silently).
+  const [pairHardwareModel, setPairHardwareModel] = useState<HardwareModel | null>(null);
+  const [dismissedUpsells, setDismissedUpsells] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = window.localStorage.getItem('venueos.dismissedHardwareUpsells');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  // The current tenant vertical drives the recommendation. Falls back
+  // to undefined (no recommendation) when the user store hasn't hydrated.
+  const tenantVertical = useUIStore((s) => s.user?.tenantVertical);
   const [editingScreen, setEditingScreen] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [showQrForScan, setShowQrForScan] = useState(false);
@@ -1399,18 +1422,27 @@ export default function ScreensPage() {
     setPairing(true);
     setPairError('');
     try {
+      // hardwareModel is sent on the pair body. The API ignores unknown
+      // fields today; once Agent A's schema migration lands the field
+      // is persisted on Screen.hardwareModel automatically. We send it
+      // through `any` to avoid the explicit type contract before then.
+      const body: any = {
+        pairingCode: pairCode.trim().toUpperCase(),
+        name: pairName.trim() || undefined,
+        screenGroupId: pairGroupId || undefined,
+      };
+      if (pairHardwareModel) {
+        body.hardwareModel = pairHardwareModel;
+      }
       await apiFetch('/screens/pair', {
         method: 'POST',
-        body: JSON.stringify({
-          pairingCode: pairCode.trim().toUpperCase(),
-          name: pairName.trim() || undefined,
-          screenGroupId: pairGroupId || undefined,
-        }),
+        body: JSON.stringify(body),
       });
       setShowPairModal(false);
       setPairCode('');
       setPairName('');
       setPairGroupId('');
+      setPairHardwareModel(null);
       refetch();
       refetchScreens();
     } catch (e: any) {
@@ -1418,6 +1450,23 @@ export default function ScreensPage() {
     } finally {
       setPairing(false);
     }
+  };
+
+  // Persist dismissed upsells across the modal lifecycle so "Set up
+  // later" doesn't re-show after closing/reopening.
+  const handleDismissUpsell = (id: string) => {
+    setDismissedUpsells((prev) => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id];
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem('venueos.dismissedHardwareUpsells', JSON.stringify(next));
+        } catch {
+          // localStorage unavailable (private browsing, etc.) — silently no-op.
+        }
+      }
+      return next;
+    });
   };
 
   const handleRename = async (screenId: string) => {
@@ -1516,7 +1565,7 @@ export default function ScreensPage() {
               looking at building blueprints. */}
           {viewMode !== 'floor' && (
             <>
-              <button onClick={() => { setShowPairModal(true); setPairGroupId(''); setPairCode(''); setPairName(''); setPairError(''); }}
+              <button onClick={() => { setShowPairModal(true); setPairGroupId(''); setPairCode(''); setPairName(''); setPairError(''); setPairHardwareModel(null); }}
                 disabled={isViewer}
                 title={isViewer ? 'Read-only — viewer role' : undefined}
                 className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1697,7 +1746,7 @@ export default function ScreensPage() {
                         and the word Pair". Replaced the Wifi-icon
                         "Pair to Group" label with a clearer "+ Pair"
                         affordance. */}
-                    <button onClick={() => { setShowPairModal(true); setPairGroupId(group.id); setPairCode(''); setPairName(''); setPairError(''); }}
+                    <button onClick={() => { setShowPairModal(true); setPairGroupId(group.id); setPairCode(''); setPairName(''); setPairError(''); setPairHardwareModel(null); }}
                       className="screens-pair-btn px-4 py-2 transition-colors text-xs font-bold rounded-xl flex items-center gap-1.5"
                       title="Pair a screen to this group">
                       <Plus className="w-4 h-4" /> Pair
@@ -2023,23 +2072,40 @@ export default function ScreensPage() {
       {/* ─── Pair Screen Modal ─── */}
       {showPairModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Pair a Screen">
-          <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => setShowPairModal(false)} />
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative z-10">
+          <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => { setShowPairModal(false); setPairHardwareModel(null); }} />
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative z-10 max-h-[92vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Wifi className="w-5 h-5 text-emerald-600" /> Pair a Screen
               </h3>
-              <button onClick={() => setShowPairModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => { setShowPairModal(false); setPairHardwareModel(null); }} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <p className="text-sm text-slate-500 mb-5">
-              Enter the 6-digit code shown on the screen device.
+              Tell us what hardware you&apos;re installing, then enter
+              the 6-digit code shown on the screen device.
             </p>
 
             <div className="space-y-4">
-              <div>
+              {/* 2026-05-27 — Step 1: hardware selection. Drives the
+                  vertical-specific recommendation (EP6N for Sports)
+                  and the model-specific I/O upsells (fire-alarm GPIO,
+                  panic button, HDMI broadcast capture, Stream Deck via
+                  RS232 #2). The PairScreenHardwareStep component is
+                  presentational; the parent persists the choice to
+                  pairHardwareModel and ships it on the /screens/pair
+                  request body. */}
+              <PairScreenHardwareStep
+                vertical={tenantVertical}
+                value={pairHardwareModel}
+                onChange={setPairHardwareModel}
+                dismissedUpsells={dismissedUpsells}
+                onDismissUpsell={handleDismissUpsell}
+              />
+
+              <div className="pt-4 border-t border-slate-200">
                 <label htmlFor="pair-code-input" className="block text-xs font-semibold text-slate-600 mb-1.5">Pairing Code</label>
                 <input
                   id="pair-code-input"
