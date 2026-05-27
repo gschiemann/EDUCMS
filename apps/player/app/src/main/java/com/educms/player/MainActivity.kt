@@ -952,8 +952,13 @@ class MainActivity : ComponentActivity() {
                     // resume kiosk-home duties without a config trip.
                     PlayerLogger.i("MainActivity", "Exit to device home requested via JS bridge")
                     runOnUiThread {
+                        val pm = packageManager
+                        // ── Step 1: turn OFF the KioskHomeAlias ─────────────
+                        // Without this, Android's HOME resolver still finds us
+                        // as a HOME handler and may route the intent back to
+                        // our own activity (causing the "exits to launcher
+                        // then bounces back to syncing splash" loop).
                         try {
-                            val pm = packageManager
                             val aliasComponent = ComponentName(packageName, "$packageName.KioskHomeAlias")
                             val enabled = pm.getComponentEnabledSetting(aliasComponent)
                             val isEnabledNow =
@@ -972,12 +977,92 @@ class MainActivity : ComponentActivity() {
                         } catch (t: Throwable) {
                             PlayerLogger.w("MainActivity", "Failed to disable KioskHomeAlias before exit", t)
                         }
+
+                        // ── Step 2: clear OUR package's preferred-activity
+                        //  entries (1.0.74 belt-and-suspenders). On EP6N
+                        //  units provisioned with Manager as device owner,
+                        //  Manager called DevicePolicyManager
+                        //  .addPersistentPreferredActivity to pin our alias
+                        //  as HOME. Disabling the alias removes us as a
+                        //  resolver candidate, but the persistent-pref
+                        //  table on some Android 14 ROMs (notably the EP6N
+                        //  stock build) keeps a stale entry for our package
+                        //  for ~30s after the component flip — long enough
+                        //  for the HOME intent below to hit it. Clearing
+                        //  the non-persistent preferred-activity table
+                        //  costs nothing when there are no entries and
+                        //  forces Android to do a fresh resolver pass.
+                        try {
+                            @Suppress("DEPRECATION")
+                            pm.clearPackagePreferredActivities(packageName)
+                        } catch (t: Throwable) {
+                            PlayerLogger.w("MainActivity", "clearPackagePreferredActivities failed (non-fatal)", t)
+                        }
+
+                        // ── Step 3: pick a non-self HOME activity EXPLICITLY
+                        //  (1.0.74 belt-and-suspenders). Rather than fire a
+                        //  generic ACTION_MAIN+CATEGORY_HOME and hope the
+                        //  resolver picks the OEM launcher, enumerate every
+                        //  HOME handler on the device and explicitly target
+                        //  the first one that isn't us. This bypasses the
+                        //  resolver + the persistent-pref table entirely —
+                        //  Android will always send the user to the OEM
+                        //  Goodview launcher (or Settings if no launcher
+                        //  exists, an edge case worth surviving cleanly).
                         val homeIntent = Intent(Intent.ACTION_MAIN).apply {
                             addCategory(Intent.CATEGORY_HOME)
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                         }
-                        runCatching { startActivity(homeIntent) }
-                            .onFailure { PlayerLogger.w("MainActivity", "home intent failed", it) }
+                        val resolveInfos = try {
+                            pm.queryIntentActivities(homeIntent, 0)
+                        } catch (t: Throwable) {
+                            PlayerLogger.w("MainActivity", "queryIntentActivities(HOME) failed", t)
+                            emptyList<android.content.pm.ResolveInfo>()
+                        }
+                        val nonSelfHome = resolveInfos.firstOrNull {
+                            val pkg = it.activityInfo?.packageName
+                            pkg != null && pkg != packageName
+                        }
+                        val launchedExplicitly = if (nonSelfHome != null) {
+                            val targetPkg = nonSelfHome.activityInfo.packageName
+                            val targetCls = nonSelfHome.activityInfo.name
+                            PlayerLogger.i(
+                                "MainActivity",
+                                "Explicitly launching OEM launcher: $targetPkg/$targetCls",
+                            )
+                            val target = Intent(Intent.ACTION_MAIN).apply {
+                                addCategory(Intent.CATEGORY_LAUNCHER)
+                                component = ComponentName(targetPkg, targetCls)
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            }
+                            runCatching { startActivity(target) }
+                                .onFailure {
+                                    PlayerLogger.w("MainActivity", "explicit OEM launcher start failed", it)
+                                }
+                                .isSuccess
+                        } else {
+                            false
+                        }
+
+                        // ── Step 4: fallback — generic HOME intent ──────────
+                        //  Only used when Step 3 found no non-self HOME (no
+                        //  OEM launcher installed) or the explicit start
+                        //  failed. After step 1 disabled our alias, the
+                        //  generic intent should resolve to Settings on
+                        //  most stock Android builds, which still gives the
+                        //  operator a way out.
+                        if (!launchedExplicitly) {
+                            PlayerLogger.w(
+                                "MainActivity",
+                                "No non-self HOME handler found — falling back to generic HOME intent",
+                            )
+                            val fallback = homeIntent.apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            }
+                            runCatching { startActivity(fallback) }
+                                .onFailure { PlayerLogger.w("MainActivity", "fallback HOME intent failed", it) }
+                        }
                         finishAffinity()
                     }
                 },
