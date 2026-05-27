@@ -628,3 +628,8 @@ export * from './ad-network';
 // docs/EP6N_HARDWARE_EVAL.md for the EP6N rationale.
 export * from './hardware-models';
 export * from './hardware';
+
+// 2026-05-27 — One-click Bug Reporter contract. Shared between
+// apps/web (capture bundle + review pages) and apps/api (controller
+// + AI analyzer service). See bugs.ts for the full pipeline spec.
+export * from './bugs';

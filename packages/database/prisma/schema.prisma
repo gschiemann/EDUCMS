@@ -44,6 +44,7 @@ model Tenant {
   assetFolders                    AssetFolder[]
   assets                          Asset[]
   auditLogs                       AuditLog[]
+  bugs                            Bug[]
   playlists                       Playlist[]
   schedules                       Schedule[]
   screenGroups                    ScreenGroup[]
@@ -356,6 +357,8 @@ model User {
   createdAt            DateTime             @default(now()) @map("created_at")
   assets               Asset[]
   auditLogs            AuditLog[]
+  bugsReported         Bug[]                @relation("BugReporter")
+  bugsApproved         Bug[]                @relation("BugApprover")
   createdTemplates     Template[]           @relation("TemplateCreator")
   createdPlaylists     Playlist[]           @relation("PlaylistCreator")
   tenant               Tenant               @relation(fields: [tenantId], references: [id])
@@ -1884,4 +1887,61 @@ model CustomCue {
 
   @@index([tenantId, sortOrder])
   @@map("custom_cues")
+}
+
+// 2026-05-27 — One-click Bug Reporter. Operator vision: user finds a
+// bug → clicks button → system captures everything → AI analyzes →
+// operator approves → fix ships. End-to-end target: 10 minutes.
+//
+// Bug.capturedContext is the client-side bundle (screenshot URL,
+// URL, viewport, console errors, network failures, recent breadcrumbs,
+// React Query state, user/tenant/role). Shape defined in
+// @cms/api-types as `BugCapturedContext`.
+//
+// Bug.serverContext is server-side enrichment added at POST time
+// (recent AuditLog rows for the user + tenant, license state, deploy
+// SHA, Redis/DB health). Shape defined as `BugServerContext`.
+//
+// Bug.aiAnalysis is the structured output from the Anthropic API call
+// (rootCause, filesAffected, suggestedDiff, confidence). Shape
+// defined as `BugAiAnalysis`. Null until status moves past 'ANALYZING'.
+//
+// Status state machine:
+//   NEW → ANALYZING → PROPOSED → APPROVED → SHIPPED
+//                              → REJECTED
+//                              → DUPLICATE
+//   At any point: REJECTED (operator gave up) or DUPLICATE (linked to
+//   another bug id via rejected_reason).
+model Bug {
+  id              String    @id @default(uuid())
+  tenantId        String?   @map("tenant_id")
+  userId          String?   @map("user_id")
+  status          String    @default("NEW")
+  description     String?   @db.Text
+  screenshotUrl   String?   @map("screenshot_url")
+  capturedContext Json      @map("captured_context")
+  serverContext   Json?     @map("server_context")
+  aiAnalysis      Json?     @map("ai_analysis")
+  aiAnalyzedAt    DateTime? @map("ai_analyzed_at")
+  aiProvider      String?   @map("ai_provider")
+  aiModel         String?   @map("ai_model")
+  aiCostUsd       Float?    @map("ai_cost_usd")
+  approvedById    String?   @map("approved_by_id")
+  approvedAt      DateTime? @map("approved_at")
+  fixBranchName   String?   @map("fix_branch_name")
+  fixPrNumber     Int?      @map("fix_pr_number")
+  fixCommitSha    String?   @map("fix_commit_sha")
+  shippedAt       DateTime? @map("shipped_at")
+  rejectedReason  String?   @map("rejected_reason") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  tenant     Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  user       User?   @relation("BugReporter", fields: [userId], references: [id], onDelete: SetNull)
+  approvedBy User?   @relation("BugApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("bugs")
 }
