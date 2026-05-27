@@ -459,7 +459,8 @@ function GameControl() {
 
       {/* HIGHLIGHTS POPUP — spotlight a player without leaving Run. The
           Run console stays mounted underneath; tapping a player puts
-          them on the scoreboard and the popup auto-closes. */}
+          them on the scoreboard AND the ribbon (2026-05-27 — ribbon now
+          consumes Game.spotlight too) and the popup auto-closes. */}
       {mode === 'run' && showHighlights && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-3 sm:items-center sm:p-4"
@@ -470,7 +471,12 @@ function GameControl() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900">Scoreboard spotlight</h2>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Player spotlight</h2>
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  Shows on the scoreboard AND in the ribbon rotation until cleared.
+                </p>
+              </div>
               <button
                 onClick={() => setShowHighlights(false)}
                 className="rounded-md px-2 py-1 text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"

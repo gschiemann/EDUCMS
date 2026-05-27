@@ -179,6 +179,17 @@ interface BoardData {
   stats: Record<string, unknown>;
   sponsors?: Sponsor[];
   roster?: Player[];
+  /** 2026-05-27 — Operator-set broadcast spotlight (the same featured-
+   *  player object the scoreboard shows). When `visible && title`, the
+   *  ribbon prepends a hero card to the rotation. Operator no longer
+   *  needs to choose between board and ribbon — one button hits both. */
+  spotlight?: {
+    visible?: boolean;
+    title?: string;
+    photoUrl?: string | null;
+    subtitle?: string;
+    lines?: { label: string; value: string }[];
+  } | null;
   ribbonMessages?: string[];
   /** Which content presets ride the reel — resolved server-side
    *  (stored config, or the sport's full default-on set). */
@@ -453,6 +464,20 @@ type Look =
   | { kind: 'slide'; id: string; url: string; dwellMs: number }
   | { kind: 'sponsor'; id: string; sponsor: Sponsor; dwellMs: number }
   | { kind: 'player'; id: string; player: Player; dwellMs: number }
+  | {
+      // 2026-05-27 — operator-set broadcast spotlight (same object the
+      // scoreboard shows). Distinct from `player` because it has the
+      // operator's fully-curated stat lines + a hero-card look, and is
+      // ALWAYS shown when active regardless of presets (the operator
+      // didn't set it to have it ignored).
+      kind: 'spotlight';
+      id: string;
+      title: string;
+      subtitle?: string;
+      photoUrl?: string | null;
+      lines?: { label: string; value: string }[];
+      dwellMs: number;
+    }
   | { kind: 'prompt'; id: string; text: string; dwellMs: number }
   | { kind: 'final'; id: string; dwellMs: number }
   | { kind: 'pregame'; id: string; dwellMs: number };
@@ -539,6 +564,24 @@ function buildLooks(data: BoardData, def: SportDefinition): Look[] {
     looks.unshift({ kind: 'final', id: 'state:final', dwellMs: 10000 });
   } else if (data.status === 'PRE_GAME' || data.status === 'SCHEDULED') {
     looks.unshift({ kind: 'pregame', id: 'state:pregame', dwellMs: 9000 });
+  }
+
+  // 2026-05-27 — Spotlight goes ABOVE the state-specific look so that
+  // when the operator features a player, that's the FIRST thing the
+  // crowd sees as the rotation cycles. Visible-and-title gate matches
+  // the board page's same predicate. Hides itself the moment the
+  // operator clears the spotlight on the next /sports/board poll.
+  const sp = data.spotlight;
+  if (sp && sp.visible && sp.title && sp.title.trim()) {
+    looks.unshift({
+      kind: 'spotlight',
+      id: `spotlight:${sp.title}`,
+      title: sp.title,
+      subtitle: sp.subtitle,
+      photoUrl: sp.photoUrl ?? null,
+      lines: Array.isArray(sp.lines) ? sp.lines : [],
+      dwellMs: 9000,
+    });
   }
 
   return looks;
@@ -1542,9 +1585,14 @@ function LookView({
   const unit =
     look.kind === 'slide' || look.kind === 'prompt'
       ? w
-      : look.kind === 'player' || look.kind === 'situational'
-        ? Math.min(w, h * 6)
-        : Math.min(w, h * 4.4); // final / pregame
+      : look.kind === 'spotlight'
+        ? // 2026-05-27 — spotlight is wider than a roster player so the
+          // optional stat-lines cluster has room to breathe. Wider
+          // unit + fewer copies = one prominent featured-player card.
+          Math.min(w, h * 8)
+        : look.kind === 'player' || look.kind === 'situational'
+          ? Math.min(w, h * 6)
+          : Math.min(w, h * 4.4); // final / pregame
   const copies = Math.max(1, Math.round(w / Math.max(1, unit)));
 
   return (
@@ -1767,6 +1815,128 @@ function LookUnit({
             >
               {topStat}
             </span>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  // 2026-05-27 — SPOTLIGHT look. Same operator-curated featured-player
+  // object the scoreboard's <SpotlightBand> renders, ported to ribbon
+  // proportions. Hero photo on the left at ~ribbon-height, title +
+  // subtitle stack to its right, optional stat lines (operator-set
+  // label/value pairs) as a horizontal cluster. Always shows when
+  // visible, regardless of `roster` preset toggle — the operator
+  // pressed Spotlight, so it shows.
+  if (look.kind === 'spotlight') {
+    const homeColor = data.homeColor || DEFAULT_HOME;
+    const initials = (look.title || '')
+      .trim()
+      .split(/\s+/)
+      .map((x) => x[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+    return (
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        {look.photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={look.photoUrl}
+            alt=""
+            style={{
+              height: cu * 0.86,
+              width: cu * 0.86,
+              borderRadius: 999,
+              objectFit: 'cover',
+              border: `${Math.max(3, Math.round(cu * 0.04))}px solid #fbbf24`,
+              marginRight: cu * 0.22,
+              boxShadow: '0 0 0 3px rgba(251, 191, 36, 0.25)',
+            }}
+            onError={onImgError}
+          />
+        ) : (
+          <div
+            style={{
+              height: cu * 0.86,
+              width: cu * 0.86,
+              borderRadius: 999,
+              background: homeColor,
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: cu * 0.34,
+              fontWeight: 900,
+              marginRight: cu * 0.22,
+              border: `${Math.max(3, Math.round(cu * 0.04))}px solid #fbbf24`,
+            }}
+          >
+            {initials || '★'}
+          </div>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <span
+            style={{
+              fontSize: cu * 0.15,
+              fontWeight: 800,
+              letterSpacing: 3,
+              color: '#fbbf24',
+            }}
+          >
+            SPOTLIGHT
+          </span>
+          <span
+            style={{
+              fontSize: cu * 0.38,
+              fontWeight: 900,
+              color: '#fff',
+              whiteSpace: 'nowrap',
+              lineHeight: 1.05,
+            }}
+          >
+            {look.title}
+          </span>
+          {look.subtitle ? (
+            <span
+              style={{
+                fontSize: cu * 0.17,
+                fontWeight: 700,
+                color: '#cbd5e1',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {look.subtitle}
+            </span>
+          ) : null}
+          {look.lines && look.lines.length ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                marginTop: cu * 0.04,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {look.lines.slice(0, 4).map((ln, i) => (
+                <span
+                  key={i}
+                  style={{
+                    marginRight: i < look.lines!.length - 1 ? cu * 0.22 : 0,
+                    fontSize: cu * 0.15,
+                    fontWeight: 700,
+                    color: '#94a3b8',
+                    letterSpacing: 1,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  <span style={{ color: '#94a3b8', marginRight: cu * 0.06 }}>{ln.label}</span>
+                  <span style={{ color: '#fff', fontWeight: 900, fontSize: cu * 0.2 }}>
+                    {ln.value}
+                  </span>
+                </span>
+              ))}
+            </div>
           ) : null}
         </div>
       </div>
