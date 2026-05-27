@@ -650,20 +650,23 @@ function RunMode({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-      {/* 2026-05-27 — Single pane of glass. Top section (scoreboard +
-          ribbon preview) is a flex-1 overflow-y-auto block: it'll
-          scroll WITHIN ITSELF on shorter viewports so the bottom
-          home/away/celebrate rows are ALWAYS pinned to the viewport
-          bottom and never pushed off-screen. Operator: "when i go full
-          screen the home away rows dont stay pinned ot bottom of the
-          screen and makes me scroll, that defeats the purpose".
-          The previous attempt used a flex-1 spacer between scoreboard
-          and rosters, but on smaller viewports the spacer collapsed to
-          0 (min-h-0) and the rosters got clipped past the page wrapper.
-          With the inner scroll region the rosters are real DOM siblings
-          of the scroll region — the flex column then pins them at the
-          bottom regardless of viewport height. */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      {/* 2026-05-27 — Single pane of glass.
+          Operator: "now there is even more space from the player names
+          and the ribbon preview ... they should be right below".
+          The previous attempt put the scoreboard + ribbon inside a
+          flex-1 scroll region — flex-1 expanded the region to fill
+          ALL remaining viewport height, so the ribbon ended up
+          floating with 200-300px of blank space underneath it before
+          the rosters appeared. Now the scoreboard + ribbon are a
+          plain natural-height block (with min-h-0 overflow-y-auto in
+          case content ever exceeds the viewport — degraded scroll
+          path), so the rosters sit RIGHT below the ribbon preview.
+          No gap, no flex-1 stretch.
+          The PAGE wrapper (h-[calc(100dvh-64px)] overflow-hidden)
+          still pins the whole stack to viewport — if total content
+          exceeds 100dvh, the bottom clips and we have a sizing bug
+          to fix in content, not in layout. */}
+      <div className="min-h-0 overflow-y-auto">
         <RunInteractiveScoreboard
           g={g}
           def={def}
