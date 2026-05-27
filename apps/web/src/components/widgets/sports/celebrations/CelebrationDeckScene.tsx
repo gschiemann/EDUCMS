@@ -82,13 +82,47 @@ interface Particle {
 interface Shell { x: number; y: number; delay: number; col: string; fired: boolean; }
 
 export interface CelebrationDeckSceneProps {
-  cfg: CelebrationDeckCfg;
-  /** Hex team accent color (e.g. '#21e6ff'). Recolors the brand-shim
-   *  glow + headline core. Default cyan. */
+  /** Mounting site passes `config={ cfg, team }` (the WidgetProps
+   *  pattern every other Cel*Widget uses). Earlier we expected `cfg` /
+   *  `team` as top-level props — that mismatch made `cfg` undefined at
+   *  runtime and the first access threw `Cannot read property 'scene'
+   *  of undefined`, killing the React tree and showing the kiosk's
+   *  "try again" screen mid-game (operator 2026-05-27). */
+  config?: {
+    cfg?: CelebrationDeckCfg;
+    /** Hex team accent color (e.g. '#21e6ff'). Recolors the brand-shim
+     *  glow + headline core. Default cyan. */
+    team?: string;
+  };
+  // Legacy top-level props — accepted for callers that haven't migrated.
+  cfg?: CelebrationDeckCfg;
   team?: string;
+  /** Ribbon page passes live + height; we don't use them but accept
+   *  them so a stray prop doesn't throw a `unknown prop` warning. */
+  live?: boolean;
+  height?: number;
 }
 
-export function CelebrationDeckScene({ cfg, team = '#21e6ff' }: CelebrationDeckSceneProps) {
+export function CelebrationDeckScene({
+  config,
+  cfg: cfgProp,
+  team: teamProp,
+}: CelebrationDeckSceneProps) {
+  // 2026-05-27 — accept BOTH the new `config={{cfg,team}}` shape (used
+  // by the ribbon's pickCinematic + RibbonCueOverlay) AND the legacy
+  // top-level `cfg` / `team` shape so a stale caller doesn't crash.
+  // Default cue is a benign 'energy' scene so a misconfigured cinematic
+  // shows SOMETHING rather than throwing on `cfg.scene` access.
+  const cfg: CelebrationDeckCfg =
+    config?.cfg ||
+    cfgProp ||
+    {
+      scene: 'court',
+      headline: 'CELEBRATION',
+      sub1: '',
+      burst: 'energy',
+    };
+  const team: string = config?.team || teamProp || '#21e6ff';
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
