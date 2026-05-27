@@ -87,6 +87,13 @@ import { LxGoalWidget, TnAceWidget } from '@/components/widgets/v2/CelebrationsO
 // remaining design-day cinematics (volleyball-kill, hockey-goal-v1,
 // soccer-goal-v1, etc) port next.
 import { CelebrationWaterPoloGoal } from '@/components/widgets/sports/celebrations/CelebrationWaterPoloGoal';
+// 2026-05-26 — the shared deck engine + 28-cue registry ported from
+// venueos-celebration-deck.html. Every operator-fired cue that isn't
+// the per-sport "marquee goal" routes through this deck for the
+// proper natatorium/gym/ice/court/turf/mat/plate scene with proper
+// burst + motif + projectile + lower-third.
+import { CelebrationDeckScene } from '@/components/widgets/sports/celebrations/CelebrationDeckScene';
+import { pickDeckCue } from '@/components/widgets/sports/celebrations/celebrationDeckCues';
 import type { ComponentType } from 'react';
 
 interface Sponsor {
@@ -1929,15 +1936,14 @@ function pickCinematic(
     sponsorLogoUrl: cue.sponsorLogoUrl ?? undefined,
   };
 
-  // ─── Goal-class keys (universal "ball/puck in net") ────────────
+  // ─── Goal-class keys → dedicated marquee v1 cinematics ─────────
+  // The "goal" cue is the hero event for every sport, so each gets
+  // its own bespoke Canvas2D scene (waterpolo: floating FINA goal +
+  // yellow ball + splash + ripples + shockwave). Currently only
+  // water polo is ported; others use the deck or v2 CSS fallbacks
+  // until their v1 marquee scenes get the same React port.
   if (key === 'goal') {
     if (sport === 'water-polo' || sport === 'waterpolo') {
-      // 2026-05-26 — the design-day Canvas2D natatorium scene we built
-      // specifically for the operator's water-polo install (scratch/
-      // design/celebration-waterpolo-goal-v1.html). Floating FINA
-      // goal, yellow ball arc, splash + ripples + shockwave + GOAL!
-      // type + scoreline. NOT the v2 CSS widgets (those were too
-      // generic — see commit msg).
       return {
         Component: CelebrationWaterPoloGoal as any,
         defaults: {
@@ -1954,6 +1960,27 @@ function pickCinematic(
     if (sport === 'lacrosse') return { Component: LxGoalWidget,         defaults: { ...common, scorer: 'GOAL', number: '' } };
     // Soccer / field hockey / handball — soccer GOOOOAL scene.
     return { Component: CelSoccerGoalWidget, defaults: { ...common, scorer: 'GOAL', minute: '' } };
+  }
+
+  // ─── Deck cue lookup — 28 registered cues across every sport ───
+  // SAVE / EXCLUSION / POWER PLAY / SACK / DUNK / PIN / etc. all
+  // route through the shared CelebrationDeckScene engine using the
+  // celebrationDeckCues registry. The pickDeckCue helper does sport-
+  // aware resolution: 'save' + sport='water-polo' → waterpolo-save.
+  // Live game state (team name, score) injects into the cue's
+  // sub1/sub2 lower-third copy so the scene shows REAL scores.
+  const liveSub1 = (() => {
+    if (snap?.homeTeam && snap?.awayTeam) {
+      return `${snap.homeTeam.toUpperCase()}  ${homeScore}  —  ${awayScore}  ${snap.awayTeam.toUpperCase()}`;
+    }
+    return undefined;
+  })();
+  const deckCue = pickDeckCue(key, sport, liveSub1 ? { sub1: liveSub1 } : undefined);
+  if (deckCue) {
+    return {
+      Component: CelebrationDeckScene as any,
+      defaults: { cfg: deckCue, team: cue.color || '#21e6ff' },
+    };
   }
   if (key === 'hattrick' || key === 'hat-trick') {
     if (sport === 'hockey') return { Component: CelHockeyHatTrickWidget, defaults: { ...common, player: 'HAT TRICK' } };
