@@ -14,8 +14,14 @@ import { Module } from '@nestjs/common';
 
 import { BugAnalyzerService } from './bug-analyzer.service';
 import { BugEnrichmentService } from './bug-enrichment.service';
+// 2026-05-27 — operator-facing email notifications on bug file /
+// fix-proposed / fix-shipped. EmailModule already exports its
+// service so we just import to make the DI graph resolve when
+// BugsController injects EmailService.
+import { EmailModule } from '../email/email.module';
 
 @Module({
+  imports: [EmailModule],
   providers: [BugEnrichmentService, BugAnalyzerService],
   exports: [BugEnrichmentService, BugAnalyzerService],
 })

@@ -68,6 +68,10 @@ import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { PrismaService } from '../prisma/prisma.service';
 import { BugAnalyzerService } from './bug-analyzer.service';
 import { BugEnrichmentService } from './bug-enrichment.service';
+// 2026-05-27 — operator-facing email notifications on file / fix-
+// proposed / fix-shipped. Best-effort: every email call is wrapped
+// in a try/catch so an email outage NEVER blocks the bug pipeline.
+import { EmailService } from '../email/email.service';
 
 // ─── Bucket setup ────────────────────────────────────────────────
 
@@ -308,6 +312,7 @@ export class BugsController {
     private readonly prisma: PrismaService,
     private readonly enrichment: BugEnrichmentService,
     private readonly analyzer: BugAnalyzerService,
+    private readonly email: EmailService,
   ) {}
 
   // ─── POST /api/v1/bugs ──────────────────────────────────────
@@ -392,6 +397,28 @@ export class BugsController {
         `analyzer.analyze(${bug.id}) crashed: ${e?.message ?? e}`,
       );
     });
+
+    // 9. FIRE-AND-FORGET email to the reporter. "we got it, here's
+    //    the ID + link." Wrapped — an email outage never blocks the
+    //    bug pipeline. Operator (2026-05-27): "you should send me an
+    //    email with the bug number and then send an email once we
+    //    fix it".
+    if (req.user?.email) {
+      const captured = body.captured as any;
+      this.email
+        .sendBugFiled({
+          to: req.user.email,
+          bugId: bug.id,
+          description: bug.description,
+          pathname: captured?.pathname ?? null,
+          tenantSlug: captured?.reporter?.tenantSlug ?? null,
+        })
+        .catch((e) =>
+          this.logger.warn(
+            `[bug-email] sendBugFiled(${bug.id}) failed: ${e?.message ?? e}`,
+          ),
+        );
+    }
 
     return {
       bugId: bug.id,
@@ -540,6 +567,29 @@ export class BugsController {
       prNumber,
       notesProvided: !!body?.notes,
     });
+
+    // 2026-05-27 — Fire-and-forget "fix is shipping" email to the
+    // original reporter. Includes the PR URL when GitHub creation
+    // succeeded, otherwise points them at /super/bugs/<id> for the
+    // manual-diff path.
+    if (updated.userId) {
+      this.prisma.client.user
+        .findUnique({ where: { id: updated.userId }, select: { email: true } })
+        .then((reporter) => {
+          if (!reporter?.email) return;
+          return this.email.sendBugFixShipped({
+            to: reporter.email,
+            bugId: id,
+            description: updated.description,
+            prUrl,
+          });
+        })
+        .catch((e) =>
+          this.logger.warn(
+            `[bug-email] sendBugFixShipped(${id}) failed: ${e?.message ?? e}`,
+          ),
+        );
+    }
 
     return {
       bugId: id,
@@ -755,6 +805,31 @@ export class BugsController {
       confidence: normalized.confidence,
       filesAffected: normalized.filesAffected.length,
     });
+
+    // 2026-05-27 — Fire-and-forget email to the original reporter:
+    // "Claude analyzed your bug, fix is proposed, please review."
+    // Look up the reporter from the original user row (Bug.userId)
+    // so the analysis email goes to the person who filed, not to
+    // the admin who clicked the writeback button.
+    if (bug.userId) {
+      this.prisma.client.user
+        .findUnique({ where: { id: bug.userId }, select: { email: true } })
+        .then((reporter) => {
+          if (!reporter?.email) return;
+          return this.email.sendBugFixProposed({
+            to: reporter.email,
+            bugId: id,
+            rootCause: normalized.rootCause,
+            confidence: normalized.confidence,
+            filesAffectedCount: normalized.filesAffected.length,
+          });
+        })
+        .catch((e) =>
+          this.logger.warn(
+            `[bug-email] sendBugFixProposed(${id}) failed: ${e?.message ?? e}`,
+          ),
+        );
+    }
 
     const reloaded = await this.prisma.client.bug.findUnique({
       where: { id },
