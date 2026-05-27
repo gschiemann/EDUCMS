@@ -16,72 +16,78 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
  * React app inside the WebView had frozen its manifest-update loop at
  * 21:46 and never picked up the new playlist assignment.
  *
- * The pre-existing safety nets all FAILED to recover from this state:
- *
- *   - **Native APK watchdog** (MainActivity.watchdogTicker) reloads the
- *     WebView only when JS stops writing `lastSuccessfulLoadAtMs`. But
- *     the wedged-React-tree case has JS event loop still running (other
- *     useEffects keep firing), so the heartbeat keeps refreshing the
- *     watchdog timestamp and the native watchdog never trips. Catches
- *     "JS dead" but not "JS alive but partially wedged."
- *
- *   - **Error boundary self-heal** (apps/web/src/app/player/page.tsx
- *     ~line 1232) reloads on a thrown render error. But the wedge here
- *     was silent — a useEffect cycle stopped progressing without
- *     throwing, so the boundary never saw it.
- *
- *   - **Operator REFRESH_WEB button** (apps/api/src/screens/
- *     screens.controller.ts ~line 2117) is the manual escape hatch the
- *     operator used. Greg's reaction: "is that a bug? it should keep
- *     itself alive right? i wont be infront of customer screens to do
- *     this when somehting doesnt load". Correct. The server should
- *     detect this state and fire REFRESH_WEB automatically — that's
- *     this file.
- *
  * Detection signal — high-confidence, low-noise:
  *
  *   The player POSTs /cache-status every 30 seconds unconditionally
- *   (apps/web/src/app/player/page.tsx ~line 2329 `setInterval(post,
- *   30_000)`). That POST updates `lastCacheReportAt`. So a healthy
- *   player advances that field every 30 s WHETHER OR NOT content
- *   changed — it's a heartbeat for the React tree's
- *   content-fetch loop, distinct from the native shell's heartbeat.
- *
- *   Separately, the player POSTs /screens/register (which moves
- *   `lastPingAt`) on a different timer. So if we see:
+ *   (apps/web/src/app/player/page.tsx ~line 2329). Separately it POSTs
+ *   /screens/register (which moves `lastPingAt`) on a different timer.
+ *   So if we see:
  *
  *     lastPingAt          fresh (< 90s)   → native + JS event loop alive
  *     lastCacheReportAt   stale (> 5min)  → React content-fetch loop dead
  *
- *   …the only thing it can be is the exact wedge G43 hit. Fire
- *   REFRESH_WEB.
+ *   …that's the wedge fingerprint. Fire REFRESH_WEB.
  *
- *   5-min threshold = 10 missed cache reports. 30s detector cycle.
- *   Worst-case recovery latency from wedge → fix ~5.5 min. Tunable.
+ * ─── Why the cooldown went audit-log instead of Redis (2026-05-27 round 2) ───
  *
- * Per-screen cooldown: 15 min. Reload didn't recover? Don't loop —
- * leave the screen for operator inspection. If a single screen needs
- * recovery more than once per 15 min the bug isn't a cache wedge; it's
- * something we should fix at the root.
+ * v1 of this cron used a Redis SET NX EX lock with a 15-min TTL keyed
+ * on screenId to prevent re-firing on the same screen too fast. The
+ * audit log shows that didn't work — same screen got recovered every
+ * 1-13 minutes for hours (LED Score Board: 279 → 419 min cache age
+ * across 23 fires without recovery). Two compounding problems:
  *
- * Multi-replica safety: every API replica runs this cron, but we use a
- * Redis SETNX-with-TTL lock keyed on the screenId before firing. Only
- * one replica wins the lock and publishes; others see the lock and skip.
- * Lock TTL = 15 min (same as cooldown) so a downed publisher doesn't
- * pin the screen out of recovery forever.
+ *   1. The Redis lock evidently wasn't holding for the full TTL —
+ *      possibly an ioredis SET-args interpretation issue, possibly an
+ *      eviction under memory pressure, possibly something Railway-
+ *      specific. Couldn't reproduce locally in the time available, and
+ *      Redis-as-lock is the wrong durability tier for this anyway —
+ *      we should NEVER lose a cooldown decision.
  *
- * Disabled in tests + via WEDGE_DETECTOR_DISABLED=1 for emergency
- * lever-pull. Audit log per fire with action='AUTO_REFRESH_WEB' +
- * reason so we can track frequency and tune thresholds.
+ *   2. Even when the lock would have held, the screens weren't actually
+ *      recovering. cache_age climbed monotonically across every fire,
+ *      meaning the REFRESH_WEB messages were either (a) not reaching
+ *      the player or (b) being received but not unsticking the wedge.
+ *      Just slamming REFRESH_WEB harder doesn't fix that — we need to
+ *      ESCALATE: stop trying, surface the screen as needing manual
+ *      operator intervention (probably an APK update), audit-log the
+ *      give-up so it's visible.
+ *
+ * v2 (this file): the audit log IS the cooldown source. Per screen:
+ *
+ *   - If the screen's most recent recovery action is AUTO_REFRESH_WEB
+ *     within the last 15 min  → skip (cooldown). Bulletproof, durable
+ *     across replica restarts, no Redis dependency.
+ *
+ *   - If the screen has >= 3 AUTO_REFRESH_WEB entries in the last 30
+ *     min  → escalate: write AUTO_RECOVERY_GAVE_UP, do NOT publish
+ *     REFRESH_WEB. The give-up entry surfaces the screen on the
+ *     dashboard for operator review (push APK, or physical
+ *     intervention).
+ *
+ *   - If the screen's most recent action is AUTO_RECOVERY_GAVE_UP
+ *     within the last 1 hour  → skip (escalation backoff). After 1
+ *     hour, the cron will try once more — gives transient issues a
+ *     chance to clear without operator action, but stops the
+ *     auto-recover-every-12-minutes loop that v1 produced.
+ *
+ *   - Otherwise → publish REFRESH_WEB, write AUTO_REFRESH_WEB audit
+ *     row, continue.
+ *
+ * AuditLog is the source of truth. Multi-replica safe automatically
+ * (Postgres serializes the SELECT+INSERT pair within a transaction).
+ * Durable across container restarts. Visible to operators via the
+ * existing Audit Log page. Zero Redis dependency for correctness
+ * (Redis is still used for the WS publish path, but that's fan-out
+ * — losing it just means slower delivery, not double-firing).
+ *
+ * Disabled in tests + via WEDGE_DETECTOR_DISABLED=1 emergency lever.
  */
 @Injectable()
 export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ScreenWedgeDetectorCron.name);
   private timer?: NodeJS.Timeout;
 
-  /** Sweep cadence. Matches /cache-status post cadence × 2 — fast
-   *  enough to catch a wedge within ~5.5 min, slow enough that the
-   *  DB scan is trivial overhead. */
+  /** Sweep cadence. Matches /cache-status post cadence × 2. */
   private static readonly SWEEP_INTERVAL_MS = 60_000;
 
   /** A screen is "alive" if last_ping_at is within this window. */
@@ -89,19 +95,22 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
 
   /** A screen's React tree is "wedged" if last_cache_report_at is
    *  older than this. Player POSTs cache-status every 30s, so
-   *  5 minutes = 10 missed posts. Very high signal. */
+   *  5 minutes = 10 missed posts. */
   private static readonly CACHE_REPORT_STALE_MS = 5 * 60_000;
 
-  /** Per-screen recovery cooldown. If REFRESH_WEB doesn't unstick the
-   *  screen, we don't keep hammering it — leave it for operator
-   *  inspection. */
+  /** Once we've fired REFRESH_WEB, don't fire again for this long.
+   *  Gives the player time to reload + start posting cache reports. */
   private static readonly RECOVERY_COOLDOWN_MS = 15 * 60_000;
 
-  /** Lock TTL in Redis for cross-replica coordination. Same as the
-   *  per-screen cooldown — one replica wins the lock and fires; others
-   *  skip silently. If the winning replica dies mid-publish, the lock
-   *  auto-expires and the next sweep retries. */
-  private static readonly LOCK_TTL_SEC = 15 * 60;
+  /** How many AUTO_REFRESH_WEB fires in this window trigger escalation. */
+  private static readonly ESCALATION_WINDOW_MS = 30 * 60_000;
+  private static readonly ESCALATION_THRESHOLD = 3;
+
+  /** After we've given up on a screen, wait this long before trying
+   *  again. Gives transient issues (server downtime, network blip) a
+   *  chance to clear without operator intervention, but stops the
+   *  every-12-min spam loop v1 produced. */
+  private static readonly GIVE_UP_BACKOFF_MS = 60 * 60_000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -121,8 +130,12 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
       });
     }, ScreenWedgeDetectorCron.SWEEP_INTERVAL_MS);
     this.logger.log(
-      `ScreenWedgeDetector active — sweeping every ${ScreenWedgeDetectorCron.SWEEP_INTERVAL_MS / 1000}s ` +
-        `(ping<${ScreenWedgeDetectorCron.PING_FRESH_MS / 1000}s, cache>${ScreenWedgeDetectorCron.CACHE_REPORT_STALE_MS / 60_000}min)`,
+      `ScreenWedgeDetector active — sweep every ${ScreenWedgeDetectorCron.SWEEP_INTERVAL_MS / 1000}s, ` +
+        `cache-stale=${ScreenWedgeDetectorCron.CACHE_REPORT_STALE_MS / 60_000}min, ` +
+        `cooldown=${ScreenWedgeDetectorCron.RECOVERY_COOLDOWN_MS / 60_000}min, ` +
+        `escalate-after=${ScreenWedgeDetectorCron.ESCALATION_THRESHOLD} fires in ` +
+        `${ScreenWedgeDetectorCron.ESCALATION_WINDOW_MS / 60_000}min, ` +
+        `give-up-backoff=${ScreenWedgeDetectorCron.GIVE_UP_BACKOFF_MS / 60_000}min`,
     );
   }
 
@@ -131,29 +144,33 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Find every screen in the wedge state and fire REFRESH_WEB on each.
-   * Exported as a method so an admin endpoint or test can force a
-   * sweep without waiting on the timer.
+   * Find every screen in the wedge state and fire REFRESH_WEB on each
+   * that's not in cooldown or escalation backoff. Public so admin tools
+   * + tests can force a sweep without waiting on the timer.
    */
-  async sweep(): Promise<{ scanned: number; recovered: number; skipped: number }> {
+  async sweep(): Promise<{
+    scanned: number;
+    recovered: number;
+    cooldownSkipped: number;
+    backoffSkipped: number;
+    escalated: number;
+  }> {
     const now = Date.now();
     const pingFreshCutoff = new Date(now - ScreenWedgeDetectorCron.PING_FRESH_MS);
     const cacheStaleCutoff = new Date(now - ScreenWedgeDetectorCron.CACHE_REPORT_STALE_MS);
 
-    // Find candidates. status='ONLINE' filters to screens the server
-    // already thinks are healthy — we're only recovering the subset
-    // that's lying about it.
+    // Stage 1: find every screen that LOOKS wedged at the data layer.
+    // status='ONLINE' filters to screens the server already thinks are
+    // healthy — we're only recovering the subset that's lying about it.
     //
-    // We deliberately INCLUDE screens where lastCacheReportAt IS NULL
-    // and lastPingAt is fresh + paired_at is > CACHE_REPORT_STALE_MS
-    // ago. That covers the case where a player has been pinging for
-    // 10+ minutes but never managed to send ANY cache report — same
-    // wedge, just the cleaner variant where the wedge happened before
-    // the first cache report ever made it through.
+    // We include lastCacheReportAt IS NULL + pairedAt > CACHE_STALE_MS
+    // ago: that covers the case where a player has been pinging for
+    // 10+ minutes but never managed to send ANY cache report (clean
+    // wedge before the first cache report ever made it through).
     const candidates = await this.prisma.client.screen.findMany({
       where: {
         status: 'ONLINE',
-        tenantId: { not: null }, // unpaired screens have no tenant to publish into
+        tenantId: { not: null }, // unpaired screens have no tenant channel
         lastPingAt: { gte: pingFreshCutoff },
         OR: [
           { lastCacheReportAt: { lt: cacheStaleCutoff } },
@@ -166,8 +183,8 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         ],
         // Don't compete with an in-flight OTA. force_apk_update_pending_at
         // means the operator just clicked "Push APK update" — the player
-        // will reboot on its own when the install finishes; firing
-        // REFRESH_WEB on top of that would race the install state machine.
+        // will reboot when the install finishes; firing REFRESH_WEB on
+        // top would race the install state machine.
         forceApkUpdatePendingAt: null,
       },
       select: {
@@ -181,47 +198,58 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
     });
 
     if (candidates.length === 0) {
-      return { scanned: 0, recovered: 0, skipped: 0 };
+      return { scanned: 0, recovered: 0, cooldownSkipped: 0, backoffSkipped: 0, escalated: 0 };
+    }
+
+    // Stage 2: batch-load every relevant audit row for the candidate
+    // set in one query. Cheaper than N queries; the index on
+    // (target_id, action, created_at) handles this efficiently.
+    const candidateIds = candidates.map((s) => s.id);
+    const backoffWindowStart = new Date(
+      now - Math.max(
+        ScreenWedgeDetectorCron.GIVE_UP_BACKOFF_MS,
+        ScreenWedgeDetectorCron.ESCALATION_WINDOW_MS,
+      ),
+    );
+    const recentActions = await this.prisma.client.auditLog.findMany({
+      where: {
+        targetId: { in: candidateIds },
+        action: { in: ['AUTO_REFRESH_WEB', 'AUTO_RECOVERY_GAVE_UP'] },
+        createdAt: { gte: backoffWindowStart },
+      },
+      select: { targetId: true, action: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Bucket the audit history per screen for cheap lookup below.
+    const historyByScreen = new Map<
+      string,
+      Array<{ action: string; createdAt: Date }>
+    >();
+    for (const row of recentActions) {
+      const arr = historyByScreen.get(row.targetId!) ?? [];
+      arr.push({ action: row.action, createdAt: row.createdAt });
+      historyByScreen.set(row.targetId!, arr);
     }
 
     let recovered = 0;
-    let skipped = 0;
+    let cooldownSkipped = 0;
+    let backoffSkipped = 0;
+    let escalated = 0;
 
     for (const screen of candidates) {
-      // Multi-replica lock via ioredis SET NX EX. Only the replica
-      // that wins this lands the publish; others skip silently. TTL
-      // matches the per-screen cooldown so a screen can't be auto-
-      // recovered twice within the window even across replicas. If
-      // Redis isn't connected we degrade to "publish anyway" — at
-      // worst two replicas fan out the same REFRESH_WEB and the
-      // player handles dedup by corrId.
-      const lockKey = `wedge-recovery:${screen.id}`;
-      let won = false;
-      const pub = this.redis.publisher;
-      if (pub) {
-        try {
-          const result = await pub.set(
-            lockKey,
-            '1',
-            'EX',
-            ScreenWedgeDetectorCron.LOCK_TTL_SEC,
-            'NX',
-          );
-          won = result === 'OK';
-        } catch (e) {
-          this.logger.warn(
-            `redis SET NX failed for screen=${screen.id} (degraded mode, publishing anyway): ${(e as Error).message}`,
-          );
-          won = true;
-        }
-      } else {
-        // No Redis at all (boot phase or REDIS_URL unset). Single-
-        // replica deploys hit this path normally — there's no other
-        // replica to coordinate with so just proceed.
-        won = true;
+      const history = historyByScreen.get(screen.id) ?? [];
+      const decision = this.decide(now, history);
+
+      if (decision.action === 'cooldown') {
+        cooldownSkipped++;
+        // Keep this LOG-only to avoid audit-log noise on every sweep
+        // tick while a healthy recovery is in flight.
+        continue;
       }
-      if (!won) {
-        skipped++;
+
+      if (decision.action === 'backoff') {
+        backoffSkipped++;
         continue;
       }
 
@@ -232,13 +260,60 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         ? Math.round((now - screen.lastPingAt.getTime()) / 1000)
         : null;
 
+      const baseDetails = {
+        scope: 'screen' as const,
+        screenName: screen.name,
+        cacheAgeMin,
+        pingAgeSec,
+        attemptCountInWindow: decision.fireCountInWindow,
+      };
+
+      if (decision.action === 'escalate') {
+        // Three failed REFRESH_WEB in 30 min = whatever's wrong won't
+        // be fixed by another reload. Stop trying. Audit-log the
+        // give-up so the dashboard surfaces it for the operator.
+        this.logger.error(
+          `[wedge-detector] giving up on screen=${screen.name} (id=${screen.id.slice(0, 8)}) — ` +
+            `${decision.fireCountInWindow} REFRESH_WEB in ${ScreenWedgeDetectorCron.ESCALATION_WINDOW_MS / 60_000}min ` +
+            `didn't recover. cache-report stale ${cacheAgeMin}min, ping fresh ${pingAgeSec}s ago. ` +
+            `Operator must push APK update or physically intervene.`,
+        );
+        try {
+          await this.prisma.client.auditLog.create({
+            data: {
+              action: 'AUTO_RECOVERY_GAVE_UP',
+              targetType: 'screen',
+              targetId: screen.id,
+              tenantId: screen.tenantId!,
+              userId: null,
+              details: JSON.stringify({
+                ...baseDetails,
+                reason:
+                  `${decision.fireCountInWindow} REFRESH_WEB in ${ScreenWedgeDetectorCron.ESCALATION_WINDOW_MS / 60_000}min ` +
+                  `did not recover the screen. ` +
+                  `Cron will retry after ${ScreenWedgeDetectorCron.GIVE_UP_BACKOFF_MS / 60_000}min backoff.`,
+                backoffUntil: new Date(now + ScreenWedgeDetectorCron.GIVE_UP_BACKOFF_MS).toISOString(),
+              }),
+            },
+          });
+        } catch (e) {
+          this.logger.warn(`[wedge-detector] give-up audit log failed: ${(e as Error).message}`);
+        }
+        escalated++;
+        continue;
+      }
+
+      // decision.action === 'fire'
       const corrId = `wedge-${Date.now().toString(36)}-${screen.id.slice(0, 8)}`;
       const reason = cacheAgeMin === null
         ? `never reported cache, paired ${Math.round((now - (screen.pairedAt?.getTime() ?? now)) / 60_000)}min ago`
         : `cache-report stale ${cacheAgeMin}min, ping fresh ${pingAgeSec}s ago`;
 
       this.logger.warn(
-        `[wedge-detector] auto-refreshing screen=${screen.name} (id=${screen.id.slice(0, 8)}) — ${reason}`,
+        `[wedge-detector] auto-refreshing screen=${screen.name} (id=${screen.id.slice(0, 8)}) — ${reason}` +
+          (decision.fireCountInWindow > 0
+            ? ` (attempt ${decision.fireCountInWindow + 1}/${ScreenWedgeDetectorCron.ESCALATION_THRESHOLD})`
+            : ''),
       );
 
       const signed = this.signer.signMessage('REFRESH_WEB', {
@@ -246,7 +321,7 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         scopeId: screen.id,
         tenantId: screen.tenantId,
         requestedBy: null, // system-initiated
-        jitterMs: 0,       // single screen, no fleet jitter needed
+        jitterMs: 0,
         corrId,
       });
 
@@ -256,8 +331,9 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(
           `[wedge-detector ${corrId}] redis publish failed for screen=${screen.id}: ${(e as Error).message}`,
         );
-        // Continue to audit-log even on publish failure — the audit
-        // row tells the next operator/agent we tried.
+        // Continue to audit-log even on publish failure — the audit row
+        // tells the next operator/agent we tried (and the cooldown still
+        // applies so we won't hammer this screen if Redis is down).
       }
 
       try {
@@ -267,14 +343,11 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
             targetType: 'screen',
             targetId: screen.id,
             tenantId: screen.tenantId!,
-            userId: null, // system-initiated, no actor
+            userId: null,
             details: JSON.stringify({
-              scope: 'screen',
-              screenName: screen.name,
+              ...baseDetails,
               corrId,
               reason,
-              cacheAgeMin,
-              pingAgeSec,
             }),
           },
         });
@@ -285,12 +358,86 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
       recovered++;
     }
 
-    if (recovered > 0 || skipped > 0) {
+    if (recovered > 0 || escalated > 0 || cooldownSkipped > 0 || backoffSkipped > 0) {
       this.logger.log(
-        `[wedge-detector] swept ${candidates.length} candidate(s): ${recovered} recovered, ${skipped} skipped (locked by another replica)`,
+        `[wedge-detector] swept ${candidates.length} candidate(s): ` +
+          `${recovered} recovered, ${escalated} escalated (gave up), ` +
+          `${cooldownSkipped} in cooldown, ${backoffSkipped} in give-up backoff`,
       );
     }
 
-    return { scanned: candidates.length, recovered, skipped };
+    return {
+      scanned: candidates.length,
+      recovered,
+      cooldownSkipped,
+      backoffSkipped,
+      escalated,
+    };
+  }
+
+  /**
+   * Pure decision function — given a screen's recent audit history and
+   * the current time, decide whether to fire REFRESH_WEB, escalate to
+   * AUTO_RECOVERY_GAVE_UP, or skip due to cooldown / backoff.
+   *
+   * Pulled out as its own method so it can be unit-tested without
+   * needing a Prisma client. The cron sweep just orchestrates Stage-1
+   * candidate selection + the side-effects (publish + audit-log) for
+   * each decision.
+   */
+  decide(
+    nowMs: number,
+    history: ReadonlyArray<{ action: string; createdAt: Date }>,
+  ): {
+    action: 'fire' | 'cooldown' | 'backoff' | 'escalate';
+    fireCountInWindow: number;
+  } {
+    const cooldownStart = nowMs - ScreenWedgeDetectorCron.RECOVERY_COOLDOWN_MS;
+    const escalationWindowStart = nowMs - ScreenWedgeDetectorCron.ESCALATION_WINDOW_MS;
+    const giveUpBackoffStart = nowMs - ScreenWedgeDetectorCron.GIVE_UP_BACKOFF_MS;
+
+    let fireCountInWindow = 0;
+    let mostRecentFire: Date | null = null;
+    let mostRecentGiveUp: Date | null = null;
+
+    for (const row of history) {
+      const tsMs = row.createdAt.getTime();
+      if (row.action === 'AUTO_REFRESH_WEB' && tsMs >= escalationWindowStart) {
+        fireCountInWindow++;
+        if (!mostRecentFire || tsMs > mostRecentFire.getTime()) {
+          mostRecentFire = row.createdAt;
+        }
+      }
+      if (row.action === 'AUTO_RECOVERY_GAVE_UP' && tsMs >= giveUpBackoffStart) {
+        if (!mostRecentGiveUp || tsMs > mostRecentGiveUp.getTime()) {
+          mostRecentGiveUp = row.createdAt;
+        }
+      }
+    }
+
+    // Most recent give-up still inside the backoff window → skip.
+    // Gives transient issues a chance to clear without operator action
+    // but stops the every-12-min spam loop v1 produced.
+    if (mostRecentGiveUp && mostRecentGiveUp.getTime() >= giveUpBackoffStart) {
+      return { action: 'backoff', fireCountInWindow };
+    }
+
+    // Most recent fire still inside the cooldown window → skip. Gives
+    // the player time to receive the REFRESH_WEB, reload, and start
+    // posting cache reports again before we consider firing again.
+    if (mostRecentFire && mostRecentFire.getTime() >= cooldownStart) {
+      return { action: 'cooldown', fireCountInWindow };
+    }
+
+    // We're past the cooldown and not in give-up backoff. If there
+    // have been >= ESCALATION_THRESHOLD fires in the escalation
+    // window without recovery (we wouldn't be here if recovery had
+    // happened — the screen would have dropped out of the Stage-1
+    // candidate set), escalate to give-up.
+    if (fireCountInWindow >= ScreenWedgeDetectorCron.ESCALATION_THRESHOLD) {
+      return { action: 'escalate', fireCountInWindow };
+    }
+
+    return { action: 'fire', fireCountInWindow };
   }
 }

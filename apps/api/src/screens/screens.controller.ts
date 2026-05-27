@@ -35,6 +35,12 @@ import {
 // branch (emergency / sports / normal) so the player applies the
 // out1 / out2 lamp + horn states regardless of which path served it.
 import { readGpioState } from './gpio.service';
+// 2026-05-27 round 2 — auto-detect hardwareModel from the userAgent
+// the player sends on /register. Closes the loop on the pair-modal
+// strip (commit f293f99): operator no longer types a hardware model,
+// so the server has to infer it. inferIfUnknown() returns null when
+// the column is already set, so we never overwrite a manual override.
+import { inferIfUnknown } from './hardware-detect';
 
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -384,6 +390,15 @@ export class ScreensController {
           }
         }
 
+        // 2026-05-27 — back-fill hardwareModel if it's still null on
+        // an already-paired screen (every screen paired before the
+        // auto-detect landed). inferIfUnknown returns null when the
+        // column already has a value, so this NEVER overwrites a
+        // manual override an admin set via the dashboard.
+        const detectedHardware = inferIfUnknown(
+          { userAgent: body.userAgent || existing.userAgent, osInfo: body.osInfo || existing.osInfo },
+          (existing as any).hardwareModel,
+        );
         const updated = await this.prisma.client.screen.update({
           where: { id: existing.id },
           data: {
@@ -394,6 +409,7 @@ export class ScreensController {
             ipAddress: req.ip || req.socket.remoteAddress || null,
             lastPingAt: new Date(),
             status: 'ONLINE',
+            ...(detectedHardware ? { hardwareModel: detectedHardware } : {}),
           },
         });
 
@@ -408,6 +424,13 @@ export class ScreensController {
       }
 
       // ── Unpaired re-registration (no tenantId yet) ────────────────────────
+      // 2026-05-27 — same hardware auto-detect as the paired branch.
+      // inferIfUnknown returns null when the column already has a
+      // value so this is back-fill-only.
+      const detectedHardwareUnpaired = inferIfUnknown(
+        { userAgent: body.userAgent || existing.userAgent, osInfo: body.osInfo || existing.osInfo },
+        (existing as any).hardwareModel,
+      );
       const updated = await this.prisma.client.screen.update({
         where: { id: existing.id },
         data: {
@@ -418,6 +441,7 @@ export class ScreensController {
           ipAddress: req.ip || req.socket.remoteAddress || null,
           lastPingAt: new Date(),
           status: 'PENDING',
+          ...(detectedHardwareUnpaired ? { hardwareModel: detectedHardwareUnpaired } : {}),
         },
       });
       return {
@@ -453,6 +477,16 @@ export class ScreensController {
       pairingCode = generatePairingCode(pairingCodeLength);
     }
 
+    // 2026-05-27 — auto-detect hardware model from the userAgent on
+    // first register. existingHardwareModel is undefined here (brand
+    // new row), so inferIfUnknown returns the detected value when the
+    // UA matches a known device, else null (which we coerce to
+    // undefined so Prisma doesn't write a null instead of skipping the
+    // column default).
+    const detectedHardware = inferIfUnknown(
+      { userAgent: body.userAgent, osInfo: body.osInfo },
+      undefined,
+    );
     const screen = await this.prisma.client.screen.create({
       data: {
         name: `Screen-${pairingCode}`,
@@ -465,6 +499,7 @@ export class ScreensController {
         userAgent: body.userAgent || null,
         ipAddress: req.ip || req.socket.remoteAddress || null,
         lastPingAt: new Date(),
+        ...(detectedHardware ? { hardwareModel: detectedHardware } : {}),
       },
     });
 
