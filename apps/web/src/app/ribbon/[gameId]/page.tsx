@@ -78,6 +78,15 @@ import {
   CelBaseballWalkOffWidget, CelBaseballStolenBaseWidget,
 } from '@/components/widgets/v2/CelebrationsBaseballWidgets';
 import { LxGoalWidget, TnAceWidget } from '@/components/widgets/v2/CelebrationsOtherSportsWidgets';
+// 2026-05-26 — the DESIGN-DAY cinematics from scratch/design/, ported
+// to React Canvas2D. These are the "crazy animated cues we spent half
+// a day on" — not the simpler CSS widgets in v2/Celebrations*. Operator
+// (2026-05-26): "the cueus we made were all those crazy animated
+// cueues and you laoded some other gay templates not the shit we
+// spent a half a day on making". Use this for water polo first;
+// remaining design-day cinematics (volleyball-kill, hockey-goal-v1,
+// soccer-goal-v1, etc) port next.
+import { CelebrationWaterPoloGoal } from '@/components/widgets/sports/celebrations/CelebrationWaterPoloGoal';
 import type { ComponentType } from 'react';
 
 interface Sponsor {
@@ -525,8 +534,13 @@ export default function RibbonPage() {
     setActiveCue(next);
     // A custom cue holds for its own duration; a sport celebration
     // matches the 3.9s celebration animation.
+    // 2026-05-26 — bumped from 3900 to 4500ms so the design-day
+    // CelebrationWaterPoloGoal Canvas2D cinematic (full duration
+    // 4300ms — fadeIn + flight + impact + hold + fadeOut) plays to
+    // completion + an extra beat. Custom-uploaded media still
+    // honors its own durationMs.
     const holdMs =
-      next.mediaUrl && next.durationMs && next.durationMs > 0 ? next.durationMs : 3900;
+      next.mediaUrl && next.durationMs && next.durationMs > 0 ? next.durationMs : 4500;
     cueTimer.current = setTimeout(() => {
       setActiveCue(null);
       playing.current = false;
@@ -1917,10 +1931,28 @@ function pickCinematic(
 
   // ─── Goal-class keys (universal "ball/puck in net") ────────────
   if (key === 'goal') {
+    if (sport === 'water-polo' || sport === 'waterpolo') {
+      // 2026-05-26 — the design-day Canvas2D natatorium scene we built
+      // specifically for the operator's water-polo install (scratch/
+      // design/celebration-waterpolo-goal-v1.html). Floating FINA
+      // goal, yellow ball arc, splash + ripples + shockwave + GOAL!
+      // type + scoreline. NOT the v2 CSS widgets (those were too
+      // generic — see commit msg).
+      return {
+        Component: CelebrationWaterPoloGoal as any,
+        defaults: {
+          team: cue.color || '#21e6ff',
+          homeName: snap?.homeTeam || 'HOME',
+          awayName: snap?.awayTeam || 'AWAY',
+          homeScore,
+          awayScore,
+          segmentLabel: snap?.segmentLabel || '',
+        },
+      };
+    }
     if (sport === 'hockey')   return { Component: CelHockeyGoalWidget,  defaults: { ...common, scorer: 'GOAL', assists: [] } };
     if (sport === 'lacrosse') return { Component: LxGoalWidget,         defaults: { ...common, scorer: 'GOAL', number: '' } };
-    // Soccer / water polo / field hockey / handball — soccer GOAL
-    // scene reads cleanly across all "ball in goal" sports.
+    // Soccer / field hockey / handball — soccer GOOOOAL scene.
     return { Component: CelSoccerGoalWidget, defaults: { ...common, scorer: 'GOAL', minute: '' } };
   }
   if (key === 'hattrick' || key === 'hat-trick') {
