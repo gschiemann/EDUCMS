@@ -4,6 +4,8 @@ import './globals.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import Providers from '@/components/providers';
 import { LogViewer } from '@/components/debug/LogViewer';
+import { BugCaptureProviders } from '@/components/bug-reporter/BugCaptureProviders';
+import { BugReporterButton } from '@/components/bug-reporter/BugReporterButton';
 
 // Development-only axe accessibility overlay — never shipped in production builds.
 if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
@@ -114,6 +116,19 @@ export default function RootLayout({
             {/* Toggle with Ctrl+Shift+L (Cmd+Shift+L on macOS). Zero
                 footprint when closed — just a keydown listener. */}
             <LogViewer />
+            {/* Bug-reporter ringbuffers — installs the always-on
+                click / route / console / fetch interceptors so the
+                BugReporterButton can ship a populated capture bundle.
+                Renders nothing; SSR-safe; idempotent across Strict
+                Mode re-mounts. */}
+            <BugCaptureProviders />
+            {/* Floating "Report bug" button. Admins-only (role-gated
+                inside the component) and hides itself on immersive
+                routes (/panic, /player, /board, …) and unauthenticated
+                pages (/login, /signup, …). Mounted at the root layout
+                so it works on /super/* pages too — they're outside
+                the [schoolId] DashboardLayout chrome. */}
+            <BugReporterButton />
           </TooltipProvider>
         </Providers>
       </body>
