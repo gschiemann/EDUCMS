@@ -2,7 +2,7 @@
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas } from '@/hooks/use-api';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
@@ -560,6 +560,133 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
             : screen?.latitude != null
               ? <span className="font-mono">{Number(screen.latitude).toFixed(3)}, {Number(screen.longitude).toFixed(3)}</span>
               : null,
+        )}
+      </div>
+      {/* 2026-05-27 — player-hardware panel. Drives capability-gated UI
+          downstream (GPIO setup, dual-RS232 wiring, HDMI-IN streaming
+          overlay). Hidden when the screen's hardwareModel is null or
+          'unknown' — the operator picks a model from the dropdown to
+          surface the capability chips + per-feature subpanels. */}
+      <ScreenHardwarePanel screen={screen} />
+    </div>
+  );
+}
+
+/**
+ * 2026-05-27 — Hardware identification + capability matrix for a single
+ * screen. Lives inside the per-screen Diagnostics drawer (right under
+ * the diagnostics grid).
+ *
+ * Reads the catalog from GET /api/v1/hardware/catalog (cached for the
+ * session). Surfaces:
+ *   - A dropdown of every known SKU (operator picks the hardware model)
+ *   - Capability badges accurate to the picked model (only the trues show)
+ *   - A Chromium-83 warning chip for Taurus deployments (CLAUDE.md rule #10)
+ *
+ * Saves go through the existing PUT /screens/:id endpoint; the API
+ * validates the value against HARDWARE_CATALOG before persisting.
+ */
+function ScreenHardwarePanel({ screen }: { screen: any }) {
+  const catalogQ = useHardwareCatalog();
+  const setHardware = useSetScreenHardwareModel();
+  const currentModelId: string = screen?.hardwareModel ?? 'unknown';
+  const catalogModels = catalogQ.data?.models ?? [];
+  const current = catalogModels.find((m) => m.id === currentModelId)
+    // Fall back to the unknown entry while the catalog is loading.
+    ?? catalogModels.find((m) => m.id === 'unknown')
+    ?? null;
+  const caps = current?.caps;
+  // Build the badge list — only the trues show, accuracy beats noise.
+  const badges: { label: string; tone?: 'warn' | 'info' }[] = [];
+  if (caps) {
+    if (caps.serialPorts >= 2) badges.push({ label: 'Dual RS232' });
+    else if (caps.serialPorts >= 1) badges.push({ label: 'RS232' });
+    if (caps.rs485) badges.push({ label: 'RS485' });
+    if (caps.gpioIn > 0 || caps.gpioOut > 0) {
+      badges.push({ label: `GPIO ${caps.gpioIn}in/${caps.gpioOut}out` });
+    }
+    if (caps.hdmiIn) badges.push({ label: 'HDMI IN' });
+    if (caps.rj45Out) badges.push({ label: 'RJ45 passthrough' });
+    if (caps.powerOutVolts != null) badges.push({ label: `${caps.powerOutVolts}V aux out` });
+    if (caps.npuTops > 0) badges.push({ label: `${caps.npuTops} TOPS NPU` });
+    if (caps.decode4k) badges.push({ label: '4K decode' });
+    if (caps.fanless) badges.push({ label: 'Fanless' });
+    if (caps.duty247Rated) badges.push({ label: '24/7 rated' });
+  }
+
+  return (
+    <div className="px-3.5 py-3 border-t border-slate-100 bg-slate-50/40">
+      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+        Hardware
+      </div>
+      <div className="flex flex-col gap-2">
+        {/* Model picker — saves via PUT /screens/:id. */}
+        <div className="flex flex-col min-w-0">
+          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
+            Model
+          </div>
+          <select
+            value={currentModelId}
+            disabled={setHardware.isPending || catalogQ.isLoading}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (next === currentModelId) return;
+              // Picking "unknown" stores 'unknown'; picking the
+              // "Unassigned" sentinel (value '__clear__') sends null
+              // to clear the column entirely. Operator distinction:
+              // "I don't know" vs "this hasn't been set yet".
+              const payload = next === '__clear__' ? null : next;
+              setHardware.mutate({ id: screen.id, hardwareModel: payload });
+            }}
+            className="text-[11px] font-medium text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Pick the physical player hardware behind this screen. Drives capability badges + future I/O configuration panels."
+          >
+            {/* "__clear__" maps to null on save — explicitly mark unassigned. */}
+            <option value="__clear__">Unassigned (clear)</option>
+            {catalogModels.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          {current && current.id !== 'unknown' && (
+            <div className="text-[10px] text-slate-500 mt-1" title={current.socOs}>
+              {current.socOs}
+            </div>
+          )}
+        </div>
+
+        {/* Capability badges — only trues show. Hidden when no model
+            picked (current === unknown or null catalog). */}
+        {current && current.id !== 'unknown' && badges.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-0.5">
+            {badges.map((b) => (
+              <span
+                key={b.label}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100"
+              >
+                <CheckCircle2 className="w-2.5 h-2.5" />
+                {b.label}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* CLAUDE.md rule #10 — Chromium 83 warning. Only fires for
+            hardware whose minimum WebView is ≤ 83 (today: Taurus). */}
+        {current && current.id !== 'unknown' && caps && caps.chromiumMin <= 83 && (
+          <div
+            className="flex items-start gap-2 px-2 py-1.5 rounded border border-amber-200 bg-amber-50 mt-1"
+            title="This hardware ships an older Chromium that does not support modern CSS shorthand."
+          >
+            <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="text-[10px] text-amber-800 leading-snug">
+              <span className="font-bold">Chromium {caps.chromiumMin} device.</span>
+              {' '}Uses long-hand CSS per CLAUDE.md rule #10
+              (no <code className="font-mono bg-amber-100 px-1 rounded">inset</code> shorthand,
+              no flex <code className="font-mono bg-amber-100 px-1 rounded">gap</code>).
+            </div>
+          </div>
         )}
       </div>
     </div>

@@ -727,6 +727,18 @@ model Screen {
   emergencyHoldPortraitAssetUrl       String?      @map("emergency_hold_portrait_asset_url")
   emergencySecurePortraitAssetUrl     String?      @map("emergency_secure_portrait_asset_url")
   emergencyMedicalPortraitAssetUrl    String?      @map("emergency_medical_portrait_asset_url")
+  // 2026-05-27 — player-hardware identification. One of the literals in
+  // packages/api-types/src/hardware-models.ts HardwareModel union:
+  //   goodview-ep6n | goodview-ecbox3576 | novastar-taurus | pi5 |
+  //   generic-android | web | unknown
+  // Null on every screen paired before the column was added; the dashboard
+  // resolves null → 'unknown' which suppresses capability chips and
+  // hardware-gated UI panels. Operator picks the value from the
+  // Diagnostics drawer dropdown. Plain string column (not a Postgres enum)
+  // so adding a new model is purely additive — no migration required for
+  // future SKUs. Validation lives in the API + UI layers against the
+  // shared HARDWARE_CATALOG.
+  hardwareModel                       String?      @map("hardware_model")
   // VenueOS Sports — Sprint 13 Phase 3. When set, this screen shows
   // the live scoreboard for that Game instead of its scheduled
   // playlist. Plain nullable column (no FK) — the manifest endpoint

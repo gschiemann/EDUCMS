@@ -7,6 +7,14 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
+// 2026-05-27 — player-hardware catalog. Used by PUT /screens/:id to
+// validate hardwareModel against the known SKU list.
+import {
+  HARDWARE_CATALOG,
+  HARDWARE_MODELS,
+  resolveHardwareModel,
+  type HardwareModel,
+} from '@cms/api-types';
 import * as crypto from 'crypto';
 import { safeFetch } from '../branding/safe-fetch';
 import * as jwt from 'jsonwebtoken';
@@ -1169,12 +1177,65 @@ export class ScreensController {
   async update(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { name?: string; location?: string; screenGroupId?: string | null },
+    @Body()
+    body: {
+      name?: string;
+      location?: string;
+      screenGroupId?: string | null;
+      // 2026-05-27 — hardware identification. Either a known model id
+      // from packages/api-types/src/hardware-models.ts HARDWARE_CATALOG,
+      // OR null to clear it back to "unassigned". An unknown / typo'd
+      // string returns 400 BAD_REQUEST so the dashboard surfaces the
+      // mistake instead of silently storing a value that no UI cell
+      // recognizes. Skipping the key entirely is a no-op (existing
+      // value preserved) — matching every other field in this body.
+      hardwareModel?: HardwareModel | string | null;
+    },
   ) {
     const screen = await this.prisma.client.screen.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    // Resolve hardwareModel against the catalog. We accept exact ids
+    // from the union AND a permissive case/whitespace normalization
+    // (resolveHardwareModel collapses ' Goodview-EP6N ' to
+    // 'goodview-ep6n'). Any other string returns 400.
+    let nextHardwareModel: string | null | undefined = undefined;
+    if (body.hardwareModel === null) {
+      nextHardwareModel = null; // explicit clear
+    } else if (typeof body.hardwareModel === 'string' && body.hardwareModel.trim()) {
+      const resolved = resolveHardwareModel(body.hardwareModel);
+      // resolveHardwareModel collapses unknown strings to 'unknown'. We
+      // distinguish "operator picked Unknown explicitly" from "operator
+      // typed a SKU we don't recognize" by checking the original input
+      // against the model list directly.
+      const normalized = body.hardwareModel.trim().toLowerCase();
+      const isKnown = (HARDWARE_MODELS as readonly string[]).includes(normalized);
+      if (!isKnown) {
+        throw new HttpException(
+          {
+            error: 'INVALID_HARDWARE_MODEL',
+            message:
+              'hardwareModel must be one of: ' +
+              HARDWARE_MODELS.join(', '),
+            received: body.hardwareModel,
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      nextHardwareModel = resolved;
+      // Validate the resolved id maps to a catalog entry — guards
+      // against a future state where HARDWARE_MODELS drifts from
+      // HARDWARE_CATALOG. The hardware-models.spec.ts test asserts
+      // this can't happen at build time; this is a runtime safety net.
+      if (!HARDWARE_CATALOG[resolved]) {
+        throw new HttpException(
+          'hardware-models catalog drift detected — please report this bug',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+    }
 
     const updated = await this.prisma.client.screen.update({
       where: { id },
@@ -1182,6 +1243,9 @@ export class ScreensController {
         name: body.name?.trim() || screen.name,
         location: body.location !== undefined ? (body.location?.trim() || null) : screen.location,
         screenGroupId: body.screenGroupId !== undefined ? (body.screenGroupId || null) : screen.screenGroupId,
+        // Only patch hardwareModel when it was actually present in the
+        // body — `undefined` preserves the existing column value.
+        ...(nextHardwareModel !== undefined ? { hardwareModel: nextHardwareModel } : {}),
       },
       include: { screenGroup: { select: { id: true, name: true } } },
     });

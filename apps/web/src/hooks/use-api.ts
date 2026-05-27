@@ -237,6 +237,106 @@ export function useSetScreenCanvas() {
   });
 }
 
+/**
+ * 2026-05-27 — read-only player-hardware catalog. Drives the per-screen
+ * Hardware panel's model dropdown + capability chips. The catalog is a
+ * build-time constant on the API side; cache aggressively here so
+ * navigating between screens doesn't re-fetch.
+ */
+export interface HardwareCatalogEntry {
+  id: string;
+  name: string;
+  productPageUrl?: string | null;
+  socOs: string;
+  recommendedVerticals: string[];
+  caps: {
+    serialPorts: number;
+    rs485: boolean;
+    gpioIn: number;
+    gpioOut: number;
+    hdmiIn: boolean;
+    hdmiOut: boolean;
+    rj45In: boolean;
+    rj45Out: boolean;
+    powerOutVolts: number | null;
+    npuTops: number;
+    cpuCores: number;
+    ramGb: number;
+    storageGb: number;
+    decode4k: boolean;
+    fanless: boolean;
+    duty247Rated: boolean;
+    chromiumMin: number;
+  };
+}
+
+export interface HardwareCatalogResponse {
+  models: HardwareCatalogEntry[];
+  generatedAt: string;
+}
+
+export function useHardwareCatalog() {
+  return useQuery<HardwareCatalogResponse>({
+    queryKey: ['hardware-catalog'],
+    queryFn: () => apiFetch('/hardware/catalog'),
+    // The catalog is a build-time constant. Refetch only on deploy
+    // restart (generatedAt changes) — every dashboard page would
+    // otherwise re-fetch the static catalog on every focus.
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // 1 day
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+  });
+}
+
+/**
+ * 2026-05-27 — update a single screen's hardwareModel column. Reuses
+ * the existing PUT /screens/:id endpoint (it accepts the field). Same
+ * optimistic-update pattern as the orientation / canvas hooks so the
+ * dropdown reflects the choice instantly.
+ */
+export function useSetScreenHardwareModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, hardwareModel }: { id: string; hardwareModel: string | null }) =>
+      apiFetch(`/screens/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ hardwareModel }),
+      }),
+    onMutate: async ({ id, hardwareModel }) => {
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ['screens'] }),
+        qc.cancelQueries({ queryKey: ['screen-groups'] }),
+      ]);
+      const prevScreens = qc.getQueryData<any>(['screens']);
+      const prevGroups = qc.getQueryData<any>(['screen-groups']);
+      const apply = (s: any) => (s?.id === id ? { ...s, hardwareModel } : s);
+      qc.setQueryData<any>(['screens'], (old: any) => {
+        if (Array.isArray(old)) return old.map(apply);
+        if (Array.isArray(old?.screens)) return { ...old, screens: old.screens.map(apply) };
+        return old;
+      });
+      qc.setQueryData<any>(['screen-groups'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((g: any) => ({
+          ...g,
+          screens: Array.isArray(g?.screens) ? g.screens.map(apply) : g?.screens,
+        }));
+      });
+      return { prevScreens, prevGroups };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prevScreens !== undefined) qc.setQueryData(['screens'], ctx.prevScreens);
+      if (ctx?.prevGroups !== undefined) qc.setQueryData(['screen-groups'], ctx.prevGroups);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['screens'] });
+      qc.invalidateQueries({ queryKey: ['screen-groups'] });
+    },
+  });
+}
+
 export function useUpdateScreen() {
   const qc = useQueryClient();
   return useMutation({

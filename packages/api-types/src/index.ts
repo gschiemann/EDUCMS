@@ -616,3 +616,7 @@ export * from './streaming-presets';
 export * from './billing';
 export * from './pos';
 export * from './ad-network';
+// 2026-05-27 — player-hardware catalog. Drives Screen.hardwareModel,
+// the dashboard's Hardware panel, and capability-gated UI (GPIO,
+// dual-RS232, HDMI-IN). See docs/EP6N_HARDWARE_EVAL.md.
+export * from './hardware-models';

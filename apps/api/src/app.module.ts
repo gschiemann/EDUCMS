@@ -21,6 +21,10 @@ import { RendererService } from './proxy/renderer.service';
 import { HealthController } from './health/health.controller';
 import { IntegrationsHealthController } from './health/integrations-health.controller';
 import { FloorPlansController } from './floor-plans/floor-plans.controller';
+// 2026-05-27 — read-only player-hardware catalog endpoint
+// (GET /api/v1/hardware/catalog). Backs the dashboard's per-screen
+// Hardware panel; source of truth is packages/api-types/src/hardware-models.ts.
+import { HardwareController } from './hardware/hardware.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -154,6 +158,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     HealthController,
     IntegrationsHealthController,
     FloorPlansController,
+    HardwareController,
     CsrfController,
   ],
   providers: [

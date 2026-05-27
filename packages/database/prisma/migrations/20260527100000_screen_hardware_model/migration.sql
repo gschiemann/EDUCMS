@@ -1,0 +1,30 @@
+-- 2026-05-27 — Add per-screen hardware-model identification.
+--
+-- Foundation layer for VenueOS's hardware-aware UI. With the Goodview
+-- EP6N becoming the canonical sports-vertical player (commit 39f8ac2 /
+-- docs/EP6N_HARDWARE_EVAL.md), the dashboard needs to know which kind
+-- of device sits behind each Screen row so it can:
+--   - Light up the right I/O configuration panels (dual-RS232 wiring
+--     only on EP6N, single-RS232 only on ECBox, no I/O panels on
+--     Taurus / Pi / generic / web)
+--   - Surface capability chips ("GPIO IN/OUT", "HDMI IN", "6 TOPS NPU",
+--     "24/7 rated") accurate to the specific hardware
+--   - Warn the operator when CLAUDE.md rule #10 applies (Chromium 83
+--     devices — currently just NovaStar Taurus)
+--
+-- Source of truth for the allowed string values:
+--   packages/api-types/src/hardware-models.ts HARDWARE_CATALOG keys.
+--   One of:
+--     goodview-ep6n | goodview-ecbox3576 | novastar-taurus | pi5 |
+--     generic-android | web | unknown
+--
+-- We deliberately store this as a plain TEXT column (not a Postgres
+-- enum) so future SKUs are purely additive on the API side — no
+-- ALTER TYPE migration coordinated across pods.
+--
+-- Additive, non-breaking. Every existing screen row stays NULL; the
+-- dashboard treats NULL as 'unknown' (hides all hardware-gated panels
+-- and warning chips). Operators opt in by picking a model from the
+-- per-screen Diagnostics drawer dropdown.
+ALTER TABLE "screens"
+  ADD COLUMN "hardware_model" TEXT;
