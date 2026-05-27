@@ -47,6 +47,23 @@ export function getApiUrl(): string {
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
+// 2026-05-27 — Module-scope flag to prevent a 401-storm during the
+// redirect window from firing the session-expired flow N times across
+// every in-flight request. Set true the moment the first authentic-
+// token 401 triggers logout; reset to false when a successful 200
+// proves we're authenticated again (e.g. after re-login). Mirrors the
+// "once per page lifecycle" semantics of the previous interceptor
+// without coupling to React.
+let sessionLogoutFired = false;
+export function __resetSessionLogoutFired() { sessionLogoutFired = false; }
+// Subscribe to auth events so a successful re-login (auth-events emits
+// reason:'login-success') clears the flag for the next session.
+if (typeof window !== 'undefined') {
+  subscribeAuthEvents((e: any) => {
+    if (e?.reason === 'login-success') sessionLogoutFired = false;
+  });
+}
+
 export async function apiFetch<T = any>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   warnIfMisconfigured();
   const token = useUIStore.getState().token;
@@ -104,14 +121,47 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       const res = await fetch(fullUrl, init);
 
       if (res.status === 401) {
-        clog.warn('api', 'Session expired (401) — logging out + redirect', { url: fullUrl, method });
-        useUIStore.getState().logout();
+        // 2026-05-27 — Operator hit "New Playlist" → modal mounted →
+        // some hook re-fetched a branding endpoint → 401 → logged out.
+        // Root cause: this interceptor nuked the session for ANY 401,
+        // including from endpoints that 401 by design when called
+        // without a token (e.g. /branding/me on the login/marketing
+        // page, or transient races where the token isn't yet in store).
+        // It also fanned out — every parallel request in flight at the
+        // moment fired its own logout call, which can race with the
+        // login form's own login dispatch.
+        //
+        // Fix:
+        //   1. Only auto-logout when we actually SENT a token. A 401
+        //      with no Authorization header means "you're not logged
+        //      in" — that's expected for marketing / login surfaces;
+        //      callers can handle it. No reason to clear state we
+        //      don't have.
+        //   2. Once logout has fired in this process, suppress further
+        //      logout dispatches for the rest of the page lifecycle.
+        //      The first 401 is the authoritative signal; subsequent
+        //      parallel-request 401s during the redirect window are
+        //      noise.
+        //
+        // Both cases still THROW so callers see the failure — they
+        // just don't tear down the whole session.
+        if (token && !sessionLogoutFired) {
+          sessionLogoutFired = true;
+          clog.warn('api', 'Session expired (401, token in request) — logging out + redirect', { url: fullUrl, method });
+          useUIStore.getState().logout();
+          emit('ok', attempt, fullUrl);
+          // Notify the AuthExpirationGuard (mounted in DashboardLayout) so
+          // it can router.push('/login'). apiFetch runs outside React so
+          // can't call useRouter() directly — event bus is the bridge.
+          emitAuthEvent({ reason: 'session-expired', url: fullUrl });
+          throw new Error('Session expired. Please log in again.');
+        }
+        // No-token 401, or follow-on 401 in the redirect window.
+        // Throw so the caller can react, but DON'T nuke the session.
         emit('ok', attempt, fullUrl);
-        // Notify the AuthExpirationGuard (mounted in DashboardLayout) so
-        // it can router.push('/login'). apiFetch runs outside React so
-        // can't call useRouter() directly — event bus is the bridge.
-        emitAuthEvent({ reason: 'session-expired', url: fullUrl });
-        throw new Error('Session expired. Please log in again.');
+        const err: any = new Error('Unauthorized');
+        err.status = 401;
+        throw err;
       }
 
       if (res.status === 403 && !options._csrfRetry && isMutation) {
@@ -159,6 +209,11 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       }
 
       emit('ok', attempt, fullUrl);
+      // 2026-05-27 — A 2xx response proves the session is alive again.
+      // Reset the logout-storm flag so the NEXT genuine session-expired
+      // 401 can fire a fresh logout. Pairs with the early-return at
+      // line ~106.
+      sessionLogoutFired = false;
       // 2026-05-26 — Some NestJS controllers return JS null on "not
       // found" (e.g. /branding/me when a tenant has no branding row).
       // NestJS serializes that as a 200 with EMPTY body, not the
