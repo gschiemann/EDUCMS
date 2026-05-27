@@ -63,8 +63,8 @@ android {
         // The `kioskHomeOptIn` pref keeps the alias enabled across
         // restarts. Alias still ships disabled so OEM-CMS boxes are
         // untouched unless the operator opts in.
-        versionCode = 10073
-        versionName = "1.0.73"
+        versionCode = 10074
+        versionName = "1.0.74"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
