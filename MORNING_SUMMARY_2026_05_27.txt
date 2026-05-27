@@ -74,6 +74,35 @@ In chronological order:
   dc125c5  docs: morning summary — overnight agent run + P0 fixes
   87cf727  assets: P1-2 — AI alt-text generator on image upload  [Agent 7]
 
+EP6N STANDARDIZATION (post-summary, second wave):
+  9f2b8a0  docs: Goodview EP6N hardware-target eval
+  39f8ac2  docs: EP6N is the standard sports-vertical player
+  4924833  docs: ECBox install guide now points at EP6N as the new standard
+  c175aab  hardware: foundation — Screen.hardwareModel + capability catalog + dashboard panel  [Agent A]
+  4a22928  hardware: EP6N recommendation in pair flow + Concierge  [Agent D]
+  df71ef6  hardware(EP6N): GPIO IN/OUT controller + service + emergency auto-lamp  [Agent C]
+  90d7d49  hardware: EP6N dual-RS232 wiring + GPIO config + WiringPanel  [Agent B]
+
+  EP6N work covers the four legs of "support to the max":
+    1. Foundation — Screen.hardwareModel column + capability matrix
+       (HARDWARE_CATALOG with 7 models) + GET /hardware/catalog + per-
+       screen Hardware panel with capability badges.
+    2. Onboarding — Pair-screen flow has a hardware step that recommends
+       EP6N for sports + I/O upsell cards (fire-alarm, panic button,
+       HDMI capture, Stream Deck, status lamp, CTS) + Integration
+       Concierge recommends EP6N for SPORTS vertical.
+    3. Dual-RS232 — CtsBridge accepts wiring.rs232_1 / rs232_2 routing
+       (CTS / Stream Deck / aux / off). WiringPanel UI on EP6N-flagged
+       screens lets the operator assign each Phoenix terminal pin.
+    4. GPIO + emergency — New POST /screens/:id/gpio-event endpoint
+       fires the existing emergency trigger when a fire-alarm or
+       panic-button dry contact closes. Emergency triggers auto-drive
+       status lamp / horn GPIO outputs. Rate-limited 10/min/screen.
+       Auto-cleared on ALL_CLEAR.
+
+  ECBox3576 stays in the catalog for legacy / budget. Taurus stays for
+  LED-controller-native (Chromium-83 warning surfaces in the picker).
+
 All deployed to Vercel as of summary time. The Prisma migration
 20260527000000_add_asset_processing_meta runs on the next Railway boot
 (additive, nullable JSONB — safe for live pilot tenants).
