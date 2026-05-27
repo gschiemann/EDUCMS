@@ -19,7 +19,13 @@
  * old entries get evicted. Keep CACHE_VERSION bumped when adding
  * destructive changes to this file.
  */
-const CACHE_VERSION = 'edu-shell-v1';
+// 2026-05-27 — bumped from v1 → v2. The activate handler deletes any
+// cache that doesn't start with CACHE_VERSION, so bumping this string
+// purges every entry from the v1-era cache (which had been hoarding
+// stale Next chunks since the SW first shipped). Bump again any time
+// a deploy needs to force a clean cache for already-installed clients
+// — the dashboard SW will purge on its next activate.
+const CACHE_VERSION = 'edu-shell-v2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const HTML_CACHE = `${CACHE_VERSION}-html`;
 
