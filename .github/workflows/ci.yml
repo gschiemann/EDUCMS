@@ -87,6 +87,36 @@ jobs:
           fi
           echo "OK: a11y errors did not increase"
 
+      - name: Rules-of-hooks gate (zero tolerance)
+        # 2026-05-27 — operator: "wtf dont let that happen again"
+        # PlaylistCreateWizard.tsx shipped 3 useCallback hooks BELOW an
+        # `if (!open) return null;` guard. Hook count flipped between
+        # open=false (35 hooks) and open=true (38 hooks), producing
+        # React error #310 the moment the operator clicked New Playlist.
+        # ESLint's `react-hooks/rules-of-hooks` rule (already active via
+        # eslint-config-next/core-web-vitals) catches this exact pattern
+        # — verified on a minimal repro:
+        #   error  React Hook "useCallback" is called conditionally. ...
+        #          Did you accidentally call a React Hook after an early
+        #          return?
+        # The lint already ran above (writing /tmp/lint.txt); we just
+        # weren't checking the output for hook-rule errors. Adding that
+        # check here. Zero tolerance — these are ALWAYS real bugs that
+        # crash the page at runtime, never style preferences.
+        run: |
+          HOOK_ERRS=$(grep -E "error[[:space:]]+.*react-hooks/rules-of-hooks" /tmp/lint.txt | wc -l | tr -d ' ')
+          echo "react-hooks/rules-of-hooks errors: $HOOK_ERRS"
+          if [ "$HOOK_ERRS" -gt 0 ]; then
+            echo ""
+            echo "FAIL: conditional-hook violations detected."
+            echo "These crash the page at runtime with React error #310"
+            echo "the moment the conditional branch flips."
+            echo ""
+            grep -B1 -A4 "react-hooks/rules-of-hooks" /tmp/lint.txt
+            exit 1
+          fi
+          echo "OK: zero conditional-hook violations"
+
   secret-scan:
     name: Secret Leak Scan (gitleaks)
     # Operational gap O2 (2026-05-25): no automated secret-leak gate
