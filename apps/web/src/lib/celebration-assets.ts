@@ -63,27 +63,60 @@ const DECK: Record<string, string> = {
   'wrestling/techFall': 'wrestling-techfall',
 };
 
+// 2026-05-27 — v2 cue pack. Same canvas engine, two render targets
+// (scoreboard 16:9 + ribbon 7.5:1) shipped together. Operator opts
+// in per-game via `Game.stats.celebrationPack = 'v2'` set from Setup
+// mode. Falls back to v1 art on any sport that isn't ported yet.
+// Adding new sports is purely additive — drop the (sport, cueKey)
+// pair in the table below.
+const V2_KEYS: Record<string, string> = {
+  // water polo (the live pilot install — first vertical to ship)
+  'water_polo/goal':      'waterpolo-goal',
+  'water_polo/save':      'waterpolo-save',
+  'water_polo/exclusion': 'waterpolo-penalty', // v2 names the 20-sec excl. "penalty"
+  'water_polo/penalty':   'waterpolo-penalty',
+  'water_polo/powerPlay': 'waterpolo-powerplay',
+  'water_polo/hatTrick':  'waterpolo-hattrick',
+};
+
+export type CelebrationPack = 'v1' | 'v2';
+
 /** The celebration asset URL for a (sport, cueKey), or null if none is mapped. */
 export function celebrationAsset(
   sport?: string | null,
   cueKey?: string | null,
+  pack: CelebrationPack = 'v1',
 ): string | null {
   if (!sport || !cueKey) return null;
   const k = `${sport}/${cueKey}`;
+  if (pack === 'v2' && V2_KEYS[k]) {
+    return `/celebrations/v2/launcher.html?cue=${encodeURIComponent(V2_KEYS[k])}`;
+  }
   if (MARQUEE[k]) return `/celebrations/${MARQUEE[k]}.html`;
   if (DECK[k]) return `/celebrations/deck.html?cue=${DECK[k]}`;
+  // v2 graceful fallback — when a sport isn't ported (no soccer / hockey
+  // v2 art yet), fall through to v1 so the operator still gets a
+  // celebration instead of a black screen.
+  if (pack === 'v2') return celebrationAsset(sport, cueKey, 'v1');
   return null;
 }
 
-/** Full iframe src for a celebration, branded to a team hex color (optional). */
+/** Full iframe src for a celebration, branded to a team hex color (optional).
+ *  `format` only affects v2 — that pack has separate scoreboard / ribbon
+ *  render paths in a single launcher. v1 ignores it. */
 export function celebrationSrc(
   sport: string | null | undefined,
   cueKey: string | null | undefined,
   teamHex?: string | null,
+  pack: CelebrationPack = 'v1',
+  format?: 'scoreboard' | 'ribbon',
 ): string | null {
-  const base = celebrationAsset(sport, cueKey);
+  const base = celebrationAsset(sport, cueKey, pack);
   if (!base) return null;
   const hex = (teamHex || '').replace('#', '').trim();
-  if (!hex) return base;
-  return base + (base.includes('?') ? '&' : '?') + 'team=' + encodeURIComponent(hex);
+  const params: string[] = [];
+  if (hex) params.push('team=' + encodeURIComponent(hex));
+  if (format) params.push('format=' + encodeURIComponent(format));
+  if (params.length === 0) return base;
+  return base + (base.includes('?') ? '&' : '?') + params.join('&');
 }

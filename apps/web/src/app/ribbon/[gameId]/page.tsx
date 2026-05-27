@@ -105,6 +105,7 @@ import { CelebrationWaterPoloGoal } from '@/components/widgets/sports/celebratio
 import { CelebrationDeckScene } from '@/components/widgets/sports/celebrations/CelebrationDeckScene';
 import { pickDeckCue } from '@/components/widgets/sports/celebrations/celebrationDeckCues';
 import { RibbonCelebrationStrip } from '@/components/widgets/sports/celebrations/RibbonCelebrationStrip';
+import { celebrationSrc } from '@/lib/celebration-assets';
 import type { ComponentType } from 'react';
 
 interface Sponsor {
@@ -817,7 +818,22 @@ export default function RibbonPage() {
             triggered on the ribbon"). One full-width burst — the
             operator's hardware repeater replicates it down the run. */}
         {activeCue && (
-          <RibbonCueOverlay cue={activeCue} h={vp.h} segCount={1} segWf={vp.w} sport={data?.sport} />
+          <RibbonCueOverlay
+            cue={activeCue}
+            h={vp.h}
+            segCount={1}
+            segWf={vp.w}
+            sport={data?.sport}
+            // 2026-05-27 — Setup-mode celebration pack opt-in stored
+            // on Game.stats.celebrationPack. Default v1 keeps the
+            // shipped horizontal strip; 'v2' routes through the new
+            // combined-engine launcher.
+            pack={
+              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
+                ? 'v2'
+                : 'v1') as 'v1' | 'v2'
+            }
+          />
         )}
         {/* 2026-05-27 — Spotlight ALSO has to layer over media-scroll
             mode. Operator pushes a player to spotlight (single button
@@ -945,7 +961,18 @@ export default function RibbonPage() {
       {/* celebration cue overlay — a fired cue takes the ribbon over,
           tiled once per score anchor for the full-bowl wrap */}
       {activeCue && (
-        <RibbonCueOverlay cue={activeCue} h={vp.h} segCount={segCount} segWf={segWf} sport={data?.sport} />
+        <RibbonCueOverlay
+          cue={activeCue}
+          h={vp.h}
+          segCount={segCount}
+          segWf={segWf}
+          sport={data?.sport}
+          pack={
+            ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
+              ? 'v2'
+              : 'v1') as 'v1' | 'v2'
+          }
+        />
       )}
     </div>
   );
@@ -2540,12 +2567,20 @@ function RibbonCueOverlay({
   segCount,
   segWf,
   sport,
+  pack,
 }: {
   cue: Cue;
   h: number;
   segCount: number;
   segWf: number;
   sport?: string;
+  // 2026-05-27 — operator-selected celebration pack (Setup → "celebration
+  // pack" picker). 'v2' routes water polo cues through the new combined-
+  // engine launcher (full canvas, scoreboard + ribbon support in one
+  // file); default 'v1' keeps the existing horizontal strip that's been
+  // running. We still tile each pack per ribbon segment so they wrap
+  // the bowl the same way.
+  pack?: 'v1' | 'v2';
 }) {
   // Edges of each score segment, rounded so the tiles never sub-pixel gap.
   const segs = Array.from({ length: segCount }, (_, s) => {
@@ -2596,11 +2631,75 @@ function RibbonCueOverlay({
     );
   }
 
-  // 2026-05-27 — Ribbon-native celebration. The 16:9 cinematics (still
-  // used on /board/ for video boards) don't fit 7.5:1 ribbon slices —
-  // they clip the top of the goal frame or letterbox down to a tiny
-  // floating square. Operator: "the celebrations are not fitting in
-  // the ribbon resolution and the players name does not show up".
+  // 2026-05-27 — V2 cue pack opt-in. The new combined-engine pack ships
+  // both scoreboard + ribbon renderers in one file (engine.js +
+  // cues-waterpolo.js), so the same cue key plays the same brand-
+  // consistent animation on the board AND ribbon. We tile it per
+  // segment exactly like the strip so the bowl wrap still works.
+  if (pack === 'v2') {
+    const teamHex = cue.color || cue.snapshot?.homeColor || null;
+    const v2Url = celebrationSrc(sport, cue.key, teamHex, 'v2', 'ribbon');
+    if (v2Url) {
+      return (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            overflow: 'hidden',
+            zIndex: 60,
+            background: '#04060b',
+            animation: 'rbnFade 0.4s ease-out',
+          }}
+        >
+          {segs.map((seg, s) => (
+            <div
+              key={s}
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: seg.left,
+                width: seg.width,
+                overflow: 'hidden',
+              }}
+            >
+              <iframe
+                src={v2Url}
+                title="celebration v2"
+                scrolling="no"
+                // Same sandbox model as the board route — static file
+                // under /celebrations/v2/, scripts allowed, no
+                // same-origin / cookies / storage.
+                sandbox="allow-scripts"
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  border: 0,
+                  display: 'block',
+                  pointerEvents: 'none',
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      );
+    }
+    // No v2 art for this (sport, cueKey) → fall through to the strip.
+  }
+
+  // 2026-05-27 — Ribbon-native celebration (v1). The 16:9 cinematics
+  // (still used on /board/ for video boards) don't fit 7.5:1 ribbon
+  // slices — they clip the top of the goal frame or letterbox down to
+  // a tiny floating square. Operator: "the celebrations are not fitting
+  // in the ribbon resolution and the players name does not show up".
   //
   // RibbonCelebrationStrip is a horizontal-strip composition designed
   // for the ribbon shape: pulsing motif | big title + scorer | scoreline.

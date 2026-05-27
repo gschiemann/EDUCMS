@@ -1704,7 +1704,15 @@ const BIG_CUE_RE =
  * live-score lower-third), EXIT (~0.5s fade). Every layer animates
  * transform/opacity only — Chromium-83 (NovaStar Taurus) + WebKit safe.
  */
-function CueOverlay({ cue, sport }: { cue: Cue; sport?: string | null }) {
+function CueOverlay({
+  cue,
+  sport,
+  pack,
+}: {
+  cue: Cue;
+  sport?: string | null;
+  pack?: 'v1' | 'v2';
+}) {
   // Custom cue — the operator's uploaded content (a sponsor graphic, a
   // promo, a hype card).
   if (cue.mediaUrl) {
@@ -1756,7 +1764,7 @@ function CueOverlay({ cue, sport }: { cue: Cue; sport?: string | null }) {
     (cue.team === 'away' ? cue.snapshot?.awayColor : cue.snapshot?.homeColor) ||
     cue.snapshot?.homeColor ||
     null;
-  const celebUrl = celebrationSrc(sport, cue.key, teamColor);
+  const celebUrl = celebrationSrc(sport, cue.key, teamColor, pack || 'v1', 'scoreboard');
   if (celebUrl) {
     return (
       <div
@@ -2393,7 +2401,20 @@ export default function ScoreboardPage() {
         {!isLive && !isPreGame && !isHalftime && !isFinal && (
           <BoardScene data={data} def={def} />
         )}
-        {activeCue && <CueOverlay cue={activeCue} sport={data?.sport} />}
+        {activeCue && (
+          <CueOverlay
+            cue={activeCue}
+            sport={data?.sport}
+            // 2026-05-27 — operator-selected celebration pack (Setup mode).
+            // Stored on Game.stats so it travels with the game record;
+            // defaults to v1 for tenants that haven't picked.
+            pack={
+              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
+                ? 'v2'
+                : 'v1') as 'v1' | 'v2'
+            }
+          />
+        )}
       </div>
     </div>
   );

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VenueOS · Celebration v2</title>
+<!--
+  Chromeless full-canvas launcher for the v2 celebration pack.
+  Same engine + cue files as scratch/design/celebrations-v2/index.html,
+  stripped of the picker UI so it embeds cleanly inside an <iframe> on
+  the scoreboard and ribbon routes.
+
+  URL params:
+    cue     = required cue key (e.g. waterpolo-goal, waterpolo-save)
+    format  = scoreboard | ribbon (default: scoreboard)
+    team    = team accent hex without # (e.g. 21e6ff). Defaults to the
+              cue's first registered swatch when omitted.
+
+  Resizing strategy:
+    The canvas is sized by the engine in CSS pixels via its own
+    runScoreboard / runRibbon entry points (1920x1080 and 2400x256).
+    We set canvas width:100% height:100% in CSS so the parent <iframe>
+    can scale arbitrarily without re-rendering the engine. CSS scale
+    keeps the cinematic crisp at any board resolution.
+-->
+<style>
+  :root { color-scheme: dark; }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #04060b;
+    overflow: hidden;
+  }
+  #cv {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+</style>
+</head>
+<body>
+<canvas id="cv" width="1920" height="1080"></canvas>
+<!--
+  Engine first, then per-sport cue registrations. The cue file calls
+  VENUE.register('waterpolo-goal', {…}) etc., so engine MUST load first.
+-->
+<script src="engine.js"></script>
+<script src="cues-waterpolo.js"></script>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var cueKey = q.get('cue');
+  var format = q.get('format') || 'scoreboard';
+  var team = (q.get('team') || '').replace(/^#?/, '');
+  var cv = document.getElementById('cv');
+
+  // 2026-05-27 — when a team hex is provided, repaint the cue's team
+  // color on every cue object up front. The cue files cache their
+  // defaults at register-time, so an opt-in `team` override has to
+  // patch the cached config before runScoreboard/runRibbon reads it.
+  if (team && /^[0-9a-f]{3,8}$/i.test(team)) {
+    var hex = '#' + team;
+    if (window.VENUE && VENUE.list) {
+      VENUE.list().forEach(function (k) {
+        var c = VENUE.get(k);
+        if (c && c.team !== undefined) c.team = hex;
+      });
+    }
+  }
+
+  // No cue key — fail loud (parent iframe should always include one).
+  if (!cueKey || !window.VENUE) return;
+
+  if (format === 'ribbon') {
+    cv.width = 2400;
+    cv.height = 256;
+    VENUE.runRibbon(cv, cueKey);
+  } else {
+    cv.width = 1920;
+    cv.height = 1080;
+    VENUE.runScoreboard(cv, cueKey);
+  }
+})();
+</script>
+</body>
+</html>

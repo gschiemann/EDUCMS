@@ -395,6 +395,28 @@ function GameControl() {
               <ScreenPushPanel gameId={gameId} />
             </Section>
 
+            {/* 2026-05-27 — Per-game celebration-pack picker. Operator:
+                "lets add these but keep the other ones we did so we can
+                have multiple and decide what we want....maybe during
+                setup you add the ones you want to show for the run
+                game section". Stored on Game.stats.celebrationPack so
+                the choice travels with the game record + both surfaces
+                (scoreboard + ribbon) read the same value. */}
+            <Section title="Celebration pack">
+              <CelebrationPackPicker
+                value={
+                  ((g.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
+                    ? 'v2'
+                    : 'v1') as 'v1' | 'v2'
+                }
+                onChange={(p) =>
+                  ctl.stats.mutate({
+                    stats: { celebrationPack: p } as Record<string, unknown>,
+                  })
+                }
+              />
+            </Section>
+
             <Section title="Live preview">
               <SurfacePreview gameId={gameId} />
             </Section>
@@ -3513,3 +3535,67 @@ function _StatField({
 }
 // Suppress "declared but never read" for the guard above.
 void _StatField;
+
+// ── Celebration pack picker ────────────────────────────────────
+//
+// 2026-05-27 — Two visual packs ship today; the operator picks per
+// game. v1 is the cinematic library that's been running on the
+// scoreboard + the new horizontal "RibbonCelebrationStrip" on the
+// ribbon. v2 is the new combined-engine pack (engine.js +
+// cues-waterpolo.js) — same canvas engine renders both 1920×1080
+// scoreboard and 2400×256 ribbon from a single set of cue files.
+//
+// Adding a v3 / v4 is purely additive: register the keys in
+// celebration-assets.ts, drop assets in public/celebrations/<pack>/,
+// add an option below.
+function CelebrationPackPicker({
+  value,
+  onChange,
+}: {
+  value: 'v1' | 'v2';
+  onChange: (pack: 'v1' | 'v2') => void;
+}) {
+  const options: { key: 'v1' | 'v2'; name: string; desc: string }[] = [
+    {
+      key: 'v1',
+      name: 'Classic',
+      desc: 'Marquee scoreboard cinematics + horizontal ribbon strip (default).',
+    },
+    {
+      key: 'v2',
+      name: 'Stadium v2',
+      desc: 'New canvas engine — same cue plays brand-matched on both the scoreboard and ribbon. Water polo only for now; other sports fall back to Classic.',
+    },
+  ];
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {options.map((opt) => {
+        const active = value === opt.key;
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => onChange(opt.key)}
+            className={`text-left rounded-xl p-4 border-2 transition-colors ${
+              active
+                ? 'bg-indigo-50 border-indigo-500'
+                : 'bg-white border-slate-200 hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className={`font-bold text-sm ${active ? 'text-indigo-700' : 'text-slate-900'}`}>
+                {opt.name}
+              </span>
+              {active && (
+                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+                  Selected
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-600 leading-snug">{opt.desc}</p>
+          </button>
+        );
+      })}
+    </div>
+  );
+}

@@ -1804,10 +1804,18 @@ export class SportsService {
     }
     const def = this.sportOf(game.sport);
     const allowed = new Set(def.stats.map((s) => s.key));
+    // 2026-05-27 — Pure-config keys that live on Game.stats JSON but
+    // aren't sport stats (no +/- chips on the scoreboard tile). Each
+    // is operator-set in Setup mode. Add new ones here as game-level
+    // settings expand; resist the urge to add per-sport state (those
+    // belong in def.stats so the type system can constrain them).
+    const META_KEYS = new Set([
+      'celebrationPack',
+    ]);
     const current = (game.stats as Record<string, unknown>) || {};
     const next: Record<string, unknown> = { ...current };
     for (const [key, value] of Object.entries(dto.stats)) {
-      if (!allowed.has(key)) continue;
+      if (!allowed.has(key) && !META_KEYS.has(key)) continue;
       // Bound the value: strings capped at 200 chars, numbers/booleans
       // pass, anything else (object/array) dropped — so a stat edit
       // can't bloat the game's stats JSON column.
