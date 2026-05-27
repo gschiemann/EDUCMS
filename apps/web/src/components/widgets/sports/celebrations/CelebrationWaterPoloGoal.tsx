@@ -571,7 +571,10 @@ export function CelebrationWaterPoloGoal({
         right: 0,
         bottom: 0,
         left: 0,
-        background: '#04060b',
+        // 2026-05-27 — transparent so the ribbon's outer mount can tint
+        // the letterbox bars with the cue accent color. The canvas
+        // draws its own near-black background internally.
+        background: 'transparent',
         overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',

@@ -921,7 +921,13 @@ export function CelebrationDeckScene({
     <div
       style={{
         position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
-        background: '#04060b', overflow: 'hidden',
+        // 2026-05-27 — transparent wrapper so the ribbon page's outer
+        // mount can tint the letterbox bars with the cue's accent
+        // color. Each cinematic's canvas draws its own near-black
+        // background (#04060b) internally so the visible content
+        // doesn't lose its contrast.
+        background: 'transparent',
+        overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
     >
