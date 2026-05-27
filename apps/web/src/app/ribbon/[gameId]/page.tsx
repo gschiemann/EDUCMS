@@ -104,6 +104,7 @@ import { CelebrationWaterPoloGoal } from '@/components/widgets/sports/celebratio
 // burst + motif + projectile + lower-third.
 import { CelebrationDeckScene } from '@/components/widgets/sports/celebrations/CelebrationDeckScene';
 import { pickDeckCue } from '@/components/widgets/sports/celebrations/celebrationDeckCues';
+import { RibbonCelebrationStrip } from '@/components/widgets/sports/celebrations/RibbonCelebrationStrip';
 import type { ComponentType } from 'react';
 
 interface Sponsor {
@@ -2136,6 +2137,83 @@ function LookUnit({
  * Chromium-83 safe (NovaStar Taurus): long-hand insets, per-child
  * margin (no flex `gap`), animation is transform / opacity only.
  */
+// 2026-05-27 — Map a fired cue + sport context to a ribbon-native
+// celebration-strip config. The strip is a horizontal layout designed
+// for the 7.5:1 ribbon shape (left motif | center title + scorer |
+// right scoreline) — see RibbonCelebrationStrip.tsx for the why.
+//
+// Returns null only if the cue is so empty it's not worth showing
+// anything (the caller falls back to CueBurst in that case).
+function buildRibbonStripConfig(
+  cue: Cue,
+  sport: string | undefined,
+): import('@/components/widgets/sports/celebrations/RibbonCelebrationStrip').RibbonCelebrationStripConfig | null {
+  const key = (cue.key || '').toLowerCase();
+  const snap = cue.snapshot;
+  // Normalize the sport key the same way pickCinematic does so
+  // water_polo / water-polo / water polo all hit the same branch.
+  const sportNorm = (sport || '').toLowerCase().replace(/[-_\s]/g, '');
+  const scorerName = ((cue as any)?.scorerName as string | undefined)?.trim() || undefined;
+  const scorerNumber = ((cue as any)?.scorerNumber as string | undefined)?.trim() || undefined;
+  const accent = cue.color || snap?.homeColor || '#21e6ff';
+
+  // Per-cue title + subtitle defaults — fallback to cue.label when
+  // we don't have a sport-specific mapping. Title is uppercase; the
+  // strip uppercases anyway but explicit caps keeps the source
+  // readable.
+  let title = (cue.label || cue.key || 'Cue').toUpperCase();
+  let subtitle: string | undefined;
+
+  if (key === 'goal') {
+    title = sportNorm === 'waterpolo' ? 'GOAL!' :
+            sportNorm === 'hockey'    ? 'GOAL!' :
+            sportNorm === 'lacrosse'  ? 'GOAL!' :
+                                        'GOOOOAL!';
+  } else if (key === 'save') {
+    title = 'SAVE!';
+    if (!scorerName) subtitle = 'NO GOAL';
+  } else if (key === 'exclusion' || key === 'penalty') {
+    title = key === 'penalty' ? 'PENALTY' : 'EXCLUSION';
+    if (!scorerName) subtitle = '20-SECOND PENALTY';
+  } else if (key === 'powerplay' || key === 'power-play' || key === 'power_play') {
+    title = 'POWER PLAY';
+    if (!scorerName) subtitle = 'MAN ADVANTAGE';
+  } else if (key === 'touchdown' || key === 'td') {
+    title = 'TOUCHDOWN!';
+    if (!scorerName) subtitle = '+7';
+  } else if (key === 'fieldgoal' || key === 'field-goal' || key === 'fg') {
+    title = 'FIELD GOAL';
+    if (!scorerName) subtitle = '+3';
+  } else if (key === 'threepointer' || key === 'three-pointer' || key === 'three') {
+    title = 'THREE!';
+  } else if (key === 'dunk') {
+    title = 'DUNK!';
+  } else if (key === 'homerun' || key === 'home-run' || key === 'hr') {
+    title = 'HOME RUN!';
+  } else if (key === 'ace') {
+    title = 'ACE!';
+  } else if (key === 'kill') {
+    title = 'KILL!';
+  } else if (key === 'pin') {
+    title = 'PIN!';
+  }
+
+  return {
+    title,
+    subtitle,
+    accent,
+    scorerName,
+    scorerNumber,
+    homeName: snap?.homeTeam,
+    awayName: snap?.awayTeam,
+    homeScore: snap?.homeScore,
+    awayScore: snap?.awayScore,
+    segmentLabel: snap?.segmentLabel,
+    clockText: snap?.clockText,
+    team: cue.team ?? null,
+  };
+}
+
 // 2026-05-26 — sport-celebration key → cinematic CEL_* component
 // mapping. Replaces the procedural <CueBurst> (emoji + slammed label
 // + glow rings) with a real cinematic scene from the celebrations
@@ -2143,9 +2221,18 @@ function LookUnit({
 // Play buttons fire the new look on every ribbon, no template-picker
 // dance required.
 //
+// 2026-05-27 — DEPRECATED for ribbon use. The ribbon page now routes
+// every cue through buildRibbonStripConfig() + RibbonCelebrationStrip
+// (above) — 16:9 cinematics didn't fit 7.5:1 slices and were clipping
+// the top of the goal frame. pickCinematic stays in the source for
+// (a) reference, (b) the /board/[gameId] route which IS 16:9 and
+// keeps using the cinematics. If no one references it after the
+// next ship, delete it.
+//
 // `sport` from the BoardData tells us which sport's celebrations
 // pool to draw from when a key like 'goal' is ambiguous (soccer
 // goal vs hockey goal vs lacrosse goal — all visually distinct).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function pickCinematic(
   cue: Cue,
   sport: string | undefined,
@@ -2509,21 +2596,21 @@ function RibbonCueOverlay({
     );
   }
 
-  // 2026-05-26 — try to route the cue to a cinematic CEL_*
-  // component first; only fall back to the procedural CueBurst for
-  // keys we haven't mapped yet (custom operator-defined cues, edge
-  // sports without a CEL_* variant). Operator GOAL / Save /
-  // Exclusion / Power Play buttons all hit the cinematic path now.
-  const cinematic = pickCinematic(cue, sport);
-  if (cinematic) {
-    const Cinematic = cinematic.Component;
-    // 2026-05-27 — letterbox the 16:9 cinematic against the cue's
-    // accent color (or near-black) instead of object-fit:cover.
-    // Cover clipped the TOP of the goal frame; the operator was clear
-    // that clipped content reads as broken. Letterbox keeps the entire
-    // cinematic visible. Colored side bars make the bars look intentional
-    // ("brand frame around the celebration") instead of "empty space".
-    const tintColor = cue.color || '#05070d';
+  // 2026-05-27 — Ribbon-native celebration. The 16:9 cinematics (still
+  // used on /board/ for video boards) don't fit 7.5:1 ribbon slices —
+  // they clip the top of the goal frame or letterbox down to a tiny
+  // floating square. Operator: "the celebrations are not fitting in
+  // the ribbon resolution and the players name does not show up".
+  //
+  // RibbonCelebrationStrip is a horizontal-strip composition designed
+  // for the ribbon shape: pulsing motif | big title + scorer | scoreline.
+  // pickCinematic() still runs but we treat it as a probe — if it can
+  // identify the cue + sport, we extract the title + accent + scorer
+  // attribution and feed them to the strip. If it can't, the strip
+  // still renders with sensible defaults (cue.label as title, cue.color
+  // as accent).
+  const stripConfig = buildRibbonStripConfig(cue, sport);
+  if (stripConfig) {
     return (
       <div
         style={{
@@ -2534,16 +2621,12 @@ function RibbonCueOverlay({
           left: 0,
           overflow: 'hidden',
           zIndex: 60,
-          background: tintColor,
           animation: 'rbnFade 0.4s ease-out',
         }}
       >
-        {/* Tile the cinematic once per score anchor — operator wraps
-            the ribbon with score repeats (segCount=4 typical at 40ft)
-            so each visible chunk gets its own playthrough.
-            Each cinematic is wrapped in a per-segment error boundary
-            so a single bad cinematic can't crash the whole ribbon
-            mid-game — the segment falls back to a minimal text cue. */}
+        {/* Tile the strip once per ribbon segment so the celebration
+            wraps the bowl. Per-segment error boundary so a single bad
+            render can't crash the whole ribbon during a live game. */}
         {segs.map((seg, s) => (
           <div
             key={s}
@@ -2562,7 +2645,11 @@ function RibbonCueOverlay({
                 <CueBurst cue={cue} w={seg.width} h={h} />
               }
             >
-              <Cinematic config={cinematic.defaults} live={true} height={h} />
+              <RibbonCelebrationStrip
+                config={stripConfig}
+                height={h}
+                live={true}
+              />
             </CelebrationErrorBoundary>
           </div>
         ))}

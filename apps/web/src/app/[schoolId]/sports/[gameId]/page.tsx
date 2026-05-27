@@ -220,7 +220,20 @@ function GameControl() {
   const isLive = g.status === 'LIVE';
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
+    // 2026-05-27 — Single pane of glass. DashboardLayout wraps every
+    // page in <main className="overflow-y-auto p-4 sm:p-6 md:p-8 pb-24
+    // md:pb-8"> with a max-w-7xl mx-auto child — that's where every
+    // scroll-issue complaint comes from. We negative-margin out of all
+    // of that, claim the full main content area, then `overflow-hidden`
+    // pins everything inside the viewport so the bottom Home/Away/
+    // Celebrate rows always stay visible on every screen size.
+    //
+    // Height math: main = 100dvh − TopToolbar (~64px). dvh (dynamic
+    // viewport height) handles iOS Safari URL-bar collapse correctly;
+    // vh would over-claim and clip during scroll. We don't subtract the
+    // SuperAdminBanner because it only renders for SUPER_ADMIN — for
+    // every customer-facing operator the chrome is exactly 64px.
+    <div className="-m-4 sm:-m-6 md:-m-8 -mb-24 md:-mb-8 flex flex-col h-[calc(100dvh-64px)] overflow-hidden bg-white">
 
       {/* 2026-05-27 — Top toolbar + mode tabs MERGED into one row.
           Operator: "what is stream overlay, score feed do? if we
@@ -897,7 +910,7 @@ function ScoreTile({
   const shortLabel = (label: string) =>
     label.replace(/^(Home|Away)\s+/i, '').replace(/Timeouts/i, 'T.O.');
   return (
-    <div className="flex flex-col items-center justify-between bg-slate-950 border border-slate-800 rounded-xl px-4 pt-5 pb-3 min-h-[280px]">
+    <div className="flex flex-col items-center justify-between bg-slate-950 border border-slate-800 rounded-xl px-4 pt-3 pb-2 min-h-[220px]">
       {/* Team logo — large, centered (matches BoardScene proportion) */}
       <div className="flex items-center justify-center h-20 w-20">
         {logoUrl ? (
@@ -921,9 +934,10 @@ function ScoreTile({
           {side === 'home' ? 'HOME' : 'AWAY'}
         </span>
       </div>
-      {/* Big score number — focal point, in team color */}
+      {/* Big score number — focal point, in team color. Compressed
+          slightly so the tile fits in viewport without scroll. */}
       <div
-        className="text-7xl sm:text-8xl font-black tabular-nums leading-none my-3"
+        className="text-6xl sm:text-7xl font-black tabular-nums leading-none my-2"
         style={{ color }}
       >
         {score}
@@ -1121,7 +1135,7 @@ function RunRibbonPreview({ gameId }: { gameId: string }) {
           never get pushed below the fold. */}
       <div
         className="bg-black overflow-hidden -mx-3 sm:-mx-3 shrink"
-        style={{ aspectRatio: '7.5 / 1', maxHeight: '220px' }}
+        style={{ aspectRatio: '7.5 / 1', maxHeight: '140px' }}
       >
         <iframe
           src={`/ribbon/${gameId}?nochrome=1`}
