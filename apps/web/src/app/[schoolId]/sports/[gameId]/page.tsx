@@ -1084,7 +1084,20 @@ function RunRibbonPreview({ gameId }: { gameId: string }) {
           ▴ Hide
         </button>
       </div>
-      <div className="bg-black overflow-hidden rounded-md" style={{ aspectRatio: '7.5 / 1', maxHeight: '120px' }}>
+      {/* 2026-05-27 — Ribbon stretches full viewport width. Operator:
+          "make the ribbon stretch full screen when i have my window
+          maximized…the more i can see the more it looks like the real
+          ribbon". Dropped the 120px maxHeight cap and the slim px-3
+          wrapper-padding so the iframe runs edge-to-edge of the
+          viewport. Height is driven by the 7.5:1 aspect ratio, capped
+          at 220px so a maximized 4K window doesn't make the ribbon
+          dominate the page — but on a normal 1280–1920-wide laptop
+          screen the ribbon now reads at native LED proportions
+          (~170–256px tall, full width). */}
+      <div
+        className="bg-black overflow-hidden -mx-3 sm:-mx-3"
+        style={{ aspectRatio: '7.5 / 1', maxHeight: '220px' }}
+      >
         <iframe
           src={`/ribbon/${gameId}?nochrome=1`}
           title="Ribbon preview"
