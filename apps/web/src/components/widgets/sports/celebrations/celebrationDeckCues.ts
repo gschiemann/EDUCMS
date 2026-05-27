@@ -272,22 +272,29 @@ export function pickDeckCue(
   overrides?: Partial<CelebrationDeckCfg>,
 ): CelebrationDeckCfg | null {
   const k = key.toLowerCase();
-  const s = (sport || '').toLowerCase();
+  // 2026-05-27 — normalize the sport so 'water_polo' / 'water-polo' /
+  // 'waterpolo' / 'Water Polo' all resolve identically. Canonical
+  // sport keys per packages/api-types/src/sports.ts use UNDERSCORES
+  // ('water_polo', 'field_hockey', etc.); the original code only
+  // checked hyphens + collapsed forms, so every compound-name sport
+  // silently fell through to a generic fallback. Bug found by
+  // querying a live game DB row.
+  const s = (sport || '').toLowerCase().replace(/[-_\s]/g, '');
 
   // Direct id lookup first — registry keys like 'waterpolo-save' win.
   const direct = CELEBRATION_DECK_CUES[k];
   if (direct) return overrides ? { ...direct, ...overrides } : direct;
 
-  // Sport-prefixed resolution: 'save' + sport='water-polo' → waterpolo-save.
+  // Sport-prefixed resolution: 'save' + sport='water_polo' → waterpolo-save.
   const sportPrefix =
-    s === 'water-polo' || s === 'waterpolo' ? 'waterpolo' :
-    s === 'football'   ? 'football'  :
-    s === 'basketball' ? 'basketball':
-    s === 'hockey'     ? 'hockey'    :
+    s === 'waterpolo'  ? 'waterpolo'  :
+    s === 'football'   ? 'football'   :
+    s === 'basketball' ? 'basketball' :
+    s === 'hockey'     ? 'hockey'     :
     s === 'baseball' || s === 'softball' ? 'baseball' :
-    s === 'volleyball' ? 'volleyball':
-    s === 'soccer'     ? 'soccer'    :
-    s === 'wrestling'  ? 'wrestling' : '';
+    s === 'volleyball' ? 'volleyball' :
+    s === 'soccer'     ? 'soccer'     :
+    s === 'wrestling'  ? 'wrestling'  : '';
   if (sportPrefix) {
     const composite = `${sportPrefix}-${k}`;
     const m = CELEBRATION_DECK_CUES[composite];

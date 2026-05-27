@@ -1936,6 +1936,17 @@ function pickCinematic(
     sponsorLogoUrl: cue.sponsorLogoUrl ?? undefined,
   };
 
+  // 2026-05-27 — normalize the sport key. Canonical is `water_polo`
+  // (UNDERSCORE — confirmed via packages/api-types/src/sports.ts) but
+  // earlier code only matched hyphens. Bug found by querying the live
+  // DB: operator's game.sport was `water_polo`, my goal handler
+  // checked `water-polo`, fell through to the soccer GOOOOAL widget.
+  // Same pattern for field_hockey / track_and_field / swimming_diving
+  // / cross_country / competitive_cheer. The normalizer collapses
+  // every separator so the check works on any form the operator
+  // (or any API caller) might use.
+  const sportNorm = (sport || '').toLowerCase().replace(/[-_\s]/g, '');
+
   // ─── Goal-class keys → dedicated marquee v1 cinematics ─────────
   // The "goal" cue is the hero event for every sport, so each gets
   // its own bespoke Canvas2D scene (waterpolo: floating FINA goal +
@@ -1943,7 +1954,7 @@ function pickCinematic(
   // water polo is ported; others use the deck or v2 CSS fallbacks
   // until their v1 marquee scenes get the same React port.
   if (key === 'goal') {
-    if (sport === 'water-polo' || sport === 'waterpolo') {
+    if (sportNorm === 'waterpolo') {
       return {
         Component: CelebrationWaterPoloGoal as any,
         defaults: {
@@ -1956,8 +1967,8 @@ function pickCinematic(
         },
       };
     }
-    if (sport === 'hockey')   return { Component: CelHockeyGoalWidget,  defaults: { ...common, scorer: 'GOAL', assists: [] } };
-    if (sport === 'lacrosse') return { Component: LxGoalWidget,         defaults: { ...common, scorer: 'GOAL', number: '' } };
+    if (sportNorm === 'hockey')   return { Component: CelHockeyGoalWidget,  defaults: { ...common, scorer: 'GOAL', assists: [] } };
+    if (sportNorm === 'lacrosse') return { Component: LxGoalWidget,         defaults: { ...common, scorer: 'GOAL', number: '' } };
     // Soccer / field hockey / handball — soccer GOOOOAL scene.
     return { Component: CelSoccerGoalWidget, defaults: { ...common, scorer: 'GOAL', minute: '' } };
   }
