@@ -1,5 +1,18 @@
 # ECBox3576 + CTS Gen 6 + NovaStar VX400 Pro — install guide
 
+> **2026-05-27 — superseded for new sports-vertical installs.** The
+> **Goodview EP6N** is now the canonical sports player — see
+> `docs/EP6N_HARDWARE_EVAL.md`. Same RK3576 SoC family + Android 14
+> so the APK ships unchanged, but the EP6N adds dual native RS232,
+> GPIO IN×2 / OUT×2 (fire-alarm + panic-button hardwiring + status
+> lamp output), HDMI IN (broadcast capture), RJ45 in+out passthrough,
+> 12 V aux out, 6 TOPS NPU, all-aluminum passive cooling, 24/7 duty
+> rating. This guide remains accurate for the ECBox3576 — keep it
+> for the existing water polo install, for budget pilots, and for
+> legacy deployments.
+
+---
+
 This is the one-box water-polo ribbon stack. Reads CTS Gen 6 RS232
 output directly from a Phoenix terminal, renders the ribbon template
 in our Player APK, pushes HDMI to a NovaStar VX400 Pro processor
