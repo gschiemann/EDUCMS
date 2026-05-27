@@ -818,6 +818,18 @@ export default function RibbonPage() {
         {activeCue && (
           <RibbonCueOverlay cue={activeCue} h={vp.h} segCount={1} segWf={vp.w} sport={data?.sport} />
         )}
+        {/* 2026-05-27 — Spotlight ALSO has to layer over media-scroll
+            mode. Operator pushes a player to spotlight (single button
+            press, same as scoreboard) → board shows hero card → ribbon
+            should ALSO show the player. Earlier the spotlight was only
+            wired into the looks-rotation path, but a tenant with any
+            uploaded ribbon slide skips looks entirely → the spotlight
+            never rendered on the ribbon in production. Render an
+            always-on overlay on top of the marquee while spotlight is
+            visible; clears the moment the operator clears it. */}
+        {data.spotlight && data.spotlight.visible && data.spotlight.title && data.spotlight.title.trim() ? (
+          <SpotlightOverlay spotlight={data.spotlight} h={vp.h} w={vp.w} homeColor={data.homeColor || DEFAULT_HOME} />
+        ) : null}
       </>
     );
     // ?canvas=WxH demo: scale the fixed ribbon canvas to fit the screen,
@@ -2263,6 +2275,169 @@ function pickCinematic(
   // so unknown / custom keys still SHOW something instead of going
   // blank. (Audit-log entry is still written either way.)
   return null;
+}
+
+// ── spotlight overlay ──────────────────────────────────────────
+//
+// 2026-05-27 — Operator pushes a featured player to Game.spotlight
+// (same single button that lights the scoreboard's SpotlightBand);
+// this layer renders the same featured-player card on the ribbon
+// as an always-on overlay above the marquee. Sits BELOW the cue
+// overlay (z-index 50 vs cue's 60) so a celebration takes
+// precedence; reappears when the cue ends. Auto-hides the moment
+// the operator clears the spotlight on the next 750ms poll.
+function SpotlightOverlay({
+  spotlight,
+  h,
+  w,
+  homeColor,
+}: {
+  spotlight: {
+    title?: string;
+    subtitle?: string;
+    photoUrl?: string | null;
+    lines?: { label: string; value: string }[];
+  };
+  h: number;
+  w: number;
+  homeColor: string;
+}) {
+  // Card sits in the right ~70% of the ribbon, leaving the pinned
+  // scorebug visible on the left. Same proportions as the looks
+  // rendering — hero photo + name + subtitle + stat lines.
+  const cardH = h;
+  const padL = Math.round(Math.min(w * 0.34, h * 4.4));
+  const cu = Math.min(cardH * 0.9, 540);
+  const initials = (spotlight.title || '')
+    .trim()
+    .split(/\s+/)
+    .map((x) => x[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: padL,
+        overflow: 'hidden',
+        zIndex: 50,
+        background: 'rgba(5,7,13,0.92)',
+        display: 'flex',
+        alignItems: 'center',
+        padding: `0 ${Math.round(cardH * 0.2)}px`,
+        animation: 'rbnFade 0.4s ease-out',
+      }}
+    >
+      {spotlight.photoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={spotlight.photoUrl}
+          alt=""
+          style={{
+            height: cu * 0.86,
+            width: cu * 0.86,
+            borderRadius: 999,
+            objectFit: 'cover',
+            border: `${Math.max(3, Math.round(cu * 0.04))}px solid #fbbf24`,
+            marginRight: cu * 0.22,
+            boxShadow: '0 0 0 3px rgba(251, 191, 36, 0.25)',
+            flexShrink: 0,
+          }}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = 'none';
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            height: cu * 0.86,
+            width: cu * 0.86,
+            borderRadius: 999,
+            background: homeColor,
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: cu * 0.34,
+            fontWeight: 900,
+            marginRight: cu * 0.22,
+            border: `${Math.max(3, Math.round(cu * 0.04))}px solid #fbbf24`,
+            flexShrink: 0,
+          }}
+        >
+          {initials || '★'}
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
+        <span
+          style={{
+            fontSize: cu * 0.15,
+            fontWeight: 800,
+            letterSpacing: 3,
+            color: '#fbbf24',
+          }}
+        >
+          SPOTLIGHT
+        </span>
+        <span
+          style={{
+            fontSize: cu * 0.38,
+            fontWeight: 900,
+            color: '#fff',
+            whiteSpace: 'nowrap',
+            lineHeight: 1.05,
+          }}
+        >
+          {spotlight.title}
+        </span>
+        {spotlight.subtitle ? (
+          <span
+            style={{
+              fontSize: cu * 0.17,
+              fontWeight: 700,
+              color: '#cbd5e1',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {spotlight.subtitle}
+          </span>
+        ) : null}
+        {spotlight.lines && spotlight.lines.length ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              marginTop: cu * 0.04,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {spotlight.lines.slice(0, 4).map((ln, i) => (
+              <span
+                key={i}
+                style={{
+                  marginRight: i < spotlight.lines!.length - 1 ? cu * 0.22 : 0,
+                  fontSize: cu * 0.15,
+                  fontWeight: 700,
+                  color: '#94a3b8',
+                  letterSpacing: 1,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                <span style={{ color: '#94a3b8', marginRight: cu * 0.06 }}>{ln.label}</span>
+                <span style={{ color: '#fff', fontWeight: 900, fontSize: cu * 0.2 }}>
+                  {ln.value}
+                </span>
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function RibbonCueOverlay({
