@@ -2356,6 +2356,7 @@ export default function ScoreboardPage() {
           templateId={data.scoreboardTemplateId}
           gameId={gameId}
           initial={data}
+          embedded={(data as { scoreboardTemplate?: any }).scoreboardTemplate ?? null}
         />
       </div>
     );

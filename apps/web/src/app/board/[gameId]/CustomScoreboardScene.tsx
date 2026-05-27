@@ -68,21 +68,42 @@ export function CustomScoreboardScene({
   templateId,
   gameId,
   initial,
+  /** 2026-05-26 — operator hit "template error http 401 on the cts
+   *  ribbon preview". Root cause: this component was fetching the
+   *  auth-gated /templates/:id from a public surface (the public
+   *  /ribbon/[gameId] page has no admin JWT). Fix: the caller now
+   *  passes the already-resolved template payload pulled from
+   *  /sports/board/:id (which IS public). When `embedded` is set,
+   *  we use it directly + skip the auth-required fetch entirely.
+   *  Falls back to the legacy fetch path only when no embedded
+   *  template was supplied (e.g. ad-hoc preview without a Game). */
+  embedded,
 }: {
   templateId: string;
   gameId: string;
   initial?: GameSnapshot | null;
+  embedded?: Template | null;
 }) {
-  const [template, setTemplate] = useState<Template | null>(null);
+  const [template, setTemplate] = useState<Template | null>(embedded ?? null);
   const [error, setError] = useState<string | null>(null);
   const [vp, setVp] = useState({ w: 1920, h: 1080 });
 
-  // Fetch the template. Re-fetch every 5min so a hot-swapped layout
-  // reaches the board without a manual reload. Same idea as the
-  // scoreboard 750ms poll for live state, just slower for static
-  // structural changes.
+  // Keep state in sync with the embedded prop (the caller's poll of
+  // /sports/board picks up hot-swapped layouts at the same cadence
+  // it polls the game state, so no separate poll needed).
+  useEffect(() => {
+    if (embedded) {
+      setTemplate(embedded);
+      setError(null);
+    }
+  }, [embedded]);
+
+  // Legacy fetch path — only used when no embedded template was
+  // supplied. Kept so ad-hoc usage outside the /sports/board flow
+  // (e.g. an unbound preview) still works for authenticated users.
   useEffect(() => {
     if (!templateId) return;
+    if (embedded) return; // already have it
     let alive = true;
     const load = async () => {
       try {
@@ -104,7 +125,7 @@ export function CustomScoreboardScene({
       alive = false;
       clearInterval(id);
     };
-  }, [templateId]);
+  }, [templateId, embedded]);
 
   // Measure viewport for fit-to-screen scaling.
   useEffect(() => {

@@ -11,6 +11,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { SponsorsService } from './sponsors.service';
+// 2026-05-26 — reused inside getBoard() to resolve the operator-
+// picked scoreboard/ribbon/scorebug templates with parsed zone
+// defaultConfig (Prisma stores it as a JSON string). Bundles the
+// templates directly into the public /sports/board response so
+// public surfaces don't have to fetch the auth-gated /templates/:id.
+import { mapTemplate } from '../templates/templates.controller';
 import {
   findSport,
   SPORTS,
@@ -323,7 +329,40 @@ export class SportsService {
     if (!game) throw new NotFoundException('Game not found');
 
     const since = new Date(Date.now() - CUE_FEED_WINDOW_MS);
-    const [cues, sponsors, roster, ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides, ribbonScoreRepeat] = await Promise.all([
+    // 2026-05-26 — operator hit "template error http 401 on the cts
+    // ribbon preview". Root cause: the public /ribbon/[gameId] page
+    // resolved Game.ribbonTemplateId then fetched
+    // /api/v1/templates/:id — which is admin-auth-required. Browser
+    // had no JWT (it's a public surface), 401, modal showed
+    // "Template error: HTTP 401". Fix: resolve all three surface
+    // templates server-side here and BUNDLE them into the board
+    // response. CustomScoreboardScene now reads the template from
+    // the same /sports/board fetch it already does for cues +
+    // sponsors + roster — one network call, no second auth-gated
+    // endpoint to fail on. Tenant-scope is enforced server-side: a
+    // template only ships if isSystem OR tenantId === game.tenantId
+    // (a leaked or maliciously-set foreign template id returns
+    // null and the ribbon falls back to its built-in render).
+    const templateInclude = {
+      zones: { orderBy: { sortOrder: 'asc' as const } },
+    } as const;
+    const resolveTemplate = async (tplId: string | null) => {
+      if (!tplId) return null;
+      const t = await this.prisma.client.template.findFirst({
+        where: {
+          id: tplId,
+          OR: [{ tenantId: game.tenantId }, { isSystem: true }],
+        },
+        include: templateInclude,
+      });
+      return t ? mapTemplate(t) : null;
+    };
+
+    const [
+      cues, sponsors, roster, ribbonMessages, ribbonPresets,
+      ribbonSpeed, ribbonSlides, ribbonScoreRepeat,
+      scoreboardTemplate, ribbonTemplate, scorebugTemplate,
+    ] = await Promise.all([
       this.prisma.client.gameEvent.findMany({
         where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
         orderBy: { createdAt: 'asc' },
@@ -352,6 +391,12 @@ export class SportsService {
       this.latestRibbonSlides(id),
       // How many times the score anchor repeats around the ribbon.
       this.latestRibbonScoreRepeat(id),
+      // Sprint 13 fix — inline the resolved templates so public
+      // scoreboard / ribbon / scorebug surfaces never have to call
+      // the auth-gated /templates/:id endpoint.
+      resolveTemplate(game.scoreboardTemplateId),
+      resolveTemplate(game.ribbonTemplateId),
+      resolveTemplate(game.scorebugTemplateId),
     ]);
 
     return {
@@ -401,6 +446,14 @@ export class SportsService {
       scoreboardTemplateId: game.scoreboardTemplateId,
       ribbonTemplateId: game.ribbonTemplateId,
       scorebugTemplateId: game.scorebugTemplateId,
+      // 2026-05-26 — resolved templates so public board surfaces can
+      // render the operator-picked layout without a second
+      // authenticated fetch to /api/v1/templates/:id. CustomScoreboardScene
+      // reads these instead of hitting the auth-gated endpoint. Tenant-
+      // scope already enforced above (system OR same-tenant only).
+      scoreboardTemplate,
+      ribbonTemplate,
+      scorebugTemplate,
     };
   }
 

@@ -1362,7 +1362,12 @@ export class TemplatesController {
 
 const mapTemplateLogger = new Logger('mapTemplate');
 
-function mapTemplate(template: any) {
+// 2026-05-26 — exported so sports.service.ts can resolve + bundle
+// templates inside the public /sports/board/:id payload. Public
+// surfaces (board/ribbon/scorebug) need the template structure to
+// render but can't hit the auth-gated /templates/:id; bundling is
+// the fix. Tenant scope still enforced at the call site.
+export function mapTemplate(template: any) {
   if (!template) return template;
   if (template.zones) {
     template.zones = template.zones.map((z: any) => ({

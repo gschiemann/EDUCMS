@@ -680,6 +680,10 @@ export default function RibbonPage() {
           templateId={data.ribbonTemplateId}
           gameId={gameId}
           initial={data}
+          // 2026-05-26 — pass the already-resolved template from
+          // /sports/board so the public ribbon page doesn't 401 on
+          // /templates/:id (admin-auth-required).
+          embedded={(data as { ribbonTemplate?: any }).ribbonTemplate ?? null}
         />
       </div>
     );

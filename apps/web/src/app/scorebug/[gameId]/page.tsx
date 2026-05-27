@@ -257,6 +257,7 @@ export default function ScorebugPage() {
           templateId={data.scorebugTemplateId}
           gameId={gameId}
           initial={data}
+          embedded={(data as { scorebugTemplate?: any }).scorebugTemplate ?? null}
         />
       </>
     );
