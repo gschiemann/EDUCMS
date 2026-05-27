@@ -73,6 +73,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 // Exports GpioService so EmergencyController can auto-drive a wired
 // status lamp on emergency trigger / all-clear.
 import { GpioModule } from './screens/gpio.module';
+import { ScreenWedgeDetectorCron } from './screens/screen-wedge-detector.cron';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
@@ -169,6 +170,14 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
   providers: [
     AppService,
     WebsocketSignerService,
+    // 2026-05-27 — Auto-recovery for the "alive but content-frozen"
+    // failure mode (operator: "is that a bug? it should keep itself
+    // alive right? i wont be infront of customer screens to do this
+    // when somehting doesnt load"). Every 60s, finds screens whose
+    // ping is fresh but lastCacheReportAt is >5min stale and fires
+    // REFRESH_WEB. See the file header for the G43 incident root
+    // cause + signal design.
+    ScreenWedgeDetectorCron,
     AssetSanitizerService,
     SupabaseStorageService,
     MediaOptimizationService,
