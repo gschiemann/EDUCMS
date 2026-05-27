@@ -653,33 +653,14 @@ function RunMode({
       />
       <RunRibbonPreview gameId={gameId} />
 
-      {/* two team zones — shrink to fit the rest of the viewport */}
-      <div className="flex flex-1 min-h-0">
-        {/* HOME zone */}
-        <TeamZone
-          label={g.homeTeam}
-          score={g.homeScore}
-          color={homeColor}
-          side="home"
-          increments={def.score.increments}
-          onScore={scoreHome}
-          def={def}
-          stats={stats}
-          onStat={(s) => ctl.stats.mutate({ stats: s })}
-        />
-        {/* AWAY zone */}
-        <TeamZone
-          label={g.awayTeam}
-          score={g.awayScore}
-          color={awayColor}
-          side="away"
-          increments={def.score.increments}
-          onScore={scoreAway}
-          def={def}
-          stats={stats}
-          onStat={(s) => ctl.stats.mutate({ stats: s })}
-        />
-      </div>
+      {/* 2026-05-27 — TeamZone DROPPED. Operator: "you still say the
+          team names again down here…move the timeouts up into the
+          scoreboard and the other buttons". Team identity now lives
+          ONLY in the scoreboard tile up top. Sport-specific stats
+          (water polo: shots / exclusions / timeouts) are folded into
+          each ScoreTile so the operator never has to scroll past the
+          scoreboard to nudge a timeout. */}
+      <div className="flex-1 min-h-0" />
 
       {/* 2026-05-27 — INLINE highlights + cues bars.
           Operator: "main page forces me to scroll down to the cueus,
@@ -690,7 +671,7 @@ function RunMode({
           one tap away and the bottom of the page is no longer a
           scroll-to dead zone. Toggle behavior on highlights — clicking
           the on-air player clears them; clicking another switches. */}
-      <RunInlineHighlightsBar gameId={gameId} g={g} ctl={ctl} />
+      <RunInlineRosterBar gameId={gameId} g={g} def={def} ctl={ctl} homeColor={homeColor} awayColor={awayColor} />
       <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
 
       {/* 2026-05-27 — bottom control tray, slimmed down.
@@ -719,7 +700,12 @@ function RunMode({
           />
         )}
 
-        {/* undo — reverses the last score change */}
+        {/* undo — reverses the last score change. The ONLY action that
+            stays in this tray. Everything else (penalties, custom
+            highlight, full cue launchpad) moved into the player-tap
+            popover above — operator: "you should pick the user, then
+            pick the celebration or the penalities then we can dump
+            all 3 of the big buttons below for that". */}
         <button
           type="button"
           onClick={undoScore}
@@ -733,53 +719,6 @@ function RunMode({
               {lastAction}
             </span>
           )}
-        </button>
-
-        {/* penalty box — hockey / lacrosse / field hockey / water polo */}
-        {def.penaltyBox && (
-          <button
-            type="button"
-            onClick={onPenalties}
-            className="relative flex flex-col items-center justify-center gap-0.5 h-14 px-4 rounded-xl bg-rose-600 text-white font-black text-sm hover:bg-rose-700 transition-colors shrink-0"
-          >
-            <span>⏱ Penalties</span>
-            <span className="text-[10px] text-rose-200 font-semibold">
-              {def.penaltyBox.label.toLowerCase()}
-            </span>
-            {penaltyCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1 text-[11px] font-black text-rose-600">
-                {penaltyCount}
-              </span>
-            )}
-          </button>
-        )}
-
-        {/* Highlights popup — kept for the custom-spotlight builder
-            (photo upload, stat-line composer, milestone promo). The
-            inline RunInlineHighlightsBar above handles the common-
-            case one-tap player flow. */}
-        <button
-          type="button"
-          onClick={onHighlights}
-          className="flex flex-col items-center justify-center gap-0.5 h-14 px-3 rounded-xl bg-amber-500 text-white font-black text-xs hover:bg-amber-600 transition-colors shrink-0"
-          title="Build a custom spotlight (photo, stat lines, promo)"
-        >
-          <span>★ Custom</span>
-          <span className="text-[9px] text-amber-100 font-semibold">highlight</span>
-        </button>
-
-        {/* Cues popup — kept for the full launchpad (target picker,
-            custom cues, sponsor-tagged cues). The inline
-            RunInlineCuesBar above fires the built-in celebrations on
-            ALL surfaces in one tap. */}
-        <button
-          type="button"
-          onClick={onShowCues}
-          className="flex flex-col items-center justify-center gap-0.5 h-14 px-3 rounded-xl bg-indigo-600 text-white font-black text-xs hover:bg-indigo-700 transition-colors shrink-0"
-          title="Full cue launchpad — target picker + custom cues"
-        >
-          <span>⊞ More</span>
-          <span className="text-[9px] text-indigo-200 font-semibold">cues</span>
         </button>
       </div>
     </div>
@@ -1132,43 +1071,46 @@ function RunRibbonPreview({ gameId }: { gameId: string }) {
   );
 }
 
-/** Quick-pick player tiles always visible in Run mode. Replaces the
- *  highlights modal for the common-case "spotlight this player" flow.
- *  Click toggles: same player twice = clear; different player =
- *  switch directly. ON AIR styling on the active tile. */
-function RunInlineHighlightsBar({
+/** 2026-05-27 — Roster bar with HOME + AWAY rows. Operator: "we need
+ *  the home team spotlights and the away team so maybe two rows and
+ *  then you only see the celebrations or penalties when you pick a
+ *  name, it pops up a little window to selct what you want to
+ *  activate, needs to be smooth quick and clear".
+ *
+ *  Each player tile is a SINGLE tap → opens a small popover with
+ *  options for that player:
+ *    - ★ Spotlight (toggles on / off — what was the old default tap)
+ *    - Sport celebrations (GOAL, Save, Exclusion, Power Play for
+ *      water polo). Fires with player as scorer attribution.
+ *    - ⏱ Send to penalty box (for water polo / hockey / lacrosse).
+ *    - ✕ Cancel
+ *
+ *  Spotlight is the FIRST option so intros (rapid spotlight switching
+ *  between players) is still 2 taps — tap player, tap Spotlight. Same
+ *  beat count as the old workflow but now penalty / celebration are
+ *  also one tap away. */
+function RunInlineRosterBar({
   gameId,
   g,
+  def,
   ctl,
+  homeColor,
+  awayColor,
 }: {
   gameId: string;
   g: any;
+  def: SportDefinition;
   ctl: ReturnType<typeof useGameControl>;
+  homeColor: string;
+  awayColor: string;
 }) {
   const roster = useGameRoster(gameId);
   const players: any[] = Array.isArray(roster.data) ? roster.data : [];
+  const home = players.filter((p) => p.team !== 'away');
+  const away = players.filter((p) => p.team === 'away');
   const sp = g?.spotlight && typeof g.spotlight === 'object' ? g.spotlight : {};
   const onAirTitle = sp.visible && typeof sp.title === 'string' ? sp.title.trim().toLowerCase() : '';
-
-  const togglePlayer = (p: any) => {
-    const playerName = String(p.name || '').trim() || 'Player';
-    const currentlyOnAir = onAirTitle === playerName.toLowerCase();
-    if (currentlyOnAir) {
-      ctl.spotlight.mutate({ clear: true });
-      return;
-    }
-    ctl.spotlight.mutate({
-      visible: true,
-      title: playerName,
-      photoUrl: p.photoUrl || undefined,
-      subtitle:
-        [p.number ? `#${p.number}` : null, p.position].filter(Boolean).join(' · ') ||
-        undefined,
-      lines: Object.entries(p.stats || {})
-        .slice(0, 4)
-        .map(([label, value]) => ({ label: String(label), value: String(value) })),
-    });
-  };
+  const [activePlayer, setActivePlayer] = useState<any | null>(null);
 
   if (players.length === 0) {
     return (
@@ -1178,54 +1120,252 @@ function RunInlineHighlightsBar({
     );
   }
 
-  return (
-    <div className="px-4 py-2 border-t border-slate-200 bg-amber-50">
-      <div className="flex items-center gap-3">
-        <div className="flex flex-col leading-tight shrink-0">
-          <span className="text-[10px] font-black uppercase tracking-widest text-amber-700">
-            ★ Spotlight
-          </span>
-          <span className="text-[10px] text-amber-600">
-            {sp.visible && sp.title ? `On air: ${sp.title}` : 'Tap to put on air'}
-          </span>
-        </div>
-        <div className="flex gap-1.5 flex-wrap overflow-x-auto">
-          {players.map((p) => {
+  const renderRow = (
+    label: string,
+    color: string,
+    list: any[],
+    isHome: boolean,
+  ) => (
+    <div className="flex items-center gap-3 px-4 py-1.5">
+      <div className="flex flex-col leading-tight shrink-0 w-20">
+        <span
+          className="text-[10px] font-black uppercase tracking-widest"
+          style={{ color }}
+        >
+          {isHome ? 'HOME' : 'AWAY'}
+        </span>
+        <span className="text-[10px] text-slate-500 truncate">{label}</span>
+      </div>
+      <div className="flex gap-1.5 flex-wrap overflow-x-auto">
+        {list.length === 0 ? (
+          <span className="text-[11px] text-slate-400 italic">No roster yet</span>
+        ) : (
+          list.map((p) => {
             const playerName = String(p.name || '').trim();
             const onAir = playerName.toLowerCase() === onAirTitle;
             return (
               <button
                 key={p.id}
                 type="button"
-                onClick={() => togglePlayer(p)}
-                disabled={ctl.spotlight.isPending}
-                title={onAir ? 'On air — tap to clear' : `Spotlight ${p.name}`}
+                onClick={() => setActivePlayer(p)}
+                disabled={ctl.spotlight.isPending || ctl.cue.isPending}
+                title={onAir ? 'On air — tap for actions' : `Tap to spotlight or celebrate ${p.name}`}
                 className={
                   onAir
-                    ? 'flex items-center gap-1 rounded-md border-2 border-amber-500 bg-amber-200 px-2 py-1 ring-2 ring-amber-300 transition-colors disabled:opacity-50 shrink-0'
-                    : 'flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-1 transition-colors hover:border-amber-500 hover:bg-amber-100 disabled:opacity-50 shrink-0'
+                    ? 'flex items-center gap-1 rounded-md border-2 px-2 py-1 ring-2 transition-colors disabled:opacity-50 shrink-0 bg-amber-50 ring-amber-300'
+                    : 'flex items-center gap-1 rounded-md border bg-white px-2 py-1 transition-colors hover:bg-slate-50 disabled:opacity-50 shrink-0'
                 }
+                style={onAir ? { borderColor: '#f59e0b' } : { borderColor: color }}
               >
                 {onAir && <span className="text-[9px] font-black text-amber-700">●</span>}
                 {p.number ? (
-                  <span className="text-[10px] font-black text-slate-400">#{p.number}</span>
+                  <span className="text-[10px] font-black" style={{ color }}>
+                    #{p.number}
+                  </span>
                 ) : null}
-                <span className={onAir ? 'text-xs font-bold text-amber-900' : 'text-xs font-semibold text-slate-700'}>
+                <span
+                  className={
+                    onAir
+                      ? 'text-xs font-bold text-amber-900'
+                      : 'text-xs font-semibold text-slate-700'
+                  }
+                >
                   {p.name}
                 </span>
               </button>
             );
-          })}
-        </div>
-        {sp.visible && sp.title && (
+          })
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="border-t border-slate-200 bg-slate-50">
+      {renderRow(g.homeTeam || 'Home', homeColor, home, true)}
+      <div className="border-t border-slate-100" />
+      {renderRow(g.awayTeam || 'Away', awayColor, away, false)}
+      {activePlayer && (
+        <PlayerActionMenu
+          player={activePlayer}
+          spotlight={sp}
+          def={def}
+          ctl={ctl}
+          color={
+            activePlayer.team === 'away' ? awayColor : homeColor
+          }
+          onClose={() => setActivePlayer(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Player action menu — appears when the operator taps a player tile.
+ *  Centered modal with the actions stacked vertically for fat-finger
+ *  speed. Spotlight is the primary action (top, biggest). Sport
+ *  celebrations + penalty come next. Tap outside or ✕ to dismiss.
+ *
+ *  Each action also CLOSES the menu so the operator gets back to the
+ *  roster quickly — keeping the intro-switching tempo intact. */
+function PlayerActionMenu({
+  player,
+  spotlight,
+  def,
+  ctl,
+  color,
+  onClose,
+}: {
+  player: any;
+  spotlight: any;
+  def: SportDefinition;
+  ctl: ReturnType<typeof useGameControl>;
+  color: string;
+  onClose: () => void;
+}) {
+  const playerName = String(player.name || '').trim() || 'Player';
+  const onAir =
+    spotlight.visible &&
+    typeof spotlight.title === 'string' &&
+    spotlight.title.trim().toLowerCase() === playerName.toLowerCase();
+
+  const buildSpotlightPayload = () => ({
+    visible: true,
+    title: playerName,
+    photoUrl: player.photoUrl || undefined,
+    subtitle:
+      [player.number ? `#${player.number}` : null, player.position].filter(Boolean).join(' · ') ||
+      undefined,
+    lines: Object.entries(player.stats || {})
+      .slice(0, 4)
+      .map(([label, value]) => ({ label: String(label), value: String(value) })),
+  });
+
+  const onToggleSpotlight = () => {
+    if (onAir) ctl.spotlight.mutate({ clear: true });
+    else ctl.spotlight.mutate(buildSpotlightPayload());
+    onClose();
+  };
+  const onFire = (cueKey: string) => {
+    // Ensure the player is the attributed scorer for the celebration.
+    if (!onAir) ctl.spotlight.mutate(buildSpotlightPayload());
+    ctl.cue.mutate({
+      key: cueKey,
+      target: 'ALL' as any,
+      scorerName: playerName,
+      scorerNumber: player.number ? String(player.number) : undefined,
+      scorerPhotoUrl: player.photoUrl || undefined,
+      scorerId: player.id || undefined,
+    });
+    onClose();
+  };
+  const onPenalty = () => {
+    // Append a penalty to the game's stats.penalties array.
+    const currentStats = (ctl as any)._game?.stats || {};
+    const current = Array.isArray(currentStats.penalties) ? currentStats.penalties : [];
+    const pb = def.penaltyBox;
+    const sec = pb?.presets?.[0]?.sec || 20;
+    const next = [
+      ...current,
+      {
+        id: `pen-${Date.now()}`,
+        team: player.team === 'away' ? 'away' : 'home',
+        label: pb?.presets?.[0]?.label || `Penalty :${sec}`,
+        player: playerName,
+        number: player.number || '',
+        ms: sec * 1000,
+        running: true,
+        at: new Date().toISOString(),
+      },
+    ];
+    ctl.stats.mutate({ stats: { penalties: next } });
+    onClose();
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 p-3 sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header — player identity with team color stripe */}
+        <div className="flex items-center gap-3 mb-3 pb-3 border-b border-slate-100">
+          <div
+            className="h-10 w-1.5 rounded-full shrink-0"
+            style={{ background: color }}
+          />
+          <div className="flex-1 min-w-0">
+            <div className="text-base font-black text-slate-900 truncate">
+              {player.number ? `#${player.number} ` : ''}
+              {playerName}
+            </div>
+            {player.position && (
+              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                {player.position}
+              </div>
+            )}
+          </div>
           <button
             type="button"
-            onClick={() => ctl.spotlight.mutate({ clear: true })}
-            className="text-[10px] font-bold uppercase tracking-wider text-amber-700 hover:text-amber-900 shrink-0"
+            onClick={onClose}
+            className="rounded-md px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Close"
           >
-            Clear
+            ✕
+          </button>
+        </div>
+
+        {/* Spotlight — primary action, biggest tile, toggles on/off */}
+        <button
+          type="button"
+          onClick={onToggleSpotlight}
+          className={
+            onAir
+              ? 'w-full h-12 rounded-lg bg-amber-100 border-2 border-amber-500 text-amber-900 font-black text-sm hover:bg-amber-200 transition-colors mb-2'
+              : 'w-full h-12 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-black text-sm transition-colors mb-2'
+          }
+        >
+          {onAir ? '● ON AIR — Tap to clear spotlight' : '★ Spotlight on board + ribbon'}
+        </button>
+
+        {/* Sport celebrations — fires with player attribution */}
+        <div className="grid grid-cols-2 gap-1.5 mb-2">
+          {def.celebrations.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => onFire(c.key)}
+              className="h-11 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <span>{c.emoji}</span>
+              <span>{c.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Penalty — sports with a penalty box only */}
+        {def.penaltyBox && (
+          <button
+            type="button"
+            onClick={onPenalty}
+            className="w-full h-11 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm transition-colors mb-1"
+          >
+            ⏱ {def.penaltyBox.presets?.[0]?.label || 'Send to penalty box'}
           </button>
         )}
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs transition-colors mt-2"
+        >
+          Cancel
+        </button>
       </div>
     </div>
   );
