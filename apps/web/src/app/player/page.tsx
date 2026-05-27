@@ -1443,6 +1443,15 @@ function PlayerPage() {
   // full-canvas render).
   const [manifestRepeats, setManifestRepeats] = useState<number>(1);
 
+  // 2026-05-27 — EP6N dual-RS232 + GPIO wiring. The manifest's
+  // `wiring` field comes from `Screen.config.wiring`. CtsBridge reads
+  // this prop and opens the right number of native serial ports with
+  // the right parser per port. Null = legacy single-port behavior.
+  const [manifestWiring, setManifestWiring] = useState<{
+    rs232_1?: 'cts' | 'streamdeck' | 'aux' | 'off';
+    rs232_2?: 'cts' | 'streamdeck' | 'aux' | 'off';
+  } | null>(null);
+
   // Tag <body> with data-player-route so the debug pill in globals.css
   // ONLY appears on the kiosk player, NEVER on the dashboard. Operator
   // (2026-05-04): "your dumb fucking pill is in the app no too not just
@@ -2693,6 +2702,26 @@ function PlayerPage() {
       // next render. Cheap setter — React Query short-circuits if the
       // value didn't change.
       if (rp !== manifestRepeats) setManifestRepeats(rp);
+      // 2026-05-27 — EP6N wiring. Stashed in `Screen.config.wiring`
+      // and surfaced on the manifest as `wiring`. CtsBridge reads it
+      // to know which native RS232 port carries CTS vs Stream Deck.
+      if (manifest.wiring && typeof manifest.wiring === 'object') {
+        const w = manifest.wiring as { rs232_1?: string; rs232_2?: string };
+        const allowed = new Set(['cts', 'streamdeck', 'aux', 'off']);
+        const rs232_1 = allowed.has(w.rs232_1 ?? '')
+          ? (w.rs232_1 as 'cts' | 'streamdeck' | 'aux' | 'off')
+          : undefined;
+        const rs232_2 = allowed.has(w.rs232_2 ?? '')
+          ? (w.rs232_2 as 'cts' | 'streamdeck' | 'aux' | 'off')
+          : undefined;
+        if (rs232_1 !== undefined || rs232_2 !== undefined) {
+          setManifestWiring({ rs232_1, rs232_2 });
+        } else {
+          setManifestWiring(null);
+        }
+      } else {
+        setManifestWiring(null);
+      }
       if (cw && ch && typeof document !== 'undefined') {
         try {
           // Persist for the next boot — pin script reads this from
@@ -6822,6 +6851,7 @@ function PlayerPage() {
           deviceToken={getDeviceToken()}
           gameId={qp('game') || null}
           feedToken={qp('feedToken') || null}
+          wiring={manifestWiring || undefined}
         />
       )}
     </div>

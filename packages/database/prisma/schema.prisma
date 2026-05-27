@@ -751,26 +751,42 @@ model Screen {
   // (broadcast overlay). Null is treated as BOARD for back-compat
   // with screens pushed before the surface picker shipped.
   activeBoardSurface                  String?      @map("active_board_surface")
-  // 2026-05-27 — Goodview EP6N GPIO wiring + state.
+  // 2026-05-27 — Goodview EP6N I/O wiring + state, plus future
+  // hardware-specific config. Same pattern as Game.stats (open-shape
+  // JSON, validated at the API allow-list rather than via per-key
+  // schema columns). Two commits land into this one field:
+  //   - Agent B (8ac813b) — wiring sub-object (serial + RS485 + GPIO
+  //     mappings). Operator-set in the dashboard's WiringPanel.
+  //   - Agent C (df71ef6) — gpioState sub-object (live OUT pin state).
+  //     Server-driven; flips automatically on emergency triggers.
   //
-  //   config.wiring = {
-  //     gpio_in1:  'fire_alarm' | 'panic_button' | null,
-  //     gpio_in2:  'fire_alarm' | 'panic_button' | null,
-  //     gpio_out1: 'status_lamp' | 'horn'        | null,
-  //     gpio_out2: 'status_lamp' | 'horn'        | null,
+  // Documented top-level keys:
+  //   wiring = {
+  //     rs232_1: 'cts' | 'streamdeck' | 'aux' | 'off',
+  //     rs232_2: 'cts' | 'streamdeck' | 'aux' | 'off',
+  //     rs485:   'daktronics' | 'nevco' | 'off',
+  //     gpio_in:  { in1: 'fire_alarm'|'panic_button'|'door_sensor'|'off',
+  //                 in2: same },
+  //     gpio_out: { out1: 'status_lamp'|'horn'|'door_strike'|'off',
+  //                 out2: same },
   //   }
   //
-  //   config.gpioState = {
+  //   gpioState = {
   //     out1: 'low' | 'high',
   //     out2: 'low' | 'high',
   //     updatedAt: ISO8601,
   //   }
   //
-  // The manifest endpoint surfaces gpioState as `gpio: { out1, out2 }`
-  // for the player to apply. The EP6N's Phoenix terminal has 2 GPIO
-  // IN (dry-contact panic / fire alarm inputs) + 2 GPIO OUT (relay
-  // outputs driving status lamps, horns). Every other hardware model
-  // ignores the field — no GPIO pins to drive.
+  // The manifest endpoint surfaces `wiring` (so the player's CtsBridge
+  // can route the right native serial port to the right protocol
+  // parser) AND `gpioState` as `gpio: { out1, out2 }` (so the player
+  // applies output state). The EP6N's Phoenix terminal has 2 RS232 +
+  // 1 RS485 + 2 GPIO IN + 2 GPIO OUT. Every other hardware model
+  // ignores fields it doesn't have — single-port boxes read only
+  // wiring.rs232_1; no-GPIO boxes ignore gpio_in/out entirely. The
+  // dashboard's WiringPanel (visible only when
+  // `hardwareModel === 'goodview-ep6n'`) writes this via the existing
+  // PUT /screens/:id endpoint's relaxed `config` allow-list.
   config                              Json?
   schedules                           Schedule[]
   screenGroup                         ScreenGroup? @relation(fields: [screenGroupId], references: [id])

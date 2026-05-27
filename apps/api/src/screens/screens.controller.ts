@@ -1186,14 +1186,14 @@ export class ScreensController {
       name?: string;
       location?: string;
       screenGroupId?: string | null;
-      // 2026-05-27 — hardware identification. Either a known model id
-      // from packages/api-types/src/hardware-models.ts HARDWARE_CATALOG,
-      // OR null to clear it back to "unassigned". An unknown / typo'd
-      // string returns 400 BAD_REQUEST so the dashboard surfaces the
-      // mistake instead of silently storing a value that no UI cell
-      // recognizes. Skipping the key entirely is a no-op (existing
-      // value preserved) — matching every other field in this body.
+      // 2026-05-27 — hardware identification (Agent A, c175aab). Either
+      // a known model id from HARDWARE_CATALOG, OR null to clear it
+      // back to "unassigned". An unknown / typo'd string returns 400.
       hardwareModel?: HardwareModel | string | null;
+      // 2026-05-27 — open-shape hardware config (Agent B, 8ac813b).
+      // EP6N wiring + future per-hardware keys. Allow-listed by the
+      // merge step below so a stale client can't bloat the row.
+      config?: Record<string, unknown> | null;
     },
   ) {
     const screen = await this.prisma.client.screen.findFirst({
@@ -1201,19 +1201,14 @@ export class ScreensController {
     });
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
-    // Resolve hardwareModel against the catalog. We accept exact ids
-    // from the union AND a permissive case/whitespace normalization
-    // (resolveHardwareModel collapses ' Goodview-EP6N ' to
-    // 'goodview-ep6n'). Any other string returns 400.
+    // Resolve hardwareModel against the catalog (Agent A). Permissive
+    // case/whitespace normalization via resolveHardwareModel; unknown
+    // strings return 400.
     let nextHardwareModel: string | null | undefined = undefined;
     if (body.hardwareModel === null) {
-      nextHardwareModel = null; // explicit clear
+      nextHardwareModel = null;
     } else if (typeof body.hardwareModel === 'string' && body.hardwareModel.trim()) {
       const resolved = resolveHardwareModel(body.hardwareModel);
-      // resolveHardwareModel collapses unknown strings to 'unknown'. We
-      // distinguish "operator picked Unknown explicitly" from "operator
-      // typed a SKU we don't recognize" by checking the original input
-      // against the model list directly.
       const normalized = body.hardwareModel.trim().toLowerCase();
       const isKnown = (HARDWARE_MODELS as readonly string[]).includes(normalized);
       if (!isKnown) {
@@ -1221,22 +1216,63 @@ export class ScreensController {
           {
             error: 'INVALID_HARDWARE_MODEL',
             message:
-              'hardwareModel must be one of: ' +
-              HARDWARE_MODELS.join(', '),
+              'hardwareModel must be one of: ' + HARDWARE_MODELS.join(', '),
             received: body.hardwareModel,
           },
           HttpStatus.BAD_REQUEST,
         );
       }
       nextHardwareModel = resolved;
-      // Validate the resolved id maps to a catalog entry — guards
-      // against a future state where HARDWARE_MODELS drifts from
-      // HARDWARE_CATALOG. The hardware-models.spec.ts test asserts
-      // this can't happen at build time; this is a runtime safety net.
       if (!HARDWARE_CATALOG[resolved]) {
         throw new HttpException(
           'hardware-models catalog drift detected — please report this bug',
           HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+    }
+
+    // 2026-05-27 — Goodview EP6N WiringPanel + future hardware-config
+    // payloads (Agent B). Merge incoming `config` into the existing
+    // Screen.config JSON column, but only allow-listed keys, so a
+    // stale client can't bloat the row. `config: null` wipes the
+    // column; sending an inner key as null deletes just that key.
+    // Allow-list covers EP6N wiring today; reserved keys are documented
+    // intentions for upcoming hardware features (NOT wired yet).
+    const CONFIG_ALLOW_LIST = new Set([
+      'wiring',          // EP6N RS232 + RS485 + GPIO routing (Agent B)
+      'gpioState',       // GPIO OUT live state (Agent C) — server-driven
+                         //                                  but allowed
+                         //                                  here for
+                         //                                  forensic
+                         //                                  manual edits
+      'hdmiInSource',    // EP6N HDMI input passthrough (reserved)
+      'audioOut',        // future per-screen audio routing (reserved)
+      'usbLayout',       // future USB peripheral mapping (reserved)
+    ]);
+
+    let mergedConfig: Record<string, unknown> | null | undefined = undefined;
+    if (body.config !== undefined) {
+      if (body.config === null) {
+        mergedConfig = null;
+      } else if (typeof body.config === 'object' && !Array.isArray(body.config)) {
+        const current: Record<string, unknown> = (screen as any).config
+          && typeof (screen as any).config === 'object'
+          && !Array.isArray((screen as any).config)
+          ? { ...(screen as any).config }
+          : {};
+        for (const [key, value] of Object.entries(body.config)) {
+          if (!CONFIG_ALLOW_LIST.has(key)) continue;
+          if (value === null) {
+            delete current[key];
+          } else {
+            current[key] = value;
+          }
+        }
+        mergedConfig = current;
+      } else {
+        throw new HttpException(
+          'config must be an object (or null to clear)',
+          HttpStatus.BAD_REQUEST,
         );
       }
     }
@@ -1247,9 +1283,10 @@ export class ScreensController {
         name: body.name?.trim() || screen.name,
         location: body.location !== undefined ? (body.location?.trim() || null) : screen.location,
         screenGroupId: body.screenGroupId !== undefined ? (body.screenGroupId || null) : screen.screenGroupId,
-        // Only patch hardwareModel when it was actually present in the
-        // body — `undefined` preserves the existing column value.
+        // Only patch each hardware field when it was actually present
+        // in the body — `undefined` preserves the existing column value.
         ...(nextHardwareModel !== undefined ? { hardwareModel: nextHardwareModel } : {}),
+        ...(mergedConfig !== undefined ? { config: mergedConfig as any } : {}),
       },
       include: { screenGroup: { select: { id: true, name: true } } },
     });
@@ -2922,14 +2959,26 @@ export class ScreensController {
       // gets the same score / sponsor / celebration. Viewing angle
       // problem solved (no one's far from a visible repeat).
       repeats: (screen as any).repeats ?? 1,
-      // 2026-05-27 — Goodview EP6N GPIO output state. Player applies
-      // out1 / out2 to the Phoenix terminal's relay outputs. Older
-      // hardware models (Taurus / Pi5 / generic Android / web)
-      // ignore unknown fields. Defaults both to 'low' when unset.
+      // 2026-05-27 — Goodview EP6N hardware state surfaced to the player.
+      //   gpio   — current OUT pin state (Agent C). Player applies
+      //            out1 / out2 to the Phoenix terminal's relay outputs.
+      //   wiring — operator-set serial / RS485 / GPIO mappings (Agent B).
+      //            CtsBridge reads wiring.rs232_1 / rs232_2 to route
+      //            CTS vs Stream Deck vs aux-debug.
+      // Older hardware models (Taurus / Pi5 / generic Android / web)
+      // ignore unknown manifest fields. Defaults: gpio out=low,
+      // wiring=null (CtsBridge treats null as the legacy single-port
+      // path — backward compatible).
       gpio: (() => {
         const s = readGpioState((screen as any).config);
         return { out1: s.out1, out2: s.out2 };
       })(),
+      wiring: ((screen as any).config && typeof (screen as any).config === 'object'
+        && !Array.isArray((screen as any).config)
+        && (screen as any).config.wiring
+        && typeof (screen as any).config.wiring === 'object')
+        ? (screen as any).config.wiring
+        : null,
       playlists: dynamicPlaylists
     };
 

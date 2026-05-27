@@ -113,14 +113,48 @@ interface EduCmsNativeBridge {
   ) => string;
   ctsSerialDisconnect?: () => string;
   ctsSerialStatus?: () => string;
+  // 2026-05-27 — EP6N second-port native bridge. Same shape as the
+  // primary ctsSerial* methods but addressed to port 2 (Phoenix
+  // terminal RS232 #2 on the EP6N). The APK exposes these alongside
+  // the primary ones whenever the device has more than one hardware
+  // UART. Older APKs without dual-port support simply don't expose
+  // them and the second-port code path stays dormant.
+  ctsSerialEnabled2?: () => boolean;
+  ctsSerialConnect2?: (
+    devicePath: string,
+    baudRate: number,
+    dataBits: number,
+    stopBits: number,
+    parity: string,
+  ) => string;
+  ctsSerialDisconnect2?: () => string;
+  ctsSerialStatus2?: () => string;
 }
 
 declare global {
   interface Window {
     EduCmsNative?: EduCmsNativeBridge;
     __ctsSerialBytes?: (base64: string) => void;
+    /** Native APK bytes callback for the SECOND RS232 port. Wired up
+     *  on mount when wiring.rs232_2 !== 'off'. */
+    __ctsSerialBytes2?: (base64: string) => void;
   }
 }
+
+/** EP6N hardware-wiring config. Describes which logical role (CTS
+ *  console / Elgato Stream Deck / debug-only aux) each native RS232
+ *  port is wearing. The dashboard's WiringPanel writes this through
+ *  PUT /api/v1/screens/:id; the manifest pushes it to the player and
+ *  the bridge below opens the right number of ports with the right
+ *  parser per port.
+ *
+ *  Backward-compat default: `{ rs232_1: 'cts', rs232_2: 'off' }` —
+ *  the exact pre-EP6N single-port behavior. The bridge treats
+ *  `undefined` wiring as that default. */
+export type CtsBridgeWiring = {
+  rs232_1?: 'cts' | 'streamdeck' | 'aux' | 'off';
+  rs232_2?: 'cts' | 'streamdeck' | 'aux' | 'off';
+};
 
 type Status = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -161,6 +195,86 @@ function b64ToBytes(b64: string): Uint8Array {
 //
 // Latest-snapshot-wins during the throttle window.
 const POST_THROTTLE_MS = 200;
+
+/**
+ * 2026-05-27 — Stream Deck text-line parser.
+ *
+ * The Elgato Stream Deck "Web Request" or a tiny on-device serial
+ * sketch (Arduino, Teensy, RP2040) can emit one ASCII line per cue.
+ * We accumulate bytes until `\n`, parse one line at a time, and
+ * dispatch via the existing game-control endpoints — the same paths
+ * the `useGameControl` hook in the dashboard's sports control page
+ * uses. Two recognised forms:
+ *
+ *   CUE <key> [target]            → POST /sports/games/:id/cue
+ *                                       body { key, target? }
+ *   SCORE <±N> <team>             → PATCH /sports/games/:id/score
+ *                                       body { delta: N, team }
+ *
+ * Examples (each ends in `\n`):
+ *   CUE goal
+ *   CUE save BOARD
+ *   SCORE +1 home
+ *   SCORE -2 away
+ *
+ * Unknown / malformed lines are logged silently and ignored — the
+ * Stream Deck might be misconfigured but we don't want to crash the
+ * board mid-game.
+ */
+type StreamDeckCmd =
+  | { type: 'cue'; key: string; target?: string }
+  | { type: 'score'; team: 'home' | 'away'; delta: number };
+
+function parseStreamDeckLine(line: string): StreamDeckCmd | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(/\s+/);
+  const op = (parts[0] || '').toUpperCase();
+  if (op === 'CUE') {
+    const key = parts[1];
+    if (!key) return null;
+    const target = parts[2];
+    return { type: 'cue', key, ...(target ? { target } : {}) };
+  }
+  if (op === 'SCORE') {
+    const deltaRaw = parts[1];
+    const teamRaw = (parts[2] || '').toLowerCase();
+    if (!deltaRaw) return null;
+    const delta = parseInt(deltaRaw, 10);
+    if (!Number.isFinite(delta) || delta === 0) return null;
+    if (teamRaw !== 'home' && teamRaw !== 'away') return null;
+    return { type: 'score', team: teamRaw, delta };
+  }
+  return null;
+}
+
+/** Stateful line-buffer for one port. Stream Deck commands are
+ *  newline-delimited ASCII; we accumulate raw bytes and yield one
+ *  trimmed line at a time, even if the serial chunk boundary lands
+ *  mid-line. */
+class LineAccumulator {
+  private buf = '';
+  push(bytes: Uint8Array, onLine: (line: string) => void): void {
+    // ASCII / UTF-8 — Stream Deck strings are 7-bit. atob/charCode
+    // would also work; TextDecoder is fine because we never reset it.
+    let text = '';
+    for (let i = 0; i < bytes.length; i++) {
+      const c = bytes[i];
+      if (c !== undefined) text += String.fromCharCode(c);
+    }
+    this.buf += text;
+    let nl: number;
+    while ((nl = this.buf.indexOf('\n')) >= 0) {
+      const raw = this.buf.slice(0, nl).replace(/\r$/, '');
+      this.buf = this.buf.slice(nl + 1);
+      onLine(raw);
+    }
+    // Guard against a single very long bogus line eating memory.
+    if (this.buf.length > 4096) {
+      this.buf = this.buf.slice(-2048);
+    }
+  }
+}
 
 // CTS clock-pause detection. If we haven't seen the displayed clock
 // string change in this many milliseconds, treat the clock as paused.
@@ -220,6 +334,12 @@ export interface CtsBridgeProps {
    *  via GET /sports/games/:id/feed-credentials; the operator pastes it
    *  in once during install (or the player manifest carries it). */
   feedToken?: string | null;
+  /** 2026-05-27 — EP6N dual-RS232 wiring. The dashboard's WiringPanel
+   *  writes this to `Screen.config.wiring`; the manifest pushes it
+   *  through to the player which feeds it here. Defaults to
+   *  `{ rs232_1: 'cts', rs232_2: 'off' }` for backward compatibility
+   *  with every existing single-port install. */
+  wiring?: CtsBridgeWiring;
   /** Compact mode: skip debug JSON pretty-print + last-bytes counter. */
   compact?: boolean;
 }
@@ -230,8 +350,14 @@ export function CtsBridge({
   deviceToken,
   gameId,
   feedToken,
+  wiring,
   compact = false,
 }: CtsBridgeProps) {
+  // Resolve the wiring with the legacy single-port default.
+  const rs232_1Role: 'cts' | 'streamdeck' | 'aux' | 'off' =
+    wiring?.rs232_1 ?? 'cts';
+  const rs232_2Role: 'cts' | 'streamdeck' | 'aux' | 'off' =
+    wiring?.rs232_2 ?? 'off';
   const [supported, setSupported] = useState<boolean | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -247,6 +373,30 @@ export function CtsBridge({
   const pendingSnapshotRef = useRef<CtsFullSnapshot | null>(null);
   const postTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPostAtRef = useRef<number>(0);
+
+  // 2026-05-27 — EP6N dual-RS232. Each port maintains its OWN line
+  // accumulator (Stream Deck) and its own port handles. The CtsParser
+  // is shared with whichever port carries the 'cts' role — only one
+  // port can carry CTS at a time (the protocol's stateful parser is
+  // not reentrant across two independent feeds). Roles 'streamdeck'
+  // and 'aux' are stateless per-line and trivially parallel.
+  const port2Ref = useRef<SerialPortLite | null>(null);
+  const reader2Ref = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  const streamDeckLines1Ref = useRef<LineAccumulator | null>(null);
+  const streamDeckLines2Ref = useRef<LineAccumulator | null>(null);
+  // Status the panel surfaces for the second port. The shared
+  // `status` variable above still tracks port 1 to preserve the
+  // existing connect/disconnect UX.
+  const [status2, setStatus2] = useState<Status>('idle');
+  const [bytesRead2, setBytesRead2] = useState<number>(0);
+  // Count of Stream Deck commands successfully dispatched, surfaced
+  // in the debug panel so the operator can confirm wiring without a
+  // multimeter (just press a button on the Stream Deck — counter
+  // ticks).
+  const [streamDeckCmds, setStreamDeckCmds] = useState<number>(0);
+  // Last Stream Deck line received (any port), for operator sanity
+  // when the dispatcher rejects malformed lines silently.
+  const [lastStreamDeckLine, setLastStreamDeckLine] = useState<string | null>(null);
   // 2026-05-27 — derive a running/paused bit from successive parser
   // snapshots. CtsFullSnapshot itself carries no boolean for this; the
   // physical CTS protocol simply emits a new clock string every ~100 ms
@@ -297,24 +447,126 @@ export function CtsBridge({
   // Initialize parser once.
   useEffect(() => {
     parserRef.current = new CtsParser();
+    streamDeckLines1Ref.current = new LineAccumulator();
+    streamDeckLines2Ref.current = new LineAccumulator();
     return () => {
       parserRef.current = null;
+      streamDeckLines1Ref.current = null;
+      streamDeckLines2Ref.current = null;
     };
   }, []);
 
+  /**
+   * 2026-05-27 — dispatch a Stream Deck command via the same
+   * endpoints the dashboard's `useGameControl` hook calls
+   * (POST /sports/games/:id/cue, PATCH /sports/games/:id/score).
+   * Requires `gameId` + `feedToken` — without them we can't address
+   * a game and the command is silently dropped (the operator hasn't
+   * wired the kiosk to a game yet).
+   */
+  const dispatchStreamDeckCmd = useCallback(
+    async (cmd: StreamDeckCmd) => {
+      if (!gameId || !feedToken) return; // no game bound — drop
+      try {
+        if (cmd.type === 'cue') {
+          await fetch(
+            `${apiRoot}/api/v1/sports/games/${encodeURIComponent(gameId)}/cue`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-feed-token': feedToken,
+              },
+              body: JSON.stringify({
+                key: cmd.key,
+                ...(cmd.target ? { target: cmd.target } : {}),
+              }),
+              keepalive: true,
+            },
+          );
+        } else if (cmd.type === 'score') {
+          await fetch(
+            `${apiRoot}/api/v1/sports/games/${encodeURIComponent(gameId)}/score`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-feed-token': feedToken,
+              },
+              body: JSON.stringify({ team: cmd.team, delta: cmd.delta }),
+              keepalive: true,
+            },
+          );
+        }
+        setStreamDeckCmds((n) => n + 1);
+      } catch {
+        // Network blip — Stream Deck commands are fire-and-forget at
+        // the operator level (they'll press the button again if the
+        // celebration doesn't fire). No retry storm.
+      }
+    },
+    [apiRoot, gameId, feedToken],
+  );
+
+  /**
+   * Route bytes from one port into the right pipeline based on the
+   * port's role. CTS bytes feed the shared CtsParser; Stream Deck
+   * bytes split into newline-delimited lines and dispatch as cue /
+   * score commands; AUX bytes get logged to the console for the
+   * operator running the install kit. 'off' = no-op (the port was
+   * never opened, so this shouldn't get called).
+   *
+   * `portIndex` (1 or 2) just selects the matching line-accumulator
+   * — each port carries its OWN serial chunk-boundary state.
+   */
+  const routeBytes = useCallback(
+    (portIndex: 1 | 2, role: 'cts' | 'streamdeck' | 'aux' | 'off', bytes: Uint8Array) => {
+      if (role === 'off' || bytes.length === 0) return;
+      if (role === 'cts') {
+        parserRef.current?.feed(bytes);
+        return;
+      }
+      if (role === 'streamdeck') {
+        const acc = portIndex === 1
+          ? streamDeckLines1Ref.current
+          : streamDeckLines2Ref.current;
+        if (!acc) return;
+        acc.push(bytes, (line) => {
+          setLastStreamDeckLine(line.slice(0, 80));
+          const cmd = parseStreamDeckLine(line);
+          if (cmd) void dispatchStreamDeckCmd(cmd);
+        });
+        return;
+      }
+      if (role === 'aux') {
+        // Debug-only: log byte counts + first 32 chars. Never sent
+        // anywhere; just helps the install tech verify cabling.
+        try {
+          const head = Array.from(bytes.slice(0, 32))
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join(' ');
+          // eslint-disable-next-line no-console
+          console.log(`[CtsBridge aux port${portIndex}] ${bytes.length}B: ${head}`);
+        } catch { /* ignore */ }
+      }
+    },
+    [dispatchStreamDeckCmd],
+  );
+
   // Sprint 13 Phase 2 — native serial bytes path. The APK calls
   // `window.__ctsSerialBytes(base64)` for every chunk it reads from
-  // the Phoenix-terminal RS232 port. We decode + feed straight into
-  // the parser (same `parser.feed()` the Web Serial path uses).
-  // Setup is conditional so non-Player browsers don't get a phantom
-  // global hook.
+  // the Phoenix-terminal RS232 port. We decode + feed through the
+  // role router (CTS parser / Stream Deck line accumulator / aux
+  // logger) selected by `rs232_1Role`. Setup is conditional so
+  // non-Player browsers don't get a phantom global hook.
   useEffect(() => {
     if (!nativeMode) return;
+    if (rs232_1Role === 'off') return;
     window.__ctsSerialBytes = (b64: string) => {
       try {
         const bytes = b64ToBytes(b64);
         if (bytes.length === 0) return;
-        parserRef.current?.feed(bytes);
+        routeBytes(1, rs232_1Role, bytes);
         setBytesRead((n) => n + bytes.length);
       } catch (e) {
         setError(`Native bytes decode failed: ${(e as Error).message}`);
@@ -325,15 +577,43 @@ export function CtsBridge({
         delete window.__ctsSerialBytes;
       }
     };
-  }, [nativeMode]);
+  }, [nativeMode, rs232_1Role, routeBytes]);
+
+  // 2026-05-27 — EP6N second-port native bytes path. Same shape as
+  // port 1 but reads from `window.__ctsSerialBytes2`, mounted only
+  // when the operator wired a role to port 2.
+  useEffect(() => {
+    if (!nativeMode) return;
+    if (rs232_2Role === 'off') return;
+    window.__ctsSerialBytes2 = (b64: string) => {
+      try {
+        const bytes = b64ToBytes(b64);
+        if (bytes.length === 0) return;
+        routeBytes(2, rs232_2Role, bytes);
+        setBytesRead2((n) => n + bytes.length);
+      } catch (e) {
+        setError(`Native bytes2 decode failed: ${(e as Error).message}`);
+      }
+    };
+    return () => {
+      if (typeof window !== 'undefined' && window.__ctsSerialBytes2) {
+        delete window.__ctsSerialBytes2;
+      }
+    };
+  }, [nativeMode, rs232_2Role, routeBytes]);
 
   // Sprint 13 Phase 2 — native auto-connect on mount. The operator
   // configured tty path + baud + parity once in APK settings (or via
   // the URL query params for ad-hoc testing); we open + start reading
   // immediately so the operator doesn't have to click anything on the
   // kiosk. Cable yanks are recovered via the status poll below.
+  //
+  // 2026-05-27 — when rs232_1Role is 'off' (operator wired all the
+  // traffic to port 2), we skip the auto-connect so we don't sit on
+  // a tty the operator might want for something else.
   useEffect(() => {
     if (!nativeMode) return;
+    if (rs232_1Role === 'off') return;
     const n = window.EduCmsNative;
     if (!n?.ctsSerialConnect) return;
     const opts = readSerialOptsFromQuery();
@@ -362,7 +642,46 @@ export function CtsBridge({
     return () => {
       try { window.EduCmsNative?.ctsSerialDisconnect?.(); } catch { /* ignore */ }
     };
-  }, [nativeMode]);
+  }, [nativeMode, rs232_1Role]);
+
+  // 2026-05-27 — EP6N port-2 native auto-connect. Mirrors port-1's
+  // setup but addresses /dev/ttyS2 (the second Phoenix-terminal
+  // RS232) via the ctsSerialConnect2 method. Older Player APKs that
+  // don't expose the dual-port methods silently skip this effect —
+  // the wiring still works, just only the first port is open.
+  useEffect(() => {
+    if (!nativeMode) return;
+    if (rs232_2Role === 'off') return;
+    const n = window.EduCmsNative;
+    if (!n?.ctsSerialConnect2) {
+      // Older single-port APK — log the wiring mismatch so the
+      // operator knows to update the APK to v2.x.
+      // eslint-disable-next-line no-console
+      console.warn('[CtsBridge] wiring.rs232_2 set but APK has no ctsSerialConnect2 — update Player APK to enable second port.');
+      return;
+    }
+    const opts = readSerialOptsFromQuery();
+    const tty = typeof window !== 'undefined'
+      ? (new URLSearchParams(window.location.search).get('ctsTty2') || '/dev/ttyS2')
+      : '/dev/ttyS2';
+    setStatus2('connecting');
+    try {
+      const resp = n.ctsSerialConnect2(tty, opts.baudRate, opts.dataBits, opts.stopBits, opts.parity);
+      const parsed = JSON.parse(resp || '{}');
+      if (parsed.ok) {
+        setStatus2('connected');
+      } else {
+        setStatus2('error');
+        setError(`port2 ${parsed.code || 'error'}: ${parsed.message || 'connect failed'}`);
+      }
+    } catch (e) {
+      setStatus2('error');
+      setError(`Native port2 connect failed: ${(e as Error).message}`);
+    }
+    return () => {
+      try { window.EduCmsNative?.ctsSerialDisconnect2?.(); } catch { /* ignore */ }
+    };
+  }, [nativeMode, rs232_2Role]);
 
   // Sprint 13 Phase 2 — native status poll (5s) so the operator-facing
   // panel shows live bytes-read + last-byte-age. Also drives the
@@ -534,69 +853,106 @@ export function CtsBridge({
     return unsub;
   }, [schedulePost]);
 
-  // Read loop: pump bytes from the port's readable stream into the
-  // parser. Returns when the stream ends (port closed / disconnect).
-  const runReadLoop = useCallback(async (port: SerialPortLite) => {
-    if (!port.readable) {
-      setError('Port readable stream is null');
-      return;
-    }
-    const reader = port.readable.getReader();
-    readerRef.current = reader;
-    try {
-      while (!disposedRef.current) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (value && value.length) {
-          parserRef.current?.feed(value);
-          setBytesRead((n) => n + value.length);
-        }
+  // Read loop: pump bytes from the port's readable stream through
+  // the role router (CTS parser / Stream Deck lines / aux logger).
+  // Returns when the stream ends (port closed / disconnect).
+  //
+  // `portIndex` selects which port's per-port state we touch
+  // (reader handle, bytes-read counter, line accumulator). `role`
+  // picks the parser. The router itself is a pure function — same
+  // bytes, different downstream paths.
+  const runReadLoop = useCallback(
+    async (
+      port: SerialPortLite,
+      portIndex: 1 | 2,
+      role: 'cts' | 'streamdeck' | 'aux' | 'off',
+    ) => {
+      if (!port.readable) {
+        setError('Port readable stream is null');
+        return;
       }
-    } catch (e) {
-      // Stream errors (cable yanked) bubble here.
-      setError(`Read error: ${(e as Error).message}`);
-    } finally {
-      try { reader.releaseLock(); } catch { /* ignore */ }
-      readerRef.current = null;
-    }
-  }, []);
+      const reader = port.readable.getReader();
+      if (portIndex === 1) readerRef.current = reader;
+      else reader2Ref.current = reader;
+      try {
+        while (!disposedRef.current) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value && value.length) {
+            routeBytes(portIndex, role, value);
+            if (portIndex === 1) setBytesRead((n) => n + value.length);
+            else setBytesRead2((n) => n + value.length);
+          }
+        }
+      } catch (e) {
+        // Stream errors (cable yanked) bubble here.
+        setError(`Port ${portIndex} read error: ${(e as Error).message}`);
+      } finally {
+        try { reader.releaseLock(); } catch { /* ignore */ }
+        if (portIndex === 1) readerRef.current = null;
+        else reader2Ref.current = null;
+      }
+    },
+    [routeBytes],
+  );
 
   // Open + start reading from a port. Sets status / error along the way.
+  // 2026-05-27 — generalized to handle port 1 OR port 2 with the
+  // matching role. The Web Serial picker calls this for each port the
+  // operator wires.
   const openAndRun = useCallback(
-    async (port: SerialPortLite) => {
+    async (
+      port: SerialPortLite,
+      portIndex: 1 | 2 = 1,
+      role: 'cts' | 'streamdeck' | 'aux' | 'off' = rs232_1Role,
+    ) => {
+      const setStat = portIndex === 1 ? setStatus : setStatus2;
       try {
-        setStatus('connecting');
+        setStat('connecting');
         setError(null);
         const opts = readSerialOptsFromQuery();
         await port.open(opts);
-        portRef.current = port;
-        setStatus('connected');
+        if (portIndex === 1) portRef.current = port;
+        else port2Ref.current = port;
+        setStat('connected');
         // Listen for hardware disconnect (cable yanked).
         const onDisconnect = () => {
-          setStatus('disconnected');
+          setStat('disconnected');
         };
         try { port.addEventListener?.('disconnect', onDisconnect); } catch { /* ignore */ }
         // Pump until the read loop returns (port closed) or we're disposed.
-        await runReadLoop(port);
+        await runReadLoop(port, portIndex, role);
         try { port.removeEventListener?.('disconnect', onDisconnect); } catch { /* ignore */ }
         // Try to close cleanly. Errors here are non-fatal.
         try { await port.close(); } catch { /* ignore */ }
-        portRef.current = null;
-        if (!disposedRef.current) setStatus('disconnected');
+        if (portIndex === 1) portRef.current = null;
+        else port2Ref.current = null;
+        if (!disposedRef.current) setStat('disconnected');
       } catch (e) {
         const msg = (e as Error).message;
         setError(msg);
-        setStatus('error');
+        setStat('error');
       }
     },
-    [runReadLoop],
+    [runReadLoop, rs232_1Role],
   );
 
   // On mount, try to reconnect to any previously-granted port. This
   // is the "game day morning" path — the operator paired the kiosk
   // months ago, no human is on-site to click Connect.
+  //
+  // 2026-05-27 — dual-port note. Web Serial's `getPorts()` returns
+  // every port the origin has been granted. We only auto-attach the
+  // FIRST granted port to logical port 1 (port 2 is wired via the
+  // explicit "Connect port 2" button), so a dev box with one CTS
+  // dongle still behaves exactly like before. Operators that pre-
+  // granted two USB-serial dongles can wire them via Connect 1 /
+  // Connect 2 after reload (Web Serial doesn't carry stable port
+  // identity across reloads — it's a deliberate platform decision).
   useEffect(() => {
     if (supported !== true) return;
+    if (nativeMode) return; // native auto-connect handles it
+    if (rs232_1Role === 'off') return;
     let cancelled = false;
     (async () => {
       try {
@@ -606,7 +962,7 @@ export function CtsBridge({
         if (ports.length > 0) {
           const port = ports[0];
           if (!port) return;
-          await openAndRun(port);
+          await openAndRun(port, 1, rs232_1Role);
         }
       } catch (e) {
         if (!cancelled) {
@@ -617,7 +973,7 @@ export function CtsBridge({
     return () => {
       cancelled = true;
     };
-  }, [supported, openAndRun]);
+  }, [supported, openAndRun, nativeMode, rs232_1Role]);
 
   // Cleanup on unmount.
   useEffect(() => {
@@ -632,6 +988,8 @@ export function CtsBridge({
       simAbortRef.current = null;
       try { readerRef.current?.cancel().catch(() => undefined); } catch { /* ignore */ }
       try { portRef.current?.close().catch(() => undefined); } catch { /* ignore */ }
+      try { reader2Ref.current?.cancel().catch(() => undefined); } catch { /* ignore */ }
+      try { port2Ref.current?.close().catch(() => undefined); } catch { /* ignore */ }
     };
   }, []);
 
@@ -646,7 +1004,7 @@ export function CtsBridge({
       // devices. The operator picks the one labeled COMx that they
       // see in Device Manager.
       const port = await nav.serial.requestPort();
-      await openAndRun(port);
+      await openAndRun(port, 1, rs232_1Role);
     } catch (e) {
       // User clicked Cancel on the picker.
       if ((e as Error).name === 'NotFoundError') {
@@ -656,12 +1014,34 @@ export function CtsBridge({
       setError(`Request port failed: ${(e as Error).message}`);
       setStatus('error');
     }
-  }, [supported, openAndRun]);
+  }, [supported, openAndRun, rs232_1Role]);
+
+  // 2026-05-27 — Manual connect for the SECOND port (Web Serial only,
+  // dev / Beelink scenario). On native EP6N the second port auto-
+  // connects via ctsSerialConnect2 — this button is here purely for
+  // local desktop development with two USB-serial dongles.
+  const onConnect2 = useCallback(async () => {
+    if (supported !== true) return;
+    if (rs232_2Role === 'off') return;
+    const nav = navigator as unknown as SerialNavigatorLite;
+    if (!nav.serial) return;
+    try {
+      const port = await nav.serial.requestPort();
+      await openAndRun(port, 2, rs232_2Role);
+    } catch (e) {
+      if ((e as Error).name === 'NotFoundError') return;
+      setError(`Request port2 failed: ${(e as Error).message}`);
+      setStatus2('error');
+    }
+  }, [supported, openAndRun, rs232_2Role]);
 
   // Manual disconnect (operator click).
   const onDisconnect = useCallback(async () => {
     try { readerRef.current?.cancel().catch(() => undefined); } catch { /* ignore */ }
     // The read loop will exit and `openAndRun` will close + null the port.
+  }, []);
+  const onDisconnect2 = useCallback(async () => {
+    try { reader2Ref.current?.cancel().catch(() => undefined); } catch { /* ignore */ }
   }, []);
 
   // 2026-05-27 — Start the bundled CTS rehearsal script. Feeds the
@@ -764,8 +1144,34 @@ export function CtsBridge({
         <strong style={{ marginRight: 8 }}>
           CTS Bridge{nativeMode ? ' · ECBox' : ''}{gameId && feedToken ? ' · game' : ''}
         </strong>
-        <span style={{ opacity: 0.7 }}>{status}</span>
+        <span style={{ opacity: 0.7 }}>P1:{rs232_1Role} {status}</span>
       </div>
+
+      {/* 2026-05-27 — EP6N port 2 status row. Only renders when the
+          operator wired port 2 to a non-off role. Mirrors the port 1
+          status dot so the operator can see both ports at a glance. */}
+      {rs232_2Role !== 'off' && (
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
+          <span
+            aria-hidden="true"
+            style={{
+              display: 'inline-block',
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              background: ({
+                connected: '#22c55e',
+                connecting: '#f59e0b',
+                disconnected: '#f59e0b',
+                idle: '#94a3b8',
+                error: '#ef4444',
+              } as Record<Status, string>)[status2],
+              marginRight: 8,
+            }}
+          />
+          <span style={{ opacity: 0.7 }}>P2:{rs232_2Role} {status2}</span>
+        </div>
+      )}
 
       {/* Native mode: no buttons — auto-connect on mount + auto-
           reconnect on cable yank. Show the tty path so operators can
@@ -776,7 +1182,7 @@ export function CtsBridge({
         </div>
       )}
 
-      {!nativeMode && status !== 'connected' && (
+      {!nativeMode && rs232_1Role !== 'off' && status !== 'connected' && (
         <button
           type="button"
           onClick={onConnect}
@@ -792,7 +1198,7 @@ export function CtsBridge({
             marginBottom: 4,
           }}
         >
-          Connect to CTS
+          Connect P1 ({rs232_1Role})
         </button>
       )}
       {!nativeMode && status === 'connected' && (
@@ -811,7 +1217,50 @@ export function CtsBridge({
             marginBottom: 4,
           }}
         >
-          Disconnect
+          Disconnect P1
+        </button>
+      )}
+
+      {/* 2026-05-27 — EP6N port 2 manual Web Serial wiring (dev /
+          Beelink scenario). Native mode auto-connects via the
+          ctsSerialConnect2 effect above; this button only shows on
+          desktop Chrome. */}
+      {!nativeMode && rs232_2Role !== 'off' && status2 !== 'connected' && (
+        <button
+          type="button"
+          onClick={onConnect2}
+          style={{
+            background: '#0891b2',
+            color: 'white',
+            border: 'none',
+            padding: '6px 12px',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontSize: 12,
+            marginRight: 6,
+            marginBottom: 4,
+          }}
+        >
+          Connect P2 ({rs232_2Role})
+        </button>
+      )}
+      {!nativeMode && rs232_2Role !== 'off' && status2 === 'connected' && (
+        <button
+          type="button"
+          onClick={onDisconnect2}
+          style={{
+            background: '#475569',
+            color: 'white',
+            border: 'none',
+            padding: '6px 12px',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontSize: 12,
+            marginRight: 6,
+            marginBottom: 4,
+          }}
+        >
+          Disconnect P2
         </button>
       )}
 
@@ -865,11 +1314,20 @@ export function CtsBridge({
 
       {!compact && (
         <div style={{ marginTop: 6, fontSize: 11, opacity: 0.85 }}>
-          <div>bytes read: {bytesRead.toLocaleString()}</div>
+          <div>P1 bytes: {bytesRead.toLocaleString()}</div>
+          {rs232_2Role !== 'off' && (
+            <div>P2 bytes: {bytesRead2.toLocaleString()}</div>
+          )}
           <div>
             posts: {postCount}
             {postLastStatus ? ` (${postLastStatus})` : ''}
           </div>
+          {(rs232_1Role === 'streamdeck' || rs232_2Role === 'streamdeck') && (
+            <div>
+              streamdeck cmds: {streamDeckCmds}
+              {lastStreamDeckLine ? ` · last: "${lastStreamDeckLine}"` : ''}
+            </div>
+          )}
           {lastSnapshot && (
             <details style={{ marginTop: 4 }}>
               <summary style={{ cursor: 'pointer' }}>last state</summary>
