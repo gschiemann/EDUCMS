@@ -153,15 +153,180 @@ export function bestTextOn(bg: string): string {
   return contrastRatio(bg, '#ffffff') >= contrastRatio(bg, '#111111') ? '#ffffff' : '#111111';
 }
 
+// ── Contrast enforcement ─────────────────────────────────────────
+//
+// P0-6 fix (2026-05-27 bulletproof audit, §18 Accessibility):
+// the brand-scrape happily returned colors like yellow (#ffd700) or
+// pastel blue (#87ceeb) as the tenant's primary, then the UI painted
+// every button as "white-on-yellow" — unreadable, fails WCAG 2.1 AA
+// (4.5:1 ratio for normal text).
+//
+// `ensureContrast(bg, fg, target)` shifts `bg` in HSL lightness space
+// until it achieves the target ratio against `fg`. Binary search
+// because the relationship between lightness and contrast ratio is
+// monotonic but non-linear (luminance is a sRGB-gamma'd dot product).
+//
+// Direction: we move AWAY from the foreground's luminance — i.e., if
+// the text is dark, darken-or-lighten the background until it's far
+// ENOUGH from the text. Pick the direction that has more headroom
+// (a light-text-on-dark-bg can go DARKER; a light-text-on-light-bg
+// must go MUCH darker, so we pick darken).
+//
+// Returns the ORIGINAL hex if it already passes — no needless tweaks.
+// Capped at 12 binary-search iterations (well past what we need to
+// converge to a 0.01 ratio precision). If even L=0 or L=100 doesn't
+// achieve target (e.g., pure white text on pure white bg with target
+// 21:1), returns whichever extreme is closer to passing — caller
+// surfaces this in the contrast report.
+
+/**
+ * Tweak `bg` toward black or white until `contrastRatio(bg, fg)` ≥ target.
+ * Works in HSL lightness; binary search; max 12 iterations.
+ *
+ * @param bg     Hex color we may adjust.
+ * @param fg     Hex color of the foreground we want bg to contrast against.
+ * @param target Minimum contrast ratio (default 4.5 = WCAG 2.1 AA normal).
+ * @returns      Adjusted hex (or original bg if it already passes).
+ */
+export function ensureContrast(bg: string, fg: string, target: number = 4.5): string {
+  // Fast path — already passes.
+  const startRatio = contrastRatio(bg, fg);
+  if (startRatio >= target) return bg;
+
+  const bgHsl = hexToHsl(bg);
+  const fgLum = relativeLuminance(fg);
+
+  // Direction: if fg is LIGHTER than bg, the bg needs to get DARKER
+  // (more contrast = wider luminance gap). If fg is DARKER than bg,
+  // the bg needs to get LIGHTER.
+  //
+  // This keeps the bg in roughly the right perceptual zone — a yellow
+  // brand color asked to contrast against white becomes a deeper
+  // saturated gold/orange, not pure black.
+  const bgLum = relativeLuminance(bg);
+  const goLighter = fgLum < bgLum;
+  // The bound we search toward: 0 (darken) or 100 (lighten).
+  const targetL = goLighter ? 100 : 0;
+
+  // Binary search the lightness axis.
+  let lo = bgHsl.l;
+  let hi = targetL;
+  let bestHex = bg;
+  let bestRatio = startRatio;
+
+  for (let i = 0; i < 12; i++) {
+    const mid = (lo + hi) / 2;
+    const candidate = hslToHex({ h: bgHsl.h, s: bgHsl.s, l: clamp(mid) });
+    const r = contrastRatio(candidate, fg);
+
+    // Track the best candidate we've seen — even if we never hit the
+    // target (e.g., asking for 21:1 on a real-world pastel), return
+    // the closest we got rather than the original.
+    if (r > bestRatio) {
+      bestRatio = r;
+      bestHex = candidate;
+    }
+
+    if (r >= target) {
+      // Passes — narrow toward the original to keep the perceptual
+      // shift minimal. The caller still got a passing color.
+      hi = mid;
+      bestHex = candidate;
+      bestRatio = r;
+    } else {
+      // Still failing — push further toward the bound.
+      lo = mid;
+    }
+  }
+
+  return bestHex;
+}
+
+/**
+ * Choose the best ink-on-bg pairing — start from `bestTextOn(bg)`
+ * (the higher-contrast of white / dark), then enforce target. If the
+ * resulting bg shift would be huge, this still returns the bg as-is
+ * (because the SCRAPED primary is what the user wants visually) and
+ * lets the caller bump the bg via `ensureContrast` to close the gap.
+ *
+ * Returns BOTH the ink color and the (possibly tweaked) bg, so the
+ * caller can persist either or both. The "raw" original bg flows
+ * through `_raw` fields on the palette so the UI can offer "undo".
+ */
+export function ensureBgInkContrast(
+  bg: string,
+  preferredInk?: string,
+  target: number = 4.5,
+): { bg: string; ink: string; ratio: number; adjusted: boolean } {
+  // Pick the ink that gives us more headroom to begin with — usually
+  // the higher-contrast of (#0b1220 / #ffffff). Caller may override
+  // (e.g., per the design system they want ink to stay a specific
+  // color and only the bg shifts).
+  const ink = preferredInk
+    ?? (contrastRatio(bg, '#ffffff') >= contrastRatio(bg, '#0b1220') ? '#ffffff' : '#0b1220');
+  const adjustedBg = ensureContrast(bg, ink, target);
+  const ratio = contrastRatio(adjustedBg, ink);
+  return {
+    bg: adjustedBg,
+    ink,
+    ratio,
+    adjusted: adjustedBg.toLowerCase() !== bg.toLowerCase(),
+  };
+}
+
 // ── Palette derivation ────────────────────────────────────────────
+
+export interface ContrastAdjustment {
+  /** Which palette key was adjusted (primary, accent, etc). */
+  key: string;
+  /** Original hex BEFORE the WCAG nudge — what the scraper actually found. */
+  from: string;
+  /** Final hex AFTER the WCAG nudge — what we're persisting. */
+  to: string;
+  /** The ink/text color the bg had to contrast against. */
+  ink: string;
+  /** Contrast ratio of the ORIGINAL bg vs ink (often below target). */
+  fromRatio: number;
+  /** Contrast ratio of the ADJUSTED bg vs ink (≥ target on success). */
+  toRatio: number;
+  /** Target ratio that was being chased (4.5 for WCAG 2.1 AA normal text). */
+  target: number;
+  /** True if the candidate had to be moved. False if `from === to`. */
+  adjusted: boolean;
+  /**
+   * True if even at the limit (L=0 / L=100) the candidate couldn't hit
+   * the target. The "to" hex is the best we could do; the UI may want
+   * to suggest the operator pick a darker variant manually.
+   */
+  capped: boolean;
+}
+
+export interface ContrastReport {
+  /** Target ratio used for all adjustments (default 4.5 = WCAG AA). */
+  target: number;
+  /** One entry per palette field we checked — primary, accent. */
+  adjustments: ContrastAdjustment[];
+  /** True if any field needed adjustment. */
+  anyAdjusted: boolean;
+  /** True if any field couldn't hit target even after maxing out. */
+  anyCapped: boolean;
+}
 
 export interface DerivedPalette {
   primary: string;
+  /** Original primary BEFORE WCAG nudge — preserves the operator's scraped color for "undo". */
+  primaryRaw: string;
+  /** The text/ink color `primary` was checked against (white or near-black). */
+  primaryOn: string;
   primaryHover: string;
   primaryActive: string;
   primarySoft: string;
   primaryInk: string;        // best contrast text color on primary
   accent: string;
+  /** Original accent BEFORE WCAG nudge. */
+  accentRaw: string;
+  /** The text/ink color `accent` was checked against. */
+  accentOn: string;
   accentHover: string;
   accentSoft: string;
   accentInk: string;
@@ -175,40 +340,118 @@ export interface DerivedPalette {
   danger: string;
   // 9-shade ramp of the primary (50..900) for custom Tailwind-like access
   ramp: Record<'50'|'100'|'200'|'300'|'400'|'500'|'600'|'700'|'800'|'900', string>;
+  /** Per-field contrast adjustments + summary. UI may surface in a tooltip. */
+  contrastReport: ContrastReport;
 }
 
 /**
  * Derive a full design system from just a primary (and optionally an
  * accent + extras). Missing shades are generated via HSL math so the UI
  * stays coherent even when the scraper only found one color.
+ *
+ * WCAG enforcement (P0-6, 2026-05-27): `primary` and `accent` are
+ * automatically nudged in HSL-lightness space until they contrast at
+ * least `contrastTarget` (default 4.5 — WCAG 2.1 AA for normal text)
+ * against their corresponding ink/text color (auto-picked from the
+ * higher-contrast of #fff / #0b1220). The original scraped hex is
+ * preserved in `primaryRaw` / `accentRaw` so the wizard UI can offer
+ * "we adjusted your yellow — undo?". The `contrastReport` field on
+ * the returned palette enumerates exactly what got moved + the
+ * resulting ratios.
  */
-export function derivePalette(primary: string, accent?: string, _extras: string[] = []): DerivedPalette {
-  const pHsl = hexToHsl(primary);
-  const autoAccent = accent || hslToHex({ h: (pHsl.h + 180) % 360, s: clamp(pHsl.s, 40, 85), l: clamp(pHsl.l, 40, 65) });
+export function derivePalette(
+  primary: string,
+  accent?: string,
+  _extras: string[] = [],
+  contrastTarget: number = 4.5,
+): DerivedPalette {
+  // ── Step 1: Adjust the primary for legibility ──────────────────
+  // We pick the ink color BEFORE adjusting bg so the chase is stable.
+  // (If we picked ink AFTER tweaking bg, we'd flip-flop on edge cases
+  // where the bg crosses the L≈55 luminance threshold mid-tweak.)
+  const primaryRaw = primary;
+  const primaryOn = bestTextOn(primary);
+  const primaryFromRatio = contrastRatio(primaryRaw, primaryOn);
+  const primaryAdjusted = ensureContrast(primaryRaw, primaryOn, contrastTarget);
+  const primaryToRatio = contrastRatio(primaryAdjusted, primaryOn);
 
+  // Use the adjusted primary downstream for the ramp + hover/active.
+  // The HSL the rest of the palette derives from is the ADJUSTED hue/
+  // sat/lightness — otherwise tints stay on the unreadable original.
+  const pHsl = hexToHsl(primaryAdjusted);
+
+  // ── Step 2: Resolve the accent (auto from hue rotation if absent) ──
+  const accentRawSource = accent || hslToHex({
+    h: (pHsl.h + 180) % 360,
+    s: clamp(pHsl.s, 40, 85),
+    l: clamp(pHsl.l, 40, 65),
+  });
+  const accentRaw = accentRawSource;
+  const accentOn = bestTextOn(accentRaw);
+  const accentFromRatio = contrastRatio(accentRaw, accentOn);
+  const accentAdjusted = ensureContrast(accentRaw, accentOn, contrastTarget);
+  const accentToRatio = contrastRatio(accentAdjusted, accentOn);
+
+  // ── Step 3: Build the ramp from the adjusted primary ──────────
   const ramp = {
     '50':  hslToHex({ h: pHsl.h, s: clamp(pHsl.s * 0.5, 10, 40), l: 97 }),
     '100': hslToHex({ h: pHsl.h, s: clamp(pHsl.s * 0.55, 15, 55), l: 94 }),
     '200': hslToHex({ h: pHsl.h, s: clamp(pHsl.s * 0.6, 20, 70), l: 86 }),
     '300': hslToHex({ h: pHsl.h, s: clamp(pHsl.s * 0.7, 25, 80), l: 75 }),
     '400': hslToHex({ h: pHsl.h, s: clamp(pHsl.s * 0.85, 30, 90), l: 62 }),
-    '500': primary,
+    '500': primaryAdjusted,
     '600': hslToHex({ h: pHsl.h, s: clamp(pHsl.s, 40, 95), l: clamp(pHsl.l - 8, 20, 55) }),
     '700': hslToHex({ h: pHsl.h, s: clamp(pHsl.s, 40, 95), l: clamp(pHsl.l - 16, 15, 45) }),
     '800': hslToHex({ h: pHsl.h, s: clamp(pHsl.s, 35, 90), l: clamp(pHsl.l - 24, 10, 35) }),
     '900': hslToHex({ h: pHsl.h, s: clamp(pHsl.s, 30, 85), l: clamp(pHsl.l - 32, 5, 25) }),
   };
 
+  // ── Step 4: Build the contrast report ─────────────────────────
+  const adjustments: ContrastAdjustment[] = [
+    {
+      key: 'primary',
+      from: primaryRaw,
+      to: primaryAdjusted,
+      ink: primaryOn,
+      fromRatio: +primaryFromRatio.toFixed(2),
+      toRatio: +primaryToRatio.toFixed(2),
+      target: contrastTarget,
+      adjusted: primaryAdjusted.toLowerCase() !== primaryRaw.toLowerCase(),
+      capped: primaryToRatio < contrastTarget,
+    },
+    {
+      key: 'accent',
+      from: accentRaw,
+      to: accentAdjusted,
+      ink: accentOn,
+      fromRatio: +accentFromRatio.toFixed(2),
+      toRatio: +accentToRatio.toFixed(2),
+      target: contrastTarget,
+      adjusted: accentAdjusted.toLowerCase() !== accentRaw.toLowerCase(),
+      capped: accentToRatio < contrastTarget,
+    },
+  ];
+  const contrastReport: ContrastReport = {
+    target: contrastTarget,
+    adjustments,
+    anyAdjusted: adjustments.some((a) => a.adjusted),
+    anyCapped: adjustments.some((a) => a.capped),
+  };
+
   return {
-    primary,
+    primary: primaryAdjusted,
+    primaryRaw,
+    primaryOn,
     primaryHover: ramp['600'],
     primaryActive: ramp['700'],
     primarySoft: ramp['100'],
-    primaryInk: bestTextOn(primary),
-    accent: autoAccent,
-    accentHover: darken(autoAccent, 8),
-    accentSoft: lighten(autoAccent, 38),
-    accentInk: bestTextOn(autoAccent),
+    primaryInk: primaryOn,
+    accent: accentAdjusted,
+    accentRaw,
+    accentOn,
+    accentHover: darken(accentAdjusted, 8),
+    accentSoft: lighten(accentAdjusted, 38),
+    accentInk: accentOn,
     ink: '#0f172a',
     inkMuted: '#475569',
     surface: '#ffffff',
@@ -218,5 +461,6 @@ export function derivePalette(primary: string, accent?: string, _extras: string[
     warn: '#f59e0b',
     danger: '#dc2626',
     ramp,
+    contrastReport,
   };
 }

@@ -39,7 +39,7 @@ import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { BrandingScraperService, BrandingPreview } from './branding-scraper.service';
 import { BrandingRateLimiter } from './branding-rate-limiter';
 import { safeFetch, SsrfError } from './safe-fetch';
-import { derivePalette, parseColor } from './color-utils';
+import { derivePalette, parseColor, ensureContrast, contrastRatio, bestTextOn, ContrastReport } from './color-utils';
 import { sanitizeLogoSvg } from './sanitize-svg';
 
 import { createHash } from 'crypto';
@@ -237,10 +237,13 @@ export class BrandingController {
     }
 
     // Derive the final palette from whatever primary the user settled on,
-    // in case they tweaked it after the scrape.
+    // in case they tweaked it after the scrape. The WCAG nudge in
+    // `derivePalette` runs first, then `body.palette` overrides — and
+    // we re-enforce contrast AFTER the spread so a client-side spread
+    // can't ship "yellow on white" to the DB. P0-6 (2026-05-27).
     const finalPrimary = body.palette?.primary ?? '#4f46e5';
     const finalAccent = body.palette?.accent;
-    const palette = { ...derivePalette(finalPrimary, finalAccent), ...(body.palette || {}) };
+    const palette = enforcePaletteContrast({ ...derivePalette(finalPrimary, finalAccent), ...(body.palette || {}) });
 
     const record = await this.prisma.client.tenantBranding.upsert({
       where: { tenantId },
@@ -921,10 +924,70 @@ export class BrandingController {
 
     const finalPrimary = body.palette?.primary ?? '#4f46e5';
     const finalAccent = body.palette?.accent;
-    const palette = { ...derivePalette(finalPrimary, finalAccent), ...(body.palette || {}) };
+    // Re-enforce WCAG contrast after the body.palette spread so a
+    // client-supplied yellow doesn't slip past the nudge. P0-6.
+    const palette = enforcePaletteContrast({ ...derivePalette(finalPrimary, finalAccent), ...(body.palette || {}) });
 
     return { logoUrl, logoSvgInline, faviconUrl, palette };
   }
+}
+
+/**
+ * Re-enforce WCAG contrast on a palette object that may have been
+ * spread-overridden by client-supplied body.palette. This guards the
+ * adopt path: the client can ship a palette where they manually
+ * picked a yellow primary; `derivePalette()` adjusted it, but the
+ * spread `{ ...derivePalette(), ...body.palette }` reinstated the
+ * raw yellow. Run a final check + tweak + report so what hits the
+ * DB always passes 4.5:1 — and the original is preserved in *_raw.
+ *
+ * Pure function — no controller deps — so it lives outside the class
+ * and is reusable by the per-template path too.
+ */
+function enforcePaletteContrast(palette: any, target: number = 4.5): any {
+  if (!palette || typeof palette !== 'object') return palette;
+  const out = { ...palette };
+  const adjustments: any[] = [];
+
+  for (const key of ['primary', 'accent'] as const) {
+    const bg = typeof out[key] === 'string' ? out[key] : null;
+    if (!bg) continue;
+    const rawKey = `${key}Raw` as const;
+    const onKey = `${key}On` as const;
+    // Preserve the operator's original choice. If we haven't already
+    // stamped a *_raw value, save the incoming color as the raw.
+    const raw = typeof out[rawKey] === 'string' ? out[rawKey] : bg;
+    const ink = typeof out[onKey] === 'string' ? out[onKey] : bestTextOn(bg);
+    const fromRatio = contrastRatio(bg, ink);
+    const adjusted = ensureContrast(bg, ink, target);
+    const toRatio = contrastRatio(adjusted, ink);
+    out[key] = adjusted;
+    out[rawKey] = raw;
+    out[onKey] = ink;
+    // Also keep the canonical inkKey in sync (primaryInk/accentInk).
+    if (key === 'primary') out.primaryInk = ink;
+    if (key === 'accent') out.accentInk = ink;
+    adjustments.push({
+      key,
+      from: raw,
+      to: adjusted,
+      ink,
+      fromRatio: +fromRatio.toFixed(2),
+      toRatio: +toRatio.toFixed(2),
+      target,
+      adjusted: adjusted.toLowerCase() !== bg.toLowerCase() || adjusted.toLowerCase() !== raw.toLowerCase(),
+      capped: toRatio < target,
+    });
+  }
+
+  const report: ContrastReport = {
+    target,
+    adjustments,
+    anyAdjusted: adjustments.some((a) => a.adjusted),
+    anyCapped: adjustments.some((a) => a.capped),
+  };
+  out.contrastReport = report;
+  return out;
 }
 
 function extFromContentType(ct: string): string | null {

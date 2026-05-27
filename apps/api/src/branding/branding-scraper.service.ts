@@ -17,7 +17,7 @@ import postcss from 'postcss';
 import valueParser from 'postcss-value-parser';
 
 import { safeFetch, SsrfError } from './safe-fetch';
-import { parseColor, derivePalette, contrastRatio, wcagGrade, DerivedPalette } from './color-utils';
+import { parseColor, derivePalette, contrastRatio, wcagGrade, DerivedPalette, ContrastReport } from './color-utils';
 import { matchGoogleFont, buildGoogleFontsUrl } from './google-fonts';
 
 // ── Types (also exported to the web via api-types later) ──────────
@@ -70,6 +70,14 @@ export interface BrandingPreview {
   ogImage: string | null;
   colors: RankedColor[];
   palette: DerivedPalette;
+  /**
+   * WCAG contrast adjustments applied to `palette.primary` /
+   * `palette.accent`. Mirror of `palette.contrastReport` lifted to
+   * the top level so the wizard UI can render a "we adjusted
+   * your yellow for legibility — undo?" panel without descending
+   * into the palette object.
+   */
+  contrastReport: ContrastReport;
   fonts: {
     heading: RankedFont | null;
     body: RankedFont | null;
@@ -787,11 +795,32 @@ export class BrandingScraperService {
         ])
       : null;
 
-    // 11. WCAG sanity — if primary fails AA against the ink/surface
-    // pair, warn the caller.
+    // 11. WCAG enforcement — derivePalette() already nudged the
+    // primary/accent toward legibility. Surface a warning ONLY for
+    // anything that's still capped (couldn't hit AA even at the
+    // luminance extreme) so the operator can pick a manual override.
+    // Anything that was simply adjusted is reported via
+    // `palette.contrastReport.adjustments` — the wizard renders the
+    // "we adjusted your yellow → undo?" prompt from that, no warning
+    // needed.
+    const cappedKeys = palette.contrastReport.adjustments
+      .filter((a) => a.capped)
+      .map((a) => a.key);
+    if (cappedKeys.length > 0) {
+      warnings.push(
+        `Couldn't hit WCAG AA contrast (4.5:1) for ${cappedKeys.join(', ')} — ` +
+          `even at the limit the color reads poorly against its ink. Consider a darker/lighter manual override.`,
+      );
+    }
+    // Belt-and-braces: a forged palette (e.g. somebody hands a manual
+    // tweak with primary === primaryInk) should still warn. ensureContrast
+    // catches this but the report flags it explicitly.
     const primaryTextRatio = contrastRatio(palette.primary, palette.primaryInk);
     if (wcagGrade(primaryTextRatio) === 'fail') {
-      warnings.push(`Primary color has insufficient contrast (${primaryTextRatio.toFixed(1)}:1) — consider a darker/lighter shade.`);
+      warnings.push(
+        `Primary color contrast still ${primaryTextRatio.toFixed(1)}:1 against ink — ` +
+          `WCAG AA wants 4.5:1. Consider a manual override.`,
+      );
     }
 
     const durationMs = Date.now() - startedAt;
@@ -816,6 +845,7 @@ export class BrandingScraperService {
       ogImage,
       colors,
       palette,
+      contrastReport: palette.contrastReport,
       fonts: { heading, body: body ?? null, all: fonts.slice(0, 6) },
       fontsCssUrl,
       heroImages: topHeroes,
