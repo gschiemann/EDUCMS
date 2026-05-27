@@ -322,6 +322,7 @@ function GameControl() {
           while the cue popup is open, so firing a cue never leaves it. */}
       {mode === 'run' && (
         <RunMode
+          gameId={gameId}
           g={g}
           def={def}
           liveMs={liveMs}
@@ -631,6 +632,7 @@ function StateBar({
 // ── RunMode ────────────────────────────────────────────────────
 
 function RunMode({
+  gameId,
   g,
   def,
   liveMs,
@@ -641,6 +643,7 @@ function RunMode({
   onHighlights,
   onPenalties,
 }: {
+  gameId: string;
   g: any;
   def: SportDefinition;
   liveMs: number;
@@ -681,7 +684,15 @@ function RunMode({
 
   return (
     <div className="flex flex-col flex-1">
-      {/* two team zones */}
+      {/* 2026-05-27 — inline live preview at top of Run mode.
+          Operator: "the main dashbord should have the samples of what
+          everyone is seeing so when i hit a button i see exactly whats
+          its going to look like". One always-on row of the scoreboard
+          + ribbon iframes so every cue fire / score bump / spotlight
+          push is visible without alt-tabbing to a screen. */}
+      <RunLivePreview gameId={gameId} />
+
+      {/* two team zones — shrink to fit the rest of the viewport */}
       <div className="flex flex-1 min-h-0">
         {/* HOME zone */}
         <TeamZone
@@ -708,6 +719,18 @@ function RunMode({
           onStat={(s) => ctl.stats.mutate({ stats: s })}
         />
       </div>
+
+      {/* 2026-05-27 — INLINE highlights + cues bars.
+          Operator: "main page forces me to scroll down to the cueus,
+          and highlight buttons when there is a ton of space…i need to
+          be able to quickly click from one player to another during
+          the intros". Pulled the player tiles + cue tiles out of their
+          popups; they live inline now above the clock tray so they're
+          one tap away and the bottom of the page is no longer a
+          scroll-to dead zone. Toggle behavior on highlights — clicking
+          the on-air player clears them; clicking another switches. */}
+      <RunInlineHighlightsBar gameId={gameId} g={g} ctl={ctl} />
+      <RunInlineCuesBar def={def} ctl={ctl} />
 
       {/* bottom control tray */}
       <div className="flex items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
@@ -794,25 +817,253 @@ function RunMode({
           </button>
         )}
 
-        {/* highlights */}
+        {/* Highlights popup — kept for the custom-spotlight builder
+            (photo upload, stat-line composer, milestone promo). The
+            inline RunInlineHighlightsBar above handles the common-
+            case one-tap player flow. */}
         <button
           type="button"
           onClick={onHighlights}
-          className="flex flex-col items-center justify-center gap-0.5 h-14 px-4 rounded-xl bg-amber-500 text-white font-black text-sm hover:bg-amber-600 transition-colors shrink-0"
+          className="flex flex-col items-center justify-center gap-0.5 h-14 px-3 rounded-xl bg-amber-500 text-white font-black text-xs hover:bg-amber-600 transition-colors shrink-0"
+          title="Build a custom spotlight (photo, stat lines, promo)"
         >
-          <span>★ Highlights</span>
-          <span className="text-[10px] text-amber-100 font-semibold">spotlight</span>
+          <span>★ Custom</span>
+          <span className="text-[9px] text-amber-100 font-semibold">highlight</span>
         </button>
 
-        {/* cues */}
+        {/* Cues popup — kept for the full launchpad (target picker,
+            custom cues, sponsor-tagged cues). The inline
+            RunInlineCuesBar above fires the built-in celebrations on
+            ALL surfaces in one tap. */}
         <button
           type="button"
           onClick={onShowCues}
-          className="flex flex-col items-center justify-center gap-0.5 h-14 px-4 rounded-xl bg-indigo-600 text-white font-black text-sm hover:bg-indigo-700 transition-colors shrink-0"
+          className="flex flex-col items-center justify-center gap-0.5 h-14 px-3 rounded-xl bg-indigo-600 text-white font-black text-xs hover:bg-indigo-700 transition-colors shrink-0"
+          title="Full cue launchpad — target picker + custom cues"
         >
-          <span>⊞ Cues</span>
-          <span className="text-[10px] text-indigo-200 font-semibold">celebrations</span>
+          <span>⊞ More</span>
+          <span className="text-[9px] text-indigo-200 font-semibold">cues</span>
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Run-mode inline components ─────────────────────────────────
+//
+// 2026-05-27 — Three components surfaced INLINE inside Run mode so
+// the operator never has to scroll or open a modal to drive a live
+// game: live preview, quick-pick highlights, quick-fire cues.
+// The original modal popups (showHighlights / showCues) stay around
+// for power-user features (custom-builder spotlight, multi-target
+// cue picker) — these inline bars are the fast path.
+
+/** Compact iframe preview of the scoreboard + ribbon. Renders the
+ *  same public surfaces the LED screens show, sized as a thin
+ *  strip at the top of Run mode so the operator sees every score
+ *  bump / spotlight push / cue fire reflected immediately. */
+function RunLivePreview({ gameId }: { gameId: string }) {
+  const [hidden, setHidden] = useState(false);
+  if (hidden) {
+    return (
+      <div className="flex items-center justify-end px-4 py-1 bg-slate-100 border-b border-slate-200">
+        <button
+          type="button"
+          onClick={() => setHidden(false)}
+          className="text-[11px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-800"
+        >
+          ▾ Show live preview
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="bg-slate-900 border-b border-slate-300">
+      <div className="flex items-center justify-between px-4 py-1">
+        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">
+          ● LIVE — what your screens are showing right now
+        </span>
+        <button
+          type="button"
+          onClick={() => setHidden(true)}
+          className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-white"
+        >
+          ▴ Hide
+        </button>
+      </div>
+      <div className="flex gap-2 px-4 pb-2">
+        {/* Scoreboard preview — 16:9 thumbnail */}
+        <div className="flex-1 bg-black overflow-hidden rounded-md" style={{ aspectRatio: '16 / 9', maxHeight: '180px' }}>
+          <iframe
+            src={`/board/${gameId}?nochrome=1`}
+            title="Scoreboard preview"
+            className="w-full h-full block border-0"
+            style={{ pointerEvents: 'none' }}
+          />
+        </div>
+        {/* Ribbon preview — wide thin strip */}
+        <div className="flex-[2] bg-black overflow-hidden rounded-md" style={{ aspectRatio: '7.5 / 1', maxHeight: '180px' }}>
+          <iframe
+            src={`/ribbon/${gameId}?nochrome=1`}
+            title="Ribbon preview"
+            className="w-full h-full block border-0"
+            style={{ pointerEvents: 'none' }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Quick-pick player tiles always visible in Run mode. Replaces the
+ *  highlights modal for the common-case "spotlight this player" flow.
+ *  Click toggles: same player twice = clear; different player =
+ *  switch directly. ON AIR styling on the active tile. */
+function RunInlineHighlightsBar({
+  gameId,
+  g,
+  ctl,
+}: {
+  gameId: string;
+  g: any;
+  ctl: ReturnType<typeof useGameControl>;
+}) {
+  const roster = useGameRoster(gameId);
+  const players: any[] = Array.isArray(roster.data) ? roster.data : [];
+  const sp = g?.spotlight && typeof g.spotlight === 'object' ? g.spotlight : {};
+  const onAirTitle = sp.visible && typeof sp.title === 'string' ? sp.title.trim().toLowerCase() : '';
+
+  const togglePlayer = (p: any) => {
+    const playerName = String(p.name || '').trim() || 'Player';
+    const currentlyOnAir = onAirTitle === playerName.toLowerCase();
+    if (currentlyOnAir) {
+      ctl.spotlight.mutate({ clear: true });
+      return;
+    }
+    ctl.spotlight.mutate({
+      visible: true,
+      title: playerName,
+      photoUrl: p.photoUrl || undefined,
+      subtitle:
+        [p.number ? `#${p.number}` : null, p.position].filter(Boolean).join(' · ') ||
+        undefined,
+      lines: Object.entries(p.stats || {})
+        .slice(0, 4)
+        .map(([label, value]) => ({ label: String(label), value: String(value) })),
+    });
+  };
+
+  if (players.length === 0) {
+    return (
+      <div className="px-4 py-2 border-t border-slate-200 bg-amber-50 text-[11px] text-amber-700">
+        ★ Add players in the Roster tab to enable one-tap spotlight.
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 py-2 border-t border-slate-200 bg-amber-50">
+      <div className="flex items-center gap-3">
+        <div className="flex flex-col leading-tight shrink-0">
+          <span className="text-[10px] font-black uppercase tracking-widest text-amber-700">
+            ★ Spotlight
+          </span>
+          <span className="text-[10px] text-amber-600">
+            {sp.visible && sp.title ? `On air: ${sp.title}` : 'Tap to put on air'}
+          </span>
+        </div>
+        <div className="flex gap-1.5 flex-wrap overflow-x-auto">
+          {players.map((p) => {
+            const playerName = String(p.name || '').trim();
+            const onAir = playerName.toLowerCase() === onAirTitle;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => togglePlayer(p)}
+                disabled={ctl.spotlight.isPending}
+                title={onAir ? 'On air — tap to clear' : `Spotlight ${p.name}`}
+                className={
+                  onAir
+                    ? 'flex items-center gap-1 rounded-md border-2 border-amber-500 bg-amber-200 px-2 py-1 ring-2 ring-amber-300 transition-colors disabled:opacity-50 shrink-0'
+                    : 'flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-1 transition-colors hover:border-amber-500 hover:bg-amber-100 disabled:opacity-50 shrink-0'
+                }
+              >
+                {onAir && <span className="text-[9px] font-black text-amber-700">●</span>}
+                {p.number ? (
+                  <span className="text-[10px] font-black text-slate-400">#{p.number}</span>
+                ) : null}
+                <span className={onAir ? 'text-xs font-bold text-amber-900' : 'text-xs font-semibold text-slate-700'}>
+                  {p.name}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {sp.visible && sp.title && (
+          <button
+            type="button"
+            onClick={() => ctl.spotlight.mutate({ clear: true })}
+            className="text-[10px] font-bold uppercase tracking-wider text-amber-700 hover:text-amber-900 shrink-0"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Quick-fire cue tiles always visible in Run mode. The full launchpad
+ *  (target picker, custom cues) stays available behind the Cues
+ *  button in the bottom tray; this inline bar is the one-tap path
+ *  for the sport's built-in celebrations, broadcasting to ALL
+ *  surfaces by default. */
+function RunInlineCuesBar({
+  def,
+  ctl,
+}: {
+  def: SportDefinition;
+  ctl: ReturnType<typeof useGameControl>;
+}) {
+  const [lastFiredKey, setLastFiredKey] = useState<string>('');
+  const fire = (key: string) => {
+    ctl.cue.mutate({ key, target: 'ALL' as any });
+    setLastFiredKey(key);
+    setTimeout(() => setLastFiredKey((k) => (k === key ? '' : k)), 1500);
+  };
+  return (
+    <div className="px-4 py-2 border-t border-slate-200 bg-indigo-50">
+      <div className="flex items-center gap-3">
+        <div className="flex flex-col leading-tight shrink-0">
+          <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700">
+            ⊞ Celebrate
+          </span>
+          <span className="text-[10px] text-indigo-500">Fires on every screen</span>
+        </div>
+        <div className="flex gap-1.5 flex-wrap overflow-x-auto">
+          {def.celebrations.map((c) => {
+            const justFired = lastFiredKey === c.key;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => fire(c.key)}
+                disabled={ctl.cue.isPending}
+                title={`Fire ${c.label}`}
+                className={
+                  justFired
+                    ? 'flex items-center gap-1 rounded-md bg-indigo-600 text-white px-3 py-1.5 font-bold text-xs ring-2 ring-indigo-300 transition-colors shrink-0'
+                    : 'flex items-center gap-1 rounded-md bg-white border border-indigo-300 px-3 py-1.5 font-bold text-xs text-indigo-700 hover:bg-indigo-100 transition-colors shrink-0 disabled:opacity-50'
+                }
+              >
+                <span>{c.emoji}</span>
+                <span>{c.label}</span>
+                {justFired && <span className="text-[9px] font-black">✓ FIRED</span>}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -2539,10 +2790,32 @@ function SpotlightControl({
 
   // One-tap spotlight straight from a roster player — builds the
   // payload from the player and fires it, no form round-trip.
+  // 2026-05-27 — TOGGLE behavior. Operator: "when i engage a highlight,
+  // it should stay highlighted and i should be able to click again to
+  // remove them, i need to be able to quickly click from one player to
+  // another during the intros". So:
+  //   - Click an UN-spotlit player → spotlight them.
+  //   - Click the player who is CURRENTLY spotlit → clear.
+  //   - Click a DIFFERENT player while one is spotlit → switch directly.
+  // Comparing on normalized name (case- and whitespace-insensitive)
+  // because the title in storage may differ in capitalization from
+  // the roster entry.
   const showPlayer = (p: any) => {
+    const playerName = String(p.name || '').trim() || 'Player';
+    const currentlySpotlit =
+      sp.visible &&
+      typeof sp.title === 'string' &&
+      sp.title.trim().toLowerCase() === playerName.toLowerCase();
+    if (currentlySpotlit) {
+      ctl.spotlight.mutate({ clear: true });
+      // Don't auto-close on a clear — operator may want to spotlight
+      // someone else right after; keep the picker open for rapid
+      // intro / mid-game switching.
+      return;
+    }
     ctl.spotlight.mutate({
       visible: true,
-      title: String(p.name || '').trim() || 'Player',
+      title: playerName,
       photoUrl: p.photoUrl || undefined,
       subtitle:
         [p.number ? `#${p.number}` : null, p.position].filter(Boolean).join(' · ') ||
@@ -2551,7 +2824,18 @@ function SpotlightControl({
         .slice(0, 4)
         .map(([label, value]) => ({ label: String(label), value: String(value) })),
     });
-    onDone?.();
+    // Don't auto-close on switch either — the new highlight is visible
+    // on the live preview that operator can see; closing forces a re-
+    // open for the next switch, which kills the intro-flow tempo.
+  };
+
+  /** True when `p` is the currently-spotlit player. Used by the
+   *  picker UI to highlight the active tile so the operator can see
+   *  at a glance who's "on air". */
+  const isPlayerOnAir = (p: any): boolean => {
+    if (!sp.visible || !sp.title) return false;
+    const playerName = String(p.name || '').trim();
+    return sp.title.trim().toLowerCase() === playerName.toLowerCase();
   };
 
   return (
@@ -2563,28 +2847,39 @@ function SpotlightControl({
       {players.length > 0 && (
         <div className="mb-4">
           <label className="text-xs font-semibold text-slate-500">
-            Tap a player to put them on the board
+            Tap a player to put them on the board — tap again to clear, or tap another to switch.
           </label>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {players.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => showPlayer(p)}
-                disabled={ctl.spotlight.isPending}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 transition-colors hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-50"
-              >
-                {p.number ? (
-                  <span className="text-[11px] font-black text-slate-400">#{p.number}</span>
-                ) : null}
-                <span className="text-sm font-semibold text-slate-800">{p.name}</span>
-                {p.team === 'away' ? (
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                    away
+            {players.map((p) => {
+              const onAir = isPlayerOnAir(p);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => showPlayer(p)}
+                  disabled={ctl.spotlight.isPending}
+                  title={onAir ? 'On air — tap to clear' : 'Tap to put on air'}
+                  className={
+                    onAir
+                      ? 'flex items-center gap-1.5 rounded-lg border-2 border-amber-500 bg-amber-100 px-2.5 py-1.5 ring-2 ring-amber-300 transition-colors disabled:opacity-50'
+                      : 'flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 transition-colors hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-50'
+                  }
+                >
+                  {onAir && <span className="text-[10px] font-black text-amber-700">● ON AIR</span>}
+                  {p.number ? (
+                    <span className="text-[11px] font-black text-slate-400">#{p.number}</span>
+                  ) : null}
+                  <span className={onAir ? 'text-sm font-bold text-amber-900' : 'text-sm font-semibold text-slate-800'}>
+                    {p.name}
                   </span>
-                ) : null}
-              </button>
-            ))}
+                  {p.team === 'away' ? (
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                      away
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
           <p className="mt-2 text-[11px] text-slate-400">
             Or build a custom highlight (a promo, a milestone) below.
