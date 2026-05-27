@@ -730,7 +730,7 @@ function RunMode({
           scroll-to dead zone. Toggle behavior on highlights — clicking
           the on-air player clears them; clicking another switches. */}
       <RunInlineHighlightsBar gameId={gameId} g={g} ctl={ctl} />
-      <RunInlineCuesBar def={def} ctl={ctl} />
+      <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
 
       {/* bottom control tray */}
       <div className="flex items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
@@ -1018,17 +1018,52 @@ function RunInlineHighlightsBar({
  *  (target picker, custom cues) stays available behind the Cues
  *  button in the bottom tray; this inline bar is the one-tap path
  *  for the sport's built-in celebrations, broadcasting to ALL
- *  surfaces by default. */
+ *  surfaces by default.
+ *
+ *  2026-05-27 — when a player is currently spotlit, every cue fired
+ *  through this bar attaches that player as the scorer. So if the
+ *  operator has Greg on the spotlight and taps GOAL, the cinematic
+ *  fires with "GOAL!  SCORED BY #99 GREG SCHIEMANN" and his cap
+ *  number. No spotlight → cue fires generic.
+ */
 function RunInlineCuesBar({
+  gameId,
+  g,
   def,
   ctl,
 }: {
+  gameId: string;
+  g: any;
   def: SportDefinition;
   ctl: ReturnType<typeof useGameControl>;
 }) {
+  const roster = useGameRoster(gameId);
+  const players: any[] = Array.isArray(roster.data) ? roster.data : [];
+  const sp = g?.spotlight && typeof g.spotlight === 'object' ? g.spotlight : {};
+  const spotName =
+    sp.visible && typeof sp.title === 'string' ? sp.title.trim().toLowerCase() : '';
+  const scorerPlayer = spotName
+    ? players.find((p) => String(p?.name || '').trim().toLowerCase() === spotName) || null
+    : null;
+  const scorerLabel = scorerPlayer
+    ? `${scorerPlayer.number ? `#${scorerPlayer.number} ` : ''}${scorerPlayer.name}`
+    : sp.title || '';
+
   const [lastFiredKey, setLastFiredKey] = useState<string>('');
   const fire = (key: string) => {
-    ctl.cue.mutate({ key, target: 'ALL' as any });
+    ctl.cue.mutate({
+      key,
+      target: 'ALL' as any,
+      // If a player is on the spotlight, attribute the cue to them so
+      // the cinematic shows "SCORED BY #12 SMITH". scorerPlayer is the
+      // roster row (with .number, .photoUrl, .id); if the operator
+      // only has a custom-built spotlight (no matching roster entry),
+      // fall back to the spotlight title only.
+      scorerName: scorerPlayer?.name || (sp.title || undefined),
+      scorerNumber: scorerPlayer?.number ? String(scorerPlayer.number) : undefined,
+      scorerPhotoUrl: scorerPlayer?.photoUrl || sp.photoUrl || undefined,
+      scorerId: scorerPlayer?.id || undefined,
+    });
     setLastFiredKey(key);
     setTimeout(() => setLastFiredKey((k) => (k === key ? '' : k)), 1500);
   };
@@ -1039,7 +1074,15 @@ function RunInlineCuesBar({
           <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700">
             ⊞ Celebrate
           </span>
-          <span className="text-[10px] text-indigo-500">Fires on every screen</span>
+          <span className="text-[10px] text-indigo-500">
+            {scorerLabel ? (
+              <>
+                Will attribute to <strong className="text-indigo-700">{scorerLabel}</strong>
+              </>
+            ) : (
+              'Fires on every screen'
+            )}
+          </span>
         </div>
         <div className="flex gap-1.5 flex-wrap overflow-x-auto">
           {def.celebrations.map((c) => {
@@ -1050,7 +1093,11 @@ function RunInlineCuesBar({
                 type="button"
                 onClick={() => fire(c.key)}
                 disabled={ctl.cue.isPending}
-                title={`Fire ${c.label}`}
+                title={
+                  scorerLabel
+                    ? `Fire ${c.label} — attributed to ${scorerLabel}`
+                    : `Fire ${c.label} (no player attribution — tap a player above first to attribute)`
+                }
                 className={
                   justFired
                     ? 'flex items-center gap-1 rounded-md bg-indigo-600 text-white px-3 py-1.5 font-bold text-xs ring-2 ring-indigo-300 transition-colors shrink-0'

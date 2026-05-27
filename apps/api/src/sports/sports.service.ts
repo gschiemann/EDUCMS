@@ -2235,6 +2235,17 @@ export class SportsService {
       // Lane-8 P1: scoring team — drives the celebration's team-color brand
       // shim. Manual path was previously missing this; only AUTO set it.
       team?: 'home' | 'away' | null;
+      // 2026-05-27 — Player attribution for the celebration. Operator:
+      // "shouldn't my cues tie back to a player? so it says like Goal
+      // and has the name of the player that got the goal and number".
+      // Most common path: ribbon's RunInlineCuesBar reads the currently
+      // -spotlit player and attaches them here when firing GOAL (or
+      // any celebration). Cinematic reads these off the cue and shows
+      // "SCORED BY #12 SMITH" on its lower-third.
+      scorerName?: string;
+      scorerNumber?: string;
+      scorerPhotoUrl?: string;
+      scorerId?: string;
     },
     actorUserId?: string,
   ) {
@@ -2246,6 +2257,11 @@ export class SportsService {
     const sponsorName = this.cleanText(dto.sponsorName, 120);
     const sponsorLogoUrl = this.cleanText(dto.sponsorLogoUrl, 2048);
     const team = dto.team === 'home' || dto.team === 'away' ? dto.team : null;
+    // Scorer attribution — clipped to display-safe lengths.
+    const scorerName = this.cleanText(dto.scorerName, 80);
+    const scorerNumber = this.cleanText(dto.scorerNumber, 8);
+    const scorerPhotoUrl = this.cleanText(dto.scorerPhotoUrl, 2048);
+    const scorerId = this.cleanText(dto.scorerId, 64);
 
     // Lane-8 P1: mirror every cue-fire into the immutable AuditLog so a
     // game-presentation forensics review can answer "who fired which
@@ -2293,6 +2309,10 @@ export class SportsService {
         sponsorName,
         sponsorLogoUrl,
         team,
+        scorerName,
+        scorerNumber,
+        scorerPhotoUrl,
+        scorerId,
         snapshot: this.cueSnapshot(game),
       });
       await writeAudit(event.id, `custom:${cc.id}`, cc.name);
@@ -2313,6 +2333,10 @@ export class SportsService {
       sponsorName,
       sponsorLogoUrl,
       team,
+      scorerName,
+      scorerNumber,
+      scorerPhotoUrl,
+      scorerId,
       snapshot: this.cueSnapshot(game),
     });
     await writeAudit(event.id, cue.key, cue.label);

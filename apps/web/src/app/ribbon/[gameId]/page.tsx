@@ -2195,6 +2195,12 @@ function pickCinematic(
   // water polo is ported; others use the deck or v2 CSS fallbacks
   // until their v1 marquee scenes get the same React port.
   if (key === 'goal') {
+    // 2026-05-27 — scorer attribution off the cue payload. Operator's
+    // Run-mode console attaches this from the currently-spotlit
+    // player when firing the cue, so the cinematic can show "SCORED
+    // BY #12 SMITH" as a hero line.
+    const wScorerName = ((cue as any)?.scorerName as string | undefined)?.trim();
+    const wScorerNumber = ((cue as any)?.scorerNumber as string | undefined)?.trim();
     if (sportNorm === 'waterpolo') {
       return {
         Component: CelebrationWaterPoloGoal as any,
@@ -2205,6 +2211,8 @@ function pickCinematic(
           homeScore,
           awayScore,
           segmentLabel: snap?.segmentLabel || '',
+          scorerName: wScorerName,
+          scorerNumber: wScorerNumber,
         },
       };
     }
@@ -2227,7 +2235,19 @@ function pickCinematic(
     }
     return undefined;
   })();
-  const deckCue = pickDeckCue(key, sport, liveSub1 ? { sub1: liveSub1 } : undefined);
+  // 2026-05-27 — Operator-attributed scorer overrides sub2 so the
+  // cinematic shows "SCORED BY #12 SMITH" instead of the generic
+  // sport-segment text. Read off the cue payload (the operator's
+  // Run console attaches these from the currently-spotlit player).
+  const scorerName = ((cue as any)?.scorerName as string | undefined)?.trim();
+  const scorerNumber = ((cue as any)?.scorerNumber as string | undefined)?.trim();
+  const scorerLine = scorerName
+    ? `SCORED BY  ${scorerNumber ? `#${scorerNumber}  ` : ''}${scorerName.toUpperCase()}`
+    : undefined;
+  const overrides: Record<string, unknown> = {};
+  if (liveSub1) overrides.sub1 = liveSub1;
+  if (scorerLine) overrides.sub2 = scorerLine;
+  const deckCue = pickDeckCue(key, sport, Object.keys(overrides).length ? overrides : undefined);
   if (deckCue) {
     return {
       Component: CelebrationDeckScene as any,

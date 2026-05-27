@@ -41,6 +41,12 @@ export interface CelebrationWaterPoloGoalProps {
   /** When set, hide the scoreline band entirely (useful on ribbon
    *  zones where the scoreboard widget already shows the score). */
   hideScoreline?: boolean;
+  /** 2026-05-27 — player attribution. When set, the cinematic shows
+   *  "SCORED BY #N NAME" below the scoreline so the crowd knows who
+   *  put it in. Operator attaches this from the currently-spotlit
+   *  player when firing the GOAL cue. */
+  scorerName?: string;
+  scorerNumber?: string;
 }
 
 export function CelebrationWaterPoloGoal({
@@ -51,6 +57,8 @@ export function CelebrationWaterPoloGoal({
   awayScore = 0,
   segmentLabel = '',
   hideScoreline = false,
+  scorerName = '',
+  scorerNumber = '',
 }: CelebrationWaterPoloGoalProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -497,7 +505,18 @@ export function CelebrationWaterPoloGoal({
         ctx!.shadowColor = 'rgba(0,0,0,0.85)';
         ctx!.shadowBlur = 14;
         ctx!.fillText(`${homeName.toUpperCase()}  ${homeScore}  —  ${awayScore}  ${awayName.toUpperCase()}`, W / 2, ty);
-        if (segmentLabel) {
+        // 2026-05-27 — scorer attribution line below the scoreline,
+        // bigger + gold so it pops as the hero line. Replaces the
+        // generic segment line when scorerName is set; otherwise we
+        // fall back to "SEGMENT · GOAL" as before.
+        if (scorerName && scorerName.trim()) {
+          ctx!.font = '900 40px Arial';
+          ctx!.fillStyle = '#fbbf24';
+          ctx!.shadowColor = 'rgba(0,0,0,0.85)';
+          ctx!.shadowBlur = 12;
+          const num = scorerNumber && scorerNumber.trim() ? `#${scorerNumber.trim()}  ` : '';
+          ctx!.fillText(`SCORED BY  ${num}${scorerName.trim().toUpperCase()}`, W / 2, ty + 50);
+        } else if (segmentLabel) {
           ctx!.font = '700 30px Arial';
           ctx!.fillStyle = rgba(TLT, 0.95);
           ctx!.shadowBlur = 0;
@@ -558,7 +577,7 @@ export function CelebrationWaterPoloGoal({
       cancelled = true;
       cancelAnimationFrame(rafId);
     };
-  }, [team, homeName, awayName, homeScore, awayScore, segmentLabel, hideScoreline]);
+  }, [team, homeName, awayName, homeScore, awayScore, segmentLabel, hideScoreline, scorerName, scorerNumber]);
 
   // Outer: position absolute fill, center the canvas at native 1920×1080
   // and CSS-scale to fit. Letterboxes on ribbon zones (much shorter than

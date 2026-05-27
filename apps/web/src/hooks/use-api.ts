@@ -2339,6 +2339,12 @@ export function useGameControl(gameId: string) {
       audioUrl?: string;
       sponsorName?: string;
       sponsorLogoUrl?: string;
+      // 2026-05-27 — player attribution for the celebration.
+      // Cinematic reads these and shows "SCORED BY #12 SMITH".
+      scorerName?: string;
+      scorerNumber?: string;
+      scorerPhotoUrl?: string;
+      scorerId?: string;
     }) =>
       apiFetch(`/sports/games/${gameId}/cue`, { method: 'POST', body: JSON.stringify(body) }),
   });

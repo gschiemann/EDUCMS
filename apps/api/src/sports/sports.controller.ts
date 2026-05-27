@@ -422,6 +422,13 @@ export class SportsController {
       // Lane-8 P1: scoring team for branded celebration overlay. Optional;
       // AUTO path already sets this; manual cues now can too.
       team?: 'home' | 'away';
+      // 2026-05-27 — player attribution for the celebration; the
+      // ribbon's RunInlineCuesBar attaches the currently-spotlit
+      // player so cinematics can show "SCORED BY #12 SMITH".
+      scorerName?: string;
+      scorerNumber?: string;
+      scorerPhotoUrl?: string;
+      scorerId?: string;
     },
   ) {
     return this.sports.fireCue(req.user.tenantId, id, body, req?.user?.id);
