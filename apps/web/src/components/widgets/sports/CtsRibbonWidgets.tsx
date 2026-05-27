@@ -548,6 +548,15 @@ function ribbonApiRoot(): string {
   return '/api/v1';
 }
 
+interface RibbonBoardCue {
+  id: string;
+  key?: string;          // sport-celebration key (e.g. 'water-polo-goal')
+  cueId?: string;        // operator-defined custom cue id
+  target?: string;       // 'ALL' | 'BOARD' | 'RIBBON'
+  team?: 'home' | 'away' | null;
+  firedAt: string;
+}
+
 interface RibbonBoardData {
   sponsors?: Array<{
     id: string;
@@ -567,6 +576,7 @@ interface RibbonBoardData {
     position?: string | null;
     photoUrl?: string | null;
   }>;
+  cues?: RibbonBoardCue[];
   homeTeam?: string;
   awayTeam?: string;
 }
@@ -704,8 +714,14 @@ export function CtsSponsorRotatorWidget({ config }: { config?: SponsorRotatorCfg
   }, [idx, slots, defaultDuration]);
 
   const slot = slots[idx] ?? slots[0];
-  const labelFs = Math.max(10, Math.round((h || 192) * 0.16));
-  const textFs = Math.max(16, Math.round((h || 192) * 0.36));
+  const labelFs = Math.max(10, Math.round((h || 192) * 0.14));
+  // Pump the text size up so it FILLS the zone like the scoreboard
+  // does. Operator (2026-05-26) called out the previous render: "score
+  // looks good full screen but my content i loaded is tiny, i thought
+  // we fixed this so that it takes up the full screen always same as
+  // the score". 0.65 of zone height eats the whole zone for text;
+  // images use width/height:100% so small logos stretch UP to fill.
+  const textFs = Math.max(20, Math.round((h || 192) * 0.55));
 
   return (
     <div
@@ -715,7 +731,7 @@ export function CtsSponsorRotatorWidget({ config }: { config?: SponsorRotatorCfg
         background: slot?.bgColor || cfg.bgColor || '#1e293b',
         display: 'flex',
         flexDirection: 'column',
-        padding: '8px 16px',
+        padding: cfg.zoneLabel ? '6px 12px 8px' : '0',
         transition: 'background 400ms ease',
         position: 'relative' as const,
       }}
@@ -728,23 +744,29 @@ export function CtsSponsorRotatorWidget({ config }: { config?: SponsorRotatorCfg
             fontWeight: 700,
             letterSpacing: 3,
             opacity: 0.7,
-            marginBottom: 6,
+            marginBottom: 2,
+            flexShrink: 0,
           }}
         >
           {cfg.zoneLabel}
         </span>
       )}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: 0 }}>
         {slot?.imageUrl ? (
-          // Image slot: contain-fit so the sponsor logo always reads
-          // even if it's a non-ribbon ratio.
+          // Image slot — fill the zone. width/height: 100% so the IMG
+          // element fills the container; objectFit: contain so the
+          // image inside scales to fit while preserving aspect ratio.
+          // (Previous max-width/max-height only capped the image —
+          // small intrinsic logos stayed small, leaving the zone half
+          // empty.)
           <img
             src={slot.imageUrl}
             alt={slot.text || 'Sponsor'}
             style={{
-              maxWidth: '100%',
-              maxHeight: '100%',
+              width: '100%',
+              height: '100%',
               objectFit: 'contain',
+              display: 'block',
             }}
             onError={(e) => {
               // Bad URL: hide the broken image and let the text fall
@@ -756,11 +778,12 @@ export function CtsSponsorRotatorWidget({ config }: { config?: SponsorRotatorCfg
           <span
             style={{
               color: 'white',
-              fontWeight: 800,
+              fontWeight: 900,
               fontSize: textFs,
               letterSpacing: 1,
               textAlign: 'center',
-              lineHeight: 1.1,
+              lineHeight: 1.0,
+              padding: '0 12px',
             }}
           >
             {slot?.text || ''}
@@ -932,8 +955,12 @@ export function CtsAnnouncementWidget({ config }: { config?: AnnouncementCfg }) 
   }, [idx, entries, defaultDuration]);
 
   const entry = entries[idx] ?? entries[0];
-  const labelFs = Math.max(10, Math.round((h || 192) * 0.16));
-  const textFs = Math.max(14, Math.round((h || 192) * 0.34));
+  const labelFs = Math.max(10, Math.round((h || 192) * 0.14));
+  // Pump font multiplier up like the sponsor widget — operator
+  // (2026-05-26): "score looks good full screen but my content i
+  // loaded is tiny". Announcement text now fills its zone the same
+  // way the scoreboard does.
+  const textFs = Math.max(18, Math.round((h || 192) * 0.56));
 
   return (
     <div
@@ -943,7 +970,7 @@ export function CtsAnnouncementWidget({ config }: { config?: AnnouncementCfg }) 
         background: cfg.bgColor || '#0c1322',
         display: 'flex',
         flexDirection: 'column',
-        padding: '8px 16px',
+        padding: cfg.zoneLabel ? '6px 12px 8px' : '0 12px',
         position: 'relative' as const,
       }}
     >
@@ -955,21 +982,22 @@ export function CtsAnnouncementWidget({ config }: { config?: AnnouncementCfg }) 
             fontWeight: 800,
             letterSpacing: 3,
             opacity: 0.85,
-            marginBottom: 6,
+            marginBottom: 2,
+            flexShrink: 0,
           }}
         >
           {cfg.zoneLabel}
         </span>
       )}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', width: '100%', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', width: '100%', minHeight: 0, overflow: 'hidden' }}>
         <span
           key={idx}
           style={{
             color: 'white',
-            fontWeight: 700,
+            fontWeight: 900,
             fontSize: textFs,
             letterSpacing: 1,
-            lineHeight: 1.2,
+            lineHeight: 1.0,
             display: 'inline-block',
             whiteSpace: 'nowrap',
             animation: 'ctsAnnounceIn 420ms ease-out both',
@@ -1300,6 +1328,21 @@ export function CtsCelebrationOrchestratorWidget({ config }: { config?: CtsCeleb
   const lastPeriodRef = useRef<number>(snap.period);
   const lastHornRef = useRef<boolean>(snap.horn);
 
+  // Sprint 13 followup — listen for cues coming through the existing
+  // /sports/board feed too. The operator (2026-05-26) called out the
+  // duplication: "i can pick the CTS template from the dropdown here
+  // and all the cues are loaded hopefully that we created already".
+  // The existing /sports/<gameId> Celebrations panel POSTs to
+  // /sports/games/:id/cue, which queues the cue in /sports/board/:id
+  // data.cues. The legacy /ribbon page polls + plays them; my
+  // orchestrator now also polls + plays them, so ONE button (the
+  // existing Celebrations panel's "GOAL" tile) fires my cinematic on
+  // the ribbon. Operator never has to learn a second UX.
+  const cueGameId = resolveGameId();
+  const cueBoard = useRibbonBoardData(cueGameId, 1500);
+  const seenCueIdsRef = useRef<Set<string>>(new Set<string>());
+  const firstCuePollRef = useRef<boolean>(true);
+
   // Cross-snapshot cue dedup. If the same cueId is requested within
   // CUE_COOLDOWN_MS of the last fire (e.g. a flap on the CTS feed
   // resends the same horn-rising-edge), we DROP the duplicate. Without
@@ -1378,6 +1421,47 @@ export function CtsCelebrationOrchestratorWidget({ config }: { config?: CtsCeleb
     lastPeriodRef.current = snap.period;
     lastHornRef.current = snap.horn;
   }, [snap.homeScore, snap.awayScore, snap.period, snap.horn, homeDeck, awayDeck, periodDeck, hornDeck, fire, cfg.ignoreHorn, cfg.ignorePeriodEnd]);
+
+  // Sprint 13 followup — when the operator fires a cue from the
+  // EXISTING /sports/<gameId> Celebrations panel, it lands in the
+  // /sports/board feed as a Cue. Pick it up, map to the operator's
+  // cinematic deck, fire. Target filter: only RIBBON or ALL cues
+  // (BOARD-only cues stay on the scoreboard surface, never the ribbon).
+  //
+  // Team routing:
+  //   • cue.team='home'  → homeGoal deck (the GOAL celebration the
+  //     operator clicked AFTER a home score)
+  //   • cue.team='away'  → awayGoal deck
+  //   • cue.team unset   → horn deck (sport celebrations without a
+  //     team — saves, penalties, period markers, etc.)
+  //
+  // The orchestrator's deck config (cues.homeGoal / cues.awayGoal /
+  // cues.horn from Properties panel) is the single source of truth
+  // for which cinematic plays on the ribbon. Operator never has to
+  // touch a separate "ribbon cinematics" UI.
+  useEffect(() => {
+    if (!cueBoard || !Array.isArray(cueBoard.cues)) return;
+    // First poll's cues already played (they arrived BEFORE the
+    // ribbon mounted) — record them as seen, don't re-fire. Otherwise
+    // every fresh ribbon load would replay the last 20s of cues.
+    for (const c of cueBoard.cues) {
+      if (!c || !c.id) continue;
+      if (seenCueIdsRef.current.has(c.id)) continue;
+      seenCueIdsRef.current.add(c.id);
+      if (firstCuePollRef.current) continue;
+      // Target filter — null/'ALL'/'RIBBON' plays here; 'BOARD' skips.
+      const target = (c.target || 'ALL').toUpperCase();
+      if (target !== 'ALL' && target !== 'RIBBON') continue;
+      // Pick deck based on team. Sport celebrations without a team
+      // (saves, penalties) route to the horn deck — operator can
+      // assign the right cinematic in Properties panel.
+      const team: 'home' | 'away' | 'horn' = c.team === 'home' ? 'home' : c.team === 'away' ? 'away' : 'horn';
+      const deck = team === 'home' ? homeDeck : team === 'away' ? awayDeck : hornDeck;
+      const idxRef = team === 'home' ? homeIdxRef : team === 'away' ? awayIdxRef : hornIdxRef;
+      fire(deck, idxRef, team, 'manual');
+    }
+    firstCuePollRef.current = false;
+  }, [cueBoard, homeDeck, awayDeck, hornDeck, fire]);
 
   // Operator-preview event — Properties-panel test buttons + admin
   // CTS_MANUAL_CUE WS message (Stream Deck / mobile cue panel) both
