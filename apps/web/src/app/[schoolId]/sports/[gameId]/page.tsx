@@ -274,15 +274,12 @@ function GameControl() {
         </div>
       </div>
 
-      {/* ── sticky state bar ──────────────────────────────────── */}
-      <StateBar
-        g={g}
-        def={def}
-        liveMs={liveMs}
-        homeColor={homeColor}
-        awayColor={awayColor}
-        isLive={isLive}
-      />
+      {/* 2026-05-27 — StateBar dropped. Operator: "kill the live pill
+          no need for that i dont think and we can shift the entire
+          screen up a little". The LIVE pill was the only thing left
+          in the strip after we stripped team names + score + clock —
+          removing the whole row brings every Run-mode control up a
+          beat, less wasted real estate above the scoreboard. */}
 
       {/* ── mode tabs ─────────────────────────────────────────── */}
       <div className="flex gap-1 px-4 py-2 border-b border-slate-200 bg-white">
