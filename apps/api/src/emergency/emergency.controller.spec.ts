@@ -4,6 +4,8 @@ import { EmergencyController } from './emergency.controller';
 import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
+import { WebhookDispatchService } from '../webhooks/webhook-dispatch.service';
+import { GpioService } from '../screens/gpio.service';
 import { JwtService } from '@nestjs/jwt';
 
 describe('EmergencyController', () => {
@@ -84,6 +86,20 @@ describe('EmergencyController', () => {
         {
           provide: JwtService,
           useValue: { sign: jest.fn(), verifyAsync: jest.fn() },
+        },
+        // 2026-05-25 — outbound webhook on emergency.triggered / .cleared.
+        // Stubbed so the spec compiles after EmergencyController grew this dep.
+        {
+          provide: WebhookDispatchService,
+          useValue: { dispatch: jest.fn().mockResolvedValue(undefined) },
+        },
+        // 2026-05-27 — GPIO status-lamp auto-drive on emergency trigger /
+        // all-clear. Stubbed so the spec compiles after the new dep landed.
+        {
+          provide: GpioService,
+          useValue: {
+            driveStatusLampForEmergency: jest.fn().mockResolvedValue({ touched: 0 }),
+          },
         },
       ],
     }).compile();

@@ -69,6 +69,10 @@ import { MusicModule } from './music/music.module';
 // "AI Integration Concierge — vision" section.
 import { IntegrationsModule } from './integrations/integrations.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+// 2026-05-27 — Goodview EP6N GPIO IN/OUT controller + service.
+// Exports GpioService so EmergencyController can auto-drive a wired
+// status lamp on emergency trigger / all-clear.
+import { GpioModule } from './screens/gpio.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
@@ -116,6 +120,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     MusicModule,
     IntegrationsModule,
     AnalyticsModule,
+    GpioModule,
     // 2026-05-06 — operator: kiosk wedged on "429 trying to
     // reconnect" right after fresh APK install. Cause: a fresh kiosk
     // boot fires a flurry of API hits in the first 60 s — manifest

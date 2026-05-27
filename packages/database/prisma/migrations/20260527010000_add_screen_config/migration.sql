@@ -1,0 +1,30 @@
+-- 2026-05-27 — Goodview EP6N GPIO wiring + GPIO output state.
+--
+-- Adds a single nullable JSONB `config` column on the Screen row. Used
+-- by the EP6N GPIO controller (apps/api/src/screens/gpio.controller.ts)
+-- to persist two related shapes:
+--
+--   config.wiring = {
+--     gpio_in1:  'fire_alarm' | 'panic_button' | null,
+--     gpio_in2:  'fire_alarm' | 'panic_button' | null,
+--     gpio_out1: 'status_lamp' | 'horn'        | null,
+--     gpio_out2: 'status_lamp' | 'horn'        | null,
+--   }
+--
+--   config.gpioState = {
+--     out1: 'low' | 'high',
+--     out2: 'low' | 'high',
+--     updatedAt: ISO8601,
+--   }
+--
+-- Player polls config.gpioState via the manifest endpoint and applies
+-- the new pin states on the EP6N's Phoenix terminal. Server-side
+-- writes go through gpio.service.setOutput() which also broadcasts a
+-- signed GPIO_SET message on device:<screenId> so the player picks
+-- up the change immediately.
+--
+-- Purely additive (nullable JSONB column). Every existing row stays
+-- untouched. Older hardware models (Taurus / ECBox / Pi5 / generic
+-- Android / web) ignore the field — no GPIO pins to drive.
+
+ALTER TABLE "screens" ADD COLUMN IF NOT EXISTS "config" JSONB;

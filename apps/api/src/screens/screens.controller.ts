@@ -31,6 +31,10 @@ import {
   shouldSkipEmergencyAudit,
   markEmergencyAuditWritten,
 } from './manifest-hot-cache';
+// 2026-05-27 — Goodview EP6N GPIO state. Surfaced on every manifest
+// branch (emergency / sports / normal) so the player applies the
+// out1 / out2 lamp + horn states regardless of which path served it.
+import { readGpioState } from './gpio.service';
 
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -2638,6 +2642,15 @@ export class ScreensController {
             ? Math.floor(new Date(activeScreenOverride.expiresAt).getTime() / 1000)
             : null,
           orientation: isPortrait ? 'portrait' : 'landscape',
+          // 2026-05-27 — EP6N GPIO output state. The player applies
+          // these to the Phoenix terminal's relay outputs. Emergency
+          // branch must carry the same state as the normal branch so
+          // a status lamp that was lit via gpio-set doesn't blink
+          // off when the screen flips into emergency mode.
+          gpio: (() => {
+            const s = readGpioState((screen as any).config);
+            return { out1: s.out1, out2: s.out2 };
+          })(),
           playlists
         });
       }
@@ -2664,6 +2677,12 @@ export class ScreensController {
           generatedAt: new Date().toISOString(),
           // 2026-05-24 — orientation lock for sports-mode screens too.
           orientation: (screen as any).orientation || 'LANDSCAPE',
+          // 2026-05-27 — EP6N GPIO output state (status lamp / horn).
+          // Same shape across every manifest branch.
+          gpio: (() => {
+            const s = readGpioState((screen as any).config);
+            return { out1: s.out1, out2: s.out2 };
+          })(),
           playlists: this.buildScoreboardManifest(
             screen,
             boardGame,
@@ -2903,6 +2922,14 @@ export class ScreensController {
       // gets the same score / sponsor / celebration. Viewing angle
       // problem solved (no one's far from a visible repeat).
       repeats: (screen as any).repeats ?? 1,
+      // 2026-05-27 — Goodview EP6N GPIO output state. Player applies
+      // out1 / out2 to the Phoenix terminal's relay outputs. Older
+      // hardware models (Taurus / Pi5 / generic Android / web)
+      // ignore unknown fields. Defaults both to 'low' when unset.
+      gpio: (() => {
+        const s = readGpioState((screen as any).config);
+        return { out1: s.out1, out2: s.out2 };
+      })(),
       playlists: dynamicPlaylists
     };
 

@@ -12,6 +12,11 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { WebhookDispatchService } from '../webhooks/webhook-dispatch.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { invalidateTenantState } from '../screens/manifest-hot-cache';
+// 2026-05-27 — Goodview EP6N GPIO. When the emergency trigger fires
+// on a tenant, sweep every screen whose GPIO OUT is wired to a
+// status_lamp + flip the lamp high. On all-clear, flip it back to
+// low. Implemented in GpioService.driveStatusLampForEmergency().
+import { GpioService } from '../screens/gpio.service';
 import {
   assertAllowedEmergencyMediaUrl,
   assertAllowedEmergencyMediaUrls,
@@ -43,6 +48,11 @@ export class EmergencyController {
     // never blocks the response path. Injected from the global
     // WebhooksModule.
     private readonly webhookDispatch: WebhookDispatchService,
+    // 2026-05-27 — auto-drive a wired GPIO status lamp during
+    // tenant-wide emergencies. Injected from the global GpioModule.
+    // Fire-and-forget — never blocks the response path or the
+    // life-safety trigger transaction. See call sites below.
+    private readonly gpio: GpioService,
   ) {}
 
   private emergencyTypeKey(type?: string | null): string | null {
@@ -508,6 +518,33 @@ export class EmergencyController {
       });
     }
 
+    // 2026-05-27 — Goodview EP6N GPIO status lamp auto-drive. Sweep
+    // every screen in the tenant whose `config.wiring.gpio_out1` or
+    // `gpio_out2` is wired to a `status_lamp` and flip the output
+    // high. Fire-and-forget — a lamp that fails to flip is logged
+    // by GpioService but NEVER rolls back the emergency. Tenant-
+    // scope only; group/device scope triggers don't auto-drive the
+    // tenant-wide lamp signal (those have their own per-screen UX).
+    if (scopeType === 'tenant' && ownedTenantId) {
+      this.gpio
+        .driveStatusLampForEmergency({
+          tenantId: ownedTenantId,
+          state: 'high',
+          reason: 'emergency_trigger',
+          sourceContext: { overrideId, severity, type: overridePayload.type ?? null },
+        })
+        .catch((e) => {
+          Sentry.withScope((s) => {
+            s.setTag('emergency.action', 'trigger.gpio_lamp');
+            s.setTag('emergency.scopeType', scopeType);
+            s.setUser({ id: req.user?.id });
+            s.setExtra('overrideId', overrideId);
+            Sentry.captureException(e);
+          });
+          console.warn(`[Emergency] GPIO status-lamp auto-drive failed (trigger): ${e}`);
+        });
+    }
+
     return {
       success: true,
       overrideId,
@@ -634,6 +671,31 @@ export class EmergencyController {
         clearedAt: new Date().toISOString(),
         clearedByUserId: req.user?.id ?? null,
       });
+    }
+
+    // 2026-05-27 — Mirror of the trigger-side GPIO status-lamp drive.
+    // Flip every wired status_lamp back to 'low' so the lobby light
+    // goes dark when the emergency clears. Fire-and-forget for the
+    // same reason as the trigger path — a stuck lamp must never
+    // delay all-clear from reaching the player fleet.
+    if (scopeType === 'tenant' && ownedTenantId) {
+      this.gpio
+        .driveStatusLampForEmergency({
+          tenantId: ownedTenantId,
+          state: 'low',
+          reason: 'emergency_all_clear',
+          sourceContext: { overrideId },
+        })
+        .catch((e) => {
+          Sentry.withScope((s) => {
+            s.setTag('emergency.action', 'all-clear.gpio_lamp');
+            s.setTag('emergency.scopeType', scopeType);
+            s.setUser({ id: req.user?.id });
+            s.setExtra('overrideId', overrideId);
+            Sentry.captureException(e);
+          });
+          console.warn(`[Emergency] GPIO status-lamp auto-drive failed (all-clear): ${e}`);
+        });
     }
 
     return {

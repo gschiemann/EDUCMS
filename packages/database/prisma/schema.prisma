@@ -751,6 +751,27 @@ model Screen {
   // (broadcast overlay). Null is treated as BOARD for back-compat
   // with screens pushed before the surface picker shipped.
   activeBoardSurface                  String?      @map("active_board_surface")
+  // 2026-05-27 — Goodview EP6N GPIO wiring + state.
+  //
+  //   config.wiring = {
+  //     gpio_in1:  'fire_alarm' | 'panic_button' | null,
+  //     gpio_in2:  'fire_alarm' | 'panic_button' | null,
+  //     gpio_out1: 'status_lamp' | 'horn'        | null,
+  //     gpio_out2: 'status_lamp' | 'horn'        | null,
+  //   }
+  //
+  //   config.gpioState = {
+  //     out1: 'low' | 'high',
+  //     out2: 'low' | 'high',
+  //     updatedAt: ISO8601,
+  //   }
+  //
+  // The manifest endpoint surfaces gpioState as `gpio: { out1, out2 }`
+  // for the player to apply. The EP6N's Phoenix terminal has 2 GPIO
+  // IN (dry-contact panic / fire alarm inputs) + 2 GPIO OUT (relay
+  // outputs driving status lamps, horns). Every other hardware model
+  // ignores the field — no GPIO pins to drive.
+  config                              Json?
   schedules                           Schedule[]
   screenGroup                         ScreenGroup? @relation(fields: [screenGroupId], references: [id])
   tenant                              Tenant?      @relation(fields: [tenantId], references: [id])
