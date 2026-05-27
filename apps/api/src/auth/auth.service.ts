@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import * as argon2 from 'argon2';
 import { cryptoPlatformConfig } from './crypto.config';
+import { issueMfaChallengeToken } from './mfa-challenge-token';
 
 /**
  * auth-BUG-006: pre-computed Argon2id hash used as a timing decoy when
@@ -98,6 +99,24 @@ export class AuthService {
   }
 
   async login(user: any, rememberMe?: boolean) {
+    // P0-4 (audit 2026-05-27) — if MFA is enabled on this user we
+    // STOP the normal session creation here and return a short-lived
+    // challenge token. The client trades the challenge token + a
+    // valid TOTP / backup code for the real session via
+    // POST /api/v1/auth/mfa/challenge.
+    //
+    // `mfaTotpVerifiedAt` is the source of truth for "MFA enabled":
+    // we set it only after the user proves they can read codes from
+    // their Authenticator, so an interrupted enrollment can never
+    // lock them out (the secret stays provisional and is ignored
+    // by login).
+    if (user?.mfaTotpVerifiedAt) {
+      return {
+        mfaRequired: true,
+        mfaToken: issueMfaChallengeToken(this.jwtService, user.id, rememberMe),
+      };
+    }
+
     // Look up the tenant slug + vertical for URL-friendly routing AND
     // VenueOS-era vertical-aware UI copy. Vertical drives terminology,
     // template library filter, default emergency types — without it
