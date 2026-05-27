@@ -43,6 +43,7 @@
     "clsx": "^2.1.1",
     "dashjs": "^5.1.1",
     "hls.js": "^1.6.16",
+    "html-to-image": "1.11.13",
     "html2canvas": "1.4.1",
     "isomorphic-dompurify": "^3.8.0",
     "jsqr": "^1.4.0",

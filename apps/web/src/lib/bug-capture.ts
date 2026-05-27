@@ -13,7 +13,21 @@
  * operator typed into a "What went wrong?" textarea — that's by design.
  */
 
-import html2canvas from 'html2canvas';
+// 2026-05-27 — html2canvas v1.x silently fails on Tailwind v4 oklch()
+// color tokens (its regex CSS parser doesn't grok the new color spec),
+// throwing "Attempting to parse an unsupported color function 'oklch'".
+// Every dashboard page uses oklch via bg-/text-/border- utilities, so
+// every screenshot returned undefined, the upload skipped, and the
+// /super/bugs review page showed broken-image icons for every bug.
+//
+// html-to-image uses inline SVG <foreignObject> embedding instead of
+// regex-parsing CSS, so oklch() (and color-mix, container queries,
+// other modern color tokens) work out of the box. Drop-in API: toPng
+// / toJpeg return base64 data URLs, same shape the rest of
+// captureScreenshot expects. Discovered via the bug reporter itself —
+// the synthetic test bug 2cf1c459 had screenshot_url=null + the test
+// description correctly diagnosed the cause.
+import { toPng, toJpeg } from 'html-to-image';
 import type { BugCapturedContext, BugClientBrowserInfo } from '@cms/api-types';
 import { detectCapabilities } from './capabilities';
 import { snapshotBugRingbuffers } from './bug-ringbuffers';
@@ -161,55 +175,46 @@ async function captureScreenshot(): Promise<string | undefined> {
   if (scale < 0.25) scale = 0.25;
 
   for (let attempt = 0; attempt < 3; attempt++) {
-    let canvas: HTMLCanvasElement;
+    let dataUrl: string;
+    let bytes: number;
     try {
-      canvas = await html2canvas(root, {
-        scale,
-        // Render off-DOM so the operator doesn't see a flash of the
-        // capture overlay.
-        useCORS: true,
-        // Cross-origin images may taint the canvas; honour it best-effort.
-        allowTaint: false,
-        // Don't try to log anything to the console during render.
-        logging: false,
-        // 2026-05-27 — html2canvas chokes on Tailwind v4's `oklch()`
-        // color tokens (it parses CSS values with a regex that doesn't
-        // grok the new color spec) on Safari, throwing "Attempting to
-        // parse an unsupported color function 'oklch'". Workaround:
-        // ignore elements with `data-bug-capture-skip` so we can flag
-        // any problem subtree; the gradient blobs in DashboardLayout
-        // are already on a fixed solid color when rendered, so they
-        // capture fine. If a customer's tenant adds a custom widget
-        // that breaks parsing, the catch below shows them an empty
-        // screenshot instead of crashing the whole report.
-        ignoreElements: (el) => el.hasAttribute('data-bug-capture-skip'),
-        // Limit to viewport — full-document captures explode in size on
-        // long admin pages.
+      // html-to-image: <foreignObject>-based capture handles modern
+      // CSS (oklch, color-mix, container queries) natively. Same
+      // filter() semantics as html2canvas's ignoreElements — skip any
+      // subtree the developer flagged with data-bug-capture-skip.
+      const filter = (el: HTMLElement) => !el.hasAttribute?.('data-bug-capture-skip');
+
+      // PNG first (lossless) — JPEG fallback below if PNG too large.
+      dataUrl = await toPng(root, {
+        pixelRatio: scale,
         width: window.innerWidth,
         height: window.innerHeight,
-        windowWidth: window.innerWidth,
-        windowHeight: window.innerHeight,
-        x: window.scrollX,
-        y: window.scrollY,
         backgroundColor: '#ffffff',
+        filter,
+        cacheBust: false,
       });
-    } catch (err) {
-      console.warn('[bug-capture] html2canvas threw', err);
-      return undefined;
-    }
+      bytes = estimateBase64Bytes(dataUrl);
 
-    // PNG first (lossless) — JPEG fallback if PNG is too large.
-    let dataUrl = canvas.toDataURL('image/png');
-    let bytes = estimateBase64Bytes(dataUrl);
-
-    if (bytes > SCREENSHOT_TARGET_BYTES) {
-      // Try JPEG at 0.85 quality — usually cuts size 4-6×.
-      const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-      const jpegBytes = estimateBase64Bytes(jpegDataUrl);
-      if (jpegBytes < bytes) {
-        dataUrl = jpegDataUrl;
-        bytes = jpegBytes;
+      if (bytes > SCREENSHOT_TARGET_BYTES) {
+        // Try JPEG at 0.85 quality — usually cuts size 4-6×.
+        const jpegDataUrl = await toJpeg(root, {
+          pixelRatio: scale,
+          width: window.innerWidth,
+          height: window.innerHeight,
+          backgroundColor: '#ffffff',
+          filter,
+          quality: 0.85,
+          cacheBust: false,
+        });
+        const jpegBytes = estimateBase64Bytes(jpegDataUrl);
+        if (jpegBytes < bytes) {
+          dataUrl = jpegDataUrl;
+          bytes = jpegBytes;
+        }
       }
+    } catch (err) {
+      console.warn('[bug-capture] html-to-image threw', err);
+      return undefined;
     }
 
     // Strip the data: prefix so the backend just gets the b64 payload.
