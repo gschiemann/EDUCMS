@@ -284,11 +284,29 @@ export default function SuperBugDetailPage() {
                     {aiError.error}
                   </p>
                   {aiError.kind === 'unconfigured' && (
-                    <p className="text-[11px] text-slate-400 mt-3">
-                      Set <code className="px-1.5 py-0.5 bg-slate-100 rounded font-mono">ANTHROPIC_API_KEY</code>
-                      {' '}on the API service to enable automatic root-cause analysis. The bug capture itself works without AI.
-                    </p>
+                    <div className="text-[11px] text-slate-400 mt-3 space-y-2">
+                      <p>
+                        Set <code className="px-1.5 py-0.5 bg-slate-100 rounded font-mono">ANTHROPIC_API_KEY</code>
+                        {' '}on the API service for automatic analysis — or use the manual path below.
+                      </p>
+                    </div>
                   )}
+
+                  {/* 2026-05-27 — Operator: "what about just feeding the
+                      bug info back into the app somewhere that you have
+                      access to so that you can review the bug and all
+                      the collected content and we dont need an API?"
+                      Right. The Anthropic call was the lossy part —
+                      Claude (this chat session) has the whole codebase
+                      indexed already. Just hand the bundle over.
+
+                      Button copies a self-contained markdown summary
+                      (description + reporter + browser + breadcrumbs +
+                      console errors + network failures + audit log +
+                      infra state + bug-id deeplink) to the operator's
+                      clipboard. Paste into Claude chat → root cause +
+                      code fix + commit + push, all in one turn. */}
+                  <ClaudeReviewPanel bug={bug} />
                 </>
               ) : (
                 <p className="text-sm text-slate-500">No AI analysis available for this bug.</p>
@@ -867,4 +885,244 @@ function relativeMs(ts: number): string {
   const hr = Math.floor(min / 60);
   if (hr < 24) return `${hr}h ago`;
   return new Date(ts).toLocaleString();
+}
+
+// 2026-05-27 — Manual-review escape hatch. Renders a panel below the
+// "AI not configured" notice that:
+//
+//   1. Builds a self-contained markdown summary of the bug (bundle).
+//   2. Has [Copy bundle for Claude] → puts bundle on clipboard.
+//   3. Tells the operator how to use it: paste in chat, Claude reads,
+//      proposes fix in chat, writes the actual code, commits. The
+//      bug record stays in NEW status until Claude posts an analysis
+//      back via POST /api/v1/bugs/:id/manual-analysis.
+//
+// The bundle is intentionally markdown (not JSON) so it's readable
+// when pasted into any chat surface — Claude Code session, claude.ai,
+// even a Slack DM if needed.
+function ClaudeReviewPanel({ bug }: { bug: BugDetail }) {
+  const [copied, setCopied] = useState<'none' | 'ok' | 'error'>('none');
+
+  const bundle = useMemo(() => buildBugBundleMarkdown(bug), [bug]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(bundle);
+      setCopied('ok');
+      setTimeout(() => setCopied('none'), 2500);
+    } catch {
+      setCopied('error');
+      setTimeout(() => setCopied('none'), 2500);
+    }
+  };
+
+  return (
+    <div className="mt-5 mx-auto max-w-2xl bg-indigo-50/60 border border-indigo-200 rounded-xl p-4 text-left">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <div className="text-[12px] font-extrabold text-indigo-900 flex items-center gap-1.5">
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-indigo-600 text-white text-[9px] font-extrabold">
+            C
+          </span>
+          Send to Claude for manual review
+        </div>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className={
+            'inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-colors ' +
+            (copied === 'ok'
+              ? 'bg-emerald-600 text-white'
+              : 'bg-indigo-600 hover:bg-indigo-700 text-white')
+          }
+        >
+          {copied === 'ok' ? (
+            <>
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Copied
+            </>
+          ) : copied === 'error' ? (
+            <>
+              <XCircle className="w-3.5 h-3.5" />
+              Copy failed
+            </>
+          ) : (
+            <>
+              <GitBranch className="w-3.5 h-3.5" />
+              Copy bundle
+            </>
+          )}
+        </button>
+      </div>
+      <p className="text-[11px] text-indigo-900/70 leading-relaxed">
+        Click <span className="font-bold">Copy bundle</span>, then paste into
+        your Claude Code chat with{' '}
+        <code className="px-1 py-0.5 bg-white/70 rounded font-mono text-[10px]">
+          look at this bug
+        </code>
+        . Claude reads the captured context, finds the root cause, writes the
+        fix, commits, and pushes. You see the deploy land. The bug record
+        becomes the audit trail.
+      </p>
+      <details className="mt-3">
+        <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-wider text-indigo-700 hover:text-indigo-900">
+          Preview the bundle ({bundle.length.toLocaleString()} chars)
+        </summary>
+        <pre className="mt-2 p-3 bg-white border border-indigo-100 rounded-lg text-[10px] font-mono text-slate-700 whitespace-pre-wrap max-h-72 overflow-y-auto">
+          {bundle}
+        </pre>
+      </details>
+    </div>
+  );
+}
+
+/** Render a self-contained markdown summary of a Bug record. The
+ *  output is what the operator copies → pastes into Claude chat → I
+ *  read → propose root cause + fix. Includes every field the
+ *  analyzer would have seen plus operational context (commit SHA,
+ *  infra health, last audit log rows) so I don't have to re-query. */
+function buildBugBundleMarkdown(bug: BugDetail): string {
+  const c = bug.capturedContext;
+  const s = bug.serverContext;
+  const r = c?.reporter;
+  const b = c?.browser;
+  const lines: string[] = [];
+
+  lines.push(`# Bug Report ${bug.id}`);
+  lines.push('');
+  lines.push(`**Status:** ${bug.status}`);
+  lines.push(`**Filed:** ${bug.createdAt}`);
+  if (r) {
+    lines.push(
+      `**Reporter:** ${r.email ?? '(unknown)'} (${r.role ?? '?'}) — tenant **${r.tenantSlug ?? '(none)'}** [${r.tenantVertical ?? '?'}]`,
+    );
+  }
+  if (c?.pathname) lines.push(`**Where:** \`${c.pathname}\` (\`${c.url ?? ''}\`)`);
+  if (c?.pageTitle) lines.push(`**Page title:** ${c.pageTitle}`);
+  if (s?.apiCommitSha) lines.push(`**API commit at file time:** \`${s.apiCommitSha}\``);
+  if (typeof s?.apiUptimeSec === 'number') lines.push(`**API uptime:** ${s.apiUptimeSec}s`);
+  if (s?.infraHealth) {
+    lines.push(
+      `**Infra:** DB ${s.infraHealth.db}, Redis ${s.infraHealth.redis}`,
+    );
+  }
+  if (s?.license) {
+    lines.push(
+      `**License:** ${s.license.tier ?? '?'} (${s.license.currentSeats ?? '?'}/${s.license.seatLimit ?? '?'} seats)`,
+    );
+  }
+  lines.push('');
+
+  lines.push('## What the operator said');
+  lines.push('');
+  lines.push(bug.description ? `> ${bug.description}` : '_(no description provided)_');
+  lines.push('');
+
+  if (bug.screenshotUrl) {
+    lines.push('## Screenshot');
+    lines.push(`![screenshot](${bug.screenshotUrl})`);
+    lines.push('');
+  }
+
+  if (b) {
+    lines.push('## Browser');
+    lines.push(`- **UA:** \`${b.userAgent}\``);
+    lines.push(`- **Viewport:** ${b.viewport?.w}×${b.viewport?.h} (DPR ${b.dpr ?? '?'})`);
+    lines.push(`- **Language:** ${b.language}`);
+    if (b.chromiumMajor != null) lines.push(`- **Chromium major:** ${b.chromiumMajor}`);
+    lines.push('');
+  }
+
+  const consoleEntries = c?.consoleEntries ?? [];
+  if (consoleEntries.length > 0) {
+    lines.push(`## Recent console errors (${consoleEntries.length})`);
+    consoleEntries.slice(0, 20).forEach((e) => {
+      const ts = new Date(e.ts).toISOString();
+      lines.push(`- \`${e.level}\` @ ${ts} — ${e.message.slice(0, 300)}`);
+    });
+    lines.push('');
+  }
+
+  const networkFailures = c?.networkFailures ?? [];
+  if (networkFailures.length > 0) {
+    lines.push(`## Recent failed network requests (${networkFailures.length})`);
+    networkFailures.slice(0, 20).forEach((nf) => {
+      lines.push(
+        `- \`${nf.method} ${nf.url}\` → ${nf.status ?? 'no-resp'} (${nf.durationMs}ms)${nf.message ? ` — ${nf.message.slice(0, 200)}` : ''}`,
+      );
+    });
+    lines.push('');
+  }
+
+  const breadcrumbs = c?.breadcrumbs ?? [];
+  if (breadcrumbs.length > 0) {
+    lines.push(`## Breadcrumbs (${breadcrumbs.length})`);
+    breadcrumbs.slice(-30).forEach((bc) => {
+      const ago = Math.round((Date.now() - bc.ts) / 1000);
+      lines.push(`- ${ago}s ago — **${bc.type}** — ${bc.label}`);
+    });
+    lines.push('');
+  }
+
+  const rq = c?.reactQuery ?? [];
+  if (rq.length > 0) {
+    lines.push(`## React Query at capture (${rq.length} keys)`);
+    rq.slice(0, 30).forEach((q) => {
+      lines.push(
+        `- \`${q.queryKey}\` → state=${q.state}, dataPresent=${q.dataPresent}${q.errorMessage ? `, error=${q.errorMessage.slice(0, 200)}` : ''}`,
+      );
+    });
+    lines.push('');
+  }
+
+  if (c?.featureFlags && Object.keys(c.featureFlags).length > 0) {
+    lines.push('## Feature flags');
+    lines.push('```json');
+    lines.push(JSON.stringify(c.featureFlags, null, 2));
+    lines.push('```');
+    lines.push('');
+  }
+
+  const reporterAudit = s?.reporterAuditLog ?? [];
+  if (reporterAudit.length > 0) {
+    lines.push(`## Reporter's recent audit log (${reporterAudit.length})`);
+    reporterAudit.slice(0, 20).forEach((a) => {
+      lines.push(
+        `- ${a.ts} — \`${a.action}\` on ${a.targetType ?? '?'}:${a.targetId ?? '?'}${a.details ? ` — ${a.details.slice(0, 200)}` : ''}`,
+      );
+    });
+    lines.push('');
+  }
+
+  const tenantAudit = s?.tenantAuditLog ?? [];
+  if (tenantAudit.length > 0) {
+    lines.push(`## Tenant's recent audit log (${tenantAudit.length})`);
+    tenantAudit.slice(0, 20).forEach((a) => {
+      lines.push(
+        `- ${a.ts} — \`${a.action}\` (user ${a.userId?.slice(0, 8) ?? '?'}…) on ${a.targetType ?? '?'}:${a.targetId ?? '?'}`,
+      );
+    });
+    lines.push('');
+  }
+
+  lines.push('---');
+  lines.push('');
+  lines.push('## Claude — please:');
+  lines.push('');
+  lines.push(
+    '1. **Read the relevant code** in this repo using the breadcrumbs, network failures, and console errors above as your map.',
+  );
+  lines.push(
+    '2. **Identify the root cause.** State your confidence (0-100) and any alternatives you ruled out.',
+  );
+  lines.push('3. **Write the fix** — actual code, not a sketch.');
+  lines.push('4. **Verify with tsc + lint** + a Playwright probe if it\'s UI-touching.');
+  lines.push(
+    '5. **Commit + push** to master. Mention the bug ID in the commit body (the operator can grep for it).',
+  );
+  lines.push(
+    `6. (Optional) **Write your analysis back** to the bug record via \`POST /api/v1/bugs/${bug.id}/manual-analysis\` with body \`{ analysis: { rootCause, filesAffected: [{filePath, reason, diff}], confidence, testPlan } }\` so the dashboard's bug-history view shows the same info.`,
+  );
+  lines.push('');
+
+  return lines.join('\n');
 }

@@ -642,6 +642,126 @@ export class BugsController {
     return this.toDetail(reloaded!);
   }
 
+  // ─── POST /api/v1/bugs/:id/manual-analysis ──────────────────
+  //
+  // 2026-05-27 — Operator (Greg) raised the deal-killer for the
+  // Anthropic-backed analyzer: "claude API wants me to add money so
+  // we cant even test....what about just feeding the bug info back
+  // into the app somewhere that you have access to so that you can
+  // review the bug and all the collected content and we dont need
+  // an API?"
+  //
+  // Pivot: don't pay per-bug for AI analysis. Instead, Claude (this
+  // session, via the postgres MCP) reads the bug record directly,
+  // proposes a fix in chat, writes the actual code, commits. This
+  // endpoint exists so the analysis can be written BACK into the
+  // bug record for audit-trail + UI display purposes.
+  //
+  // The shape of `analysis` matches BugAiAnalysis exactly (same
+  // contract as the Anthropic path), so the /super/bugs/[id] page
+  // renders it identically regardless of source. aiProvider is set
+  // to 'claude-via-chat' to distinguish from 'anthropic'. No model
+  // string + zero cost since we never made an API call.
+  //
+  // Status moves NEW/ANALYZING → PROPOSED so the [Approve & Ship]
+  // button activates. The analyzer-was-unconfigured error shape in
+  // ai_analysis is overwritten.
+  //
+  // RBAC: SUPER_ADMIN only — this is for closing the AI loop with
+  // platform-owner-level review, not a tenant-admin path.
+
+  @Post(':id/manual-analysis')
+  @RequireRoles(AppRole.SUPER_ADMIN)
+  async manualAnalysis(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { analysis: BugAiAnalysis },
+  ): Promise<BugDetail> {
+    const bug = await this.loadBugWithRbac(req, id);
+    if (['SHIPPED', 'REJECTED', 'DUPLICATE'].includes(bug.status)) {
+      throw new HttpException(
+        {
+          message: `Cannot write analysis to closed bug (status '${bug.status}').`,
+          code: 'BUG_CLOSED',
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    // Minimal shape check — the analysis MUST have a rootCause +
+    // filesAffected[] + confidence. Reject malformed input cleanly
+    // rather than letting the detail page crash on missing fields.
+    const a: any = body?.analysis;
+    if (!a || typeof a !== 'object') {
+      throw new HttpException(
+        { message: 'analysis is required', code: 'BUG_BAD_ANALYSIS' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (typeof a.rootCause !== 'string' || !a.rootCause.trim()) {
+      throw new HttpException(
+        { message: 'analysis.rootCause is required', code: 'BUG_BAD_ANALYSIS' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (!Array.isArray(a.filesAffected)) {
+      throw new HttpException(
+        { message: 'analysis.filesAffected[] is required (use [] if no files)', code: 'BUG_BAD_ANALYSIS' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (typeof a.confidence !== 'number') {
+      throw new HttpException(
+        { message: 'analysis.confidence (0-100) is required', code: 'BUG_BAD_ANALYSIS' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Normalize: stamp analyzedAt + v if missing.
+    const normalized: BugAiAnalysis = {
+      v: 1,
+      rootCause: String(a.rootCause).slice(0, 8000),
+      filesAffected: a.filesAffected.slice(0, 50).map((f: any) => ({
+        filePath: String(f.filePath ?? '').slice(0, 500),
+        reason: String(f.reason ?? '').slice(0, 1000),
+        diff: String(f.diff ?? '').slice(0, 20000),
+      })),
+      confidence: Math.max(0, Math.min(100, Math.round(a.confidence))),
+      alternatives: Array.isArray(a.alternatives)
+        ? a.alternatives.slice(0, 5).map((alt: any) => ({
+            rootCause: String(alt.rootCause ?? '').slice(0, 4000),
+            confidence: Math.max(0, Math.min(100, Math.round(alt.confidence ?? 0))),
+          }))
+        : undefined,
+      testPlan: a.testPlan ? String(a.testPlan).slice(0, 4000) : undefined,
+      analyzedAt: Date.now(),
+    };
+
+    await this.prisma.client.bug.update({
+      where: { id },
+      data: {
+        aiAnalysis: normalized as any,
+        aiAnalyzedAt: new Date(),
+        aiProvider: 'claude-via-chat',
+        aiModel: null,    // no model string — wasn't an API call
+        aiCostUsd: 0,     // zero cost path
+        status: 'PROPOSED',
+      },
+    });
+
+    await this.writeAuditLog(bug.tenantId, 'BUG_ANALYZED', id, {
+      adminUserId: req.user?.id ?? null,
+      provider: 'claude-via-chat',
+      confidence: normalized.confidence,
+      filesAffected: normalized.filesAffected.length,
+    });
+
+    const reloaded = await this.prisma.client.bug.findUnique({
+      where: { id },
+    });
+    return this.toDetail(reloaded!);
+  }
+
   // ─── Internals ──────────────────────────────────────────────
 
   /**
@@ -717,7 +837,7 @@ export class BugsController {
    */
   private async writeAuditLog(
     tenantId: string | null,
-    action: 'BUG_APPROVED' | 'BUG_REJECTED' | 'BUG_AI_RE_ANALYZED',
+    action: 'BUG_APPROVED' | 'BUG_REJECTED' | 'BUG_AI_RE_ANALYZED' | 'BUG_ANALYZED',
     bugId: string,
     details: Record<string, unknown>,
   ): Promise<void> {
