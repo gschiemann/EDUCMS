@@ -37,7 +37,17 @@
  * transform/opacity only, plain CSS opacity transitions.
  */
 
-import { useEffect, useMemo, useRef, useState, type SyntheticEvent, type CSSProperties } from 'react';
+import {
+  Component as ReactComponent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ErrorInfo,
+  type ReactNode,
+  type SyntheticEvent,
+  type CSSProperties,
+} from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
@@ -203,6 +213,37 @@ const DEFAULT_AWAY = '#dc2626';
  *  skipped, so a cue fired "to the scoreboard" never hits the ribbon. */
 function cuePlaysHere(target?: string): boolean {
   return target !== 'BOARD';
+}
+
+// ── celebration error boundary ─────────────────────────────────
+//
+// 2026-05-27 — a cinematic that throws (null deref, canvas API quirk
+// on Chromium-83, math edge case) MUST NOT take down the whole
+// ribbon mid-game. Live water polo install operator reported:
+// "kick off the others it crashes the entire screen and i get a
+// try again and home button…this would take down the entire show".
+//
+// This boundary catches the throw, logs it, and renders a graceful
+// "celebration unavailable" fallback (a minimal animated burst over
+// the ribbon's near-black bg) instead of letting React unmount the
+// page. The ribbon's normal score/sponsor/slide rotation resumes
+// once the cue's TTL expires.
+class CelebrationErrorBoundary extends ReactComponent<
+  { fallback: ReactNode; children: ReactNode; cueKey?: string },
+  { err: Error | null }
+> {
+  state = { err: null as Error | null };
+  static getDerivedStateFromError(err: Error) {
+    return { err };
+  }
+  componentDidCatch(err: Error, info: ErrorInfo) {
+    // eslint-disable-next-line no-console
+    console.error('[ribbon] cinematic crashed:', this.props.cueKey, err.message, info.componentStack);
+  }
+  render() {
+    if (this.state.err) return this.props.fallback;
+    return this.props.children;
+  }
 }
 
 // ── helpers ────────────────────────────────────────────────────
@@ -2114,6 +2155,13 @@ function RibbonCueOverlay({
   const cinematic = pickCinematic(cue, sport);
   if (cinematic) {
     const Cinematic = cinematic.Component;
+    // 2026-05-27 — letterbox the 16:9 cinematic against the cue's
+    // accent color (or near-black) instead of object-fit:cover.
+    // Cover clipped the TOP of the goal frame; the operator was clear
+    // that clipped content reads as broken. Letterbox keeps the entire
+    // cinematic visible. Colored side bars make the bars look intentional
+    // ("brand frame around the celebration") instead of "empty space".
+    const tintColor = cue.color || '#05070d';
     return (
       <div
         style={{
@@ -2124,13 +2172,16 @@ function RibbonCueOverlay({
           left: 0,
           overflow: 'hidden',
           zIndex: 60,
-          background: '#000',
+          background: tintColor,
           animation: 'rbnFade 0.4s ease-out',
         }}
       >
         {/* Tile the cinematic once per score anchor — operator wraps
             the ribbon with score repeats (segCount=4 typical at 40ft)
-            so each visible chunk gets its own playthrough. */}
+            so each visible chunk gets its own playthrough.
+            Each cinematic is wrapped in a per-segment error boundary
+            so a single bad cinematic can't crash the whole ribbon
+            mid-game — the segment falls back to a minimal text cue. */}
         {segs.map((seg, s) => (
           <div
             key={s}
@@ -2143,7 +2194,14 @@ function RibbonCueOverlay({
               overflow: 'hidden',
             }}
           >
-            <Cinematic config={cinematic.defaults} live={true} height={h} />
+            <CelebrationErrorBoundary
+              cueKey={cue.key}
+              fallback={
+                <CueBurst cue={cue} w={seg.width} h={h} />
+              }
+            >
+              <Cinematic config={cinematic.defaults} live={true} height={h} />
+            </CelebrationErrorBoundary>
           </div>
         ))}
       </div>

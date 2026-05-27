@@ -585,13 +585,15 @@ export function CelebrationWaterPoloGoal({
         style={{
           width: '100%',
           height: '100%',
-          // 2026-05-27 — `cover` (not `contain`) on the cinematic canvas
-          // so an ultrawide ribbon (~7.5:1) fills its full width. With
-          // `contain`, a 16:9 canvas on a 3000×400 ribbon letterboxed
-          // to ~711×400 centered with black bars left/right. The
-          // cinematic's goal+ball+score sit on the water-line, so
-          // cropping the top sky and bottom pool is safe.
-          objectFit: 'cover',
+          // 2026-05-27 — back to `contain`. Operator reported `cover`
+          // was clipping the TOP of the goal frame on the ultrawide
+          // ribbon ("when i kick off goal its cutting off the top of
+          // the animation"). Letterbox is uglier than crop in the
+          // abstract but `clipped content reads as broken` to the
+          // person watching. The wrapping mount in ribbon page.tsx
+          // tints the letterbox bars with the cue's accent color so
+          // the bars look intentional (brand frame) instead of empty.
+          objectFit: 'contain',
           display: 'block',
         }}
       />

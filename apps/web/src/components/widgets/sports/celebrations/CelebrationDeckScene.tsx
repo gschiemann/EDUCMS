@@ -895,11 +895,12 @@ export function CelebrationDeckScene({ cfg, team = '#21e6ff' }: CelebrationDeckS
         ref={canvasRef}
         width={1920}
         height={1080}
-        // 2026-05-27 — `cover` (not `contain`) so ultrawide ribbons
-        // (~7.5:1) fill their full width instead of letterboxing the
-        // 16:9 cinematic to a center 711×400. Composition is centered
-        // around mid-height so a vertical crop is acceptable.
-        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        // 2026-05-27 — back to `contain`. Operator reported `cover`
+        // was clipping the top of the goal frame on the ultrawide
+        // ribbon. The wrapping mount in ribbon page.tsx tints the
+        // letterbox bars with the cue's accent color so the bars
+        // look intentional (brand frame) instead of empty.
+        style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
       />
     </div>
   );
