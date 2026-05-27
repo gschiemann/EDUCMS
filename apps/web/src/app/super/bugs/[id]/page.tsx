@@ -152,7 +152,24 @@ export default function SuperBugDetailPage() {
     }
   };
 
-  const ai = bug.aiAnalysis;
+  // 2026-05-27 — The analyzer service writes an ERROR shape into
+  // ai_analysis when the AI call can't run (ANTHROPIC_API_KEY unset,
+  // daily cap reached, transient API failure). That shape is
+  // `{ kind: 'unconfigured' | 'cap-reached' | 'failed', error: string }`
+  // and DOES NOT satisfy BugAiAnalysis (no rootCause / filesAffected /
+  // confidence). Splitting them here so the render path can show the
+  // notice without crashing on `ai.filesAffected.length`.
+  const rawAnalysis = bug.aiAnalysis as
+    | (BugDetail['aiAnalysis'] & { error?: string; kind?: string })
+    | null;
+  const aiError =
+    rawAnalysis && typeof rawAnalysis === 'object' && 'error' in rawAnalysis && rawAnalysis.error
+      ? {
+          kind: (rawAnalysis.kind as 'unconfigured' | 'cap-reached' | 'failed' | undefined) ?? 'failed',
+          error: String(rawAnalysis.error),
+        }
+      : null;
+  const ai = aiError ? null : rawAnalysis;
   const isAnalyzing = bug.status === 'ANALYZING' || bug.status === 'NEW';
   const isTerminal = bug.status === 'SHIPPED' || bug.status === 'REJECTED' || bug.status === 'DUPLICATE';
 
@@ -236,9 +253,9 @@ export default function SuperBugDetailPage() {
               </span>
               Proposed fix
             </h2>
-            {ai && <ConfidenceBadge confidence={ai.confidence} />}
+            {ai && !aiError && <ConfidenceBadge confidence={ai.confidence} />}
           </div>
-          {!ai ? (
+          {!ai || aiError ? (
             <div className="p-8 text-center">
               {isAnalyzing ? (
                 <>
@@ -247,6 +264,31 @@ export default function SuperBugDetailPage() {
                   <p className="text-xs text-slate-500 mt-1">
                     Polling every 5s. The AI is reading the capture bundle + source tree.
                   </p>
+                </>
+              ) : aiError ? (
+                // 2026-05-27 — the analyzer wrote an error shape (e.g.
+                // {kind:'unconfigured', error:'AI not configured for this
+                // deploy (ANTHROPIC_API_KEY unset)'}) instead of a full
+                // BugAiAnalysis. Render it as a notice rather than crash
+                // on `ai.filesAffected.length` below.
+                <>
+                  <AlertCircle className="w-6 h-6 mx-auto text-amber-500 mb-3" />
+                  <p className="text-sm font-bold text-slate-700">
+                    {aiError.kind === 'unconfigured'
+                      ? 'AI analysis not configured'
+                      : aiError.kind === 'cap-reached'
+                        ? 'Daily AI budget reached'
+                        : 'AI analysis failed'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto leading-relaxed">
+                    {aiError.error}
+                  </p>
+                  {aiError.kind === 'unconfigured' && (
+                    <p className="text-[11px] text-slate-400 mt-3">
+                      Set <code className="px-1.5 py-0.5 bg-slate-100 rounded font-mono">ANTHROPIC_API_KEY</code>
+                      {' '}on the API service to enable automatic root-cause analysis. The bug capture itself works without AI.
+                    </p>
+                  )}
                 </>
               ) : (
                 <p className="text-sm text-slate-500">No AI analysis available for this bug.</p>
