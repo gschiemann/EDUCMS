@@ -1394,17 +1394,54 @@ real-time pub/sub it ALREADY ships.
 
 ### 1. Hardware topology
 
-Two deployment modes, both supported:
+**Standard sports-vertical player: the Goodview EP6N** (eval +
+spec sheet in `docs/EP6N_HARDWARE_EVAL.md`). As of 2026-05-27 this
+is the canonical hardware target for every new sports-vertical
+install. It supersedes the ECBox3576 — same RK3576 SoC family +
+Android 14 so the Player APK ships unchanged, but adds the I/O ring
+that closes the integration gaps we've been working around: **dual
+native RS232**, **GPIO IN×2 / OUT×2**, **HDMI IN** (broadcast
+capture), **RJ45 in + out passthrough**, **12 V aux out**, 6 TOPS
+NPU, all-aluminum passive cooling, 24/7 duty rating. Every new
+sports quote, every new install playbook, every customer-facing
+"recommended hardware" spec should lead with EP6N. The ECBox3576
+stays in the catalog for legacy installs + as the budget option;
+the Taurus stays for LED-controller-native deployments.
+
+The EP6N also unlocks features the older boxes can't run:
+  - **GPIO-wired hardware panic button** → emergency trigger.
+  - **GPIO IN dry-contact** → fire-alarm panel integration.
+  - **GPIO OUT relay** → lobby status lamp, audible horn during
+    emergency states.
+  - **HDMI IN broadcast capture** → in-box streaming-overlay path
+    for NFHS Network / Hudl (collapses the $180–400 USB capture
+    card BOM line).
+  - **RS232 #1 → CTS Gen 6 + RS232 #2 → Stream Deck** on one box.
+  - **6 TOPS NPU** → on-device alt-text, auto-celebration via
+    crowd-audio classifier.
+
+Two deployment modes, both still supported as add-ons:
   - **Taurus-native** — player runs ON the NovaStar Taurus LED
     controller; player → LED, no separate processor. The cost-killer
-    for HS gyms.
-  - **Source mode** — player outputs HDMI/SDI at the wall's EXACT
-    pixel resolution into a third-party processor (NovaStar /
-    Brompton / Megapixel) for big college/pro walls.
+    for HS gyms with existing Taurus. Note Chromium 83 ceiling
+    (CLAUDE.md rule #10 — no `inset` shorthand, no flex `gap`).
+  - **Source mode** — player (EP6N preferred) outputs HDMI/SDI at
+    the wall's EXACT pixel resolution into a third-party processor
+    (NovaStar / Brompton / Megapixel) for big college/pro walls.
+
 A venue is a set of **surfaces**, each a screen or screen-group with
 a role: `VIDEO_BOARD`, `RIBBON`, `AUX` (end-zone/corner), `CONCOURSE`,
 `LOCKER_ROOM`, `STREAM` (broadcast overlay). Cues target roles, not
 devices.
+
+The `Screen.hardwareModel` column (Prisma, additive) carries the
+specific hardware ID — `goodview-ep6n`, `goodview-ecbox3576`,
+`novastar-taurus`, `pi5`, `generic-android`, `web`. The dashboard's
+per-screen settings panel surfaces hardware-specific I/O config
+ONLY for models that support it (the EP6N gets a "Wiring" subpanel
+with GPIO assignment + dual-RS232 routing + HDMI-IN source select;
+the ECBox only gets the single-RS232 routing; the Taurus / Pi /
+generic get neither).
 
 ### 2. The Sport Engine — the abstraction that handles EVERY sport
 
