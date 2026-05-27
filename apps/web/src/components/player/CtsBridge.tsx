@@ -86,7 +86,61 @@ interface SerialNavigatorLite {
   };
 }
 
+/**
+ * Sprint 13 Phase 2 — native serial bridge surface exposed by the
+ * Player APK on Goodview ECBox3576 (and any Android box with a real
+ * /dev/ttyS* hardware UART). The APK's WebAppBridge.kt mounts this
+ * as `window.EduCmsNative.ctsSerial*` methods; we feature-detect
+ * `ctsSerialEnabled()` and swap from Web Serial to native mode if
+ * present. Bytes flow back via window.__ctsSerialBytes(base64) which
+ * we register on connect.
+ *
+ * Same CtsParser, same POST, same WS, same orchestrator — bytes path
+ * is the only thing that differs.
+ */
+interface EduCmsNativeBridge {
+  ctsSerialEnabled?: () => boolean;
+  ctsSerialConnect?: (
+    devicePath: string,
+    baudRate: number,
+    dataBits: number,
+    stopBits: number,
+    parity: string,
+  ) => string;
+  ctsSerialDisconnect?: () => string;
+  ctsSerialStatus?: () => string;
+}
+
+declare global {
+  interface Window {
+    EduCmsNative?: EduCmsNativeBridge;
+    __ctsSerialBytes?: (base64: string) => void;
+  }
+}
+
 type Status = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
+
+/** Are we running inside the Player APK with the native CTS serial
+ *  bridge available? Detected once on mount; survives until reload. */
+function detectNativeBridge(): boolean {
+  if (typeof window === 'undefined') return false;
+  const n = window.EduCmsNative;
+  if (!n || typeof n.ctsSerialEnabled !== 'function') return false;
+  try {
+    return !!n.ctsSerialEnabled();
+  } catch {
+    return false;
+  }
+}
+
+/** base64 → Uint8Array. Tiny — no buffer-polyfill needed for the
+ *  modest chunks the CTS console sends (~60 bytes/sec average). */
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = (typeof atob !== 'undefined' ? atob(b64) : '');
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
 
 // 8 Hz upper bound on snapshot POSTs. The CTS clock ticks at 10 Hz
 // during the last minute (tenths shown); rendering at 8 Hz produces
@@ -153,8 +207,22 @@ export function CtsBridge({
   const postTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPostAtRef = useRef<number>(0);
 
-  // Detect Web Serial availability once.
+  // Sprint 13 Phase 2 — detect the deployment mode ONCE on mount.
+  //   • nativeMode = true  → Player APK on Goodview ECBox3576 etc.
+  //     Native serial bridge present; bypass Web Serial picker; auto-
+  //     connect to /dev/ttyS1 (operator config in APK settings).
+  //   • nativeMode = false → Beelink mini PC running desktop Chrome.
+  //     Original Web Serial picker UI; operator clicks Connect once.
+  const [nativeMode, setNativeMode] = useState<boolean>(false);
+  const [nativeStatusJson, setNativeStatusJson] = useState<string>('');
+
+  // Detect Web Serial OR native bridge availability once.
   useEffect(() => {
+    if (detectNativeBridge()) {
+      setNativeMode(true);
+      setSupported(true);
+      return;
+    }
     const nav = navigator as unknown as SerialNavigatorLite;
     setSupported(!!nav.serial);
   }, []);
@@ -166,6 +234,109 @@ export function CtsBridge({
       parserRef.current = null;
     };
   }, []);
+
+  // Sprint 13 Phase 2 — native serial bytes path. The APK calls
+  // `window.__ctsSerialBytes(base64)` for every chunk it reads from
+  // the Phoenix-terminal RS232 port. We decode + feed straight into
+  // the parser (same `parser.feed()` the Web Serial path uses).
+  // Setup is conditional so non-Player browsers don't get a phantom
+  // global hook.
+  useEffect(() => {
+    if (!nativeMode) return;
+    window.__ctsSerialBytes = (b64: string) => {
+      try {
+        const bytes = b64ToBytes(b64);
+        if (bytes.length === 0) return;
+        parserRef.current?.feed(bytes);
+        setBytesRead((n) => n + bytes.length);
+      } catch (e) {
+        setError(`Native bytes decode failed: ${(e as Error).message}`);
+      }
+    };
+    return () => {
+      if (typeof window !== 'undefined' && window.__ctsSerialBytes) {
+        delete window.__ctsSerialBytes;
+      }
+    };
+  }, [nativeMode]);
+
+  // Sprint 13 Phase 2 — native auto-connect on mount. The operator
+  // configured tty path + baud + parity once in APK settings (or via
+  // the URL query params for ad-hoc testing); we open + start reading
+  // immediately so the operator doesn't have to click anything on the
+  // kiosk. Cable yanks are recovered via the status poll below.
+  useEffect(() => {
+    if (!nativeMode) return;
+    const n = window.EduCmsNative;
+    if (!n?.ctsSerialConnect) return;
+    const opts = readSerialOptsFromQuery();
+    // tty path comes from URL query (?ctsTty=/dev/ttyS2) or defaults
+    // to /dev/ttyS1 — the Phoenix Terminal 1 RS232 RX on the
+    // ECBox3576. APK settings UI (Phase 3) will let the operator pick
+    // this from a list of probed devices.
+    const tty = typeof window !== 'undefined'
+      ? (new URLSearchParams(window.location.search).get('ctsTty') || '/dev/ttyS1')
+      : '/dev/ttyS1';
+    setStatus('connecting');
+    setError(null);
+    try {
+      const resp = n.ctsSerialConnect(tty, opts.baudRate, opts.dataBits, opts.stopBits, opts.parity);
+      const parsed = JSON.parse(resp || '{}');
+      if (parsed.ok) {
+        setStatus('connected');
+      } else {
+        setStatus('error');
+        setError(`${parsed.code || 'error'}: ${parsed.message || 'connect failed'}`);
+      }
+    } catch (e) {
+      setStatus('error');
+      setError(`Native connect failed: ${(e as Error).message}`);
+    }
+    return () => {
+      try { window.EduCmsNative?.ctsSerialDisconnect?.(); } catch { /* ignore */ }
+    };
+  }, [nativeMode]);
+
+  // Sprint 13 Phase 2 — native status poll (5s) so the operator-facing
+  // panel shows live bytes-read + last-byte-age. Also drives the
+  // auto-reconnect: if the native side reports `open:false` while we
+  // think we're connected (cable yank, kernel closed the tty), we
+  // attempt a reconnect after a 2s backoff.
+  useEffect(() => {
+    if (!nativeMode) return;
+    const tick = () => {
+      try {
+        const s = window.EduCmsNative?.ctsSerialStatus?.();
+        if (!s) return;
+        setNativeStatusJson(s);
+        const parsed = JSON.parse(s) as { open?: boolean; lastError?: string };
+        if (parsed.open === false && status === 'connected') {
+          setStatus('disconnected');
+          if (parsed.lastError) setError(parsed.lastError);
+          // Auto-reconnect after a short delay — kernel can take a
+          // beat to recover from cable yanks. Phase 3 will add
+          // exponential backoff + max-attempt caps.
+          setTimeout(() => {
+            const n = window.EduCmsNative;
+            if (!n?.ctsSerialConnect) return;
+            const opts = readSerialOptsFromQuery();
+            const tty = new URLSearchParams(window.location.search).get('ctsTty') || '/dev/ttyS1';
+            try {
+              const resp = n.ctsSerialConnect(tty, opts.baudRate, opts.dataBits, opts.stopBits, opts.parity);
+              const reparsed = JSON.parse(resp || '{}');
+              if (reparsed.ok) {
+                setStatus('connected');
+                setError(null);
+              }
+            } catch { /* will retry on next tick */ }
+          }, 2000);
+        }
+      } catch { /* ignore */ }
+    };
+    tick();
+    const id = setInterval(tick, 5000);
+    return () => clearInterval(id);
+  }, [nativeMode, status]);
 
   // POST the latest snapshot to the API. Latest-wins throttled at
   // POST_THROTTLE_MS. Uses keepalive: true so a tab close mid-POST
@@ -404,11 +575,22 @@ export function CtsBridge({
             boxShadow: status === 'connected' ? `0 0 6px ${dot}` : 'none',
           }}
         />
-        <strong style={{ marginRight: 8 }}>CTS Bridge</strong>
+        <strong style={{ marginRight: 8 }}>
+          CTS Bridge{nativeMode ? ' · ECBox' : ''}
+        </strong>
         <span style={{ opacity: 0.7 }}>{status}</span>
       </div>
 
-      {status !== 'connected' && (
+      {/* Native mode: no buttons — auto-connect on mount + auto-
+          reconnect on cable yank. Show the tty path so operators can
+          verify which port is being read. */}
+      {nativeMode && (
+        <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+          Native serial (Phoenix terminal)
+        </div>
+      )}
+
+      {!nativeMode && status !== 'connected' && (
         <button
           type="button"
           onClick={onConnect}
@@ -427,7 +609,7 @@ export function CtsBridge({
           Connect to CTS
         </button>
       )}
-      {status === 'connected' && (
+      {!nativeMode && status === 'connected' && (
         <button
           type="button"
           onClick={onDisconnect}

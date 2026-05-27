@@ -1086,6 +1086,16 @@ class MainActivity : ComponentActivity() {
                 onSetOrientation = { raw ->
                     runOnUiThread { applyOrientation(raw) }
                 },
+                // Sprint 13 Phase 2 — native CTS serial bridge for
+                // Goodview ECBox3576 deployments. Single shared
+                // SerialPortBridge instance per Activity (one tty per
+                // box for v1; multi-port boxes can swap in a manager
+                // class later). The bridge holds a weak reference to
+                // the WebView so it can push bytes back to JS via
+                // window.__ctsSerialBytes(base64).
+                ctsSerial = com.educms.player.serial.SerialPortBridge(
+                    getWebView = { wv },
+                ),
             ),
             "EduCmsNative"
         )

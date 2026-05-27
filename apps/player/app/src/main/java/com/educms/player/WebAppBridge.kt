@@ -45,6 +45,18 @@ class WebAppBridge(
      * wired (e.g. for ad-hoc WebView previews).
      */
     private val onSetOrientation: (String) -> Unit = {},
+    /**
+     * Sprint 13 Phase 2 — native RS232 reader for Goodview ECBox3576
+     * deployments (and any Android box with a /dev/ttyS* exposed by a
+     * hardware UART). Replaces the Beelink mini PC + USB-RS232 dongle
+     * path. The web layer (apps/web/src/components/player/CtsBridge.tsx)
+     * detects this surface via `ctsSerialEnabled()`, then drives
+     * connect/disconnect/status through these methods. Bytes flow back
+     * to JS via `window.__ctsSerialBytes(base64)` which the same
+     * CtsParser in @cms/scoreboard-cts consumes — single web codebase,
+     * two hardware paths. See com.educms.player.serial.SerialPortBridge.
+     */
+    private val ctsSerial: com.educms.player.serial.SerialPortBridge? = null,
 ) {
     /**
      * Escape hatch — exits our kiosk task stack and returns the user to
@@ -211,6 +223,82 @@ class WebAppBridge(
             onOpenSettingsForManager()
         } catch (ex: Exception) {
             PlayerLogger.w("WebAppBridge", "openSettingsForManager failed: ${ex.message}")
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Sprint 13 Phase 2 — CTS native serial bridge surface.
+    //
+    // Exposed to the web layer as `window.EduCmsNative.ctsSerial*()`.
+    // CtsBridge.tsx mounts → reads ctsSerialEnabled() → if true, skips
+    // the Web Serial picker UI and drives this surface directly.
+    //
+    // Every method returns a JSON string (so we don't have to deal
+    // with JS↔Kotlin object marshalling). The web layer parses it.
+    // Errors come back as `{ok:false, code, message}` so the operator
+    // sees actionable diagnostics, not stack traces.
+    // ────────────────────────────────────────────────────────────────
+
+    /**
+     * Build-time + runtime gate. True when this APK was compiled with
+     * the native serial bridge AND the device has at least one tty we
+     * could plausibly read. The web layer uses this to choose between
+     * Web Serial (Beelink) and native (ECBox) at mount.
+     */
+    @JavascriptInterface
+    fun ctsSerialEnabled(): Boolean {
+        return ctsSerial?.isAvailable() ?: false
+    }
+
+    /**
+     * Open the serial port + start the read loop. Idempotent — a second
+     * call while already open returns the current state. Defaults match
+     * CTS Gen 6 spec (9600 8-E-1). Returns JSON:
+     *   {ok:true, state, devicePath, baudRate, dataBits, stopBits, parity}
+     *   {ok:false, code, message}
+     */
+    @JavascriptInterface
+    fun ctsSerialConnect(
+        devicePath: String,
+        baudRate: Int,
+        dataBits: Int,
+        stopBits: Int,
+        parity: String,
+    ): String {
+        val bridge = ctsSerial ?: return """{"ok":false,"code":"unavailable","message":"Native serial bridge not configured on this build"}"""
+        return try {
+            bridge.connect(devicePath, baudRate, dataBits, stopBits, parity)
+        } catch (ex: Throwable) {
+            PlayerLogger.w("WebAppBridge", "ctsSerialConnect failed: ${ex.message}")
+            """{"ok":false,"code":"exception","message":"${ex.message ?: "unknown"}"}"""
+        }
+    }
+
+    /**
+     * Close the serial port + stop the read loop. Idempotent.
+     */
+    @JavascriptInterface
+    fun ctsSerialDisconnect(): String {
+        val bridge = ctsSerial ?: return """{"ok":false,"code":"unavailable"}"""
+        return try {
+            bridge.disconnect()
+        } catch (ex: Throwable) {
+            PlayerLogger.w("WebAppBridge", "ctsSerialDisconnect failed: ${ex.message}")
+            """{"ok":false,"code":"exception","message":"${ex.message ?: "unknown"}"}"""
+        }
+    }
+
+    /**
+     * Live status — for the kiosk info overlay + ops dashboard. JSON:
+     *   {open, devicePath, bytesRead, lastByteAt, lastError?}
+     */
+    @JavascriptInterface
+    fun ctsSerialStatus(): String {
+        val bridge = ctsSerial ?: return """{"open":false,"unavailable":true}"""
+        return try {
+            bridge.status()
+        } catch (ex: Throwable) {
+            """{"open":false,"code":"exception","message":"${ex.message ?: "unknown"}"}"""
         }
     }
 }
