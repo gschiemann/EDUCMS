@@ -671,53 +671,25 @@ function RunMode({
       <RunInlineRosterBar gameId={gameId} g={g} def={def} ctl={ctl} homeColor={homeColor} awayColor={awayColor} />
       <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
 
-      {/* 2026-05-27 — bottom control tray, slimmed down.
-          Clock + shot-clock + segment controls were duplicated here
-          AND in the new RunInteractiveScoreboard up top. Moved to the
-          scoreboard as the primary surface (operator: "move the start
-          button under the clock…integrate the buttons all where they
-          make sense"). What's left here: baseball ball/strike (no
-          clock to compete with), the football play clock (separate
-          from the game clock), undo, penalties, custom highlight
-          builder, full cue launchpad. */}
-      <div className="flex items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
-        {/* Baseball still has its in-tray ball/strike — there's no
-            game clock in baseball so this DOES belong inline. */}
-        {isBaseballSoftball && (
-          <BaseTrayBall stats={stats} onStat={(s) => ctl.stats.mutate({ stats: s })} />
-        )}
-
-        {/* football play clock — the 40/25 between snaps, distinct
-            from the game clock. Stays inline; the scoreboard tile
-            only handles the GAME clock. */}
-        {def.key === 'football' && (
-          <PlayClockBtn
-            stats={stats}
-            onAction={(a, v) => ctl.playClock.mutate({ action: a, value: v })}
-          />
-        )}
-
-        {/* undo — reverses the last score change. The ONLY action that
-            stays in this tray. Everything else (penalties, custom
-            highlight, full cue launchpad) moved into the player-tap
-            popover above — operator: "you should pick the user, then
-            pick the celebration or the penalities then we can dump
-            all 3 of the big buttons below for that". */}
-        <button
-          type="button"
-          onClick={undoScore}
-          disabled={!lastScore}
-          title={lastScore ? `Undo: ${lastAction}` : 'Nothing to undo'}
-          className="flex flex-col items-center justify-center gap-0.5 h-14 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 font-black text-sm hover:bg-amber-100 transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <span>↶ Undo</span>
-          {lastAction && (
-            <span className="text-[10px] font-semibold text-amber-600 max-w-[80px] truncate">
-              {lastAction}
-            </span>
+      {/* 2026-05-27 — bottom control tray only renders when the sport
+          needs an extra control surface (baseball ball/strike, football
+          play clock). Most sports — water polo, basketball, soccer,
+          volleyball — have all their controls in the scoreboard tile +
+          roster popover now, so this tray collapses entirely and the
+          page is shorter. */}
+      {(isBaseballSoftball || def.key === 'football') && (
+        <div className="flex items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
+          {isBaseballSoftball && (
+            <BaseTrayBall stats={stats} onStat={(s) => ctl.stats.mutate({ stats: s })} />
           )}
-        </button>
-      </div>
+          {def.key === 'football' && (
+            <PlayClockBtn
+              stats={stats}
+              onAction={(a, v) => ctl.playClock.mutate({ action: a, value: v })}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1317,8 +1289,15 @@ function PlayerActionMenu({
     onClose();
   };
   const onFire = (cueKey: string) => {
-    // Ensure the player is the attributed scorer for the celebration.
-    if (!onAir) ctl.spotlight.mutate(buildSpotlightPayload());
+    // 2026-05-27 — Operator: "i want their name mixed into the
+    // celebration animation, not just poping up a standard spotlight
+    // after the celebration". Removed the auto-spotlight side effect.
+    // The cinematic ALREADY renders the player's name + number as
+    // part of its lower-third (water polo goal shows "SCORED BY #99
+    // GREG SCHIEMANN" in gold; deck cues swap sub2 to the scorer
+    // line). The post-celebration spotlight overlay was redundant and
+    // visually competed with the cinematic. Operator can still
+    // explicitly spotlight from the same popover with the ★ button.
     ctl.cue.mutate({
       key: cueKey,
       target: 'ALL' as any,

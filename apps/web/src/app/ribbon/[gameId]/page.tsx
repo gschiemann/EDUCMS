@@ -1888,16 +1888,9 @@ function LookUnit({
           </div>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <span
-            style={{
-              fontSize: cu * 0.15,
-              fontWeight: 800,
-              letterSpacing: 3,
-              color: '#fbbf24',
-            }}
-          >
-            SPOTLIGHT
-          </span>
+          {/* 2026-05-27 — Dropped the "SPOTLIGHT" eyebrow label per
+              operator: "dont say the work spotlight when we spotlight
+              someone". The player's photo + name speak for themselves. */}
           <span
             style={{
               fontSize: cu * 0.38,
@@ -2393,16 +2386,10 @@ function SpotlightOverlay({
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
-        <span
-          style={{
-            fontSize: cu * 0.15,
-            fontWeight: 800,
-            letterSpacing: 3,
-            color: '#fbbf24',
-          }}
-        >
-          SPOTLIGHT
-        </span>
+        {/* 2026-05-27 — Dropped the "SPOTLIGHT" eyebrow label. Operator:
+            "dont say the work spotlight when we spotlight someone".
+            The player's photo + name + subtitle + stat lines speak
+            for themselves; no need to caption it. */}
         <span
           style={{
             fontSize: cu * 0.38,
