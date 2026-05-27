@@ -554,31 +554,17 @@ function StateBar({
   const stats: Record<string, unknown> = g.stats || {};
   const half = String(stats.half || 'Top').toLowerCase().startsWith('b') ? '▼' : '▲';
 
-  // 2026-05-27 — Operator: "the score shows 4 times in this little
-  // area, we need just one on the score board and one on the ribbon
-  // score". Stripped scores + clock + segment-clock from StateBar.
-  // The interactive scoreboard below owns score + clock display +
-  // controls; the iframe scoreboard / ribbon previews are the
-  // glanceable visual confirmation. StateBar keeps just identities
-  // and the LIVE/scheduled pill so the operator knows which game
-  // they're driving.
+  // 2026-05-27 — Operator: "your showing the team names 3 times on
+  // that page, we only need them on the scoreboard not 3 places".
+  // Dropped team names from StateBar — the interactive scoreboard
+  // below shows them in the tile (proper team identity, like the
+  // real scoreboard render). StateBar is just the live-status pill
+  // now; the tabs row below it owns navigation between Setup/Run/
+  // Roster. Background also lightened — this is a thin status strip,
+  // not a control surface.
   return (
-    <div className="flex items-center gap-3 px-4 py-2 border-b border-slate-200 bg-slate-50 sticky top-0 z-10 flex-wrap">
-      <div className="flex flex-col leading-tight shrink-0">
-        <span className="text-[10px] font-black tracking-widest text-slate-400">HOME</span>
-        <span className="text-sm font-bold truncate max-w-[180px]" style={{ color: homeColor }}>
-          {g.homeTeam}
-        </span>
-      </div>
-      <span className="text-slate-300 font-bold text-sm">vs</span>
-      <div className="flex flex-col leading-tight shrink-0">
-        <span className="text-[10px] font-black tracking-widest text-slate-400">AWAY</span>
-        <span className="text-sm font-bold truncate max-w-[180px]" style={{ color: awayColor }}>
-          {g.awayTeam}
-        </span>
-      </div>
+    <div className="flex items-center gap-3 px-4 py-1.5 border-b border-slate-200 bg-white sticky top-0 z-10">
       <div className="flex-1" />
-      {/* Stays — short status pill so the operator knows the game's state */}
       {isLive ? (
         <div className="flex items-center gap-1.5 text-[11px] font-black text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full shrink-0">
           <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
@@ -855,26 +841,32 @@ function RunInteractiveScoreboard({
           color={homeColor}
           logoUrl={g.homeLogoUrl}
           score={g.homeScore}
+          side="home"
           increments={def.score.increments}
           onScore={(d) => ctl.score.mutate({ team: 'home', delta: d })}
         />
 
-        {/* CLOCK + SEGMENT tile — same dark-card aesthetic as the LED board */}
-        <div className="flex flex-col items-center justify-center bg-black border border-slate-800 rounded-xl px-4 py-3 min-w-[220px]">
-          <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest">
+        {/* CLOCK + SEGMENT tile — looks like the center column of a
+            real scoreboard (segment label up top, big clock, subtle
+            controls underneath). No green/red traffic-light start
+            button; just a slim chip. */}
+        <div className="flex flex-col items-center justify-between bg-slate-950 border border-slate-800 rounded-xl px-4 pt-5 pb-3 min-h-[280px] min-w-[240px]">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest">
             <button
               type="button"
               onClick={() => ctl.segment.mutate({ delta: -1 })}
-              className="h-6 w-6 rounded bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center text-sm font-bold"
+              className="h-6 w-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center text-sm font-bold border border-slate-700"
               aria-label="Previous segment"
             >
               −
             </button>
-            <span className="min-w-[56px] text-center text-amber-400 text-base font-black">{segLabel}</span>
+            <span className="min-w-[80px] text-center text-amber-400 text-sm font-black tracking-widest">
+              {segLabel}
+            </span>
             <button
               type="button"
               onClick={() => ctl.segment.mutate({ delta: 1 })}
-              className="h-6 w-6 rounded bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center text-sm font-bold"
+              className="h-6 w-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center text-sm font-bold border border-slate-700"
               aria-label="Next segment"
             >
               +
@@ -882,62 +874,59 @@ function RunInteractiveScoreboard({
           </div>
           {hasClock ? (
             <>
-              <div className={`text-7xl sm:text-8xl font-black tabular-nums leading-none my-2 ${running ? 'text-amber-400' : 'text-white'}`}>
+              <div
+                className={`text-7xl sm:text-8xl font-black tabular-nums leading-none my-3 ${
+                  running ? 'text-amber-400' : 'text-white'
+                }`}
+              >
                 {fmtClock(liveMs)}
               </div>
-              <button
-                type="button"
-                onClick={() => ctl.clock.mutate({ action: running ? 'pause' : 'start' })}
-                className={
-                  running
-                    ? 'w-full h-11 rounded-lg bg-red-600 hover:bg-red-700 text-white font-black text-base flex items-center justify-center gap-1.5 transition-colors'
-                    : 'w-full h-11 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base flex items-center justify-center gap-1.5 transition-colors'
-                }
-              >
-                {running ? (
-                  <>
-                    <Pause className="h-4 w-4" /> STOP
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-4 w-4" /> START
-                  </>
-                )}
-              </button>
-              <div className="flex gap-1 mt-1.5 w-full">
+              {/* Subtle clock controls — start/stop, reset, ±1s as a
+                  single row of chips. No giant green-button START. */}
+              <div className="flex items-center gap-1.5 mt-1">
+                <button
+                  type="button"
+                  onClick={() => ctl.clock.mutate({ action: running ? 'pause' : 'start' })}
+                  className={
+                    running
+                      ? 'h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold text-sm transition-colors border border-amber-700 flex items-center gap-1'
+                      : 'h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold text-sm transition-colors border border-emerald-700 flex items-center gap-1'
+                  }
+                  title={running ? 'Stop clock' : 'Start clock'}
+                >
+                  {running ? <><Pause className="h-3 w-3" /> Stop</> : <><Play className="h-3 w-3" /> Start</>}
+                </button>
                 <button
                   type="button"
                   onClick={() => ctl.clock.mutate({ action: 'reset' })}
-                  className="flex-1 h-8 rounded bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold flex items-center justify-center gap-1"
-                  title="Reset clock to segment length"
+                  className="h-8 w-8 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 text-sm transition-colors border border-slate-700 flex items-center justify-center"
+                  title="Reset clock"
                 >
-                  <RotateCcw className="h-3 w-3" /> Reset
+                  <RotateCcw className="h-3 w-3" />
                 </button>
                 <button
                   type="button"
                   onClick={() => ctl.clock.mutate({ action: 'set', ms: Math.max(0, liveMs - 1000) })}
-                  className="flex-1 h-8 rounded bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold"
-                  title="Subtract 1 second"
+                  className="h-8 px-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-xs transition-colors border border-slate-700"
+                  title="−1s"
                 >
-                  -1s
+                  −1s
                 </button>
                 <button
                   type="button"
                   onClick={() => ctl.clock.mutate({ action: 'set', ms: liveMs + 1000 })}
-                  className="flex-1 h-8 rounded bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold"
-                  title="Add 1 second"
+                  className="h-8 px-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-xs transition-colors border border-slate-700"
+                  title="+1s"
                 >
                   +1s
                 </button>
               </div>
             </>
           ) : (
-            <div className="text-2xl font-black text-white my-2">{segLabel}</div>
+            <div className="text-2xl font-black text-white my-3">{segLabel}</div>
           )}
           {/* Shot clock — water polo, basketball, lacrosse */}
-          {def.shotClock && (
-            <RunShotClockMini stats={stats} def={def} ctl={ctl} />
-          )}
+          {def.shotClock && <RunShotClockMini stats={stats} def={def} ctl={ctl} />}
         </div>
 
         {/* AWAY tile */}
@@ -946,6 +935,7 @@ function RunInteractiveScoreboard({
           color={awayColor}
           logoUrl={g.awayLogoUrl}
           score={g.awayScore}
+          side="away"
           increments={def.score.increments}
           onScore={(d) => ctl.score.mutate({ team: 'away', delta: d })}
         />
@@ -955,21 +945,25 @@ function RunInteractiveScoreboard({
 }
 
 /** One team's tile — visually mirrors the actual LED scoreboard
- *  rendering (team logo + name in team color + huge tabular score)
- *  with the +/- controls baked in below. Operator: "make the score
- *  board look like the actual score board". The interactive
- *  scoreboard tile IS now the visual representation; the iframe
- *  scoreboard preview has been retired in favor of this — fewer
- *  duplicate score displays, controls live ON the visual.
+ *  rendering. Operator: "make the score board look like the actual
+ *  score board…get rid of the crazy big red and green buttons".
  *
- *  Increments come from the sport definition (1 for water polo /
- *  soccer / volleyball; 1,2,3 for basketball; 1,2,3,6,7,8 for
- *  football). −1 is always available for fixes. */
+ *  Layout matches the BoardScene render shown in the Setup preview:
+ *    1. Team logo (centered, large)
+ *    2. Team name (white, regular weight)
+ *    3. HOME / AWAY caption (small caps, muted)
+ *    4. Huge score number in team color
+ *    5. Small subtle +/- chips at the bottom — not the giant
+ *       traffic-light buttons that "looked dumb".
+ *
+ *  Buttons are deliberately understated — the controls should feel
+ *  like part of the scoreboard, not a tablet skinned on top of it. */
 function ScoreTile({
   team,
   color,
   logoUrl,
   score,
+  side,
   increments,
   onScore,
 }: {
@@ -977,47 +971,53 @@ function ScoreTile({
   color: string;
   logoUrl?: string | null;
   score: number;
+  side: 'home' | 'away';
   increments: number[];
   onScore: (delta: number) => void;
 }) {
   return (
-    <div className="flex flex-col items-stretch bg-black border border-slate-800 rounded-xl px-3 py-3 gap-2">
-      {/* Team header — logo + name in team color, like the real board */}
-      <div className="flex items-center justify-center gap-3 min-h-[52px]">
+    <div className="flex flex-col items-center justify-between bg-slate-950 border border-slate-800 rounded-xl px-4 pt-5 pb-3 min-h-[280px]">
+      {/* Team logo — large, centered (matches BoardScene proportion) */}
+      <div className="flex items-center justify-center h-20 w-20">
         {logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={logoUrl}
             alt=""
-            className="h-12 w-12 object-contain shrink-0"
+            className="max-h-20 max-w-20 object-contain"
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = 'none';
             }}
           />
         ) : null}
-        <span
-          className="text-xl sm:text-2xl font-black uppercase tracking-wide truncate"
-          style={{ color }}
-          title={team}
-        >
+      </div>
+      {/* Team name + side caption — white text, side small-caps muted */}
+      <div className="flex flex-col items-center mt-3">
+        <span className="text-xl font-bold text-white truncate max-w-full" title={team}>
           {team || '—'}
         </span>
+        <span className="text-[10px] font-black tracking-widest text-slate-500 mt-0.5">
+          {side === 'home' ? 'HOME' : 'AWAY'}
+        </span>
       </div>
-      {/* Huge tabular score number in team color — the focal point */}
+      {/* Big score number — focal point, in team color */}
       <div
-        className="text-7xl sm:text-8xl font-black tabular-nums leading-none text-center"
+        className="text-7xl sm:text-8xl font-black tabular-nums leading-none my-3"
         style={{ color }}
       >
         {score}
       </div>
-      {/* Score buttons — sized for thumbs, sport-aware increments */}
-      <div className="flex gap-1.5 mt-1">
+      {/* Subtle +/- chips — small, neutral, sport-aware. Sits at the
+          bottom of the tile so the tile itself looks like a scoreboard
+          panel with quiet controls underneath. */}
+      <div className="flex items-center gap-1.5 mt-1">
         {increments.map((inc) => (
           <button
             key={`+${inc}`}
             type="button"
             onClick={() => onScore(inc)}
-            className="flex-1 h-12 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-lg transition-colors"
+            className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm transition-colors border border-slate-700"
+            title={`Add ${inc}`}
           >
             +{inc}
           </button>
@@ -1025,10 +1025,10 @@ function ScoreTile({
         <button
           type="button"
           onClick={() => onScore(-1)}
-          className="flex-1 h-12 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-black text-lg transition-colors"
+          className="h-8 w-8 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-sm transition-colors border border-slate-700"
           title="Subtract 1 (fix a mis-tap)"
         >
-          −1
+          −
         </button>
       </div>
     </div>
