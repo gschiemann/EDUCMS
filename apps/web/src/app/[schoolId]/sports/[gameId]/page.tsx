@@ -554,75 +554,39 @@ function StateBar({
   const stats: Record<string, unknown> = g.stats || {};
   const half = String(stats.half || 'Top').toLowerCase().startsWith('b') ? '▼' : '▲';
 
+  // 2026-05-27 — Operator: "the score shows 4 times in this little
+  // area, we need just one on the score board and one on the ribbon
+  // score". Stripped scores + clock + segment-clock from StateBar.
+  // The interactive scoreboard below owns score + clock display +
+  // controls; the iframe scoreboard / ribbon previews are the
+  // glanceable visual confirmation. StateBar keeps just identities
+  // and the LIVE/scheduled pill so the operator knows which game
+  // they're driving.
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 bg-slate-50 sticky top-0 z-10 flex-wrap">
-      {/* segment pill */}
-      <div className="text-base font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg shrink-0">
-        {segmentText(def, g)}
-      </div>
-
-      {/* HOME */}
+    <div className="flex items-center gap-3 px-4 py-2 border-b border-slate-200 bg-slate-50 sticky top-0 z-10 flex-wrap">
       <div className="flex flex-col leading-tight shrink-0">
         <span className="text-[10px] font-black tracking-widest text-slate-400">HOME</span>
-        <span className="text-sm font-bold truncate max-w-[110px]" style={{ color: homeColor }}>
+        <span className="text-sm font-bold truncate max-w-[180px]" style={{ color: homeColor }}>
           {g.homeTeam}
         </span>
       </div>
-      <div className="text-4xl font-black tabular-nums leading-none" style={{ color: homeColor }}>
-        {g.homeScore}
-      </div>
-
-      <div className="flex-1" />
-
-      {/* clock / count */}
-      <div className="flex flex-col items-center shrink-0">
-        {def.clock.type !== 'none' ? (
-          <>
-            <div
-              className={`text-4xl font-black tabular-nums leading-none ${
-                g.clockRunning ? 'text-amber-500' : 'text-slate-900'
-              }`}
-            >
-              {fmtClock(liveMs)}
-            </div>
-            <div
-              className={`text-[10px] font-black tracking-widest mt-0.5 flex items-center gap-1 ${
-                g.clockRunning ? 'text-green-600' : 'text-slate-400'
-              }`}
-            >
-              {g.clockRunning && (
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              )}
-              {g.clockRunning ? 'RUNNING' : 'STOPPED'}
-            </div>
-          </>
-        ) : isInning ? (
-          <div className="text-2xl font-black text-slate-900 tabular-nums">
-            {half} {Number(stats.balls) || 0}&#8211;{Number(stats.strikes) || 0} &#xb7; {Number(stats.outs) || 0} OUT
-          </div>
-        ) : (
-          <div className="text-2xl font-black text-slate-900">{segmentText(def, g)}</div>
-        )}
-      </div>
-
-      <div className="flex-1" />
-
-      {/* AWAY */}
-      <div className="text-4xl font-black tabular-nums leading-none" style={{ color: awayColor }}>
-        {g.awayScore}
-      </div>
-      <div className="flex flex-col leading-tight text-right shrink-0">
+      <span className="text-slate-300 font-bold text-sm">vs</span>
+      <div className="flex flex-col leading-tight shrink-0">
         <span className="text-[10px] font-black tracking-widest text-slate-400">AWAY</span>
-        <span className="text-sm font-bold truncate max-w-[110px]" style={{ color: awayColor }}>
+        <span className="text-sm font-bold truncate max-w-[180px]" style={{ color: awayColor }}>
           {g.awayTeam}
         </span>
       </div>
-
-      {/* LIVE pill */}
-      {isLive && (
+      <div className="flex-1" />
+      {/* Stays — short status pill so the operator knows the game's state */}
+      {isLive ? (
         <div className="flex items-center gap-1.5 text-[11px] font-black text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full shrink-0">
           <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
           LIVE
+        </div>
+      ) : (
+        <div className="text-[11px] font-black text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-full shrink-0 uppercase tracking-widest">
+          {g.status || 'scheduled'}
         </div>
       )}
     </div>
@@ -888,7 +852,6 @@ function RunInteractiveScoreboard({
         {/* HOME tile */}
         <ScoreTile
           team={g.homeTeam}
-          score={g.homeScore}
           color={homeColor}
           increments={def.score.increments}
           onScore={(d) => ctl.score.mutate({ team: 'home', delta: d })}
@@ -978,7 +941,6 @@ function RunInteractiveScoreboard({
         {/* AWAY tile */}
         <ScoreTile
           team={g.awayTeam}
-          score={g.awayScore}
           color={awayColor}
           increments={def.score.increments}
           onScore={(d) => ctl.score.mutate({ team: 'away', delta: d })}
@@ -988,42 +950,41 @@ function RunInteractiveScoreboard({
   );
 }
 
-/** One team's score tile — team name, huge score, scoring buttons.
+/** One team's score-control tile — team name + scoring buttons.
+ *  No score NUMBER here (operator: "the score shows 4 times…we need
+ *  just one on the scoreboard and one on the ribbon score"). The
+ *  iframe scoreboard preview right above this is the source of
+ *  truth for the current value; this tile is the CONTROL surface.
  *  Increments come from the sport definition (1 for water polo /
  *  soccer / volleyball; 1,2,3 for basketball; 1,2,3,6,7,8 for
  *  football, etc.). −1 is always available for fixes. */
 function ScoreTile({
   team,
-  score,
   color,
   increments,
   onScore,
 }: {
   team: string;
-  score: number;
   color: string;
   increments: number[];
   onScore: (delta: number) => void;
 }) {
   return (
-    <div className="flex flex-col items-center bg-slate-800 rounded-xl px-3 py-3">
+    <div className="flex flex-col items-stretch bg-slate-800 rounded-xl px-3 py-3 gap-2">
       <div
-        className="text-[12px] font-black uppercase tracking-widest truncate max-w-full"
+        className="text-sm font-black uppercase tracking-widest truncate text-center"
         style={{ color }}
         title={team}
       >
         {team || '—'}
       </div>
-      <div className="text-6xl sm:text-7xl font-black tabular-nums leading-none my-2" style={{ color }}>
-        {score}
-      </div>
-      <div className="flex gap-1.5 w-full">
+      <div className="flex gap-1.5">
         {increments.map((inc) => (
           <button
             key={`+${inc}`}
             type="button"
             onClick={() => onScore(inc)}
-            className="flex-1 h-10 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base transition-colors"
+            className="flex-1 h-14 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-lg transition-colors"
           >
             +{inc}
           </button>
@@ -1031,7 +992,7 @@ function ScoreTile({
         <button
           type="button"
           onClick={() => onScore(-1)}
-          className="flex-1 h-10 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-base transition-colors"
+          className="flex-1 h-14 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-lg transition-colors"
           title="Subtract 1 (fix a mis-tap)"
         >
           −1
@@ -1619,8 +1580,14 @@ function TeamZone({
         borderTop: `4px solid ${color}`,
       }}
     >
-      {/* zone header */}
-      <div className="flex items-center gap-2 mb-2">
+      {/* zone header — team identity + side label.
+          2026-05-27 — score number + score buttons were here previously
+          but lived in two other places (StateBar + the new
+          RunInteractiveScoreboard). Operator: "the score shows 4 times
+          in this little area, we need just one on the score board and
+          one on the ribbon score". This zone is now stat-tray-only;
+          all score control lives in the interactive scoreboard up top. */}
+      <div className="flex items-center gap-2 mb-3">
         <span
           className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-black text-lg shrink-0"
           style={{ backgroundColor: color }}
@@ -1633,36 +1600,6 @@ function TeamZone({
         <span className="ml-auto text-[10px] font-black tracking-widest text-slate-400">
           {isHome ? 'HOME' : 'AWAY'}
         </span>
-      </div>
-
-      {/* hero score */}
-      <div className="text-6xl font-black tabular-nums leading-none mb-3" style={{ color }}>
-        {score}
-      </div>
-
-      {/* score buttons */}
-      <div className="flex gap-2 mb-3">
-        {increments.map((inc) => (
-          <button
-            key={inc}
-            onClick={() => onScore(inc)}
-            className="flex-1 flex flex-col items-center py-3 rounded-xl text-white font-black text-xl shadow-md hover:opacity-90 active:scale-95 transition-transform"
-            style={{ backgroundColor: color }}
-          >
-            <span>+{inc}</span>
-            {inc === 1 && def.score.unit && (
-              <span className="text-[9px] font-bold opacity-80 uppercase tracking-wide">
-                {def.score.unit}
-              </span>
-            )}
-          </button>
-        ))}
-        <button
-          onClick={() => onScore(-1)}
-          className="w-12 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 font-black text-xl hover:bg-slate-100 active:scale-95 transition-transform"
-        >
-          −
-        </button>
       </div>
 
       {/* quick-stat chips — sport-specific inline controls */}
