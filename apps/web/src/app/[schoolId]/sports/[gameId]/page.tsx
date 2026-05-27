@@ -1001,7 +1001,20 @@ function ScoreTile({
 }
 
 /** Shot-clock mini inside the clock tile. Compact horizontal:
- *  current value + reset-to-30 / reset-to-20 / start / stop. */
+ *  current value + reset-to-30 / reset-to-20 / start / stop.
+ *
+ *  2026-05-27 — Operator: "these buttons dont seem to do anything".
+ *  Fixed the action/key wiring that was silently no-op'ing every
+ *  click:
+ *    - Reads from stats.shotClock.{ms,running,at} (Prisma JSON
+ *      nesting), NOT stats.shotClockMs / stats.shotClockRunning
+ *      (which never existed — the values land under .shotClock).
+ *    - Reset buttons send action:'reset' with a value (sec), not
+ *      action:'set' which the API never handled.
+ *    - Stop sends action:'stop', not 'pause' (also not handled).
+ *    - Projects live ms from the .at timestamp so the displayed
+ *      countdown actually counts down between polls instead of
+ *      sitting on whatever value the last write produced. */
 function RunShotClockMini({
   stats,
   def,
@@ -1011,9 +1024,20 @@ function RunShotClockMini({
   def: SportDefinition;
   ctl: ReturnType<typeof useGameControl>;
 }) {
-  const shotMs = typeof stats.shotClockMs === 'number' ? (stats.shotClockMs as number) : 0;
-  const shotRunning = !!stats.shotClockRunning;
-  const sec = Math.max(0, Math.ceil(shotMs / 1000));
+  const sc = (stats.shotClock as Record<string, unknown> | undefined) || {};
+  const storedMs = typeof sc.ms === 'number' ? (sc.ms as number) : 0;
+  const shotRunning = !!sc.running;
+  // Project the live remaining time when the clock is running so the
+  // 30-second countdown actually ticks. Same projection the live
+  // BoardScene + ribbon scorebug do.
+  let liveMs = storedMs;
+  if (shotRunning) {
+    const at = new Date(String(sc.at || '')).getTime();
+    if (Number.isFinite(at)) {
+      liveMs = Math.max(0, storedMs - (Date.now() - at));
+    }
+  }
+  const sec = Math.max(0, Math.ceil(liveMs / 1000));
   const fullSec = def.shotClock?.full ?? 30;
   const shortSec = def.shotClock?.short ?? 20;
   return (
@@ -1024,7 +1048,7 @@ function RunShotClockMini({
       </span>
       <button
         type="button"
-        onClick={() => ctl.shotClock.mutate({ action: 'set', value: fullSec })}
+        onClick={() => ctl.shotClock.mutate({ action: 'reset', value: fullSec })}
         className="h-7 px-1.5 rounded bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold"
         title={`Reset to ${fullSec}`}
       >
@@ -1032,7 +1056,7 @@ function RunShotClockMini({
       </button>
       <button
         type="button"
-        onClick={() => ctl.shotClock.mutate({ action: 'set', value: shortSec })}
+        onClick={() => ctl.shotClock.mutate({ action: 'reset', value: shortSec })}
         className="h-7 px-1.5 rounded bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold"
         title={`Reset to ${shortSec}`}
       >
@@ -1040,12 +1064,13 @@ function RunShotClockMini({
       </button>
       <button
         type="button"
-        onClick={() => ctl.shotClock.mutate({ action: shotRunning ? 'pause' : 'start' })}
+        onClick={() => ctl.shotClock.mutate({ action: shotRunning ? 'stop' : 'start' })}
         className={
           shotRunning
             ? 'h-7 px-2 rounded bg-red-600 hover:bg-red-700 text-white text-[10px] font-black'
             : 'h-7 px-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black'
         }
+        title={shotRunning ? 'Stop' : 'Start'}
       >
         {shotRunning ? '⏸' : '▶'}
       </button>

@@ -2432,21 +2432,28 @@ export function useGameControl(gameId: string) {
   });
 
   const shotClock = useMutation({
-    // Basketball shot clock — configure length, or start/stop/reset.
+    // Basketball / water-polo shot clock — configure length, or start /
+    // stop / reset. writeBack pushes the returned game into the cache so
+    // the operator's button press flips the UI instantly instead of
+    // waiting for the next poll (otherwise feels like "the button did
+    // nothing").
     mutationFn: (body: { action: string; value?: number }) =>
       apiFetch(`/sports/games/${gameId}/shot-clock`, {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),
+    onSuccess: writeBack,
   });
 
   const playClock = useMutation({
     // Football play clock — start / stop / reset the 40-25 countdown.
+    // Same writeBack rationale as shotClock above.
     mutationFn: (body: { action: string; value?: number }) =>
       apiFetch(`/sports/games/${gameId}/play-clock`, {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),
+    onSuccess: writeBack,
   });
 
   const penalties = useMutation({
