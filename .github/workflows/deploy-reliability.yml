@@ -121,6 +121,7 @@ jobs:
           pnpm --filter @cms/api-types build
           pnpm --filter @cms/auth-core build
           pnpm --filter @cms/ws-events build
+          pnpm --filter @cms/scoreboard-cts build
       - name: Build API
         run: pnpm --filter api build
 
@@ -162,6 +163,7 @@ jobs:
           pnpm --filter @cms/api-types build
           pnpm --filter @cms/auth-core build
           pnpm --filter @cms/ws-events build
+          pnpm --filter @cms/scoreboard-cts build
       - name: Build web
         env:
           NEXT_PUBLIC_API_URL: https://api-production-39a1.up.railway.app/api/v1

@@ -169,7 +169,7 @@ class SerialPortBridge(
         val sttyResult = runStty(devicePath, sttyFlags)
         if (!sttyResult.ok) {
             lastError = "stty failed: ${sttyResult.message}"
-            PlayerLogger.warn(tag, lastError!!)
+            PlayerLogger.w(tag, lastError!!)
             return jsonError("stty_failed", lastError!!)
         }
 
@@ -180,11 +180,11 @@ class SerialPortBridge(
             FileInputStream(devicePath)
         } catch (e: IOException) {
             lastError = "open() failed: ${e.message}"
-            PlayerLogger.warn(tag, "$lastError — Try Device Owner provisioning OR ask reseller for permissions patch")
+            PlayerLogger.w(tag, "$lastError — Try Device Owner provisioning OR ask reseller for permissions patch")
             return jsonError("open_failed", lastError!!)
         } catch (e: SecurityException) {
             lastError = "open() denied: ${e.message}"
-            PlayerLogger.warn(tag, lastError!!)
+            PlayerLogger.w(tag, lastError!!)
             return jsonError("permission_denied", lastError!!)
         }
 
@@ -194,7 +194,7 @@ class SerialPortBridge(
         this.lastByteAtMs = 0L
         this.lastError = null
         running.set(true)
-        PlayerLogger.info(tag, "Opened $devicePath @ ${baudRate}-${dataBits}-${parity}-${stopBits}")
+        PlayerLogger.i(tag, "Opened $devicePath @ ${baudRate}-${dataBits}-${parity}-${stopBits}")
 
         // Spin up the read loop. Single daemon thread per port; we
         // never expect multiple consoles per box for v1. If we ever do
@@ -214,7 +214,7 @@ class SerialPortBridge(
         running.set(false)
         try { stream?.close() } catch (_: IOException) { /* ignore */ }
         stream = null
-        PlayerLogger.info(tag, "Closed $devicePath")
+        PlayerLogger.i(tag, "Closed $devicePath")
         return jsonOk(devicePath, 0, 0, 0, "n/a", "closed")
     }
 
@@ -245,7 +245,7 @@ class SerialPortBridge(
                 fis.read(buf)
             } catch (e: IOException) {
                 lastError = "read() error: ${e.message}"
-                PlayerLogger.warn(tag, lastError!!)
+                PlayerLogger.w(tag, lastError!!)
                 running.set(false)
                 break
             }
@@ -253,7 +253,7 @@ class SerialPortBridge(
                 // EOF — kernel closed the tty (cable yanked, USB hot-
                 // unplugged, etc.). Loop exits; web layer's auto-
                 // reconnect will trigger a new connect() call.
-                PlayerLogger.info(tag, "EOF on $devicePath")
+                PlayerLogger.i(tag, "EOF on $devicePath")
                 running.set(false)
                 break
             }

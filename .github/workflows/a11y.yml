@@ -53,6 +53,7 @@ jobs:
           pnpm --filter @cms/api-types build
           pnpm --filter @cms/auth-core build
           pnpm --filter @cms/ws-events build
+          pnpm --filter @cms/scoreboard-cts build
 
       - name: Build Web
         run: pnpm --filter web build
