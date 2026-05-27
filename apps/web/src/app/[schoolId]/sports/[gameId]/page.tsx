@@ -222,42 +222,63 @@ function GameControl() {
   return (
     <div className="flex flex-col min-h-[calc(100vh-64px)]">
 
-      {/* ── top toolbar ───────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-white">
+      {/* 2026-05-27 — Top toolbar + mode tabs MERGED into one row.
+          Operator: "what is stream overlay, score feed do? if we
+          dont need them maybe we can move the run game and setup
+          buttons up there and remove another line so the screen can
+          come up more...trying to make everything in one pane of
+          glass with zero scrolling".
+          Dropped Stream overlay (broadcast scorebug URL for OBS) +
+          Score feed (machine-to-machine ingest URL) — neither needed
+          for the CTS-driven water polo install; the CtsBridge IS the
+          score feed. Both endpoints stay in the API so they can be
+          re-surfaced when a streaming customer needs them. */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-slate-200 bg-white">
         <button
           onClick={() => router.push(`/${schoolId}/sports`)}
-          className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900"
+          className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 shrink-0"
         >
           <ArrowLeft className="h-4 w-4" />
-          Game Day
+          <span className="hidden sm:inline">Game Day</span>
         </button>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={copyOverlayUrl}
-            title="Copy the broadcast scorebug URL for an OBS / vMix browser source"
-          >
-            {copied ? <Check className="h-4 w-4 text-green-600" /> : <Tv className="h-4 w-4" />}
-            <span className="hidden sm:inline">{copied ? 'Copied' : 'Stream overlay'}</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={copyFeedUrl}
-            title="Copy the live score-feed URL + token for an external system (Sportzcast, console reader, custom integration) to push score/clock"
-          >
-            {feedCopied ? <Check className="h-4 w-4 text-green-600" /> : <Radio className="h-4 w-4" />}
-            <span className="hidden sm:inline">{feedCopied ? 'Copied' : 'Score feed'}</span>
-          </Button>
+        <div className="h-5 w-px bg-slate-200" />
+        <div className="flex gap-1 flex-1 overflow-x-auto">
+          {(
+            [
+              { key: 'run', label: 'Run game', icon: '▶' },
+              { key: 'setup', label: 'Set up', icon: '⚙' },
+              { key: 'roster', label: 'Roster', icon: '👥' },
+            ] as { key: ConsoleMode; label: string; icon: string }[]
+          ).map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => {
+                setMode(tab.key);
+                setShowCues(false);
+                setShowHighlights(false);
+                setShowPenalties(false);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors shrink-0 ${
+                mode === tab.key
+                  ? 'bg-indigo-50 text-indigo-600'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
+              {tab.key === 'run' && isLive && (
+                <span className="ml-0.5 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="outline"
             size="sm"
             className="gap-1.5"
             onClick={() => window.open(`/ribbon/${gameId}`, '_blank')}
-            title="Open the stadium ribbon / fascia board"
+            title="Open the stadium ribbon / fascia board in a new tab"
           >
             <RectangleHorizontal className="h-4 w-4" />
             <span className="hidden sm:inline">Ribbon</span>
@@ -267,50 +288,12 @@ function GameControl() {
             size="sm"
             className="gap-1.5"
             onClick={() => window.open(`/board/${gameId}`, '_blank')}
+            title="Open the scoreboard in a new tab"
           >
             <ExternalLink className="h-4 w-4" />
             <span className="hidden sm:inline">Scoreboard</span>
           </Button>
         </div>
-      </div>
-
-      {/* 2026-05-27 — StateBar dropped. Operator: "kill the live pill
-          no need for that i dont think and we can shift the entire
-          screen up a little". The LIVE pill was the only thing left
-          in the strip after we stripped team names + score + clock —
-          removing the whole row brings every Run-mode control up a
-          beat, less wasted real estate above the scoreboard. */}
-
-      {/* ── mode tabs ─────────────────────────────────────────── */}
-      <div className="flex gap-1 px-4 py-2 border-b border-slate-200 bg-white">
-        {(
-          [
-            { key: 'run', label: 'Run game', icon: '▶' },
-            { key: 'setup', label: 'Set up', icon: '⚙' },
-            { key: 'roster', label: 'Roster', icon: '👥' },
-          ] as { key: ConsoleMode; label: string; icon: string }[]
-        ).map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => {
-              setMode(tab.key);
-              setShowCues(false);
-              setShowHighlights(false);
-              setShowPenalties(false);
-            }}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
-              mode === tab.key
-                ? 'bg-indigo-50 text-indigo-600'
-                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <span>{tab.icon}</span>
-            <span>{tab.label}</span>
-            {tab.key === 'run' && isLive && (
-              <span className="ml-0.5 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-            )}
-          </button>
-        ))}
       </div>
 
       {/* ── mode panels ───────────────────────────────────────── */}
