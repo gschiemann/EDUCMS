@@ -2202,9 +2202,14 @@ function LayoutsPanel({
   ctl: ReturnType<typeof useGameControl>;
 }) {
   const { data: templates } = useTemplates();
-  const list: Array<{ id: string; name: string; isSystem?: boolean }> = Array.isArray(templates)
-    ? (templates as any[])
-    : [];
+  const list: Array<{
+    id: string;
+    name: string;
+    isSystem?: boolean;
+    category?: string;
+    screenWidth?: number;
+    screenHeight?: number;
+  }> = Array.isArray(templates) ? (templates as any[]) : [];
 
   // Local "saving" state per dropdown so the operator gets feedback;
   // the optimistic writeBack in useGameControl makes the dropdown
@@ -2221,11 +2226,37 @@ function LayoutsPanel({
     }
   };
 
+  // 2026-05-26 — filter each surface's dropdown to ONLY templates
+  // matching that surface's aspect ratio + category. Operator
+  // (2026-05-26) called out: "why are our updated cues not loaded?
+  // im kicking them off from the sports menu but they are all the
+  // old cues and not the new ones we worked forever on" — root
+  // cause was the operator never picked the new "CTS Water Polo
+  // Ribbon" template out of the 100+ entries in the unfiltered
+  // dropdown, so the RIBBON surface stayed on Default + the legacy
+  // sport-celebration animations played instead of the cinematic
+  // CEL_* library. Filtering surfaces only RIBBON templates in the
+  // RIBBON dropdown so they can't miss it.
+  function aspectMatches(t: typeof list[number], surface: 'scoreboard' | 'ribbon' | 'scorebug'): boolean {
+    const w = t.screenWidth || 1920;
+    const h = t.screenHeight || 1080;
+    const ratio = w / Math.max(h, 1);
+    // Honor explicit category first.
+    const cat = (t.category || '').toUpperCase();
+    if (surface === 'ribbon')    return cat === 'RIBBON'    || ratio >= 5;
+    if (surface === 'scorebug')  return cat === 'SCOREBUG'  || (ratio >= 3 && ratio < 5);
+    // Scoreboard = everything else: 16:9 video walls, custom-canvas
+    // boards, plus operator-created mixed-aspect designs.
+    return cat === 'SCOREBOARD' || ratio < 3;
+  }
+
   const ROW: Array<{
     field: 'scoreboard' | 'ribbon' | 'scorebug';
     label: string;
     hint: string;
     current: string;
+    suggested?: string;
+    suggestedName?: string;
   }> = [
     {
       field: 'scoreboard',
@@ -2238,6 +2269,11 @@ function LayoutsPanel({
       label: 'Ribbon',
       hint: 'Perimeter ribbon panel chain — /ribbon/' + g.id,
       current: g.ribbonTemplateId || '',
+      // Sports-vertical default — auto-suggest CTS Water Polo Ribbon.
+      // Future: pick the right preset per sport once we have ribbons
+      // for football / basketball / etc.
+      suggested: 'sports-cts-water-polo-ribbon',
+      suggestedName: 'CTS Water Polo Ribbon (cinematic celebrations)',
     },
     {
       field: 'scorebug',
@@ -2254,29 +2290,59 @@ function LayoutsPanel({
         the surface updates within ~750ms. Leave on Default to use the built-in layout.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {ROW.map((r) => (
-          <div key={r.field}>
-            <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-              {r.label}
-            </label>
-            <select
-              className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
-              value={r.current}
-              disabled={saving === r.field}
-              onChange={(e) => save(r.field, e.target.value)}
-            >
-              <option value="">Default — built-in layout</option>
-              {list.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.isSystem ? '★ ' : ''}
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-[10px] text-slate-400">{r.hint}</p>
-          </div>
-        ))}
+        {ROW.map((r) => {
+          const filtered = list.filter((t) => aspectMatches(t, r.field));
+          const onDefault = !r.current;
+          const suggestionAvailable = r.suggested && filtered.some((t) => t.id === r.suggested);
+          const showSuggestion = onDefault && suggestionAvailable;
+          return (
+            <div key={r.field}>
+              <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                {r.label}
+              </label>
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
+                value={r.current}
+                disabled={saving === r.field}
+                onChange={(e) => save(r.field, e.target.value)}
+              >
+                <option value="">Default — built-in layout</option>
+                {filtered.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.isSystem ? '★ ' : ''}
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[10px] text-slate-400">{r.hint}</p>
+              {showSuggestion && (
+                <button
+                  type="button"
+                  onClick={() => save(r.field, r.suggested!)}
+                  disabled={saving === r.field}
+                  className="mt-2 w-full px-2 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                >
+                  Use “{r.suggestedName}” →
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
+      {/* Big call-out when ribbon is on Default — this is the source of
+          the "old cues firing" + "sponsor content tiny" issue. Tell
+          the operator EXACTLY what to do. */}
+      {!g.ribbonTemplateId && (
+        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 leading-relaxed">
+          <strong className="text-amber-950">💡 Heads-up — your Ribbon is on Default.</strong>
+          {' '}On Default, celebrations fire the BUILT-IN water-polo animations
+          (small text, no sponsor co-brand, no cinematic). To get the new
+          cinematic GOOOOAL / hockey red-lamp / lacrosse stick-up scenes
+          plus sponsor + roster auto-rotations and the CTS bridge, pick{' '}
+          <strong>“CTS Water Polo Ribbon”</strong> from the Ribbon dropdown above —
+          or hit the blue button under Ribbon to one-click switch.
+        </div>
+      )}
     </div>
   );
 }

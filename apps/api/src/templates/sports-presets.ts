@@ -139,10 +139,13 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
   // ── CTS Water Polo Ribbon — 4-zone perimeter ribbon ─────────────
   {
     id: 'sports-cts-water-polo-ribbon',
-    name: 'CTS Water Polo Ribbon',
+    name: 'CTS Water Polo Ribbon (cinematic celebrations)',
     description:
-      'Turn-key 4-zone perimeter-ribbon layout for water-polo installs driven by a Colorado Time Systems (CTS) Gen 6 console. Left: live CTS scoreboard (clock + score + period + active exclusion). Middle: sponsor rotator (configure your reel in the Properties panel). Right: player announcements (lineups, next match, anything you want to ticker). Far-right: auto-celebration that pulses on goal-delta or horn. Pair with a screen on `repeats: 4` so the same content tiles every 10ft of ribbon.',
-    category: 'SCOREBOARD',
+      'Turn-key 4-zone perimeter-ribbon layout for water-polo installs driven by a Colorado Time Systems (CTS) Gen 6 console. Left: live CTS scoreboard (clock + score + period + active exclusion). Middle: sponsor rotator (configure your reel in the Properties panel). Right: player announcements (lineups, next match, anything you want to ticker). Cinematic celebration overlay fires soccer GOOOOAL / hockey red-lamp / lacrosse stick-up scenes on every goal or horn (vs the simple sport-celebration animations on the Default ribbon). Pair with a screen on `repeats: 4` so the same content tiles every 10ft of ribbon.',
+    // Category=RIBBON so the LayoutsPanel ribbon dropdown filter
+    // surfaces this in the right slot instead of burying it among 100+
+    // SCOREBOARD-category templates. Operator finds it immediately.
+    category: 'RIBBON',
     orientation: 'LANDSCAPE',
     screenWidth: 1920,
     screenHeight: 192,
