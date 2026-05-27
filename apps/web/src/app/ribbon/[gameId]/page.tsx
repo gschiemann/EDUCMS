@@ -1084,13 +1084,23 @@ function RibbonMediaScroll({
   // so translating -1 sequence never exposes an edge. Capped so a very
   // narrow item on a very wide ribbon can't spawn hundreds of nodes.
   const copies = seqW > 0 ? Math.min(16, Math.max(2, Math.ceil(vp.w / seqW) + 2)) : 6;
-  // px/sec scroll rate scaled by the operator's speed; duration = the
-  // time to travel exactly one sequence width. 60 px/s @ Normal is a
-  // calm ribbon scroll on a real wide run (a ~3000px ribbon takes ~50s
-  // end-to-end); the Slow/Fast/Very-fast control scales it (0.45–2.8×).
-  // NOTE: on a NARROW test screen the same px/s LOOKS much faster
-  // because the content crosses the short width sooner.
-  const pxPerSec = 60 * speedMult;
+  // 2026-05-27 — viewport-relative scroll rate so visual speed feels
+  // identical across a small preview window (e.g. 800px) and a wide
+  // deployed ribbon (3000px) at the same speed setting.
+  //
+  // Old: pxPerSec = 60 * speedMult — FIXED 60 px/s base. At Very-fast
+  // (2.8×) = 168 px/s. On a 3000px ribbon that's ~18s to cross the
+  // visible width; on an 800px preview that's ~4.8s. Same number,
+  // wildly different visual feel. Operator: "very fast is still slow
+  // on the test screen…match the sample on the screen".
+  //
+  // New: calibrate to TIME the content takes to cross the viewport.
+  // At Normal (1×) the ribbon's full width crosses in ~7s. At
+  // Very-fast (2.8×) that becomes ~2.5s — fast enough to read but
+  // brisk. At Slow (0.45×) it's ~15.5s — calm. Both preview and
+  // deployed ribbon now feel the same at the same speed setting.
+  const NORMAL_CROSS_SEC = 7;
+  const pxPerSec = (vp.w / NORMAL_CROSS_SEC) * speedMult;
   const marqueeSecs = Math.max(4, (seqW || vp.w) / pxPerSec);
   const animName = 'rbnMq';
 
