@@ -7,8 +7,10 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
 import { FloorPlansView } from '@/components/screens/FloorPlansView';
-import { PairScreenHardwareStep } from '@/components/screens/PairScreenHardwareStep';
-import type { HardwareModel } from '@cms/api-types';
+// 2026-05-27 — PairScreenHardwareStep removed from the pair modal. The
+// player APK already reports its hardware (Build.MANUFACTURER + MODEL)
+// — operator should never have to type it. The step + its EP6N upsell
+// cards moved to the per-screen settings page where they belong.
 import { apiFetch } from '@/lib/api-client';
 import { useUIStore } from '@/store/ui-store';
 import { useParams, useRouter } from 'next/navigation';
@@ -1362,19 +1364,10 @@ export default function ScreensPage() {
   // Screen.hardwareModel into the schema yet — the field is dropped at
   // the API boundary if the column doesn't exist (passthrough behavior
   // on the pair endpoint already accepts unknown body fields silently).
-  const [pairHardwareModel, setPairHardwareModel] = useState<HardwareModel | null>(null);
-  const [dismissedUpsells, setDismissedUpsells] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const raw = window.localStorage.getItem('venueos.dismissedHardwareUpsells');
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  });
-  // The current tenant vertical drives the recommendation. Falls back
-  // to undefined (no recommendation) when the user store hasn't hydrated.
-  const tenantVertical = useUIStore((s) => s.user?.tenantVertical);
+  // 2026-05-27 — pairHardwareModel + dismissedUpsells + tenantVertical
+  // state lived here to feed PairScreenHardwareStep. All gone with the
+  // step itself — hardware is auto-detected from the player's first
+  // manifest call, not typed by the operator at pair time.
   const [editingScreen, setEditingScreen] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [showQrForScan, setShowQrForScan] = useState(false);
@@ -1422,18 +1415,15 @@ export default function ScreensPage() {
     setPairing(true);
     setPairError('');
     try {
-      // hardwareModel is sent on the pair body. The API ignores unknown
-      // fields today; once Agent A's schema migration lands the field
-      // is persisted on Screen.hardwareModel automatically. We send it
-      // through `any` to avoid the explicit type contract before then.
+      // 2026-05-27 — body shape simplified after PairScreenHardwareStep
+      // was removed from the modal. The player APK reports hardware
+      // info via the manifest endpoint after pair; the server maps
+      // Build.MODEL → Screen.hardwareModel without an operator step.
       const body: any = {
         pairingCode: pairCode.trim().toUpperCase(),
         name: pairName.trim() || undefined,
         screenGroupId: pairGroupId || undefined,
       };
-      if (pairHardwareModel) {
-        body.hardwareModel = pairHardwareModel;
-      }
       await apiFetch('/screens/pair', {
         method: 'POST',
         body: JSON.stringify(body),
@@ -1442,7 +1432,6 @@ export default function ScreensPage() {
       setPairCode('');
       setPairName('');
       setPairGroupId('');
-      setPairHardwareModel(null);
       refetch();
       refetchScreens();
     } catch (e: any) {
@@ -1452,22 +1441,9 @@ export default function ScreensPage() {
     }
   };
 
-  // Persist dismissed upsells across the modal lifecycle so "Set up
-  // later" doesn't re-show after closing/reopening.
-  const handleDismissUpsell = (id: string) => {
-    setDismissedUpsells((prev) => {
-      if (prev.includes(id)) return prev;
-      const next = [...prev, id];
-      if (typeof window !== 'undefined') {
-        try {
-          window.localStorage.setItem('venueos.dismissedHardwareUpsells', JSON.stringify(next));
-        } catch {
-          // localStorage unavailable (private browsing, etc.) — silently no-op.
-        }
-      }
-      return next;
-    });
-  };
+  // 2026-05-27 — handleDismissUpsell removed alongside the pair-modal
+  // hardware step. Will move to the per-screen settings page when the
+  // EP6N I/O upsells are re-homed there.
 
   const handleRename = async (screenId: string) => {
     if (!editName.trim()) return;
@@ -1565,7 +1541,7 @@ export default function ScreensPage() {
               looking at building blueprints. */}
           {viewMode !== 'floor' && (
             <>
-              <button onClick={() => { setShowPairModal(true); setPairGroupId(''); setPairCode(''); setPairName(''); setPairError(''); setPairHardwareModel(null); }}
+              <button onClick={() => { setShowPairModal(true); setPairGroupId(''); setPairCode(''); setPairName(''); setPairError(''); }}
                 disabled={isViewer}
                 title={isViewer ? 'Read-only — viewer role' : undefined}
                 className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1746,7 +1722,7 @@ export default function ScreensPage() {
                         and the word Pair". Replaced the Wifi-icon
                         "Pair to Group" label with a clearer "+ Pair"
                         affordance. */}
-                    <button onClick={() => { setShowPairModal(true); setPairGroupId(group.id); setPairCode(''); setPairName(''); setPairError(''); setPairHardwareModel(null); }}
+                    <button onClick={() => { setShowPairModal(true); setPairGroupId(group.id); setPairCode(''); setPairName(''); setPairError(''); }}
                       className="screens-pair-btn px-4 py-2 transition-colors text-xs font-bold rounded-xl flex items-center gap-1.5"
                       title="Pair a screen to this group">
                       <Plus className="w-4 h-4" /> Pair
@@ -2072,40 +2048,38 @@ export default function ScreensPage() {
       {/* ─── Pair Screen Modal ─── */}
       {showPairModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Pair a Screen">
-          <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => { setShowPairModal(false); setPairHardwareModel(null); }} />
+          <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => { setShowPairModal(false); }} />
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative z-10 max-h-[92vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Wifi className="w-5 h-5 text-emerald-600" /> Pair a Screen
               </h3>
-              <button onClick={() => { setShowPairModal(false); setPairHardwareModel(null); }} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => { setShowPairModal(false); }} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <p className="text-sm text-slate-500 mb-5">
-              Tell us what hardware you&apos;re installing, then enter
-              the 6-digit code shown on the screen device.
+              Enter the 6-digit code shown on the screen device.
             </p>
 
             <div className="space-y-4">
-              {/* 2026-05-27 — Step 1: hardware selection. Drives the
-                  vertical-specific recommendation (EP6N for Sports)
-                  and the model-specific I/O upsells (fire-alarm GPIO,
-                  panic button, HDMI broadcast capture, status lamp
-                  output). The PairScreenHardwareStep component is
-                  presentational; the parent persists the choice to
-                  pairHardwareModel and ships it on the /screens/pair
-                  request body. */}
-              <PairScreenHardwareStep
-                vertical={tenantVertical}
-                value={pairHardwareModel}
-                onChange={setPairHardwareModel}
-                dismissedUpsells={dismissedUpsells}
-                onDismissUpsell={handleDismissUpsell}
-              />
-
-              <div className="pt-4 border-t border-slate-200">
+              {/* 2026-05-27 round 2 — operator: "the screen needs to
+                  tell us all those answers and not ask the end user
+                  anything when pairing....the player should tell us
+                  the device and all the info i need to know". Right.
+                  The PairScreenHardwareStep that lived here asked
+                  "What hardware?" + showed a recommendation card + an
+                  I/O upsell list — none of which the operator should
+                  fill out at pair time. The player APK already reports
+                  Build.MANUFACTURER + Build.MODEL on its first
+                  manifest call, and a follow-up wires that into
+                  Screen.hardwareModel server-side so the dashboard
+                  AUTO-DETECTS the device. The EP6N I/O upsells
+                  (fire-alarm GPIO, panic button, HDMI capture, status
+                  lamp) move to the per-screen settings page where
+                  they belong — never block pairing. */}
+              <div>
                 <label htmlFor="pair-code-input" className="block text-xs font-semibold text-slate-600 mb-1.5">Pairing Code</label>
                 <input
                   id="pair-code-input"
