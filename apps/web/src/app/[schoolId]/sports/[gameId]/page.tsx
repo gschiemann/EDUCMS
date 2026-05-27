@@ -780,6 +780,9 @@ function RunInteractiveScoreboard({
           side="home"
           increments={def.score.increments}
           onScore={(d) => ctl.score.mutate({ team: 'home', delta: d })}
+          def={def}
+          stats={stats}
+          onStat={(s) => ctl.stats.mutate({ stats: s })}
         />
 
         {/* CLOCK + SEGMENT tile — looks like the center column of a
@@ -874,6 +877,9 @@ function RunInteractiveScoreboard({
           side="away"
           increments={def.score.increments}
           onScore={(d) => ctl.score.mutate({ team: 'away', delta: d })}
+          def={def}
+          stats={stats}
+          onStat={(s) => ctl.stats.mutate({ stats: s })}
         />
       </div>
     </div>
@@ -902,6 +908,9 @@ function ScoreTile({
   side,
   increments,
   onScore,
+  def,
+  stats,
+  onStat,
 }: {
   team: string;
   color: string;
@@ -910,7 +919,27 @@ function ScoreTile({
   side: 'home' | 'away';
   increments: number[];
   onScore: (delta: number) => void;
+  def: SportDefinition;
+  stats: Record<string, unknown>;
+  onStat: (s: Record<string, number | string>) => void;
 }) {
+  // 2026-05-27 — Per-team stat rows inside the tile. Operator: "i
+  // wanted that integrated into the score boards cleanly some how".
+  // Filter the sport-def stats for ones that belong to this side
+  // (homeShots / awayShots / homeExclusions / awayExclusions /
+  // homeTimeouts / awayTimeouts for water polo; home/away fouls
+  // and timeouts for basketball; etc.). Each renders as a compact
+  // LABEL  −  VALUE  +  row at the bottom of the tile.
+  const prefix = side === 'home' ? 'home' : 'away';
+  const sideStats = (def.stats || []).filter(
+    (s) =>
+      s.type === 'number' &&
+      s.key.toLowerCase().startsWith(prefix) &&
+      // Skip clock-related stats — the clock tile owns those.
+      !s.key.toLowerCase().includes('clock'),
+  );
+  const shortLabel = (label: string) =>
+    label.replace(/^(Home|Away)\s+/i, '').replace(/Timeouts/i, 'T.O.');
   return (
     <div className="flex flex-col items-center justify-between bg-slate-950 border border-slate-800 rounded-xl px-4 pt-5 pb-3 min-h-[280px]">
       {/* Team logo — large, centered (matches BoardScene proportion) */}
@@ -967,6 +996,50 @@ function ScoreTile({
           −
         </button>
       </div>
+      {/* Per-team stat rows — Shots, Exclusions, Timeouts for water
+          polo; fouls + timeouts for basketball; etc. Compact: small
+          label on the left, −value+ stepper on the right. */}
+      {sideStats.length > 0 && (
+        <div className="w-full mt-3 pt-3 border-t border-slate-800 space-y-1">
+          {sideStats.map((s) => {
+            const value = Number(stats[s.key]) || 0;
+            const min = s.min ?? 0;
+            const max = s.max ?? 99;
+            const canDec = value > min;
+            const canInc = value < max;
+            return (
+              <div key={s.key} className="flex items-center justify-between text-xs">
+                <span className="font-black uppercase tracking-widest text-slate-500 text-[10px]">
+                  {shortLabel(s.label)}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onStat({ [s.key]: Math.max(min, value - 1) })}
+                    disabled={!canDec}
+                    className="h-6 w-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-bold border border-slate-700 disabled:opacity-30"
+                    title={`−1 ${s.label}`}
+                  >
+                    −
+                  </button>
+                  <span className="font-black tabular-nums text-white w-7 text-center text-sm">
+                    {value}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onStat({ [s.key]: Math.min(max, value + 1) })}
+                    disabled={!canInc}
+                    className="h-6 w-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-bold border border-slate-700 disabled:opacity-30"
+                    title={`+1 ${s.label}`}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
