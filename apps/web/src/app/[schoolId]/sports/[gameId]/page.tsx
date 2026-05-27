@@ -220,7 +220,7 @@ function GameControl() {
   const isLive = g.status === 'LIVE';
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-64px)]">
+    <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
 
       {/* 2026-05-27 — Top toolbar + mode tabs MERGED into one row.
           Operator: "what is stream overlay, score feed do? if we
@@ -614,7 +614,7 @@ function RunMode({
   };
 
   return (
-    <div className="flex flex-col flex-1">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* 2026-05-27 — Single pane of glass. Interactive scoreboard
           first (full controls baked in: scores, clock, segment, shot
           clock), then ribbon preview below it. Operator: "don't put
@@ -1088,15 +1088,14 @@ function RunRibbonPreview({ gameId }: { gameId: string }) {
       {/* 2026-05-27 — Ribbon stretches full viewport width. Operator:
           "make the ribbon stretch full screen when i have my window
           maximized…the more i can see the more it looks like the real
-          ribbon". Dropped the 120px maxHeight cap and the slim px-3
-          wrapper-padding so the iframe runs edge-to-edge of the
-          viewport. Height is driven by the 7.5:1 aspect ratio, capped
-          at 220px so a maximized 4K window doesn't make the ribbon
-          dominate the page — but on a normal 1280–1920-wide laptop
-          screen the ribbon now reads at native LED proportions
-          (~170–256px tall, full width). */}
+          ribbon". Edge-to-edge of the viewport (negative margins pull
+          past the wrapper padding). Height is driven by the 7.5:1
+          aspect ratio but capped at 220px so the bars below stay
+          pinned to the viewport. `flex-shrink` lets the preview
+          compress on smaller windows so the home/away/celebrate rows
+          never get pushed below the fold. */}
       <div
-        className="bg-black overflow-hidden -mx-3 sm:-mx-3"
+        className="bg-black overflow-hidden -mx-3 sm:-mx-3 shrink"
         style={{ aspectRatio: '7.5 / 1', maxHeight: '220px' }}
       >
         <iframe
