@@ -2,9 +2,9 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { appConfirm } from '@/components/ui/app-dialog';
-import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, FolderInput, ChevronRight, Pencil, Home, MoreVertical, Check, Trash, AlertCircle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, FolderInput, ChevronRight, Pencil, Home, MoreVertical, Check, Trash, AlertCircle, RefreshCw, ChevronDown, ChevronUp, Sparkles, Loader2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder, useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset } from '@/hooks/use-api';
+import { useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder, useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset, useGenerateAltText, useUpdateAltText } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { clog } from '@/lib/client-logger';
 import { FolderPicker } from '@/components/assets/FolderPicker';
@@ -162,6 +162,18 @@ export default function AssetsPage() {
   const renameFolder = useRenameAssetFolder();
   const deleteFolderMut = useDeleteAssetFolder();
   const moveAsset = useMoveAsset();
+  // Audit P1-2 (2026-05-28) — AI alt-text generator + manual override.
+  const generateAltText = useGenerateAltText();
+  const updateAltText = useUpdateAltText();
+  // Local edit buffer for the alt-text field — keeps typing snappy
+  // without re-running the parent's mutation on every keystroke.
+  const [altTextDraft, setAltTextDraft] = useState<string>('');
+  const [altTextDirty, setAltTextDirty] = useState(false);
+  // Reset the draft each time the operator opens a different asset.
+  useEffect(() => {
+    setAltTextDraft(selectedAsset?.altText ?? '');
+    setAltTextDirty(false);
+  }, [selectedAsset?.id, selectedAsset?.altText]);
 
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
 
@@ -1235,6 +1247,109 @@ export default function AssetsPage() {
                   )}
                 </div>
               </div>
+
+              {/* Alt text — Audit P1-2 (2026-05-28).
+                  Only for image assets. Auto-populated by AI at upload
+                  time; operator can edit or regenerate from here.
+                  Screen readers read this when the image is rendered;
+                  also indexed for search-within-library. */}
+              {(selectedAsset.mimeType || '').startsWith('image/') && (
+                <div className="bg-slate-50 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Alt text</span>
+                    <span className={`text-[10px] font-bold ${altTextDraft.length > 125 ? 'text-amber-600' : 'text-slate-400'}`}>
+                      {altTextDraft.length}/160
+                    </span>
+                  </div>
+                  <textarea
+                    value={altTextDraft}
+                    onChange={(e) => {
+                      const v = e.target.value.slice(0, 160);
+                      setAltTextDraft(v);
+                      setAltTextDirty(v !== (selectedAsset.altText ?? ''));
+                    }}
+                    placeholder={selectedAsset.altText === null || selectedAsset.altText === undefined ? 'No alt text yet. Click ✨ Generate to use AI, or type a description.' : ''}
+                    disabled={isViewer}
+                    rows={2}
+                    maxLength={160}
+                    className="w-full text-xs px-2 py-1.5 bg-white border border-slate-200 rounded text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const result = await generateAltText.mutateAsync(selectedAsset.id);
+                          setAltTextDraft(result.altText);
+                          setAltTextDirty(false);
+                          setSelectedAsset({ ...selectedAsset, altText: result.altText });
+                        } catch (e: any) {
+                          // Surface structured errors clearly so the
+                          // operator knows whether to add credit or
+                          // configure an AI key. apiFetch wraps the
+                          // HttpException body as `err.code` + `err.body`
+                          // (see api-client.ts audit-W8).
+                          const code = e?.code;
+                          if (code === 'AI_QUOTA_EXHAUSTED') {
+                            await appConfirm({
+                              title: 'AI quota exhausted',
+                              message: e?.body?.message || e?.message || 'Add credit to your AI provider account and try again.',
+                              tone: 'warn',
+                              confirmLabel: 'OK',
+                            });
+                          } else if (code === 'AI_ALT_TEXT_UNAVAILABLE') {
+                            await appConfirm({
+                              title: 'AI not configured',
+                              message: 'Configure an AI provider key in Settings → AI provider to enable alt-text generation.',
+                              tone: 'warn',
+                              confirmLabel: 'OK',
+                            });
+                          } else {
+                            clog.error('upload', 'alt-text generate failed', { msg: e?.message });
+                          }
+                        }
+                      }}
+                      disabled={isViewer || generateAltText.isPending}
+                      title={isViewer ? 'Read-only — viewer role' : 'Generate alt text from this image using AI'}
+                      className="flex-1 px-2 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold rounded flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {generateAltText.isPending ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Generating…
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3 h-3" />
+                          {selectedAsset.altText ? 'Regenerate' : 'Generate alt text'}
+                        </>
+                      )}
+                    </button>
+                    {altTextDirty && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const next = altTextDraft.trim() === '' ? null : altTextDraft.trim();
+                            await updateAltText.mutateAsync({ id: selectedAsset.id, altText: next });
+                            setSelectedAsset({ ...selectedAsset, altText: next });
+                            setAltTextDirty(false);
+                          } catch (e: any) {
+                            clog.error('upload', 'alt-text save failed', { msg: e?.message });
+                          }
+                        }}
+                        disabled={isViewer || updateAltText.isPending}
+                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-bold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Save
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    Screen-reader description. Keep it under 125 characters and skip "image of" — just describe the content.
+                  </p>
+                </div>
+              )}
 
               {/* Actions */}
               <div className="flex gap-2 pt-2">

@@ -663,6 +663,64 @@ export function useDeleteAsset() {
   });
 }
 
+/**
+ * Audit P1-2 (2026-05-28) — operator-triggered alt-text regeneration.
+ * The upload completion path already kicks off alt-text generation in
+ * the background; this hook is for the "Generate alt text" button on
+ * the asset detail panel when the background job failed or the
+ * operator wants a different description.
+ *
+ * Returns the new altText + provider metadata. Surfaces structured
+ * errors (out of credit / no AI configured) so the FE can branch on
+ * the codes.
+ */
+export function useGenerateAltText() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<{
+        id: string;
+        altText: string;
+        provider: 'openai' | 'anthropic';
+        model: string;
+        estCostUsd: number;
+        asset: any;
+      }>(`/assets/${id}/generate-alt-text`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+  });
+}
+
+/**
+ * Audit P1-2 (2026-05-28) — operator override of alt-text. Pass
+ * `altText: null` (or '') to clear; anything longer than 160 chars is
+ * rejected server-side.
+ */
+export function useUpdateAltText() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, altText }: { id: string; altText: string | null }) =>
+      apiFetch(`/assets/${id}/alt-text`, {
+        method: 'PUT',
+        body: JSON.stringify({ altText }),
+      }),
+    onMutate: async ({ id, altText }) => {
+      await qc.cancelQueries({ queryKey: ['assets'] });
+      const prev = qc.getQueryData<any>(['assets']);
+      qc.setQueryData<any>(['assets'], (old: any) => {
+        const apply = (a: any) => (a?.id === id ? { ...a, altText } : a);
+        if (Array.isArray(old)) return old.map(apply);
+        if (Array.isArray(old?.assets)) return { ...old, assets: old.assets.map(apply) };
+        return old;
+      });
+      return { prev };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['assets'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+  });
+}
+
 export function useMoveAsset() {
   const qc = useQueryClient();
   return useMutation({

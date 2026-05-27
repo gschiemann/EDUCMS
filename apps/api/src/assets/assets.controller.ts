@@ -18,6 +18,7 @@ import {
 } from '../storage/media-optimization.service';
 import { EmailService } from '../email/email.service';
 import { Logger } from '@nestjs/common';
+import { AiAltTextService, AiAltTextQuotaError } from '../ai/ai-alt-text.service';
 
 // Browser-playable formats only. Cross-browser support is non-negotiable
 // for digital signage (CLAUDE.md "Cross-browser support" section): every
@@ -139,7 +140,71 @@ export class AssetsController {
     private readonly storage: SupabaseStorageService,
     private readonly email: EmailService,
     private readonly mediaOpt: MediaOptimizationService,
+    private readonly aiAltText: AiAltTextService,
   ) {}
+
+  /**
+   * Audit P1-2 (2026-05-28) — fire-and-forget alt-text generation.
+   * Latency budget for an upload is 0ms added; we kick off the AI
+   * call in the background and persist the result on success.
+   *
+   * Internal helper rather than an inline `void this.ai...` so the
+   * shape can be unit-tested and the failure-mode logging is in one
+   * place (instead of every call site). Buffer is the OPTIMIZED buffer
+   * — smaller payload = faster + cheaper provider call.
+   *
+   * `imageBuffer` and the surrounding lookups happen lazily: the
+   * upload caller passes the post-optimization bytes in directly so
+   * we don't make a second round trip to storage.
+   */
+  private kickOffAltTextGeneration(args: {
+    assetId: string;
+    tenantId: string;
+    userId: string;
+    imageBuffer: Buffer;
+    mimeType: string;
+    originalName: string | null;
+  }): void {
+    // Skip non-images at the boundary so the AiAltTextService isn't
+    // queried for video / audio / pdf uploads. Saves a Prisma read
+    // (provider key lookup) on every non-image upload.
+    if (!(args.mimeType || '').toLowerCase().startsWith('image/')) return;
+
+    // Animated GIFs are uploaded as-is (the optimizer skips them);
+    // alt-text still makes sense for the first frame, so don't gate.
+
+    void this.aiAltText
+      .generateImageAltText({
+        tenantId: args.tenantId,
+        assetId: args.assetId,
+        userId: args.userId,
+        imageBuffer: args.imageBuffer,
+        mimeType: args.mimeType,
+        contextHint: args.originalName || undefined,
+      })
+      .then(async (res) => {
+        if (!res) return; // service handled audit logging + skip reason
+        try {
+          await this.prisma.client.asset.update({
+            where: { id: args.assetId },
+            data: { altText: res.altText } as any,
+          });
+        } catch (e: any) {
+          this.logger.warn(
+            `[assets] alt-text persist failed for ${args.assetId}: ${e?.message ?? e}`,
+          );
+        }
+      })
+      .catch((err) => {
+        // Quota errors are normal background outcome (operator
+        // ran out of credit) — don't crash; service already logged
+        // an audit row.
+        if (err instanceof AiAltTextQuotaError) return;
+        this.logger.warn(
+          `[assets] alt-text generation threw for ${args.assetId}: ${err?.message ?? err}`,
+        );
+      });
+  }
 
   private appPublicUrl(): string {
     return process.env.APP_PUBLIC_URL || 'http://localhost:3000';
@@ -625,10 +690,19 @@ export class AssetsController {
     //
     // Defensive: on ANY failure we keep the original. Never break the
     // upload over a best-effort compression step.
+    //
+    // Audit P1-2 (2026-05-28) — `altTextBuffer` captures the bytes we
+    // want to send to the AI vision model. The optimized buffer is
+    // preferred (smaller payload = cheaper + faster call); falls back
+    // to the original raw buffer if optimization didn't happen / had
+    // no gain.
+    let altTextBuffer: Buffer | null = null;
+    let altTextMime: string = realMime;
     if (this.mediaOpt.isUploadOptimizableImage(realMime)) {
       try {
         const original = await this.storage.download(storagePath);
         if (original) {
+          altTextBuffer = original; // fallback if optimization skipped
           const origExt = extname(storagePath) || '';
           const opt = await this.mediaOpt.optimizeImageForUpload(original, realMime, origExt);
           const baseMeta: Record<string, unknown> = {
@@ -659,6 +733,10 @@ export class AssetsController {
               asset.fileUrl = updated.fileUrl;
               asset.mimeType = updated.mimeType;
               asset.fileSize = updated.fileSize;
+              // Prefer the optimized buffer for alt-text — smaller +
+              // mime now matches what the model will receive.
+              altTextBuffer = opt.buffer;
+              altTextMime = opt.mimeType;
             } catch (innerErr: any) {
               // If the re-upload failed, the original is still in place
               // and the Asset row points at it. We're back to "raw served
@@ -704,6 +782,33 @@ export class AssetsController {
       }
     }
 
+    // Audit P1-2 (2026-05-28) — fire-and-forget alt-text generation.
+    // For images we MAY already have the buffer from the optimizer
+    // path above; for non-optimizable images (GIF, animated) we'd need
+    // a fresh download — gated below by `altTextBuffer != null`.
+    // Animated GIFs fall through here; downloading them just to feed
+    // the model their first frame is cheap and worth the visibility.
+    if ((realMime || '').toLowerCase().startsWith('image/')) {
+      if (!altTextBuffer) {
+        // Animated GIF / format not routed through the optimizer.
+        // Best-effort fetch — we don't care if it fails, alt-text is
+        // never blocking.
+        try {
+          altTextBuffer = await this.storage.download(storagePath);
+        } catch { /* swallow — skip alt-text */ }
+      }
+      if (altTextBuffer) {
+        this.kickOffAltTextGeneration({
+          assetId: asset.id,
+          tenantId: req.user.tenantId,
+          userId: req.user.id,
+          imageBuffer: altTextBuffer,
+          mimeType: altTextMime,
+          originalName: asset.originalName,
+        });
+      }
+    }
+
     if (asset.status === 'PENDING_APPROVAL') {
       this.notifyAdminsOfPendingReview(req.user.tenantId, asset);
     }
@@ -716,6 +821,7 @@ export class AssetsController {
       fileHash: asset.fileHash,
       originalName: asset.originalName,
       status: asset.status,
+      altText: (asset as any).altText ?? null,
     };
   }
 
@@ -871,6 +977,18 @@ export class AssetsController {
       this.notifyAdminsOfPendingReview(req.user.tenantId, asset);
     }
 
+    // Audit P1-2 (2026-05-28) — fire-and-forget alt-text generation.
+    // We're feeding the OPTIMIZED bytes (`uploadBuf`) so the vision
+    // call is cheap + fast. Non-image uploads no-op inside the helper.
+    this.kickOffAltTextGeneration({
+      assetId: asset.id,
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+      imageBuffer: uploadBuf,
+      mimeType: uploadMime,
+      originalName: file.originalname || null,
+    });
+
     return {
       id: asset.id,
       fileUrl: asset.fileUrl,
@@ -879,7 +997,149 @@ export class AssetsController {
       fileHash: asset.fileHash,
       originalName: asset.originalName,
       status: asset.status,
+      altText: (asset as any).altText ?? null,
     };
+  }
+
+  /**
+   * Audit P1-2 (2026-05-28) — operator-triggered alt-text (re)generation.
+   * Re-fetches the asset's bytes from storage, runs the AI vision call,
+   * and persists the result on success. Surfaces structured errors so
+   * the FE can show "out of credit" vs "no AI configured" distinctly.
+   *
+   * Used by the asset detail panel's "Generate alt text" button. Also
+   * by the upload flow whenever the background job failed and the
+   * operator wants to retry without re-uploading.
+   *
+   * RBAC: CONTRIBUTOR+ — same as upload; below that role can't run AI
+   * to begin with.
+   */
+  @Post(':id/generate-alt-text')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async generateAltText(@Request() req: any, @Param('id') id: string) {
+    const asset = await this.prisma.client.asset.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+    });
+    if (!asset) throw new HttpException('Asset not found', HttpStatus.NOT_FOUND);
+    if (!(asset.mimeType || '').toLowerCase().startsWith('image/')) {
+      throw new HttpException(
+        'Alt-text generation is only available for image assets.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const storagePath = this.storage.extractPath(asset.fileUrl);
+    if (!storagePath) {
+      throw new HttpException(
+        'Cannot regenerate alt-text for external URL assets.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const buffer = await this.storage.download(storagePath);
+    if (!buffer) {
+      throw new HttpException(
+        'Asset file could not be retrieved from storage.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    try {
+      const result = await this.aiAltText.generateImageAltText({
+        tenantId: req.user.tenantId,
+        assetId: asset.id,
+        userId: req.user.id,
+        imageBuffer: buffer,
+        mimeType: asset.mimeType,
+        contextHint: asset.originalName || undefined,
+      });
+      if (!result) {
+        throw new HttpException(
+          {
+            code: 'AI_ALT_TEXT_UNAVAILABLE',
+            message:
+              'Alt-text generation could not run. Make sure your AI provider key is configured in Settings → AI provider.',
+          },
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
+      const updated = await this.prisma.client.asset.update({
+        where: { id: asset.id },
+        data: { altText: result.altText } as any,
+      });
+      return {
+        id: asset.id,
+        altText: result.altText,
+        provider: result.provider,
+        model: result.model,
+        estCostUsd: result.estCostUsd,
+        asset: updated,
+      };
+    } catch (e: any) {
+      if (e instanceof AiAltTextQuotaError) {
+        throw new HttpException(
+          {
+            code: 'AI_QUOTA_EXHAUSTED',
+            provider: e.provider,
+            message: e.message,
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+      if (e instanceof HttpException) throw e;
+      throw new HttpException(
+        `Alt-text generation failed: ${e?.message ?? 'unknown error'}`,
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+  }
+
+  /**
+   * Audit P1-2 (2026-05-28) — operator can manually edit / clear
+   * alt-text. Keeps the column under operator control even when the
+   * AI generated value is wrong or culturally insensitive.
+   *
+   * Empty string or null clears the field. Anything longer than 160
+   * chars is rejected (matches the Prisma column cap); the FE should
+   * surface a character count so the operator doesn't lose work.
+   */
+  @Put(':id/alt-text')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async updateAltText(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { altText?: string | null } = {},
+  ) {
+    const asset = await this.prisma.client.asset.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+    });
+    if (!asset) throw new HttpException('Asset not found', HttpStatus.NOT_FOUND);
+    const raw = body.altText;
+    let next: string | null;
+    if (raw === null || raw === undefined || String(raw).trim() === '') {
+      next = null;
+    } else {
+      const trimmed = String(raw).trim();
+      if (trimmed.length > 160) {
+        throw new HttpException(
+          'Alt-text is too long. Keep it under 160 characters (screen-reader best practice is ≤125).',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      next = trimmed;
+    }
+    const updated = await this.prisma.client.asset.update({
+      where: { id: asset.id },
+      data: { altText: next } as any,
+    });
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId: req.user.tenantId,
+        userId: req.user.id,
+        action: 'ASSET_ALT_TEXT_EDITED',
+        targetType: 'asset',
+        targetId: asset.id,
+        details: JSON.stringify({ length: next?.length ?? 0, cleared: next === null }),
+      },
+    }).catch(() => {});
+    return updated;
   }
 
   /**

@@ -796,6 +796,22 @@ model Asset {
   // (rarely) to diagnose "why is this asset 4 MB?" or to drive a future
   // "X GB of images saved this month" dashboard tile.
   processingMeta   Json?          @map("processing_meta")
+  // AI-generated (or operator-edited) image description. Populated
+  // asynchronously after a successful image upload: assets.controller
+  // kicks off AiAltTextService.generateImageAltText in the background
+  // and persists the returned text here, capped at 160 chars (WCAG /
+  // screen-reader best practice is ≤125; the column gives headroom for
+  // longer operator overrides without a second migration).
+  //
+  // Population is fire-and-forget — a failed AI call leaves this NULL
+  // and the upload still succeeds. Operators can manually trigger a
+  // re-generation via POST /api/v1/assets/:id/generate-alt-text, or
+  // edit the field by hand in the asset detail panel.
+  //
+  // Surfaces consuming this field: WidgetRenderer's <img alt=…>
+  // emission, the asset library's accessibility audit, future SEO /
+  // search index. Nullable + additive — every existing row stays NULL.
+  altText          String?        @map("alt_text") @db.VarChar(160)
   uploadedBy       User           @relation(fields: [uploadedByUserId], references: [id])
   tenant           Tenant         @relation(fields: [tenantId], references: [id])
   folder           AssetFolder?   @relation(fields: [folderId], references: [id])
