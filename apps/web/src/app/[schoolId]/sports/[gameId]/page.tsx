@@ -627,66 +627,59 @@ function RunMode({
   };
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* 2026-05-27 — Single pane of glass. Interactive scoreboard
-          first (full controls baked in: scores, clock, segment, shot
-          clock), then ribbon preview below it. Operator: "don't put
-          the ribbon and the scoreboard on the same row…make the
-          scoreboard first and way more interactive…make it like
-          your controlling the game right from the scoreboard
-          itself…we will need to port this all to a mobile version".
-          The scoreboard tiles use a 3-column grid that collapses
-          to 1 column on mobile (sm: breakpoint). */}
-      <RunInteractiveScoreboard
-        g={g}
-        def={def}
-        liveMs={liveMs}
-        homeColor={homeColor}
-        awayColor={awayColor}
-        ctl={ctl}
-      />
-      <RunRibbonPreview gameId={gameId} />
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+      {/* 2026-05-27 — Single pane of glass. Top section (scoreboard +
+          ribbon preview) is a flex-1 overflow-y-auto block: it'll
+          scroll WITHIN ITSELF on shorter viewports so the bottom
+          home/away/celebrate rows are ALWAYS pinned to the viewport
+          bottom and never pushed off-screen. Operator: "when i go full
+          screen the home away rows dont stay pinned ot bottom of the
+          screen and makes me scroll, that defeats the purpose".
+          The previous attempt used a flex-1 spacer between scoreboard
+          and rosters, but on smaller viewports the spacer collapsed to
+          0 (min-h-0) and the rosters got clipped past the page wrapper.
+          With the inner scroll region the rosters are real DOM siblings
+          of the scroll region — the flex column then pins them at the
+          bottom regardless of viewport height. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <RunInteractiveScoreboard
+          g={g}
+          def={def}
+          liveMs={liveMs}
+          homeColor={homeColor}
+          awayColor={awayColor}
+          ctl={ctl}
+        />
+        <RunRibbonPreview gameId={gameId} />
+      </div>
 
-      {/* 2026-05-27 — TeamZone DROPPED. Operator: "you still say the
-          team names again down here…move the timeouts up into the
-          scoreboard and the other buttons". Team identity now lives
-          ONLY in the scoreboard tile up top. Sport-specific stats
-          (water polo: shots / exclusions / timeouts) are folded into
-          each ScoreTile so the operator never has to scroll past the
-          scoreboard to nudge a timeout. */}
-      <div className="flex-1 min-h-0" />
+      {/* 2026-05-27 — INLINE highlights + cues bars. Truly pinned to the
+          bottom of the viewport (shrink-0 + below the scroll region).
+          Operator: "the dumb player names menu is still not pinned to
+          bottom of the ribbon preview...we need to fix that already". */}
+      <div className="shrink-0">
+        <RunInlineRosterBar gameId={gameId} g={g} def={def} ctl={ctl} homeColor={homeColor} awayColor={awayColor} />
+        <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
 
-      {/* 2026-05-27 — INLINE highlights + cues bars.
-          Operator: "main page forces me to scroll down to the cueus,
-          and highlight buttons when there is a ton of space…i need to
-          be able to quickly click from one player to another during
-          the intros". Pulled the player tiles + cue tiles out of their
-          popups; they live inline now above the clock tray so they're
-          one tap away and the bottom of the page is no longer a
-          scroll-to dead zone. Toggle behavior on highlights — clicking
-          the on-air player clears them; clicking another switches. */}
-      <RunInlineRosterBar gameId={gameId} g={g} def={def} ctl={ctl} homeColor={homeColor} awayColor={awayColor} />
-      <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
-
-      {/* 2026-05-27 — bottom control tray only renders when the sport
-          needs an extra control surface (baseball ball/strike, football
-          play clock). Most sports — water polo, basketball, soccer,
-          volleyball — have all their controls in the scoreboard tile +
-          roster popover now, so this tray collapses entirely and the
-          page is shorter. */}
-      {(isBaseballSoftball || def.key === 'football') && (
-        <div className="flex items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
-          {isBaseballSoftball && (
-            <BaseTrayBall stats={stats} onStat={(s) => ctl.stats.mutate({ stats: s })} />
-          )}
-          {def.key === 'football' && (
-            <PlayClockBtn
-              stats={stats}
-              onAction={(a, v) => ctl.playClock.mutate({ action: a, value: v })}
-            />
-          )}
-        </div>
-      )}
+        {/* 2026-05-27 — bottom control tray only renders when the sport
+            needs an extra control surface (baseball ball/strike, football
+            play clock). Most sports — water polo, basketball, soccer,
+            volleyball — have all their controls in the scoreboard tile +
+            roster popover now, so this tray collapses entirely. */}
+        {(isBaseballSoftball || def.key === 'football') && (
+          <div className="flex items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
+            {isBaseballSoftball && (
+              <BaseTrayBall stats={stats} onStat={(s) => ctl.stats.mutate({ stats: s })} />
+            )}
+            {def.key === 'football' && (
+              <PlayClockBtn
+                stats={stats}
+                onAction={(a, v) => ctl.playClock.mutate({ action: a, value: v })}
+              />
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

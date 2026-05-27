@@ -1322,13 +1322,30 @@ export class SportsService {
     // game clock freezes the whole penalty box; a start resumes it.
     // Re-anchor every penalty to the new running state (skipped when
     // the box is empty, so non-penalty sports never touch stats).
+    //
+    // 2026-05-27 — Shot clock ALSO slaves to the game clock. Only on
+    // start/stop transitions (not set/reset/nudge — those edit the
+    // game clock alone without touching the possession's shot clock).
+    // Both syncs read from `game.stats` and chain: the penalty sync
+    // may return a fresh stats object, then the shot-clock sync
+    // mutates that same object so the final UPDATE writes ONE merged
+    // stats row.
     const data: Record<string, unknown> = {
       clockMs,
       clockRunning,
       clockUpdatedAt: now,
     };
-    const syncedStats = this.syncPenaltiesToClock(game.stats, clockRunning, now);
-    if (syncedStats) data.stats = syncedStats as any;
+    const clockMutated = action === 'start' || action === 'pause';
+    let mergedStats = this.syncPenaltiesToClock(game.stats, clockRunning, now);
+    const sourceStats = mergedStats || game.stats;
+    const shotStats = this.syncShotClockToGameClock(
+      sourceStats,
+      clockMutated,
+      clockRunning,
+      now,
+    );
+    if (shotStats) mergedStats = shotStats;
+    if (mergedStats) data.stats = mergedStats as any;
 
     const updated = await this.prisma.client.game.update({ where: { id }, data });
     await this.record(id, 'CLOCK', { action, clockMs, clockRunning });
@@ -1489,6 +1506,69 @@ export class SportsService {
    * no penalties — so callers can skip the stats write entirely for
    * the 14 sports with no penalty box.
    */
+  /**
+   * 2026-05-27 — Slave the shot clock to the game clock.
+   * Operator: "when i stop and start the time clock it should auto
+   * stop the clock shot and they need to be exact, the clock is so
+   * important it needs to be instant because every second matters in
+   * sports games".
+   *
+   * Same pattern as syncPenaltiesToClock. Returns a stats patch (or
+   * null when no shot clock is configured), called from clockAction()
+   * inside the same DB transaction so the two clocks share a single
+   * anchor timestamp — zero drift between them.
+   *
+   * Behavior:
+   *   - Game.start → shot clock runs at its current value (resuming).
+   *   - Game.stop  → shot clock freezes at its current value.
+   *   - set / reset / fine-nudge don't touch the shot clock — those
+   *     are operator-precise edits to the game clock alone (a 1-sec
+   *     correction on the game clock shouldn't burn a possession's
+   *     shot clock).
+   *   - When the shot clock isn't configured (len === 0 / off), this
+   *     no-ops cleanly.
+   *
+   * `clockMutated` is true only for start/stop transitions; false for
+   * set/reset where the running state didn't flip. Callers pass that
+   * in so this helper doesn't have to second-guess the action.
+   */
+  private syncShotClockToGameClock(
+    rawStats: unknown,
+    clockMutated: boolean,
+    running: boolean,
+    now: Date,
+  ): Record<string, unknown> | null {
+    if (!clockMutated) return null;
+    if (!rawStats || typeof rawStats !== 'object') return null;
+    const stats = { ...(rawStats as Record<string, unknown>) };
+    const prev = (stats.shotClock && typeof stats.shotClock === 'object')
+      ? (stats.shotClock as Record<string, unknown>)
+      : null;
+    if (!prev) return null;
+    const len = Number(prev.len) || 0;
+    if (len <= 0) return null; // shot clock OFF — nothing to slave
+    // Project current live ms from the prior anchor (same math as
+    // setShotClock + the UI projection in RunShotClockMini).
+    let ms = Math.max(0, Number(prev.ms) || 0);
+    const prevRunning = !!prev.running;
+    if (prevRunning) {
+      const at = new Date(String(prev.at || '')).getTime();
+      if (Number.isFinite(at)) {
+        ms = Math.max(0, ms - (now.getTime() - at));
+      }
+    }
+    // Re-anchor: same `at` as the game clock's write so projections
+    // on either clock from this point forward share a single source
+    // of truth.
+    stats.shotClock = {
+      len,
+      ms,
+      at: now.toISOString(),
+      running,
+    };
+    return stats;
+  }
+
   private syncPenaltiesToClock(
     rawStats: unknown,
     running: boolean,
