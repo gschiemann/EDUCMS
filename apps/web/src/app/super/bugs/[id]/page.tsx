@@ -257,15 +257,14 @@ export default function SuperBugDetailPage() {
           </div>
           {!ai || aiError ? (
             <div className="p-8 text-center">
-              {isAnalyzing ? (
-                <>
-                  <Loader2 className="w-6 h-6 mx-auto animate-spin text-slate-400 mb-3" />
-                  <p className="text-sm font-bold text-slate-700">Analyzing bug…</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Polling every 5s. The AI is reading the capture bundle + source tree.
-                  </p>
-                </>
-              ) : aiError ? (
+              {/* 2026-05-27 — precedence matters here.
+                  `isAnalyzing` is true when status==='NEW' OR 'ANALYZING',
+                  which OVERLAPS with the case where the analyzer already
+                  ran and wrote an error shape (status reverts to NEW on
+                  failure). Check aiError FIRST so the operator sees the
+                  "AI not configured" notice + Claude review panel,
+                  NOT a forever spinner. */}
+              {aiError ? (
                 // 2026-05-27 — the analyzer wrote an error shape (e.g.
                 // {kind:'unconfigured', error:'AI not configured for this
                 // deploy (ANTHROPIC_API_KEY unset)'}) instead of a full
@@ -307,6 +306,19 @@ export default function SuperBugDetailPage() {
                       clipboard. Paste into Claude chat → root cause +
                       code fix + commit + push, all in one turn. */}
                   <ClaudeReviewPanel bug={bug} />
+                </>
+              ) : isAnalyzing ? (
+                // No aiError + no valid ai + still in NEW/ANALYZING =
+                // the analyzer hasn't run yet (race between POST + the
+                // fire-and-forget analyzer). Show the spinner; the
+                // page polls every 5s while ANALYZING so the right
+                // state lands automatically once the analyzer writes.
+                <>
+                  <Loader2 className="w-6 h-6 mx-auto animate-spin text-slate-400 mb-3" />
+                  <p className="text-sm font-bold text-slate-700">Analyzing bug…</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Polling every 5s. Auto-analyzer is reading the capture bundle.
+                  </p>
                 </>
               ) : (
                 <p className="text-sm text-slate-500">No AI analysis available for this bug.</p>
