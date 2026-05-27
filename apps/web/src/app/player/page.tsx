@@ -1443,6 +1443,15 @@ function PlayerPage() {
   // full-canvas render).
   const [manifestRepeats, setManifestRepeats] = useState<number>(1);
 
+  // 2026-05-27 — operator-selected hardware model (Goodview EP6N, ECBox,
+  // Taurus, Pi5, etc.) from /screens/:id/manifest. Drives hardware-
+  // specific UI gating in KioskSplash (e.g. the "LED canvas not set"
+  // banner only appears on LED-controller hardware; LCD-direct boxes
+  // like the EP6N don't need it). null = legacy / unset (safe default
+  // — show the LED banner). Older APKs / manifests without the field
+  // leave this null, identical to today.
+  const [manifestHardwareModel, setManifestHardwareModel] = useState<string | null>(null);
+
   // 2026-05-27 — EP6N dual-RS232 + GPIO wiring. The manifest's
   // `wiring` field comes from `Screen.config.wiring`. CtsBridge reads
   // this prop and opens the right number of native serial ports with
@@ -2674,6 +2683,16 @@ function PlayerPage() {
         } catch { /* bridge unavailable — CSS fallback effect handles it */ }
         setManifestOrientation(orient);
       }
+
+      // 2026-05-27 — hardware model from manifest. Drives the KioskSplash
+      // LED-banner gate (LCD-direct boxes like the EP6N suppress it).
+      // Null on legacy installs / older API; KioskSplash treats null as
+      // "show banner" (safe default).
+      const hwm =
+        typeof manifest.hardwareModel === 'string' && manifest.hardwareModel.trim()
+          ? manifest.hardwareModel.trim()
+          : null;
+      setManifestHardwareModel(hwm);
 
       // 2026-05-26 — LED canvas override from manifest. Operator sets
       // canvasW/canvasH on the dashboard /screens UI per-screen; the
@@ -4826,6 +4845,7 @@ function PlayerPage() {
           otaProgress={otaProgress}
           latestApkVersion={latestApkVersion}
           onInstallUpdate={handleInstallUpdate}
+          hardwareModel={manifestHardwareModel}
         />
         {otaOverlay}
         {connectivityToast}
@@ -4849,6 +4869,7 @@ function PlayerPage() {
           otaProgress={otaProgress}
           latestApkVersion={latestApkVersion}
           onInstallUpdate={handleInstallUpdate}
+          hardwareModel={manifestHardwareModel}
           pairDeepLinkUrl={
             typeof window !== 'undefined' && pairingCode
               ? `${window.location.origin}/pair?code=${encodeURIComponent(pairingCode)}`

@@ -153,6 +153,15 @@ export interface KioskSplashProps {
   /** Click handler — fires immediately on button tap so the kiosk
    *  visibly rotates during setup. */
   onOrientationChange?: (value: 'LANDSCAPE' | 'PORTRAIT' | 'AUTO') => void;
+
+  /** 2026-05-27 — Operator's chosen hardware model from the manifest
+   *  (`hardwareModel` field on `Screen`). Drives hardware-specific UI
+   *  gating: the "LED canvas not set" prompt only appears on hardware
+   *  that actually drives daisy-chained LED panels. On LCD-driven
+   *  boxes (goodview-ep6n, pi5, generic-android, web) the prompt is
+   *  noise — they render at the WebView's native resolution.
+   *  Null / 'unknown' = show the prompt (safe default — legacy state). */
+  hardwareModel?: string | null;
 }
 
 export function KioskSplash({
@@ -170,6 +179,7 @@ export function KioskSplash({
   onInstallUpdate,
   orientation,
   onOrientationChange,
+  hardwareModel,
 }: KioskSplashProps) {
   const activeOrientation = orientation || 'LANDSCAPE';
   const displayName = brandName && brandName.trim() ? brandName : 'VenueOS';
@@ -459,7 +469,7 @@ export function KioskSplash({
              diagonal "VENUEOS DEBUG" wordmark so the photo is
              unambiguously the debug overlay (not stale screen
              content). */}
-      <KioskDiagnostics mode={mode} />
+      <KioskDiagnostics mode={mode} hardwareModel={hardwareModel} />
     </div>
   );
 }
@@ -479,11 +489,44 @@ export function KioskSplash({
  * Chromium-83 safe: no aspect-ratio, no :where(), no inset shorthand,
  * no backdrop-filter. Inline styles to bypass the splash CSS scaling.
  */
-function KioskDiagnostics({ mode }: { mode: Mode }) {
+function KioskDiagnostics({
+  mode,
+  hardwareModel,
+}: {
+  mode: Mode;
+  /** 2026-05-27 — when set to an LCD-driven model the "LED canvas not
+   *  set" banner is suppressed (irrelevant for non-LED hardware). When
+   *  null / 'unknown' the banner shows (legacy / safe default). */
+  hardwareModel?: string | null;
+}) {
   const [debugOn, setDebugOn] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [setupW, setSetupW] = useState<string>('');
   const [setupH, setSetupH] = useState<string>('');
+  // 2026-05-27 — Operator-dismissible LED banner. Stored under
+  // edu_dismiss_led_banner so a one-time tap survives reloads.
+  const [bannerDismissed, setBannerDismissed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem('edu_dismiss_led_banner') === '1';
+    } catch {
+      return false;
+    }
+  });
+  // 2026-05-27 — Hardware models whose viewport IS the display (LCD /
+  // standard HDMI). The "LED canvas not set" banner is meaningless on
+  // these — they render at native panel resolution, no daisy-chain
+  // math required. Models where the banner IS meaningful: novastar-
+  // taurus (LED controller), goodview-ecbox3576 (legacy LED ribbon
+  // install path), unknown (default — show until operator picks a
+  // hardware model in the dashboard).
+  const lcdHardware = !!hardwareModel && [
+    'goodview-ep6n',
+    'pi5',
+    'generic-android',
+    'web',
+  ].includes(hardwareModel);
+  const showLedBanner = !lcdHardware && !bannerDismissed;
   const [dims, setDims] = useState<{
     vw: number; vh: number; ledW: string; ledH: string; narrow: boolean; cfg: boolean;
   } | null>(null);
@@ -590,21 +633,19 @@ function KioskDiagnostics({ mode }: { mode: Mode }) {
           LED's visible region is smaller than that, splash content
           falls off the edge. This banner tells the operator to run
           "Resize for LED" + how to do it. Pairing/registering only;
-          plays alongside the always-on tiny strip below. */}
-      {!dims.cfg && !setupOpen && (
-        <button
-          type="button"
-          onClick={() => {
-            setSetupOpen(true);
-            if (!setupW) setSetupW('320');
-            if (!setupH) setSetupH('1080');
-          }}
+          plays alongside the always-on tiny strip below.
+          2026-05-27 — Gated on (a) hardware actually drives an LED
+          canvas (not an LCD-direct box like the Goodview EP6N) and
+          (b) operator hasn't dismissed it (X button). */}
+      {!dims.cfg && !setupOpen && showLedBanner && (
+        <div
           style={{
             position: 'fixed',
             top: 8,
             left: 8,
             zIndex: 999997,
-            padding: '8px 12px',
+            display: 'flex',
+            alignItems: 'stretch',
             background: 'rgba(251,146,60,0.97)',
             color: '#1f1300',
             fontSize: 12,
@@ -615,15 +656,64 @@ function KioskDiagnostics({ mode }: { mode: Mode }) {
             fontWeight: 700,
             boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
             border: '2px solid #c2410c',
-            cursor: 'pointer',
-            textAlign: 'left',
           }}
         >
-          ⚠️ LED CANVAS NOT SET<br />
-          <span style={{ fontWeight: 600, fontSize: 11 }}>
-            Tap to set how many panels you have
-          </span>
-        </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSetupOpen(true);
+              if (!setupW) setSetupW('320');
+              if (!setupH) setSetupH('1080');
+            }}
+            style={{
+              padding: '8px 12px',
+              background: 'transparent',
+              color: '#1f1300',
+              fontSize: 12,
+              fontFamily: 'system-ui, sans-serif',
+              lineHeight: 1.3,
+              border: 'none',
+              fontWeight: 700,
+              cursor: 'pointer',
+              textAlign: 'left',
+              flex: 1,
+            }}
+          >
+            ⚠️ LED CANVAS NOT SET<br />
+            <span style={{ fontWeight: 600, fontSize: 11 }}>
+              Tap to set how many panels you have
+            </span>
+          </button>
+          {/* 2026-05-27 — Dismiss button. Operator's screen is an LCD-direct
+              install, the banner doesn't apply, but the hardware model
+              isn't set on the Screen row yet. One tap silences the
+              banner; persists across reloads. The persistent fix is to
+              set the hardware model in dashboard → Screens → this screen. */}
+          <button
+            type="button"
+            aria-label="Dismiss LED canvas banner"
+            onClick={() => {
+              try { localStorage.setItem('edu_dismiss_led_banner', '1'); } catch {}
+              setBannerDismissed(true);
+            }}
+            style={{
+              padding: '8px 10px',
+              background: 'transparent',
+              color: '#1f1300',
+              fontSize: 16,
+              fontWeight: 700,
+              border: 'none',
+              borderLeft: '2px solid rgba(0,0,0,0.18)',
+              cursor: 'pointer',
+              lineHeight: 1,
+              alignSelf: 'stretch',
+              minWidth: 32,
+            }}
+            title="Dismiss — set the hardware model in dashboard to permanently hide"
+          >
+            ×
+          </button>
+        </div>
       )}
 
       {/* Inline canvas-setup form. Opens when the orange banner is

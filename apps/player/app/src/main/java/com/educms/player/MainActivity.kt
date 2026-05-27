@@ -2,9 +2,11 @@ package com.educms.player
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -933,8 +935,43 @@ class MainActivity : ComponentActivity() {
                     // reboot the screen. Calling `finishAffinity()` kills our entire
                     // task stack; Android then shows the device's HOME, which on an
                     // OEM signage box is the vendor's launcher.
+                    //
+                    // 2026-05-27 (operator-report): on EP6N units provisioned with
+                    // the Manager companion as device owner (v1.0.64+ behavior —
+                    // see AndroidManifest.xml comment on KioskHomeAlias), our
+                    // KioskHomeAlias is enabled and pinned as the HOME activity via
+                    // DevicePolicyManager.addPersistentPreferredActivity(). When we
+                    // fire ACTION_MAIN + CATEGORY_HOME, Android resolves HOME to
+                    // US, restarting MainActivity → "exit to launcher takes me
+                    // back to the syncing purple screen". To actually leave the
+                    // player, we MUST disable the alias BEFORE firing HOME so
+                    // Android resolves HOME to the OEM launcher (the next-highest-
+                    // priority HOME activity in the manifest table). PlayerApp's
+                    // onCreate re-enables the alias on next launch — so once the
+                    // operator manually relaunches our app from the OEM home, we
+                    // resume kiosk-home duties without a config trip.
                     PlayerLogger.i("MainActivity", "Exit to device home requested via JS bridge")
                     runOnUiThread {
+                        try {
+                            val pm = packageManager
+                            val aliasComponent = ComponentName(packageName, "$packageName.KioskHomeAlias")
+                            val enabled = pm.getComponentEnabledSetting(aliasComponent)
+                            val isEnabledNow =
+                                enabled == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                            if (isEnabledNow) {
+                                pm.setComponentEnabledSetting(
+                                    aliasComponent,
+                                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                                    PackageManager.DONT_KILL_APP,
+                                )
+                                PlayerLogger.i(
+                                    "MainActivity",
+                                    "KioskHomeAlias disabled before exit — OEM launcher will receive next HOME intent. PlayerApp.onCreate re-enables on next start.",
+                                )
+                            }
+                        } catch (t: Throwable) {
+                            PlayerLogger.w("MainActivity", "Failed to disable KioskHomeAlias before exit", t)
+                        }
                         val homeIntent = Intent(Intent.ACTION_MAIN).apply {
                             addCategory(Intent.CATEGORY_HOME)
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

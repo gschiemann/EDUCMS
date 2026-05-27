@@ -2092,8 +2092,8 @@ export default function ScreensPage() {
               {/* 2026-05-27 — Step 1: hardware selection. Drives the
                   vertical-specific recommendation (EP6N for Sports)
                   and the model-specific I/O upsells (fire-alarm GPIO,
-                  panic button, HDMI broadcast capture, Stream Deck via
-                  RS232 #2). The PairScreenHardwareStep component is
+                  panic button, HDMI broadcast capture, status lamp
+                  output). The PairScreenHardwareStep component is
                   presentational; the parent persists the choice to
                   pairHardwareModel and ships it on the /screens/pair
                   request body. */}

@@ -55,9 +55,16 @@ export type WiringConfig = {
   gpio_out?: { out1?: GpioOutRole; out2?: GpioOutRole };
 };
 
+// 2026-05-27 — Removed "Elgato Stream Deck" from the picker because
+// Stream Deck is a USB HID device (plugs into the operator's laptop /
+// tablet, not the player). It was added by an agent under a confused
+// premise. The 'streamdeck' role *value* is preserved in the schema
+// for forward-compat with any future serial-cue device that ships an
+// ASCII line protocol — CtsBridge already accepts it. The label,
+// however, is no longer "Stream Deck"; if/when we ship that future
+// device, we add it back with the correct label.
 const RS232_OPTIONS: Array<{ value: Rs232Role; label: string }> = [
   { value: 'cts', label: 'CTS Gen 6 console' },
-  { value: 'streamdeck', label: 'Elgato Stream Deck' },
   { value: 'aux', label: 'Aux / debug-only' },
   { value: 'off', label: 'Off (unused)' },
 ];
@@ -182,7 +189,7 @@ export function WiringPanel({ screenId, initialWiring, onSaved }: WiringPanelPro
       {ctsConflict && (
         <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
           Both RS232 ports are wired to CTS. Pick one CTS port and set the
-          other to Stream Deck / Aux / Off.
+          other to Aux or Off.
         </p>
       )}
 

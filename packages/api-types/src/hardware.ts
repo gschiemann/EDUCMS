@@ -234,15 +234,13 @@ export const HARDWARE_IO_UPSELLS: HardwareIoUpsell[] = [
     docHref: '/docs/EP6N_HARDWARE_EVAL.md',
     models: ['goodview-ep6n'],
   },
-  {
-    id: 'stream-deck-rs232',
-    title: 'Add a Stream Deck via RS232 #2',
-    blurb:
-      'Elgato Stream Deck as the physical cue panel — $150 hardware vs. a $3K Daktronics console. Uses RS232 port #2.',
-    configureHref: null,
-    docHref: '/docs/EP6N_HARDWARE_EVAL.md',
-    models: ['goodview-ep6n'],
-  },
+  // 2026-05-27 — "Stream Deck via RS232 #2" upsell removed. Stream Deck
+  // is a USB HID device — it plugs into the operator's laptop / tablet
+  // and emits keyboard shortcuts the dashboard picks up. It does NOT
+  // talk RS232 to the player. The card was added under a confused
+  // premise by an agent; the RS232 'streamdeck' role value remains in
+  // the schema for forward-compat with any future serial-cue device
+  // that ships an ASCII line protocol over RS232.
   {
     id: 'status-lamp-gpio-out',
     title: 'Wire a status lamp / horn',

@@ -2979,6 +2979,16 @@ export class ScreensController {
         && typeof (screen as any).config.wiring === 'object')
         ? (screen as any).config.wiring
         : null,
+      // 2026-05-27 — surface the chosen hardware model so the player /
+      // KioskSplash can gate hardware-specific UI:
+      //  - Suppresses the "LED canvas not set" banner on LCD-driven
+      //    boxes (goodview-ep6n, pi5, generic-android, web) where the
+      //    daisy-chained-panels math doesn't apply.
+      //  - Drives the per-model integration affordances (dual RS232 on
+      //    EP6N, no GPIO on Taurus, etc).
+      // Older APKs ignore unknown manifest keys, so this is safe to
+      // ship without a player-side migration.
+      hardwareModel: (screen as any).hardwareModel ?? null,
       playlists: dynamicPlaylists
     };
 
