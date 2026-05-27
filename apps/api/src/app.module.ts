@@ -73,6 +73,12 @@ import { AnalyticsModule } from './analytics/analytics.module';
 // Exports GpioService so EmergencyController can auto-drive a wired
 // status lamp on emergency trigger / all-clear.
 import { GpioModule } from './screens/gpio.module';
+// 2026-05-27 — One-click Bug Reporter. BugsController is registered
+// in the `controllers` array below; BugsModule provides the
+// enrichment + AI analyzer services that back it. See bugs/*.ts and
+// packages/api-types/src/bugs.ts.
+import { BugsModule } from './bugs/bugs.module';
+import { BugsController } from './bugs/bugs.controller';
 import { ScreenWedgeDetectorCron } from './screens/screen-wedge-detector.cron';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
@@ -122,6 +128,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     IntegrationsModule,
     AnalyticsModule,
     GpioModule,
+    BugsModule,
     // 2026-05-06 — operator: kiosk wedged on "429 trying to
     // reconnect" right after fresh APK install. Cause: a fresh kiosk
     // boot fires a flurry of API hits in the first 60 s — manifest
@@ -166,6 +173,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     FloorPlansController,
     HardwareController,
     CsrfController,
+    BugsController,
   ],
   providers: [
     AppService,
