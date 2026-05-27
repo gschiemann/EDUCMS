@@ -60,7 +60,6 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useCallback,
   type CSSProperties,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -572,7 +571,17 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
   // so the playlist plays the full video, not an arbitrary 30s clip.
   // Fallback to 30s default if probe fails (CORS / offline / not a
   // real video file).
-  const probeVideoDuration = useCallback((assetId: string, src: string) => {
+  // 2026-05-27 — NOT useCallback. These three helpers live BELOW the
+  // `if (!open) return null;` guard at line 472. If they were hooks,
+  // they'd flip the hook count between closed (return-null) and open
+  // (full render) renders → minified React error #310 ("Rendered more
+  // hooks than during the previous render") → caught by [schoolId]/
+  // error.tsx → operator sees "This page couldn't load" the moment
+  // they click "New Playlist". setSelectedAssetItems is already a
+  // stable state setter, so useCallback bought us nothing structural
+  // here — drop the wrappers to keep the hook count constant across
+  // open=false/open=true renders.
+  const probeVideoDuration = (assetId: string, src: string) => {
     if (typeof document === 'undefined') return;
     try {
       const v = document.createElement('video');
@@ -606,7 +615,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
     } catch {
       /* noop */
     }
-  }, []);
+  };
 
   const toggleAsset = (id: string) =>
     setSelectedAssetItems((prev) => {
@@ -642,7 +651,9 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
 
   // 2026-05-26 — dnd-kit reorder handler. Same drag-end pattern the
   // main editor uses (arrayMove on the active vs. over ids).
-  const reorderAssets = useCallback((event: DragEndEvent) => {
+  // 2026-05-27 — NOT useCallback. See probeVideoDuration above for
+  // the hook-count rationale (lives below the early return).
+  const reorderAssets = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     setSelectedAssetItems((prev) => {
@@ -651,7 +662,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
       if (oldIdx < 0 || newIdx < 0) return prev;
       return arrayMove(prev, oldIdx, newIdx);
     });
-  }, []);
+  };
 
   const removeAssetItem = (assetId: string) =>
     setSelectedAssetItems((prev) => prev.filter((i) => i.assetId !== assetId));
@@ -670,12 +681,14 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
 
   // 2026-05-26 — bulk "set all to N seconds". Operator: "applying
   // the seconds to everything".
-  const setAllDurations = useCallback((seconds: number) => {
+  // 2026-05-27 — NOT useCallback. See probeVideoDuration above for
+  // the hook-count rationale (lives below the early return).
+  const setAllDurations = (seconds: number) => {
     const clamped = Math.max(1, Math.min(600, isFinite(seconds) ? seconds : 10));
     setSelectedAssetItems((prev) =>
       prev.map((i) => ({ ...i, durationMs: clamped * 1000 })),
     );
-  }, []);
+  };
 
   const toggleScreen = (id: string) =>
     setSelectedScreenIds((prev) => {
