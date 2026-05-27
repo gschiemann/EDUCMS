@@ -76,8 +76,19 @@ export function MobileTabBar() {
   type Tab = { key: string; label: string; icon: typeof Home; href: string; badge?: number; danger?: boolean };
   // The five primary tabs. Labels match the desktop Sidebar's exact
   // strings so muscle memory transfers between surfaces.
+  //
+  // 2026-05-27 — operator: "the home button on our mobile app gives a
+  // 404 error". Cause: this row had `href: \`${base}\` || '/'`, which
+  // for any tenant-scoped session pointed at `/<schoolId>` directly.
+  // There is no page.tsx at apps/web/src/app/[schoolId]/ — only
+  // subroutes (dashboard, assets, playlists, screens, ...) — so Next
+  // 404'd. Pointing to `${base}/dashboard` matches the desktop
+  // Sidebar's "Dashboard" item (Sidebar.tsx ~L228) and gives the same
+  // surface on phone + laptop. Empty-base case (operator landed pre-
+  // tenant) still falls back to `/`.
+  const homeHref = base ? `${base}/dashboard` : '/';
   const primaryTabs: Tab[] = [
-    { key: 'home',      label: 'Home',      icon: Home,        href: `${base}` || '/', badge: unreadCount },
+    { key: 'home',      label: 'Home',      icon: Home,        href: homeHref, badge: unreadCount },
     { key: 'assets',    label: 'Assets',    icon: FolderOpen,  href: `${base}/assets` },
     { key: 'playlists', label: 'Playlists', icon: ListMusic,   href: `${base}/playlists` },
     { key: 'screens',   label: 'Screens',  icon: MonitorPlay, href: `${base}/screens` },
@@ -106,11 +117,22 @@ export function MobileTabBar() {
     { key: 'account', label: 'Account', icon: User, href: `${base}/account` },
   ];
 
-  // Smart "active" detection — exact match for home + prefix match for
-  // the others. Avoids /screens highlighting on /screens/abc detail
-  // pages by accident.
+  // Smart "active" detection — prefix match, with a couple of special
+  // cases:
+  //   - "/" is a strict match (marketing root only — never highlight
+  //     the home tab when sitting on a tenant subroute).
+  //   - The Home tab (homeHref = `${base}/dashboard` for a tenant
+  //     session, "/" otherwise) lights up on the dashboard AND on the
+  //     legacy `${base}` exact path that 404s today (so during the
+  //     window where a deployed client might still hold the broken
+  //     URL in their history we still treat it as Home, not as nothing).
+  //   - /panic prefix-matches because the query-string variant
+  //     (`/panic?schoolId=...`) shouldn't unhighlight the tab.
   const isActive = (href: string): boolean => {
-    if (href === '/' || href === base) return pathname === '/' || pathname === base;
+    if (href === '/') return pathname === '/';
+    if (href === homeHref) {
+      return pathname === homeHref || (!!base && pathname === base);
+    }
     if (href.startsWith('/panic')) return pathname.startsWith('/panic');
     return pathname.startsWith(href);
   };
