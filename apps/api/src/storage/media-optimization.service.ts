@@ -10,6 +10,9 @@ import sharp from 'sharp';
  * Result of an optimization pass. When nothing was done (unsupported type,
  * already small, or an error) `optimized` is false and the ORIGINAL buffer /
  * mime / ext are returned unchanged — callers can use the result blindly.
+ *
+ * Dimensions are populated for image optimizations when sharp can read the
+ * input metadata; left undefined for video / passthrough paths.
  */
 export interface OptimizedMedia {
   buffer: Buffer;
@@ -18,7 +21,30 @@ export interface OptimizedMedia {
   optimized: boolean;
   originalBytes: number;
   finalBytes: number;
+  originalDimensions?: { w: number; h: number };
+  processedDimensions?: { w: number; h: number };
 }
+
+/**
+ * Audit P0-5 (2026-05-27) image-upload profile: max 1920px on the longest
+ * side, JPEG q=85, WebP q=85, PNG lossless (palette + compressionLevel 9),
+ * EXIF stripped, animated GIFs untouched. Conservative compared to the
+ * earlier 3840px / q=82 profile so signage screens (most are 1080p; the
+ * occasional 4K wall still renders cleanly with bilinear upscale on the
+ * GPU) get the smallest possible files without visible loss.
+ */
+const UPLOAD_IMAGE_MAX_DIM = 1920;
+const UPLOAD_JPEG_QUALITY = 85;
+const UPLOAD_WEBP_QUALITY = 85;
+
+/**
+ * Audit P0-5 (2026-05-27): the upload path does NOT transcode video tonight.
+ * ffmpeg is heavy enough that a synchronous transcode could time out an
+ * upload over a slow link, and the existing 50 MB per-video controller cap
+ * already keeps egress bounded. We DO emit a warning when a stored video
+ * exceeds this size so ops sees the candidate for the next-sprint pipeline.
+ */
+export const VIDEO_WARN_SIZE_BYTES = 50 * 1024 * 1024;
 
 /**
  * Shrinks uploaded media to signage-appropriate size BEFORE it is stored, so
@@ -94,6 +120,132 @@ export class MediaOptimizationService {
     return ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-matroska'].includes(
       (mimeType || '').toLowerCase(),
     );
+  }
+
+  /**
+   * Returns true for image mimes the upload-time profile resizes / re-encodes.
+   * Animated GIFs are deliberately EXCLUDED — sharp's default WebP/JPEG encode
+   * drops every frame past the first, so a "looping" GIF would silently become
+   * a still. The original is uploaded untouched.
+   */
+  isUploadOptimizableImage(mimeType: string): boolean {
+    return ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(
+      (mimeType || '').toLowerCase(),
+    );
+  }
+
+  /**
+   * Audit P0-5 (2026-05-27) — sharp-based resize for uploaded images.
+   *   - Max 1920px on the longest side (signage shows no more than 4K, but
+   *     1080p is the median; 1920 is a clean cap).
+   *   - JPEG re-encoded at q=85 with mozjpeg (smaller than libjpeg-turbo for
+   *     the same visual quality).
+   *   - WebP re-encoded at q=85.
+   *   - PNG re-encoded losslessly (palette + compressionLevel 9).
+   *   - EXIF / metadata stripped (sharp's default — we call .rotate() first
+   *     so the orientation tag is BAKED IN before metadata is dropped).
+   *   - Animated GIFs: NOT routed here (caller checks isUploadOptimizableImage
+   *     first). The original is uploaded untouched.
+   *
+   * Returns `optimized: false` and the ORIGINAL bytes if:
+   *   - The processed buffer ended up larger than the original (rare but
+   *     possible for tiny / pre-optimized inputs).
+   *   - sharp threw (corrupt input, unrecognized format).
+   * Callers must always store the returned buffer + mime + ext, NOT the
+   * inputs they passed in — the optimizer may switch JPEG→JPEG, PNG→PNG, etc.
+   */
+  async optimizeImageForUpload(
+    buffer: Buffer,
+    mimeType: string,
+    ext: string,
+  ): Promise<OptimizedMedia> {
+    const passthrough = (): OptimizedMedia => ({
+      buffer,
+      mimeType,
+      ext,
+      optimized: false,
+      originalBytes: buffer.length,
+      finalBytes: buffer.length,
+    });
+
+    if (!this.isUploadOptimizableImage(mimeType)) return passthrough();
+
+    try {
+      // First read metadata so we can record dimensions for processingMeta —
+      // this is a cheap header parse, sharp does NOT decode the whole image.
+      const meta = await sharp(buffer, { failOn: 'none' }).metadata();
+      const origW = typeof meta.width === 'number' ? meta.width : undefined;
+      const origH = typeof meta.height === 'number' ? meta.height : undefined;
+      const originalDimensions = origW && origH ? { w: origW, h: origH } : undefined;
+
+      // Only resize when the longest dimension is over the cap; otherwise
+      // we just re-encode (still strips EXIF, still re-compresses).
+      const needsResize =
+        typeof origW === 'number' &&
+        typeof origH === 'number' &&
+        Math.max(origW, origH) > UPLOAD_IMAGE_MAX_DIM;
+
+      let pipeline = sharp(buffer, { failOn: 'none' }).rotate();
+      if (needsResize) {
+        pipeline = pipeline.resize({
+          width: UPLOAD_IMAGE_MAX_DIM,
+          height: UPLOAD_IMAGE_MAX_DIM,
+          fit: 'inside',
+          withoutEnlargement: true,
+        });
+      }
+
+      const lower = (mimeType || '').toLowerCase();
+      let outBuf: Buffer;
+      let outMime: string;
+      let outExt: string;
+      if (lower === 'image/png') {
+        outBuf = await pipeline.png({ compressionLevel: 9, palette: true }).toBuffer();
+        outMime = 'image/png';
+        outExt = ext || '.png';
+      } else if (lower === 'image/webp') {
+        outBuf = await pipeline.webp({ quality: UPLOAD_WEBP_QUALITY }).toBuffer();
+        outMime = 'image/webp';
+        outExt = ext || '.webp';
+      } else {
+        // image/jpeg + image/jpg
+        outBuf = await pipeline.jpeg({ quality: UPLOAD_JPEG_QUALITY, mozjpeg: true }).toBuffer();
+        outMime = 'image/jpeg';
+        outExt = ext || '.jpg';
+      }
+
+      // If we didn't resize AND the encode produced a bigger buffer, fall
+      // back to the original. (Re-encoding can balloon files that were
+      // already aggressively compressed.)
+      if (!needsResize && outBuf.length >= buffer.length) {
+        return { ...passthrough(), originalDimensions };
+      }
+
+      // Read the OUT buffer's dimensions for the metadata record.
+      let processedDimensions: { w: number; h: number } | undefined;
+      try {
+        const m2 = await sharp(outBuf).metadata();
+        if (typeof m2.width === 'number' && typeof m2.height === 'number') {
+          processedDimensions = { w: m2.width, h: m2.height };
+        }
+      } catch { /* dimensions are best-effort */ }
+
+      return {
+        buffer: outBuf,
+        mimeType: outMime,
+        ext: outExt,
+        optimized: true,
+        originalBytes: buffer.length,
+        finalBytes: outBuf.length,
+        originalDimensions,
+        processedDimensions,
+      };
+    } catch (e: any) {
+      this.logger.warn(
+        `optimizeImageForUpload failed (${mimeType}); storing original: ${e?.message || e}`,
+      );
+      return passthrough();
+    }
   }
 
   private async optimizeImage(

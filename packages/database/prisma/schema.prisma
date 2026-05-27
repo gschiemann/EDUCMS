@@ -782,6 +782,20 @@ model Asset {
   fileSize         Int?           @map("file_size")
   originalName     String?        @map("original_name")
   fileHash         String?        @map("file_hash") // SHA-256 hex, computed at upload time for offline-cache integrity
+  // Audit P0-5 (2026-05-27): forensic + ops metadata captured when the
+  // upload-time image optimizer runs. Shape:
+  //   {
+  //     originalSize: number,
+  //     processedSize: number,
+  //     originalDimensions?: { w: number, h: number },
+  //     processedDimensions?: { w: number, h: number },
+  //     transcodedAt: ISO8601 string,
+  //     skippedReason?: string  // when the optimizer left the file alone
+  //   }
+  // Nullable + additive — every existing row stays untouched. Read it
+  // (rarely) to diagnose "why is this asset 4 MB?" or to drive a future
+  // "X GB of images saved this month" dashboard tile.
+  processingMeta   Json?          @map("processing_meta")
   uploadedBy       User           @relation(fields: [uploadedByUserId], references: [id])
   tenant           Tenant         @relation(fields: [tenantId], references: [id])
   folder           AssetFolder?   @relation(fields: [folderId], references: [id])

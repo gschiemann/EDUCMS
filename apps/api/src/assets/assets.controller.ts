@@ -12,8 +12,12 @@ import { AppRole } from '@cms/database';
 import { extname } from 'path';
 import { randomUUID, createHash } from 'crypto';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
-import { MediaOptimizationService } from '../storage/media-optimization.service';
+import {
+  MediaOptimizationService,
+  VIDEO_WARN_SIZE_BYTES,
+} from '../storage/media-optimization.service';
 import { EmailService } from '../email/email.service';
+import { Logger } from '@nestjs/common';
 
 // Browser-playable formats only. Cross-browser support is non-negotiable
 // for digital signage (CLAUDE.md "Cross-browser support" section): every
@@ -128,6 +132,8 @@ const SCREEN_EMERGENCY_ASSET_SELECT = SCREEN_EMERGENCY_ASSET_FIELDS.reduce<Recor
 @Controller('api/v1/assets')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class AssetsController {
+  private readonly logger = new Logger(AssetsController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: SupabaseStorageService,
@@ -605,25 +611,33 @@ export class AssetsController {
       },
     });
 
-    // SUPABASE EGRESS / QUALITY FIX (2026-05-23). The legacy /assets/upload
-    // chain optimizes images inline via sharp; the presign chain shipped
-    // without that step, so iPhone JPGs landed at 8 MB and served raw
-    // forever. We close the gap by downloading the just-PUT object,
-    // running it through MediaOptimizationService, and re-uploading to a
-    // new content-addressed path with the correct mime + Cache-Control
-    // header (immutable, set inside supabase-storage.service.ts).
+    // SUPABASE EGRESS / QUALITY FIX (2026-05-23, tightened 2026-05-27 P0-5).
+    // The legacy /assets/upload chain optimizes images inline via sharp;
+    // the presign chain shipped without that step, so iPhone JPGs landed
+    // at 8 MB and served raw forever. We close the gap by downloading the
+    // just-PUT object, running it through MediaOptimizationService's
+    // 1920px / q=85 upload profile, and re-uploading to a new content-
+    // addressed path with the correct mime + Cache-Control header
+    // (immutable, set inside supabase-storage.service.ts).
     //
     // Sync (not background) so the response carries the FINAL size/url
     // and the operator's "uploaded" toast tells the truth.
     //
     // Defensive: on ANY failure we keep the original. Never break the
     // upload over a best-effort compression step.
-    if (this.mediaOpt.isOptimizableImage(realMime)) {
+    if (this.mediaOpt.isUploadOptimizableImage(realMime)) {
       try {
         const original = await this.storage.download(storagePath);
         if (original) {
           const origExt = extname(storagePath) || '';
-          const opt = await this.mediaOpt.optimize(original, realMime, origExt);
+          const opt = await this.mediaOpt.optimizeImageForUpload(original, realMime, origExt);
+          const baseMeta: Record<string, unknown> = {
+            originalSize: opt.originalBytes,
+            processedSize: opt.finalBytes,
+            originalDimensions: opt.originalDimensions ?? null,
+            processedDimensions: opt.processedDimensions ?? null,
+            transcodedAt: new Date().toISOString(),
+          };
           if (opt.optimized && opt.finalBytes < original.length) {
             // sharp output → re-upload to a NEW path so the URL extension
             // matches the new mime (e.g. .webp). Old path is deleted to
@@ -639,6 +653,7 @@ export class AssetsController {
                   fileUrl: newUrl,
                   mimeType: opt.mimeType,
                   fileSize: opt.finalBytes,
+                  processingMeta: baseMeta as any,
                 },
               });
               asset.fileUrl = updated.fileUrl;
@@ -654,13 +669,37 @@ export class AssetsController {
                 `[assets] optimize re-upload failed for ${asset.id}: ${innerErr?.message ?? innerErr}. ` +
                   `Keeping original at ${storagePath}.`,
               );
+              await this.prisma.client.asset.update({
+                where: { id: asset.id },
+                data: {
+                  processingMeta: { ...baseMeta, skippedReason: `re-upload-failed: ${innerErr?.message ?? innerErr}` } as any,
+                },
+              }).catch(() => undefined);
             }
+          } else {
+            // No optimization gain — record the metadata anyway so the
+            // forensic trail is complete (we tried; nothing to save).
+            await this.prisma.client.asset.update({
+              where: { id: asset.id },
+              data: {
+                processingMeta: { ...baseMeta, skippedReason: 'no-gain-or-passthrough' } as any,
+              },
+            }).catch(() => undefined);
           }
         }
       } catch (err: any) {
         // Optimization is best-effort. Log and continue with the original.
         console.warn(
           `[assets] post-upload optimize failed for ${asset.id}: ${err?.message ?? err}`,
+        );
+      }
+    } else if ((realMime || '').startsWith('video/')) {
+      // Heavy ffmpeg transcode is deferred. Warn so the candidate is
+      // visible to ops without trawling every upload.
+      if (typeof realSize === 'number' && realSize > VIDEO_WARN_SIZE_BYTES) {
+        this.logger.warn(
+          `[assets] large video upload (${Math.round(realSize / (1024 * 1024))} MB, ` +
+            `${realMime}, ${body.filename || asset.id}) — transcode pipeline deferred to next sprint.`,
         );
       }
     }
@@ -737,24 +776,48 @@ export class AssetsController {
     // never crash with ERR_INVALID_ARG_TYPE on createHash.
     const safeBuffer = this.storage.toSafeBuffer(file.buffer);
 
-    // Optimize IMAGES inline before storing — a 4000px PNG saved as 8MB
-    // becomes a ~0.5MB WebP that's visually identical on a screen, so every
-    // screen/preview/CI fetch is of the small version forever. This is the
-    // permanent fix for storage egress. Images are sub-second; VIDEO is left
-    // to the background optimizer (transcode is too slow to block the
-    // request and would risk an upload timeout). On ANY failure the service
-    // returns the original buffer, so an upload never breaks. Format may
-    // change (png/jpeg → webp), so the path extension + stored mimeType +
-    // fileSize all come from the optimizer result.
+    // Audit P0-5 (2026-05-27) — sharp-based resize inline before storing.
+    //   * Images (JPEG / PNG / WebP): re-encode at 1920px longest side,
+    //     q=85 for JPEG/WebP, PNG lossless. Strips EXIF.
+    //   * Animated GIFs: passthrough (sharp would flatten them to one frame).
+    //   * Video: NOT transcoded tonight — heavy ffmpeg deferred to a
+    //     separate sprint. Just warn if the upload size exceeds the
+    //     50 MB warn threshold (the controller already hard-rejects above
+    //     this, but we log defensively so the warn line is unambiguous
+    //     when the cap is raised).
+    //
+    // On ANY failure the service returns the original buffer, so an upload
+    // never breaks. Format may change (jpeg/jpg stays jpeg), so the path
+    // extension + stored mimeType + fileSize all come from the optimizer
+    // result. `processingMeta` records the before/after for forensics.
     let uploadBuf = safeBuffer;
     let uploadMime = file.mimetype;
     let uploadExt = extname(file.originalname) || '';
-    if (this.mediaOpt.isOptimizableImage(file.mimetype)) {
-      const opt = await this.mediaOpt.optimize(safeBuffer, file.mimetype, uploadExt);
+    let processingMeta: Record<string, unknown> | null = null;
+    if (this.mediaOpt.isUploadOptimizableImage(file.mimetype)) {
+      const opt = await this.mediaOpt.optimizeImageForUpload(safeBuffer, file.mimetype, uploadExt);
       if (opt.optimized) {
         uploadBuf = opt.buffer;
         uploadMime = opt.mimeType;
         uploadExt = opt.ext;
+      }
+      processingMeta = {
+        originalSize: opt.originalBytes,
+        processedSize: opt.finalBytes,
+        originalDimensions: opt.originalDimensions ?? null,
+        processedDimensions: opt.processedDimensions ?? null,
+        transcodedAt: new Date().toISOString(),
+        ...(opt.optimized ? {} : { skippedReason: 'no-gain-or-passthrough' }),
+      };
+    } else if ((file.mimetype || '').startsWith('video/')) {
+      // Heavy ffmpeg transcode is deferred — see the comment above. We do
+      // however want a single warn line for ops so the candidate-for-
+      // shrinking is visible in logs without trawling every upload.
+      if (safeBuffer.length > VIDEO_WARN_SIZE_BYTES) {
+        this.logger.warn(
+          `[assets] large video upload (${Math.round(safeBuffer.length / (1024 * 1024))} MB, ` +
+            `${file.mimetype}, ${file.originalname}) — transcode pipeline deferred to next sprint.`,
+        );
       }
     }
 
@@ -792,6 +855,13 @@ export class AssetsController {
         // content never reaches a screen.
         status: this.initialAssetStatus(req.user.role),
         folderId,
+        // Audit P0-5 (2026-05-27): forensic + ops trail for the upload-
+        // time optimizer. NULL for video / GIF / URL-asset paths that
+        // don't go through sharp. Cast to any because Prisma's
+        // NullableJsonNullValueInput type forbids a plain object literal
+        // (it wants either Prisma.JsonNull or the value-typed shape) —
+        // the actual JSONB value is a plain Record<string,unknown>.
+        ...(processingMeta ? { processingMeta: processingMeta as any } : {}),
       },
     });
 
