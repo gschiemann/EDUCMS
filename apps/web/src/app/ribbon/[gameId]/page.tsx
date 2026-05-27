@@ -1508,8 +1508,15 @@ function LookUnit({
   };
 
   if (look.kind === 'slide') {
-    // A full-bleed image — objectFit:contain so an uploaded logo is
-    // never cropped top or bottom.
+    // A full-bleed image. 2026-05-26 — same bug as the sponsor render
+    // had: `max-width/max-height` only CAPS the image, doesn't scale
+    // small intrinsic uploads UP to fill. Operator uploads a 400×100
+    // banner; previously rendered at 400×100 in a 1920×250 ribbon
+    // zone leaving most of the zone empty. Fix: `width:100%;
+    // height:100%; objectFit:contain` so the IMG element fills the
+    // ribbon AND the image inside scales to fit while preserving
+    // aspect ratio. Small banners now go big, wide banners breathe
+    // the full zone width, never distorted.
     return (
       <div
         style={{
@@ -1524,7 +1531,12 @@ function LookUnit({
         <img
           src={look.url}
           alt=""
-          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            display: 'block',
+          }}
           onError={onImgError}
         />
       </div>
