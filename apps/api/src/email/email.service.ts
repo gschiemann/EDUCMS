@@ -251,6 +251,48 @@ export class EmailService {
     await this.#enqueue({ to: params.to, subject, body, kind: 'BUG_FILED' });
   }
 
+  async sendBugFiledOwnerAlert(params: {
+    to: string;
+    bugId: string;
+    reporterEmail: string;
+    reporterRole: string | null;
+    description: string | null;
+    pathname: string | null;
+    tenantSlug: string | null;
+    tenantVertical: string | null;
+  }): Promise<void> {
+    const shortId = params.bugId.slice(0, 8);
+    const descPreview = params.description
+      ? params.description.length > 80
+        ? params.description.slice(0, 77) + '…'
+        : params.description
+      : '(no description)';
+    const subject = `[New bug #${shortId}] ${params.tenantSlug ?? 'unknown'} — "${descPreview}"`;
+    const reviewUrl = `${this.appUrl}/super/bugs/${params.bugId}`;
+    const body = [
+      `New bug just filed.`,
+      ``,
+      `Bug ID:   ${params.bugId}`,
+      `Reporter: ${params.reporterEmail} (${params.reporterRole ?? '?'})`,
+      params.tenantSlug
+        ? `Tenant:   ${params.tenantSlug}${params.tenantVertical ? ` [${params.tenantVertical}]` : ''}`
+        : '',
+      params.pathname ? `Page:     ${params.pathname}` : '',
+      ``,
+      params.description ? `What they wrote:` : '',
+      params.description ? `> ${params.description}` : '',
+      ``,
+      `Review the full capture bundle (screenshot, breadcrumbs, console`,
+      `errors, audit log, infra state) and approve or reject the fix:`,
+      reviewUrl,
+      ``,
+      `— VenueOS Bug Reporter`,
+    ]
+      .filter((l) => l !== '')
+      .join('\n');
+    await this.#enqueue({ to: params.to, subject, body, kind: 'BUG_FILED_OWNER' });
+  }
+
   async sendBugFixProposed(params: {
     to: string;
     bugId: string;

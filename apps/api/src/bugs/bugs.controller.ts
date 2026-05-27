@@ -402,9 +402,9 @@ export class BugsController {
     //    the ID + link." Wrapped — an email outage never blocks the
     //    bug pipeline. Operator (2026-05-27): "you should send me an
     //    email with the bug number and then send an email once we
-    //    fix it".
+    //    fix it". Reuses the `captured` declared above (line ~345)
+    //    after the secret-leaf redactor has run.
     if (req.user?.email) {
-      const captured = body.captured as any;
       this.email
         .sendBugFiled({
           to: req.user.email,
@@ -419,6 +419,56 @@ export class BugsController {
           ),
         );
     }
+
+    // 10. FIRE-AND-FORGET owner-alert fan-out — every SUPER_ADMIN
+    //     gets notified of every new bug, fleet-wide. Operator
+    //     (2026-05-27): "how will you and I get notified though when
+    //     new bugs come in? will it auto trigger you to fix it?".
+    //     This is the "you" half of that — every platform owner
+    //     gets the email instantly. Auto-trigger for Claude itself
+    //     requires ANTHROPIC_API_KEY (see bug-analyzer.service.ts)
+    //     OR a manual paste-into-chat workflow from the dashboard
+    //     review page's "Copy bundle for Claude" button.
+    //
+    //     Done as a separate promise from the reporter email so a
+    //     slow Resend response doesn't add up; both fire in
+    //     parallel without blocking the response.
+    this.prisma.client.user
+      .findMany({
+        where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+        select: { email: true },
+      })
+      .then((admins) => {
+        const ownerEmails = admins
+          .map((a) => a.email)
+          .filter((e): e is string => !!e && e !== req.user?.email);
+        if (ownerEmails.length === 0) return;
+        return Promise.all(
+          ownerEmails.map((to) =>
+            this.email
+              .sendBugFiledOwnerAlert({
+                to,
+                bugId: bug.id,
+                reporterEmail: req.user?.email ?? '(unknown)',
+                reporterRole: req.user?.role ?? null,
+                description: bug.description,
+                pathname: captured?.pathname ?? null,
+                tenantSlug: captured?.reporter?.tenantSlug ?? null,
+                tenantVertical: captured?.reporter?.tenantVertical ?? null,
+              })
+              .catch((e) =>
+                this.logger.warn(
+                  `[bug-email] sendBugFiledOwnerAlert(${bug.id} → ${to}) failed: ${e?.message ?? e}`,
+                ),
+              ),
+          ),
+        );
+      })
+      .catch((e) =>
+        this.logger.warn(
+          `[bug-email] owner-alert fan-out(${bug.id}) failed: ${e?.message ?? e}`,
+        ),
+      );
 
     return {
       bugId: bug.id,
