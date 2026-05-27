@@ -847,19 +847,21 @@ function RunInteractiveScoreboard({
   const hasClock = def.clock.type !== 'none';
   const segLabel = segmentText(def, g);
   return (
-    <div className="bg-slate-900 px-3 py-3 border-b-2 border-slate-700">
-      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-stretch">
-        {/* HOME tile */}
+    <div className="bg-black px-3 py-4 border-b-2 border-slate-800">
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-stretch max-w-6xl mx-auto">
+        {/* HOME tile — looks like the actual scoreboard rendering */}
         <ScoreTile
           team={g.homeTeam}
           color={homeColor}
+          logoUrl={g.homeLogoUrl}
+          score={g.homeScore}
           increments={def.score.increments}
           onScore={(d) => ctl.score.mutate({ team: 'home', delta: d })}
         />
 
-        {/* CLOCK + SEGMENT tile */}
-        <div className="flex flex-col items-center justify-center bg-slate-800 rounded-xl px-4 py-3 min-w-[220px]">
-          <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-slate-400">
+        {/* CLOCK + SEGMENT tile — same dark-card aesthetic as the LED board */}
+        <div className="flex flex-col items-center justify-center bg-black border border-slate-800 rounded-xl px-4 py-3 min-w-[220px]">
+          <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest">
             <button
               type="button"
               onClick={() => ctl.segment.mutate({ delta: -1 })}
@@ -868,7 +870,7 @@ function RunInteractiveScoreboard({
             >
               −
             </button>
-            <span className="min-w-[42px] text-center text-amber-400 text-sm">{segLabel}</span>
+            <span className="min-w-[56px] text-center text-amber-400 text-base font-black">{segLabel}</span>
             <button
               type="button"
               onClick={() => ctl.segment.mutate({ delta: 1 })}
@@ -880,7 +882,7 @@ function RunInteractiveScoreboard({
           </div>
           {hasClock ? (
             <>
-              <div className="text-5xl sm:text-6xl font-black tabular-nums text-white leading-none my-2">
+              <div className={`text-7xl sm:text-8xl font-black tabular-nums leading-none my-2 ${running ? 'text-amber-400' : 'text-white'}`}>
                 {fmtClock(liveMs)}
               </div>
               <button
@@ -942,6 +944,8 @@ function RunInteractiveScoreboard({
         <ScoreTile
           team={g.awayTeam}
           color={awayColor}
+          logoUrl={g.awayLogoUrl}
+          score={g.awayScore}
           increments={def.score.increments}
           onScore={(d) => ctl.score.mutate({ team: 'away', delta: d })}
         />
@@ -950,41 +954,70 @@ function RunInteractiveScoreboard({
   );
 }
 
-/** One team's score-control tile — team name + scoring buttons.
- *  No score NUMBER here (operator: "the score shows 4 times…we need
- *  just one on the scoreboard and one on the ribbon score"). The
- *  iframe scoreboard preview right above this is the source of
- *  truth for the current value; this tile is the CONTROL surface.
+/** One team's tile — visually mirrors the actual LED scoreboard
+ *  rendering (team logo + name in team color + huge tabular score)
+ *  with the +/- controls baked in below. Operator: "make the score
+ *  board look like the actual score board". The interactive
+ *  scoreboard tile IS now the visual representation; the iframe
+ *  scoreboard preview has been retired in favor of this — fewer
+ *  duplicate score displays, controls live ON the visual.
+ *
  *  Increments come from the sport definition (1 for water polo /
  *  soccer / volleyball; 1,2,3 for basketball; 1,2,3,6,7,8 for
- *  football, etc.). −1 is always available for fixes. */
+ *  football). −1 is always available for fixes. */
 function ScoreTile({
   team,
   color,
+  logoUrl,
+  score,
   increments,
   onScore,
 }: {
   team: string;
   color: string;
+  logoUrl?: string | null;
+  score: number;
   increments: number[];
   onScore: (delta: number) => void;
 }) {
   return (
-    <div className="flex flex-col items-stretch bg-slate-800 rounded-xl px-3 py-3 gap-2">
-      <div
-        className="text-sm font-black uppercase tracking-widest truncate text-center"
-        style={{ color }}
-        title={team}
-      >
-        {team || '—'}
+    <div className="flex flex-col items-stretch bg-black border border-slate-800 rounded-xl px-3 py-3 gap-2">
+      {/* Team header — logo + name in team color, like the real board */}
+      <div className="flex items-center justify-center gap-3 min-h-[52px]">
+        {logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logoUrl}
+            alt=""
+            className="h-12 w-12 object-contain shrink-0"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : null}
+        <span
+          className="text-xl sm:text-2xl font-black uppercase tracking-wide truncate"
+          style={{ color }}
+          title={team}
+        >
+          {team || '—'}
+        </span>
       </div>
-      <div className="flex gap-1.5">
+      {/* Huge tabular score number in team color — the focal point */}
+      <div
+        className="text-7xl sm:text-8xl font-black tabular-nums leading-none text-center"
+        style={{ color }}
+      >
+        {score}
+      </div>
+      {/* Score buttons — sized for thumbs, sport-aware increments */}
+      <div className="flex gap-1.5 mt-1">
         {increments.map((inc) => (
           <button
             key={`+${inc}`}
             type="button"
             onClick={() => onScore(inc)}
-            className="flex-1 h-14 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-lg transition-colors"
+            className="flex-1 h-12 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-lg transition-colors"
           >
             +{inc}
           </button>
@@ -992,7 +1025,7 @@ function ScoreTile({
         <button
           type="button"
           onClick={() => onScore(-1)}
-          className="flex-1 h-14 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-lg transition-colors"
+          className="flex-1 h-12 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-black text-lg transition-colors"
           title="Subtract 1 (fix a mis-tap)"
         >
           −1
