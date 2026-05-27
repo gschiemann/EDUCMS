@@ -19,6 +19,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
+import { applyCtsOverlay } from '@/lib/cts-merge';
 import { SituationalRow } from '@/components/widgets/v2/_shared/sports-situational';
 import { celebrationSrc } from '@/lib/celebration-assets';
 import { useParams } from 'next/navigation';
@@ -2224,6 +2225,17 @@ export default function ScoreboardPage() {
   const def = useMemo(() => (data ? findSport(data.sport) : undefined), [data]);
   const scale = Math.min(vp.w / 1920, vp.h / 1080);
 
+  // Sprint 13 — CTS source-of-truth merge. When a CTS console is
+  // broadcasting (Game.stats.cts.lastUpdateAt fresh within 5 s of
+  // serverTime) the bridge's score/clock/segment win over the operator-
+  // input columns. Stale or absent → operator inputs win. Single helper
+  // in apps/web/src/lib/cts-merge.ts shared with the ribbon route so
+  // both surfaces render identical numbers.
+  const displayData = useMemo(
+    () => (data ? applyCtsOverlay(data) : data),
+    [data],
+  );
+
   const keyframes = (
     <style>{`
       @keyframes venuePulse { 0%,100%{opacity:1} 50%{opacity:0.55} }
@@ -2357,23 +2369,36 @@ export default function ScoreboardPage() {
     // clockRunning, clockUpdatedAt, stats, serverTime — all present
     // on both). The cast is just to satisfy the narrower context
     // type; runtime values match exactly.
+    //
+    // 2026-05-27 — CTS overlay applied here too so a custom scoreboard
+    // template reads the same merged data as the legacy hardcoded
+    // scenes. The GameStateProvider inside CustomScoreboardScene
+    // re-polls /sports/board/:id directly for its OWN live updates, so
+    // the initial snapshot it receives is the CTS-overlaid view; its
+    // ongoing polls also flow through this page's `data` (it's the
+    // same endpoint) and we trust the helper to be idempotent.
     return (
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
         {keyframes}
         <CustomScoreboardScene
           templateId={data.scoreboardTemplateId}
           gameId={gameId}
-          initial={data}
+          initial={displayData ?? data}
           embedded={(data as { scoreboardTemplate?: any }).scoreboardTemplate ?? null}
         />
       </div>
     );
   }
 
+  // Sprint 13 — render the CTS-merged view (CTS data when fresh,
+  // operator inputs when stale). Cue feed still reads from `data.cues`
+  // (the helper doesn't touch that field) so celebrations fire unchanged.
+  const view = displayData ?? data;
+
   // Select the scene component. LIVE always renders BoardScene (zero
   // regression on the working scoreboard). All other statuses get a
   // dedicated presentation scene.
-  const status = data.status;
+  const status = view.status;
   const isLive = status === 'LIVE';
   const isPreGame = status === 'PRE_GAME' || status === 'SCHEDULED';
   const isHalftime = status === 'HALFTIME';
@@ -2393,13 +2418,13 @@ export default function ScoreboardPage() {
           transformOrigin: 'center center',
         }}
       >
-        {isLive && <BoardScene data={data} def={def} />}
-        {isPreGame && <PreGameScene data={data} def={def} />}
-        {isHalftime && <HalftimeScene data={data} def={def} />}
-        {isFinal && <FinalScene data={data} def={def} />}
+        {isLive && <BoardScene data={view} def={def} />}
+        {isPreGame && <PreGameScene data={view} def={def} />}
+        {isHalftime && <HalftimeScene data={view} def={def} />}
+        {isFinal && <FinalScene data={view} def={def} />}
         {/* Fallback for any unexpected status — use the live board */}
         {!isLive && !isPreGame && !isHalftime && !isFinal && (
-          <BoardScene data={data} def={def} />
+          <BoardScene data={view} def={def} />
         )}
         {activeCue && (
           <CueOverlay

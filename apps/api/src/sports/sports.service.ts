@@ -2635,4 +2635,209 @@ export class SportsService {
       },
     });
   }
+
+  // ── CTS snapshot ingest ──────────────────────────────────────
+  //
+  // CtsBridge POSTs the latest parsed snapshot at ~5 Hz when a CTS
+  // console is streaming. We write it under `Game.stats.cts` as a
+  // self-contained block — NO overwrite of the persistent `homeScore`,
+  // `awayScore`, `clockMs`, `clockRunning`, `segment` columns.
+  //
+  // That separation is load-bearing. Those columns stay as the OPERATOR
+  // INPUT layer — when CTS goes dark mid-game (cable yank, console
+  // power-cycle, parity hiccup) the operator can take over manually and
+  // not be silently stomped 200 ms later when CTS reconnects. The
+  // public surfaces (board / ribbon / scorebug) apply the CTS overlay
+  // at render time via `applyCtsOverlay` in apps/web/src/lib/cts-merge.ts:
+  // fresh heartbeat → CTS wins, stale → operator inputs win. One central
+  // helper, identical math everywhere.
+  //
+  // Forensic audit: every accepted snapshot writes an AuditLog row at
+  // INFO frequency would flood the table (5 Hz × multi-hour games ≈
+  // 100k rows / game), so we sample — log only on the FIRST snapshot
+  // after a fresh-window gap, on every score change, on every segment
+  // change, on horn, and on every clockRunning flip. That captures
+  // the forensically interesting transitions without log-spam.
+
+  /** Coerce + sanitize one inbound CTS snapshot for write into stats.cts. */
+  private cleanCtsSnapshot(raw: Record<string, unknown>): {
+    clockMs?: number;
+    clockRunning?: boolean;
+    segment?: number;
+    homeScore?: number;
+    awayScore?: number;
+    shotClock?: { ms: number; running: boolean; len?: number; at?: string };
+    horn?: boolean;
+    raw?: string;
+  } {
+    const out: ReturnType<SportsService['cleanCtsSnapshot']> = {};
+    const num = (v: unknown): number | undefined => {
+      if (typeof v !== 'number' || !Number.isFinite(v)) return undefined;
+      return v;
+    };
+    const nonNegInt = (v: unknown): number | undefined => {
+      const n = num(v);
+      if (n === undefined) return undefined;
+      return Math.max(0, Math.round(n));
+    };
+    if (raw.clockMs !== undefined) {
+      const v = nonNegInt(raw.clockMs);
+      if (v !== undefined) out.clockMs = v;
+    }
+    if (raw.clockRunning !== undefined) {
+      out.clockRunning = !!raw.clockRunning;
+    }
+    if (raw.segment !== undefined) {
+      const v = nonNegInt(raw.segment);
+      if (v !== undefined && v >= 1) out.segment = v;
+    }
+    if (raw.homeScore !== undefined) {
+      const v = nonNegInt(raw.homeScore);
+      if (v !== undefined) out.homeScore = v;
+    }
+    if (raw.awayScore !== undefined) {
+      const v = nonNegInt(raw.awayScore);
+      if (v !== undefined) out.awayScore = v;
+    }
+    if (raw.horn !== undefined) out.horn = !!raw.horn;
+    if (typeof raw.raw === 'string') out.raw = raw.raw.slice(0, 96);
+    if (raw.shotClock && typeof raw.shotClock === 'object') {
+      const sc = raw.shotClock as Record<string, unknown>;
+      const ms = nonNegInt(sc.ms);
+      if (ms !== undefined) {
+        const cleaned: { ms: number; running: boolean; len?: number; at?: string } = {
+          ms,
+          running: !!sc.running,
+        };
+        const len = nonNegInt(sc.len);
+        if (len !== undefined && len > 0) cleaned.len = len;
+        if (typeof sc.at === 'string') cleaned.at = sc.at;
+        out.shotClock = cleaned;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Ingest a CTS bridge snapshot. Writes under `Game.stats.cts`; does
+   * NOT touch the persistent operator-input columns. Returns the
+   * post-write game row so the bridge can confirm the write succeeded.
+   *
+   * `tenantId` is null when the caller authenticated via the public
+   * feed token (no user context); audit rows in that case carry no
+   * `userId`.
+   */
+  async ingestCtsSnapshot(
+    gameId: string,
+    snapshot: Record<string, unknown>,
+    auth: { tenantId?: string | null; actorUserId?: string | null; source?: string },
+  ): Promise<{ ok: true; accepted: boolean; reason?: string }> {
+    // Tenant-scope the load when an authenticated user is calling. The
+    // public feed-token path resolves the game without a tenant filter
+    // (the token itself proves game ownership).
+    const game = auth.tenantId
+      ? await this.prisma.client.game.findFirst({
+          where: { id: gameId, tenantId: auth.tenantId },
+        })
+      : await this.prisma.client.game.findUnique({ where: { id: gameId } });
+    if (!game) {
+      throw new NotFoundException('Game not found');
+    }
+
+    const cleaned = this.cleanCtsSnapshot(snapshot);
+    // Sanity bail — if every field is missing the snapshot is junk and
+    // we silently drop it (don't bump lastUpdateAt; otherwise a stream
+    // of empty snapshots would mask a real CTS outage).
+    const hasAnyData =
+      cleaned.clockMs !== undefined ||
+      cleaned.clockRunning !== undefined ||
+      cleaned.segment !== undefined ||
+      cleaned.homeScore !== undefined ||
+      cleaned.awayScore !== undefined ||
+      cleaned.shotClock !== undefined ||
+      cleaned.horn !== undefined;
+    if (!hasAnyData) {
+      return { ok: true, accepted: false, reason: 'empty snapshot' };
+    }
+
+    const prevStats: Record<string, unknown> =
+      game.stats && typeof game.stats === 'object'
+        ? { ...(game.stats as Record<string, unknown>) }
+        : {};
+    const prevCts: Record<string, unknown> =
+      prevStats.cts && typeof prevStats.cts === 'object'
+        ? (prevStats.cts as Record<string, unknown>)
+        : {};
+
+    const nowIso = new Date().toISOString();
+    const nextCts: Record<string, unknown> = {
+      ...prevCts,
+      ...cleaned,
+      lastUpdateAt: nowIso,
+    };
+
+    // What changed forensically? Score / segment / clockRunning / horn
+    // are the audit-worthy transitions; clockMs ticks are not.
+    const lastAuditAt =
+      typeof prevCts.lastAuditAt === 'string' ? Date.parse(prevCts.lastAuditAt) : 0;
+    const reconnect =
+      !Number.isFinite(Date.parse(String(prevCts.lastUpdateAt))) ||
+      Date.now() - Date.parse(String(prevCts.lastUpdateAt)) > 5000;
+    const scoreChanged =
+      (cleaned.homeScore !== undefined && cleaned.homeScore !== prevCts.homeScore) ||
+      (cleaned.awayScore !== undefined && cleaned.awayScore !== prevCts.awayScore);
+    const segmentChanged =
+      cleaned.segment !== undefined && cleaned.segment !== prevCts.segment;
+    const clockRunChanged =
+      cleaned.clockRunning !== undefined && cleaned.clockRunning !== prevCts.clockRunning;
+    const horn = cleaned.horn === true && !prevCts.horn;
+    // Audit cap: at most one audit row per 1s of forensically uninteresting
+    // updates (clock-only ticks). Score / segment / horn / reconnect always
+    // audit immediately.
+    const wantsAudit =
+      reconnect || scoreChanged || segmentChanged || clockRunChanged || horn ||
+      Date.now() - (Number.isFinite(lastAuditAt) ? lastAuditAt : 0) > 60_000;
+    if (wantsAudit) {
+      nextCts.lastAuditAt = nowIso;
+    }
+
+    prevStats.cts = nextCts;
+    await this.prisma.client.game.update({
+      where: { id: gameId },
+      data: { stats: prevStats as any },
+    });
+    // Invalidate the board cache so the next /board/:id poll sees this
+    // snapshot instantly. Without this the TTL would mask up to 1s of
+    // CTS data — fine in steady state but jarring at boot.
+    this.invalidateBoardCache(gameId);
+
+    if (wantsAudit) {
+      try {
+        await this.prisma.client.auditLog.create({
+          data: {
+            tenantId: game.tenantId,
+            userId: auth.actorUserId || null,
+            action: 'CTS_SNAPSHOT_INGEST',
+            targetType: 'Game',
+            targetId: gameId,
+            details: JSON.stringify({
+              source: auth.source || 'cts',
+              reconnect,
+              scoreChanged,
+              segmentChanged,
+              clockRunChanged,
+              horn,
+              snapshot: cleaned,
+            }),
+          },
+        });
+      } catch {
+        // Audit best-effort — never let a logging failure block the
+        // snapshot write. The next snapshot will retry if anything
+        // material happens.
+      }
+    }
+
+    return { ok: true, accepted: true };
+  }
 }

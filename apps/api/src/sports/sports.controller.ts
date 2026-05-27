@@ -360,6 +360,50 @@ export class SportsController {
   }
 
   /**
+   * Sprint 13 — CTS console snapshot ingest (operator-auth path).
+   *
+   * Sibling of the unauthenticated `POST /api/v1/sports/board/:id/
+   * cts-snapshot` (which uses the x-feed-token HMAC). This guarded
+   * variant accepts the operator's dashboard JWT so a future
+   * operator-side test or playback tool can push synthetic snapshots
+   * without provisioning a feed token. Both endpoints converge on
+   * `SportsService.ingestCtsSnapshot`, which is the single source of
+   * truth for the write — no behavior drift between the two paths.
+   *
+   * Writes ONLY to `Game.stats.cts` — the persistent operator-input
+   * columns (`homeScore`, `clockMs`, etc.) stay untouched so the
+   * manual chips in the Run console keep working when CTS is stale.
+   */
+  @Post('games/:id/cts-snapshot')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  ctsSnapshot(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      clockMs?: number;
+      clockRunning?: boolean;
+      segment?: number;
+      homeScore?: number;
+      awayScore?: number;
+      shotClock?: { ms: number; running: boolean; len?: number; at?: string };
+      horn?: boolean;
+      raw?: string;
+    },
+  ) {
+    return this.sports.ingestCtsSnapshot(id, (body || {}) as Record<string, unknown>, {
+      tenantId: req.user.tenantId,
+      actorUserId: req.user.id,
+      source: 'cts-operator',
+    });
+  }
+
+  /**
    * Feed credentials for EXTERNAL score ingestion — the operator copies this
    * URL + token into their feed vendor (Sportzcast/Scorebird console box, a
    * serial-reader bridge, or a custom script) so live score/clock flows in

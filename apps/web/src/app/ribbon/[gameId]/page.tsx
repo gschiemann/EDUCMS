@@ -49,6 +49,7 @@ import {
   type CSSProperties,
 } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
+import { applyCtsOverlay } from '@/lib/cts-merge';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 // Sprint 13 — when Game.ribbonTemplateId is set, hand off the entire
@@ -716,30 +717,51 @@ export default function RibbonPage() {
 
   const def = useMemo(() => (data ? findSport(data.sport) : undefined), [data]);
 
+  // Sprint 13 — CTS source-of-truth merge. When the CTS console is
+  // broadcasting fresh data (Game.stats.cts.lastUpdateAt within 5 s of
+  // serverTime) clock / score / segment come from CTS. Stale or absent
+  // → operator inputs win. Same helper used by the board route so both
+  // surfaces render identical numbers. Apply ONCE here and substitute
+  // for `data` in every downstream read (live-clock projector, looks
+  // builder, sponsor banner, etc.).
+  const viewData = useMemo(
+    () => (data ? applyCtsOverlay(data) : data),
+    [data],
+  );
+
   // Live clock, projected smoothly between polls (see useLiveClock).
-  const clockMs = useLiveClock(data, def);
+  const clockMs = useLiveClock(viewData, def);
 
   // A stable key over every input buildLooks reads. `looks` is rebuilt
   // ONLY when this changes — so a clock-tick / score-change re-render
   // keeps the same `looks` array identity and never resets the
   // rotation timer mid-dwell.
+  // looksKey + buildLooks read from `viewData` so a CTS-overlay
+  // change to `stats.shotClock` (only relevant for sports whose
+  // `ribbonSituational` consumes the shotClock anchor) is reflected.
+  // For every other field the helper preserves by reference, so this
+  // is identical to reading off `data`.
   const looksKey = useMemo(() => {
-    if (!data || !def) return '';
-    const sit = !!ribbonSituational(def, (data.stats || {}) as Record<string, unknown>);
+    const src = viewData ?? data;
+    if (!src || !def) return '';
+    const sit = !!ribbonSituational(def, (src.stats || {}) as Record<string, unknown>);
     return JSON.stringify({
-      presets: data.ribbonPresets ?? null,
-      sponsors: (data.sponsors || []).map((s) => s.id),
-      roster: (data.roster || []).map((p) => p.id),
-      messages: data.ribbonMessages ?? null,
-      slides: data.ribbonSlides ?? null,
-      sport: data.sport,
-      home: data.homeTeam,
+      presets: src.ribbonPresets ?? null,
+      sponsors: (src.sponsors || []).map((s) => s.id),
+      roster: (src.roster || []).map((p) => p.id),
+      messages: src.ribbonMessages ?? null,
+      slides: src.ribbonSlides ?? null,
+      sport: src.sport,
+      home: src.homeTeam,
       sit,
     });
-  }, [data, def]);
+  }, [viewData, data, def]);
 
   const looks = useMemo(
-    () => (data && def ? buildLooks(data, def) : []),
+    () => {
+      const src = viewData ?? data;
+      return src && def ? buildLooks(src, def) : [];
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [looksKey],
   );
@@ -775,6 +797,15 @@ export default function RibbonPage() {
     );
   }
 
+  // 2026-05-27 — Render off the CTS-merged view. `viewData` is `data`
+  // with score / clock / segment / stats.shotClock overlaid from
+  // `Game.stats.cts` when fresh; identical to `data` when stale or
+  // absent. Every field NOT in that overlay (sponsors, ribbon presets,
+  // roster, cues, spotlight, template ids) is preserved by reference —
+  // so substituting `viewData` for `data` below is safe and produces
+  // an identical render in the non-CTS path.
+  const view = viewData ?? data;
+
   // Sprint 13 — operator picked a custom ribbon template. Hand off to
   // CustomScoreboardScene (same renderer; the template's canvas size
   // is what differentiates a scoreboard layout from a ribbon layout —
@@ -786,7 +817,7 @@ export default function RibbonPage() {
         <CustomScoreboardScene
           templateId={data.ribbonTemplateId}
           gameId={gameId}
-          initial={data}
+          initial={view}
           // 2026-05-26 — pass the already-resolved template from
           // /sports/board so the public ribbon page doesn't 401 on
           // /templates/:id (admin-auth-required).
@@ -851,8 +882,13 @@ export default function RibbonPage() {
   ) {
     const ribbonBody = (
       <>
+        {/* 2026-05-27 — merged: Agent 1's content-toggle gates + Agent 2's
+            CTS overlay. `view` is the operator's game data with CTS
+            snapshots layered on top when fresh; the toggle gates drop
+            slides/sponsors/segment/clock from the marquee per the
+            operator's Ribbon-content choices. Both fixes alive. */}
         <RibbonMediaScroll
-          data={data}
+          data={view}
           def={def}
           vp={vp}
           clockMs={clockMs}
@@ -983,10 +1019,12 @@ export default function RibbonPage() {
         return (
           <div key={s}>
             {/* score / clock anchor — never moves; digits update in place.
-                2026-05-27 — clock/segment toggles in Ribbon content now
-                actually hide those fields from the anchor status line. */}
+                2026-05-27 — reads CTS-merged values when the bridge is
+                fresh; clock/segment toggles in Ribbon content hide those
+                fields from the anchor status line when the operator turns
+                them off. */}
             <ScoreZone
-              data={data}
+              data={view}
               def={def}
               left={segLeft}
               w={scoreZoneW}
@@ -1004,7 +1042,7 @@ export default function RibbonPage() {
               left={segLeft + scoreZoneW}
               w={contentW}
               h={vp.h}
-              data={data}
+              data={view}
               def={def}
             />
           </div>

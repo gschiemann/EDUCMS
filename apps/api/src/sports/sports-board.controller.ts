@@ -100,6 +100,66 @@ export class SportsBoardController {
     return { ok: true };
   }
 
+  /**
+   * Sprint 13 — CTS console snapshot ingest.
+   *
+   * The CtsBridge in apps/web/src/components/player/CtsBridge.tsx parses
+   * the live RS232 feed and POSTs the latest snapshot here at ~5 Hz.
+   * The API writes it under `Game.stats.cts = { lastUpdateAt, ... }`
+   * — see SportsService.ingestCtsSnapshot for the source-of-truth rule.
+   *
+   * Auth: x-feed-token header (preferred) or ?token= query (for the
+   * weird cases where only a URL is configurable on a CTS-adapter box).
+   * Same stateless game-scoped HMAC as `/feed`. Reuses the feed rate-limit
+   * pool — a misbehaving bridge can't fan out to more than 80 POSTs / 10 s
+   * total (40 to /feed + 40 here).
+   *
+   * NEVER touches the persistent operator-input columns
+   * (`Game.homeScore/awayScore/clockMs/clockRunning/segment`). That's
+   * what gives the operator a graceful manual-override path when CTS
+   * goes dark: the +/- chips in the Run console keep working and the
+   * board falls back to them as soon as the CTS heartbeat goes stale.
+   */
+  @Post(':id/cts-snapshot')
+  async ctsSnapshot(
+    @Param('id') id: string,
+    @Headers('x-feed-token') headerToken: string | undefined,
+    @Query('token') queryToken: string | undefined,
+    @Body()
+    body: {
+      clockMs?: number;
+      clockRunning?: boolean;
+      segment?: number;
+      homeScore?: number;
+      awayScore?: number;
+      shotClock?: { ms: number; running: boolean; len?: number; at?: string };
+      horn?: boolean;
+      raw?: string;
+    },
+  ) {
+    // Rate-limit BEFORE auth — same defensive ordering as /feed.
+    const now = Date.now();
+    const key = `cts:${id}`;
+    const recent = (this.feedHits.get(key) || []).filter(
+      (t) => t > now - SportsBoardController.FEED_WINDOW_MS,
+    );
+    if (recent.length >= SportsBoardController.FEED_MAX_PER_WINDOW) {
+      this.feedHits.set(key, recent);
+      throw new HttpException('CTS snapshot rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    recent.push(now);
+    this.feedHits.set(key, recent);
+
+    const token = headerToken || queryToken;
+    if (!verifyFeedToken(id, token)) {
+      throw new HttpException('Invalid or missing feed token', HttpStatus.UNAUTHORIZED);
+    }
+
+    return this.sports.ingestCtsSnapshot(id, (body || {}) as Record<string, unknown>, {
+      source: 'cts-feed',
+    });
+  }
+
   @Post(':id/feed')
   async feed(
     @Param('id') id: string,

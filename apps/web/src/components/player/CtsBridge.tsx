@@ -59,6 +59,7 @@ import {
   scriptGame,
   type CtsFullSnapshot,
 } from '@cms/scoreboard-cts';
+import { parseCtsClockToMs } from '@/lib/cts-merge';
 
 // Web Serial API types. We declare minimal shapes locally to avoid
 // pulling @types/w3c-web-serial as a dependency. The runtime shape is
@@ -145,11 +146,29 @@ function b64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-// 8 Hz upper bound on snapshot POSTs. The CTS clock ticks at 10 Hz
-// during the last minute (tenths shown); rendering at 8 Hz produces
-// a smooth scoreboard without flooding the API. Latest-snapshot-wins
-// during the throttle window.
-const POST_THROTTLE_MS = 125;
+// 5 Hz upper bound on snapshot POSTs (200 ms window). The CTS clock
+// ticks at 10 Hz during the last minute (tenths shown); rendering at
+// 5 Hz still produces a smooth scoreboard on a 4-foot LED ribbon and
+// halves the write load on the gameId-keyed endpoint, which writes
+// to `Game.stats.cts` (one Postgres row update per accepted snapshot).
+//
+// Why this matters more in gameId mode than in the legacy screen-scoped
+// path: that path just signs + publishes a transient WS message, no DB
+// write. The gameId-keyed endpoint persists the snapshot so the board
+// /ribbon /scorebug routes can read it via the public /sports/board/:id
+// poll. A higher POST rate is overkill — the board polls at 750 ms, so
+// the snapshot only needs to be fresher than the next poll boundary.
+//
+// Latest-snapshot-wins during the throttle window.
+const POST_THROTTLE_MS = 200;
+
+// CTS clock-pause detection. If we haven't seen the displayed clock
+// string change in this many milliseconds, treat the clock as paused.
+// The CTS console emits one packet per displayed clock value (~100 ms
+// during the last minute, slower for whole-second granularity above);
+// 800 ms is a comfortable cushion that detects pause within ~1 s but
+// never false-positives a brief packet gap.
+const CLOCK_PAUSE_MS = 800;
 
 /**
  * Optional URL query-param overrides for hardware-specific quirks.
@@ -178,12 +197,29 @@ function readSerialOptsFromQuery(): {
 }
 
 export interface CtsBridgeProps {
-  /** Screen ID this bridge is bound to. POST endpoint includes it. */
+  /** Screen ID this bridge is bound to. The legacy POST endpoint
+   *  (`/screens/:id/game-state`) includes it. Still used as a fallback
+   *  when no `gameId` is provided — broadcasts a transient WS GAME_STATE
+   *  for the in-page CtsScoreboard widget consumer. */
   screenId: string;
   /** API root, e.g. https://api.example.com. No trailing /api/v1. */
   apiRoot: string;
-  /** Device JWT for the screen — used as Bearer on the POST. */
+  /** Device JWT for the screen — used as Bearer on the legacy
+   *  `/screens/:id/game-state` POST. */
   deviceToken: string | null;
+  /** 2026-05-27 — Sprint 13: the Game this CTS feed is targeting. When
+   *  set together with `feedToken`, the bridge POSTs each snapshot to
+   *  `/sports/board/:gameId/cts-snapshot` (persists to `Game.stats.cts`).
+   *  The board / ribbon / scorebug surfaces then read this as the source
+   *  of truth via the existing 750 ms public /board/:id poll.
+   *
+   *  When `gameId` is null/undefined, the bridge falls back to the
+   *  transient WS GAME_STATE broadcast (legacy behavior). */
+  gameId?: string | null;
+  /** HMAC feed token for the gameId-keyed POST. Generated server-side
+   *  via GET /sports/games/:id/feed-credentials; the operator pastes it
+   *  in once during install (or the player manifest carries it). */
+  feedToken?: string | null;
   /** Compact mode: skip debug JSON pretty-print + last-bytes counter. */
   compact?: boolean;
 }
@@ -192,6 +228,8 @@ export function CtsBridge({
   screenId,
   apiRoot,
   deviceToken,
+  gameId,
+  feedToken,
   compact = false,
 }: CtsBridgeProps) {
   const [supported, setSupported] = useState<boolean | null>(null);
@@ -209,6 +247,18 @@ export function CtsBridge({
   const pendingSnapshotRef = useRef<CtsFullSnapshot | null>(null);
   const postTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPostAtRef = useRef<number>(0);
+  // 2026-05-27 — derive a running/paused bit from successive parser
+  // snapshots. CtsFullSnapshot itself carries no boolean for this; the
+  // physical CTS protocol simply emits a new clock string every ~100 ms
+  // when the clock is advancing, and stops emitting (or repeats the
+  // same value) when it's paused. We track the prior clock string + the
+  // time we last saw it CHANGE; if a value has held steady longer than
+  // CLOCK_PAUSE_MS we report `clockRunning: false`. Otherwise true.
+  // This is the single piece of derived state the bridge owns.
+  const prevClockRef = useRef<{ value: string | null; changedAt: number }>({
+    value: null,
+    changedAt: 0,
+  });
 
   // 2026-05-27 — Simulator state. Operator: "how can we build a
   // sample/fake connection to CTS…maybe we read content from a file
@@ -358,12 +408,81 @@ export function CtsBridge({
   // POST the latest snapshot to the API. Latest-wins throttled at
   // POST_THROTTLE_MS. Uses keepalive: true so a tab close mid-POST
   // doesn't lose the final state.
+  //
+  // Two destinations, picked at runtime:
+  //   1. gameId + feedToken set → `POST /sports/board/:gameId/cts-snapshot`
+  //      Persists the snapshot under `Game.stats.cts`; the board /
+  //      ribbon / scorebug routes pick it up via the existing 750 ms
+  //      public /board/:id poll. This is the Sprint 13 source-of-truth
+  //      path — what the operator wants when the CTS console is
+  //      broadcasting AND there's an active game in the dashboard.
+  //   2. Otherwise → legacy `POST /screens/:id/game-state`. Pure
+  //      transient WS broadcast for the in-page CtsScoreboard widget
+  //      consumer; no persistence. Kept for backward compatibility
+  //      with kiosks that haven't migrated to game-mode yet.
+  //
+  // The two paths are mutually exclusive per snapshot — we don't double-
+  // write because the legacy WS-only path is now strictly weaker than
+  // the persistent path (the persistent path is also broadcast via the
+  // board cache invalidation + 750 ms poll which lands within the same
+  // perceived window).
   const flushPost = useCallback(async () => {
     if (disposedRef.current) return;
     const snap = pendingSnapshotRef.current;
     if (!snap) return;
     pendingSnapshotRef.current = null;
     lastPostAtRef.current = Date.now();
+
+    // gameId mode — persist to Game.stats.cts via the public board
+    // endpoint, authenticated with the HMAC feed token.
+    if (gameId && feedToken) {
+      // Derive a running/paused bit from successive clock readings.
+      // The CTS protocol has no explicit flag, but the console only
+      // emits a fresh clock string when the clock is actually
+      // advancing — a paused clock just repeats the same value (or
+      // stops emitting). Compare to the prior reading: if the value
+      // hasn't changed AND it's been longer than CLOCK_PAUSE_MS since
+      // the last change, report `clockRunning: false`. Otherwise true.
+      const now = Date.now();
+      const clockStr = typeof snap.clock === 'string' ? snap.clock : null;
+      const prev = prevClockRef.current;
+      if (clockStr !== prev.value) {
+        prevClockRef.current = { value: clockStr, changedAt: now };
+      }
+      const sincePause = now - prevClockRef.current.changedAt;
+      const clockRunning = clockStr !== null ? sincePause < CLOCK_PAUSE_MS : undefined;
+
+      const body = {
+        clockMs: parseCtsClockToMs(snap.clock) ?? undefined,
+        clockRunning,
+        segment: typeof snap.period === 'number' ? snap.period : undefined,
+        homeScore: typeof snap.homeScore === 'number' ? snap.homeScore : undefined,
+        awayScore: typeof snap.awayScore === 'number' ? snap.awayScore : undefined,
+        horn: snap.horn === true ? true : undefined,
+        raw: typeof snap.clock === 'string' ? snap.clock : undefined,
+      };
+      try {
+        const res = await fetch(
+          `${apiRoot}/api/v1/sports/board/${encodeURIComponent(gameId)}/cts-snapshot`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-feed-token': feedToken,
+            },
+            body: JSON.stringify(body),
+            keepalive: true,
+          },
+        );
+        setPostCount((n) => n + 1);
+        setPostLastStatus(`${res.status}`);
+      } catch (e) {
+        setPostLastStatus(`err: ${(e as Error).message}`);
+      }
+      return;
+    }
+
+    // Legacy WS-broadcast path — used when no game is bound.
     try {
       const res = await fetch(
         `${apiRoot}/api/v1/screens/${encodeURIComponent(screenId)}/game-state`,
@@ -384,7 +503,7 @@ export function CtsBridge({
     } catch (e) {
       setPostLastStatus(`err: ${(e as Error).message}`);
     }
-  }, [apiRoot, deviceToken, screenId]);
+  }, [apiRoot, deviceToken, screenId, gameId, feedToken]);
 
   const schedulePost = useCallback(
     (snap: CtsFullSnapshot) => {
@@ -643,7 +762,7 @@ export function CtsBridge({
           }}
         />
         <strong style={{ marginRight: 8 }}>
-          CTS Bridge{nativeMode ? ' · ECBox' : ''}
+          CTS Bridge{nativeMode ? ' · ECBox' : ''}{gameId && feedToken ? ' · game' : ''}
         </strong>
         <span style={{ opacity: 0.7 }}>{status}</span>
       </div>

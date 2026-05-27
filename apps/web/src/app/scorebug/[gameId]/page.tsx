@@ -21,6 +21,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
+import { applyCtsOverlay } from '@/lib/cts-merge';
 import { SituationalRow, hasSituational } from '@/components/widgets/v2/_shared/sports-situational';
 import { useParams, useSearchParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
@@ -230,7 +231,14 @@ export default function ScorebugPage() {
   }, [gameId]);
 
   const def = useMemo(() => (data ? findSport(data.sport) : undefined), [data]);
-  const liveMs = useLiveClock(data, def);
+
+  // 2026-05-27 — CTS source-of-truth merge (apps/web/src/lib/cts-merge.ts).
+  // When the CTS console is broadcasting fresh snapshots into the
+  // game's stats.cts block, those overrule the operator-input columns
+  // on the scorebug too. One helper, identical math on every public
+  // sports surface.
+  const view = useMemo(() => (data ? applyCtsOverlay(data) : data), [data]);
+  const liveMs = useLiveClock(view, def);
 
   // Transparency: clear the document bg + hide the dashboard's
   // decorative top gradient so only the bug composites over video.
@@ -243,7 +251,7 @@ export default function ScorebugPage() {
 
   // Pre-data / unknown sport → render nothing. An OBS overlay must
   // never flash a loading or error box onto a live broadcast.
-  if (!data || !def) return transparentCss;
+  if (!data || !def || !view) return transparentCss;
 
   // Sprint 13 — operator picked a custom scorebug template. The
   // template canvas can be any aspect ratio; the broadcast operator
@@ -256,18 +264,18 @@ export default function ScorebugPage() {
         <CustomScoreboardScene
           templateId={data.scorebugTemplateId}
           gameId={gameId}
-          initial={data}
+          initial={view}
           embedded={(data as { scorebugTemplate?: any }).scorebugTemplate ?? null}
         />
       </>
     );
   }
 
-  const homeColor = data.homeColor || DEFAULT_HOME;
-  const awayColor = data.awayColor || DEFAULT_AWAY;
+  const homeColor = view.homeColor || DEFAULT_HOME;
+  const awayColor = view.awayColor || DEFAULT_AWAY;
   const hasClock = def.clock.type !== 'none';
   const cueAbove = pos.v === 'bottom';
-  const sit = data.stats || {};
+  const sit = view.stats || {};
   const showSit = hasSituational(def, sit);
 
   return (
@@ -338,10 +346,10 @@ export default function ScorebugPage() {
             }}
           >
             <TeamBlock
-              code={teamCode(data.homeTeam, homeOverride)}
-              score={data.homeScore}
+              code={teamCode(view.homeTeam, homeOverride)}
+              score={view.homeScore}
               color={homeColor}
-              logoUrl={data.homeLogoUrl}
+              logoUrl={view.homeLogoUrl}
               side="home"
             />
 
@@ -363,7 +371,7 @@ export default function ScorebugPage() {
                     fontWeight: 900,
                     lineHeight: 1,
                     fontVariantNumeric: 'tabular-nums',
-                    color: data.clockRunning ? '#fbbf24' : '#e2e8f0',
+                    color: view.clockRunning ? '#fbbf24' : '#e2e8f0',
                   }}
                 >
                   {fmtClock(liveMs)}
@@ -378,15 +386,15 @@ export default function ScorebugPage() {
                   marginTop: hasClock ? 4 : 0,
                 }}
               >
-                {segmentLabel(def, data)}
+                {segmentLabel(def, view)}
               </div>
             </div>
 
             <TeamBlock
-              code={teamCode(data.awayTeam, awayOverride)}
-              score={data.awayScore}
+              code={teamCode(view.awayTeam, awayOverride)}
+              score={view.awayScore}
               color={awayColor}
-              logoUrl={data.awayLogoUrl}
+              logoUrl={view.awayLogoUrl}
               side="away"
             />
           </div>

@@ -6805,6 +6805,14 @@ function PlayerPage() {
         *   - The screen is paired (screenId + tenantId both set, so
         *     a device token exists for the POST)
         *
+        * 2026-05-27 — gameId binding. When the operator opens the
+        * player with `?cts=1&game=<gameId>&feedToken=<token>` the
+        * bridge persists every snapshot to `Game.stats.cts` so the
+        * /board /ribbon /scorebug surfaces read CTS as the SOURCE OF
+        * TRUTH (see apps/web/src/lib/cts-merge.ts). Without those two
+        * params the bridge falls back to its legacy transient
+        * WS-broadcast path for the in-page CtsScoreboard widget.
+        *
         * The bridge handles Web Serial detection internally — on
         * Safari / Firefox / Chromium 83 it renders nothing. */}
       {tenantId && screenId && qp('cts') === '1' && (
@@ -6812,6 +6820,8 @@ function PlayerPage() {
           screenId={screenId}
           apiRoot={getApiRoot()}
           deviceToken={getDeviceToken()}
+          gameId={qp('game') || null}
+          feedToken={qp('feedToken') || null}
         />
       )}
     </div>

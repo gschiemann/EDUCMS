@@ -54,6 +54,7 @@ import {
 } from '@/hooks/use-api';
 import { findSport, PLAYER_STATS } from '@cms/api-types';
 import type { SportDefinition, SportStatField } from '@cms/api-types';
+import { computeCtsStatus, type CtsStatus } from '@/lib/cts-merge';
 import { RosterPanel } from './RosterPanel';
 // CtsCuePanel kept in the repo (./CtsCuePanel.tsx) but no longer
 // rendered as its own tab — the existing Celebrations panel inside
@@ -414,6 +415,25 @@ function GameControl() {
                     stats: { celebrationPack: p } as Record<string, unknown>,
                   })
                 }
+              />
+            </Section>
+
+            {/* 2026-05-27 — CTS feed status pill. The operator wants
+                to know at a glance whether the Colorado Time Systems
+                console is broadcasting AND being accepted by the API.
+                Three states:
+                  • fresh  — green ring, "CTS connected — receiving"
+                             (the scoreboard + ribbon show CTS data)
+                  • stale  — amber ring, "CTS stale — using operator
+                             inputs" (the operator's chips in Run mode
+                             are the source of truth)
+                  • never  — slate, "CTS not configured" (no snapshot
+                             ever arrived; manual entry only)
+                The pill auto-refreshes off the same `Game.stats.cts`
+                field the public surfaces read; no extra fetch. */}
+            <Section title="CTS scoreboard console">
+              <CtsConsoleStatus
+                stats={(g.stats as Record<string, unknown> | undefined) || {}}
               />
             </Section>
 
@@ -2921,6 +2941,74 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div className="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
       <h2 className="text-sm font-bold text-slate-900 mb-3">{title}</h2>
       {children}
+    </div>
+  );
+}
+
+/**
+ * 2026-05-27 — CTS feed status pill. Reads `Game.stats.cts.lastUpdateAt`
+ * (written by the API when the CTS bridge POSTs a snapshot) and renders
+ * one of three states. Reuses the same freshness math as the public
+ * surfaces (apps/web/src/lib/cts-merge.ts) so the operator's pill and
+ * the rendered scoreboard never disagree about who is the source of
+ * truth.
+ *
+ * Polls 1 Hz internally so the pill flips to "stale" the moment a CTS
+ * outage exceeds the 5 s window. No network call — it re-reads from
+ * React Query's already-fresh game record via the parent's `stats` prop.
+ */
+function CtsConsoleStatus({ stats }: { stats: Record<string, unknown> }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    // 1 Hz tick — enough to flip fresh→stale within a second of the
+    // 5 s heartbeat window expiring, cheap enough to never matter.
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  // Use the BROWSER's clock as the "serverTime" reference. The cts
+  // lastUpdateAt is a server timestamp; using Date.now() is correct
+  // because we only care about how long ago the heartbeat arrived.
+  // The 5 s threshold is generous enough to absorb any reasonable
+  // clock skew on the operator's laptop.
+  const status: CtsStatus = computeCtsStatus(stats, Date.now());
+  // intentionally read `tick` so the effect's setState triggers a re-render
+  void tick;
+
+  const ring: Record<CtsStatus['kind'], string> = {
+    fresh: 'ring-2 ring-green-500 bg-green-50',
+    stale: 'ring-2 ring-amber-400 bg-amber-50',
+    never: 'ring-1 ring-slate-300 bg-slate-50',
+  };
+  const dot: Record<CtsStatus['kind'], string> = {
+    fresh: 'bg-green-500 animate-pulse',
+    stale: 'bg-amber-500',
+    never: 'bg-slate-400',
+  };
+  const text: Record<CtsStatus['kind'], string> = {
+    fresh: 'text-green-900',
+    stale: 'text-amber-900',
+    never: 'text-slate-600',
+  };
+  const ageText =
+    status.kind === 'fresh' && status.ageMs !== null
+      ? `${Math.max(0, Math.round(status.ageMs / 1000))}s ago`
+      : status.kind === 'stale' && status.ageMs !== null
+        ? `${Math.max(0, Math.round(status.ageMs / 1000))}s ago`
+        : null;
+
+  return (
+    <div className={`flex items-center gap-3 rounded-xl px-4 py-3 ${ring[status.kind]}`}>
+      <span className={`inline-block h-3 w-3 rounded-full ${dot[status.kind]}`} />
+      <div className="min-w-0 flex-1">
+        <div className={`text-sm font-bold ${text[status.kind]}`}>{status.label}</div>
+        <div className="mt-0.5 text-[11px] text-slate-500">
+          {status.kind === 'fresh'
+            ? `Scoreboard + ribbon are reading from the CTS console${ageText ? ` · last snapshot ${ageText}` : ''}.`
+            : status.kind === 'stale'
+              ? `No CTS snapshot in the last 5 s${ageText ? ` (${ageText})` : ''} — your manual chips win.`
+              : 'Open a player kiosk with ?cts=1&game=<id>&feedToken=<token> to start the live feed.'}
+        </div>
+      </div>
     </div>
   );
 }
