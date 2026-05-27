@@ -71,6 +71,8 @@ In chronological order:
   acc5ee2  branding: P0-6 — auto-tweak primary/accent to pass WCAG AA contrast  [Agent 4]
   d547fa3  assets: 1920px / q=85 image optimizer on upload (P0-5)  [Agent 5]
   0fc6037  auth: P0-4 — TOTP MFA endpoints (enroll / verify / disable / challenge)  [Agent 6]
+  dc125c5  docs: morning summary — overnight agent run + P0 fixes
+  87cf727  assets: P1-2 — AI alt-text generator on image upload  [Agent 7]
 
 All deployed to Vercel as of summary time. The Prisma migration
 20260527000000_add_asset_processing_meta runs on the next Railway boot
@@ -139,12 +141,22 @@ P0-8: Player-side full signature verification
   ACTION: V2 Phase 1 work — Ed25519 keypair at pair time. Not gating launch.
 
 ================================================================================
-  P1 / nice-to-haves dispatched but not yet merged
+  P1 / nice-to-haves shipped tonight
 ================================================================================
 
-P1-2 (AI alt-text on upload): agent dispatched, may or may not have landed
-   by the time you wake up. If it merged, the agent's commit will be in
-   git log between this file's timestamp and now.
+P1-2 (AI alt-text on upload): LANDED — commit 87cf727. Every image upload
+   now kicks off a fire-and-forget AI call (OpenAI 4o-mini vision with
+   Anthropic claude-3-5-haiku fallback) that fills Asset.altText with a
+   concise <125-char description suitable for screen readers. New endpoints
+   POST /assets/:id/generate-alt-text (operator regenerate) and PUT
+   /assets/:id/alt-text (manual override) shipped. Asset detail panel in
+   /[schoolId]/assets gains an Alt-text card with edit-in-place + sparkle
+   regenerate button. Adds 10 new tests; full alt-text + optimizer suite
+   green at 16/16. Cost-cap: skipped if tenant has no BYOK AND platform
+   free-tier monthly cap exhausted; never blocks the upload. Audit-logged
+   end to end.
+   Open follow-up: WidgetRenderer IMAGE widget doesn't yet read
+   asset.altText for <img alt="…"> — that's a clean separate diff.
 
 ================================================================================
   ABOUT THE LAYOUT ISSUE YOU SAW BEFORE BED
