@@ -76,7 +76,7 @@ const GAME_STATUSES: { key: string; label: string }[] = [
   { key: 'FINAL', label: 'Final' },
 ];
 
-type ConsoleMode = 'run' | 'setup' | 'roster';
+type ConsoleMode = 'run' | 'setup';
 
 // ── clock helpers ──────────────────────────────────────────────
 
@@ -247,7 +247,6 @@ function GameControl() {
             [
               { key: 'run', label: 'Run game', icon: '▶' },
               { key: 'setup', label: 'Set up', icon: '⚙' },
-              { key: 'roster', label: 'Roster', icon: '👥' },
             ] as { key: ConsoleMode; label: string; icon: string }[]
           ).map((tab) => (
             <button
@@ -365,6 +364,20 @@ function GameControl() {
               </div>
             </Section>
 
+            {/* 2026-05-27 — Roster moved here. Operator: "move roster
+                under the setup, it doesnt need its own tab". The
+                pre-game flow is Setup → set status, pair screens,
+                load roster, configure ribbon — adding the roster
+                inline keeps everything in one scrollable workflow. */}
+            <Section title="Team rosters">
+              <RosterPanel
+                gameId={gameId}
+                homeTeam={g.homeTeam}
+                awayTeam={g.awayTeam}
+                statKeys={PLAYER_STATS[g.sport] || []}
+              />
+            </Section>
+
             <Section title="Put it on your screens">
               <ScreenPushPanel gameId={gameId} />
             </Section>
@@ -412,21 +425,9 @@ function GameControl() {
         </div>
       )}
 
-      {/* ROSTER MODE */}
-      {mode === 'roster' && (
-        <div className="flex-1 overflow-auto bg-slate-50">
-          <div className="max-w-4xl mx-auto p-4">
-            <Section title="Team rosters">
-              <RosterPanel
-                gameId={gameId}
-                homeTeam={g.homeTeam}
-                awayTeam={g.awayTeam}
-                statKeys={PLAYER_STATS[g.sport] || []}
-              />
-            </Section>
-          </div>
-        </div>
-      )}
+      {/* ROSTER MODE block removed 2026-05-27 — operator: "move roster
+          under the setup, it doesnt need its own tab". The Team
+          Rosters Section is now part of the Setup-mode panel above. */}
 
       {/* CTS Cues tab REMOVED 2026-05-26 — operator feedback: "seems
           like we are recreating shit we already have when really we just
