@@ -1090,9 +1090,17 @@ function RibbonMediaScroll({
             top: 0,
             bottom: 0,
             left: 0,
+            // 2026-05-27 — strip + sequence MUST have definite height so
+            // the img's `height: 100%` resolves. Without `height: 100%`,
+            // `alignItems: 'center'` makes the sequence content-height,
+            // and the img at `height: 100%` falls back to its natural
+            // height (e.g. 98px on a 3840×98 banner) instead of filling
+            // the 400px ribbon zone. Operator saw 4 tiny stacked banners
+            // instead of one full-height marquee.
+            height: '100%',
             width: 'max-content',
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'stretch',
             animation:
               !singleVideo && seqW > 0
                 ? `${animName} ${marqueeSecs.toFixed(1)}s linear infinite`
@@ -1103,7 +1111,7 @@ function RibbonMediaScroll({
             <div
               key={c}
               ref={c === 0 ? seqRef : undefined}
-              style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}
+              style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0, height: '100%' }}
             >
               {items.map((it, i) => renderItem(it, `${c}-${i}`))}
             </div>

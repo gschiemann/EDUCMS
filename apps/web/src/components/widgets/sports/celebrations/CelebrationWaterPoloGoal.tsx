@@ -585,7 +585,13 @@ export function CelebrationWaterPoloGoal({
         style={{
           width: '100%',
           height: '100%',
-          objectFit: 'contain',
+          // 2026-05-27 — `cover` (not `contain`) on the cinematic canvas
+          // so an ultrawide ribbon (~7.5:1) fills its full width. With
+          // `contain`, a 16:9 canvas on a 3000×400 ribbon letterboxed
+          // to ~711×400 centered with black bars left/right. The
+          // cinematic's goal+ball+score sit on the water-line, so
+          // cropping the top sky and bottom pool is safe.
+          objectFit: 'cover',
           display: 'block',
         }}
       />
