@@ -1079,6 +1079,31 @@ function RunShotClockMini({
   const sc = (stats.shotClock as Record<string, unknown> | undefined) || {};
   const storedMs = typeof sc.ms === 'number' ? (sc.ms as number) : 0;
   const shotRunning = !!sc.running;
+
+  // 2026-05-27 — operator bug 97f54357: "the time clock and the game
+  // clock are not in sync, the time clock can not move forward if the
+  // game clock is paused".
+  //
+  // Root cause: liveMs below is computed AT RENDER TIME from
+  // Date.now(). It needs the parent to re-render for the displayed
+  // number to count down. The parent's useLiveClock (line ~97) only
+  // sets up its 100ms setInterval when game.clockRunning === true —
+  // so when the game clock pauses, the parent stops re-rendering,
+  // and the shot clock display freezes even though the SHOT clock is
+  // still running in the DB.
+  //
+  // Fix: this component drives its OWN 200ms ticker whenever the
+  // shot clock is running, INDEPENDENT of the game clock state.
+  // Forces a re-render → liveMs recomputes → display ticks down.
+  // 200ms is fine for a clock that displays whole seconds — at most
+  // 1 frame of latency on the visible value.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    if (!shotRunning) return;
+    const t = setInterval(() => forceTick((n) => (n + 1) | 0), 200);
+    return () => clearInterval(t);
+  }, [shotRunning]);
+
   // Project the live remaining time when the clock is running so the
   // 30-second countdown actually ticks. Same projection the live
   // BoardScene + ribbon scorebug do.
