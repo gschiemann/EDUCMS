@@ -684,13 +684,24 @@ function RunMode({
 
   return (
     <div className="flex flex-col flex-1">
-      {/* 2026-05-27 — inline live preview at top of Run mode.
-          Operator: "the main dashbord should have the samples of what
-          everyone is seeing so when i hit a button i see exactly whats
-          its going to look like". One always-on row of the scoreboard
-          + ribbon iframes so every cue fire / score bump / spotlight
-          push is visible without alt-tabbing to a screen. */}
-      <RunLivePreview gameId={gameId} />
+      {/* 2026-05-27 — Single pane of glass. Interactive scoreboard
+          first (full controls baked in: scores, clock, segment, shot
+          clock), then ribbon preview below it. Operator: "don't put
+          the ribbon and the scoreboard on the same row…make the
+          scoreboard first and way more interactive…make it like
+          your controlling the game right from the scoreboard
+          itself…we will need to port this all to a mobile version".
+          The scoreboard tiles use a 3-column grid that collapses
+          to 1 column on mobile (sm: breakpoint). */}
+      <RunInteractiveScoreboard
+        g={g}
+        def={def}
+        liveMs={liveMs}
+        homeColor={homeColor}
+        awayColor={awayColor}
+        ctl={ctl}
+      />
+      <RunRibbonPreview gameId={gameId} />
 
       {/* two team zones — shrink to fit the rest of the viewport */}
       <div className="flex flex-1 min-h-0">
@@ -732,49 +743,25 @@ function RunMode({
       <RunInlineHighlightsBar gameId={gameId} g={g} ctl={ctl} />
       <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
 
-      {/* bottom control tray */}
+      {/* 2026-05-27 — bottom control tray, slimmed down.
+          Clock + shot-clock + segment controls were duplicated here
+          AND in the new RunInteractiveScoreboard up top. Moved to the
+          scoreboard as the primary surface (operator: "move the start
+          button under the clock…integrate the buttons all where they
+          make sense"). What's left here: baseball ball/strike (no
+          clock to compete with), the football play clock (separate
+          from the game clock), undo, penalties, custom highlight
+          builder, full cue launchpad. */}
       <div className="flex items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
-        {/* clock control or ball/strike for baseball */}
-        {isBaseballSoftball ? (
+        {/* Baseball still has its in-tray ball/strike — there's no
+            game clock in baseball so this DOES belong inline. */}
+        {isBaseballSoftball && (
           <BaseTrayBall stats={stats} onStat={(s) => ctl.stats.mutate({ stats: s })} />
-        ) : def.clock.type !== 'none' ? (
-          <TrayClockBtn game={g} def={def} liveMs={liveMs} onAction={(a, ms) => ctl.clock.mutate({ action: a, ms })} />
-        ) : (
-          /* clockless non-baseball: segment nudge */
-          <div className="flex items-center gap-2 flex-1">
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => ctl.segment.mutate({ delta: -1 })}
-              aria-label={`Previous ${def.segment.name.toLowerCase()}`}
-            >
-              <Minus className="h-4 w-4" />
-            </Button>
-            <span className="text-sm font-bold text-slate-700 min-w-[80px] text-center">
-              {segmentText(def, g)}
-            </span>
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => ctl.segment.mutate({ delta: 1 })}
-              aria-label={`Next ${def.segment.name.toLowerCase()}`}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
         )}
 
-        {/* shot clock — any sport with a possession clock (basketball,
-            water polo, lacrosse). A second countdown beside the game clock. */}
-        {def.shotClock && (
-          <ShotClockBtn
-            stats={stats}
-            shortReset={def.shotClock.short}
-            onAction={(a, v) => ctl.shotClock.mutate({ action: a, value: v })}
-          />
-        )}
-
-        {/* football play clock — the 40/25 between snaps */}
+        {/* football play clock — the 40/25 between snaps, distinct
+            from the game clock. Stays inline; the scoreboard tile
+            only handles the GAME clock. */}
         {def.key === 'football' && (
           <PlayClockBtn
             stats={stats}
@@ -858,11 +845,259 @@ function RunMode({
 // for power-user features (custom-builder spotlight, multi-target
 // cue picker) — these inline bars are the fast path.
 
-/** Compact iframe preview of the scoreboard + ribbon. Renders the
- *  same public surfaces the LED screens show, sized as a thin
- *  strip at the top of Run mode so the operator sees every score
- *  bump / spotlight push / cue fire reflected immediately. */
-function RunLivePreview({ gameId }: { gameId: string }) {
+/** 2026-05-27 — Interactive scoreboard at the top of Run mode.
+ *  Operator: "make it like your controlling the game right from the
+ *  scoreboard itself…integrate the buttons all where they make sense
+ *  so we can get to a single pane of glass to controll the entire
+ *  screen…we will need to port this all to a mobile version".
+ *
+ *  Layout: 3-column grid (home score | clock + segment | away
+ *  score) on desktop, vertical stack on mobile. Looks like a real
+ *  scoreboard, controls baked in:
+ *    - Home/Away tiles: huge tabular-numeric score + +/- buttons
+ *      sized for thumbs.
+ *    - Clock tile: segment label with −/+ chips, big MM:SS, START
+ *      /STOP button right under the time, reset + clock-nudge
+ *      chips for fine adjustments. Shot clock embedded below if
+ *      the sport has one (water polo, basketball, lacrosse).
+ *
+ *  Replaces the old RunLivePreview (side-by-side iframes) — the
+ *  ribbon preview moves to its own row below this. */
+function RunInteractiveScoreboard({
+  g,
+  def,
+  liveMs,
+  homeColor,
+  awayColor,
+  ctl,
+}: {
+  g: any;
+  def: SportDefinition;
+  liveMs: number;
+  homeColor: string;
+  awayColor: string;
+  ctl: ReturnType<typeof useGameControl>;
+}) {
+  const stats: Record<string, unknown> = g.stats || {};
+  const running = !!g.clockRunning;
+  const hasClock = def.clock.type !== 'none';
+  const segLabel = segmentText(def, g);
+  return (
+    <div className="bg-slate-900 px-3 py-3 border-b-2 border-slate-700">
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-stretch">
+        {/* HOME tile */}
+        <ScoreTile
+          team={g.homeTeam}
+          score={g.homeScore}
+          color={homeColor}
+          increments={def.score.increments}
+          onScore={(d) => ctl.score.mutate({ team: 'home', delta: d })}
+        />
+
+        {/* CLOCK + SEGMENT tile */}
+        <div className="flex flex-col items-center justify-center bg-slate-800 rounded-xl px-4 py-3 min-w-[220px]">
+          <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-slate-400">
+            <button
+              type="button"
+              onClick={() => ctl.segment.mutate({ delta: -1 })}
+              className="h-6 w-6 rounded bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center text-sm font-bold"
+              aria-label="Previous segment"
+            >
+              −
+            </button>
+            <span className="min-w-[42px] text-center text-amber-400 text-sm">{segLabel}</span>
+            <button
+              type="button"
+              onClick={() => ctl.segment.mutate({ delta: 1 })}
+              className="h-6 w-6 rounded bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center text-sm font-bold"
+              aria-label="Next segment"
+            >
+              +
+            </button>
+          </div>
+          {hasClock ? (
+            <>
+              <div className="text-5xl sm:text-6xl font-black tabular-nums text-white leading-none my-2">
+                {fmtClock(liveMs)}
+              </div>
+              <button
+                type="button"
+                onClick={() => ctl.clock.mutate({ action: running ? 'pause' : 'start' })}
+                className={
+                  running
+                    ? 'w-full h-11 rounded-lg bg-red-600 hover:bg-red-700 text-white font-black text-base flex items-center justify-center gap-1.5 transition-colors'
+                    : 'w-full h-11 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base flex items-center justify-center gap-1.5 transition-colors'
+                }
+              >
+                {running ? (
+                  <>
+                    <Pause className="h-4 w-4" /> STOP
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4" /> START
+                  </>
+                )}
+              </button>
+              <div className="flex gap-1 mt-1.5 w-full">
+                <button
+                  type="button"
+                  onClick={() => ctl.clock.mutate({ action: 'reset' })}
+                  className="flex-1 h-8 rounded bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold flex items-center justify-center gap-1"
+                  title="Reset clock to segment length"
+                >
+                  <RotateCcw className="h-3 w-3" /> Reset
+                </button>
+                <button
+                  type="button"
+                  onClick={() => ctl.clock.mutate({ action: 'set', ms: Math.max(0, liveMs - 1000) })}
+                  className="flex-1 h-8 rounded bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold"
+                  title="Subtract 1 second"
+                >
+                  -1s
+                </button>
+                <button
+                  type="button"
+                  onClick={() => ctl.clock.mutate({ action: 'set', ms: liveMs + 1000 })}
+                  className="flex-1 h-8 rounded bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold"
+                  title="Add 1 second"
+                >
+                  +1s
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="text-2xl font-black text-white my-2">{segLabel}</div>
+          )}
+          {/* Shot clock — water polo, basketball, lacrosse */}
+          {def.shotClock && (
+            <RunShotClockMini stats={stats} def={def} ctl={ctl} />
+          )}
+        </div>
+
+        {/* AWAY tile */}
+        <ScoreTile
+          team={g.awayTeam}
+          score={g.awayScore}
+          color={awayColor}
+          increments={def.score.increments}
+          onScore={(d) => ctl.score.mutate({ team: 'away', delta: d })}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** One team's score tile — team name, huge score, scoring buttons.
+ *  Increments come from the sport definition (1 for water polo /
+ *  soccer / volleyball; 1,2,3 for basketball; 1,2,3,6,7,8 for
+ *  football, etc.). −1 is always available for fixes. */
+function ScoreTile({
+  team,
+  score,
+  color,
+  increments,
+  onScore,
+}: {
+  team: string;
+  score: number;
+  color: string;
+  increments: number[];
+  onScore: (delta: number) => void;
+}) {
+  return (
+    <div className="flex flex-col items-center bg-slate-800 rounded-xl px-3 py-3">
+      <div
+        className="text-[12px] font-black uppercase tracking-widest truncate max-w-full"
+        style={{ color }}
+        title={team}
+      >
+        {team || '—'}
+      </div>
+      <div className="text-6xl sm:text-7xl font-black tabular-nums leading-none my-2" style={{ color }}>
+        {score}
+      </div>
+      <div className="flex gap-1.5 w-full">
+        {increments.map((inc) => (
+          <button
+            key={`+${inc}`}
+            type="button"
+            onClick={() => onScore(inc)}
+            className="flex-1 h-10 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base transition-colors"
+          >
+            +{inc}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => onScore(-1)}
+          className="flex-1 h-10 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-base transition-colors"
+          title="Subtract 1 (fix a mis-tap)"
+        >
+          −1
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Shot-clock mini inside the clock tile. Compact horizontal:
+ *  current value + reset-to-30 / reset-to-20 / start / stop. */
+function RunShotClockMini({
+  stats,
+  def,
+  ctl,
+}: {
+  stats: Record<string, unknown>;
+  def: SportDefinition;
+  ctl: ReturnType<typeof useGameControl>;
+}) {
+  const shotMs = typeof stats.shotClockMs === 'number' ? (stats.shotClockMs as number) : 0;
+  const shotRunning = !!stats.shotClockRunning;
+  const sec = Math.max(0, Math.ceil(shotMs / 1000));
+  const fullSec = def.shotClock?.full ?? 30;
+  const shortSec = def.shotClock?.short ?? 20;
+  return (
+    <div className="flex items-center gap-1 mt-2 pt-2 border-t border-slate-700 w-full">
+      <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Shot</span>
+      <span className="text-xl font-black tabular-nums text-amber-400 leading-none min-w-[28px] text-center">
+        {sec}
+      </span>
+      <button
+        type="button"
+        onClick={() => ctl.shotClock.mutate({ action: 'set', value: fullSec })}
+        className="h-7 px-1.5 rounded bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold"
+        title={`Reset to ${fullSec}`}
+      >
+        {fullSec}
+      </button>
+      <button
+        type="button"
+        onClick={() => ctl.shotClock.mutate({ action: 'set', value: shortSec })}
+        className="h-7 px-1.5 rounded bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold"
+        title={`Reset to ${shortSec}`}
+      >
+        {shortSec}
+      </button>
+      <button
+        type="button"
+        onClick={() => ctl.shotClock.mutate({ action: shotRunning ? 'pause' : 'start' })}
+        className={
+          shotRunning
+            ? 'h-7 px-2 rounded bg-red-600 hover:bg-red-700 text-white text-[10px] font-black'
+            : 'h-7 px-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black'
+        }
+      >
+        {shotRunning ? '⏸' : '▶'}
+      </button>
+    </div>
+  );
+}
+
+/** Ribbon iframe in its own row, below the interactive scoreboard.
+ *  Wide-short strip showing what the ribbon LED is rendering right
+ *  now — sponsors, score, spotlight overlay, celebration cues. */
+function RunRibbonPreview({ gameId }: { gameId: string }) {
   const [hidden, setHidden] = useState(false);
   if (hidden) {
     return (
@@ -872,16 +1107,16 @@ function RunLivePreview({ gameId }: { gameId: string }) {
           onClick={() => setHidden(false)}
           className="text-[11px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-800"
         >
-          ▾ Show live preview
+          ▾ Show ribbon preview
         </button>
       </div>
     );
   }
   return (
-    <div className="bg-slate-900 border-b border-slate-300">
-      <div className="flex items-center justify-between px-4 py-1">
+    <div className="bg-slate-900 border-b border-slate-300 px-3 py-2">
+      <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">
-          ● LIVE — what your screens are showing right now
+          ● Ribbon — live
         </span>
         <button
           type="button"
@@ -891,25 +1126,13 @@ function RunLivePreview({ gameId }: { gameId: string }) {
           ▴ Hide
         </button>
       </div>
-      <div className="flex gap-2 px-4 pb-2">
-        {/* Scoreboard preview — 16:9 thumbnail */}
-        <div className="flex-1 bg-black overflow-hidden rounded-md" style={{ aspectRatio: '16 / 9', maxHeight: '180px' }}>
-          <iframe
-            src={`/board/${gameId}?nochrome=1`}
-            title="Scoreboard preview"
-            className="w-full h-full block border-0"
-            style={{ pointerEvents: 'none' }}
-          />
-        </div>
-        {/* Ribbon preview — wide thin strip */}
-        <div className="flex-[2] bg-black overflow-hidden rounded-md" style={{ aspectRatio: '7.5 / 1', maxHeight: '180px' }}>
-          <iframe
-            src={`/ribbon/${gameId}?nochrome=1`}
-            title="Ribbon preview"
-            className="w-full h-full block border-0"
-            style={{ pointerEvents: 'none' }}
-          />
-        </div>
+      <div className="bg-black overflow-hidden rounded-md" style={{ aspectRatio: '7.5 / 1', maxHeight: '120px' }}>
+        <iframe
+          src={`/ribbon/${gameId}?nochrome=1`}
+          title="Ribbon preview"
+          className="w-full h-full block border-0"
+          style={{ pointerEvents: 'none' }}
+        />
       </div>
     </div>
   );
