@@ -104,22 +104,51 @@ export const CELEBRATION_DECK_CUES: Record<string, CelebrationDeckCfg> = {
   },
 
   // ── WATER POLO ────────────────────────────────────────────────
+  // 2026-05-27 — Operator feedback: "the save lets the ball go into the
+  // net, makes no sense, and the power play saying 6-5 isnt always
+  // correct…couldnt it be 6-4 or 5-4 or any combo?"
+  //
+  // SAVE: previously the projectile flew from off-screen-left into the
+  // GOAL center (P.goal = pool scene's goal frame). The ball ended up
+  // IN the net — visually identical to a goal. Fixed by overriding
+  // impactPt to the goalie's GLOVE position (W/2, y≈540). Ball now
+  // flies in, the glove pops up in the goal mouth, ball stops at the
+  // glove → reads as "goalie blocked it". Water-splash burst at the
+  // glove sells the catch.
+  //
+  // EXCLUSION + POWER PLAY: water polo strength advantage is dynamic.
+  // Most common is 6-on-5 (one exclusion), but it can be 6-on-4
+  // (two simultaneous opposing exclusions) or 5-on-4 (one exclusion
+  // each side simultaneously) — even 4-on-3 in extreme cases. The
+  // hardcoded "6 ON 5" / "6v5" was wrong for any other combo. Made
+  // generic: "TIMED EXCLUSION · 20s POWER PLAY" / "MAN ADVANTAGE".
+  // sub1 still gets replaced by the live scoreline at fire time (see
+  // ribbon page liveSub1), so the operator sees the real teams + score.
+  // Future: expose a strength picker on the operator's celebration
+  // button so they can stamp "6v4" etc. on the cue at fire time.
   'waterpolo-save': {
     scene: 'pool', headline: 'SAVE!',
     sub1: 'NEWPORT HARBOR  9  —  8  CORONA DEL MAR',
-    sub2: '3RD  ·  BIG SAVE  ·  #1 GK',
+    sub2: 'GOALIE  ·  BIG SAVE',
     burst: 'water', motif: 'glove',
+    // The glove motif draws at canvas (W/2, 540). Point the impact
+    // there so the ball flies INTO the goalie's hand, not the net.
+    impactPt: () => ({ x: 960, y: 540 }),
     projectile: { ball: 'waterpolo', from: [-160, 640], t0: 640, t1: 1000, arc: 80, r: 30 },
   },
   'waterpolo-exclusion': {
     scene: 'pool', headline: 'EXCLUSION', headSize: 160,
-    sub1: 'MAN UP  —  6 ON 5', sub2: '2ND  ·  #7 EXCLUDED  ·  :20',
+    sub1: 'TIMED EXCLUSION',
+    sub2: '20-SECOND PENALTY  ·  POWER PLAY',
     burst: 'energy', motif: 'whistle',
   },
   'waterpolo-powerplay': {
     scene: 'pool', headline: 'POWER PLAY', headSize: 150,
-    sub1: 'MAN ADVANTAGE', sub2: '6 ON 5',
-    burst: 'energy', motif: 'plus1', motifText: '6v5',
+    sub1: 'MAN ADVANTAGE',
+    sub2: 'PLAY THE EXTRA',
+    // motifText 'PP' (power play abbrev) — non-numeric so it's
+    // accurate regardless of actual strength combo (6v5, 6v4, 5v4).
+    burst: 'energy', motif: 'plus1', motifText: 'PP',
   },
 
   // ── BASKETBALL ────────────────────────────────────────────────
