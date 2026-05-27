@@ -54,6 +54,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CtsParser,
+  MockCtsFeed,
+  REHEARSAL_SCRIPT,
+  scriptGame,
   type CtsFullSnapshot,
 } from '@cms/scoreboard-cts';
 
@@ -206,6 +209,20 @@ export function CtsBridge({
   const pendingSnapshotRef = useRef<CtsFullSnapshot | null>(null);
   const postTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPostAtRef = useRef<number>(0);
+
+  // 2026-05-27 — Simulator state. Operator: "how can we build a
+  // sample/fake connection to CTS…maybe we read content from a file
+  // thats in the form of a CTS feed so we can see how it will load
+  // and look?" The REHEARSAL_SCRIPT bundled in @cms/scoreboard-cts
+  // already scripts a 30-second four-quarter water polo demo (goals,
+  // exclusions, period changes, horn, timeouts). When the operator
+  // starts the simulator, we feed those scripted bytes through the
+  // SAME parser the live Web Serial / native bridge feeds — so the
+  // /sports/board path, the broadcast WS, the CTS widgets, the
+  // cinematic celebrations, every downstream surface sees identical
+  // data to a real game.
+  const [simRunning, setSimRunning] = useState<boolean>(false);
+  const simAbortRef = useRef<{ aborted: boolean } | null>(null);
 
   // Sprint 13 Phase 2 — detect the deployment mode ONCE on mount.
   //   • nativeMode = true  → Player APK on Goodview ECBox3576 etc.
@@ -491,6 +508,9 @@ export function CtsBridge({
         clearTimeout(postTimerRef.current);
         postTimerRef.current = null;
       }
+      // Stop the sample-game simulator if it's running.
+      if (simAbortRef.current) simAbortRef.current.aborted = true;
+      simAbortRef.current = null;
       try { readerRef.current?.cancel().catch(() => undefined); } catch { /* ignore */ }
       try { portRef.current?.close().catch(() => undefined); } catch { /* ignore */ }
     };
@@ -523,6 +543,53 @@ export function CtsBridge({
   const onDisconnect = useCallback(async () => {
     try { readerRef.current?.cancel().catch(() => undefined); } catch { /* ignore */ }
     // The read loop will exit and `openAndRun` will close + null the port.
+  }, []);
+
+  // 2026-05-27 — Start the bundled CTS rehearsal script. Feeds the
+  // SAME parser the live serial bridge feeds, so every downstream
+  // surface (the API POST, the broadcast WS, the CTS scoreboard
+  // widget, the AUTO-celebrate trigger that fires the goal cinematic)
+  // sees identical data to a real CTS game. Loops the 30-second
+  // script forever so the operator can leave it running while they
+  // sanity-check the production deploy.
+  const onStartSim = useCallback(async () => {
+    const parser = parserRef.current;
+    if (!parser) return;
+    setSimRunning(true);
+    setError(null);
+    const abort = { aborted: false };
+    simAbortRef.current = abort;
+    const feed = new MockCtsFeed((bytes) => {
+      if (abort.aborted) return;
+      parser.feed(bytes);
+      setBytesRead((n) => n + bytes.length);
+    });
+    // Initial state burst so the parser has a complete snapshot
+    // before the first scripted event.
+    feed.pushInitialState({ clock: '8:00', period: 1, homeScore: 0, awayScore: 0 });
+    // Loop the script. Each pass is ~30s; we replay forever until
+    // the operator clicks Stop or the bridge unmounts.
+    (async () => {
+      while (!abort.aborted) {
+        try {
+          await scriptGame(feed, REHEARSAL_SCRIPT);
+        } catch (e) {
+          if (!abort.aborted) setError(`Sim error: ${(e as Error).message}`);
+          break;
+        }
+        if (abort.aborted) break;
+        // Short gap then reset clock + scores for the next loop.
+        await new Promise((r) => setTimeout(r, 1500));
+        if (abort.aborted) break;
+        feed.pushInitialState({ clock: '8:00', period: 1, homeScore: 0, awayScore: 0 });
+      }
+    })();
+  }, []);
+
+  const onStopSim = useCallback(() => {
+    if (simAbortRef.current) simAbortRef.current.aborted = true;
+    simAbortRef.current = null;
+    setSimRunning(false);
   }, []);
 
   // Render — silent on unsupported browsers (Safari, Firefox, Taurus).
@@ -626,6 +693,54 @@ export function CtsBridge({
           }}
         >
           Disconnect
+        </button>
+      )}
+
+      {/* 2026-05-27 — Sample-game simulator. Operator: "how can we
+          build a sample/fake connection to CTS…maybe we read content
+          from a file thats in the form of a CTS feed". Feeds the
+          bundled REHEARSAL_SCRIPT (30-second 4-quarter water polo
+          game with goals/exclusions/horn) through the SAME parser
+          the live bridge uses. Every downstream surface sees the
+          same data shape it'd get from a real CTS console — perfect
+          for dress-rehearsing the full show flow without hardware. */}
+      {status !== 'connected' && !simRunning && (
+        <button
+          type="button"
+          onClick={onStartSim}
+          style={{
+            background: '#7c3aed',
+            color: 'white',
+            border: 'none',
+            padding: '6px 12px',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontSize: 12,
+            marginRight: 6,
+            marginBottom: 4,
+          }}
+          title="Run a scripted 30-second sample water-polo game through the parser. Useful for testing/demoing without a CTS console."
+        >
+          ▶ Play sample game
+        </button>
+      )}
+      {simRunning && (
+        <button
+          type="button"
+          onClick={onStopSim}
+          style={{
+            background: '#dc2626',
+            color: 'white',
+            border: 'none',
+            padding: '6px 12px',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontSize: 12,
+            marginRight: 6,
+            marginBottom: 4,
+          }}
+        >
+          ■ Stop sample
         </button>
       )}
 
