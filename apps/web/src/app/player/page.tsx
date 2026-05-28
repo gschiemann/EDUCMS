@@ -3736,7 +3736,17 @@ function PlayerPage() {
                 id: p.id || msg.eventId || `msg-${Date.now()}`,
                 type: msg.type as 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT',
                 severity: (p.severity as 'INFO' | 'WARN' | 'CRITICAL') || 'CRITICAL',
-                textBlob: typeof p.textBlob === 'string' ? p.textBlob : null,
+                // The signer names the broadcast body `text`, not `textBlob`
+                // (see emergency.controller.ts). The SSE path reads both; the
+                // WS path historically read only `textBlob`, so a TEXT_BROADCAST
+                // over WebSocket rendered BLANK. Read both. (P0-2 adjacent fix,
+                // 2026-05-28 audit.)
+                textBlob:
+                  typeof p.textBlob === 'string'
+                    ? p.textBlob
+                    : typeof p.text === 'string'
+                      ? p.text
+                      : null,
                 mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [],
                 audioUrl: typeof p.audioUrl === 'string' ? p.audioUrl : null,
                 expiresAt: typeof p.expiresAt === 'number' ? p.expiresAt : null,
