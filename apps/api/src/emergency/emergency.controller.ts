@@ -1112,19 +1112,117 @@ export class EmergencyController {
       tenantId,
       tenantStatus: tenant?.emergencyStatus || 'INACTIVE',
       tenantPlaylistId: tenant?.emergencyPlaylistId || null,
-      active: rows.map(r => ({
-        id: r.id,
-        type: r.type,
-        severity: r.severity,
-        textBlob: r.textBlob,
-        mediaUrls: r.mediaUrls ? JSON.parse(r.mediaUrls) : [],
-        audioUrl: r.audioUrl,
-        scopeType: r.scopeType,
-        scopeId: r.scopeId,
-        expiresAt: r.expiresAt ? Math.floor(r.expiresAt.getTime() / 1000) : null,
-        createdAt: r.createdAt.toISOString(),
-        triggeredByUserId: r.triggeredByUserId,
-      })),
+      active: rows.map(r => this.toEmergencyMessageView(r)),
+    };
+  }
+
+  /**
+   * Shared row → wire shape mapper for active EmergencyMessage rows.
+   * The player's <EmergencyOverlay> parses exactly this shape, so the
+   * user-session /status path and the device-JWT /messages path below
+   * MUST emit identical objects. Centralizing it keeps them in lockstep.
+   */
+  private toEmergencyMessageView(r: any) {
+    return {
+      id: r.id,
+      type: r.type,
+      severity: r.severity,
+      textBlob: r.textBlob,
+      mediaUrls: r.mediaUrls ? JSON.parse(r.mediaUrls) : [],
+      audioUrl: r.audioUrl,
+      scopeType: r.scopeType,
+      scopeId: r.scopeId,
+      expiresAt: r.expiresAt ? Math.floor(r.expiresAt.getTime() / 1000) : null,
+      createdAt: r.createdAt.toISOString(),
+      triggeredByUserId: r.triggeredByUserId,
+    };
+  }
+
+  /**
+   * P0-2 (life-safety) — DEVICE-authenticated emergency-message poll.
+   *
+   * The existing GET /status above resolves the tenant from a USER
+   * session (req.user.schoolId/tenantId), so a paired kiosk — which
+   * carries a DEVICE JWT, not a user session — got a 401 and the
+   * <EmergencyOverlay> self-poll silently swallowed it (`if (!res.ok)
+   * return`). Net effect: SOS / TEXT_BROADCAST / MEDIA_ALERT reached
+   * kiosks ONLY while the live WebSocket was healthy. Behind a
+   * WS-blocking proxy (Squid/ZScaler/iboss/GoGuardian — the exact
+   * reason the SSE + HTTP-poll fallback tiers exist) OR with Redis
+   * down, these life-safety pushes were never delivered to the wall.
+   *
+   * This endpoint closes the HTTP-poll tier for device clients:
+   *   - Auth: the controller-wide JwtAuthGuard already verifies a
+   *     device JWT (kind:'device', sub:screenId) and populates
+   *     req.user. RbacGuard short-circuits (this route has no
+   *     @RequireRoles). We additionally HARD-REQUIRE kind==='device'
+   *     so a user/api-key token can't reach this device-only path.
+   *   - Tenant scope: resolved from the LIVE Screen row keyed by
+   *     req.user.sub (the HMAC-signed screenId), NOT the JWT's
+   *     tenantId claim. A screen re-paired to another tenant carries
+   *     a stale claim until its 365-day token rotates; reading the
+   *     live row prevents a cross-tenant leak through an old token.
+   *   - Per-scope filter: a device only sees messages addressed to a
+   *     scope it actually belongs to — tenant:<tenantId>,
+   *     group:<screenGroupId>, or device:<screenId>. This stops a
+   *     per-screen (Sprint 8b device-scoped) message for screen B
+   *     from leaking onto screen A in the same tenant.
+   *
+   * No signing/HMAC/freshness/dedup is weakened: this is a READ of
+   * the same EmergencyMessage rows the signer/AuditLog already
+   * produced. The DB is the source of truth for the poll tier exactly
+   * as it is for the user-session /status path.
+   */
+  @Get('messages')
+  async deviceMessages(@Req() req: any) {
+    const u = req.user || {};
+    if (u.kind !== 'device' || !u.sub) {
+      // This route is device-only. User sessions use GET /status.
+      throw new ForbiddenException('Device authentication required');
+    }
+
+    const screen = await this.prisma.client.screen.findUnique({
+      where: { id: u.sub },
+      select: { id: true, tenantId: true, screenGroupId: true, status: true },
+    });
+
+    // Unpaired, revoked, or unknown screen → nothing to show. Empty
+    // (not an error) so the player keeps polling cleanly once paired.
+    if (!screen || !screen.tenantId || screen.status === 'REVOKED') {
+      return { tenantId: null, tenantStatus: 'INACTIVE', tenantPlaylistId: null, active: [] };
+    }
+
+    const tenantId = screen.tenantId;
+    const now = new Date();
+
+    // Scopes this exact device is a member of. A message only reaches
+    // the wall if its (scopeType:scopeId) matches one of these.
+    const scopeOr: Array<{ scopeType: string; scopeId: string }> = [
+      { scopeType: 'tenant', scopeId: tenantId },
+      { scopeType: 'device', scopeId: screen.id },
+    ];
+    if (screen.screenGroupId) {
+      scopeOr.push({ scopeType: 'group', scopeId: screen.screenGroupId });
+    }
+
+    const rows = await this.prisma.client.emergencyMessage.findMany({
+      where: {
+        tenantId,
+        clearedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        AND: [{ OR: scopeOr }],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    const tenant = await this.prisma.client.tenant.findUnique({ where: { id: tenantId } });
+
+    return {
+      tenantId,
+      tenantStatus: tenant?.emergencyStatus || 'INACTIVE',
+      tenantPlaylistId: tenant?.emergencyPlaylistId || null,
+      active: rows.map(r => this.toEmergencyMessageView(r)),
     };
   }
 }

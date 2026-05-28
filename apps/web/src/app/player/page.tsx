@@ -3488,6 +3488,42 @@ function PlayerPage() {
           else window.location.reload();
         } catch { /* swallow */ }
       });
+      // P0-2 (life-safety) — Sprint 5 emergency messages on the SSE
+      // tier. SSE exists precisely for the WS-blocked-proxy case
+      // (Squid/ZScaler/iboss/GoGuardian); before this fix the SSE
+      // consumer registered SYNC/OVERRIDE/ALL_CLEAR/CHECK_FOR_UPDATES/
+      // REFRESH_WEB but NOT SOS/TEXT_BROADCAST/MEDIA_ALERT, so a kiosk
+      // behind a WS-blocking proxy silently dropped every staff SOS /
+      // typed broadcast / media alert. Mirror the WS handler at
+      // ~L3697. Auth + server-side HMAC were already enforced when the
+      // EventSource opened (device JWT) and at the Redis fan-out gate;
+      // the SSE `handle()` wrapper hands us the inner signed payload.
+      const onEmergencyMessage = (type: 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT') => (p: any) => {
+        const payload = p || {};
+        setPushedEmergencyMessage({
+          // The DB row id arrives as `messageId` in the signed payload;
+          // the WS path falls back to `id`. Accept either.
+          id: payload.messageId || payload.id || `msg-${Date.now()}`,
+          type,
+          severity: (payload.severity as 'INFO' | 'WARN' | 'CRITICAL') || 'CRITICAL',
+          // TEXT_BROADCAST signs the field as `text`; SOS/MEDIA_ALERT
+          // sign it as `textBlob`. Read both so broadcasts aren't blank.
+          textBlob:
+            typeof payload.textBlob === 'string'
+              ? payload.textBlob
+              : typeof payload.text === 'string'
+                ? payload.text
+                : null,
+          mediaUrls: Array.isArray(payload.mediaUrls) ? payload.mediaUrls : [],
+          audioUrl: typeof payload.audioUrl === 'string' ? payload.audioUrl : null,
+          expiresAt: typeof payload.expiresAt === 'number' ? payload.expiresAt : null,
+          createdAt: payload.createdAt || new Date().toISOString(),
+        });
+      };
+      handle('SOS', onEmergencyMessage('SOS'));
+      handle('TEXT_BROADCAST', onEmergencyMessage('TEXT_BROADCAST'));
+      handle('MEDIA_ALERT', onEmergencyMessage('MEDIA_ALERT'));
+      handle('ALL_CLEAR_MESSAGE', () => setPushedEmergencyMessage(null));
 
       es.onerror = () => {
         sseFailCountRef.current += 1;
@@ -6847,6 +6883,15 @@ function PlayerPage() {
           tenantId={tenantId}
           apiUrl={`${getApiRoot()}/api/v1`}
           pollMs={10_000}
+          // P0-2 (life-safety) — paired kiosks carry a device JWT, not a
+          // session cookie. Passing it makes the overlay poll the
+          // device-authed /emergency/messages endpoint with a Bearer
+          // token (the user-session /emergency/status 401s for devices,
+          // and the old credentials:'include' poll silently swallowed
+          // it). screenId is passed for completeness; the server reads
+          // the screen id from the token's verified `sub`.
+          screenId={screenId}
+          deviceToken={getDeviceToken()}
         />
       )}
       {/* Sprint 13 — CTS scoreboard bridge. Mounted only when:

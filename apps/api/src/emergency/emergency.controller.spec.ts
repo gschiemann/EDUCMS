@@ -520,4 +520,144 @@ describe('EmergencyController', () => {
       await expect(controller.clearMessage('ghost-msg', req)).rejects.toThrow(NotFoundException);
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // P0-2 (life-safety): GET /emergency/messages — DEVICE-authenticated poll.
+  // Paired kiosks carry a device JWT (kind:'device', sub:screenId), not a
+  // user session, so the existing GET /status 401'd for them and the
+  // <EmergencyOverlay> swallowed it → SOS/broadcast/media never reached the
+  // wall when the WS was down. These tests pin the device-only auth, the
+  // LIVE-row tenant resolution, and — critically — the per-scope filter that
+  // stops a per-screen message for screen B leaking onto screen A.
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('deviceMessages — device-authed emergency poll', () => {
+    const deviceReq = (sub: string, tenantClaim?: string) => ({
+      user: { kind: 'device', sub, tenantId: tenantClaim },
+    });
+
+    it('rejects a non-device (user session) token with ForbiddenException', async () => {
+      const req = { user: { id: 'admin1', role: 'SCHOOL_ADMIN', tenantId: 't1', schoolId: 't1' } };
+      await expect(controller.deviceMessages(req)).rejects.toThrow(ForbiddenException);
+      // Must NOT touch the screen/message tables on a rejected token.
+      expect(prismaService.client.screen.findUnique).not.toHaveBeenCalled();
+      expect(prismaService.client.emergencyMessage.findMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects a device token with no subject', async () => {
+      await expect(controller.deviceMessages({ user: { kind: 'device' } })).rejects.toThrow(ForbiddenException);
+    });
+
+    it('returns empty (not error) for an unpaired screen (no tenant)', async () => {
+      prismaService.client.screen.findUnique.mockResolvedValueOnce({
+        id: 'scr1', tenantId: null, screenGroupId: null, status: 'PENDING',
+      });
+      const res = await controller.deviceMessages(deviceReq('scr1'));
+      expect(res.active).toEqual([]);
+      expect(res.tenantId).toBeNull();
+      // No message query for a screen we can't scope.
+      expect(prismaService.client.emergencyMessage.findMany).not.toHaveBeenCalled();
+    });
+
+    it('returns empty for a REVOKED screen', async () => {
+      prismaService.client.screen.findUnique.mockResolvedValueOnce({
+        id: 'scr1', tenantId: 't1', screenGroupId: null, status: 'REVOKED',
+      });
+      const res = await controller.deviceMessages(deviceReq('scr1'));
+      expect(res.active).toEqual([]);
+      expect(prismaService.client.emergencyMessage.findMany).not.toHaveBeenCalled();
+    });
+
+    it('returns empty for an unknown screen id', async () => {
+      prismaService.client.screen.findUnique.mockResolvedValueOnce(null);
+      const res = await controller.deviceMessages(deviceReq('ghost'));
+      expect(res.active).toEqual([]);
+      expect(prismaService.client.emergencyMessage.findMany).not.toHaveBeenCalled();
+    });
+
+    it('resolves tenant from the LIVE screen row, NOT the token tenantId claim (re-pair safety)', async () => {
+      // Token still claims the OLD tenant ('stale-tenant'); the screen has
+      // since been re-paired to 'real-tenant'. We must query 'real-tenant'
+      // so a rotated-away device can never read its former tenant's alerts.
+      prismaService.client.screen.findUnique.mockResolvedValueOnce({
+        id: 'scr1', tenantId: 'real-tenant', screenGroupId: null, status: 'ACTIVE',
+      });
+      prismaService.client.emergencyMessage.findMany.mockResolvedValueOnce([]);
+      const res = await controller.deviceMessages(deviceReq('scr1', 'stale-tenant'));
+
+      expect(prismaService.client.screen.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'scr1' } }),
+      );
+      const where = prismaService.client.emergencyMessage.findMany.mock.calls[0][0].where;
+      expect(where.tenantId).toBe('real-tenant');
+      expect(where.tenantId).not.toBe('stale-tenant');
+      expect(res.tenantId).toBe('real-tenant');
+    });
+
+    it('scopes the query to tenant + device + group channels the screen belongs to', async () => {
+      prismaService.client.screen.findUnique.mockResolvedValueOnce({
+        id: 'scr1', tenantId: 't1', screenGroupId: 'grp9', status: 'ACTIVE',
+      });
+      prismaService.client.emergencyMessage.findMany.mockResolvedValueOnce([]);
+      await controller.deviceMessages(deviceReq('scr1'));
+
+      const where = prismaService.client.emergencyMessage.findMany.mock.calls[0][0].where;
+      expect(where.tenantId).toBe('t1');
+      expect(where.clearedAt).toBeNull();
+      // The per-scope OR must include exactly: this tenant, this device,
+      // and this screen's group — and nothing else.
+      const scopeOr = where.AND[0].OR;
+      expect(scopeOr).toEqual(
+        expect.arrayContaining([
+          { scopeType: 'tenant', scopeId: 't1' },
+          { scopeType: 'device', scopeId: 'scr1' },
+          { scopeType: 'group', scopeId: 'grp9' },
+        ]),
+      );
+      expect(scopeOr).toHaveLength(3);
+    });
+
+    it('omits the group scope when the screen is in no group', async () => {
+      prismaService.client.screen.findUnique.mockResolvedValueOnce({
+        id: 'scr1', tenantId: 't1', screenGroupId: null, status: 'ACTIVE',
+      });
+      prismaService.client.emergencyMessage.findMany.mockResolvedValueOnce([]);
+      await controller.deviceMessages(deviceReq('scr1'));
+
+      const scopeOr = prismaService.client.emergencyMessage.findMany.mock.calls[0][0].where.AND[0].OR;
+      expect(scopeOr).toEqual([
+        { scopeType: 'tenant', scopeId: 't1' },
+        { scopeType: 'device', scopeId: 'scr1' },
+      ]);
+    });
+
+    it('maps active rows into the same wire shape <EmergencyOverlay> parses', async () => {
+      const exp = new Date(Date.now() + 60_000);
+      const created = new Date();
+      prismaService.client.screen.findUnique.mockResolvedValueOnce({
+        id: 'scr1', tenantId: 't1', screenGroupId: null, status: 'ACTIVE',
+      });
+      prismaService.client.emergencyMessage.findMany.mockResolvedValueOnce([
+        {
+          id: 'media_1', tenantId: 't1', type: 'MEDIA_ALERT', severity: 'CRITICAL',
+          textBlob: 'SHELTER IN PLACE', mediaUrls: JSON.stringify(['https://cdn/x.jpg']),
+          audioUrl: null, scopeType: 'tenant', scopeId: 't1',
+          expiresAt: exp, createdAt: created, triggeredByUserId: 'u1', clearedAt: null,
+        },
+      ]);
+      const res = await controller.deviceMessages(deviceReq('scr1'));
+
+      expect(res.active).toHaveLength(1);
+      expect(res.active[0]).toEqual(
+        expect.objectContaining({
+          id: 'media_1',
+          type: 'MEDIA_ALERT',
+          severity: 'CRITICAL',
+          textBlob: 'SHELTER IN PLACE',
+          mediaUrls: ['https://cdn/x.jpg'],
+          expiresAt: Math.floor(exp.getTime() / 1000),
+          createdAt: created.toISOString(),
+        }),
+      );
+    });
+  });
 });

@@ -37,6 +37,17 @@ interface Props {
   tenantId?: string;
   apiUrl?: string;
   pollMs?: number;
+  /**
+   * P0-2 (life-safety) — paired kiosks carry a DEVICE JWT, not a user
+   * session cookie. When set, the overlay polls the DEVICE-authed
+   * GET /emergency/messages endpoint with `Authorization: Bearer`
+   * instead of the user-session GET /emergency/status (which 401s for
+   * devices). `screenId` is required by the device endpoint's auth
+   * (the token's sub must match), but the server reads it from the
+   * token — we pass it only to gate which path we take.
+   */
+  screenId?: string | null;
+  deviceToken?: string | null;
 }
 
 const severityStyles = {
@@ -63,19 +74,44 @@ const severityStyles = {
   },
 } as const;
 
-export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000 }: Props) {
+export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken }: Props) {
   const [polled, setPolled] = useState<EmergencyMessageView | null>(null);
 
   useEffect(() => {
-    if (message || !tenantId || !apiUrl) return;
+    if (message || !apiUrl) return;
+    // A paired kiosk needs EITHER a device token (device-authed path)
+    // or a tenantId (user-session path). Without either we can't poll.
+    if (!deviceToken && !tenantId) return;
 
     let stopped = false;
     const tick = async () => {
       try {
-        const res = await fetch(`${apiUrl}/emergency/status?tenantId=${encodeURIComponent(tenantId)}`, {
-          credentials: 'include',
-        });
-        if (!res.ok || stopped) return;
+        // P0-2 (life-safety): a paired kiosk has a DEVICE JWT, not a
+        // session cookie. Hit the device-authed /emergency/messages
+        // endpoint with a Bearer token. Only fall back to the
+        // user-session /emergency/status (cookie) when no device token
+        // exists (admin browser preview of the player). Previously this
+        // ALWAYS used credentials:'include' → 401 on kiosks → the
+        // `if (!res.ok) return` below swallowed it, so SOS / broadcast
+        // / media alerts never reached the wall when the WS was down.
+        const res = deviceToken
+          ? await fetch(`${apiUrl}/emergency/messages`, {
+              headers: { Authorization: `Bearer ${deviceToken}` },
+            })
+          : await fetch(`${apiUrl}/emergency/status?tenantId=${encodeURIComponent(tenantId || '')}`, {
+              credentials: 'include',
+            });
+        if (stopped) return;
+        if (!res.ok) {
+          // Do NOT swallow silently (the old bug). A 401/403 here means
+          // the kiosk can't read its own emergency state — a life-safety
+          // delivery failure that must be visible in the player console.
+          console.warn(
+            `[EmergencyOverlay] poll failed: ${res.status} ${res.statusText} ` +
+              `(${deviceToken ? 'device' : 'session'} path) — alerts may not reach this screen if the WebSocket is also down`,
+          );
+          return;
+        }
         const json = await res.json();
         const active: EmergencyMessageView[] = (json.active || []).map((r: any) => ({
           id: r.id,
@@ -99,7 +135,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000 }: 
     tick();
     const h = setInterval(tick, pollMs);
     return () => { stopped = true; clearInterval(h); };
-  }, [message, tenantId, apiUrl, pollMs]);
+  }, [message, tenantId, apiUrl, pollMs, deviceToken]);
 
   const active = message || polled;
   if (!active) return null;
