@@ -135,6 +135,107 @@ function ctsRibbonZone(
   };
 }
 
+// ───────────────────────────────────────────────────────────────────
+// P1-11 (2026-05-28) — flesh out the SPORTS gallery so the six Sprint-13
+// category tabs (verticals.ts SPORTS_CATEGORIES: Scoreboards / Ribbon /
+// Celebrations / Sponsors / Game day) all render real, attractive
+// content instead of near-empty. Everything below is built from
+// PRE-EXISTING, render-verified widget types only:
+//   • SCOREBOARD element variants (sb-*, score-*) — registered in
+//     variants-register.ts SPORT_ELEMENT_VARIANTS, all widgetType
+//     'SCOREBOARD'. These are the per-sport situational pieces
+//     (down/distance, base diamond, set scores, cards, leaderboard…).
+//   • GAME_CLOCK / GAME_SEGMENT / SCORE_HOME / SCORE_AWAY — canonical
+//     sport widgets (WidgetRenderer cases confirmed).
+//   • CELEBRATION (cfg.variant → cel-*) — the EDU CMS-10/12 + More-Sports
+//     celebration library (76 variants).
+//   • IMAGE / IMAGE_CAROUSEL / TEXT / TICKER / COUNTDOWN — vertical-
+//     agnostic base widgets.
+// No new widgetType is invented. Coords are 0-100 canvas percentages.
+// No `inset` shorthand anywhere (CLAUDE.md rule #10 — these run on the
+// NovaStar Taurus Chromium-83 LED controller in source-mode installs).
+
+/** One SCOREBOARD-element zone (e.g. a clock pod, a down/distance pill). */
+function sbZone(
+  name: string,
+  variant: string,
+  x: number, y: number, width: number, height: number,
+  sortOrder: number,
+  extraConfig: Record<string, any> = {},
+  widgetType: string = 'SCOREBOARD',
+): SystemPreset['zones'][number] {
+  return {
+    name,
+    widgetType,
+    x, y, width, height,
+    zIndex: 2,
+    sortOrder,
+    defaultConfig: { variant, ...extraConfig },
+  };
+}
+
+/**
+ * A per-sport live scoreboard built element-by-element so every piece is
+ * individually editable / draggable / brandable (same philosophy as
+ * preset-sb-main). Takes a base 2-team block + the sport's situational
+ * row. Category SCOREBOARD so it lands in the Scoreboards tab.
+ */
+function sportScoreboard(
+  id: string,
+  name: string,
+  description: string,
+  bgColor: string,
+  clockColor: string,
+  situational: SystemPreset['zones'][number][],
+): SystemPreset {
+  return {
+    id,
+    name,
+    description,
+    category: 'SCOREBOARD',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor,
+    zones: [
+      sbZone('Status', 'sb-status', 40, 4, 20, 6, 0, { fontSize: 28 }),
+      sbZone('Home Logo', 'sb-team-logo-home', 9, 12, 13, 22, 1, { team: 'home' }),
+      sbZone('Home Name', 'sb-team-name-home', 2, 35, 28, 8, 2, { team: 'home', fontSize: 54 }),
+      sbZone('Home Score', 'score-home', 3, 45, 26, 36, 3, { color: '#ffffff', fontWeight: 900, fontSize: 320, align: 'center' }, 'SCORE_HOME'),
+      sbZone('Game Clock', 'game-clock', 36, 14, 28, 24, 4, { color: clockColor, fontWeight: 900, fontSize: 180, align: 'center' }, 'GAME_CLOCK'),
+      sbZone('Period', 'game-segment', 38, 38, 24, 8, 5, { color: '#ffffff', fontWeight: 700, fontSize: 60, align: 'center' }, 'GAME_SEGMENT'),
+      sbZone('Away Logo', 'sb-team-logo-away', 78, 12, 13, 22, 6, { team: 'away' }),
+      sbZone('Away Name', 'sb-team-name-away', 70, 35, 28, 8, 7, { team: 'away', fontSize: 54 }),
+      sbZone('Away Score', 'score-away', 71, 45, 26, 36, 8, { color: '#ffffff', fontWeight: 900, fontSize: 320, align: 'center' }, 'SCORE_AWAY'),
+      ...situational,
+    ],
+  };
+}
+
+/**
+ * A sponsor surface. `mode: 'rotator'` rotates uploaded sponsor logos
+ * (IMAGE_CAROUSEL); `mode: 'slot'` is a single presenting-sponsor slot
+ * (SCOREBOARD sb-sponsor) with a co-brand line. Category SPONSOR so it
+ * lands in the Sponsors tab.
+ */
+function sponsorBoard(
+  id: string,
+  name: string,
+  description: string,
+  bgColor: string,
+  zones: SystemPreset['zones'][number][],
+): SystemPreset {
+  return {
+    id, name, description,
+    category: 'SPONSOR',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor,
+    zones,
+  };
+}
+
 export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
   // ── CTS Water Polo Ribbon — 4-zone perimeter ribbon ─────────────
   {
@@ -358,6 +459,249 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
     'Highlight-reel golazo scene for a wonder-strike — italic GOLAZO and the goal type.',
     'cel-soccer-golazo',
   ),
+  // ── More celebrations — round out the sports the 12 above miss ────
+  // Volleyball has no dedicated cel-* variant; tennis / wrestling /
+  // swimming / track / golf do — pull the marquee moment for each so
+  // the Celebrations tab covers the full HS-athletics slate.
+  celebration(
+    'sports-cel-wrestling-pin',
+    'Wrestling Pin',
+    'Whistle-to-mat PIN takeover — the match-ending fall with the wrestler’s name and weight class. Fire it the instant the ref slaps the mat.',
+    'cel-wr-pin',
+  ),
+  celebration(
+    'sports-cel-tennis-matchpoint',
+    'Match Point',
+    'Match-point conversion celebration — the closing winner with the final set line. Built for the show court video board.',
+    'cel-tn-matchpoint',
+  ),
+  celebration(
+    'sports-cel-swim-record',
+    'Swim Record',
+    'Pool-record celebration — splashing water trail with the swimmer, event, and new record time. Drop it the moment the touch-pad lights.',
+    'cel-sw-record',
+  ),
+  celebration(
+    'sports-cel-track-record',
+    'Track Record',
+    'Finish-line record scene — lane lights and a sweeping time callout for a meet, school, or world record.',
+    'cel-tr-worldrecord',
+  ),
+  // ── Per-sport live scoreboards — element-based, fully editable ────
+  // Each adds the sport's situational row on top of the shared 2-team
+  // block. Drag / resize / restyle / brand every piece; bind a game and
+  // the live feed fills it. Resize for any LED.
+  sportScoreboard(
+    'sports-scoreboard-football',
+    '🏈 Football Scoreboard',
+    'Friday-night football board — big team blocks + amber clock, plus the football situational row (down & distance, ball-on, play clock, possession). Every element editable; bind a game; resize for any LED.',
+    '#0a1628', '#fbbf24',
+    [
+      sbZone('Down & Distance', 'sb-down-distance', 38, 46, 24, 8, 9, { fontSize: 60, color: '#fbbf24' }),
+      sbZone('Ball On', 'sb-ball-on', 40, 55, 20, 6, 10, { fontSize: 34 }),
+      sbZone('Play Clock', 'sb-play-clock', 65, 14, 9, 14, 11, { fontSize: 84, color: '#ef4444' }),
+      sbZone('Home Possession', 'sb-possession-ball-home', 30, 33, 5, 8, 12, { team: 'home', fontSize: 40 }),
+      sbZone('Away Possession', 'sb-possession-ball-away', 65, 33, 5, 8, 13, { team: 'away', fontSize: 40 }),
+      sbZone('Home Timeouts', 'sb-timeouts-home', 4, 88, 18, 7, 14, { team: 'home', fontSize: 38 }),
+      sbZone('Away Timeouts', 'sb-timeouts-away', 78, 88, 18, 7, 15, { team: 'away', fontSize: 38 }),
+    ],
+  ),
+  sportScoreboard(
+    'sports-scoreboard-baseball',
+    '⚾ Baseball / Softball Scoreboard',
+    'Diamond board — team blocks + the baseball situational row (lit base diamond, balls-strikes-outs count, inning + half arrow, pitch speed). Every element editable; bind a game; resize for any LED.',
+    '#06210f', '#fde68a',
+    [
+      sbZone('Base Diamond', 'sb-bases', 44, 13, 12, 18, 9, {}),
+      sbZone('Count (B-S-O)', 'sb-count', 38, 46, 24, 10, 10, { fontSize: 60 }),
+      sbZone('Inning + Half', 'sb-inning-half', 40, 31, 20, 8, 11, { fontSize: 46 }),
+      sbZone('Pitch Speed', 'sb-pitch-speed', 65, 16, 14, 9, 12, { fontSize: 56 }),
+      sbZone('Home Pitch Count', 'sb-pitch-count-home', 4, 88, 18, 7, 13, { team: 'home', fontSize: 40 }),
+      sbZone('Away Pitch Count', 'sb-pitch-count-away', 78, 88, 18, 7, 14, { team: 'away', fontSize: 40 }),
+    ],
+  ),
+  sportScoreboard(
+    'sports-scoreboard-volleyball',
+    '🏐 Volleyball Scoreboard',
+    'Set/rally board — team blocks + per-set scores and the serve indicator (no game clock for a rally sport, so the center pod carries the set line). Every element editable; bind a match; resize for any LED.',
+    '#1a0e2e', '#a78bfa',
+    [
+      sbZone('Set Scores', 'sb-set-scores', 36, 52, 28, 12, 9, { fontSize: 48 }),
+      sbZone('Serve Indicator', 'sb-serve', 42, 66, 16, 8, 10, { team: 'home', fontSize: 40 }),
+      sbZone('Home Timeouts', 'sb-timeouts-home', 4, 88, 18, 7, 11, { team: 'home', fontSize: 38 }),
+      sbZone('Away Timeouts', 'sb-timeouts-away', 78, 88, 18, 7, 12, { team: 'away', fontSize: 38 }),
+    ],
+  ),
+  sportScoreboard(
+    'sports-scoreboard-soccer',
+    '⚽ Soccer Scoreboard',
+    'Pitch board — team blocks + match clock, added time, and per-side card counts (yellow + red). Every element editable; bind a match; resize for any LED.',
+    '#06210f', '#86efac',
+    [
+      sbZone('Added Time', 'sb-added-time', 42, 46, 16, 7, 9, { fontSize: 40 }),
+      sbZone('Home Cards', 'sb-cards-home', 30, 33, 10, 8, 10, { team: 'home', fontSize: 38 }),
+      sbZone('Away Cards', 'sb-cards-away', 60, 33, 10, 8, 11, { team: 'away', fontSize: 38 }),
+      sbZone('Shots (stat)', 'sb-stat-pair', 38, 87, 24, 9, 12, { statKey: 'shots', label: 'SHOTS', fontSize: 40 }),
+    ],
+  ),
+  sportScoreboard(
+    'sports-scoreboard-hockey',
+    '🏒 Hockey / Lacrosse Scoreboard',
+    'Rink board — team blocks + game clock, shot clock, and stacked penalty-box timers with the power-play / penalty-kill badge. Every element editable; bind a game; resize for any LED.',
+    '#06121f', '#67e8f9',
+    [
+      sbZone('Shot Clock', 'sb-shot-clock', 65, 16, 9, 13, 9, { fontSize: 80, color: '#67e8f9' }),
+      sbZone('Power Play / PK', 'sb-power-play', 40, 46, 20, 7, 10, { fontSize: 24 }),
+      sbZone('Home Penalty Box', 'sb-penalty-home', 4, 84, 20, 12, 11, { team: 'home', fontSize: 36 }),
+      sbZone('Away Penalty Box', 'sb-penalty-away', 76, 84, 20, 12, 12, { team: 'away', fontSize: 36 }),
+    ],
+  ),
+  sportScoreboard(
+    'sports-scoreboard-wrestling',
+    '🤼 Wrestling Scoreboard',
+    'Mat board — bout clock + the wrestling situational row (weight class, riding-time clock) and the running dual-meet team scores. Every element editable; bind a dual; resize for any LED.',
+    '#1c0a0a', '#fca5a5',
+    [
+      sbZone('Weight Class', 'sb-weight-class', 40, 46, 20, 7, 9, { fontSize: 36 }),
+      sbZone('Riding Time', 'sb-riding-time', 42, 55, 16, 8, 10, { fontSize: 52 }),
+      sbZone('Home Dual Score', 'sb-team-score-home', 6, 84, 18, 11, 11, { team: 'home', fontSize: 60 }),
+      sbZone('Away Dual Score', 'sb-team-score-away', 76, 84, 18, 11, 12, { team: 'away', fontSize: 60 }),
+    ],
+  ),
+  // ── Meet leaderboard board (track / swim / XC) ────────────────────
+  {
+    id: 'sports-leaderboard-meet',
+    name: '🏅 Meet Leaderboard',
+    description:
+      'Leaderboard board for meet sports (track, swim, cross country, gymnastics) — a place / lane / name / time table with an event title and an announcements ticker. Bind a meet; resize for any LED.',
+    category: 'SCOREBOARD',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#0a1020',
+    zones: [
+      { name: 'Event Title', widgetType: 'TEXT', x: 6, y: 5, width: 88, height: 12, zIndex: 2, sortOrder: 0, defaultConfig: { content: 'EVENT — 100M FINAL', fontSize: 64, alignment: 'center', color: '#fbbf24' } },
+      sbZone('Leaderboard', 'sb-leaderboard', 12, 19, 76, 66, 1, { fontSize: 30 }),
+      { name: 'Announcements', widgetType: 'TICKER', x: 0, y: 88, width: 100, height: 10, zIndex: 2, sortOrder: 2, defaultConfig: { theme: 'track-day', messages: ['NEXT EVENT — 200M PRELIMS', 'FIELD EVENTS UNDERWAY — LONG JUMP PIT 2', 'GO TEAM!'], speed: 'normal' } },
+    ],
+  },
+  // ── Sponsors — first-class revenue surfaces (Sprint 13 §7) ────────
+  sponsorBoard(
+    'sports-sponsor-rotator',
+    '🤝 Sponsor Rotator',
+    'Full-board sponsor rotation — upload your partner logos in Properties and they cycle on a timer. Drop it on the video board between plays or run it as a concourse loop. THANK-YOU header + co-brand line included.',
+    '#0b1020',
+    [
+      { name: 'Header', widgetType: 'TEXT', x: 8, y: 6, width: 84, height: 14, zIndex: 2, sortOrder: 0, defaultConfig: { content: 'TONIGHT’S GAME BROUGHT TO YOU BY', fontSize: 52, alignment: 'center', color: '#fbbf24' } },
+      { name: 'Sponsor Logos', widgetType: 'IMAGE_CAROUSEL', x: 14, y: 22, width: 72, height: 58, zIndex: 2, sortOrder: 1, defaultConfig: { urls: [], intervalSec: 6, fitMode: 'contain' } },
+      sbZone('Presenting Slot', 'sb-sponsor', 30, 82, 40, 12, 2, { label: 'YOUR SPONSOR HERE', fontSize: 26 }),
+    ],
+  ),
+  sponsorBoard(
+    'sports-sponsor-scorebar',
+    '🏷️ Co-Branded Scorebar',
+    'A live mini-scoreboard with a persistent presenting-sponsor bar pinned across the bottom — keep the partner visible all game without giving up the score. Bind a game; resize for any LED.',
+    '#05070d',
+    [
+      sbZone('Home Logo', 'sb-team-logo-home', 8, 14, 12, 26, 0, { team: 'home' }),
+      sbZone('Home Score', 'score-home', 22, 14, 18, 30, 1, { color: '#ffffff', fontWeight: 900, fontSize: 240, align: 'center' }, 'SCORE_HOME'),
+      sbZone('Clock', 'game-clock', 41, 18, 18, 18, 2, { color: '#fbbf24', fontWeight: 900, fontSize: 130, align: 'center' }, 'GAME_CLOCK'),
+      sbZone('Period', 'game-segment', 41, 36, 18, 7, 3, { color: '#ffffff', fontWeight: 700, fontSize: 48, align: 'center' }, 'GAME_SEGMENT'),
+      sbZone('Away Score', 'score-away', 60, 14, 18, 30, 4, { color: '#ffffff', fontWeight: 900, fontSize: 240, align: 'center' }, 'SCORE_AWAY'),
+      sbZone('Away Logo', 'sb-team-logo-away', 80, 14, 12, 26, 5, { team: 'away' }),
+      sbZone('Sponsor Bar', 'sb-sponsor', 10, 78, 80, 16, 6, { label: 'PRESENTED BY YOUR SPONSOR', fontSize: 30, bgColor: 'rgba(255,255,255,0.06)' }),
+    ],
+  ),
+  sponsorBoard(
+    'sports-sponsor-concourse',
+    '🛍️ Concourse Sponsor Loop',
+    'Portrait-friendly concourse loop — a single big sponsor slot with a rotating partner gallery beneath and a deal-of-the-game ticker. Park it on lobby / concourse screens between events.',
+    '#0c0f1a',
+    [
+      sbZone('Featured Sponsor', 'sb-sponsor', 12, 6, 76, 34, 0, { label: 'OUR PROUD PARTNER', fontSize: 34 }),
+      { name: 'Partner Gallery', widgetType: 'IMAGE_CAROUSEL', x: 12, y: 42, width: 76, height: 40, zIndex: 2, sortOrder: 1, defaultConfig: { urls: [], intervalSec: 5, fitMode: 'contain' } },
+      { name: 'Deal Ticker', widgetType: 'TICKER', x: 0, y: 88, width: 100, height: 10, zIndex: 2, sortOrder: 2, defaultConfig: { theme: 'jumbotron-pro', messages: ['DEAL OF THE GAME — 2-FOR-1 AT THE CONCESSION STAND', 'SHOW YOUR TICKET FOR 10% OFF AT OUR-SPONSOR.COM', 'THANK YOU TO TONIGHT’S SPONSORS'], speed: 'normal' } },
+    ],
+  ),
+  sponsorBoard(
+    'sports-sponsor-presenting',
+    '⭐ Presenting Sponsor',
+    'A single, bold presenting-sponsor takeover — one logo slot, a “proudly presented by” line, and your event name. The clean full-board read for the headline partner. Upload the logo in Properties.',
+    '#070b16',
+    [
+      { name: 'Pre-line', widgetType: 'TEXT', x: 10, y: 12, width: 80, height: 12, zIndex: 2, sortOrder: 0, defaultConfig: { content: 'PROUDLY PRESENTED BY', fontSize: 44, alignment: 'center', color: '#94a3b8' } },
+      sbZone('Sponsor Logo', 'sb-sponsor', 22, 26, 56, 44, 1, { label: 'YOUR SPONSOR', fontSize: 40 }),
+      { name: 'Event Name', widgetType: 'TEXT', x: 10, y: 74, width: 80, height: 14, zIndex: 2, sortOrder: 2, defaultConfig: { content: 'VARSITY GAME NIGHT', fontSize: 60, alignment: 'center', color: '#fbbf24' } },
+    ],
+  ),
+  // ── Game day — pre-game / lineup / schedule / halftime ────────────
+  {
+    id: 'sports-gameday-lineup',
+    name: '📋 Starting Lineup',
+    description:
+      'Pre-game starting-lineup board — a HOME vs AWAY heading with a lineup ticker (edit the names in Properties) over a clean two-tone backdrop. Put it on the video board during warmups.',
+    category: 'GAMEDAY',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#0a0e1c',
+    zones: [
+      { name: 'Title', widgetType: 'TEXT', x: 6, y: 8, width: 88, height: 16, zIndex: 2, sortOrder: 0, defaultConfig: { content: 'STARTING LINEUP', fontSize: 88, alignment: 'center', color: '#fbbf24' } },
+      sbZone('Home', 'sb-team-name-home', 4, 30, 44, 12, 1, { team: 'home', fontSize: 64 }),
+      sbZone('Away', 'sb-team-name-away', 52, 30, 44, 12, 2, { team: 'away', fontSize: 64 }),
+      { name: 'Lineup', widgetType: 'TICKER', x: 0, y: 70, width: 100, height: 16, zIndex: 2, sortOrder: 3, defaultConfig: { theme: 'varsity-athletic', messages: ['#7 J. RIVERA — G', '#11 A. CHEN — F', '#23 M. OKAFOR — C', '#4 L. PARK — G', '#1 D. SILVA — F'], speed: 'normal' } },
+    ],
+  },
+  {
+    id: 'sports-gameday-tonight',
+    name: '📣 Tonight’s Game',
+    description:
+      'Pre-game hype board — “TONIGHT” headline, the matchup, and a kickoff/first-pitch countdown with a get-loud ticker. The concourse / lobby pre-game read. Set the target time in Properties.',
+    category: 'GAMEDAY',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#10061f',
+    zones: [
+      { name: 'Tonight', widgetType: 'TEXT', x: 6, y: 6, width: 88, height: 14, zIndex: 2, sortOrder: 0, defaultConfig: { content: 'TONIGHT', fontSize: 96, alignment: 'center', color: '#f472b6' } },
+      sbZone('Home', 'sb-team-name-home', 4, 24, 38, 12, 1, { team: 'home', fontSize: 56 }),
+      { name: 'VS', widgetType: 'TEXT', x: 42, y: 24, width: 16, height: 12, zIndex: 2, sortOrder: 2, defaultConfig: { content: 'VS', fontSize: 64, alignment: 'center', color: '#94a3b8' } },
+      sbZone('Away', 'sb-team-name-away', 58, 24, 38, 12, 3, { team: 'away', fontSize: 56 }),
+      { name: 'Countdown', widgetType: 'COUNTDOWN', x: 20, y: 40, width: 60, height: 38, zIndex: 2, sortOrder: 4, defaultConfig: { variant: 'cd-neon' } },
+      { name: 'Hype Ticker', widgetType: 'TICKER', x: 0, y: 88, width: 100, height: 10, zIndex: 2, sortOrder: 5, defaultConfig: { theme: 'spirit-rally', messages: ['GET LOUD — DOORS OPEN AT 6:00', 'WEAR YOUR COLORS', 'LET’S GO!'], speed: 'fast' } },
+    ],
+  },
+  {
+    id: 'sports-gameday-schedule',
+    name: '🗓️ This Week’s Games',
+    description:
+      'A week-of schedule board — title plus a rolling games ticker (date · opponent · time · home/away). Edit the slate in Properties; run it on hallway and concourse screens all week.',
+    category: 'GAMEDAY',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#0b1224',
+    zones: [
+      { name: 'Title', widgetType: 'TEXT', x: 6, y: 8, width: 88, height: 16, zIndex: 2, sortOrder: 0, defaultConfig: { content: 'THIS WEEK IN ATHLETICS', fontSize: 76, alignment: 'center', color: '#fbbf24' } },
+      { name: 'Schedule', widgetType: 'TICKER', x: 0, y: 38, width: 100, height: 24, zIndex: 2, sortOrder: 1, defaultConfig: { theme: 'jumbotron-pro', messages: ['TUE — VOLLEYBALL vs CENTRAL · 5:30 · HOME', 'WED — SOCCER @ NORTH · 4:00 · AWAY', 'FRI — FOOTBALL vs RIVAL · 7:00 · HOME', 'SAT — XC INVITATIONAL · 9:00 · AWAY'], speed: 'slow' } },
+    ],
+  },
+  {
+    id: 'sports-gameday-halftime',
+    name: '⏸️ Halftime Board',
+    description:
+      'Halftime / intermission board — a big “HALFTIME” callout with a rotating sponsor reel below and a be-right-back ticker. Bridges the break without dead air on the video board.',
+    category: 'GAMEDAY',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#0a0f1d',
+    zones: [
+      { name: 'Halftime', widgetType: 'TEXT', x: 8, y: 8, width: 84, height: 18, zIndex: 2, sortOrder: 0, defaultConfig: { content: 'HALFTIME', fontSize: 104, alignment: 'center', color: '#67e8f9' } },
+      { name: 'Sponsor Reel', widgetType: 'IMAGE_CAROUSEL', x: 16, y: 28, width: 68, height: 52, zIndex: 2, sortOrder: 1, defaultConfig: { urls: [], intervalSec: 5, fitMode: 'contain' } },
+      { name: 'Back Soon', widgetType: 'TICKER', x: 0, y: 88, width: 100, height: 10, zIndex: 2, sortOrder: 2, defaultConfig: { theme: 'scorebug', messages: ['BACK FOR THE SECOND HALF SHORTLY', 'VISIT THE CONCESSION STAND', 'THANK YOU TO OUR SPONSORS'], speed: 'normal' } },
+    ],
+  },
   // ── Game day ──────────────────────────────────────────────────
   {
     id: 'sports-gameday-countdown',

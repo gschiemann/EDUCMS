@@ -9,6 +9,7 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SYSTEM_TEMPLATE_PRESETS } from './system-presets';
 import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
+import { verticalMatchOr } from './ensure-system-presets';
 import { AiService } from '../ai/ai.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import {
@@ -261,7 +262,7 @@ export class TemplatesController {
     // Super-admins see everything when they switch into a tenant;
     // the tenant-switch endpoint stamps their session with the
     // target tenant's vertical, so this check works for them too.
-    let callerVertical: string | null = null;
+    let callerVertical = 'K12';
     try {
       const tenant = await this.prisma.client.tenant.findUnique({
         where: { id: tenantId },
@@ -289,7 +290,11 @@ export class TemplatesController {
         {
           OR: [
             { tenantId }, // tenant's own — always theirs
-            { isSystem: true, vertical: callerVertical },
+            // System presets matching the caller's vertical. A preset can
+            // be dual-tagged (pipe-delimited `Template.vertical`, e.g.
+            // "QSR|RESTAURANT") so verticalMatchOr expands to match the
+            // caller's single vertical anywhere in that list.
+            { AND: [{ isSystem: true }, { OR: verticalMatchOr(callerVertical) }] },
           ],
         },
       ],
@@ -405,7 +410,9 @@ export class TemplatesController {
           {
             OR: [
               { tenantId },
-              { isSystem: true, vertical: callerVertical },
+              // Dual-tag aware (see list() above) — matches the caller's
+              // vertical anywhere in a pipe-delimited `Template.vertical`.
+              { AND: [{ isSystem: true }, { OR: verticalMatchOr(callerVertical) }] },
             ],
           },
           { status: { not: 'ARCHIVED' as any } },

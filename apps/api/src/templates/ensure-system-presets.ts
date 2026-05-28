@@ -117,6 +117,102 @@ SYSTEM_TEMPLATE_PRESETS.forEach((p) => {
   }
 });
 
+// ───────────────────────────────────────────────────────────────────
+// Multi-vertical tagging (P1-10, 2026-05-28).
+//
+// The `Template.vertical` column is a single String, and historically a
+// preset lived in exactly one vertical's gallery. That walled the richer
+// full-service-appropriate QSR presets (sushi/ramen, fine-dining wine,
+// brunch) off from the RESTAURANT vertical — a full-service restaurant
+// tenant saw only the 10 `preset-sig-menus-pos-*` boards, never the 19
+// `qsr-*` boards, even though the full-service subset reads perfectly for
+// a sit-down restaurant.
+//
+// Rather than duplicate rows (drift risk) or migrate the schema (out of
+// the additive-only contract), we encode multiple verticals in the ONE
+// string column as a pipe-delimited list: a single-vertical preset stays
+// `"QSR"` (unchanged, backward-compatible) and a dual-tagged one becomes
+// `"QSR|RESTAURANT"`. The gallery query (templates.controller.ts) matches
+// a caller's single vertical against that list via `verticalListMatches`.
+// Pipe was chosen because no canonical vertical name contains it.
+//
+// PRESET_VERTICALS overrides PRESET_VERTICAL for ids it lists — the value
+// is the full set of verticals that preset should appear under.
+const PRESET_VERTICALS: Map<string, string[]> = new Map();
+
+// Full-service-appropriate QSR menu boards that should ALSO surface to
+// RESTAURANT tenants. Deliberately the sit-down subset — pure
+// counter-service / drive-thru boards (drive-thru, counter-order,
+// loyalty, wait-time, food-truck window, live-POS) stay QSR-only.
+const QSR_FULL_SERVICE_ALSO_RESTAURANT = [
+  // Full menu boards
+  'qsr-sushi-ramen-menu',
+  'qsr-fine-dining-wine',
+  'qsr-brunch-spot',
+  'qsr-pizza-shop-menu',
+  'qsr-coffee-shop-menu',
+  'qsr-daily-specials-promo',
+  // Cuisine-themed boards that read as sit-down menus too
+  'qsr-artisan-pizza',
+  'qsr-ramen-fusion',
+  'qsr-mexican-cantina',
+  'qsr-bakery-patisserie',
+  'qsr-specialty-coffee',
+];
+for (const id of QSR_FULL_SERVICE_ALSO_RESTAURANT) {
+  PRESET_VERTICALS.set(id, ['QSR', 'RESTAURANT']);
+}
+
+/**
+ * Resolve the stored `Template.vertical` tag for a preset id. Returns a
+ * single value (`"QSR"`) for single-vertical presets and a pipe-joined
+ * list (`"QSR|RESTAURANT"`) for multi-vertical ones. The multi-map wins
+ * over the single map; the single map falls back to K12.
+ */
+export function resolvePresetVerticalTag(id: string): string {
+  const multi = PRESET_VERTICALS.get(id);
+  if (multi && multi.length > 0) {
+    // De-dupe (the source list above intentionally repeats a couple ids
+    // for readability) + keep deterministic order.
+    return Array.from(new Set(multi)).join('|');
+  }
+  return PRESET_VERTICAL.get(id) ?? 'K12';
+}
+
+/**
+ * True when a single caller vertical belongs to a stored (possibly
+ * pipe-delimited) `Template.vertical` tag. Used by the gallery query so a
+ * dual-tagged preset surfaces in BOTH verticals' galleries. Exact match
+ * for the common single-value case; pipe-delimited membership otherwise.
+ */
+export function verticalTagIncludes(tag: string | null | undefined, vertical: string): boolean {
+  if (!tag) return false;
+  if (tag === vertical) return true;
+  if (tag.indexOf('|') === -1) return false;
+  return tag.split('|').includes(vertical);
+}
+
+/**
+ * Build the Prisma `OR` clause that matches a system template whose
+ * (possibly pipe-delimited) `vertical` tag includes `vertical`. Prisma
+ * can't run a JS predicate inside `where`, so we express the four cases
+ * the pipe-list encoding can take:
+ *   - `"QSR"`            → exact equals
+ *   - `"QSR|RESTAURANT"` → startsWith "QSR|"   (first member)
+ *   - `"BAR|QSR"`        → endsWith   "|QSR"    (last member)
+ *   - `"A|QSR|B"`        → contains   "|QSR|"   (middle member)
+ * Pipe delimiters bound each pattern so no vertical name can substring-
+ * match another (e.g. RETAIL never matches inside RESTAURANT).
+ */
+export function verticalMatchOr(vertical: string): any[] {
+  return [
+    { vertical },
+    { vertical: { startsWith: `${vertical}|` } },
+    { vertical: { endsWith: `|${vertical}` } },
+    { vertical: { contains: `|${vertical}|` } },
+  ];
+}
+
 /**
  * Idempotent system-preset seeder. Runs once on API startup.
  *
@@ -198,7 +294,9 @@ export async function ensureSystemPresets(prisma: PrismaService) {
             tenantId: null,
             // Tag each preset with its vertical so the templates list
             // endpoint can filter it out for tenants in other verticals.
-            vertical: PRESET_VERTICAL.get(preset.id) ?? 'K12',
+            // resolvePresetVerticalTag returns a pipe-delimited list for
+            // dual-tagged presets (e.g. "QSR|RESTAURANT").
+            vertical: resolvePresetVerticalTag(preset.id),
             zones: {
               create: preset.zones.map((z: any, i: number) => ({
                 name: z.name,
@@ -270,7 +368,12 @@ export async function ensureSystemPresets(prisma: PrismaService) {
         // Re-sync the vertical tag from the source map on every boot
         // so old rows migrate to the canonical vertical without
         // requiring a hand-rolled migration.
-        const srcVertical = PRESET_VERTICAL.get(src.id) ?? 'K12';
+        // resolvePresetVerticalTag returns a pipe-delimited list for
+        // dual-tagged presets ("QSR|RESTAURANT"); on every boot this
+        // migrates an existing single-tag row up to the multi-tag value
+        // so the full-service subset starts surfacing to RESTAURANT
+        // tenants without a hand-rolled migration.
+        const srcVertical = resolvePresetVerticalTag(src.id);
         if (srcVertical !== row.vertical) patch.vertical = srcVertical;
         if (Object.keys(patch).length > 0) {
           await prisma.client.template.update({ where: { id: row.id }, data: patch });
