@@ -2597,11 +2597,19 @@ export class SportsService {
       scorerNumber?: string;
       scorerPhotoUrl?: string;
       scorerId?: string;
+      /**
+       * T2-6 — When true, the ribbon renders a tight 2.5s text-crawl
+       * strip instead of the full 4500ms cinematic. Scoreboard is
+       * unaffected. Automatically set when the operator fires from the
+       * inline cue bar's "Ribbon" chip.
+       */
+      ribbonStrip?: boolean;
     },
     actorUserId?: string,
   ) {
     const game = await this.owned(tenantId, id);
     const target = this.cleanCueTarget(dto.target);
+    const ribbonStrip = target === 'RIBBON' || dto.ribbonStrip === true ? true : undefined;
 
     // Sanitize the three new optional co-branding / audio fields.
     const audioUrl = this.cleanText(dto.audioUrl, 2048);
@@ -2656,6 +2664,8 @@ export class SportsService {
         displayMode: (cc as any).displayMode || 'overlay',
         custom: true,
         target,
+        // T2-6: ribbon-strip mode — tight 2.5s crawl instead of 4500ms takeover.
+        ...(ribbonStrip ? { ribbonStrip: true } : {}),
         audioUrl,
         sponsorName,
         sponsorLogoUrl,
@@ -2680,6 +2690,8 @@ export class SportsService {
       label: cue.label,
       emoji: cue.emoji,
       target,
+      // T2-6: ribbon-strip mode — tight 2.5s crawl instead of 4500ms takeover.
+      ...(ribbonStrip ? { ribbonStrip: true } : {}),
       audioUrl,
       sponsorName,
       sponsorLogoUrl,

@@ -68,6 +68,19 @@ export interface FiredCue {
   durationMs?: number;
   custom?: boolean;
   target: 'BOARD' | 'RIBBON' | 'ALL';
+  /**
+   * T2-6 — When true, the ribbon surface renders a tight 2.5s text-crawl
+   * strip (RibbonCelebrationStrip) instead of the full 4500ms cinematic
+   * takeover. Scoreboard is unaffected — it always plays the full cinematic.
+   *
+   * Fires automatically when the operator uses the inline cue bar's
+   * "Ribbon" chip; can also be sent explicitly via the API.
+   *
+   * Common cues where this matters: 'touchdown', 'three-pointer', 'goal'
+   * fired with target: 'RIBBON'. A scoreboard-targeted cue ignores this
+   * field entirely.
+   */
+  ribbonStrip?: boolean;
   snapshot?: Record<string, unknown>;
   /** URL of a sound clip to play when this cue fires. */
   audioUrl: string | null;

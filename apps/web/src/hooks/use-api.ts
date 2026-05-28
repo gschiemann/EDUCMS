@@ -2493,6 +2493,10 @@ export function useGameControl(gameId: string) {
       key?: string;
       cueId?: string;
       target?: string;
+      // T2-6 — when true, the ribbon uses a tight 2.5s crawl strip
+      // instead of the full 4500ms cinematic. Auto-set by the inline
+      // cue bar when target === 'RIBBON'.
+      ribbonStrip?: boolean;
       // Optional co-branding — a sound clip + a sponsor attribution.
       audioUrl?: string;
       sponsorName?: string;

@@ -138,6 +138,15 @@ interface Cue {
   durationMs?: number;
   // Which surfaces play this cue — BOARD / RIBBON / ALL (default ALL).
   target?: string;
+  /**
+   * T2-6 — When true, the ribbon uses a tight 2.5s text-crawl strip
+   * (RibbonCelebrationStrip) instead of the full 4500ms cinematic
+   * takeover. Auto-set by the server when target === 'RIBBON' or when
+   * the operator fires from the inline cue bar's "Ribbon" chip.
+   * Backwards compatible: cues without this field keep the 4500ms
+   * behaviour.
+   */
+  ribbonStrip?: boolean;
   // Audio URL — server emits this for video-board use; ribbon boards
   // have no speakers so audioUrl is carried for type-completeness only
   // and is intentionally never played here.
@@ -633,8 +642,22 @@ export default function RibbonPage() {
     // 4300ms — fadeIn + flight + impact + hold + fadeOut) plays to
     // completion + an extra beat. Custom-uploaded media still
     // honors its own durationMs.
+    //
+    // T2-6 — ribbonStrip cues use 2500ms: the RibbonCelebrationStrip
+    // is a tight text-crawl, NOT the full cinematic, so there is no
+    // reason to hold the ribbon for 4.5s. 2500ms gives the animated
+    // stripe + entrance one full cycle and reads cleanly at 8-foot
+    // viewing distance before the rotation resumes.
+    // Also auto-applies when target === 'RIBBON' (server already sets
+    // ribbonStrip: true in that case, but guard here too for older
+    // events that predate the field).
+    const isRibbonStrip = next.ribbonStrip === true || next.target === 'RIBBON';
     const holdMs =
-      next.mediaUrl && next.durationMs && next.durationMs > 0 ? next.durationMs : 4500;
+      next.mediaUrl && next.durationMs && next.durationMs > 0
+        ? next.durationMs
+        : isRibbonStrip
+          ? 2500
+          : 4500;
     cueTimer.current = setTimeout(() => {
       setActiveCue(null);
       playing.current = false;

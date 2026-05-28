@@ -2231,10 +2231,20 @@ function RunInlineCuesBar({
     : sp.title || '';
 
   const [lastFiredKey, setLastFiredKey] = useState<string>('');
+  // T2-6 — target chip: which surfaces receive the cue from the fast
+  // path. Persists for the session (local state, not sessionStorage —
+  // page reloads are rare mid-game and state loss is low-consequence).
+  const [cueTarget, setCueTarget] = useState<'ALL' | 'BOARD' | 'RIBBON'>('ALL');
+
   const fire = (key: string) => {
     ctl.cue.mutate({
       key,
-      target: 'ALL' as any,
+      target: cueTarget as any,
+      // T2-6 — when firing to the ribbon only, signal the ribbon page
+      // to use the tight 2.5s RibbonCelebrationStrip instead of the
+      // full 4500ms cinematic. The server also sets this automatically
+      // when target === 'RIBBON', but include it here for clarity.
+      ...(cueTarget === 'RIBBON' ? { ribbonStrip: true } : {}),
       // If a player is on the spotlight, attribute the cue to them so
       // the cinematic shows "SCORED BY #12 SMITH". scorerPlayer is the
       // roster row (with .number, .photoUrl, .id); if the operator
@@ -2248,8 +2258,53 @@ function RunInlineCuesBar({
     setLastFiredKey(key);
     setTimeout(() => setLastFiredKey((k) => (k === key ? '' : k)), 1500);
   };
+
+  // T2-6 chip config — label, value, description for the title attr.
+  const targetChips: Array<{
+    value: 'ALL' | 'BOARD' | 'RIBBON';
+    label: string;
+    title: string;
+  }> = [
+    { value: 'ALL',    label: 'All',    title: 'Fire to every surface (scoreboard + ribbon + scorebug)' },
+    { value: 'BOARD',  label: 'Board',  title: 'Fire to the scoreboard only — ribbon stays on its rotation' },
+    { value: 'RIBBON', label: 'Ribbon', title: 'Fire a tight 2.5s text-crawl to the ribbon only — board is unaffected' },
+  ];
+
   return (
     <div className="px-4 py-2 border-t border-slate-200 bg-indigo-50">
+      {/* T2-6 — target chip row: All / Board / Ribbon */}
+      <div className="flex items-center mb-1.5" style={{ marginBottom: 6 }}>
+        <span className="text-[10px] font-black uppercase tracking-widest text-indigo-500 shrink-0" style={{ marginRight: 8 }}>
+          Send to
+        </span>
+        <div className="flex" style={{ marginRight: 0 }}>
+          {targetChips.map((chip) => {
+            const active = cueTarget === chip.value;
+            return (
+              <button
+                key={chip.value}
+                type="button"
+                title={chip.title}
+                onClick={() => setCueTarget(chip.value)}
+                className={
+                  active
+                    ? 'px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide rounded-full bg-indigo-600 text-white border border-indigo-600 transition-colors shrink-0'
+                    : 'px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full bg-white text-indigo-600 border border-indigo-300 hover:bg-indigo-100 transition-colors shrink-0'
+                }
+                style={{ marginRight: 4 }}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
+        </div>
+        {cueTarget === 'RIBBON' && (
+          <span className="text-[9px] text-indigo-400 italic" style={{ marginLeft: 6 }}>
+            2.5s crawl
+          </span>
+        )}
+      </div>
+
       <div className="flex items-center gap-3">
         <div className="flex flex-col leading-tight shrink-0">
           <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700">
@@ -2260,8 +2315,12 @@ function RunInlineCuesBar({
               <>
                 Will attribute to <strong className="text-indigo-700">{scorerLabel}</strong>
               </>
-            ) : (
+            ) : cueTarget === 'ALL' ? (
               'Fires on every screen'
+            ) : cueTarget === 'BOARD' ? (
+              'Scoreboard only'
+            ) : (
+              'Ribbon only — tight crawl'
             )}
           </span>
         </div>
@@ -2276,8 +2335,8 @@ function RunInlineCuesBar({
                 disabled={ctl.cue.isPending}
                 title={
                   scorerLabel
-                    ? `Fire ${c.label} — attributed to ${scorerLabel}`
-                    : `Fire ${c.label} (no player attribution — tap a player above first to attribute)`
+                    ? `Fire ${c.label} → ${cueTarget} — attributed to ${scorerLabel}`
+                    : `Fire ${c.label} → ${cueTarget}`
                 }
                 className={
                   justFired
