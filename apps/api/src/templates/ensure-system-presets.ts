@@ -6,6 +6,7 @@ import { RESTAURANT_TEMPLATE_PRESETS } from './restaurant-presets';
 import { BAR_TEMPLATE_PRESETS } from './bar-presets';
 import { RETAIL_TEMPLATE_PRESETS } from './retail-presets';
 import { SPORTS_TEMPLATE_PRESETS } from './sports-presets';
+import { WORSHIP_TEMPLATE_PRESETS } from './worship-presets';
 
 // Fitness presets live in their own file so the EDU pack stays
 // uncontaminated. At seed time we tag each row with the vertical it
@@ -21,6 +22,7 @@ const ALL_PRESETS = [
   ...BAR_TEMPLATE_PRESETS,
   ...RETAIL_TEMPLATE_PRESETS,
   ...SPORTS_TEMPLATE_PRESETS,
+  ...WORSHIP_TEMPLATE_PRESETS,
 ];
 const PRESET_VERTICAL: Map<string, string> = new Map();
 SYSTEM_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'K12'));
@@ -55,6 +57,16 @@ RETAIL_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'RETAIL'));
 // tenants finally have a non-empty template gallery; scoreboard +
 // ribbon templates follow once their widget set lands.
 SPORTS_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'SPORTS'));
+// Worship vertical (2026-05-28). Houses of worship: welcome/greeting
+// board, service times, sermon-series card, song/hymn board, weekly
+// events, giving/tithe board, verse of the day, lobby hub. Tagged
+// 'WORSHIP' so a church tenant finally has a non-empty gallery and
+// these never bleed into a school / restaurant / sports palette. Built
+// entirely from pre-existing render-verified widgets (TEXT / ANNOUNCEMENT
+// / COUNTDOWN / TICKER / CLOCK / CALENDAR / BELL_SCHEDULE / IMAGE) so
+// every field is editable in PropertiesPanel out of the box. Closes
+// P0-7: WORSHIP was sold on the marketing page but shipped 0 templates.
+WORSHIP_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'WORSHIP'));
 
 // 2026-05-19 — the Main Scoreboard preset lives in the GENERAL
 // SYSTEM_TEMPLATE_PRESETS array (it's a multi-vertical template surface,
