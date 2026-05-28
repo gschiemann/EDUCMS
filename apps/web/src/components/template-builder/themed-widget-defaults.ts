@@ -25,11 +25,45 @@
  * over 80 chars or that semantically expect a paragraph).
  */
 
+/**
+ * `kind` discriminates how PropertiesPanel renders the field:
+ *   - undefined / 'text'   → single-line TextField (the default)
+ *   - 'multiline'          → TextAreaField (same as `multiline: true`)
+ *   - 'array-schedule'     → ScheduleRowsField (time/name/room rows) writing
+ *                            the given `arrayKey` ({num,time,name,room}[])
+ *   - 'array-bell'         → BellScheduleEditor writing `periods`
+ *                            ({num,label,startTime,endTime,room}[])
+ *   - 'array-menu'         → WeekMenuEditor writing `weekMenu` (+ `menuItems`
+ *                            fallback), the {emoji,name,meta,price} day map
+ *   - 'array-cards'        → MenuCardsField writing `cards` ({title,desc}[])
+ *   - 'image'              → AssetPickerField (image) writing the given key
+ *
+ * 2026-05-28 (P0-3, Opus 4.8 audit §19): the registry previously listed only
+ * decorative scalar text and never enumerated the list-array fields the widget
+ * renders as its PRIMARY content (schedule rows, lunch-menu items) or its image
+ * fields (cafeteria photo). The operator could rename "Today's Schedule" but
+ * could not edit a single period beneath it, nor swap the food photo. These
+ * `kind`-tagged entries close that gap; the THEMED auto-form in PropertiesPanel
+ * special-cases each `kind` to render the matching array / asset-picker editor
+ * (modeled on the already-shipped LUNCH_MENU + BELL_SCHEDULE + AssetPickerField
+ * controls) instead of a Text/TextArea.
+ */
+export type ThemedFieldKind =
+  | 'text'
+  | 'multiline'
+  | 'array-schedule'
+  | 'array-bell'
+  | 'array-menu'
+  | 'array-cards'
+  | 'image';
+
 export interface ThemedField {
   key: string;
   label: string;
   default: string;
   multiline?: boolean;
+  /** How to render this field; omit for a plain single-line text input. */
+  kind?: ThemedFieldKind;
 }
 
 export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
@@ -39,6 +73,8 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
     { key: 'dateTag',         label: 'Date tag',        default: 'Mon · 4/19' },
     { key: 'notebookTitle',   label: 'Notebook title',  default: 'Period by Period' },
     { key: 'notebookSub',     label: 'Notebook subtitle', default: "~ today's schedule ~" },
+    // PRIMARY content — the schedule itself (reads cfg.periods {num,time,name,room}[]).
+    { key: 'periods',         label: 'Schedule rows',   default: '', kind: 'array-schedule' },
     { key: 'weatherTemp',     label: 'Weather temp',    default: '42°' },
     { key: 'weatherDesc',     label: 'Weather desc',    default: 'sunny + crisp' },
     { key: 'countdownLabel',  label: 'Countdown label', default: 'Field Day in' },
@@ -55,6 +91,7 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
     { key: 'dateTag',         label: 'Date tag',        default: 'Mon · 4/19' },
     { key: 'notebookTitle',   label: 'Notebook title',  default: 'Period by Period' },
     { key: 'notebookSub',     label: 'Notebook subtitle', default: "~ today's schedule ~" },
+    { key: 'periods',         label: 'Schedule rows',   default: '', kind: 'array-schedule' },
     { key: 'weatherTemp',     label: 'Weather temp',    default: '42°' },
     { key: 'weatherDesc',     label: 'Weather desc',    default: 'sunny + crisp' },
     { key: 'countdownLabel',  label: 'Countdown label', default: 'Field Day in' },
@@ -68,6 +105,9 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
     { key: 'title',       label: 'Title',       default: 'BELL SCHEDULE' },
     { key: 'subtitle',    label: 'Subtitle',    default: 'Monday · April 19 · 2026 · REGULAR BELL' },
     { key: 'currentBadge', label: 'Current badge', default: 'LIVE · IN SESSION' },
+    // PRIMARY content — the bell periods (reads cfg.periods
+    // {num,label,startTime,endTime,room}[]; same shape BELL_SCHEDULE writes).
+    { key: 'periods',     label: 'Bell periods', default: '', kind: 'array-bell' },
     { key: 'tickerStamp', label: 'Ticker stamp', default: 'BELL SCHEDULE' },
   ],
 
@@ -76,6 +116,7 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
     { key: 'title',       label: 'Title',       default: 'BELL SCHEDULE' },
     { key: 'subtitle',    label: 'Subtitle',    default: 'Monday · April 19 · 2026 · REGULAR BELL' },
     { key: 'currentBadge', label: 'Current badge', default: 'LIVE · IN SESSION' },
+    { key: 'periods',     label: 'Bell periods', default: '', kind: 'array-bell' },
     { key: 'tickerStamp', label: 'Ticker stamp', default: 'BELL SCHEDULE' },
   ],
 
@@ -231,7 +272,11 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
     { key: 'subtitle',        label: 'Subtitle',        default: '~ every day a new adventure ~' },
     { key: 'scheduleStamp',   label: 'Schedule stamp',  default: '~ TODAY ~' },
     { key: 'scheduleTitle',   label: 'Schedule title',  default: "Today's Schedule" },
+    // PRIMARY content — the schedule itself (reads cfg.rows {num,time,name,room}[]).
+    { key: 'rows',            label: 'Schedule rows',   default: '', kind: 'array-schedule' },
     { key: 'attendanceLabel', label: 'Attendance label', default: 'ATTENDANCE TODAY' },
+    { key: 'attendancePct',   label: 'Attendance %',    default: '97' },
+    { key: 'attendanceDay',   label: 'Attendance day',  default: 'Mon · April 19' },
     { key: 'clockLabel',      label: 'Clock label',     default: '~ time check ~' },
     { key: 'weatherLabel',    label: 'Weather label',   default: '~ sunny + crisp ~' },
     { key: 'annMsg',          label: 'Announcement message', default: 'Assembly in the gym Friday at 2 PM — all classes welcome!', multiline: true },
@@ -242,8 +287,12 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
   BULLETIN_CAFETERIA: [
     { key: 'title',          label: 'Title',          default: "TODAY'S MENU" },
     { key: 'subtitle',       label: 'Subtitle',       default: "~ what's cooking in the kitchen ~" },
+    // PRIMARY content — the food photo (reads cfg.photoEmoji; URL or emoji).
+    { key: 'photoEmoji',     label: 'Food photo',     default: '', kind: 'image' },
     { key: 'photoStamp',     label: 'Photo stamp',    default: '~ TODAY IN THE KITCHEN ~' },
     { key: 'photoCaption',   label: 'Photo caption',  default: 'served fresh today' },
+    // PRIMARY content — the menu itself (reads cfg.weekMenu / cfg.menuItems).
+    { key: 'weekMenu',       label: 'Menu items',     default: '', kind: 'array-menu' },
     { key: 'memoMessage',    label: 'Memo message',   default: 'Pizza Friday is BACK! Cheese + pepperoni in line 2.', multiline: true },
     { key: 'countdownLabel', label: 'Countdown label', default: 'NEXT MEAL IN' },
     { key: 'tickerStamp',    label: 'Ticker stamp',   default: 'FROM THE KITCHEN' },
@@ -254,7 +303,11 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
     { key: 'subtitle',          label: 'Subtitle',          default: 'every day a new adventure' },
     { key: 'schedulePageLabel', label: 'Schedule page label', default: "~ Today's Schedule ~" },
     { key: 'scheduleTitle',     label: 'Schedule title',    default: 'Period by Period' },
+    // PRIMARY content — the schedule itself (reads cfg.rows {num,time,name,room}[]).
+    { key: 'rows',              label: 'Schedule rows',     default: '', kind: 'array-schedule' },
     { key: 'attendanceLabel',   label: 'Attendance label',  default: '~ here today ~' },
+    { key: 'attendancePct',     label: 'Attendance %',      default: '97' },
+    { key: 'attendanceDay',     label: 'Attendance day',    default: 'Mon · 4/19' },
     { key: 'weatherTemp',       label: 'Weather temp',      default: '42°' },
     { key: 'weatherDesc',       label: 'Weather desc',      default: 'sunny + crisp' },
     { key: 'annLabel',          label: 'Announcement label', default: 'Announcement' },
@@ -266,7 +319,12 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
   SCRAPBOOK_CAFETERIA: [
     { key: 'title',           label: 'Title',           default: "Today's Menu" },
     { key: 'subtitle',        label: 'Subtitle',        default: "what's cooking in the kitchen" },
+    // Polaroid is an emoji-only slot (cfg.polaroidEmoji renders as text, no
+    // <img> path) so it stays a plain text field rather than an asset picker.
+    { key: 'polaroidEmoji',   label: 'Polaroid emoji',  default: '🍝' },
     { key: 'polaroidCaption', label: 'Polaroid caption', default: '~ snapped this morning ~' },
+    // PRIMARY content — the menu cards (reads cfg.cards {title,desc}[]).
+    { key: 'cards',           label: 'Menu cards',      default: '', kind: 'array-cards' },
     { key: 'specialLabel',    label: 'Special label',   default: "Today's Special" },
     { key: 'specialMsg',      label: 'Special message', default: 'Pizza Friday is BACK! 🍕 Cheese + pepperoni in line 2.', multiline: true },
     { key: 'countdownLabel',  label: 'Countdown label', default: 'Next meal in' },
@@ -279,6 +337,8 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
     { key: 'subtitle',           label: 'Subtitle',            default: 'every day, a new adventure' },
     { key: 'scheduleTitle',      label: 'Schedule title',      default: "Today's Schedule" },
     { key: 'scheduleSub',        label: 'Schedule sub',        default: 'period by period, hour by hour' },
+    // PRIMARY content — the schedule itself (reads cfg.rows {num,time,name,room}[]).
+    { key: 'rows',               label: 'Schedule rows',       default: '', kind: 'array-schedule' },
     { key: 'attendanceTopLabel', label: 'Attendance top label', default: 'Attendance today' },
     { key: 'attendancePct',      label: 'Attendance %',        default: '97' },
     { key: 'attendanceBotLabel', label: 'Attendance bottom',   default: '— a fine showing —' },
@@ -298,7 +358,11 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
     { key: 'chapter',        label: 'Chapter',        default: 'Chapter Twelve' },
     { key: 'title',          label: 'Title',          default: "Today's Menu" },
     { key: 'subtitle',       label: 'Subtitle',       default: 'in which the kitchen serves a feast' },
+    // PRIMARY content — the food photo (reads cfg.heroEmoji; URL or emoji).
+    { key: 'heroEmoji',      label: 'Food photo',     default: '', kind: 'image' },
     { key: 'heroCaption',    label: 'Hero caption',   default: 'from the kitchen' },
+    // PRIMARY content — the menu itself (reads cfg.weekMenu / cfg.menuItems).
+    { key: 'weekMenu',       label: 'Menu items',     default: '', kind: 'array-menu' },
     { key: 'noteLabel',      label: 'Note label',     default: 'A note from the cook —' },
     { key: 'noteMessage',    label: 'Note message',   default: 'Pizza Friday returns at last! Cheese & pepperoni in line two.', multiline: true },
     { key: 'countdownLabel', label: 'Countdown label', default: 'until next meal' },

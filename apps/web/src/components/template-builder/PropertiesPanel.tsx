@@ -4641,28 +4641,125 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       const themed = THEMED_WIDGET_FIELDS[zone.widgetType];
       if (themed) {
         for (const f of themed) {
-          const currentValue = (cfg[f.key] ?? '') as string;
-          if (f.multiline) {
-            fields.push(
-              <TextAreaField
-                key={f.key}
-                label={f.label}
-                value={currentValue}
-                placeholder={f.default}
-                rows={3}
-                onChange={(v) => setField({ [f.key]: v })}
-              />,
-            );
-          } else {
-            fields.push(
-              <TextField
-                key={f.key}
-                label={f.label}
-                value={currentValue}
-                placeholder={f.default}
-                onChange={(v) => setField({ [f.key]: v })}
-              />,
-            );
+          // 2026-05-28 (P0-3 §19): the THEMED auto-form used to render
+          // Text/TextArea ONLY, so the primary content of these widgets — the
+          // schedule rows, the bell periods, the lunch menu, the food photo —
+          // was unreachable. Dispatch on `f.kind` so each list/image field
+          // gets the matching array / asset-picker editor (reusing the same
+          // controls LUNCH_MENU / BELL_SCHEDULE / IMAGE already ship).
+          switch (f.kind) {
+            case 'array-schedule': {
+              // Class-row schedule: {num,time,name,room}[] under f.key
+              // (cfg.rows on Bulletin/Scrapbook/Storybook Hallway,
+              //  cfg.periods on AnimatedHallwaySchedule).
+              fields.push(
+                <ScheduleRowsField
+                  key={f.key}
+                  label={f.label}
+                  value={Array.isArray(cfg[f.key]) ? cfg[f.key] : []}
+                  onChange={(rows) => setField({ [f.key]: rows })}
+                />,
+              );
+              break;
+            }
+            case 'array-bell': {
+              // Bell periods: {num,label,startTime,endTime,room}[] — identical
+              // shape BELL_SCHEDULE produces. Reuse its editor + write path.
+              // BellScheduleEditor only edits label + start/end, so preserve
+              // any per-index `room` the preset set (AnimatedBellSchedule
+              // renders it) instead of dropping it on every edit.
+              const existingPeriods = Array.isArray(cfg.periods) ? cfg.periods : [];
+              fields.push(
+                <BellScheduleEditor
+                  key={f.key}
+                  value={bellScheduleForEditor(cfg.periods)}
+                  onChange={(schedule) => setField({
+                    periods: schedule.map((p, i) => ({
+                      num: String(i + 1),
+                      label: p.label,
+                      startTime: p.start,
+                      endTime: p.end,
+                      ...(existingPeriods[i]?.room ? { room: existingPeriods[i].room } : {}),
+                    })),
+                  })}
+                />,
+              );
+              break;
+            }
+            case 'array-menu': {
+              // Lunch menu: cfg.weekMenu (CafeWeek of {emoji,name,meta,price}).
+              // Mirror the first non-empty day into cfg.menuItems so the
+              // builder preview + any weekend render still shows content
+              // (the cafeteria widgets fall back to menuItems when weekMenu
+              // has nothing for the current weekday).
+              fields.push(
+                <WeekMenuEditor
+                  key={f.key}
+                  value={cfg.weekMenu}
+                  onChange={(weekMenu) => {
+                    const firstDay =
+                      weekMenu.monday?.length ? weekMenu.monday :
+                      weekMenu.tuesday?.length ? weekMenu.tuesday :
+                      weekMenu.wednesday?.length ? weekMenu.wednesday :
+                      weekMenu.thursday?.length ? weekMenu.thursday :
+                      weekMenu.friday?.length ? weekMenu.friday : [];
+                    setField({ weekMenu, menuItems: firstDay });
+                  }}
+                />,
+              );
+              break;
+            }
+            case 'array-cards': {
+              // Scrapbook cafeteria menu cards: {title,desc}[] under cfg.cards.
+              fields.push(
+                <MenuCardsField
+                  key={f.key}
+                  label={f.label}
+                  value={Array.isArray(cfg.cards) ? cfg.cards : []}
+                  onChange={(cards) => setField({ cards })}
+                />,
+              );
+              break;
+            }
+            case 'image': {
+              // Food photo — cfg.photoEmoji / cfg.heroEmoji accept a URL the
+              // widget renders via <img> (or an emoji string fallback).
+              fields.push(
+                <AssetPickerField
+                  key={f.key}
+                  label={f.label}
+                  kind="image"
+                  value={(cfg[f.key] ?? '') as string}
+                  onChange={(v) => setField({ [f.key]: v })}
+                />,
+              );
+              break;
+            }
+            default: {
+              const currentValue = (cfg[f.key] ?? '') as string;
+              if (f.multiline || f.kind === 'multiline') {
+                fields.push(
+                  <TextAreaField
+                    key={f.key}
+                    label={f.label}
+                    value={currentValue}
+                    placeholder={f.default}
+                    rows={3}
+                    onChange={(v) => setField({ [f.key]: v })}
+                  />,
+                );
+              } else {
+                fields.push(
+                  <TextField
+                    key={f.key}
+                    label={f.label}
+                    value={currentValue}
+                    placeholder={f.default}
+                    onChange={(v) => setField({ [f.key]: v })}
+                  />,
+                );
+              }
+            }
           }
         }
         break;
@@ -7553,6 +7650,159 @@ function BellScheduleEditor({ value, onChange }: { value: Array<{ label: string;
           className="w-full py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-dashed border-indigo-200"
         >
           + Add period
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// 2026-05-28 (P0-3 §19) — class-row schedule editor for the themed Hallway /
+// AnimatedHallwaySchedule widgets. Their primary content is an array of
+// {num,time,name,room} rows the widget renders verbatim (e.g.
+// "8:15 — 9:00 · Math · Mrs. Chen · RM 14"). The THEMED auto-form previously
+// rendered only Text/TextArea, so an operator could rename "Today's Schedule"
+// but could not edit a single period. `time` is a free-text display string
+// (the widgets print it directly, so "8:15 — 9:00" or "1st block" both work);
+// `num` auto-renumbers on add/remove/reorder.
+type ScheduleRow = { num?: string | number; time?: string; name?: string; room?: string; highlight?: boolean };
+function ScheduleRowsField({ label, value, onChange }: { label: string; value: ScheduleRow[]; onChange: (v: ScheduleRow[]) => void }) {
+  const rows = Array.isArray(value) ? value : [];
+  // Keep `num` a stable 1..N sequence so the widget's period badges stay tidy
+  // regardless of how the operator reorders/removes rows.
+  const renumber = (next: ScheduleRow[]) => next.map((r, i) => ({ ...r, num: i + 1 }));
+  const update = (idx: number, patch: Partial<ScheduleRow>) => {
+    const next = rows.slice();
+    next[idx] = { ...next[idx], ...patch };
+    onChange(renumber(next));
+  };
+  const add = () => onChange(renumber([...rows, { time: '', name: '', room: '' }]));
+  const remove = (idx: number) => onChange(renumber(rows.filter((_, i) => i !== idx)));
+  const moveUp = (idx: number) => {
+    if (idx === 0) return;
+    const next = rows.slice();
+    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+    onChange(renumber(next));
+  };
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <p className="text-[10px] text-slate-400 mb-2 px-0.5">Each row is one period — a time (e.g. &ldquo;8:15 — 9:00&rdquo;), the class/activity, and the room.</p>
+      <div className="space-y-2">
+        {rows.length === 0 && <p className="text-[11px] text-slate-400 italic px-1">No periods yet — add your first below.</p>}
+        {rows.map((r, idx) => (
+          <div key={idx} className="bg-white border border-slate-200 rounded-lg p-2 space-y-1.5 shadow-sm">
+            <div className="flex items-center gap-1.5">
+              <span className="w-5 h-5 shrink-0 rounded-full bg-indigo-50 text-indigo-500 text-[10px] font-bold flex items-center justify-center">{idx + 1}</span>
+              <input
+                type="text"
+                value={r.time || ''}
+                onChange={(e) => update(idx, { time: e.target.value })}
+                placeholder="8:15 — 9:00"
+                aria-label={`Period ${idx + 1} time`}
+                className="flex-1 min-w-0 px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              <button type="button" onClick={() => moveUp(idx)} disabled={idx === 0} aria-label="Move up" className="w-6 h-6 shrink-0 rounded border border-slate-200 text-slate-400 hover:text-indigo-600 disabled:opacity-30 flex items-center justify-center text-[11px]">↑</button>
+              <button type="button" onClick={() => remove(idx)} aria-label="Remove period" className="w-6 h-6 shrink-0 rounded border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 flex items-center justify-center text-xs">×</button>
+            </div>
+            <div className="grid grid-cols-[1fr_auto] items-center gap-1.5">
+              <input
+                type="text"
+                value={r.name || ''}
+                onChange={(e) => update(idx, { name: e.target.value })}
+                placeholder="Math · Mrs. Chen"
+                aria-label={`Period ${idx + 1} class`}
+                className="min-w-0 w-full px-2 py-1 text-xs font-semibold rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              <input
+                type="text"
+                value={r.room || ''}
+                onChange={(e) => update(idx, { room: e.target.value })}
+                placeholder="RM 14"
+                aria-label={`Period ${idx + 1} room`}
+                className="w-20 px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            </div>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={add}
+          className="w-full py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-dashed border-indigo-200"
+        >
+          + Add period
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// 2026-05-28 (P0-3 §19) — menu-card editor for ScrapbookCafeteria, whose
+// primary content is cfg.cards ({title,desc,badges?,accent?,rot?,tape?}[]).
+// We expose just title + desc (the operator-facing essentials); the optional
+// styling props (accent / rot / tape / badges) are preserved on edit and a
+// rotating accent/tape palette is assigned to NEW cards so they keep the
+// scrapbook look without the operator touching CSS.
+type MenuCard = { title?: string; desc?: string; badges?: { label?: string; kind?: string }[]; accent?: string; rot?: string; tape?: string };
+const SCRAPBOOK_CARD_ACCENTS: Array<{ accent: string; rot: string; tape: string }> = [
+  { accent: '#f472b6', rot: '-1.5deg', tape: '#fcd34d' },
+  { accent: '#86efac', rot: '1.2deg',  tape: '#86efac' },
+  { accent: '#fcd34d', rot: '-1deg',   tape: '#93c5fd' },
+  { accent: '#93c5fd', rot: '1.4deg',  tape: '#f472b6' },
+];
+function MenuCardsField({ label, value, onChange }: { label: string; value: MenuCard[]; onChange: (v: MenuCard[]) => void }) {
+  const cards = Array.isArray(value) ? value : [];
+  const update = (idx: number, patch: Partial<MenuCard>) => {
+    const next = cards.slice();
+    next[idx] = { ...next[idx], ...patch };
+    onChange(next);
+  };
+  const add = () => {
+    const style = SCRAPBOOK_CARD_ACCENTS[cards.length % SCRAPBOOK_CARD_ACCENTS.length];
+    onChange([...cards, { title: '', desc: '', ...style }]);
+  };
+  const remove = (idx: number) => onChange(cards.filter((_, i) => i !== idx));
+  const moveUp = (idx: number) => {
+    if (idx === 0) return;
+    const next = cards.slice();
+    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+    onChange(next);
+  };
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <p className="text-[10px] text-slate-400 mb-2 px-0.5">Each card is one dish — a name and a short description.</p>
+      <div className="space-y-2">
+        {cards.length === 0 && <p className="text-[11px] text-slate-400 italic px-1">No cards yet — add your first below.</p>}
+        {cards.map((card, idx) => (
+          <div key={idx} className="bg-white border border-slate-200 rounded-lg p-2 space-y-1.5 shadow-sm">
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={card.title || ''}
+                onChange={(e) => update(idx, { title: e.target.value })}
+                placeholder="Chef Salad"
+                aria-label={`Card ${idx + 1} name`}
+                className="flex-1 min-w-0 px-2 py-1 text-xs font-semibold rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              <button type="button" onClick={() => moveUp(idx)} disabled={idx === 0} aria-label="Move up" className="w-6 h-6 shrink-0 rounded border border-slate-200 text-slate-400 hover:text-indigo-600 disabled:opacity-30 flex items-center justify-center text-[11px]">↑</button>
+              <button type="button" onClick={() => remove(idx)} aria-label="Remove card" className="w-6 h-6 shrink-0 rounded border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 flex items-center justify-center text-xs">×</button>
+            </div>
+            <input
+              type="text"
+              value={card.desc || ''}
+              onChange={(e) => update(idx, { desc: e.target.value })}
+              placeholder="Romaine, grilled chicken, tomatoes, cheese, ranch."
+              aria-label={`Card ${idx + 1} description`}
+              className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={add}
+          className="w-full py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-dashed border-indigo-200"
+        >
+          + Add card
         </button>
       </div>
     </div>
