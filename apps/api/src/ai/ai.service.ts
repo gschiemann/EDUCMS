@@ -28,6 +28,7 @@
 
 import { Injectable, Logger, BadRequestException, ServiceUnavailableException, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../realtime/redis.service';
 import { dispatchAi, mapProviderQuotaError, type AiProvider, coerceProvider } from './ai-providers';
 import { openAiKey } from './ai-key-cipher';
 import { isVertical } from '@cms/api-types';
@@ -100,58 +101,101 @@ const SYSTEM_PROMPTS: Record<AiIntent, string> = {
 export class AiService {
   private readonly logger = new Logger(AiService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
 
-  /** Lazy in-memory rate limiter. Tenant id → rolling-1h timestamps.
-   *  Cleared on pod restart — the cap is "soft" by design and exists
-   *  to prevent runaway loops, not for spend control. */
-  private readonly recentByTenant = new Map<string, number[]>();
+  // P1-14 (2026-05-28 audit) — both per-tenant hourly caps moved from
+  // in-memory Maps to Redis sorted sets so they hold ACROSS replicas.
+  // Railway runs >1 dyno under load; an in-memory cap is N×-bypassable
+  // (each replica enforces its own 30/200). The sorted-set members are
+  // timestamps; we ZADD on each event, ZREMRANGEBYSCORE-prune the
+  // 1h window, and ZCARD to count. PEXPIRE garbage-collects idle keys
+  // so the keyspace can't grow unbounded across long-lived tenants
+  // (the old Map prune-on-empty did the same job process-locally).
+  //
+  // FAIL-OPEN policy (documented degradation): if Redis is unreachable
+  // these caps are SKIPPED, not enforced — we never block a paying-
+  // customer generation on a Redis blip. Both caps are abuse/runaway
+  // guards, not the cost ceiling. The real spend ceiling is the
+  // MONTHLY platform cap (Tenant.aiPlatformUsage* in Postgres, which
+  // is durable + replica-safe already) PLUS max_tokens=300/1500 per
+  // call. So a Redis outage can let a tenant briefly exceed 30/hr,
+  // but it can NOT let them exceed the monthly platform credit budget.
   private readonly HOURLY_CAP = 30;
-  // Audit-W1 fix (2026-05-25) — Separate failure tracker. The
-  // success tracker above only counts successful generations (slots
-  // pushed AFTER provider 200 OK) so a tenant burning 401s with a
-  // bad key, or hammering the endpoint with bad context (which
-  // throws before dispatch), doesn't consume the hourly quota. That
-  // lets an authed-but-malicious tenant pound /ai/generate forever
-  // without rate-limit gate. This second tracker counts ANY failure
-  // (bad input, provider 4xx/5xx, decryption fail, cap-reached)
-  // against a higher per-tenant ceiling. Sustained high failure
-  // rate from one tenant trips this and blocks the next attempt.
-  private readonly recentFailuresByTenant = new Map<string, number[]>();
   private readonly HOURLY_FAILURE_CAP = 200;
+  private readonly WINDOW_MS = 60 * 60 * 1000;
+  // Redis key prefixes. Tenant id is appended. Kept distinct from any
+  // realtime/pubsub keyspace so a tenant scan can't collide.
+  private readonly RL_SUCCESS_PREFIX = 'ai:rl:gen:';
+  private readonly RL_FAILURE_PREFIX = 'ai:rl:fail:';
+
+  /**
+   * Count events in the trailing 1h window for a tenant, pruning expired
+   * members as a side effect. Returns the live count. Fails OPEN
+   * (returns 0) when Redis is unavailable — see the FAIL-OPEN note on
+   * the constants above.
+   */
+  private async windowCount(prefix: string, tenantId: string): Promise<number> {
+    const pub = this.redis.publisher;
+    if (!pub) return 0; // fail-open: no Redis → don't enforce the soft cap
+    const key = `${prefix}${tenantId}`;
+    const now = Date.now();
+    try {
+      // Prune anything older than the window, then count what's left.
+      await pub.zremrangebyscore(key, 0, now - this.WINDOW_MS);
+      const count = await pub.zcard(key);
+      return typeof count === 'number' ? count : 0;
+    } catch (e: any) {
+      this.logger.warn(`AI rate-limit windowCount failed (fail-open): ${e?.message}`);
+      return 0;
+    }
+  }
+
+  /**
+   * Record one event at `now` in the tenant's sliding window. ZADD with
+   * the timestamp as both score AND member (member must be unique —
+   * concurrent same-ms events would otherwise collapse to one entry, so
+   * we suffix a short random nonce). Sets a 2h PEXPIRE so an idle
+   * tenant's key self-evicts (window is 1h; double it for safety).
+   * Best-effort — a write failure just means the next check undercounts,
+   * never throws (the call already succeeded / failed for real reasons).
+   */
+  private async recordEvent(prefix: string, tenantId: string): Promise<void> {
+    const pub = this.redis.publisher;
+    if (!pub) return;
+    const key = `${prefix}${tenantId}`;
+    const now = Date.now();
+    // Unique member so two events in the same millisecond both count.
+    const member = `${now}-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      await pub.zadd(key, now, member);
+      // Self-evict idle keys. 2× the window is ample headroom.
+      await pub.pexpire(key, this.WINDOW_MS * 2);
+    } catch (e: any) {
+      this.logger.warn(`AI rate-limit recordEvent failed (best-effort): ${e?.message}`);
+    }
+  }
 
   /**
    * Audit-W1 fix — register a failure of any kind against the per-
-   * tenant cap. Throws a 429 with a clean code if the tenant has
-   * crossed the failure ceiling. Call at every catch / bad-input
-   * branch in generate() and generateTouchTemplate().
+   * tenant cap. Now Redis-backed (P1-14) so the failure ceiling holds
+   * across replicas. Call at every catch / bad-input branch in
+   * generate() and generateTouchTemplate().
    *
-   * Stays in-memory (process-local). Acceptable — the threat model
-   * here is "stop one tenant from looping bad calls for free," not
-   * "stop a distributed attacker"; the AUTHED endpoint already has
-   * RBAC + session controls upstream.
+   * The threat model is "stop one tenant from looping bad calls for
+   * free" — the AUTHED endpoint already has RBAC + session controls
+   * upstream. Fail-open on Redis loss is acceptable (a blip doesn't
+   * let bad calls hit the upstream provider any faster than the
+   * monthly platform cap allows).
    */
-  private recordFailure(tenantId: string): void {
-    const now = Date.now();
-    const windowStart = now - 60 * 60 * 1000;
-    const recent = (this.recentFailuresByTenant.get(tenantId) || []).filter((t) => t > windowStart);
-    recent.push(now);
-    if (recent.length === 0) {
-      this.recentFailuresByTenant.delete(tenantId);
-    } else {
-      this.recentFailuresByTenant.set(tenantId, recent);
-    }
+  private async recordFailure(tenantId: string): Promise<void> {
+    await this.recordEvent(this.RL_FAILURE_PREFIX, tenantId);
   }
-  private checkFailureCap(tenantId: string): void {
-    const now = Date.now();
-    const windowStart = now - 60 * 60 * 1000;
-    const recent = (this.recentFailuresByTenant.get(tenantId) || []).filter((t) => t > windowStart);
-    if (recent.length === 0) {
-      this.recentFailuresByTenant.delete(tenantId);
-    } else {
-      this.recentFailuresByTenant.set(tenantId, recent);
-    }
-    if (recent.length >= this.HOURLY_FAILURE_CAP) {
+  private async checkFailureCap(tenantId: string): Promise<void> {
+    const count = await this.windowCount(this.RL_FAILURE_PREFIX, tenantId);
+    if (count >= this.HOURLY_FAILURE_CAP) {
       throw new HttpException(
         {
           message: 'Too many failed AI requests in the last hour. Wait an hour or contact support.',
@@ -319,11 +363,11 @@ export class AiService {
     // counts as a failure against the per-tenant cap. The wrapper
     // checks the cap BEFORE doing any work — sustained failures
     // from one tenant are blocked at the door.
-    this.checkFailureCap(opts.tenantId);
+    await this.checkFailureCap(opts.tenantId);
     try {
       return await this.generateInner(opts);
     } catch (e) {
-      this.recordFailure(opts.tenantId);
+      await this.recordFailure(opts.tenantId);
       throw e;
     }
   }
@@ -371,23 +415,13 @@ export class AiService {
       throw new BadRequestException('Invalid tone.');
     }
 
-    // Rate-limit: 30/hour/tenant. Sliding window kept in-memory.
-    // CYCLE-5 ai-rate-limit-leak fix: do NOT increment before the
-    // upstream call — a failed call would otherwise consume a quota
-    // slot. The push is moved to AFTER the successful Anthropic
-    // response below.
-    // CYCLE-5 ai-tenant-map-leak fix: prune entries during the check.
-    // If the filtered list is empty, drop the Map entry entirely so
-    // the Map can't grow unbounded across long-lived tenants.
-    const now = Date.now();
-    const oneHourAgo = now - 60 * 60 * 1000;
-    const recent = (this.recentByTenant.get(opts.tenantId) || []).filter((t) => t > oneHourAgo);
-    if (recent.length === 0) {
-      this.recentByTenant.delete(opts.tenantId);
-    } else {
-      this.recentByTenant.set(opts.tenantId, recent);
-    }
-    if (recent.length >= this.HOURLY_CAP) {
+    // Rate-limit: 30/hour/tenant. P1-14 — sliding window now in Redis
+    // (replica-safe), not an in-memory Map. CYCLE-5 ai-rate-limit-leak
+    // fix preserved: do NOT record the slot before the upstream call —
+    // a failed call must not consume a quota slot. The recordEvent is
+    // AFTER the successful, usable result below. windowCount prunes the
+    // expired members as a side effect, so the key can't grow unbounded.
+    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
       throw new BadRequestException(
         `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later or contact sales for a higher tier.`,
       );
@@ -521,9 +555,8 @@ export class AiService {
     // CYCLE-5 ai-rate-limit-leak fix: only count a quota slot once
     // the upstream call returned a usable, non-empty result. A failed
     // fetch / non-2xx / empty parse earlier in this method now does
-    // NOT consume the tenant's hourly cap.
-    recent.push(now);
-    this.recentByTenant.set(opts.tenantId, recent);
+    // NOT consume the tenant's hourly cap. P1-14 — recorded in Redis.
+    await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
 
     // Bump platform monthly counter on success. BYOK calls bypass
     // (their cost, untracked). Errors before this point don't bump.
@@ -623,11 +656,11 @@ export class AiService {
     usage: { used: number; cap: number; resetAt: string } | null;
   }> {
     // Audit-W1 — same failure-cap wrapper as generate().
-    this.checkFailureCap(opts.tenantId);
+    await this.checkFailureCap(opts.tenantId);
     try {
       return await this.generateTouchTemplateInner(opts);
     } catch (e) {
-      this.recordFailure(opts.tenantId);
+      await this.recordFailure(opts.tenantId);
       throw e;
     }
   }
@@ -654,12 +687,9 @@ export class AiService {
 
     // Same rate limit + monthly cap path as generate(). One generation
     // burns one slot regardless of which generator the operator picks.
-    const now = Date.now();
-    const oneHourAgo = now - 60 * 60 * 1000;
-    const recent = (this.recentByTenant.get(opts.tenantId) || []).filter((t) => t > oneHourAgo);
-    if (recent.length === 0) this.recentByTenant.delete(opts.tenantId);
-    else this.recentByTenant.set(opts.tenantId, recent);
-    if (recent.length >= this.HOURLY_CAP) {
+    // P1-14 — shared Redis-backed hourly window (same key as generate()
+    // so the 30/hr cap is across BOTH generators, not per-generator).
+    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
       throw new BadRequestException(
         `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later.`,
       );
@@ -755,9 +785,8 @@ export class AiService {
     }
 
     // Bump rate-limit + monthly counter only AFTER a successful, usable
-    // result. Same leak-fix pattern as generate().
-    recent.push(now);
-    this.recentByTenant.set(opts.tenantId, recent);
+    // result. Same leak-fix pattern as generate(). P1-14 — Redis-backed.
+    await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
     if (resolved.source === 'platform') {
       try { await this.bumpPlatformUsage(opts.tenantId); }
       catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }

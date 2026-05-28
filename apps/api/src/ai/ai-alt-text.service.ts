@@ -40,6 +40,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { openAiKey } from './ai-key-cipher';
+import { mapProviderQuotaError } from './ai-providers';
 
 // Conservative cost estimates (USD per image @ ≤300-token reply,
 // includes the base64 image payload tokenization). These match the
@@ -97,15 +98,34 @@ export interface GenerateAltTextResult {
 }
 
 /**
- * Custom error thrown ONLY on provider quota / rate-limit failures.
+ * Custom error thrown ONLY on provider OUT-OF-CREDIT failures.
  * Lets the controller surface "you ran out of credit" distinctly from
  * "the image was rejected." All other errors result in a null return.
+ *
+ * 2026-05-28 audit P1-7 — this is now POPULATED FROM the shared
+ * `mapProviderQuotaError` (ai-providers.ts) rather than from a forked
+ * copy of the quota-detection logic. The shared helper is the single
+ * source of truth for "out of credit vs rate-limit" across every AI
+ * surface (text-gen, touch-template, AND alt-text), so an Anthropic
+ * vision call that 429s out-of-credit — or any future provider quirk —
+ * disambiguates IDENTICALLY here as on the text-gen path. We retain
+ * this concrete error type (instead of the helper's plain envelope)
+ * because the controller + tests branch on `instanceof
+ * AiAltTextQuotaError` to decide whether to surface the friendly
+ * "add credits" toast.
+ *
+ * `code` mirrors the shared helper's `ProviderQuotaError.code` so the
+ * audit row + any caller see the same disambiguation token used on the
+ * text-gen path. Only `AI_PROVIDER_OUT_OF_CREDIT` is ever thrown — a
+ * pure per-minute rate-limit (helper returns null) falls through to the
+ * generic-error / null-return path, exactly like text-gen.
  */
 export class AiAltTextQuotaError extends Error {
   constructor(
     public readonly provider: 'openai' | 'anthropic',
     public readonly statusCode: number,
     message: string,
+    public readonly code: 'AI_PROVIDER_OUT_OF_CREDIT' = 'AI_PROVIDER_OUT_OF_CREDIT',
   ) {
     super(message);
     this.name = 'AiAltTextQuotaError';
@@ -392,9 +412,38 @@ export class AiAltTextService {
   }
 
   /**
+   * Map a provider non-2xx through the SHARED `mapProviderQuotaError`
+   * (audit P1-7). When the shared helper recognizes an out-of-credit
+   * signature it throws the concrete `AiAltTextQuotaError` (so the
+   * operator-triggered path surfaces the friendly "add credits"
+   * message). When it returns null — a pure per-minute rate-limit, or
+   * any other status — this throws a generic Error so the caller logs
+   * + returns null (background paths swallow). Centralizing here means
+   * Anthropic 429 / OpenAI 429 / Google all disambiguate exactly as on
+   * the text-gen path, instead of the old forked logic that only knew
+   * about Anthropic 402/400 + OpenAI 429.
+   */
+  private throwMappedProviderError(
+    provider: 'openai' | 'anthropic',
+    status: number,
+    body: string,
+  ): never {
+    const quotaErr = mapProviderQuotaError(provider, status, body);
+    if (quotaErr && quotaErr.code === 'AI_PROVIDER_OUT_OF_CREDIT') {
+      throw new AiAltTextQuotaError(provider, status, quotaErr.message, quotaErr.code);
+    }
+    // Pure rate-limit (helper → null) or any other non-2xx → generic
+    // error → caller logs + returns null. The provider name + status
+    // are preserved in the message for the audit row.
+    const label = provider === 'openai' ? 'OpenAI' : 'Anthropic';
+    throw new Error(`${label} ${status}: ${body.slice(0, 200)}`);
+  }
+
+  /**
    * OpenAI 4o-mini vision call. Returns the raw alt text on success;
-   * throws AiAltTextQuotaError on 429-insufficient-quota (so the
-   * operator-triggered path can surface the friendly message).
+   * throws AiAltTextQuotaError on out-of-credit (via the shared
+   * mapProviderQuotaError helper) so the operator-triggered path can
+   * surface the friendly message.
    */
   private async callOpenAi(
     apiKey: string,
@@ -433,16 +482,9 @@ export class AiAltTextService {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      // 429 with insufficient_quota = out of credit; rest = treat as
-      // generic error so the caller logs + returns null.
-      if (res.status === 429 && /insufficient_quota|exceeded your current quota|billing/i.test(body)) {
-        throw new AiAltTextQuotaError(
-          'openai',
-          res.status,
-          'OpenAI alt-text generation skipped: account quota exhausted. Add credits at platform.openai.com.',
-        );
-      }
-      throw new Error(`OpenAI ${res.status}: ${body.slice(0, 200)}`);
+      // P1-7: route through the shared helper. Out-of-credit → quota
+      // error; rate-limit / other → generic error → caller returns null.
+      this.throwMappedProviderError('openai', res.status, body);
     }
     const json = (await res.json()) as any;
     const text = json?.choices?.[0]?.message?.content;
@@ -451,7 +493,10 @@ export class AiAltTextService {
 
   /**
    * Anthropic Haiku vision call. Same return contract as the OpenAI
-   * variant; throws AiAltTextQuotaError on 402 / out-of-credit.
+   * variant; throws AiAltTextQuotaError on out-of-credit via the shared
+   * mapProviderQuotaError helper (covers 402 AND the 400/429
+   * credit_balance_too_low forms — the old forked logic here missed
+   * the 429 form entirely, which was the P1-7 bug).
    */
   private async callAnthropic(
     apiKey: string,
@@ -491,17 +536,9 @@ export class AiAltTextService {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      if (
-        res.status === 402 ||
-        (res.status === 400 && /credit_balance_too_low|credit balance is too low/i.test(body))
-      ) {
-        throw new AiAltTextQuotaError(
-          'anthropic',
-          res.status,
-          'Anthropic alt-text generation skipped: account credit exhausted. Add credits at console.anthropic.com.',
-        );
-      }
-      throw new Error(`Anthropic ${res.status}: ${body.slice(0, 200)}`);
+      // P1-7: route through the shared helper. Out-of-credit → quota
+      // error; rate-limit / other → generic error → caller returns null.
+      this.throwMappedProviderError('anthropic', res.status, body);
     }
     const json = (await res.json()) as any;
     const text = json?.content?.[0]?.text;

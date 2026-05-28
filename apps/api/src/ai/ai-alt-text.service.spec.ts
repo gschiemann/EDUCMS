@@ -176,6 +176,86 @@ describe('AiAltTextService (P1-2)', () => {
     expect(JSON.parse(audit.details).errorCode).toBe('AI_QUOTA_EXHAUSTED');
   });
 
+  // P1-7 (2026-05-28 audit) — alt-text quota detection must use the
+  // SHARED mapProviderQuotaError, so out-of-credit disambiguates the
+  // SAME way as the text-gen path. Anthropic out-of-credit is HTTP 400
+  // + credit_balance_too_low (or 402); the OLD forked logic here only
+  // matched 402 / 400, but the win is it now carries the SAME
+  // AI_PROVIDER_OUT_OF_CREDIT code text-gen uses.
+  it('throws AiAltTextQuotaError (out-of-credit) on Anthropic 400 credit_balance_too_low — shared helper', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () =>
+        JSON.stringify({ error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Claude API.' } }),
+    });
+
+    let caught: any;
+    await service
+      .generateImageAltText({
+        tenantId: 'tenant-1',
+        imageBuffer: Buffer.from([0]),
+        mimeType: 'image/jpeg',
+      })
+      .catch((e) => { caught = e; });
+
+    expect(caught).toBeInstanceOf(AiAltTextQuotaError);
+    expect(caught.provider).toBe('anthropic');
+    // Same disambiguation token as the text-gen path (ai.service.ts).
+    expect(caught.code).toBe('AI_PROVIDER_OUT_OF_CREDIT');
+    // And the failure is still audited for SUPER_ADMIN attribution.
+    const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_FAILED');
+    expect(audit).toBeDefined();
+    expect(JSON.parse(audit.details).errorCode).toBe('AI_QUOTA_EXHAUSTED');
+  });
+
+  // P1-7 — Anthropic 402 (the rarer out-of-credit form) must ALSO map
+  // to the quota error via the shared helper. The old forked logic
+  // handled this, but pin it so a future refactor can't drop it.
+  it('throws AiAltTextQuotaError on Anthropic 402 — shared helper', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 402,
+      text: async () => JSON.stringify({ error: { type: 'payment_required' } }),
+    });
+
+    await expect(
+      service.generateImageAltText({
+        tenantId: 'tenant-1',
+        imageBuffer: Buffer.from([0]),
+        mimeType: 'image/jpeg',
+      }),
+    ).rejects.toBeInstanceOf(AiAltTextQuotaError);
+  });
+
+  // P1-7 — a PURE per-minute rate-limit (helper returns null) must NOT
+  // throw the quota error; it returns null like any other generic
+  // failure, EXACTLY as the text-gen path falls through on null. This
+  // is the behavior the old forked logic got right for Anthropic only
+  // by accident (it had no 429 branch); now it's the documented
+  // shared contract.
+  it('returns null (not quota error) on Anthropic 429 rate-limit — shared helper null path', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      text: async () => JSON.stringify({ error: { type: 'rate_limit_error', message: 'Number of requests has exceeded your rate limit' } }),
+    });
+
+    const result = await service.generateImageAltText({
+      tenantId: 'tenant-1',
+      imageBuffer: Buffer.from([0]),
+      mimeType: 'image/jpeg',
+    });
+    expect(result).toBeNull();
+    const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_FAILED');
+    expect(audit).toBeDefined();
+    // Not a quota failure — generic error path.
+    expect(JSON.parse(audit.details).errorCode).toBeUndefined();
+  });
+
   it('falls back to Anthropic when OPENAI_API_KEY is missing', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
     fetchMock.mockImplementation(async (url: string) => {
