@@ -999,14 +999,14 @@ export default function RibbonPage() {
             segCount={1}
             segWf={vp.w}
             sport={data?.sport}
-            // 2026-05-27 — Setup-mode celebration pack opt-in stored
-            // on Game.stats.celebrationPack. Default v1 keeps the
-            // shipped horizontal strip; 'v2' routes through the new
-            // combined-engine launcher.
+            // 2026-05-28 — celebration pack now defaults to 'v2' (the
+            // operator's preferred sophisticated FINA water polo canvas
+            // engine from commit 87da542). v2 already falls back to v1
+            // art for sports without v2 cues, so this is a strict upgrade.
             pack={
-              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
-                ? 'v2'
-                : 'v1') as 'v1' | 'v2'
+              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v1'
+                ? 'v1'
+                : 'v2') as 'v1' | 'v2'
             }
           />
         )}
@@ -1149,9 +1149,9 @@ export default function RibbonPage() {
           segWf={segWf}
           sport={data?.sport}
           pack={
-            ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
-              ? 'v2'
-              : 'v1') as 'v1' | 'v2'
+            ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v1'
+              ? 'v1'
+              : 'v2') as 'v1' | 'v2'
           }
         />
       )}

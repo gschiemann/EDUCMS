@@ -2533,12 +2533,16 @@ export default function ScoreboardPage() {
             cue={activeCue}
             sport={data?.sport}
             // 2026-05-27 — operator-selected celebration pack (Setup mode).
-            // Stored on Game.stats so it travels with the game record;
-            // defaults to v1 for tenants that haven't picked.
+            // Stored on Game.stats so it travels with the game record.
+            // 2026-05-28: default flipped to v2 — the sophisticated FINA
+            // water polo canvas2D engine (the "good animated ones" the
+            // operator gave us in commit 87da542). v2 already gracefully
+            // falls back to v1 art for sports without v2 cues yet, so
+            // defaulting to v2 has zero downside.
             pack={
-              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
-                ? 'v2'
-                : 'v1') as 'v1' | 'v2'
+              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v1'
+                ? 'v1'
+                : 'v2') as 'v1' | 'v2'
             }
           />
         )}

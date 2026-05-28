@@ -656,9 +656,9 @@ function GameControl() {
             <Section title="Celebration pack">
               <CelebrationPackPicker
                 value={
-                  ((g.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
-                    ? 'v2'
-                    : 'v1') as 'v1' | 'v2'
+                  ((g.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v1'
+                    ? 'v1'
+                    : 'v2') as 'v1' | 'v2'
                 }
                 onChange={(p) =>
                   ctl.stats.mutate({
@@ -4765,14 +4765,14 @@ function CelebrationPackPicker({
 }) {
   const options: { key: 'v1' | 'v2'; name: string; desc: string }[] = [
     {
-      key: 'v1',
-      name: 'Classic',
-      desc: 'Marquee scoreboard cinematics + horizontal ribbon strip (default).',
+      key: 'v2',
+      name: 'Stadium v2 (default)',
+      desc: 'Sophisticated FINA water polo canvas engine — same cue plays brand-matched on both the scoreboard and ribbon. Water polo has full v2 art; other sports gracefully fall back to Classic.',
     },
     {
-      key: 'v2',
-      name: 'Stadium v2',
-      desc: 'New canvas engine — same cue plays brand-matched on both the scoreboard and ribbon. Water polo only for now; other sports fall back to Classic.',
+      key: 'v1',
+      name: 'Classic',
+      desc: 'Older marquee scoreboard cinematics + horizontal ribbon strip. Only choose if you specifically want the legacy art.',
     },
   ];
   return (
