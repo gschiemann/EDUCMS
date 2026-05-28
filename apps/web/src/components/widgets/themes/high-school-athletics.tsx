@@ -34,7 +34,7 @@ export function AthleticsLogo({ config }: { config: any }) {
           border: `4px solid ${ATHLETICS.neonBlue}`,
           boxShadow: `0 0 40px ${ATHLETICS.neonBlue}`,
         }} />
-        <div className="absolute inset-[4%] bg-slate-900 flex items-center justify-center p-8" style={{
+        <div className="absolute top-[4%] right-[4%] bottom-[4%] left-[4%] bg-slate-900 flex items-center justify-center p-8" style={{
           clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
           backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.03) 5px, rgba(255,255,255,0.03) 10px)`
         }}>

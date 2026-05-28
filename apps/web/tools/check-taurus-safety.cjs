@@ -76,6 +76,22 @@ const PATTERNS = {
   // collapse. (globals.css has an @supports fallback; this catches NEW
   // oklch usage that lacks one.)
   oklch: /\boklch\s*\(/g,
+  // 2026-05-28 audit P0-8: the `inset` shorthand is Chromium 87+. On
+  // Chromium 83 the whole declaration is dropped → a `position: absolute`
+  // box with no top/right/bottom/left collapses to 0×0 top-left and the
+  // widget (measured by useScaleToFit) renders at scale(0) — invisible.
+  // CLAUDE.md rule #10. This CSS-property pattern catches `inset: …` in
+  // <style> blocks and inline objects.
+  insetCss: /\binset:\s*[^,;{}\n]+/g,
+  // Companion to insetCss: the Tailwind utilities `inset-0` / `inset-x-*`
+  // / `inset-y-*` (compile to `inset` / `inset-inline` / `inset-block`,
+  // all Chromium-83-incompatible) AND arbitrary `inset-[…]`. The
+  // 2026-05-13 sweep caught the CSS property, the 2026-05-19 sweep caught
+  // `inset-0`/`inset-N`, but NEITHER gate had a pattern — so the arbitrary
+  // `inset-[4%]` in themes/high-school-athletics.tsx shipped a live Taurus
+  // regression on a sports widget. Use longhand `top-* right-* bottom-*
+  // left-*` instead. (Does NOT match longhand top-/right-/bottom-/left-.)
+  insetTw: /\binset-(?:x-|y-)?(?:px|\d|\[)/g,
 };
 
 const FILE_RE = /\.(tsx?|jsx?|css|scss)$/;

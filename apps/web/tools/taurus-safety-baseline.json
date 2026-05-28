@@ -1,12 +1,17 @@
 {
+  "apps/web/src/app/player/layout.tsx": {
+    "insetCss": 6
+  },
   "apps/web/src/app/player/page.tsx": {
     "gap": 4,
     "gapTw": 54,
-    "backdropBlurTw": 6
+    "backdropBlurTw": 6,
+    "insetCss": 2
   },
   "apps/web/src/components/player/KioskSplash.tsx": {
     "gap": 21,
-    "backdropFilter": 4
+    "backdropFilter": 4,
+    "insetCss": 8
   },
   "apps/web/src/components/player/TouchOverlay.tsx": {
     "gapTw": 1,
@@ -265,6 +270,9 @@
   },
   "apps/web/src/components/widgets/hs/HsGalleryWidget.tsx": {
     "gap": 5
+  },
+  "apps/web/src/components/widgets/hs/HsStage.tsx": {
+    "insetCss": 1
   },
   "apps/web/src/components/widgets/hs/HsTerminalPortraitWidget.tsx": {
     "gap": 9
@@ -610,6 +618,9 @@
   "apps/web/src/components/widgets/variant-tiles/basic-content-tiles.tsx": {
     "gap": 2,
     "gapTw": 6
+  },
+  "apps/web/src/components/widgets/variant-tiles/monetize-music-tiles.tsx": {
+    "insetTw": 1
   },
   "apps/web/src/components/widgets/WidgetErrorBoundary.tsx": {
     "gapTw": 1
