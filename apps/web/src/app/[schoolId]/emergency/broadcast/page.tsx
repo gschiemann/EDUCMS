@@ -15,6 +15,7 @@ import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
 import { AlertTriangle, Megaphone, ShieldAlert, Send, Loader2, X, Image as ImageIcon, Volume2 } from 'lucide-react';
 import * as Sentry from '@sentry/nextjs';
+import { useEmergencyAnnouncer } from '@/components/emergency/EmergencyLiveRegion';
 
 type Severity = 'INFO' | 'WARN' | 'CRITICAL';
 
@@ -55,6 +56,11 @@ export default function BroadcastPage() {
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // A11y / life-safety (P1-9, 2026-05-28): screen-reader live region +
+  // best-effort speech, mirroring the mobile /panic page. A blind admin
+  // broadcasting from desktop now hears hold-start → sending → result.
+  const { announce, region: liveRegion } = useEmergencyAnnouncer();
+
   const role = user?.role;
   const canClear = role === 'DISTRICT_ADMIN' || role === 'SUPER_ADMIN';
 
@@ -85,9 +91,10 @@ export default function BroadcastPage() {
   const handleHoldStart = (e: React.PointerEvent) => {
     e.preventDefault();
     if (phase !== 'idle' && phase !== 'error') return;
-    if (!text.trim()) { setErrorMsg('Message is required.'); setPhase('error'); return; }
+    if (!text.trim()) { setErrorMsg('Message is required.'); setPhase('error'); announce('Cannot broadcast: a message is required.'); return; }
     setPhase('holding');
     setProgress(0);
+    announce(`Holding to broadcast a ${severity.toLowerCase()} alert. Continue holding for 3 seconds to send.`);
     const start = Date.now();
     progressTimerRef.current = setInterval(() => {
       const elapsed = Date.now() - start;
@@ -100,6 +107,7 @@ export default function BroadcastPage() {
     if (phase === 'holding') {
       setPhase('idle');
       setProgress(0);
+      announce('Broadcast cancelled. Hold not completed.');
     }
     resetHold();
   };
@@ -108,6 +116,7 @@ export default function BroadcastPage() {
     resetHold();
     setPhase('sending');
     setErrorMsg('');
+    announce('Sending broadcast to all displays.');
     try {
       const endpoint = withMedia ? 'media-alert' : 'broadcast';
       const body: any = withMedia
@@ -138,14 +147,17 @@ export default function BroadcastPage() {
       });
       if (!res.ok) throw new Error(`Send failed: ${res.status}`);
       setPhase('sent');
+      announce('Broadcast dispatched to all displays.');
       setText('');
       setMediaUrls([]);
       setAudioUrl('');
       fetchActive();
       setTimeout(() => setPhase('idle'), 2000);
     } catch (e: any) {
-      setErrorMsg(e.message || 'Broadcast failed');
+      const message = e?.message || 'Broadcast failed';
+      setErrorMsg(message);
       setPhase('error');
+      announce(`Broadcast failed. Your alert was NOT sent. ${message}`);
     }
   };
 
@@ -157,6 +169,7 @@ export default function BroadcastPage() {
         credentials: 'include',
       });
       if (!res.ok) throw new Error(`Clear failed: ${res.status}`);
+      announce('Broadcast cleared.');
       fetchActive();
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -167,6 +180,7 @@ export default function BroadcastPage() {
       });
       setErrorMsg(`Clear FAILED — the broadcast may still be active on screens. ${message}`);
       setPhase('error');
+      announce(`Clear failed. The broadcast may still be active on screens. ${message}`);
     }
   };
 
@@ -184,6 +198,7 @@ export default function BroadcastPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6 md:p-10">
+      {liveRegion}
       <div className="max-w-5xl mx-auto">
         <header className="flex items-center gap-3 mb-8">
           <Megaphone className="w-8 h-8 text-orange-500" />

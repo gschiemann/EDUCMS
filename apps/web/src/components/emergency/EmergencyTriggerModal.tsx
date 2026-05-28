@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { broadcastEmergency } from '@/actions/trigger-emergency';
 import { clog } from '@/lib/client-logger';
 import * as Sentry from '@sentry/nextjs';
+import { useEmergencyAnnouncer } from '@/components/emergency/EmergencyLiveRegion';
 
 /**
  * Emergency Trigger — the red button on the dashboard.
@@ -38,6 +39,11 @@ export function EmergencyTriggerModal({ onClose }: Props) {
   const [confirmKey, setConfirmKey] = useState('');
   const [isPending, startTransition] = useTransition();
   const [dispatchError, setDispatchError] = useState<string | null>(null);
+  // A11y / life-safety (P1-9, 2026-05-28): screen-reader live region +
+  // best-effort speech, mirroring the mobile /panic page. A blind admin
+  // firing a lockdown from this desktop modal now hears type-select →
+  // sending → success/failure.
+  const { announce, region: liveRegion } = useEmergencyAnnouncer();
   // Stores the last-attempted payload so the retry button re-fires the
   // same broadcast without requiring the operator to re-fill the form.
   const [lastPayload, setLastPayload] = useState<{
@@ -72,6 +78,8 @@ export function EmergencyTriggerModal({ onClose }: Props) {
   }) => {
     setDispatchError(null);
     setLastPayload(payload);
+    const typeName = types.find((t) => t.id === payload.type)?.name || payload.type;
+    announce(`Triggering ${typeName} alert. Broadcasting to every online screen.`);
     startTransition(async () => {
       const started = performance.now();
       clog.warn('emergency', `TRIGGER: ${payload.type}`, {
@@ -94,6 +102,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           elapsedMs: Math.round(performance.now() - started),
           overrideId: result.overrideId,
         });
+        announce(`${typeName} alert sent to every online screen.`);
         // ONLY flip local emergency state after the server confirms the broadcast.
         // Carry the overrideId into the store so EmergencyOverlay can pass it
         // back on all-clear (audit P2 #3 — forensic chain-of-custody fix).
@@ -111,6 +120,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           extra: { schoolId: payload.schoolId, triggeredBy: payload.triggeredBy },
         });
         setDispatchError(message || 'Unknown server error');
+        announce(`Emergency dispatch failed. The ${typeName} alert was NOT sent to screens. Notify security manually now. ${message}`);
         // Local emergency state intentionally NOT set — server did not confirm broadcast.
       }
     });
@@ -135,6 +145,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      {liveRegion}
       <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-red-50 dark:bg-red-500/10">
@@ -166,7 +177,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
               {types.map((type) => (
                 <button
                   key={type.id}
-                  onClick={() => { setSelectedType(type.id); setConfirmKey(''); setDispatchError(null); }}
+                  onClick={() => { setSelectedType(type.id); setConfirmKey(''); setDispatchError(null); announce(`${type.name} selected. Type ${type.confirm} to confirm, then trigger.`); }}
                   className={`p-3 rounded-xl border text-left transition-all ${
                     selectedType === type.id
                       ? 'border-red-500 bg-red-50 dark:bg-red-500/10 ring-2 ring-red-500'
