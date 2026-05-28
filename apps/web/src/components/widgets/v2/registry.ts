@@ -151,6 +151,9 @@ import {
   BxKnockdownWidget, BxEndOfRoundWidget, TrWorldRecordWidget,
   TrFinishWidget, TrPersonalBestWidget, SwRecordWidget, SwFinishWidget,
   SwSplitWidget,
+  // T1-5: status-transition cinematics — halftime break, final result,
+  // and horn/period-end burst.
+  CelHalftimeWidget, CelFinalWidget, CelHornWidget,
 } from './CelebrationsOtherSportsWidgets';
 // VenueOS universal — drop-in template backgrounds.
 import {
@@ -556,6 +559,10 @@ export const CELEBRATIONS_MORE_WIDGETS: RegisteredWidget[] = [
   W('CEL_SW_RECORD',          CAT_CEL_MORE, 'Swimming Record',      'Swimming world record — lane-line spark-rain',           'universal', Crown,        withMeasuredHeight(SwRecordWidget),         { athlete: 'LEDECKY', event: '1500M', time: '15:20.48' }),
   W('CEL_SW_FINISH',          CAT_CEL_MORE, 'Swimming Finish',      'Swimming race finish — top-3 lane podium',               'universal', ListOrdered,  withMeasuredHeight(SwFinishWidget),         { event: '100M FREE' }),
   W('CEL_SW_SPLIT',           CAT_CEL_MORE, 'Swimming Split',       'Swimming split milestone — pace vs world record',        'universal', Activity,     withMeasuredHeight(SwSplitWidget),          { athlete: 'PHELPS', split: '1:55.31', vsWR: '-0.42', lap: 3 }),
+  // T1-5: auto-fired status-transition cinematics.
+  W('CEL_STATUS_HALFTIME',    CAT_CEL_MORE, 'Halftime Break',       'Status cinematic: team scores + big HALFTIME headline (~4 s)',   'universal', Flag,     withMeasuredHeight(CelHalftimeWidget),      { homeTeam: 'EAGLES', awayTeam: 'HAWKS', homeScore: 14, awayScore: 7 }),
+  W('CEL_STATUS_FINAL',       CAT_CEL_MORE, 'Final — Game Over',    'Status cinematic: winner emphasis + score recap (~5 s)',         'universal', Trophy,   withMeasuredHeight(CelFinalWidget),         { homeTeam: 'EAGLES', awayTeam: 'HAWKS', homeScore: 21, awayScore: 17, winner: 'home' }),
+  W('CEL_STATUS_HORN',        CAT_CEL_MORE, 'Horn / Period End',    'Status cinematic: urgent 1.5 s horn burst with segment label',  'universal', Bell,     withMeasuredHeight(CelHornWidget),          { segmentLabel: 'Q1' }),
 ];
 
 /* ─── BACKGROUNDS — drop-in template backgrounds (EDU CMS-7) ─────────

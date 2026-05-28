@@ -2353,6 +2353,25 @@ function buildRibbonStripConfig(
     title = 'KILL!';
   } else if (key === 'pin') {
     title = 'PIN!';
+  } else if (key === 'status:halftime') {
+    title = 'HALFTIME';
+    subtitle = 'BREAK · REST UP';
+  } else if (key === 'status:final-home') {
+    title = 'FINAL';
+    subtitle = `${snap?.homeTeam ?? 'HOME'} WINS`;
+  } else if (key === 'status:final-away') {
+    title = 'FINAL';
+    subtitle = `${snap?.awayTeam ?? 'AWAY'} WINS`;
+  } else if (key === 'status:final-tie') {
+    title = 'FINAL';
+    subtitle = 'TIED · GAME OVER';
+  } else if (key === 'horn') {
+    // segmentLabel lives at top-level of the CUE payload (not in snapshot)
+    // because the horn fires at clock-expiry before the segment rolls.
+    const hornLabel = ((cue as any)?.segmentLabel as string | undefined)?.trim().toUpperCase() ?? '';
+    const segEnd    = hornLabel ? (hornLabel.endsWith('END') ? hornLabel : `${hornLabel} END`) : 'PERIOD OVER';
+    title    = 'HORN';
+    subtitle = segEnd;
   }
 
   return {

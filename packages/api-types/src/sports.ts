@@ -165,6 +165,8 @@ const FOOTBALL: SportDefinition = {
     { key: 'firstDown', label: 'First Down', emoji: '📍' },
     { key: 'sack', label: 'Sack', emoji: '💥' },
     { key: 'turnover', label: 'Turnover', emoji: '🔄' },
+    // T1-5: Horn fires automatically at clock expiry; also available as manual cue.
+    { key: 'horn', label: 'Horn', emoji: '📯' },
   ],
 };
 
@@ -195,6 +197,8 @@ const BASKETBALL: SportDefinition = {
     { key: 'dunk', label: 'Dunk', emoji: '💪' },
     { key: 'buzzerBeater', label: 'Buzzer Beater', emoji: '⏰' },
     { key: 'steal', label: 'Steal', emoji: '🖐️' },
+    // T1-5: Horn fires automatically at clock expiry; also available as manual cue.
+    { key: 'horn', label: 'Horn', emoji: '📯' },
   ],
 };
 
@@ -272,6 +276,8 @@ const SOCCER: SportDefinition = {
     { key: 'penalty', label: 'Penalty', emoji: '🎯' },
     { key: 'yellowCard', label: 'Yellow Card', emoji: '🟨' },
     { key: 'redCard', label: 'Red Card', emoji: '🟥' },
+    // T1-5: Horn fires automatically at clock expiry; also available as manual cue.
+    { key: 'horn', label: 'Horn', emoji: '📯' },
   ],
 };
 
@@ -313,6 +319,8 @@ const WRESTLING: SportDefinition = {
     { key: 'takedown', label: 'Takedown', emoji: '💥' },
     { key: 'nearFall', label: 'Near Fall', emoji: '⚠️' },
     { key: 'techFall', label: 'Tech Fall', emoji: '🔥' },
+    // T1-5: Horn fires automatically at clock expiry; also available as manual cue.
+    { key: 'horn', label: 'Horn', emoji: '📯' },
   ],
 };
 
@@ -342,6 +350,8 @@ const HOCKEY: SportDefinition = {
     { key: 'penaltyKill', label: 'Penalty Kill', emoji: '🛡️' },
     { key: 'hatTrick', label: 'Hat Trick', emoji: '🎩' },
     { key: 'save', label: 'Big Save', emoji: '🧤' },
+    // T1-5: Horn fires automatically at clock expiry; also available as manual cue.
+    { key: 'horn', label: 'Horn', emoji: '📯' },
   ],
   penaltyBox: {
     label: 'Penalty box',
@@ -376,6 +386,8 @@ const LACROSSE: SportDefinition = {
     { key: 'save', label: 'Save', emoji: '🧤' },
     { key: 'groundBall', label: 'Ground Ball', emoji: '🔄' },
     { key: 'manUp', label: 'Man Up', emoji: '⚡' },
+    // T1-5: Horn fires automatically at clock expiry; also available as manual cue.
+    { key: 'horn', label: 'Horn', emoji: '📯' },
   ],
   penaltyBox: {
     label: 'Penalty box',
@@ -407,6 +419,8 @@ const FIELD_HOCKEY: SportDefinition = {
     { key: 'save', label: 'Save', emoji: '🧤' },
     { key: 'penaltyCorner', label: 'Penalty Corner', emoji: '📐' },
     { key: 'greenCard', label: 'Green Card', emoji: '🟩' },
+    // T1-5: Horn fires automatically at clock expiry; also available as manual cue.
+    { key: 'horn', label: 'Horn', emoji: '📯' },
   ],
   penaltyBox: {
     label: 'Suspensions',
@@ -447,6 +461,8 @@ const WATER_POLO: SportDefinition = {
     { key: 'save', label: 'Save', emoji: '🧤' },
     { key: 'exclusion', label: 'Exclusion', emoji: '✋' },
     { key: 'powerPlay', label: 'Power Play', emoji: '⚡' },
+    // T1-5: Horn fires automatically at clock expiry; also available as manual cue.
+    { key: 'horn', label: 'Horn', emoji: '📯' },
   ],
   penaltyBox: {
     label: 'Exclusions',

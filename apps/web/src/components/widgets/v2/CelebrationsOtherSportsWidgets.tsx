@@ -1957,3 +1957,239 @@ export function SwSplitWidget({ config, live = true, height = 480 }: WidgetProps
     </div>
   );
 }
+
+/* ══════════════════════════════════════════════════════════════════
+ * T1-5: STATUS-TRANSITION CINEMATICS
+ * Three widgets fired automatically by the Sports engine on key
+ * game-state changes so every surface gets a visual cue without
+ * the operator remembering to press a button.
+ * ══════════════════════════════════════════════════════════════════ */
+
+/** Shared keyframe block injected once per render. */
+function StatusKeyframes() {
+  return (
+    <style>{`
+      @keyframes celStatusPulse  { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
+      @keyframes celStatusFadeUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+      @keyframes celStatusShine  { 0%{transform:translateX(-120%) skewX(-18deg)} 100%{transform:translateX(220%) skewX(-18deg)} }
+      @keyframes celStatusFlash  { 0%,100%{opacity:1} 50%{opacity:0.25} }
+      @keyframes celStatusRing   { from{transform:scale(0.6);opacity:0.9} to{transform:scale(2.4);opacity:0} }
+      @keyframes celConfetti     { from{transform:translateY(-120%)} to{transform:translateY(110%)} }
+    `}</style>
+  );
+}
+
+/* ════════════════ HALFTIME BREAK ════════════════ */
+
+export interface CelHalftimeCfg extends BaseCfg {
+  homeTeam?: string;
+  awayTeam?: string;
+  homeScore?: number;
+  awayScore?: number;
+  homeColor?: string;
+  awayColor?: string;
+}
+
+/** ~4 s cinematic: team scores flanking a big HALFTIME headline. */
+export function CelHalftimeWidget({ config }: WidgetProps<CelHalftimeCfg>) {
+  const c = config ?? {};
+  const homeTeam  = c.homeTeam  ?? 'EAGLES';
+  const awayTeam  = c.awayTeam  ?? 'HAWKS';
+  const homeScore = c.homeScore ?? 0;
+  const awayScore = c.awayScore ?? 0;
+  const homeColor = c.homeColor ?? '#2563eb';
+  const awayColor = c.awayColor ?? '#dc2626';
+
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
+  const bg = 'linear-gradient(135deg,#0d0d1a 0%,#1a1a2e 60%,#0d0d1a 100%)';
+
+  return (
+    <div ref={ref} style={{ position: 'relative', width: '100%', height: '100%', background: bg, overflow: 'hidden', fontFamily: PJS }}>
+      <StatusKeyframes />
+      {/* grid overlay */}
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px)', backgroundSize: '48px 48px', pointerEvents: 'none' }} />
+      {/* shine sweep */}
+      <div style={{ position: 'absolute', top: 0, bottom: 0, width: '30%', background: 'linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent)', animation: `celStatusShine 3s ease-in-out infinite`, pointerEvents: 'none' }} />
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `0 ${px(mh, 80 / 480)}px` }}>
+          {/* Home */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'celStatusFadeUp 0.5s ease forwards' }}>
+            <div style={{ color: homeColor, fontWeight: 800, fontSize: px(mh, 54 / 480), letterSpacing: '0.12em' }}>{homeTeam}</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(mh, 260 / 480), color: '#fff', lineHeight: 0.9, textShadow: `0 0 80px ${homeColor}` }}>{homeScore}</div>
+          </div>
+          {/* Center headline */}
+          <div style={{ textAlign: 'center', animation: 'celStatusFadeUp 0.6s ease forwards' }}>
+            <div style={{ fontWeight: 900, fontSize: px(mh, 80 / 480), letterSpacing: '0.18em', background: 'linear-gradient(135deg,#ffd23a,#ff8c00)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>HALFTIME</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 600, fontSize: px(mh, 36 / 480), letterSpacing: '0.22em', marginTop: px(mh, 8 / 480) }}>BREAK · REST UP</div>
+          </div>
+          {/* Away */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'celStatusFadeUp 0.5s ease forwards' }}>
+            <div style={{ color: awayColor, fontWeight: 800, fontSize: px(mh, 54 / 480), letterSpacing: '0.12em' }}>{awayTeam}</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(mh, 260 / 480), color: '#fff', lineHeight: 0.9, textShadow: `0 0 80px ${awayColor}` }}>{awayScore}</div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: `0 ${px(mh, 0.05)}px` }}>
+          <div style={{ fontWeight: 900, fontSize: sceneText(width, mh, 0.13, 8), letterSpacing: '0.18em', background: 'linear-gradient(135deg,#ffd23a,#ff8c00)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>HALFTIME</div>
+          <div style={{ display: 'flex', alignItems: 'center', marginTop: px(mh, 0.04) }}>
+            <div style={{ textAlign: 'center', marginRight: px(mh, 0.06) }}>
+              <div style={{ color: homeColor, fontWeight: 800, fontSize: sceneText(width, mh, 0.055, homeTeam.length) }}>{homeTeam}</div>
+              <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.22, 0.14), color: '#fff', textShadow: `0 0 60px ${homeColor}` }}>{homeScore}</div>
+            </div>
+            <div style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 3) }}>·</div>
+            <div style={{ textAlign: 'center', marginLeft: px(mh, 0.06) }}>
+              <div style={{ color: awayColor, fontWeight: 800, fontSize: sceneText(width, mh, 0.055, awayTeam.length) }}>{awayTeam}</div>
+              <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.22, 0.14), color: '#fff', textShadow: `0 0 60px ${awayColor}` }}>{awayScore}</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════ FINAL — GAME OVER ════════════════ */
+
+export interface CelFinalCfg extends BaseCfg {
+  homeTeam?: string;
+  awayTeam?: string;
+  homeScore?: number;
+  awayScore?: number;
+  homeColor?: string;
+  awayColor?: string;
+  winner?: 'home' | 'away' | 'tie';
+}
+
+/** ~5 s cinematic: winner pulses with confetti, loser dims. */
+export function CelFinalWidget({ config }: WidgetProps<CelFinalCfg>) {
+  const c = config ?? {};
+  const homeTeam  = c.homeTeam  ?? 'EAGLES';
+  const awayTeam  = c.awayTeam  ?? 'HAWKS';
+  const homeScore = c.homeScore ?? 0;
+  const awayScore = c.awayScore ?? 0;
+  const homeColor = c.homeColor ?? '#2563eb';
+  const awayColor = c.awayColor ?? '#dc2626';
+  const winner    = c.winner    ?? (homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'tie');
+
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
+  const winColor = winner === 'home' ? homeColor : winner === 'away' ? awayColor : '#ffd23a';
+  const homeOpacity = winner === 'away' ? 0.38 : 1;
+  const awayOpacity = winner === 'home' ? 0.38 : 1;
+
+  // Confetti strips in winner color
+  const confetti = Array.from({ length: 14 }, (_, i) => (
+    <div key={i} style={{
+      position: 'absolute',
+      top: 0,
+      left: `${(i / 14) * 100}%`,
+      width: `${px(mh, 3 / 480)}px`,
+      height: `${px(mh, 40 / 480)}px`,
+      background: i % 2 === 0 ? winColor : '#ffd23a',
+      opacity: 0.7,
+      animation: `celConfetti ${1.2 + (i % 5) * 0.28}s linear ${(i % 7) * 0.18}s infinite`,
+      borderRadius: 2,
+    }} />
+  ));
+
+  const homeWins = winner === 'home';
+  const awayWins = winner === 'away';
+
+  return (
+    <div ref={ref} style={{ position: 'relative', width: '100%', height: '100%', background: 'radial-gradient(ellipse at center,#1a0a2e 0%,#0a0a14 70%)', overflow: 'hidden', fontFamily: PJS }}>
+      <StatusKeyframes />
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', pointerEvents: 'none' }}>{confetti}</div>
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `0 ${px(mh, 80 / 480)}px` }}>
+          {/* Home */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: homeOpacity, animation: homeWins ? 'celStatusPulse 1.2s ease infinite' : undefined }}>
+            <div style={{ color: homeColor, fontWeight: 800, fontSize: px(mh, 54 / 480), letterSpacing: '0.12em' }}>{homeTeam}</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(mh, 260 / 480), color: '#fff', lineHeight: 0.9, textShadow: homeWins ? `0 0 100px ${homeColor}` : 'none' }}>{homeScore}</div>
+            {homeWins && <div style={{ color: homeColor, fontWeight: 800, fontSize: px(mh, 40 / 480), letterSpacing: '0.2em', marginTop: px(mh, 8 / 480) }}>WINNER</div>}
+          </div>
+          {/* Center */}
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontWeight: 900, fontSize: px(mh, 90 / 480), letterSpacing: '0.18em', background: 'linear-gradient(135deg,#ffd23a,#ff8c00)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>FINAL</div>
+            <div style={{ color: 'rgba(255,255,255,0.45)', fontWeight: 600, fontSize: px(mh, 34 / 480), letterSpacing: '0.22em', marginTop: px(mh, 6 / 480) }}>
+              {winner === 'tie' ? 'TIED · GAME OVER' : 'GAME OVER'}
+            </div>
+          </div>
+          {/* Away */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: awayOpacity, animation: awayWins ? 'celStatusPulse 1.2s ease infinite' : undefined }}>
+            <div style={{ color: awayColor, fontWeight: 800, fontSize: px(mh, 54 / 480), letterSpacing: '0.12em' }}>{awayTeam}</div>
+            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(mh, 260 / 480), color: '#fff', lineHeight: 0.9, textShadow: awayWins ? `0 0 100px ${awayColor}` : 'none' }}>{awayScore}</div>
+            {awayWins && <div style={{ color: awayColor, fontWeight: 800, fontSize: px(mh, 40 / 480), letterSpacing: '0.2em', marginTop: px(mh, 8 / 480) }}>WINNER</div>}
+          </div>
+        </div>
+      ) : (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: `0 ${px(mh, 0.05)}px` }}>
+          <div style={{ fontWeight: 900, fontSize: sceneText(width, mh, 0.15, 5), letterSpacing: '0.18em', background: 'linear-gradient(135deg,#ffd23a,#ff8c00)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>FINAL</div>
+          <div style={{ display: 'flex', alignItems: 'center', marginTop: px(mh, 0.04) }}>
+            <div style={{ textAlign: 'center', opacity: homeOpacity, marginRight: px(mh, 0.06), animation: homeWins ? 'celStatusPulse 1.2s ease infinite' : undefined }}>
+              <div style={{ color: homeColor, fontWeight: 800, fontSize: sceneText(width, mh, 0.055, homeTeam.length) }}>{homeTeam}</div>
+              <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.22, 0.14), color: '#fff', textShadow: homeWins ? `0 0 80px ${homeColor}` : 'none' }}>{homeScore}</div>
+            </div>
+            <div style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 3) }}>·</div>
+            <div style={{ textAlign: 'center', opacity: awayOpacity, marginLeft: px(mh, 0.06), animation: awayWins ? 'celStatusPulse 1.2s ease infinite' : undefined }}>
+              <div style={{ color: awayColor, fontWeight: 800, fontSize: sceneText(width, mh, 0.055, awayTeam.length) }}>{awayTeam}</div>
+              <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.22, 0.14), color: '#fff', textShadow: awayWins ? `0 0 80px ${awayColor}` : 'none' }}>{awayScore}</div>
+            </div>
+          </div>
+          {winner !== 'tie' && (
+            <div style={{ color: winColor, fontWeight: 800, fontSize: sceneText(width, mh, 0.065, 6), letterSpacing: '0.22em', marginTop: px(mh, 0.04) }}>WINNER</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════ HORN / PERIOD END ════════════════ */
+
+export interface CelHornCfg extends BaseCfg {
+  segmentLabel?: string;
+}
+
+/**
+ * ~1.5 s urgent burst: red shockwave rings + flashing HORN text.
+ * `segmentLabel` comes from the CUE payload's `segmentLabel` field
+ * (e.g. "Q1", "P2", "OT"). Math.ceil is not needed here because this
+ * widget shows a segment name, not a live clock reading — the
+ * 2026-05-27 clock-rounding rule applies to countdown digits only.
+ */
+export function CelHornWidget({ config }: WidgetProps<CelHornCfg>) {
+  const c = config ?? {};
+  const rawLabel   = String(c.segmentLabel ?? 'Q1').trim().toUpperCase();
+  const segDisplay = rawLabel.endsWith('END') ? rawLabel : `${rawLabel} END`;
+
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
+  const bg = 'radial-gradient(ellipse at center,#3b0a0a 0%,#0a0000 70%)';
+
+  return (
+    <div ref={ref} style={{ position: 'relative', width: '100%', height: '100%', background: bg, overflow: 'hidden', fontFamily: PJS }}>
+      <StatusKeyframes />
+      {/* Shockwave rings */}
+      <div style={{ position: 'absolute', top: '50%', left: '50%', width: `${px(mh, 120 / 480)}px`, height: `${px(mh, 120 / 480)}px`, marginLeft: `-${px(mh, 60 / 480)}px`, marginTop: `-${px(mh, 60 / 480)}px`, border: '3px solid rgba(220,38,38,0.8)', borderRadius: '50%', animation: 'celStatusRing 1.2s ease-out infinite', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: '50%', left: '50%', width: `${px(mh, 120 / 480)}px`, height: `${px(mh, 120 / 480)}px`, marginLeft: `-${px(mh, 60 / 480)}px`, marginTop: `-${px(mh, 60 / 480)}px`, border: '2px solid rgba(220,38,38,0.5)', borderRadius: '50%', animation: 'celStatusRing 1.2s ease-out 0.4s infinite', pointerEvents: 'none' }} />
+      {wide ? (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `0 ${px(mh, 80 / 480)}px` }}>
+          <div style={{ fontWeight: 900, fontSize: px(mh, 200 / 480), letterSpacing: '0.06em', color: '#ef4444', animation: 'celStatusFlash 0.5s step-end 3' }}>HORN</div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontWeight: 800, fontSize: px(mh, 70 / 480), color: 'rgba(255,255,255,0.7)', letterSpacing: '0.14em' }}>{segDisplay}</div>
+            <div style={{ fontWeight: 600, fontSize: px(mh, 44 / 480), color: 'rgba(255,255,255,0.4)', letterSpacing: '0.22em', marginTop: px(mh, 6 / 480) }}>PERIOD OVER</div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ fontWeight: 900, fontSize: sceneText(width, mh, 0.26, 4), letterSpacing: '0.06em', color: '#ef4444', animation: 'celStatusFlash 0.5s step-end 3' }}>HORN</div>
+          <div style={{ fontWeight: 800, fontSize: sceneText(width, mh, 0.1, segDisplay.length), color: 'rgba(255,255,255,0.8)', letterSpacing: '0.14em', marginTop: px(mh, 0.03) }}>{segDisplay}</div>
+        </div>
+      )}
+    </div>
+  );
+}
