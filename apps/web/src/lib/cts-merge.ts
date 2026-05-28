@@ -28,6 +28,21 @@
  * generous to ride out a slow poll cycle.
  */
 
+/** One structured shot-clock entry as stored in `Game.stats.cts`. */
+export interface CtsShotClockEntry {
+  ms: number;
+  running: boolean;
+  len?: number;
+  at?: string;
+}
+
+/** One CTS exclusion as stored in `Game.stats.cts.homeExclusions` /
+ *  `awayExclusions`. */
+export interface CtsExclusionEntry {
+  playerJersey: number;
+  secondsRemaining: number;
+}
+
 /** A CTS snapshot as written by the API into `Game.stats.cts`. Every
  *  field is OPTIONAL — only the fields the parser saw show up here.
  *  `lastUpdateAt` is an ISO timestamp set server-side when the snapshot
@@ -39,12 +54,19 @@ export interface CtsStatsBlock {
   segment?: number;
   homeScore?: number;
   awayScore?: number;
-  shotClock?: {
-    ms: number;
-    running: boolean;
-    len?: number;
-    at?: string;
-  };
+  /** Operator-set (or CTS-single-side) shot clock.  For per-team CTS
+   *  shot clocks, see `homeShotClock` / `awayShotClock`. */
+  shotClock?: CtsShotClockEntry;
+  /** T2-1: per-side CTS shot clocks. */
+  homeShotClock?: CtsShotClockEntry;
+  awayShotClock?: CtsShotClockEntry;
+  /** T2-1: active exclusions per team (water polo penalty box).
+   *  Null entries = slot empty. */
+  homeExclusions?: (CtsExclusionEntry | null)[];
+  awayExclusions?: (CtsExclusionEntry | null)[];
+  /** T2-1: timeouts remaining per team. */
+  homeTimeoutsRemaining?: number;
+  awayTimeoutsRemaining?: number;
   /** The raw CTS clock display string ("7:42" / ":15.3") — kept for
    *  diagnostics so an operator can compare what the bridge parsed
    *  vs what the API computed. Never rendered. */
@@ -140,6 +162,10 @@ export interface CtsMergeInput {
  *
  *  - When CTS is stale or absent: returns the input as-is.
  *
+ *  T2-1: also merges per-side shot clocks, exclusions, and timeouts
+ *  when CTS is fresh.  Operator manual values stay sticky when CTS is
+ *  missing or stale (existing pattern).
+ *
  *  Pure — no side effects. Same data in → same data out. */
 export function applyCtsOverlay<T extends CtsMergeInput>(input: T): T {
   const cts = readCtsStats(input.stats);
@@ -161,14 +187,18 @@ export function applyCtsOverlay<T extends CtsMergeInput>(input: T): T {
       : new Date(input.serverTime).toISOString();
   }
   if (typeof cts.clockRunning === 'boolean') next.clockRunning = cts.clockRunning;
-  // Shot clock overlay — when CTS reports a shot clock, write it into
-  // stats.shotClock with a fresh `at` anchor so the board's local
-  // projector ticks from the CTS reading.
+
+  // Build a mutable stats copy that we'll augment with per-side CTS fields.
+  let statsMutated = false;
+  let stats: Record<string, unknown> =
+    input.stats && typeof input.stats === 'object'
+      ? { ...(input.stats as Record<string, unknown>) }
+      : {};
+
+  // Shot clock overlay (original single-side field — preserved for
+  // backwards compatibility with older bridges).
   if (cts.shotClock && typeof cts.shotClock === 'object') {
-    const stats =
-      input.stats && typeof input.stats === 'object'
-        ? { ...(input.stats as Record<string, unknown>) }
-        : {};
+    statsMutated = true;
     const sc = cts.shotClock;
     stats.shotClock = {
       ms: Math.max(0, Number(sc.ms) || 0),
@@ -176,6 +206,58 @@ export function applyCtsOverlay<T extends CtsMergeInput>(input: T): T {
       len: typeof sc.len === 'number' ? sc.len : (stats.shotClock as { len?: number })?.len,
       at: sc.at || cts.lastUpdateAt || new Date(input.serverTime).toISOString(),
     };
+  }
+
+  // T2-1: per-side shot clocks.  Operator manual values stay sticky
+  // when CTS is missing — only overwrite when CTS is fresh AND the
+  // field is present.
+  const ctsAt = cts.lastUpdateAt || new Date(input.serverTime).toISOString();
+  if (cts.homeShotClock && typeof cts.homeShotClock === 'object') {
+    statsMutated = true;
+    const sc = cts.homeShotClock;
+    stats.homeShotClock = {
+      ms: Math.max(0, Number(sc.ms) || 0),
+      running: !!sc.running,
+      len: typeof sc.len === 'number' ? sc.len : undefined,
+      at: sc.at || ctsAt,
+    };
+  }
+  if (cts.awayShotClock && typeof cts.awayShotClock === 'object') {
+    statsMutated = true;
+    const sc = cts.awayShotClock;
+    stats.awayShotClock = {
+      ms: Math.max(0, Number(sc.ms) || 0),
+      running: !!sc.running,
+      len: typeof sc.len === 'number' ? sc.len : undefined,
+      at: sc.at || ctsAt,
+    };
+  }
+
+  // T2-1: exclusions.  Write the CTS-sourced exclusion arrays into
+  // stats so scoreboard widgets (e.g. water polo penalty display) can
+  // render them.  We keep the full 3-slot array (with nulls) so the
+  // board can show empty slots.
+  if (Array.isArray(cts.homeExclusions)) {
+    statsMutated = true;
+    stats.homeExclusions = cts.homeExclusions;
+  }
+  if (Array.isArray(cts.awayExclusions)) {
+    statsMutated = true;
+    stats.awayExclusions = cts.awayExclusions;
+  }
+
+  // T2-1: timeouts remaining.  Operator manual value stays sticky when
+  // CTS is absent.
+  if (typeof cts.homeTimeoutsRemaining === 'number') {
+    statsMutated = true;
+    stats.homeTimeoutsRemaining = cts.homeTimeoutsRemaining;
+  }
+  if (typeof cts.awayTimeoutsRemaining === 'number') {
+    statsMutated = true;
+    stats.awayTimeoutsRemaining = cts.awayTimeoutsRemaining;
+  }
+
+  if (statsMutated) {
     next.stats = stats;
   }
   return next;

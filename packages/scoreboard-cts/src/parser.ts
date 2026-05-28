@@ -33,6 +33,7 @@ import {
   CTS_MODULE,
   CtsExclusion,
   CtsFullSnapshot,
+  CtsStructuredShotClock,
   CtsUpdateListener,
 } from './types';
 
@@ -187,6 +188,36 @@ export class CtsParser {
   /** Data bytes accumulated for the current module. */
   private currentBytes: number[] = [];
 
+  // ─── cadence tracking (T2-1) ──────────────────────────────────
+
+  /**
+   * Wall-clock timestamps of the last two GAME_CLOCK (0x01) packets.
+   * Used to compute the inter-packet interval for cadence-based
+   * clockRunning derivation.  Two entries because we need the delta.
+   */
+  private clockPacketHistory: [number, number] = [0, 0];
+
+  /**
+   * Returns the timestamp of the most recent GAME_CLOCK packet, or 0
+   * if none seen yet.  Used by CtsBridge to derive clockRunning from
+   * packet cadence rather than display-string mutation.
+   */
+  public getLastClockPacketAt(): number {
+    return this.clockPacketHistory[1];
+  }
+
+  /**
+   * Estimated inter-packet interval for the GAME_CLOCK module in
+   * milliseconds.  At sub-minute (tenths mode) the CTS console emits
+   * every ~100ms; at whole-second granularity it emits every ~1000ms.
+   * Returns 0 when fewer than 2 packets have been seen (no estimate).
+   */
+  public getClockPacketIntervalMs(): number {
+    const [prev, last] = this.clockPacketHistory;
+    if (prev === 0 || last === 0 || last <= prev) return 0;
+    return last - prev;
+  }
+
   constructor() {
     this.state = this.makeEmptyState();
   }
@@ -207,6 +238,7 @@ export class CtsParser {
     this.state = this.makeEmptyState();
     this.currentModule = null;
     this.currentBytes = [];
+    this.clockPacketHistory = [0, 0];
   }
 
   /**
@@ -258,6 +290,8 @@ export class CtsParser {
 
     switch (mod) {
       case CTS_MODULE.GAME_CLOCK: {
+        // Track inter-packet cadence for clockRunning derivation (T2-1).
+        this.clockPacketHistory = [this.clockPacketHistory[1], Date.now()];
         const clock = formatClock(digits);
         if (clock !== this.state.clock) {
           this.state.clock = clock;
@@ -290,17 +324,40 @@ export class CtsParser {
         break;
       }
       case CTS_MODULE.HOME_SHOT_CLOCK: {
-        const sc = digits.join('').trim();
-        if (sc !== this.state.homeShotClock) {
-          this.state.homeShotClock = sc;
+        // T2-1: promote raw display string to structured object.
+        // `running` is approximated here as "non-zero" — the bridge
+        // refines this using game-clock cadence before posting to the
+        // server, since the shot clock only counts when the game clock
+        // counts.
+        const scRaw = digits.join('').trim();
+        const scMs = digitsToInt(scRaw) * 1000;
+        const structured: CtsStructuredShotClock = {
+          raw: scRaw,
+          ms: scMs,
+          running: scMs > 0,
+        };
+        if (
+          scRaw !== this.state.homeShotClock.raw ||
+          scMs !== this.state.homeShotClock.ms
+        ) {
+          this.state.homeShotClock = structured;
           changed = true;
         }
         break;
       }
       case CTS_MODULE.AWAY_SHOT_CLOCK: {
-        const sc = digits.join('').trim();
-        if (sc !== this.state.awayShotClock) {
-          this.state.awayShotClock = sc;
+        const scRaw = digits.join('').trim();
+        const scMs = digitsToInt(scRaw) * 1000;
+        const structured: CtsStructuredShotClock = {
+          raw: scRaw,
+          ms: scMs,
+          running: scMs > 0,
+        };
+        if (
+          scRaw !== this.state.awayShotClock.raw ||
+          scMs !== this.state.awayShotClock.ms
+        ) {
+          this.state.awayShotClock = structured;
           changed = true;
         }
         break;
@@ -411,13 +468,18 @@ export class CtsParser {
   }
 
   private makeEmptyState(): CtsFullSnapshot {
+    const emptyShotClock = (): import('./types').CtsStructuredShotClock => ({
+      raw: '',
+      ms: 0,
+      running: false,
+    });
     return {
       clock: '0:00',
       period: 1,
       homeScore: 0,
       awayScore: 0,
-      homeShotClock: '',
-      awayShotClock: '',
+      homeShotClock: emptyShotClock(),
+      awayShotClock: emptyShotClock(),
       homeExclusions: [],
       awayExclusions: [],
       homeTimeoutsRemaining: 2,

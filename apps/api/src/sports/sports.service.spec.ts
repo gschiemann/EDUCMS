@@ -1425,5 +1425,109 @@ describe('T2-7 — football play clock slaved to game clock', () => {
     await service.clockAction(TENANT, g.id, { action: 'start' });
     const pc = (game.rows[0].stats as any)?.playClock;
     expect(pc).toBeUndefined();
+
+
+// ── T2-1: CTS full-fidelity — cleanCtsSnapshot accepts new fields ─
+
+describe('SportsService — ingestCtsSnapshot T2-1 fields', () => {
+  it('cleanCtsSnapshot accepts per-side shot clocks and writes them to stats.cts', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'waterPolo');
+
+    await service.ingestCtsSnapshot(
+      g.id,
+      {
+        clockMs: 420000,
+        clockRunning: true,
+        homeScore: 3,
+        awayScore: 2,
+        segment: 2,
+        homeShotClock: { ms: 18000, running: true, raw: '18' },
+        awayShotClock: { ms: 24000, running: true, raw: '24' },
+      },
+      { tenantId: TENANT },
+    );
+
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    const cts = (updated.stats as any).cts;
+    expect(cts).toBeDefined();
+    expect(cts.homeShotClock).toMatchObject({ ms: 18000, running: true, raw: '18' });
+    expect(cts.awayShotClock).toMatchObject({ ms: 24000, running: true, raw: '24' });
+  });
+
+  it('cleanCtsSnapshot accepts exclusions and merges them into stats.penalties', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'waterPolo');
+
+    await service.ingestCtsSnapshot(
+      g.id,
+      {
+        clockMs: 300000,
+        clockRunning: true,
+        homeScore: 1,
+        awayScore: 0,
+        segment: 1,
+        homeExclusions: [
+          { playerJersey: 7, secondsRemaining: 15 },
+          null,
+          null,
+        ],
+        awayExclusions: [null, null, null],
+        homeTimeoutsRemaining: 1,
+        awayTimeoutsRemaining: 2,
+      },
+      { tenantId: TENANT },
+    );
+
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    const stats = updated.stats as any;
+
+    // Exclusion should appear in stats.penalties with source: 'cts'.
+    expect(Array.isArray(stats.penalties)).toBe(true);
+    const ctsPenalty = stats.penalties.find(
+      (p: any) => p.source === 'cts' && p.team === 'home',
+    );
+    expect(ctsPenalty).toBeDefined();
+    expect(ctsPenalty.playerJersey).toBe(7);
+    expect(ctsPenalty.secondsRemaining).toBe(15);
+
+    // Timeouts should appear in stats.homeTimeouts / awayTimeouts.
+    expect(stats.homeTimeouts).toBe(1);
+    expect(stats.awayTimeouts).toBe(2);
+
+    // stats.cts should also carry the exclusion arrays and timeouts.
+    const cts = stats.cts;
+    expect(cts.homeExclusions).toBeDefined();
+    expect(cts.homeTimeoutsRemaining).toBe(1);
+    expect(cts.awayTimeoutsRemaining).toBe(2);
+  });
+
+  it('cleanCtsSnapshot silently drops T2-1 fields from an older bridge (missing fields)', async () => {
+    // An older bridge that sends only the original 7 fields must still work.
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'waterPolo');
+
+    await service.ingestCtsSnapshot(
+      g.id,
+      {
+        clockMs: 240000,
+        clockRunning: false,
+        homeScore: 0,
+        awayScore: 0,
+        segment: 1,
+        horn: false,
+        raw: '4:00',
+        // No homeShotClock / awayShotClock / exclusions / timeouts.
+      },
+      { tenantId: TENANT },
+    );
+
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    const cts = (updated.stats as any).cts;
+    expect(cts.clockMs).toBe(240000);
+    // T2-1 fields should simply be absent — no crash.
+    expect(cts.homeShotClock).toBeUndefined();
+    expect(cts.awayShotClock).toBeUndefined();
+    expect(cts.homeExclusions).toBeUndefined();
   });
 });

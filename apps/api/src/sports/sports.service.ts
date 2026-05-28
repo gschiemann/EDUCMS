@@ -3313,7 +3313,12 @@ export class SportsService {
   // change, on horn, and on every clockRunning flip. That captures
   // the forensically interesting transitions without log-spam.
 
-  /** Coerce + sanitize one inbound CTS snapshot for write into stats.cts. */
+  /** Coerce + sanitize one inbound CTS snapshot for write into stats.cts.
+   *
+   * T2-1: extended to accept per-side shot clocks, exclusions, and
+   * timeouts remaining.  All new fields are optional — an older bridge
+   * that only sends the original 7 fields still works unchanged.
+   */
   private cleanCtsSnapshot(raw: Record<string, unknown>): {
     clockMs?: number;
     clockRunning?: boolean;
@@ -3321,6 +3326,15 @@ export class SportsService {
     homeScore?: number;
     awayScore?: number;
     shotClock?: { ms: number; running: boolean; len?: number; at?: string };
+    /** T2-1 — per-side shot clocks. */
+    homeShotClock?: { ms: number; running: boolean; raw?: string; at?: string };
+    awayShotClock?: { ms: number; running: boolean; raw?: string; at?: string };
+    /** T2-1 — active exclusions per team (3-slot, nullable entries). */
+    homeExclusions?: ({ playerJersey: number; secondsRemaining: number } | null)[];
+    awayExclusions?: ({ playerJersey: number; secondsRemaining: number } | null)[];
+    /** T2-1 — timeouts remaining per team. */
+    homeTimeoutsRemaining?: number;
+    awayTimeoutsRemaining?: number;
     horn?: boolean;
     raw?: string;
   } {
@@ -3369,6 +3383,63 @@ export class SportsService {
         out.shotClock = cleaned;
       }
     }
+
+    // T2-1: per-side shot clocks (bridge v1.1+; ignored by older bridges).
+    const cleanShotClockField = (
+      field: unknown,
+    ): { ms: number; running: boolean; raw?: string; at?: string } | undefined => {
+      if (!field || typeof field !== 'object') return undefined;
+      const sc = field as Record<string, unknown>;
+      const ms = nonNegInt(sc.ms);
+      if (ms === undefined) return undefined;
+      const result: { ms: number; running: boolean; raw?: string; at?: string } = {
+        ms,
+        running: !!sc.running,
+      };
+      if (typeof sc.raw === 'string') result.raw = sc.raw.slice(0, 8);
+      if (typeof sc.at === 'string') result.at = sc.at;
+      return result;
+    };
+    const homeSc = cleanShotClockField(raw.homeShotClock);
+    if (homeSc !== undefined) out.homeShotClock = homeSc;
+    const awaySc = cleanShotClockField(raw.awayShotClock);
+    if (awaySc !== undefined) out.awayShotClock = awaySc;
+
+    // T2-1: exclusions — 3-slot array, each slot is an object or null.
+    const cleanExclusionArray = (
+      field: unknown,
+    ): ({ playerJersey: number; secondsRemaining: number } | null)[] | undefined => {
+      if (!Array.isArray(field)) return undefined;
+      const slots = field.slice(0, 3).map((slot) => {
+        if (!slot || typeof slot !== 'object') return null;
+        const s = slot as Record<string, unknown>;
+        const jersey = nonNegInt(s.playerJersey);
+        const secs = nonNegInt(s.secondsRemaining);
+        if (jersey === undefined && secs === undefined) return null;
+        return {
+          playerJersey: jersey ?? 0,
+          secondsRemaining: secs ?? 0,
+        };
+      });
+      // Pad to 3 slots.
+      while (slots.length < 3) slots.push(null);
+      return slots as ({ playerJersey: number; secondsRemaining: number } | null)[];
+    };
+    const homeExcl = cleanExclusionArray(raw.homeExclusions);
+    if (homeExcl !== undefined) out.homeExclusions = homeExcl;
+    const awayExcl = cleanExclusionArray(raw.awayExclusions);
+    if (awayExcl !== undefined) out.awayExclusions = awayExcl;
+
+    // T2-1: timeouts remaining.
+    if (raw.homeTimeoutsRemaining !== undefined) {
+      const v = nonNegInt(raw.homeTimeoutsRemaining);
+      if (v !== undefined) out.homeTimeoutsRemaining = v;
+    }
+    if (raw.awayTimeoutsRemaining !== undefined) {
+      const v = nonNegInt(raw.awayTimeoutsRemaining);
+      if (v !== undefined) out.awayTimeoutsRemaining = v;
+    }
+
     return out;
   }
 
@@ -3409,7 +3480,15 @@ export class SportsService {
       cleaned.homeScore !== undefined ||
       cleaned.awayScore !== undefined ||
       cleaned.shotClock !== undefined ||
-      cleaned.horn !== undefined;
+      cleaned.horn !== undefined ||
+      // T2-1: new fields count as "has data" so they alone can update the
+      // stats block without requiring a clock or score to be present.
+      cleaned.homeShotClock !== undefined ||
+      cleaned.awayShotClock !== undefined ||
+      cleaned.homeExclusions !== undefined ||
+      cleaned.awayExclusions !== undefined ||
+      cleaned.homeTimeoutsRemaining !== undefined ||
+      cleaned.awayTimeoutsRemaining !== undefined;
     if (!hasAnyData) {
       return { ok: true, accepted: false, reason: 'empty snapshot' };
     }
@@ -3479,6 +3558,69 @@ export class SportsService {
     // Clock-running transition: slave the penalty box and shot clock —
     // same helper chain clockAction uses, same "clockMutated = true" flag.
     let mergedStatsForWrite: Record<string, unknown> = { ...prevStats, cts: nextCts };
+
+    // T2-1: merge CTS exclusions into stats.penalties (top-level, source:'cts')
+    // so the existing penalty-box render path can consume them alongside
+    // operator-entered penalties.  We replace only the 'cts'-sourced slots;
+    // operator-entered penalties (source != 'cts') are preserved.
+    if (cleaned.homeExclusions !== undefined || cleaned.awayExclusions !== undefined) {
+      const prevPenalties = Array.isArray(mergedStatsForWrite.penalties)
+        ? (mergedStatsForWrite.penalties as unknown[]).filter(
+            (p) => p && typeof p === 'object' && (p as Record<string, unknown>).source !== 'cts',
+          )
+        : [];
+      const ctsPenalties: unknown[] = [];
+      if (cleaned.homeExclusions) {
+        cleaned.homeExclusions.forEach((slot, i) => {
+          if (slot && (slot.playerJersey > 0 || slot.secondsRemaining > 0)) {
+            ctsPenalties.push({
+              source: 'cts',
+              team: 'home',
+              slot: i,
+              playerJersey: slot.playerJersey,
+              secondsRemaining: slot.secondsRemaining,
+            });
+          }
+        });
+      }
+      if (cleaned.awayExclusions) {
+        cleaned.awayExclusions.forEach((slot, i) => {
+          if (slot && (slot.playerJersey > 0 || slot.secondsRemaining > 0)) {
+            ctsPenalties.push({
+              source: 'cts',
+              team: 'away',
+              slot: i,
+              playerJersey: slot.playerJersey,
+              secondsRemaining: slot.secondsRemaining,
+            });
+          }
+        });
+      }
+      mergedStatsForWrite = {
+        ...mergedStatsForWrite,
+        penalties: [...prevPenalties, ...ctsPenalties],
+        cts: nextCts,
+      };
+    }
+
+    // T2-1: merge CTS timeouts into stats.homeTimeouts / awayTimeouts.
+    // Only overwrites when CTS is the source so operator adjustments
+    // are not stomped when these fields are absent from the snapshot.
+    if (cleaned.homeTimeoutsRemaining !== undefined) {
+      mergedStatsForWrite = {
+        ...mergedStatsForWrite,
+        homeTimeouts: cleaned.homeTimeoutsRemaining,
+        cts: nextCts,
+      };
+    }
+    if (cleaned.awayTimeoutsRemaining !== undefined) {
+      mergedStatsForWrite = {
+        ...mergedStatsForWrite,
+        awayTimeouts: cleaned.awayTimeoutsRemaining,
+        cts: nextCts,
+      };
+    }
+
     if (clockRunChanged && cleaned.clockRunning !== undefined) {
       const running = cleaned.clockRunning;
       let synced = this.syncPenaltiesToClock(mergedStatsForWrite, running, now);

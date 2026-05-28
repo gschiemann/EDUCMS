@@ -37,6 +37,29 @@ export interface CtsExclusion {
 }
 
 /**
+ * Structured shot-clock value (T2-1).
+ *
+ * Replaces the raw display string in CtsFullSnapshot.  The `raw` field
+ * preserves the original decoded string for diagnostics / logging.
+ * `ms` is the canonical machine-readable value (0 = shot clock expired
+ * or not running).  `running` is derived from the packet cadence at
+ * snapshot build time: if the parser emitted a fresh packet for this
+ * module in the current update cycle the shot clock is considered
+ * running; the bridge computes the final `running` flag server-side
+ * using game-clock cadence as a proxy (shot clocks only count when the
+ * game clock counts).
+ */
+export interface CtsStructuredShotClock {
+  /** The decoded display string ("24", "0", ""). */
+  raw: string;
+  /** Milliseconds (raw digits interpreted as whole seconds × 1000).
+   *  0 when the display is blank / expired. */
+  ms: number;
+  /** True when the shot clock is believed to be counting down. */
+  running: boolean;
+}
+
+/**
  * One decoded game state. Emitted by CtsParser whenever a complete
  * module-update packet decodes successfully.
  *
@@ -62,10 +85,11 @@ export interface CtsGameState {
   homeScore?: number;
   awayScore?: number;
 
-  /** Shot clocks (water polo: 30-second possession). "0" or "" if
-   *  the shot clock is parked. */
-  homeShotClock?: string;
-  awayShotClock?: string;
+  /** Shot clocks (water polo: 30-second possession). Structured object
+   *  with `raw` (display string), `ms` (milliseconds), and `running`.
+   *  Empty when the shot clock is parked. */
+  homeShotClock?: CtsStructuredShotClock;
+  awayShotClock?: CtsStructuredShotClock;
 
   /** Active exclusions, max 3 each per team. Array length 0..3.
    *  Note: when a player exits the box (clock reaches 0 or coach calls
@@ -103,8 +127,9 @@ export interface CtsFullSnapshot {
   period: number;
   homeScore: number;
   awayScore: number;
-  homeShotClock: string;
-  awayShotClock: string;
+  /** T2-1: structured shot clocks (promoted from plain string in v1.1). */
+  homeShotClock: CtsStructuredShotClock;
+  awayShotClock: CtsStructuredShotClock;
   homeExclusions: CtsExclusion[];
   awayExclusions: CtsExclusion[];
   homeTimeoutsRemaining: number;

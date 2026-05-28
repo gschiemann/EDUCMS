@@ -276,13 +276,19 @@ class LineAccumulator {
   }
 }
 
-// CTS clock-pause detection. If we haven't seen the displayed clock
-// string change in this many milliseconds, treat the clock as paused.
-// The CTS console emits one packet per displayed clock value (~100 ms
-// during the last minute, slower for whole-second granularity above);
-// 800 ms is a comfortable cushion that detects pause within ~1 s but
-// never false-positives a brief packet gap.
-const CLOCK_PAUSE_MS = 800;
+// T2-1: cadence multiplier for clockRunning derivation.  If the
+// elapsed time since the last GAME_CLOCK packet exceeds the estimated
+// inter-packet interval by this factor, we treat the clock as paused.
+// 1.5× is conservative — at ~1000ms inter-packet (whole-second mode)
+// we declare paused after 1.5 s; at ~100ms (tenths mode) after 150ms.
+// A legitimate WiFi jitter spike rarely exceeds one full interval.
+const CLOCK_PAUSE_FACTOR = 1.5;
+
+// Minimum pause threshold in ms: protects against spurious pauses
+// when the inter-packet estimate is very small (first two packets may
+// arrive back-to-back).  900ms is the safe floor for whole-second
+// cadence without triggering on normal gaps.
+const CLOCK_PAUSE_MIN_MS = 900;
 
 /**
  * Optional URL query-param overrides for hardware-specific quirks.
@@ -397,18 +403,29 @@ export function CtsBridge({
   // Last Stream Deck line received (any port), for operator sanity
   // when the dispatcher rejects malformed lines silently.
   const [lastStreamDeckLine, setLastStreamDeckLine] = useState<string | null>(null);
-  // 2026-05-27 — derive a running/paused bit from successive parser
-  // snapshots. CtsFullSnapshot itself carries no boolean for this; the
-  // physical CTS protocol simply emits a new clock string every ~100 ms
-  // when the clock is advancing, and stops emitting (or repeats the
-  // same value) when it's paused. We track the prior clock string + the
-  // time we last saw it CHANGE; if a value has held steady longer than
-  // CLOCK_PAUSE_MS we report `clockRunning: false`. Otherwise true.
-  // This is the single piece of derived state the bridge owns.
-  const prevClockRef = useRef<{ value: string | null; changedAt: number }>({
-    value: null,
-    changedAt: 0,
-  });
+  // T2-1 (2026-05-27) — derive a running/paused bit from GAME_CLOCK
+  // packet cadence rather than display-string mutation.
+  //
+  // Old approach (CLOCK_PAUSE_MS = 800ms): compared the displayed clock
+  // string to the prior reading.  At whole-second granularity (>1:00)
+  // the CTS console emits one packet per second, so a legitimately
+  // running clock had a gap of ~1000ms — longer than 800ms — and the
+  // old code false-reported `clockRunning: false` on every whole-second
+  // tick.
+  //
+  // New approach: the CtsParser now tracks the last two GAME_CLOCK
+  // packet timestamps.  We compare `Date.now()` against the last
+  // packet timestamp + (interval × 1.5).  At sub-minute cadence
+  // (~100ms interval) the pause is detected within ~150ms; at
+  // whole-second cadence (~1000ms) within ~1.5s — correct in both
+  // modes.  The parser ref below is stable across renders (the
+  // CtsParser instance is created once per bridge mount).
+  //
+  // `parserRef` is declared later in this component; the clockRunning
+  // derivation runs inline in the POST function and reads the parser
+  // directly — no separate ref needed here.
+  // (This comment block replaces the old prevClockRef; delete when
+  // the logic below is understood.)
 
   // 2026-05-27 — Simulator state. Operator: "how can we build a
   // sample/fake connection to CTS…maybe we read content from a file
@@ -755,23 +772,49 @@ export function CtsBridge({
     // gameId mode — persist to Game.stats.cts via the public board
     // endpoint, authenticated with the HMAC feed token.
     if (gameId && feedToken) {
-      // Derive a running/paused bit from successive clock readings.
-      // The CTS protocol has no explicit flag, but the console only
-      // emits a fresh clock string when the clock is actually
-      // advancing — a paused clock just repeats the same value (or
-      // stops emitting). Compare to the prior reading: if the value
-      // hasn't changed AND it's been longer than CLOCK_PAUSE_MS since
-      // the last change, report `clockRunning: false`. Otherwise true.
-      const now = Date.now();
-      const clockStr = typeof snap.clock === 'string' ? snap.clock : null;
-      const prev = prevClockRef.current;
-      if (clockStr !== prev.value) {
-        prevClockRef.current = { value: clockStr, changedAt: now };
+      // T2-1: Cadence-based clockRunning derivation.
+      //
+      // The CTS protocol has no explicit "clock running" bit.  The
+      // CtsParser now tracks the wall-clock timestamps of the last two
+      // GAME_CLOCK (0x01) packets via `getLastClockPacketAt()` and
+      // `getClockPacketIntervalMs()`.  We derive `clockRunning` by
+      // comparing elapsed time since the last packet to the estimated
+      // inter-packet interval × CLOCK_PAUSE_FACTOR:
+      //
+      //   • At sub-minute (tenths mode): interval ≈ 100ms;
+      //     pause detected after ~150ms.
+      //   • At whole-second: interval ≈ 1000ms; pause detected
+      //     after ~1500ms.
+      //   • Before two packets seen (intervalMs = 0): fall back
+      //     to CLOCK_PAUSE_MIN_MS as a safe default.
+      //
+      // This replaces the old 800ms display-string-changed heuristic
+      // that false-paused at every whole-second tick.
+      const parser = parserRef.current;
+      let clockRunning: boolean | undefined;
+      if (parser && typeof snap.clock === 'string') {
+        const now = Date.now();
+        const lastPacketAt = parser.getLastClockPacketAt();
+        const intervalMs = parser.getClockPacketIntervalMs();
+        if (lastPacketAt > 0) {
+          const threshold =
+            intervalMs > 0
+              ? Math.max(intervalMs * CLOCK_PAUSE_FACTOR, CLOCK_PAUSE_MIN_MS)
+              : CLOCK_PAUSE_MIN_MS;
+          clockRunning = now - lastPacketAt < threshold;
+        }
       }
-      const sincePause = now - prevClockRef.current.changedAt;
-      const clockRunning = clockStr !== null ? sincePause < CLOCK_PAUSE_MS : undefined;
 
-      const body = {
+      // T2-1: Derive clockRunning flag for shot clocks.  Shot clocks
+      // only count when the game clock is counting, so we use the same
+      // derived `clockRunning` value.  The parser emits `running: true`
+      // when ms > 0; we override with false when the game clock is
+      // paused.
+      const shotClockRunning = clockRunning ?? false;
+      const homeSc = snap.homeShotClock;
+      const awaySc = snap.awayShotClock;
+
+      const body: Record<string, unknown> = {
         clockMs: parseCtsClockToMs(snap.clock) ?? undefined,
         clockRunning,
         segment: typeof snap.period === 'number' ? snap.period : undefined,
@@ -779,6 +822,38 @@ export function CtsBridge({
         awayScore: typeof snap.awayScore === 'number' ? snap.awayScore : undefined,
         horn: snap.horn === true ? true : undefined,
         raw: typeof snap.clock === 'string' ? snap.clock : undefined,
+        // T2-1: per-side shot clocks (previously silently dropped).
+        homeShotClock:
+          homeSc && (homeSc.raw !== '' || homeSc.ms > 0)
+            ? { ms: homeSc.ms, running: homeSc.ms > 0 && shotClockRunning, raw: homeSc.raw }
+            : undefined,
+        awayShotClock:
+          awaySc && (awaySc.raw !== '' || awaySc.ms > 0)
+            ? { ms: awaySc.ms, running: awaySc.ms > 0 && shotClockRunning, raw: awaySc.raw }
+            : undefined,
+        // T2-1: exclusions — send as nullable 3-slot arrays so the
+        // server can merge into stats.penalties with source:'cts'.
+        // We always send all 3 slots (null = empty) so the server can
+        // clear stale exclusion data when a player exits the box.
+        homeExclusions: [
+          snap.homeExclusions[0] ?? null,
+          snap.homeExclusions[1] ?? null,
+          snap.homeExclusions[2] ?? null,
+        ],
+        awayExclusions: [
+          snap.awayExclusions[0] ?? null,
+          snap.awayExclusions[1] ?? null,
+          snap.awayExclusions[2] ?? null,
+        ],
+        // T2-1: timeouts remaining (previously silently dropped).
+        homeTimeoutsRemaining:
+          typeof snap.homeTimeoutsRemaining === 'number'
+            ? snap.homeTimeoutsRemaining
+            : undefined,
+        awayTimeoutsRemaining:
+          typeof snap.awayTimeoutsRemaining === 'number'
+            ? snap.awayTimeoutsRemaining
+            : undefined,
       };
       try {
         const res = await fetch(
