@@ -26,10 +26,11 @@ import {
   Filter,
   ImageOff,
   Loader2,
+  MailWarning,
   XCircle,
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
-import { useBugList, type BugListFilters } from '@/hooks/use-bugs';
+import { useBugList, useEmailConfigured, type BugListFilters } from '@/hooks/use-bugs';
 import type { BugStatus } from '@cms/api-types';
 
 const STATUS_FILTERS: Array<{ key: 'ALL' | BugStatus; label: string }> = [
@@ -52,6 +53,12 @@ export default function SuperBugsPage() {
 
   const filters: BugListFilters = activeStatus === 'ALL' ? {} : { status: activeStatus };
   const { data: bugs, isLoading, error } = useBugList(filters);
+  // Surface "outbound email isn't configured" so the owner knows why the
+  // "new bug filed" + "fix shipped" notification emails aren't arriving.
+  // Only banner on an explicit false — undefined (loading / probe error)
+  // stays silent to avoid false alarms.
+  const { data: emailStatus } = useEmailConfigured();
+  const emailUnconfigured = emailStatus?.configured === false;
 
   if (!mounted) {
     return (
@@ -102,6 +109,26 @@ export default function SuperBugsPage() {
             ← Back to control panel
           </Link>
         </header>
+
+        {/* Email-not-configured banner — explains why bug-filed / fix-
+            shipped notification emails aren't arriving. Mirrors the
+            password-reset flow's "email not configured" message. */}
+        {emailUnconfigured && (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+            <MailWarning className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" aria-hidden />
+            <div className="text-sm text-amber-900">
+              <p className="font-bold">Outbound email isn&apos;t configured on this deployment.</p>
+              <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                Bugs still get filed and analyzed here, but the &ldquo;new bug filed&rdquo; and
+                &ldquo;fix shipped&rdquo; notification emails won&apos;t be sent. Set
+                <code className="mx-1 px-1 py-0.5 rounded bg-amber-100 font-mono text-[11px]">RESEND_API_KEY</code>
+                (and verify a sending domain for
+                <code className="mx-1 px-1 py-0.5 rounded bg-amber-100 font-mono text-[11px]">EMAIL_FROM</code>)
+                on the API to enable delivery. See the env-var table in CLAUDE.md.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Status filter pills */}
         <div className="flex items-center gap-1.5 flex-wrap">

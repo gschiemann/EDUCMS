@@ -86,6 +86,9 @@ All required env vars for `.env` (gitignored):
 | `DEVICE_SECRET_KEY` | Signing device tokens (64-char hex) | (random) |
 | `DEVICE_JWT_SECRET` | Device JWT signing (64-char hex) | (random) |
 | `REDIS_URL` | Redis pub/sub for realtime | `redis://localhost:6379` |
+| `RESEND_API_KEY` | [Resend](https://resend.com) API key. Powers **every** outbound email: password-reset, user invites, welcome mail, asset-approval notices, and the Bug Reporter's "we got it / fix shipped" + owner-alert emails. When unset: dev logs to console (zero-config); **production throws on send** so the UI surfaces a real "email not configured" error instead of lying "check your inbox" (`EmailService.isConfigured()` gates this). Most common "I set the key but no emails arrive" cause is the `EMAIL_FROM` default — see below. | `re_...` |
+| `EMAIL_FROM` | Sender for all outbound mail. Defaults to `VenueOS <onboarding@resend.dev>`. **WARNING:** Resend only delivers from `onboarding@resend.dev` to the email that **owns the Resend account** — every other recipient (other admins, operators, parents) is silently dropped/spam-filtered. To email anyone else you MUST verify a custom sending domain in the Resend dashboard and set this to an address on it. This is the usual root cause of "no bug emails getting sent." | `VenueOS <noreply@yourdomain.com>` |
+| `EMAIL_REPLY_TO` | Optional `Reply-To` header (e.g. a district IT help alias). Unset → header omitted. | `it-help@yourdistrict.org` |
 | `ALLOWED_ORIGINS` | CORS whitelist (comma-sep). **REQUIRED in production** — API refuses to boot if unset (sec-fix wave1 #8). | `https://yourdomain.vercel.app,http://localhost:3000` |
 | `PORT` | API server port | `8080` |
 | `NODE_ENV` | `development` \| `production` | `development` |

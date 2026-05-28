@@ -31,6 +31,39 @@ export interface BugListFilters {
   status?: BugStatus;
 }
 
+/**
+ * Whether outbound email (Resend) is configured on this deploy. Read off
+ * the existing integrations-health grid (`comms-email` row) so we don't
+ * need a new endpoint. Surfaced on /super/bugs so the owner knows WHY
+ * the "you got a bug / fix shipped" emails aren't arriving — mirrors the
+ * password-reset flow's "email not configured" banner.
+ *
+ * `status === 'READY'` ⇒ RESEND_API_KEY is set. Note: even when READY,
+ * the EMAIL_FROM default (onboarding@resend.dev) only delivers to the
+ * Resend account owner — see the row `message` / CLAUDE.md env table.
+ */
+export function useEmailConfigured() {
+  return useQuery<{ configured: boolean; message: string | null }>({
+    queryKey: ['email-configured'],
+    queryFn: async () => {
+      // The grid is typed loosely here to avoid importing the API-side
+      // IntegrationsGrid type (it lives in the controller, not api-types).
+      const grid = await apiFetch<{
+        rows?: Array<{ id: string; status: string; message?: string }>;
+      }>('/health/integrations');
+      const email = grid?.rows?.find((r) => r.id === 'comms-email');
+      return {
+        configured: email?.status === 'READY',
+        message: email?.message ?? null,
+      };
+    },
+    staleTime: 60_000,
+    // A health-probe failure shouldn't spam the bug page with errors —
+    // treat it as "unknown" (assume configured so we don't false-alarm).
+    retry: false,
+  });
+}
+
 const LIST_KEY = (filters: BugListFilters) => ['super-bugs', filters.status || 'ALL'] as const;
 const DETAIL_KEY = (id: string) => ['super-bugs', 'detail', id] as const;
 
