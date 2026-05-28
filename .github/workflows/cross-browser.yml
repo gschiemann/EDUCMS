@@ -6,10 +6,22 @@ name: Cross-Browser
 # regex bug for months — this workflow is the canary that prevents that
 # class of regression.
 #
-# Today: WebKit-only on the holiday-template iframe bridge protocol,
-# because Safari is the historical blind spot (Chromium was always green).
+# Coverage (all WebKit, the historical blind spot; Chromium was always
+# green so the WebKit canary is the high-leverage check):
+#   - webkit-holiday-bridge   18 static holiday HTML templates (iframe
+#                             postMessage bridge protocol) + the sports
+#                             celebration HTML pack (canvas-animation
+#                             parse + paint canary).
+#   - webkit-widget-render    the React widget surface — the themed
+#                             school packs, sports scorebug, restaurant /
+#                             retail / fitness / bar verticals, and
+#                             AnimatedWelcome — mounted on the real
+#                             /player route, in the [chromium, webkit]
+#                             matrix. Closes the P1-12 gap (2026-05-28
+#                             audit): ~170 React widgets had ZERO WebKit
+#                             render check.
 # Add chromium / firefox passes here as we surface other engine-specific
-# fragility.
+# fragility (don't add speculatively — keep CI under 2 min/browser).
 
 on:
   push:
@@ -24,7 +36,7 @@ permissions:
 
 jobs:
   webkit-holiday-bridge:
-    name: WebKit · Holiday template bridge protocol
+    name: WebKit · Holiday bridge + sports celebration pack
     runs-on: ubuntu-latest
     # 2026-05-12 — the WebKit install on a cold runner (`apt-get
     # update && apt-get install` for ~160 packages of WebKit system
@@ -73,13 +85,90 @@ jobs:
         # every run. Browser binaries themselves ARE cached above.
         run: pnpm --filter web exec playwright install --with-deps webkit
 
-      - name: Run cross-browser test
+      - name: Run holiday-bridge cross-browser test
         run: pnpm --filter web run test:cross-browser
 
-      - name: Upload report on failure
+      # The sports celebration pack reuses the SAME already-installed
+      # WebKit + python http.server harness — near-zero added CI cost.
+      # Guards the canvas-animation HTML cue files (touchdown, three,
+      # home-run, goal, kill, …) against the 2026-05-09 regex/minified-JS
+      # SyntaxError class that WebKit rejects but V8 tolerates.
+      - name: Run sports celebration WebKit canary
+        run: pnpm --filter web run test:celebrations
+
+      - name: Upload reports on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: cross-browser-report
-          path: apps/web/tests/cross-browser/report.json
+          path: |
+            apps/web/tests/cross-browser/report.json
+            apps/web/tests/cross-browser/celebrations-report.json
+          if-no-files-found: ignore
+
+  webkit-widget-render:
+    name: WebKit + Chromium · React widget render smoke
+    runs-on: ubuntu-latest
+    # Boots `next dev` (first-compile of the /player route ~30-60s) then
+    # runs the widget grid in BOTH chromium and webkit. Cap generous to
+    # absorb the cold WebKit-deps install + first Next compile; real test
+    # failures surface in seconds inside the spec.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build the workspace TS packages BEFORE `next dev` boots. The
+      # /player route imports CtsBridge → @cms/scoreboard-cts (and the app
+      # imports @cms/api-types / auth-core / ws-events), whose package.json
+      # `main` points at dist/index.js. Without this build, `next dev`
+      # fails to compile the player route ("Module not found / Unexpected
+      # token export") and the spec stalls before the first manifest fetch.
+      # Same requirement the deploy-reliability `web-build` job documents.
+      - name: Generate Prisma client (auth-core imports @prisma/client transitively)
+        run: pnpm --filter @cms/database run db:generate
+      - name: Build workspace packages
+        run: |
+          pnpm --filter @cms/api-types build
+          pnpm --filter @cms/auth-core build
+          pnpm --filter @cms/ws-events build
+          pnpm --filter @cms/scoreboard-cts build
+
+      - name: Cache Playwright browsers
+        id: playwright-cache-widget
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          # Keyed on chromium+webkit so this cache is distinct from the
+          # holiday-bridge WebKit-only cache above.
+          key: ${{ runner.os }}-playwright-cw-${{ hashFiles('apps/web/package.json') }}
+
+      - name: Install Playwright Chromium + WebKit (with system deps)
+        run: pnpm --filter web exec playwright install --with-deps chromium webkit
+
+      # The widget-render spec mocks EVERY API call (fake host api.invalid
+      # via playwright.config.ts webServer env) and boots `next dev` itself
+      # through the config's `webServer` block — no API server needed.
+      - name: Run React widget render smoke (chromium + webkit)
+        run: pnpm --filter web run test:e2e:widget-render
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: widget-render-report
+          path: apps/web/playwright-report
           if-no-files-found: ignore
