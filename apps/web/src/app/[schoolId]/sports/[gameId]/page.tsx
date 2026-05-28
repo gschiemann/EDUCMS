@@ -18,7 +18,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   ExternalLink,
@@ -83,6 +83,15 @@ const GAME_STATUSES: { key: string; label: string }[] = [
 ];
 
 type ConsoleMode = 'run' | 'setup';
+
+/**
+ * ?view query param — splits the single Run console into role-scoped layouts.
+ *   score  — scorekeeper tablet: scoreboard + clock + stats only
+ *   show   — show-caller tablet: surfaces + full CueLaunchpad always-on
+ *   pa     — PA / announcer phone: spotlight + roster (read-only score/clock)
+ *   (unset) — full default: today's all-up behaviour for existing users
+ */
+type ConsoleView = 'score' | 'show' | 'pa' | '';
 
 // ── clock helpers ──────────────────────────────────────────────
 
@@ -170,8 +179,22 @@ export default function GameControlPage() {
 function GameControl() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const schoolId = String(params?.schoolId || '');
   const gameId = String(params?.gameId || '');
+
+  // ?view=score|show|pa — role-scoped layout. Unset = full default.
+  const rawView = searchParams?.get('view') ?? '';
+  const view: ConsoleView = (
+    rawView === 'score' || rawView === 'show' || rawView === 'pa' ? rawView : ''
+  );
+
+  const setView = (v: ConsoleView) => {
+    const url = new URL(window.location.href);
+    if (v) url.searchParams.set('view', v);
+    else url.searchParams.delete('view');
+    router.replace(url.pathname + url.search, { scroll: false });
+  };
 
   const { data: game, isLoading, error } = useGame(gameId);
   const ctl = useGameControl(gameId);
@@ -516,11 +539,17 @@ function GameControl() {
             homeColor={homeColor}
             awayColor={awayColor}
             ctl={ctl}
+            view={view}
+            onViewChange={setView}
             onShowCues={() => setShowCues(true)}
             onHighlights={() => setShowHighlights(true)}
             onPenalties={() => setShowPenalties(true)}
           />
-          <RecentEventsRail gameId={gameId} />
+          {/* RecentEventsRail hidden in show/pa views where the extra
+              column would crowd the reduced-control layout */}
+          {(view === '' || view === 'score') && (
+            <RecentEventsRail gameId={gameId} />
+          )}
         </div>
       )}
 
@@ -848,6 +877,8 @@ function RunMode({
   homeColor,
   awayColor,
   ctl,
+  view,
+  onViewChange,
   onShowCues,
   onHighlights,
   onPenalties,
@@ -859,6 +890,8 @@ function RunMode({
   homeColor: string;
   awayColor: string;
   ctl: ReturnType<typeof useGameControl>;
+  view: ConsoleView;
+  onViewChange: (v: ConsoleView) => void;
   onShowCues: () => void;
   onHighlights: () => void;
   onPenalties: () => void;
@@ -891,69 +924,461 @@ function RunMode({
     setLastAction('');
   };
 
+  // ── View-role switcher pill row ──────────────────────────────
+  // Sits at the top of Run mode so any operator can switch their
+  // tablet to the right role without leaving the live console.
+  const VIEW_PILLS: { key: ConsoleView; label: string; title: string }[] = [
+    { key: '',      label: 'Full',        title: 'All controls — default for single-operator mode' },
+    { key: 'score', label: 'Scorekeeper', title: 'Score + clock only — hide cues, roster, ribbon' },
+    { key: 'show',  label: 'Show Caller', title: 'Surfaces + full cue launchpad — hide score controls' },
+    { key: 'pa',    label: 'PA / Announcer', title: 'Spotlight + roster only — phone-friendly' },
+  ];
+
+  // ── Layout booleans derived from view ────────────────────────
+  // `show` view: no score/clock controls, full inline CueLaunchpad,
+  //              always-on SurfacePreview thumbnails.
+  // `score` view: no cues, no roster bar, no ribbon preview.
+  // `pa` view: no score/clock controls, no cues, read-only spotlight + roster.
+  // default: everything (today's behaviour).
+  const showScoreboard    = view !== 'show' && view !== 'pa';
+  const showClockControls = view !== 'show' && view !== 'pa';
+  const showRibbonPreview = view !== 'score' && view !== 'pa';
+  const showRosterBar     = view !== 'score';
+  const showInlineCues    = view !== 'show' && view !== 'pa' && view !== 'score';
+  const showInlineLaunchpad = view === 'show';
+  const showSurfacePreviews = view === 'show';
+  const showPaSpotlight   = view === 'pa';
+  const showBottomTray    = showClockControls && (isBaseballSoftball || def.key === 'football');
+
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-      {/* 2026-05-27 — Single pane of glass.
-          Operator: "now there is even more space from the player names
-          and the ribbon preview ... they should be right below".
-          The previous attempt put the scoreboard + ribbon inside a
-          flex-1 scroll region — flex-1 expanded the region to fill
-          ALL remaining viewport height, so the ribbon ended up
-          floating with 200-300px of blank space underneath it before
-          the rosters appeared. Now the scoreboard + ribbon are a
-          plain natural-height block (with min-h-0 overflow-y-auto in
-          case content ever exceeds the viewport — degraded scroll
-          path), so the rosters sit RIGHT below the ribbon preview.
-          No gap, no flex-1 stretch.
-          The PAGE wrapper (h-[calc(100dvh-64px)] overflow-hidden)
-          still pins the whole stack to viewport — if total content
-          exceeds 100dvh, the bottom clips and we have a sizing bug
-          to fix in content, not in layout. */}
-      {/* T1-6 — Per-surface health pill row. One pill per paired screen,
-          40px tall, shows ONLINE/OFFLINE/off-air status + surface kind.
-          Click a pill → right-side drawer with live SurfacePreview.
-          Renders nothing when 0 screens are paired (graceful empty). */}
+
+      {/* ── View-role switcher ────────────────────────────────── */}
+      <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-slate-200 bg-slate-50 shrink-0">
+        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mr-1 shrink-0">
+          View
+        </span>
+        {VIEW_PILLS.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            title={p.title}
+            onClick={() => onViewChange(p.key)}
+            className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors shrink-0 ${
+              view === p.key
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white border border-slate-200 text-slate-500 hover:border-indigo-400 hover:text-indigo-700'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {/* T1-6 — Per-surface health pill row. Always visible regardless
+          of view — status is universal information. */}
       <SurfaceHealthPills gameId={gameId} />
 
-      <div className="min-h-0 overflow-y-auto">
-        <RunInteractiveScoreboard
-          g={g}
-          def={def}
-          liveMs={liveMs}
-          homeColor={homeColor}
-          awayColor={awayColor}
-          ctl={ctl}
-        />
-        <RunRibbonPreview gameId={gameId} />
-      </div>
+      {/* ── PA / Announcer view ───────────────────────────────── */}
+      {showPaSpotlight && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <PaAnnouncerView
+            gameId={gameId}
+            g={g}
+            def={def}
+            ctl={ctl}
+            homeColor={homeColor}
+            awayColor={awayColor}
+            liveMs={liveMs}
+          />
+        </div>
+      )}
 
-      {/* 2026-05-27 — INLINE highlights + cues bars. Truly pinned to the
-          bottom of the viewport (shrink-0 + below the scroll region).
-          Operator: "the dumb player names menu is still not pinned to
-          bottom of the ribbon preview...we need to fix that already". */}
-      <div className="shrink-0">
-        <RunInlineRosterBar gameId={gameId} g={g} def={def} ctl={ctl} homeColor={homeColor} awayColor={awayColor} />
-        <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
+      {/* ── Show Caller view ──────────────────────────────────── */}
+      {showSurfacePreviews && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <ShowCallerView gameId={gameId} def={def} ctl={ctl} g={g} />
+        </div>
+      )}
 
-        {/* 2026-05-27 — bottom control tray only renders when the sport
-            needs an extra control surface (baseball ball/strike, football
-            play clock). Most sports — water polo, basketball, soccer,
-            volleyball — have all their controls in the scoreboard tile +
-            roster popover now, so this tray collapses entirely. */}
-        {(isBaseballSoftball || def.key === 'football') && (
-          <div className="flex items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
-            {isBaseballSoftball && (
-              <BaseTrayBall stats={stats} onStat={(s) => ctl.stats.mutate({ stats: s })} />
-            )}
-            {def.key === 'football' && (
-              <PlayClockBtn
-                stats={stats}
-                onAction={(a, v) => ctl.playClock.mutate({ action: a, value: v })}
+      {/* ── Score / Full views — scrollable scoreboard + ribbon ── */}
+      {!showPaSpotlight && !showSurfacePreviews && (
+        <>
+          <div className="min-h-0 overflow-y-auto">
+            {showScoreboard && (
+              <RunInteractiveScoreboard
+                g={g}
+                def={def}
+                liveMs={liveMs}
+                homeColor={homeColor}
+                awayColor={awayColor}
+                ctl={ctl}
               />
             )}
+            {showRibbonPreview && <RunRibbonPreview gameId={gameId} />}
           </div>
+
+          {/* Pinned bottom: roster + cues + sport-specific tray */}
+          <div className="shrink-0">
+            {showRosterBar && (
+              <RunInlineRosterBar
+                gameId={gameId}
+                g={g}
+                def={def}
+                ctl={ctl}
+                homeColor={homeColor}
+                awayColor={awayColor}
+              />
+            )}
+            {showInlineCues && (
+              <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
+            )}
+            {showBottomTray && (
+              <div className="flex items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
+                {isBaseballSoftball && (
+                  <BaseTrayBall stats={stats} onStat={(s) => ctl.stats.mutate({ stats: s })} />
+                )}
+                {def.key === 'football' && (
+                  <PlayClockBtn
+                    stats={stats}
+                    onAction={(a, v) => ctl.playClock.mutate({ action: a, value: v })}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Role-specific view layouts ─────────────────────────────────
+
+/**
+ * ShowCallerView — ?view=show
+ *
+ * The second tablet at the scorer's table (or a dedicated show-caller).
+ * Layout:
+ *   Top: ribbon + scoreboard surface thumbnails side-by-side (SurfacePreview).
+ *   Middle: full CueLaunchpad always-on (not a popup).
+ *   Bottom: spotlight roster bar.
+ *
+ * Score controls, clock controls, and stat fields are hidden — the
+ * show-caller cannot accidentally crash the scoreboard with a bad tap.
+ */
+function ShowCallerView({
+  gameId,
+  def,
+  ctl,
+  g,
+}: {
+  gameId: string;
+  def: SportDefinition;
+  ctl: ReturnType<typeof useGameControl>;
+  g: any;
+}) {
+  const homeColor = g.homeColor || '#4f46e5';
+  const awayColor = g.awayColor || '#dc2626';
+  return (
+    <div className="flex flex-col gap-4 p-4">
+      {/* Surface thumbnails — scoreboard + ribbon iframes */}
+      <div>
+        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+          Live surfaces
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Scoreboard preview */}
+          <div className="bg-slate-900 rounded-xl overflow-hidden">
+            <div className="px-3 py-1.5 flex items-center justify-between">
+              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                ● Scoreboard
+              </span>
+              <button
+                type="button"
+                onClick={() => window.open(`/board/${gameId}`, '_blank')}
+                className="text-[9px] font-bold text-slate-400 hover:text-white flex items-center gap-1"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Full view
+              </button>
+            </div>
+            <div className="bg-black overflow-hidden" style={{ aspectRatio: '16 / 9' }}>
+              <iframe
+                src={`/board/${gameId}?nochrome=1`}
+                title="Scoreboard preview"
+                className="w-full h-full block border-0"
+                style={{ pointerEvents: 'none' }}
+              />
+            </div>
+          </div>
+          {/* Ribbon preview */}
+          <div className="bg-slate-900 rounded-xl overflow-hidden">
+            <div className="px-3 py-1.5 flex items-center justify-between">
+              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                ● Ribbon
+              </span>
+              <button
+                type="button"
+                onClick={() => window.open(`/ribbon/${gameId}`, '_blank')}
+                className="text-[9px] font-bold text-slate-400 hover:text-white flex items-center gap-1"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Full view
+              </button>
+            </div>
+            <div className="bg-black overflow-hidden" style={{ aspectRatio: '7.5 / 1', maxHeight: '120px' }}>
+              <iframe
+                src={`/ribbon/${gameId}?nochrome=1`}
+                title="Ribbon preview"
+                className="w-full h-full block border-0"
+                style={{ pointerEvents: 'none' }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Full cue launchpad — always-on, not a popup */}
+      <div>
+        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+          Fire a cue
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <CueLaunchpad gameId={gameId} def={def} onFired={() => {}} />
+        </div>
+      </div>
+
+      {/* Spotlight roster bar for the show-caller */}
+      <div>
+        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+          Player spotlight
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <RunInlineRosterBar
+            gameId={gameId}
+            g={g}
+            def={def}
+            ctl={ctl}
+            homeColor={homeColor}
+            awayColor={awayColor}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * PaAnnouncerView — ?view=pa
+ *
+ * Phone-friendly view for the PA / announcer.
+ * Layout:
+ *   Top: current spotlight read-only card (name, number, position).
+ *   Middle: read-only score + clock strip (no controls).
+ *   Bottom: roster with one-tap spotlight activation (no cue firing,
+ *           no score changes, no clock controls).
+ *
+ * All write controls are hidden — the announcer can spotlight a player
+ * but cannot change the score, clock, or fire cues.
+ */
+function PaAnnouncerView({
+  gameId,
+  g,
+  def,
+  ctl,
+  homeColor,
+  awayColor,
+  liveMs,
+}: {
+  gameId: string;
+  g: any;
+  def: SportDefinition;
+  ctl: ReturnType<typeof useGameControl>;
+  homeColor: string;
+  awayColor: string;
+  liveMs: number;
+}) {
+  const sp = g?.spotlight && typeof g.spotlight === 'object' ? g.spotlight : {};
+  const onAir = !!(sp.visible && sp.title);
+
+  return (
+    <div className="flex flex-col gap-4 p-4 max-w-lg mx-auto">
+      {/* Current spotlight — read-only status card */}
+      <div
+        className={`rounded-xl border-2 p-4 transition-colors ${
+          onAir ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-slate-50'
+        }`}
+      >
+        <div className="text-[10px] font-black uppercase tracking-widest mb-1.5 text-slate-400">
+          On air — spotlight
+        </div>
+        {onAir ? (
+          <div className="flex items-center gap-3">
+            <span className="h-3 w-3 rounded-full bg-amber-500 animate-pulse shrink-0" />
+            <div className="min-w-0">
+              <div className="text-lg font-black text-amber-900 truncate">{sp.title}</div>
+              {sp.subtitle && (
+                <div className="text-xs font-semibold text-amber-700 truncate">{sp.subtitle}</div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => ctl.spotlight.mutate({ clear: true })}
+              className="shrink-0 rounded-lg bg-amber-200 hover:bg-amber-300 px-3 py-1.5 text-xs font-black text-amber-900 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        ) : (
+          <div className="text-sm text-slate-400 italic">No spotlight active — tap a player below.</div>
         )}
       </div>
+
+      {/* Read-only score + clock strip */}
+      <div className="rounded-xl border border-slate-200 bg-slate-950 px-4 py-3">
+        <div className="flex items-center justify-between gap-4">
+          {/* Home score */}
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+              {g.homeTeam || 'Home'}
+            </span>
+            <span
+              className="text-4xl font-black tabular-nums"
+              style={{ color: homeColor }}
+            >
+              {g.homeScore}
+            </span>
+          </div>
+          {/* Clock */}
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+              {def.segment.name} {g.segment}
+            </span>
+            <span className="text-3xl font-black tabular-nums text-amber-400">
+              {def.clock.type !== 'none' ? fmtClock(liveMs) : '—'}
+            </span>
+            {g.clockRunning && (
+              <span className="text-[9px] font-black text-emerald-400 animate-pulse mt-0.5">
+                ● running
+              </span>
+            )}
+          </div>
+          {/* Away score */}
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+              {g.awayTeam || 'Away'}
+            </span>
+            <span
+              className="text-4xl font-black tabular-nums"
+              style={{ color: awayColor }}
+            >
+              {g.awayScore}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Roster — one-tap spotlight only. Celebrations and penalties
+          are hidden; the announcer's only write action is spotlight. */}
+      <div>
+        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+          Tap to spotlight
+        </div>
+        <PaRosterPicker gameId={gameId} g={g} ctl={ctl} homeColor={homeColor} awayColor={awayColor} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * PaRosterPicker — compact grid of players for the PA view.
+ * Single tap spotlights the player; a second tap on the same
+ * player clears the spotlight. No cues, no penalties.
+ */
+function PaRosterPicker({
+  gameId,
+  g,
+  ctl,
+  homeColor,
+  awayColor,
+}: {
+  gameId: string;
+  g: any;
+  ctl: ReturnType<typeof useGameControl>;
+  homeColor: string;
+  awayColor: string;
+}) {
+  const roster = useGameRoster(gameId);
+  const players: any[] = Array.isArray(roster.data) ? roster.data : [];
+  const home = players.filter((p) => p.team !== 'away');
+  const away = players.filter((p) => p.team === 'away');
+  const sp = g?.spotlight && typeof g.spotlight === 'object' ? g.spotlight : {};
+  const onAirTitle = sp.visible && typeof sp.title === 'string' ? sp.title.trim().toLowerCase() : '';
+
+  if (players.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">
+        Add players in Setup → Team Rosters to enable one-tap spotlight.
+      </div>
+    );
+  }
+
+  const renderTeam = (list: any[], color: string, teamName: string, isHome: boolean) => (
+    <div className="mb-3">
+      <div
+        className="text-[10px] font-black uppercase tracking-widest mb-1.5"
+        style={{ color }}
+      >
+        {isHome ? 'Home' : 'Away'} — {teamName}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {list.map((p) => {
+          const playerName = String(p.name || '').trim();
+          const onAir = playerName.toLowerCase() === onAirTitle;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              disabled={ctl.spotlight.isPending}
+              onClick={() => {
+                if (onAir) ctl.spotlight.mutate({ clear: true });
+                else
+                  ctl.spotlight.mutate({
+                    visible: true,
+                    title: playerName,
+                    photoUrl: p.photoUrl || undefined,
+                    subtitle:
+                      [p.number ? `#${p.number}` : null, p.position]
+                        .filter(Boolean)
+                        .join(' · ') || undefined,
+                  });
+              }}
+              className={
+                onAir
+                  ? 'flex items-center gap-1 rounded-lg border-2 px-3 py-2 text-xs font-black transition-colors disabled:opacity-50 bg-amber-50 border-amber-400 text-amber-900'
+                  : 'flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors hover:bg-slate-50 disabled:opacity-50 bg-white text-slate-700'
+              }
+              style={onAir ? {} : { borderColor: color }}
+            >
+              {onAir && <span className="text-[9px] font-black text-amber-600">●</span>}
+              {p.number ? (
+                <span className="font-black" style={{ color: onAir ? undefined : color }}>
+                  #{p.number}
+                </span>
+              ) : null}
+              <span>{playerName}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      {renderTeam(home, homeColor, g.homeTeam || 'Home', true)}
+      {away.length > 0 && renderTeam(away, awayColor, g.awayTeam || 'Away', false)}
     </div>
   );
 }
