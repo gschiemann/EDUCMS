@@ -1418,7 +1418,28 @@ export class SportsService {
         const v = Math.round(Number(dto.value));
         const sec = Number.isFinite(v) && v > 0 ? v : len;
         ms = Math.min(sec, len || sec) * 1000;
-        running = len > 0;
+        // 2026-05-27 — operator bug 51494dff: "when I click the 20 or
+        // 30 second time clock reset it auto starts even if the game
+        // clock is stopped or paused, that break the rule that time
+        // clock and game clock are in sync always".
+        //
+        // Old behavior: `running = len > 0` — reset ALWAYS auto-started
+        // the shot clock if a length was configured, regardless of game
+        // state. Wrong for every sport: in basketball / water polo /
+        // lacrosse / hockey, the shot clock is supposed to start when
+        // the BALL goes live (= game clock starts), not when the ref
+        // resets the value. Resetting during a dead ball + auto-running
+        // sent the bug-filer's water polo clock counting down while
+        // the period clock sat at the timeout.
+        //
+        // New behavior: shot clock auto-runs after reset ONLY when the
+        // game clock is currently running. If game clock is paused,
+        // the shot clock parks at the new value and waits — it'll
+        // start when the operator starts the game clock (a separate
+        // wiring change in /clock 'start' could also kick this if we
+        // want auto-sync on start, but that's a Phase 2 lift). Honors
+        // Greg's "in sync always" rule.
+        running = game.clockRunning && len > 0;
         break;
       }
       default:
