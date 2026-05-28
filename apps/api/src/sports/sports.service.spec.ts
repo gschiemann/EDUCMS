@@ -1526,11 +1526,7 @@ describe('SportsService — ingestCtsSnapshot T2-1 fields', () => {
     expect(cts.awayShotClock).toMatchObject({ ms: 24000, running: true, raw: '24' });
   });
 
-  // TODO(T2-1): exclusions-into-penalties merge wasn't completed before
-  // the agent's session limit hit. Bridge POST body extension landed,
-  // parser promotion landed, but cleanCtsSnapshot doesn't yet merge
-  // CTS exclusions into stats.penalties. Re-dispatch follow-up agent.
-  it.skip('cleanCtsSnapshot accepts exclusions and merges them into stats.penalties', async () => {
+  it('cleanCtsSnapshot accepts exclusions and merges them into stats.penalties', async () => {
     const { service, game } = setup();
     const g: any = await newGame(service, 'water_polo');
 

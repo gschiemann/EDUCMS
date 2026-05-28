@@ -1767,8 +1767,19 @@ export class SportsService {
     }
     const nowMs = now.getTime();
     const nowIso = now.toISOString();
-    stats.penalties = (stats.penalties as unknown[])
-      .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
+    // CTS-sourced penalties (T2-1) have a different shape — slot/playerJersey/
+    // secondsRemaining — and carry their own running state from the CTS
+    // console. Preserve them as-is; only operator-shaped penalties are
+    // re-anchored to the game clock.
+    const ctsRows: Record<string, unknown>[] = [];
+    const operatorRows: Record<string, unknown>[] = [];
+    for (const p of stats.penalties as unknown[]) {
+      if (!p || typeof p !== 'object') continue;
+      const row = p as Record<string, unknown>;
+      if (row.source === 'cts') ctsRows.push(row);
+      else operatorRows.push(row);
+    }
+    const reAnchored = operatorRows
       .map((p) => ({
         id: String(p.id || ''),
         team: p.team === 'away' ? 'away' : 'home',
@@ -1779,6 +1790,7 @@ export class SportsService {
         running,
       }))
       .filter((p) => p.id && p.ms > 0);
+    stats.penalties = [...reAnchored, ...ctsRows];
     return stats;
   }
 
