@@ -68,10 +68,29 @@ const RS232_OPTIONS: Array<{ value: Rs232Role; label: string }> = [
   { value: 'aux', label: 'Aux / debug-only' },
   { value: 'off', label: 'Off (unused)' },
 ];
-const RS485_OPTIONS: Array<{ value: Rs485Role; label: string }> = [
-  { value: 'daktronics', label: 'Daktronics All Sport' },
-  { value: 'nevco', label: 'Nevco' },
-  { value: 'off', label: 'Off (unused)' },
+// 2026-05-28 — RS485 console decoders are NOT shipping yet. The EP6N
+// physically has an RS485 port (the hardware capability badge is
+// correct), but there is NO Daktronics / Nevco serial decoder anywhere
+// in the codebase: CtsBridge only consumes `wiring.rs232_1` /
+// `wiring.rs232_2`, and the player never reads `wiring.rs485`. The old
+// picker let an operator select "Daktronics All Sport" and persisted
+// it to Screen.config.wiring.rs485 — a field nothing reads. Selecting
+// it did literally nothing. That was the "real-button costume" Greg
+// called out, and it directly contradicted the integrations dashboard,
+// which already labels "Daktronics All Sport console tap-off" as
+// COMING_SOON (Sprint 13 Phase 4).
+//
+// Until a real RS485 decoder exists, the only honest persisted value is
+// 'off'. The 'daktronics' / 'nevco' role *values* stay in the schema
+// (Rs485Role) for forward-compat with the eventual decoder, but they
+// are NOT offered as live, selectable options here — we render the
+// console decoders as a disabled "coming soon" treatment instead so the
+// operator is never misled into thinking wiring a Daktronics console
+// works today. Same honesty pattern as the removed Stream Deck option
+// above.
+const RS485_DECODERS_COMING_SOON: Array<{ name: string }> = [
+  { name: 'Daktronics All Sport' },
+  { name: 'Nevco' },
 ];
 const GPIO_IN_OPTIONS: Array<{ value: GpioInRole; label: string }> = [
   { value: 'fire', label: 'Fire alarm dry contact' },
@@ -218,17 +237,43 @@ export function WiringPanel({ screenId, initialWiring, onSaved }: WiringPanelPro
         </div>
       </div>
 
-      {/* RS485 */}
+      {/* RS485 — port is real, decoders are not shipping yet. We show
+          an honest "coming soon" treatment instead of a live dropdown
+          that would persist a value nothing reads. */}
       <div className="mb-4">
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
           RS485 (pins 7-8, A/B)
         </h3>
-        <Select
-          label="Console protocol"
-          value={draft.rs485}
-          options={RS485_OPTIONS}
-          onChange={(v) => setDraft((d) => ({ ...d, rs485: v as Rs485Role }))}
-        />
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
+          <p className="text-sm font-medium text-slate-700">
+            Console protocol{' '}
+            <span className="ml-1 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+              Coming soon
+            </span>
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            RS485 scoring-console decoders aren&rsquo;t available yet. To
+            read a live game clock today, wire your console to an RS232
+            port above and select <strong>CTS Gen 6 console</strong>.
+          </p>
+          <ul className="mt-2 space-y-1">
+            {RS485_DECODERS_COMING_SOON.map((d) => (
+              <li
+                key={d.name}
+                className="flex items-center justify-between rounded border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-400"
+              >
+                <span>{d.name}</span>
+                <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                  Not yet supported
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[11px] text-slate-400">
+            Want this for your venue? Contact us &mdash; we&rsquo;re
+            building console tap-off.
+          </p>
+        </div>
       </div>
 
       {/* GPIO inputs */}
