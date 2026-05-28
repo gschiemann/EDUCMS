@@ -35,6 +35,7 @@ import {
   ImageIcon,
   Volume2,
   Radio,
+  Keyboard,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { RoleGate } from '@/components/RoleGate';
@@ -47,6 +48,8 @@ import {
   useShowGameOnScreens,
   useHideGameFromScreens,
   useGameRoster,
+  useGameEvents,
+  useUndoGameEvent,
   useSponsors,
   useUpdateSponsor,
   useTemplates,
@@ -179,6 +182,152 @@ function GameControl() {
   const [showCues, setShowCues] = useState(false);
   const [showHighlights, setShowHighlights] = useState(false);
   const [showPenalties, setShowPenalties] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // ── Keyboard shortcuts (Run mode only) ────────────────────────
+  // Gates on mode === 'run' so Setup-mode typing is never intercepted.
+  // Also no-ops when focus is on any editable element (input /
+  // textarea / select / contentEditable) so the operator can type
+  // in clock-edit fields without mis-scoring.
+  //
+  // Key map:
+  //   Space      — toggle clock start/stop
+  //   h          — home +1
+  //   a          — away +1
+  //   Shift+H    — home −1
+  //   Shift+A    — away −1
+  //   1–9        — fire cue tile N (by position in def.celebrations)
+  //   u          — undo last event (POST .../events/last/undo via
+  //                useUndoGameEvent; we undo the most-recent undoable
+  //                event returned by useGameEvents)
+  //   r          — reset clock (warn-and-confirm via window.confirm —
+  //                HoldChip can't be driven programmatically)
+  //   t          — timeout home
+  //   Shift+T    — timeout away
+  //   ?          — open shortcut cheat-sheet modal
+  //   Escape     — close modal (handled in modal itself)
+  //
+  // We capture a ref to the latest game + ctl so the effect closure
+  // never stales — the listener is re-registered only when mode changes.
+  const latestGame = useRef<any>(null);
+  const latestDef = useRef(def);
+  useEffect(() => { latestGame.current = game; }, [game]);
+  useEffect(() => { latestDef.current = def; }, [def]);
+
+  // We need the event list so `u` can undo the most recent undoable event.
+  // Use the same hook RecentEventsRail uses — share the query cache, zero
+  // extra fetches.
+  const { data: recentEvents } = useGameEvents(gameId);
+  const undoEvent = useUndoGameEvent(gameId);
+
+  useEffect(() => {
+    if (mode !== 'run') return;
+
+    const onKey = (e: KeyboardEvent) => {
+      // Skip when typing in a form element or contentEditable.
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      // Don't intercept browser shortcuts (Cmd/Ctrl + key).
+      if (e.metaKey || e.ctrlKey) return;
+
+      // ? — open cheat sheet (Shift + /)
+      if (e.key === '?') {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
+        return;
+      }
+
+      // Space — toggle clock
+      if (e.key === ' ') {
+        e.preventDefault();
+        const g = latestGame.current;
+        if (!g) return;
+        ctl.clock.mutate({ action: g.clockRunning ? 'pause' : 'start' });
+        return;
+      }
+
+      // h / Shift+H — home score +1 / −1
+      if (e.key === 'h') {
+        e.preventDefault();
+        ctl.score.mutate({ team: 'home', delta: 1 });
+        return;
+      }
+      if (e.key === 'H') {
+        e.preventDefault();
+        ctl.score.mutate({ team: 'home', delta: -1 });
+        return;
+      }
+
+      // a / Shift+A — away score +1 / −1
+      if (e.key === 'a') {
+        e.preventDefault();
+        ctl.score.mutate({ team: 'away', delta: 1 });
+        return;
+      }
+      if (e.key === 'A') {
+        e.preventDefault();
+        ctl.score.mutate({ team: 'away', delta: -1 });
+        return;
+      }
+
+      // u — undo most recent undoable event
+      if (e.key === 'u') {
+        e.preventDefault();
+        const first = recentEvents?.find((ev) => ev.undoable);
+        if (first && !undoEvent.isPending) {
+          undoEvent.mutate(first.id);
+        }
+        return;
+      }
+
+      // r — reset clock to segment start (warn-and-confirm)
+      if (e.key === 'r') {
+        e.preventDefault();
+        if (window.confirm('Reset clock to segment start?')) {
+          ctl.clock.mutate({ action: 'reset' });
+        }
+        return;
+      }
+
+      // t / Shift+T — timeout home / away
+      if (e.key === 't') {
+        e.preventDefault();
+        ctl.callTimeout.mutate({ team: 'home' });
+        return;
+      }
+      if (e.key === 'T') {
+        e.preventDefault();
+        ctl.callTimeout.mutate({ team: 'away' });
+        return;
+      }
+
+      // 1–9 — fire cue tile N (0-indexed: key '1' → index 0)
+      if (e.key >= '1' && e.key <= '9') {
+        e.preventDefault();
+        const d = latestDef.current;
+        if (!d) return;
+        const idx = parseInt(e.key, 10) - 1;
+        const cue = d.celebrations[idx];
+        if (cue) {
+          ctl.cue.mutate({ key: cue.key, target: 'ALL' as any });
+        }
+        return;
+      }
+    };
+
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, ctl, recentEvents, undoEvent]);
 
   // Stream overlay URL — copy to clipboard for OBS / vMix browser source.
   const [copied, setCopied] = useState(false);
@@ -336,6 +485,19 @@ function GameControl() {
             <ExternalLink className="h-4 w-4" />
             <span className="hidden sm:inline">Scoreboard</span>
           </Button>
+          {mode === 'run' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setShowShortcuts(true)}
+              title="Keyboard shortcuts (?)"
+              aria-label="Show keyboard shortcuts"
+            >
+              <Keyboard className="h-4 w-4" />
+              <span className="hidden sm:inline">Keys</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -612,6 +774,18 @@ function GameControl() {
             />
           </div>
         </div>
+      )}
+
+      {/* KEYBOARD SHORTCUT CHEAT-SHEET MODAL — triggered by ? key or
+          the Keys toolbar button. Closes on Escape or backdrop click.
+          Lists every shortcut + brief description for the operator.
+          Cue tile rows are dynamic — driven by def.celebrations so the
+          table stays correct as sport definitions change. */}
+      {mode === 'run' && showShortcuts && (
+        <ShortcutCheatSheet
+          def={def}
+          onClose={() => setShowShortcuts(false)}
+        />
       )}
     </div>
   );
@@ -3921,6 +4095,111 @@ function CelebrationPackPicker({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// ── ShortcutCheatSheet ─────────────────────────────────────────
+//
+// Keyboard shortcut reference modal. Triggered by the '?' key or the
+// Keys toolbar button. Closes on Escape or backdrop click.
+//
+// Lists static shortcuts first (clock, score, undo, clock reset,
+// timeouts, modal), then dynamic cue rows driven by def.celebrations
+// so the table stays correct as sport definitions evolve.
+//
+// Chromium-83 (Taurus): no `inset-*` / `inset: 0` — all absolute
+// positioning uses top-0 right-0 bottom-0 left-0 longhand.
+// Modal itself is dashboard-only (never runs on Taurus player), but
+// following the rule keeps the codebase consistent.
+function ShortcutCheatSheet({
+  def,
+  onClose,
+}: {
+  def: SportDefinition | undefined;
+  onClose: () => void;
+}) {
+  // Close on Escape
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  type Row = { keys: string; desc: string };
+
+  const STATIC_ROWS: Row[] = [
+    { keys: 'Space', desc: 'Start / stop clock (toggle)' },
+    { keys: 'h', desc: 'Home team +1' },
+    { keys: 'a', desc: 'Away team +1' },
+    { keys: 'Shift + H', desc: 'Home team −1' },
+    { keys: 'Shift + A', desc: 'Away team −1' },
+    { keys: 'u', desc: 'Undo last event' },
+    { keys: 'r', desc: 'Reset clock to segment start (confirms first)' },
+    { keys: 't', desc: 'Call timeout — home' },
+    { keys: 'Shift + T', desc: 'Call timeout — away' },
+    { keys: '?', desc: 'Open / close this shortcuts panel' },
+    { keys: 'Esc', desc: 'Close this panel' },
+  ];
+
+  const cueRows: Row[] = (def?.celebrations ?? [])
+    .slice(0, 9)
+    .map((c, i) => ({
+      keys: String(i + 1),
+      desc: `Fire cue: ${c.emoji ? `${c.emoji} ` : ''}${c.label}`,
+    }));
+
+  const allRows = [...STATIC_ROWS, ...cueRows];
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Keyboard shortcuts"
+      className="fixed top-0 left-0 right-0 bottom-0 z-[9000] flex items-center justify-center p-4 bg-slate-900/70"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <Keyboard className="h-4 w-4 text-slate-500" />
+            <h2 className="text-sm font-bold text-slate-900">Keyboard shortcuts</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-2 py-1 text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Shortcut rows */}
+        <div className="overflow-y-auto max-h-[70vh] divide-y divide-slate-50">
+          {allRows.map((row) => (
+            <div key={row.keys} className="flex items-center gap-3 px-5 py-2.5">
+              <kbd className="shrink-0 min-w-[72px] text-center bg-slate-100 border border-slate-200 rounded px-2 py-0.5 text-xs font-mono font-bold text-slate-700">
+                {row.keys}
+              </kbd>
+              <span className="text-sm text-slate-700">{row.desc}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer hint */}
+        <div className="px-5 py-3 bg-slate-50 border-t border-slate-100">
+          <p className="text-[11px] text-slate-400">
+            Shortcuts are active in Run mode only and do nothing when typing in a text field.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
