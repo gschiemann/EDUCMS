@@ -363,6 +363,7 @@ export class SportsService {
       cues, sponsors, roster, ribbonMessages, ribbonPresets,
       ribbonSpeed, ribbonSlides, ribbonScoreRepeat,
       scoreboardTemplate, ribbonTemplate, scorebugTemplate,
+      latestLiveOverlayEvent,
     ] = await Promise.all([
       this.prisma.client.gameEvent.findMany({
         where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
@@ -398,6 +399,14 @@ export class SportsService {
       resolveTemplate(game.scoreboardTemplateId),
       resolveTemplate(game.ribbonTemplateId),
       resolveTemplate(game.scorebugTemplateId),
+      // T2-5: latest live-game text overlay. Latest-wins — the board
+      // renders whatever the last LIVE_OVERLAY event says. `kind: 'clear'`
+      // means "no active overlay".
+      this.prisma.client.gameEvent.findFirst({
+        where: { gameId: id, type: 'LIVE_OVERLAY' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, payload: true, createdAt: true },
+      }),
     ]);
 
     return {
@@ -455,6 +464,21 @@ export class SportsService {
       scoreboardTemplate,
       ribbonTemplate,
       scorebugTemplate,
+      // T2-5: active live-game text overlay (null = none).
+      // `kind: 'clear'` means the last overlay was explicitly dismissed —
+      // the frontend treats that as null. Any other kind is the live overlay.
+      liveOverlay: (() => {
+        if (!latestLiveOverlayEvent) return null;
+        const p = (latestLiveOverlayEvent.payload as Record<string, unknown>) ?? {};
+        if (p.kind === 'clear') return null;
+        return {
+          id: latestLiveOverlayEvent.id,
+          kind: p.kind,
+          payload: p.payload ?? {},
+          snapshot: p.snapshot ?? {},
+          createdAt: latestLiveOverlayEvent.createdAt,
+        };
+      })(),
     };
   }
 
@@ -1377,6 +1401,30 @@ export class SportsService {
       prevClockMs,
       prevClockRunning,
     });
+
+    // T2-5: auto-clear live overlay when the clock starts. Penalty /
+    // injury overlays should disappear the moment play resumes — writing
+    // a clearing LIVE_OVERLAY event here means the board picks it up on
+    // the next 750ms poll without the operator needing to tap "Clear".
+    // Review overlays are NOT auto-cleared (they are persistent by design
+    // and require an explicit clear call).
+    if (action === 'start') {
+      const latestOverlay = await this.prisma.client.gameEvent.findFirst({
+        where: { gameId: id, type: 'LIVE_OVERLAY' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, payload: true },
+      });
+      const overlayKind = (latestOverlay?.payload as Record<string, unknown> | undefined)?.kind;
+      if (overlayKind && overlayKind !== 'clear' && overlayKind !== 'review') {
+        // Auto-clear non-persistent overlays — penalty, injury, timeout-banner.
+        await this.record(id, 'LIVE_OVERLAY', {
+          kind: 'clear',
+          auto: true,
+          reason: 'clock-start',
+        });
+      }
+    }
+
     return updated;
   }
 
@@ -3199,6 +3247,119 @@ export class SportsService {
       type: timeoutType,
       timeoutsRemaining: newRemaining,
     };
+  }
+
+  // ── live-game text overlay (T2-5) ─────────────────────────────
+
+  /**
+   * Fire a live-game text overlay on the scoreboard (and optionally
+   * ribbon / broadcast scorebug).  Four overlay kinds:
+   *
+   *   • penalty   — lower-third "HOLDING #44 — 10 YDS". Auto-clears
+   *                 on next clock start (3s default duration).
+   *   • review    — persistent "OFFICIAL REVIEW" banner. Stays until
+   *                 a separate /live-overlay/clear call.
+   *   • injury    — "INJURY TIMEOUT". Auto-clears on clock start.
+   *   • timeout-banner — "AWAY TIMEOUT — 2 LEFT" fly-in pill.
+   *
+   * The overlay is written as a LIVE_OVERLAY GameEvent. The board /
+   * ribbon / scorebug poll the `liveOverlay` field on the board
+   * response (latest LIVE_OVERLAY event wins, resolved in getBoard).
+   * On next clock `start`, clockAction() writes a clearing event
+   * automatically so the operator doesn't have to remember to clear.
+   */
+  async fireLiveOverlay(
+    tenantId: string,
+    id: string,
+    dto: {
+      kind: string;
+      payload?: Record<string, unknown>;
+    },
+    actorUserId?: string,
+  ) {
+    const game = await this.owned(tenantId, id);
+
+    const allowedKinds = ['penalty', 'review', 'injury', 'timeout-banner'] as const;
+    type OverlayKind = (typeof allowedKinds)[number];
+    const kind = allowedKinds.includes(dto.kind as OverlayKind)
+      ? (dto.kind as OverlayKind)
+      : null;
+    if (!kind) {
+      throw new BadRequestException(
+        `kind must be one of: ${allowedKinds.join(', ')}`,
+      );
+    }
+
+    // Sanitize payload fields per kind so arbitrary strings can't
+    // bloat the event row. All text capped at broadcast-safe lengths.
+    let cleanPayload: Record<string, unknown> = {};
+    const raw = dto.payload && typeof dto.payload === 'object' ? dto.payload : {};
+
+    if (kind === 'penalty') {
+      const team = raw.team === 'away' ? 'away' : 'home';
+      const jersey = this.cleanText(raw.jersey, 12) ?? '';
+      const infraction = this.cleanText(raw.infraction, 80) ?? '';
+      const yards = Number.isFinite(Number(raw.yards)) ? Number(raw.yards) : null;
+      cleanPayload = { team, jersey, infraction, yards };
+    } else if (kind === 'review') {
+      const description =
+        this.cleanText(raw.description, 120) ?? 'OFFICIAL REVIEW — RULING ON FIELD STANDS';
+      cleanPayload = { description };
+    } else if (kind === 'injury') {
+      const team = raw.team === 'away' ? 'away' : 'home';
+      const jersey = this.cleanText(raw.jersey, 12) ?? '';
+      const type = this.cleanText(raw.type, 60) ?? '';
+      cleanPayload = { team, jersey, type };
+    } else if (kind === 'timeout-banner') {
+      const team = raw.team === 'away' ? 'away' : 'home';
+      const remaining = Number.isFinite(Number(raw.remaining)) ? Number(raw.remaining) : null;
+      cleanPayload = { team, remaining };
+    }
+
+    const event = await this.record(id, 'LIVE_OVERLAY', {
+      kind,
+      payload: cleanPayload,
+      snapshot: this.cueSnapshot(game),
+    });
+
+    // Audit trail — who triggered what overlay.
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId || null,
+          action: 'SPORTS_LIVE_OVERLAY_FIRED',
+          targetType: 'Game',
+          targetId: id,
+          details: JSON.stringify({ kind, payload: cleanPayload, eventId: event.id }),
+        },
+      });
+    } catch { /* best-effort */ }
+
+    return { fired: true, kind, eventId: event.id };
+  }
+
+  /**
+   * Clear the active live-game text overlay. Writes a LIVE_OVERLAY
+   * event with `kind: 'clear'`; the board resolves the latest event
+   * so this immediately wins over any prior overlay.
+   */
+  async clearLiveOverlay(tenantId: string, id: string, actorUserId?: string) {
+    await this.owned(tenantId, id);
+    const event = await this.record(id, 'LIVE_OVERLAY', { kind: 'clear' });
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId || null,
+          action: 'SPORTS_LIVE_OVERLAY_CLEARED',
+          targetType: 'Game',
+          targetId: id,
+          details: JSON.stringify({ eventId: event.id }),
+        },
+      });
+    } catch { /* best-effort */ }
+    return { cleared: true, eventId: event.id };
   }
 
   /**

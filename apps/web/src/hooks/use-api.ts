@@ -2671,6 +2671,34 @@ export function useGameControl(gameId: string) {
       }),
   });
 
+
+  // ── T2-5: live-game text overlay ────────────────────────────────
+  // Fire a penalty / review / injury / timeout-banner overlay that
+  // appears on the board, ribbon, and concourse surfaces instantly.
+  // Review overlays are persistent (operator must explicitly clear);
+  // penalty / injury / timeout-banner auto-clear on the next clock
+  // start on the server side.
+  const liveOverlay = useMutation({
+    mutationFn: (body: {
+      kind: 'penalty' | 'review' | 'injury' | 'timeout-banner';
+      payload?: Record<string, unknown>;
+    }) =>
+      apiFetch(`/sports/games/${gameId}/live-overlay`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    // No cache invalidation needed — the board polls independently;
+    // the operator console doesn't need to reflect overlay state.
+  });
+
+  const clearLiveOverlay = useMutation({
+    mutationFn: () =>
+      apiFetch(`/sports/games/${gameId}/live-overlay/clear`, {
+        method: 'POST',
+      }),
+  });
+  // ────────────────────────────────────────────────────────────────
+
   return {
     score,
     clock,
@@ -2690,6 +2718,8 @@ export function useGameControl(gameId: string) {
     ribbonSlides,
     ribbonScoreRepeat,
     details,
+    liveOverlay,
+    clearLiveOverlay,
   };
 }
 

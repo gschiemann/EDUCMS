@@ -502,6 +502,53 @@ export class SportsController {
     return this.sports.fireCue(req.user.tenantId, id, body, req?.user?.id);
   }
 
+  // ── T2-5: live-game text overlay ─────────────────────────────
+
+  /**
+   * Fire a live-game text overlay banner. Four kinds:
+   *   • penalty       — "HOLDING #44 — 10 YDS" lower-third
+   *   • review        — "OFFICIAL REVIEW" persistent banner
+   *   • injury        — "INJURY TIMEOUT" (auto-clears on clock start)
+   *   • timeout-banner — "AWAY TIMEOUT — 2 LEFT" fly-in pill
+   *
+   * Body: `{ kind, payload }` where payload shape depends on kind.
+   */
+  @Post('games/:id/live-overlay')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  liveOverlay(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { kind?: string; payload?: Record<string, unknown> },
+  ) {
+    return this.sports.fireLiveOverlay(
+      req.user.tenantId,
+      id,
+      { kind: body?.kind ?? '', payload: body?.payload },
+      req?.user?.id,
+    );
+  }
+
+  /**
+   * Clear the currently-visible live overlay. Writes a clearing event;
+   * the board resolves the latest LIVE_OVERLAY event so this takes
+   * effect on the next 750ms poll.
+   */
+  @Post('games/:id/live-overlay/clear')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  clearLiveOverlay(@Request() req: any, @Param('id') id: string) {
+    return this.sports.clearLiveOverlay(req.user.tenantId, id, req?.user?.id);
+  }
+
   /** Read the AUTO-celebrate toggle — whether a live score feed should
    *  auto-fire the matching celebration on a score jump. */
   @Get('games/:id/auto-celebrate')
