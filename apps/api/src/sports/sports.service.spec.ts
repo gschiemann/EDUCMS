@@ -1292,3 +1292,138 @@ describe('SportsService — undo rail (undoEvent)', () => {
     await expect(service.undoEvent(TENANT, g2.id, ev.id)).rejects.toThrow(NotFoundException);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T2-7: Football play clock slaved to game clock
+// Verifies that syncPlayClockToGameClock fires correctly from every call site.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T2-7 — football play clock slaved to game clock', () => {
+  /**
+   * Helper: seed a football game with a configured play clock in stats.
+   * Returns the game row AND the service/game table so tests can inspect
+   * the in-memory DB state after mutations.
+   */
+  async function footballWithPlayClock(
+    service: SportsService,
+    gameTable: ReturnType<typeof makeTable>,
+    playClockMs = 40_000,
+    playClockRunning = true,
+  ) {
+    const g: any = await newGame(service, 'football');
+    gameTable.rows[0].stats = {
+      ...(gameTable.rows[0].stats ?? {}),
+      playClock: { ms: playClockMs, at: new Date().toISOString(), running: playClockRunning },
+    };
+    return g;
+  }
+
+  it('game clock pause freezes a running football play clock', async () => {
+    const { service, game } = setup();
+    await footballWithPlayClock(service, game, 35_000, true);
+    const g: any = game.rows[0];
+
+    await service.clockAction(TENANT, g.id, { action: 'pause' });
+
+    const pc = (game.rows[0].stats as any)?.playClock;
+    expect(pc).toBeDefined();
+    expect(pc.running).toBe(false);
+    // ms should be ≤ the original 35s (any elapsed time ticks it down).
+    expect(pc.ms).toBeLessThanOrEqual(35_000);
+    expect(pc.ms).toBeGreaterThanOrEqual(0);
+  });
+
+  it('game clock start re-anchors and runs a frozen football play clock', async () => {
+    const { service, game } = setup();
+    // Play clock frozen at 28s (after a stoppage the operator reset it but
+    // hasn't started the game clock yet).
+    await footballWithPlayClock(service, game, 28_000, false);
+    const g: any = game.rows[0];
+    // Game clock is currently stopped.
+    game.rows[0].clockRunning = false;
+
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+
+    const pc = (game.rows[0].stats as any)?.playClock;
+    expect(pc).toBeDefined();
+    expect(pc.running).toBe(true);
+    // ms should still be ~28s (it was frozen, no elapsed time).
+    expect(pc.ms).toBeLessThanOrEqual(28_000);
+    expect(pc.ms).toBeGreaterThan(0);
+  });
+
+  it('game clock start with an expired play clock resets to 40s', async () => {
+    const { service, game } = setup();
+    // Play clock already at 0 — operator forgot to reset between plays.
+    await footballWithPlayClock(service, game, 0, false);
+    const g: any = game.rows[0];
+    game.rows[0].clockRunning = false;
+
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+
+    const pc = (game.rows[0].stats as any)?.playClock;
+    expect(pc).toBeDefined();
+    expect(pc.running).toBe(true);
+    expect(pc.ms).toBe(40_000); // auto-reset to the standard fresh-snap duration
+  });
+
+  it('segment advance resets the football play clock to 40s (stopped)', async () => {
+    const { service, game } = setup();
+    await footballWithPlayClock(service, game, 22_000, true);
+    const g: any = game.rows[0];
+    // Advance from Q1 to Q2.
+    await service.setSegment(TENANT, g.id, { delta: 1 });
+
+    const pc = (game.rows[0].stats as any)?.playClock;
+    expect(pc).toBeDefined();
+    expect(pc.ms).toBe(40_000);
+    expect(pc.running).toBe(false);
+  });
+
+  it('callTimeout resets football play clock to 25s (stopped)', async () => {
+    const { service, game } = setup();
+    await footballWithPlayClock(service, game, 38_000, true);
+    const g: any = game.rows[0];
+    // Give the team timeouts so the call doesn't throw.
+    game.rows[0].stats = { ...(game.rows[0].stats as any), homeTimeouts: 3 };
+
+    await service.callTimeout(TENANT, g.id, { team: 'home' });
+
+    const pc = (game.rows[0].stats as any)?.playClock;
+    expect(pc).toBeDefined();
+    expect(pc.ms).toBe(25_000); // stoppage duration
+    expect(pc.running).toBe(false);
+  });
+
+  it('non-football game (basketball) is not affected by syncPlayClockToGameClock', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'basketball');
+    // Seed a shot clock to confirm shot-clock sync still works; no play clock.
+    game.rows[0].stats = {
+      shotClock: { len: 24, ms: 20_000, running: true, at: new Date().toISOString() },
+    };
+    game.rows[0].clockRunning = true;
+
+    await service.clockAction(TENANT, g.id, { action: 'pause' });
+
+    // Shot clock should be frozen (existing behaviour).
+    const sc = (game.rows[0].stats as any)?.shotClock;
+    expect(sc?.running).toBe(false);
+    // No playClock key should appear (it was never seeded).
+    const pc = (game.rows[0].stats as any)?.playClock;
+    expect(pc).toBeUndefined();
+  });
+
+  it('football game without a play clock configured is a no-op (backwards compat)', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'football');
+    // stats without playClock key.
+    game.rows[0].stats = { homeTimeouts: 3, awayTimeouts: 3 };
+    game.rows[0].clockRunning = false;
+
+    // Should not throw and should not add a playClock entry.
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    const pc = (game.rows[0].stats as any)?.playClock;
+    expect(pc).toBeUndefined();
+  });
+});

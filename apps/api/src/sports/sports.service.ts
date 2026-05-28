@@ -1354,6 +1354,15 @@ export class SportsService {
       now,
     );
     if (shotStats) mergedStats = shotStats;
+    // T2-7 — Football play clock slaves to game clock (mirrors shot clock).
+    const playStats = this.syncPlayClockToGameClock(
+      mergedStats || sourceStats,
+      def.key,
+      clockMutated,
+      clockRunning,
+      now,
+    );
+    if (playStats) mergedStats = playStats;
     if (mergedStats) data.stats = mergedStats as any;
 
     const updated = await this.prisma.client.game.update({ where: { id }, data });
@@ -1615,6 +1624,67 @@ export class SportsService {
     return stats;
   }
 
+  /**
+   * T2-7 — Football play clock slaved to the game clock.
+   *
+   * Mirror of syncShotClockToGameClock but for the football 40/25-second
+   * play clock. Only fires when:
+   *   1. clockMutated is true (start/pause transitions — NOT set/reset).
+   *   2. The sport is FOOTBALL (def.key === 'football').
+   *   3. stats.playClock is present (backwards-compat: games without a
+   *      configured play clock are a no-op).
+   *
+   * Behavior:
+   *   - 'pause' (clockMutated, running=false): freeze play clock at its
+   *     current live value. The ref's whistle stops both clocks together.
+   *   - 'start' (clockMutated, running=true): if armed (running was already
+   *     true or ms > 0), re-anchor at the current live value and mark
+   *     running. If the play clock was already at 0, auto-resets to 40s
+   *     (a snap without a prior reset — defensive, not the normal path).
+   *   - After callTimeout the play clock is pre-set to 25s and NOT running;
+   *     the next game-clock start will start it from there (armed = ms > 0).
+   *
+   * `sportKey` is passed in rather than re-loading the sport def so this
+   * helper stays pure (no async, no DB) and shares the caller's def lookup.
+   */
+  private syncPlayClockToGameClock(
+    rawStats: unknown,
+    sportKey: string,
+    clockMutated: boolean,
+    running: boolean,
+    now: Date,
+  ): Record<string, unknown> | null {
+    if (!clockMutated) return null;
+    // Only football has a play clock.
+    if (sportKey !== 'football') return null;
+    if (!rawStats || typeof rawStats !== 'object') return null;
+    const stats = { ...(rawStats as Record<string, unknown>) };
+    const prev = (stats.playClock && typeof stats.playClock === 'object')
+      ? (stats.playClock as Record<string, unknown>)
+      : null;
+    if (!prev) return null; // no play clock configured → no-op
+    // Project current live ms from the prior anchor (same math as setPlayClock).
+    let ms = Math.max(0, Number(prev.ms) || 0);
+    const prevRunning = !!prev.running;
+    if (prevRunning) {
+      const at = new Date(String(prev.at || '')).getTime();
+      if (Number.isFinite(at)) {
+        ms = Math.max(0, ms - (now.getTime() - at));
+      }
+    }
+    if (!running) {
+      // Game clock paused → freeze play clock at current live value.
+      stats.playClock = { ms, at: now.toISOString(), running: false };
+    } else {
+      // Game clock started → re-anchor and run.
+      // If clock has already expired, reset to 40s (the standard fresh-snap
+      // duration). This guards against the operator forgetting to reset.
+      if (ms <= 0) ms = 40_000;
+      stats.playClock = { ms, at: now.toISOString(), running: true };
+    }
+    return stats;
+  }
+
   private syncPenaltiesToClock(
     rawStats: unknown,
     running: boolean,
@@ -1764,11 +1834,27 @@ export class SportsService {
     // from 0; without re-anchoring here, a running soccer clock would
     // jump forward by the entire halftime gap. 'none' clocks (baseball,
     // volleyball) have no clock to reset.
+    const now = new Date();
     const data: Record<string, unknown> = { segment };
     if (def.clock.type !== 'none') {
       data.clockMs = this.segmentStartMs(def);
       data.clockRunning = false;
-      data.clockUpdatedAt = new Date();
+      data.clockUpdatedAt = now;
+    }
+
+    // T2-7 — Football: segment advance stops the game clock, so also
+    // reset the play clock to 40s (fresh-snap duration for the new
+    // quarter). syncPlayClockToGameClock freezes it — the operator will
+    // start it when they start the game clock for the new period.
+    if (def.key === 'football') {
+      const currentStats: Record<string, unknown> =
+        game.stats && typeof game.stats === 'object'
+          ? { ...(game.stats as Record<string, unknown>) }
+          : {};
+      if (currentStats.playClock) {
+        currentStats.playClock = { ms: 40_000, at: now.toISOString(), running: false };
+        data.stats = currentStats as any;
+      }
     }
 
     const updated = await this.prisma.client.game.update({ where: { id }, data });
@@ -1807,16 +1893,31 @@ export class SportsService {
       if (!expired) continue;
 
       const now = new Date();
+      // T2-7 — Football: any clock expiry stops the game clock → reset
+      // the play clock to 40s and freeze it. The syncPlayClockToGameClock
+      // helper handles this but autoAdvanceExpiredClocks writes the game
+      // row directly (no clockAction call), so we build the stats patch here.
+      const playClockPatch = ((): Record<string, unknown> | null => {
+        if (def.key !== 'football') return null;
+        const s = game.stats && typeof game.stats === 'object'
+          ? (game.stats as Record<string, unknown>)
+          : {};
+        if (!s.playClock) return null;
+        return { ...s, playClock: { ms: 40_000, at: now.toISOString(), running: false } };
+      })();
+
       if (game.segment >= def.segment.count) {
         // Final regulation segment ended — stop the clock and let the
         // operator decide overtime / final. Never auto-force OT.
+        const finalData: Record<string, unknown> = {
+          clockRunning: false,
+          clockMs: def.clock.type === 'countdown' ? 0 : segMs,
+          clockUpdatedAt: now,
+        };
+        if (playClockPatch) finalData.stats = playClockPatch as any;
         await this.prisma.client.game.update({
           where: { id: game.id },
-          data: {
-            clockRunning: false,
-            clockMs: def.clock.type === 'countdown' ? 0 : segMs,
-            clockUpdatedAt: now,
-          },
+          data: finalData,
         });
         await this.record(game.id, 'CLOCK', { action: 'expired', clockRunning: false });
         // T1-5: Horn cue at every clock expiry — fires on both the final
@@ -1834,14 +1935,16 @@ export class SportsService {
       } else {
         // Roll to the next segment with a fresh, stopped clock.
         const segment = game.segment + 1;
+        const advanceData: Record<string, unknown> = {
+          segment,
+          clockMs: this.segmentStartMs(def),
+          clockRunning: false,
+          clockUpdatedAt: now,
+        };
+        if (playClockPatch) advanceData.stats = playClockPatch as any;
         await this.prisma.client.game.update({
           where: { id: game.id },
-          data: {
-            segment,
-            clockMs: this.segmentStartMs(def),
-            clockRunning: false,
-            clockUpdatedAt: now,
-          },
+          data: advanceData,
         });
         await this.record(game.id, 'SEGMENT', { segment, auto: true });
         await this.record(game.id, 'CLOCK', { action: 'auto-advance', clockRunning: false });
