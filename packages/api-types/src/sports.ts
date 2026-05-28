@@ -112,6 +112,30 @@ export interface GamePenalty {
   running: boolean;
 }
 
+/**
+ * Per-segment auto-reset rules (T2-10). Applied by `setSegment` and
+ * `autoAdvanceExpiredClocks` on every segment advance.
+ *
+ * - `homeFouls` / `awayFouls` — reset to 0 on every new segment
+ *   (basketball periods, hockey periods, etc.).
+ * - `homeTimeouts` / `awayTimeouts` — reset policy:
+ *     'segment' — reset at every segment boundary (rare; most sports don't)
+ *     'half'    — reset at the midpoint (after segment count/2 — e.g.
+ *                 halftime in football/basketball, after Q2 or P3)
+ *     'never'   — never auto-reset (water polo full-game timeout bank)
+ * - `shotClock` — if true, the shot clock is reset to its configured
+ *   full length and stopped when the segment advances.
+ *
+ * A sport WITHOUT this field behaves exactly as before: no resets.
+ */
+export interface SegmentResetRules {
+  homeFouls?: boolean;
+  awayFouls?: boolean;
+  homeTimeouts?: 'half' | 'segment' | 'never';
+  awayTimeouts?: 'half' | 'segment' | 'never';
+  shotClock?: boolean;
+}
+
 export interface SportDefinition {
   key: string;
   name: string;
@@ -126,6 +150,11 @@ export interface SportDefinition {
   score: { unit: string; increments: number[] };
   stats: SportStatField[];
   celebrations: SportCelebration[];
+  /**
+   * Auto-reset rules applied on every segment advance (T2-10).
+   * Absent = no auto-resets (fully backwards-compatible).
+   */
+  segmentReset?: SegmentResetRules;
   /** Sports with a timed penalty box — hockey, lacrosse, field
    *  hockey, water polo. `presets` are the quick-pick infraction
    *  durations the operator picks from; the penalty clock counts
@@ -160,6 +189,11 @@ const FOOTBALL: SportDefinition = {
   clock: { type: 'countdown', segmentMs: 12 * 60_000 },
   segment: { name: 'Quarter', count: 4, overtime: true },
   score: { unit: 'points', increments: [1, 2, 3, 6] },
+  // T2-10: timeouts reset at halftime (after Q2). Fouls and shot clock N/A.
+  segmentReset: {
+    homeTimeouts: 'half',
+    awayTimeouts: 'half',
+  },
   stats: [
     { key: 'down', label: 'Down', scope: 'game', type: 'number', min: 1, max: 4 },
     { key: 'distance', label: 'To Go', scope: 'game', type: 'number', min: 0, max: 99 },
@@ -194,6 +228,15 @@ const BASKETBALL: SportDefinition = {
   // 24s pro / 30s college; 14s offensive-rebound short reset. HS varies
   // (35s where adopted, or off).
   shotClock: { full: 24, short: 14, options: [0, 24, 30, 35] },
+  // T2-10: fouls reset every period; timeouts reset at halftime (after Q2).
+  // Shot clock resets to configured full length at every period boundary.
+  segmentReset: {
+    homeFouls: true,
+    awayFouls: true,
+    homeTimeouts: 'half',
+    awayTimeouts: 'half',
+    shotClock: true,
+  },
   stats: [
     { key: 'homeFouls', label: 'Home Fouls', scope: 'home', type: 'number', min: 0, max: 30 },
     { key: 'awayFouls', label: 'Away Fouls', scope: 'away', type: 'number', min: 0, max: 30 },
@@ -351,6 +394,11 @@ const HOCKEY: SportDefinition = {
   clock: { type: 'countdown', segmentMs: 17 * 60_000 },
   segment: { name: 'Period', count: 3, overtime: true },
   score: { unit: 'goals', increments: [1] },
+  // T2-10: hockey doesn't have a shot clock by default, but if one is
+  // configured (future) it resets at period start. No fouls/timeouts to reset.
+  segmentReset: {
+    shotClock: true,
+  },
   stats: [
     { key: 'homeShots', label: 'Home Shots', scope: 'home', type: 'number', min: 0, max: 99 },
     { key: 'awayShots', label: 'Away Shots', scope: 'away', type: 'number', min: 0, max: 99 },
@@ -388,6 +436,10 @@ const LACROSSE: SportDefinition = {
   // 80s NCAA men's shot clock; 60s short reset on a re-start in the
   // offensive half.
   shotClock: { full: 80, short: 60, options: [0, 60, 80] },
+  // T2-10: shot clock resets at every quarter boundary.
+  segmentReset: {
+    shotClock: true,
+  },
   stats: [
     { key: 'homeShots', label: 'Home Shots', scope: 'home', type: 'number', min: 0, max: 99 },
     { key: 'awayShots', label: 'Away Shots', scope: 'away', type: 'number', min: 0, max: 99 },
@@ -459,6 +511,11 @@ const WATER_POLO: SportDefinition = {
   // polo beta tester — the console now shows the shot-clock controls
   // because this field is set.
   shotClock: { full: 30, short: 20, options: [0, 20, 30] },
+  // T2-10: shot clock resets at every quarter boundary. Timeouts bank
+  // is per-game, not per-half — 'never' so they're preserved.
+  segmentReset: {
+    shotClock: true,
+  },
   stats: [
     { key: 'homeShots', label: 'Home Shots', scope: 'home', type: 'number', min: 0, max: 99 },
     { key: 'awayShots', label: 'Away Shots', scope: 'away', type: 'number', min: 0, max: 99 },

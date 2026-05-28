@@ -1347,11 +1347,14 @@ export class SportsService {
     const clockMutated = action === 'start' || action === 'pause';
     let mergedStats = this.syncPenaltiesToClock(game.stats, clockRunning, now);
     const sourceStats = mergedStats || game.stats;
+    // T2-10 / Invariant #6: pass the post-action game clock so the
+    // shot clock is clamped to it (e.g. "0:08 left in Q4" case).
     const shotStats = this.syncShotClockToGameClock(
       sourceStats,
       clockMutated,
       clockRunning,
       now,
+      clockMs,
     );
     if (shotStats) mergedStats = shotStats;
     // T2-7 — Football play clock slaves to game clock (mirrors shot clock).
@@ -1469,6 +1472,13 @@ export class SportsService {
       }
       default:
         throw new BadRequestException('action must be configure | start | stop | reset');
+    }
+
+    // T2-10 / Invariant #6: clamp shot clock to the live game clock so
+    // it can never read higher than the remaining game time.
+    const liveGameClockMs = this.liveClockMs(game);
+    if (liveGameClockMs >= 0) {
+      ms = Math.min(ms, liveGameClockMs);
     }
 
     const shotClock = { len, ms, at: new Date().toISOString(), running };
@@ -1592,6 +1602,14 @@ export class SportsService {
     clockMutated: boolean,
     running: boolean,
     now: Date,
+    /**
+     * T2-10 / Invariant #6: the live game-clock remaining at the instant
+     * of this sync. When provided, the shot clock is clamped to this value
+     * so it can never read higher than the game clock (e.g. "0:08 left in
+     * Q4 but shot clock still showing 0:24"). Pass undefined to skip the
+     * clamp (callers that don't have the game-clock value handy).
+     */
+    gameClockMs?: number,
   ): Record<string, unknown> | null {
     if (!clockMutated) return null;
     if (!rawStats || typeof rawStats !== 'object') return null;
@@ -1611,6 +1629,10 @@ export class SportsService {
       if (Number.isFinite(at)) {
         ms = Math.max(0, ms - (now.getTime() - at));
       }
+    }
+    // T2-10 / Invariant #6: clamp shot clock to game clock remaining.
+    if (gameClockMs !== undefined && gameClockMs >= 0) {
+      ms = Math.min(ms, gameClockMs);
     }
     // Re-anchor: same `at` as the game clock's write so projections
     // on either clock from this point forward share a single source
@@ -1710,6 +1732,76 @@ export class SportsService {
       }))
       .filter((p) => p.id && p.ms > 0);
     return stats;
+  }
+
+  /**
+   * T2-10: Apply per-sport segment-reset rules to the stats blob.
+   *
+   * Returns an object with only the STAT keys that changed (so the
+   * caller can merge just those into Game.stats and write individual
+   * STAT GameEvents for the undo rail), plus a `shotClockReset`
+   * boolean so the caller can do the shotClock anchor update
+   * separately (it needs `def` + `now`).
+   *
+   * @param def       The sport definition (carries segmentReset).
+   * @param rawStats  Current Game.stats (JSON blob, may be null).
+   * @param newSegment The segment index we're advancing TO (1-based).
+   */
+  private computeSegmentResets(
+    def: import('@cms/api-types').SportDefinition,
+    rawStats: unknown,
+    newSegment: number,
+  ): { statDeltas: Record<string, unknown>; shotClockReset: boolean } {
+    const rules = def.segmentReset;
+    const statDeltas: Record<string, unknown> = {};
+    let shotClockReset = false;
+    if (!rules) return { statDeltas, shotClockReset };
+
+    const stats: Record<string, unknown> =
+      rawStats && typeof rawStats === 'object'
+        ? (rawStats as Record<string, unknown>)
+        : {};
+
+    // Foul resets — every segment boundary.
+    if (rules.homeFouls && (stats.homeFouls ?? 0) !== 0) {
+      statDeltas.homeFouls = 0;
+    }
+    if (rules.awayFouls && (stats.awayFouls ?? 0) !== 0) {
+      statDeltas.awayFouls = 0;
+    }
+
+    // Timeout resets — 'segment' = always; 'half' = only at the halfway
+    // boundary (after segment count/2 in a 4-quarter sport that's after Q2).
+    const halfPoint = Math.floor(def.segment.count / 2);
+    const atHalf = newSegment === halfPoint + 1; // advancing INTO the second half
+    const maxTimeouts = (key: 'homeTimeouts' | 'awayTimeouts'): number => {
+      const field = def.stats.find((f) => f.key === key);
+      return field?.max ?? 3;
+    };
+
+    if (rules.homeTimeouts === 'segment') {
+      const fullVal = maxTimeouts('homeTimeouts');
+      if ((stats.homeTimeouts ?? fullVal) !== fullVal) statDeltas.homeTimeouts = fullVal;
+    } else if (rules.homeTimeouts === 'half' && atHalf) {
+      const fullVal = maxTimeouts('homeTimeouts');
+      if ((stats.homeTimeouts ?? fullVal) !== fullVal) statDeltas.homeTimeouts = fullVal;
+    }
+
+    if (rules.awayTimeouts === 'segment') {
+      const fullVal = maxTimeouts('awayTimeouts');
+      if ((stats.awayTimeouts ?? fullVal) !== fullVal) statDeltas.awayTimeouts = fullVal;
+    } else if (rules.awayTimeouts === 'half' && atHalf) {
+      const fullVal = maxTimeouts('awayTimeouts');
+      if ((stats.awayTimeouts ?? fullVal) !== fullVal) statDeltas.awayTimeouts = fullVal;
+    }
+
+    // Shot clock reset flag — the caller handles the actual anchor update
+    // because it needs `def.shotClock.full` and a timestamp.
+    if (rules.shotClock && def.shotClock) {
+      shotClockReset = true;
+    }
+
+    return { statDeltas, shotClockReset };
   }
 
   /**
@@ -1842,19 +1934,53 @@ export class SportsService {
       data.clockUpdatedAt = now;
     }
 
-    // T2-7 — Football: segment advance stops the game clock, so also
-    // reset the play clock to 40s (fresh-snap duration for the new
-    // quarter). syncPlayClockToGameClock freezes it — the operator will
-    // start it when they start the game clock for the new period.
-    if (def.key === 'football') {
-      const currentStats: Record<string, unknown> =
-        game.stats && typeof game.stats === 'object'
-          ? { ...(game.stats as Record<string, unknown>) }
+    // T2-10: apply per-sport segment-reset rules AND T2-7's football
+    // play-clock reset in one merged stats write. Both are
+    // complementary: T2-10 handles homeFouls/awayFouls/timeouts/shot
+    // clock per SportDefinition; T2-7 specifically resets the football
+    // play clock to 40s on quarter advance.
+    const { statDeltas, shotClockReset } = this.computeSegmentResets(
+      def,
+      game.stats,
+      segment,
+    );
+    let mergedStats: Record<string, unknown> =
+      game.stats && typeof game.stats === 'object'
+        ? { ...(game.stats as Record<string, unknown>) }
+        : {};
+    if (Object.keys(statDeltas).length > 0) {
+      mergedStats = { ...mergedStats, ...statDeltas };
+    }
+    if (shotClockReset && def.shotClock) {
+      const fullMs = def.shotClock.full * 1000;
+      // Clamp shot clock to the (just-reset) game clock — both start at
+      // their segment-start values, so this is a no-op in normal play but
+      // keeps the invariant clean (Invariant #6 from the clock state doc).
+      const gameClockMs = data.clockMs !== undefined
+        ? Number(data.clockMs)
+        : this.segmentStartMs(def);
+      const clampedMs = Math.min(fullMs, gameClockMs);
+      const prevShotClock =
+        mergedStats.shotClock && typeof mergedStats.shotClock === 'object'
+          ? (mergedStats.shotClock as Record<string, unknown>)
           : {};
-      if (currentStats.playClock) {
-        currentStats.playClock = { ms: 40_000, at: now.toISOString(), running: false };
-        data.stats = currentStats as any;
+      const len = Number(prevShotClock.len) || 0;
+      if (len > 0) {
+        // Only reset if a shot clock length is configured.
+        mergedStats.shotClock = {
+          len,
+          ms: clampedMs,
+          at: now.toISOString(),
+          running: false,
+        };
       }
+    }
+    // T2-7: football play-clock reset to 40s on quarter advance.
+    if (def.key === 'football' && mergedStats.playClock) {
+      mergedStats.playClock = { ms: 40_000, at: now.toISOString(), running: false };
+    }
+    if (Object.keys(mergedStats).length > 0) {
+      data.stats = mergedStats as any;
     }
 
     const updated = await this.prisma.client.game.update({ where: { id }, data });
@@ -1864,6 +1990,29 @@ export class SportsService {
       prevSegment,
       prevClockMs,
     });
+
+    // T2-10: write individual STAT GameEvents for each reset field so the
+    // undo rail can target them independently.
+    for (const [key, newVal] of Object.entries(statDeltas)) {
+      const oldVal =
+        game.stats && typeof game.stats === 'object'
+          ? (game.stats as Record<string, unknown>)[key] ?? null
+          : null;
+      await this.record(id, 'STAT', {
+        stats: { [key]: newVal },
+        oldValues: { [key]: oldVal },
+        source: 'segment-reset',
+        segment,
+      });
+    }
+    if (shotClockReset && def.shotClock) {
+      await this.record(id, 'STAT', {
+        stats: { shotClock: mergedStats.shotClock },
+        source: 'segment-reset',
+        segment,
+      });
+    }
+
     return updated;
   }
 
@@ -1935,19 +2084,79 @@ export class SportsService {
       } else {
         // Roll to the next segment with a fresh, stopped clock.
         const segment = game.segment + 1;
-        const advanceData: Record<string, unknown> = {
+        const segmentClockMs = this.segmentStartMs(def);
+        const autoData: Record<string, unknown> = {
           segment,
-          clockMs: this.segmentStartMs(def),
+          clockMs: segmentClockMs,
           clockRunning: false,
           clockUpdatedAt: now,
         };
-        if (playClockPatch) advanceData.stats = playClockPatch as any;
+
+        // T2-10: apply per-sport segment-reset rules on auto-advance too.
+        const { statDeltas: autoStatDeltas, shotClockReset: autoShotReset } =
+          this.computeSegmentResets(def, game.stats, segment);
+        let autoStats: Record<string, unknown> =
+          game.stats && typeof game.stats === 'object'
+            ? { ...(game.stats as Record<string, unknown>) }
+            : {};
+        if (Object.keys(autoStatDeltas).length > 0) {
+          autoStats = { ...autoStats, ...autoStatDeltas };
+        }
+        if (autoShotReset && def.shotClock) {
+          const fullMs = def.shotClock.full * 1000;
+          const clampedMs = Math.min(fullMs, segmentClockMs);
+          const prevSC =
+            autoStats.shotClock && typeof autoStats.shotClock === 'object'
+              ? (autoStats.shotClock as Record<string, unknown>)
+              : {};
+          const len = Number(prevSC.len) || 0;
+          if (len > 0) {
+            autoStats.shotClock = {
+              len,
+              ms: clampedMs,
+              at: now.toISOString(),
+              running: false,
+            };
+          }
+        }
+        // T2-7: football play-clock reset on auto-advance.
+        if (playClockPatch && typeof playClockPatch === 'object') {
+          autoStats = { ...autoStats, ...(playClockPatch as Record<string, unknown>) };
+        }
+        if (Object.keys(autoStats).length > 0) {
+          autoData.stats = autoStats as any;
+        }
+
         await this.prisma.client.game.update({
           where: { id: game.id },
-          data: advanceData,
+          data: autoData,
         });
         await this.record(game.id, 'SEGMENT', { segment, auto: true });
         await this.record(game.id, 'CLOCK', { action: 'auto-advance', clockRunning: false });
+
+        // T2-10: individual STAT events for each reset (undo rail).
+        for (const [key, newVal] of Object.entries(autoStatDeltas)) {
+          const oldVal =
+            game.stats && typeof game.stats === 'object'
+              ? (game.stats as Record<string, unknown>)[key] ?? null
+              : null;
+          await this.record(game.id, 'STAT', {
+            stats: { [key]: newVal },
+            oldValues: { [key]: oldVal },
+            source: 'segment-reset',
+            segment,
+            auto: true,
+          });
+        }
+        if (autoShotReset && def.shotClock) {
+          await this.record(game.id, 'STAT', {
+            stats: { shotClock: autoStats.shotClock },
+            source: 'segment-reset',
+            segment,
+            auto: true,
+          });
+        }
+
         // T1-5: Horn cue for end-of-period. Carries the OLD segment label
         // ("Q1 END", "PERIOD 2 END") so the overlay reads correctly — the
         // segment row has already advanced to `segment` above.
@@ -2014,10 +2223,18 @@ export class SportsService {
     }
 
     // Sport rules: the baseball/softball count cascades automatically.
-    const segmentDelta =
-      game.sport === 'baseball' || game.sport === 'softball'
-        ? this.applyBaseballCount(next)
-        : 0;
+    // T2-10: capture pre-cascade state to detect strikeout / walk events
+    // so we can fire their celebration CUEs (both were dead code before).
+    const preStrikes = typeof next.strikes === 'number' ? next.strikes : 0;
+    const preBalls = typeof next.balls === 'number' ? next.balls : 0;
+    const preOuts = typeof next.outs === 'number' ? next.outs : 0;
+    const isBaseballSport = game.sport === 'baseball' || game.sport === 'softball';
+    const segmentDelta = isBaseballSport ? this.applyBaseballCount(next) : 0;
+    // Detect what event(s) the cascade produced.
+    const postStrikes = typeof next.strikes === 'number' ? next.strikes : 0;
+    const postOuts = typeof next.outs === 'number' ? next.outs : 0;
+    const wasStrikeout = isBaseballSport && preStrikes >= 3 && postStrikes === 0 && postOuts > preOuts;
+    const wasWalk = isBaseballSport && preBalls >= 4 && postStrikes === 0;
 
     const data: Record<string, unknown> = { stats: next as any };
     if (segmentDelta) {
@@ -2029,6 +2246,30 @@ export class SportsService {
     // Include oldValues alongside newValues so the undo rail can restore.
     await this.record(id, 'STAT', { stats: next, oldValues });
     if (segmentDelta) await this.record(id, 'SEGMENT', { segment: data.segment });
+
+    // T2-10: fire celebration CUEs for strikeout. Walk is informational
+    // but the sport def has no 'walk' celebration, so only fire strikeout.
+    // `wasWalk` is detected here for future extension — it's intentionally
+    // not wired to a CUE since the baseball def has no walk celebration.
+    void wasWalk; // suppress unused warning
+    if (wasStrikeout) {
+      const strikeoutCue = def.celebrations.find((c) => c.key === 'strikeout');
+      if (strikeoutCue) {
+        await this.record(id, 'CUE', {
+          key: strikeoutCue.key,
+          label: strikeoutCue.label,
+          emoji: strikeoutCue.emoji,
+          target: 'ALL',
+          audioUrl: null,
+          sponsorName: null,
+          sponsorLogoUrl: null,
+          auto: true,
+          source: 'rule',
+          snapshot: this.cueSnapshot(updated),
+        });
+      }
+    }
+
     return updated;
   }
 
@@ -2137,6 +2378,27 @@ export class SportsService {
       matchOver ? 'STATUS' : 'SEGMENT',
       matchOver ? { status: 'FINAL' } : { segment: data.segment },
     );
+
+    // T2-10: fire the 'setWin' celebration CUE — it was dead code before
+    // because applySetWin wrote a SEGMENT/STATUS event but never a CUE.
+    // The sport def for both volleyball and pickleball carries this celebration.
+    const setWinCue = def.celebrations.find((c) => c.key === 'setWin');
+    if (setWinCue) {
+      await this.record(game.id, 'CUE', {
+        key: setWinCue.key,
+        label: setWinCue.label,
+        emoji: setWinCue.emoji,
+        target: 'ALL',
+        audioUrl: null,
+        sponsorName: null,
+        sponsorLogoUrl: null,
+        auto: true,
+        team: winner,
+        source: 'rule',
+        snapshot: this.cueSnapshot(updated),
+      });
+    }
+
     return updated;
   }
 
@@ -2262,7 +2524,9 @@ export class SportsService {
         const running = Boolean(dto.clockRunning);
         let mergedStats = this.syncPenaltiesToClock(game.stats, running, now);
         const sourceStats = mergedStats ?? game.stats;
-        const shotStats = this.syncShotClockToGameClock(sourceStats, true, running, now);
+        // T2-10: pass the incoming game clock for clamping (Invariant #6).
+        const ingestClockMs = typeof dto.clockMs === 'number' ? dto.clockMs : game.clockMs;
+        const shotStats = this.syncShotClockToGameClock(sourceStats, true, running, now, ingestClockMs);
         if (shotStats) mergedStats = shotStats;
         if (mergedStats) data.stats = mergedStats as any;
       }
@@ -3219,7 +3483,9 @@ export class SportsService {
       const running = cleaned.clockRunning;
       let synced = this.syncPenaltiesToClock(mergedStatsForWrite, running, now);
       const base = synced ?? mergedStatsForWrite;
-      const shotSynced = this.syncShotClockToGameClock(base, true, running, now);
+      // T2-10: pass the CTS-reported game clock for clamping (Invariant #6).
+      const ctsGameClockMs = cleaned.clockMs !== undefined ? Number(cleaned.clockMs) : undefined;
+      const shotSynced = this.syncShotClockToGameClock(base, true, running, now, ctsGameClockMs);
       if (shotSynced) synced = shotSynced;
       if (synced) mergedStatsForWrite = { ...mergedStatsForWrite, ...synced, cts: nextCts };
     }
