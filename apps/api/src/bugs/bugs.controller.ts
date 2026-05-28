@@ -439,9 +439,20 @@ export class BugsController {
         select: { email: true },
       })
       .then((admins) => {
-        const ownerEmails = admins
-          .map((a) => a.email)
-          .filter((e): e is string => !!e && e !== req.user?.email);
+        // Normal case: notify every OTHER super-admin (the reporter
+        // already gets BUG_FILED, no need to ping them twice).
+        //
+        // Edge case (2026-05-28 — Greg's complaint "no bug emails
+        // getting sent"): if the reporter IS the only active
+        // super-admin, excluding them leaves zero recipients and
+        // owner-side observability silently goes dark. In that case
+        // include the reporter so they still get an owner-flavored
+        // copy (with full context — page, tenant slug, vertical).
+        // Costs one extra email per reported bug on solo-owner
+        // tenants; that's the right trade.
+        const allEmails = admins.map((a) => a.email).filter((e): e is string => !!e);
+        const otherAdmins = allEmails.filter((e) => e !== req.user?.email);
+        const ownerEmails = otherAdmins.length > 0 ? otherAdmins : allEmails;
         if (ownerEmails.length === 0) return;
         return Promise.all(
           ownerEmails.map((to) =>
