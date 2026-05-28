@@ -580,12 +580,29 @@ function GameControl() {
         </div>
       )}
 
-      {/* SETUP MODE */}
+      {/* SETUP MODE
+          ─────────────────────────────────────────────────────────
+          Clean 6-section layout (2026-05-27 UX reorg):
+            1  Game basics    — status + segment override
+            2  Teams          — roster + pregame intro
+            3  Displays       — screen push + layouts + live preview
+            4  Ribbon         — presets + messages + images (all ribbon config together)
+            5  Sponsors       — manage sponsors + flight/frequency scheduling (both sponsor pieces in one place)
+            6  Show settings  — celebration pack + sound/co-brand + CTS status + shot clock
+          ──────────────────────────────────────────────────────── */}
       {mode === 'setup' && (
         <div className="flex-1 overflow-auto bg-slate-50">
           <div className="max-w-4xl mx-auto p-4 space-y-4">
-            {/* game status */}
-            <Section title="Game status">
+
+            {/* ── 1. GAME BASICS ─────────────────────────────────
+                Status pill row — the one place to move the game
+                between SCHEDULED → PRE_GAME → LIVE → HALFTIME →
+                FINAL. FINAL requires a hold-to-confirm (destructive:
+                ends all real-time mutations). */}
+            <Section title="Game basics">
+              <p className="text-xs text-slate-400 mb-3">
+                Set the game state — this controls what the scoreboard shows and which controls are active in Run mode.
+              </p>
               <div className="flex flex-wrap gap-2">
                 {GAME_STATUSES.map((s) =>
                   /* Destructive: FINAL ends real-time mutations — hold-to-confirm */
@@ -618,12 +635,14 @@ function GameControl() {
               </div>
             </Section>
 
-            {/* 2026-05-27 — Roster moved here. Operator: "move roster
-                under the setup, it doesnt need its own tab". The
-                pre-game flow is Setup → set status, pair screens,
-                load roster, configure ribbon — adding the roster
-                inline keeps everything in one scrollable workflow. */}
-            <Section title="Team rosters">
+            {/* ── 2. TEAMS ────────────────────────────────────────
+                Roster management (add/edit/remove players, upload
+                headshots, bulk CSV import) lives here.
+                Pregame intro choreography sits right below — it
+                consumes the roster, so the two belong together.
+                The pre-game flow is: build roster → fire intros →
+                go live. */}
+            <Section title="Teams &amp; roster">
               <RosterPanel
                 gameId={gameId}
                 homeTeam={g.homeTeam}
@@ -634,98 +653,176 @@ function GameControl() {
 
             {/* T2-4 — Starting-lineup intro choreography.
                 Fires a 'pregame-intro' CUE that takes over the
-                scoreboard with per-player slots (photo + name +
-                number + stats). Home and away buttons side by side.
-                Long-press / tap the down-arrow for audio URL or away
-                team — simple split-button pattern. */}
+                scoreboard with per-player slots. Adjacent to the
+                roster because it directly consumes it. */}
             <Section title="Pregame intro">
               <PregameIntroPanel gameId={gameId} ctl={ctl} game={g} />
             </Section>
 
-            <Section title="Put it on your screens">
-              <ScreenPushPanel gameId={gameId} />
+            {/* ── 3. DISPLAYS ─────────────────────────────────────
+                Everything about what's actually showing on screens:
+                  • which screen shows what (scoreboard / ribbon / off)
+                  • which templates are loaded on each surface
+                  • live preview of the scoreboard + ribbon together
+                Layouts and preview are co-located — pick the layout,
+                see it immediately in the preview below it. */}
+            <Section title="Displays &amp; layouts">
+              <div className="space-y-5">
+                {/* Screen push — assign each physical display */}
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    Screen assignment
+                  </p>
+                  <ScreenPushPanel gameId={gameId} />
+                </div>
+
+                {/* Layout picker — scoreboard / ribbon / scorebug templates */}
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    Templates per surface
+                  </p>
+                  <LayoutsPanel g={g} ctl={ctl} />
+                </div>
+
+                {/* Live preview — iframes of scoreboard + ribbon */}
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    Live preview
+                  </p>
+                  <SurfacePreview gameId={gameId} />
+                </div>
+              </div>
             </Section>
 
-            {/* 2026-05-27 — Per-game celebration-pack picker. Operator:
-                "lets add these but keep the other ones we did so we can
-                have multiple and decide what we want....maybe during
-                setup you add the ones you want to show for the run
-                game section". Stored on Game.stats.celebrationPack so
-                the choice travels with the game record + both surfaces
-                (scoreboard + ribbon) read the same value. */}
-            <Section title="Celebration pack">
-              <CelebrationPackPicker
-                value={
-                  ((g.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v1'
-                    ? 'v1'
-                    : 'v2') as 'v1' | 'v2'
-                }
-                onChange={(p) =>
-                  ctl.stats.mutate({
-                    stats: { celebrationPack: p } as Record<string, unknown>,
-                  })
-                }
-              />
+            {/* ── 4. RIBBON ──────────────────────────────────────
+                All four ribbon-config panels in one place:
+                  • Presets — which content tiles ride the reel
+                    (score, clock, sport situation, messages, sponsors,
+                    images) + scroll speed
+                  • Messages — custom text crawl lines
+                  • Images — full-bleed sponsor / promo slides
+                Previously these were scattered with unrelated settings
+                between them. Now it is one mental model: "what the
+                ribbon shows and how". */}
+            <Section title="Ribbon">
+              <div className="space-y-6">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    Content &amp; scroll speed
+                  </p>
+                  <RibbonPresetsPanel gameId={gameId} />
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    Custom messages
+                  </p>
+                  <RibbonPanel gameId={gameId} />
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    Full-bleed image slides
+                  </p>
+                  <RibbonImagesPanel gameId={gameId} />
+                </div>
+              </div>
             </Section>
 
-            {/* 2026-05-27 — CTS feed status pill. The operator wants
-                to know at a glance whether the Colorado Time Systems
-                console is broadcasting AND being accepted by the API.
-                Three states:
-                  • fresh  — green ring, "CTS connected — receiving"
-                             (the scoreboard + ribbon show CTS data)
-                  • stale  — amber ring, "CTS stale — using operator
-                             inputs" (the operator's chips in Run mode
-                             are the source of truth)
-                  • never  — slate, "CTS not configured" (no snapshot
-                             ever arrived; manual entry only)
-                The pill auto-refreshes off the same `Game.stats.cts`
-                field the public surfaces read; no extra fetch. */}
-            <Section title="CTS scoreboard console">
-              <CtsConsoleStatus
-                stats={(g.stats as Record<string, unknown> | undefined) || {}}
-              />
+            {/* ── 5. SPONSORS ────────────────────────────────────
+                Both sponsor management surfaces in one card:
+                  • SponsorPanel — add/edit/remove brands, upload logos,
+                    weight sliders, enable/disable, proof-of-play report
+                  • SponsorSchedulingSection — flight dates + per-hour
+                    frequency caps per brand
+                Previously SponsorPanel was "Ribbon sponsors" and
+                SponsorSchedulingSection was a separate "Sponsor ad
+                scheduling" card — same data, two places. */}
+            <Section title="Sponsors">
+              <div className="space-y-6">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    Brands &amp; logos
+                  </p>
+                  <SponsorPanel />
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    Flight dates &amp; frequency caps
+                  </p>
+                  <SponsorSchedulingInner />
+                </div>
+              </div>
             </Section>
 
-            <Section title="Live preview">
-              <SurfacePreview gameId={gameId} />
+            {/* ── 6. SHOW SETTINGS ───────────────────────────────
+                Pre-game configuration for the show itself:
+                  • Celebration pack — which visual library fires on goals
+                  • Celebration sound + co-brand — audio URL and which
+                    sponsor to overlay on every celebration cue
+                  • Shot clock (sport-conditional)
+                  • CTS console status — is the scoreboard console
+                    broadcasting? Shows green/amber/slate status pill
+                Note: the "Celebrations" panel here lets the operator
+                TEST fire cues from Setup, but the primary cue surface
+                is the Run mode inline bar. This is configuration /
+                pre-game rehearsal, not live ops. */}
+            <Section title="Show settings">
+              <div className="space-y-5">
+                {/* Celebration pack */}
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    Celebration animation pack
+                  </p>
+                  <CelebrationPackPicker
+                    value={
+                      // 2026-05-28: default to v2 (the good FINA water polo art).
+                      ((g.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v1'
+                        ? 'v1'
+                        : 'v2') as 'v1' | 'v2'
+                    }
+                    onChange={(p) =>
+                      ctl.stats.mutate({
+                        stats: { celebrationPack: p } as Record<string, unknown>,
+                      })
+                    }
+                  />
+                </div>
+
+                {/* Celebration sound + sponsor co-brand */}
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    Celebration sound &amp; co-brand
+                  </p>
+                  <PresentationSettingsSection gameId={gameId} def={def} ctl={ctl} />
+                </div>
+
+                {/* Shot clock — only for sports that have one */}
+                {def.shotClock && (
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                      Shot clock
+                    </p>
+                    <ShotClockSetup
+                      gameId={gameId}
+                      current={(g.stats || {}) as Record<string, unknown>}
+                      config={def.shotClock}
+                    />
+                  </div>
+                )}
+
+                {/* CTS console status — is the scoreboard console
+                    broadcasting? Auto-refreshes 1 Hz from the game
+                    record; no extra fetch. */}
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    CTS scoreboard console
+                  </p>
+                  <CtsConsoleStatus
+                    stats={(g.stats as Record<string, unknown> | undefined) || {}}
+                  />
+                </div>
+              </div>
             </Section>
 
-            <Section title="Ribbon content">
-              <RibbonPresetsPanel gameId={gameId} />
-            </Section>
-
-            <Section title="Ribbon messages">
-              <RibbonPanel gameId={gameId} />
-            </Section>
-
-            <Section title="Ribbon images">
-              <RibbonImagesPanel gameId={gameId} />
-            </Section>
-
-            <Section title="Ribbon sponsors">
-              <SponsorPanel />
-            </Section>
-
-            {def.shotClock && (
-              <Section title="Shot clock">
-                <ShotClockSetup gameId={gameId} current={(g.stats || {}) as Record<string, unknown>} config={def.shotClock} />
-              </Section>
-            )}
-
-            <SponsorSchedulingSection />
-
-            {/* Sprint 13 — operator can swap the Scoreboard / Ribbon /
-                Scorebug template anytime, even mid-game. Empty value
-                ("Default") clears the FK on the game; the surface
-                falls back to the hardcoded built-in layout. */}
-            <Section title="Layouts">
-              <LayoutsPanel g={g} ctl={ctl} />
-            </Section>
-
-            {/* Cue / celebration presentation — configured here before
-                the game; firing the cues happens from the Run screen. */}
-            <PresentationSettingsSection gameId={gameId} def={def} ctl={ctl} />
           </div>
         </div>
       )}
@@ -3632,8 +3729,7 @@ function PresentationSettingsSection({
   ];
 
   return (
-    <div className="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
-      <h2 className="text-sm font-bold text-slate-900 mb-3">Celebrations</h2>
+    <div>
       <p className="text-xs text-slate-400 mb-3">
         Tap a celebration to fire it. The sound clip and co-brand sponsor below are
         included in every cue sent from here.
@@ -3747,16 +3843,23 @@ interface ScheduledSponsor {
   frequencyCapPerHour?: number | null;
 }
 
-function SponsorSchedulingSection() {
+/** Inner content of sponsor scheduling — no Section wrapper.
+ *  Used inside the unified "Sponsors" card in Setup mode. */
+function SponsorSchedulingInner() {
   const { data, isLoading } = useSponsors();
   const update = useUpdateSponsor();
   const sponsors: ScheduledSponsor[] = Array.isArray(data) ? (data as ScheduledSponsor[]) : [];
 
   if (isLoading) return null;
-  if (sponsors.length === 0) return null;
+  if (sponsors.length === 0)
+    return (
+      <p className="text-xs text-slate-400">
+        Add at least one sponsor above to configure flight dates and frequency caps.
+      </p>
+    );
 
   return (
-    <Section title="Sponsor ad scheduling">
+    <>
       <p className="text-xs text-slate-400 mb-3">
         Set flight windows and per-hour frequency caps for each sponsor. Higher rotation weight
         means the brand comes around more often per loop.
@@ -3770,6 +3873,15 @@ function SponsorSchedulingSection() {
           />
         ))}
       </div>
+    </>
+  );
+}
+
+/** Standalone card wrapper — used wherever SponsorScheduling appears outside the Setup 6-section layout. */
+function SponsorSchedulingSection() {
+  return (
+    <Section title="Sponsor ad scheduling">
+      <SponsorSchedulingInner />
     </Section>
   );
 }
@@ -4765,14 +4877,14 @@ function CelebrationPackPicker({
 }) {
   const options: { key: 'v1' | 'v2'; name: string; desc: string }[] = [
     {
-      key: 'v2',
-      name: 'Stadium v2 (default)',
-      desc: 'Sophisticated FINA water polo canvas engine — same cue plays brand-matched on both the scoreboard and ribbon. Water polo has full v2 art; other sports gracefully fall back to Classic.',
-    },
-    {
       key: 'v1',
       name: 'Classic',
-      desc: 'Older marquee scoreboard cinematics + horizontal ribbon strip. Only choose if you specifically want the legacy art.',
+      desc: 'Marquee scoreboard cinematics + horizontal ribbon strip (default).',
+    },
+    {
+      key: 'v2',
+      name: 'Stadium v2',
+      desc: 'New canvas engine — same cue plays brand-matched on both the scoreboard and ribbon. Water polo only for now; other sports fall back to Classic.',
     },
   ];
   return (
