@@ -328,8 +328,40 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
           )}
           {provider.auth === 'webhook' && (
             <>
-              <Field label="Webhook secret" placeholder="..." value={credentials.webhookSecret || ''} onChange={(v) => setCredentials({ ...credentials, webhookSecret: v })} />
-              <p className="text-[11px] text-slate-500">After connecting, post your catalog to <code>/api/v1/pos/webhook/{provider.id}</code> with this secret in the <code>X-Webhook-Secret</code> header.</p>
+              <Field label="Webhook secret" placeholder="Choose a long random string" value={credentials.webhookSecret || ''} onChange={(v) => setCredentials({ ...credentials, webhookSecret: v })} />
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 space-y-2">
+                <p>
+                  After connecting, <code className="font-mono">POST</code> your catalog to{' '}
+                  <code className="font-mono break-all">/api/v1/pos/webhook/{provider.id}</code> with this
+                  secret in the <code className="font-mono">X-Webhook-Secret</code> header. Re-post anytime
+                  prices or availability change — items are matched by <code className="font-mono">id</code>{' '}
+                  and updated in place.
+                </p>
+                <p className="font-bold text-slate-700">Body (application/json):</p>
+                <pre className="bg-white border border-slate-200 rounded-md p-2 overflow-x-auto text-[10px] leading-relaxed text-slate-700">{`{
+  "items": [
+    {
+      "id": "burger-01",
+      "name": "Classic Burger",
+      "priceCents": 799,
+      "description": "1/4 lb, lettuce, tomato",
+      "category": "Burgers",
+      "available": true,
+      "imageUrl": "https://...",
+      "salePriceCents": 599,
+      "badges": ["GF"]
+    }
+  ]
+}`}</pre>
+                <p className="text-slate-500">
+                  Required per item: <code className="font-mono">id</code> (or{' '}
+                  <code className="font-mono">externalId</code>) and <code className="font-mono">name</code>.
+                  Price may be integer cents (<code className="font-mono">priceCents</code>) or a dollar
+                  amount (<code className="font-mono">price</code>, e.g. <code className="font-mono">7.99</code>).
+                  Everything else is optional; omit <code className="font-mono">available</code> and the item
+                  shows. A correct push returns <code className="font-mono">{`{ ok: true, upserted, skipped }`}</code>.
+                </p>
+              </div>
             </>
           )}
           {provider.auth === 'oauth2' && provider.id === 'square' && (

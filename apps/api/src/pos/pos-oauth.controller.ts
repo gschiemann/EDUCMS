@@ -32,6 +32,7 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  Param,
   Post,
   Query,
   Req,
@@ -263,6 +264,61 @@ export class PosOAuthController {
         );
     }
     return { ok: true };
+  }
+
+  // ─── Custom-webhook receiver (bring-your-own POS) ──────────────────
+  //
+  // The `custom-webhook` provider is the universal escape hatch: any POS
+  // / internal system that can POST JSON can push its catalog here. The
+  // operator sets a shared secret when they connect (sealed on the
+  // PosProviderConnection row) and includes it as `X-Webhook-Secret` on
+  // every push. We resolve the connection — and therefore the tenant —
+  // ENTIRELY from that secret (constant-time compared); the request body
+  // never carries a tenantId and we never trust one if it did.
+  //
+  // Path matches exactly what the connect wizard tells the operator to
+  // POST to (settings/pos/page.tsx): /api/v1/pos/webhook/{provider.id}.
+  // The Square receiver above (`webhook/square`, a static route declared
+  // first) takes precedence; this param route only ever serves
+  // `custom-webhook`. Any other providerId → 404, so this can never
+  // shadow or mishandle a real per-provider receiver.
+  @Post('webhook/:providerId')
+  @HttpCode(200)
+  async customWebhook(
+    @Param('providerId') providerId: string,
+    @Req() req: Request,
+    @Headers('x-webhook-secret') secret: string | undefined,
+  ) {
+    if (providerId !== 'custom-webhook') {
+      // Unknown / unsupported provider for the generic receiver.
+      throw new HttpException('Unknown webhook provider', HttpStatus.NOT_FOUND);
+    }
+    if (!secret) {
+      throw new HttpException('Missing X-Webhook-Secret header', HttpStatus.UNAUTHORIZED);
+    }
+
+    const conn = await this.svc.findCustomWebhookConnectionBySecret(secret);
+    if (!conn) {
+      // Don't leak whether the secret was wrong vs. the connection
+      // missing — both are "we can't authenticate this push."
+      this.logger.warn('Custom POS webhook: no connection matched the supplied secret');
+      throw new HttpException('Invalid webhook secret', HttpStatus.UNAUTHORIZED);
+    }
+
+    const body = (req as any).body;
+    if (!body || typeof body !== 'object') {
+      throw new BadRequestException('Body must be JSON: { "items": [ ... ] }.');
+    }
+
+    const result = await this.svc.ingestCustomWebhookCatalog(conn, body);
+    this.logger.log(
+      `Custom POS webhook: tenant=${conn.tenantId} conn=${conn.id} upserted=${result.upserted} skipped=${result.skipped}`,
+    );
+    return {
+      ok: true,
+      upserted: result.upserted,
+      skipped: result.skipped,
+    };
   }
 
   // ─── helpers ───────────────────────────────────────────────────────

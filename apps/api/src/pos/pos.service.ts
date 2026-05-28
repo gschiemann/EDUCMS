@@ -14,6 +14,7 @@
  * webhook + idempotency + audit). See providers/square.ts.
  */
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { POS_PROVIDERS, getPosProvider, type PosConnectionDto } from '@cms/api-types';
 import { sealCredentials, openCredentials } from '../streaming/creds-cipher';
@@ -473,6 +474,197 @@ export class PosService {
       }
     }
     return null;
+  }
+
+  /**
+   * Custom-webhook receiver lookup. The `custom-webhook` provider is the
+   * "bring your own POS" escape hatch — the operator POSTs their catalog
+   * to `/api/v1/pos/webhook/custom-webhook` with the shared
+   * `X-Webhook-Secret` they set when they connected. The inbound request
+   * carries NO tenant context (and we never trust a client-supplied
+   * tenantId), so we resolve the connection — and therefore the tenant —
+   * purely from the secret.
+   *
+   * We walk every `custom-webhook` connection, decrypt its stored
+   * `webhookSecret`, and compare in constant time (mirrors how
+   * `findConnectionByMerchantId` walks Square rows + how
+   * `verifySquareSignature` uses `timingSafeEqual`). The candidate set is
+   * tiny — one row per tenant via `@@unique([tenantId, providerId])` — so
+   * the linear scan + per-row decrypt is acceptable, and matters less than
+   * keeping the compare timing-safe.
+   *
+   * Returns the matching connection row, or null if no secret matches.
+   * A missing/empty secret never matches.
+   */
+  async findCustomWebhookConnectionBySecret(secret: string | undefined | null) {
+    if (!secret) return null;
+    const provided = Buffer.from(String(secret), 'utf8');
+    const rows = await (this.prisma.client as any).posProviderConnection.findMany({
+      where: { providerId: 'custom-webhook' },
+    });
+    let match: any = null;
+    for (const r of rows) {
+      let stored: string;
+      try {
+        const creds = openCredentials({
+          encryptedCreds: r.encryptedCreds,
+          encryptedDataKey: r.encryptedDataKey,
+        });
+        stored = String((creds as any).webhookSecret || '');
+      } catch {
+        continue; // corrupt row — skip
+      }
+      if (!stored) continue;
+      const expected = Buffer.from(stored, 'utf8');
+      // timingSafeEqual throws on length mismatch — guard it. We don't
+      // early-`return` on the first match so the loop cost is independent
+      // of which row matched (defence-in-depth against timing leaks).
+      if (provided.length === expected.length && timingSafeEqual(provided, expected)) {
+        match = r;
+      }
+    }
+    return match;
+  }
+
+  /**
+   * Upsert a catalog pushed to the custom-webhook endpoint. The connection
+   * (already resolved from the secret) determines the tenant — the caller
+   * NEVER passes a client-supplied tenantId. Reuses the same
+   * `posMenuItem.upsert` keyed on `connectionId_externalId` that
+   * `syncSquare` uses, so pushed items reach the MenuBoardWidget the same
+   * way Square's do.
+   *
+   * Documented payload shape (matches the UI's published spec):
+   *   { items: [ { id|externalId, name, priceCents|price, description?,
+   *                category?, available?, imageUrl?, salePriceCents?,
+   *                badges? }, ... ] }
+   *
+   * Price may be given as integer cents (`priceCents`) or a major-unit
+   * number (`price`, e.g. 7.99 → 799). Items missing a name or id are
+   * skipped (counted in `skipped`). High-write hot path during service —
+   * no heavy joins, no per-item audit (mirrors the existing POS sync
+   * pattern, which audits the sync as a whole, not each row).
+   */
+  async ingestCustomWebhookCatalog(
+    conn: any,
+    payload: { items?: unknown },
+  ): Promise<{ upserted: number; skipped: number }> {
+    const rawItems = Array.isArray((payload as any)?.items) ? (payload as any).items : null;
+    if (!rawItems) {
+      throw new BadRequestException('Body must be { "items": [ ... ] }.');
+    }
+    if (rawItems.length > 2000) {
+      throw new BadRequestException('Too many items in one push (max 2000). Split into batches.');
+    }
+
+    let upserted = 0;
+    let skipped = 0;
+    for (const raw of rawItems) {
+      const item = this.normalizeWebhookItem(raw);
+      if (!item) {
+        skipped++;
+        continue;
+      }
+      await (this.prisma.client as any).posMenuItem.upsert({
+        where: { connectionId_externalId: { connectionId: conn.id, externalId: item.externalId } },
+        update: {
+          name: item.name,
+          description: item.description,
+          priceCents: item.priceCents,
+          salePriceCents: item.salePriceCents,
+          category: item.category,
+          imageUrl: item.imageUrl,
+          badges: item.badges,
+          available: item.available,
+          syncedAt: new Date(),
+        },
+        create: {
+          tenantId: conn.tenantId,
+          connectionId: conn.id,
+          externalId: item.externalId,
+          name: item.name,
+          description: item.description,
+          priceCents: item.priceCents,
+          salePriceCents: item.salePriceCents,
+          category: item.category,
+          imageUrl: item.imageUrl,
+          badges: item.badges,
+          available: item.available,
+        },
+      });
+      upserted++;
+    }
+
+    await (this.prisma.client as any).posProviderConnection.update({
+      where: { id: conn.id },
+      data: {
+        lastSyncedAt: new Date(),
+        lastSyncItemCount: upserted,
+        status: 'ACTIVE',
+        statusReason: null,
+      },
+    });
+
+    return { upserted, skipped };
+  }
+
+  /** Coerce one inbound webhook item into our PosMenuItem shape, or null
+   *  if it lacks the minimum (a stable id + a name). Tolerant of both
+   *  `priceCents` (int) and `price` (major-unit number). */
+  private normalizeWebhookItem(raw: any): {
+    externalId: string;
+    name: string;
+    description: string | null;
+    priceCents: number;
+    salePriceCents: number | null;
+    category: string | null;
+    imageUrl: string | null;
+    badges: string[];
+    available: boolean;
+  } | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const externalId = String(raw.externalId ?? raw.id ?? '').trim();
+    const name = String(raw.name ?? '').trim();
+    if (!externalId || !name) return null;
+
+    const priceCents = this.coercePriceCents(raw.priceCents, raw.price);
+    const salePriceCents =
+      raw.salePriceCents != null || raw.salePrice != null
+        ? this.coercePriceCents(raw.salePriceCents, raw.salePrice)
+        : null;
+
+    const badges = Array.isArray(raw.badges)
+      ? raw.badges.map((b: unknown) => String(b)).filter(Boolean).slice(0, 12)
+      : [];
+
+    return {
+      externalId,
+      name,
+      description: raw.description != null ? String(raw.description) : null,
+      priceCents,
+      salePriceCents,
+      category: raw.category != null ? String(raw.category) : null,
+      imageUrl: raw.imageUrl != null ? String(raw.imageUrl) : null,
+      badges,
+      // Default to available unless explicitly false.
+      available: raw.available === false ? false : true,
+    };
+  }
+
+  /** Accept either integer cents or a major-unit number/string; return a
+   *  non-negative integer cent count (0 on anything unparseable). */
+  private coercePriceCents(cents: unknown, major: unknown): number {
+    if (typeof cents === 'number' && Number.isFinite(cents)) {
+      return Math.max(0, Math.round(cents));
+    }
+    if (typeof cents === 'string' && cents.trim() !== '' && Number.isFinite(Number(cents))) {
+      return Math.max(0, Math.round(Number(cents)));
+    }
+    const m = typeof major === 'string' ? Number(major) : major;
+    if (typeof m === 'number' && Number.isFinite(m)) {
+      return Math.max(0, Math.round(m * 100));
+    }
+    return 0;
   }
 
   /** Webhook idempotency — INSERT into ProcessedPosEvent. Returns true
