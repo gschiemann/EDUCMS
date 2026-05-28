@@ -1857,6 +1857,33 @@ This is now the standing rule for every parallel-agent deployment:
 
 7. **Agents are tools, not authors.** Lead is responsible for what ships. "An agent did it" is never a defense for a regression.
 
+8. **Persist agent work to disk THE MOMENT it returns.** When any
+   agent returns substantive findings (≥500 words of report-form
+   output OR a punch list ≥3 items OR any work the user paid real
+   money for), the lead MUST write the full report to a markdown file
+   under `docs/research/<YYYY-MM-DD>-<topic>/` BEFORE writing the
+   next user-facing summary. Do NOT rely on conversation context to
+   hold agent work — context can compact at any time and the work
+   becomes invisible to chat, regardless of how recently it landed.
+
+   2026-05-28: Greg dispatched 4 research agents on 2026-05-27, all 4
+   returned full reports (~11,800 words total), I never persisted
+   them, context compacted, reports vanished from chat. Recoverable
+   only because every agent's full transcript persists at
+   `/private/tmp/claude-501/<project>/<session>/tasks/<agentId>.output`
+   — that's the EMERGENCY path, not the design. Greg's words:
+   *"why did we lose our agents work your wasting my fucking money
+   now, dont do that shit ever again."*
+
+   **Workflow:**
+   - Agent dispatched → agent returns → IMMEDIATELY `Write` the
+     full report to `docs/research/<date>-<topic>/<NN>-<scope>.md`
+     before any other tool call.
+   - Add a README to the folder listing all reports + scope.
+   - THEN summarize to the user.
+   - The summary cites the on-disk file paths so they're discoverable
+     by future agents / future sessions / a re-read of master.
+
 ### Pre-dispatch checklist (run EVERY time before spawning agents)
 
 Operator (2026-05-26 follow-up): *"who is the boss? you or them? how are we going to control this shit moving forward? i want an army of agents working all the time but they cant be stepping all over each other and you the entire time."*
