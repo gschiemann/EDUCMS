@@ -96,6 +96,14 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // CSRF's ambient-cookie threat model does not apply — same argument as
   // the Stripe webhook and native-APK OTA endpoints above.
   (p) => /^\/api\/v1\/sports\/board\/[^/]+\/feed$/.test(p),
+  // CTS Gen 6 console snapshot ingest (Sprint 13 P0). Same machine-to-
+  // machine argument as /feed above — the CtsBridge running on the
+  // player APK posts the parsed RS232 stream from the physical console
+  // here at ~5 Hz with no browser session. Authenticity is the same
+  // HMAC feed-token (verifyFeedToken). Originally missed from the
+  // exempt list — every snapshot POST got 403 CsrfError, so the live
+  // CTS path was completely broken in production. Added 2026-05-28.
+  (p) => /^\/api\/v1\/sports\/board\/[^/]+\/cts-snapshot$/.test(p),
 ];
 
 export function isCsrfExempt(method: string, path: string): boolean {

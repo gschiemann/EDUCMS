@@ -133,6 +133,15 @@ export class SportsBoardController {
       homeScore?: number;
       awayScore?: number;
       shotClock?: { ms: number; running: boolean; len?: number; at?: string };
+      // T2-1 — per-side shot clocks (water polo), exclusions (3 slots per
+      // side), and per-team timeouts remaining. Older bridges that only
+      // ship the 7 original fields keep working — these are optional.
+      homeShotClock?: { raw?: string; ms?: number; running?: boolean };
+      awayShotClock?: { raw?: string; ms?: number; running?: boolean };
+      homeExclusions?: ({ playerJersey: number; secondsRemaining: number } | null)[];
+      awayExclusions?: ({ playerJersey: number; secondsRemaining: number } | null)[];
+      homeTimeoutsRemaining?: number;
+      awayTimeoutsRemaining?: number;
       horn?: boolean;
       raw?: string;
     },
