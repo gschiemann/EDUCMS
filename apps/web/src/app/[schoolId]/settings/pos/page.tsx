@@ -315,6 +315,31 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
         )}
 
         <div className="space-y-3">
+          {/* 2026-05-28 audit P1-6: PARTNER-tier POS providers have no
+              live sync handler yet (Toast / Clover / Lightspeed /
+              Shopify / Stripe-catalog / MINDBODY). Show an honest
+              "on the roadmap" panel instead of a credential form that
+              saves a PENDING row which can never sync. Mirrors the
+              streaming page's PARTNER treatment. DIRECT providers
+              (Square OAuth + Custom Webhook) keep their real forms. */}
+          {provider.integrationTier === 'PARTNER' ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 space-y-2">
+              <p className="font-bold flex items-center gap-1.5">
+                <ShieldAlert className="w-4 h-4" /> {provider.name} connector is in development
+              </p>
+              <p>
+                {provider.tierReason ||
+                  `${provider.name} requires a partner integration we haven't shipped yet.`}
+              </p>
+              <p className="text-amber-700">
+                Want this prioritized? Tell us at{' '}
+                <a href="mailto:sales@venueos.com" className="font-bold underline">sales@venueos.com</a>{' '}
+                and we&rsquo;ll fast-track it. In the meantime you can push your catalog through the{' '}
+                <strong>Custom Webhook</strong> provider above — it works today.
+              </p>
+            </div>
+          ) : (
+          <>
           <Field label="Display name (optional)" placeholder={provider.name} value={displayName} onChange={setDisplayName} />
 
           {provider.auth === 'apiKey' && (
@@ -372,6 +397,8 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
               OAuth flow not yet implemented for {provider.name}. Save the row now — the sync handler will activate once the OAuth callback ships in a follow-up release.
             </div>
           )}
+          </>
+          )}
         </div>
 
         {err && (
@@ -381,8 +408,10 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
         )}
 
         <div className="flex gap-2 justify-end pt-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg text-slate-600 hover:bg-slate-50">Cancel</button>
-          {provider.auth !== 'oauth2' && (
+          <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg text-slate-600 hover:bg-slate-50">{provider.integrationTier === 'PARTNER' ? 'Close' : 'Cancel'}</button>
+          {/* No Connect for PARTNER (no handler — would save a dead row)
+              or oauth2 (uses its own redirect button). */}
+          {provider.auth !== 'oauth2' && provider.integrationTier !== 'PARTNER' && (
             <button
               onClick={submit}
               disabled={submitting}

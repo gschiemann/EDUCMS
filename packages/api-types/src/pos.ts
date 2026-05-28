@@ -124,17 +124,26 @@ export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
   {
     id: 'clover',
     name: 'Clover',
+    // 2026-05-28 audit P1-6: was DIRECT (`apiKey`) but had NO sync
+    // handler — `triggerSync` returned "not yet implemented" forever, so
+    // an operator could connect, see a PENDING row, hit "Sync now," and
+    // dead-end indefinitely. Clover's catalog API is real and free, but
+    // the connector is not built yet. Downgraded to PARTNER so the tile
+    // shows an honest "on the roadmap / contact us" state instead of a
+    // ready-looking self-serve connector. Re-promote to DIRECT (with
+    // `auth: 'apiKey'`) the moment a `providers/clover.ts` handler ships
+    // and `triggerSync` routes to it.
     scope: 'restaurant-qsr',
-    integrationTier: 'DIRECT',
+    integrationTier: 'PARTNER',
     blurb: 'Clover Inventory + Menu API — small-business POS, broad reach.',
     iconEmoji: '🍀',
     auth: 'apiKey',
     docsUrl: 'https://docs.clover.com/docs/inventory-overview',
     websiteUrl: 'https://www.clover.com',
-    pricingNote: 'Free dev account + API access',
+    pricingNote: 'Connector in development',
     bestFor: ['QSR', 'RETAIL', 'BAR'],
     capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: false },
-    tierReason: 'Free dev portal at docs.clover.com — sandbox merchant id + API token immediately. Self-serve.',
+    tierReason: 'Clover ships a real, free catalog API (docs.clover.com) — but our connector is still in development. Tell us you need it and we\'ll prioritize it; until then the live sync handler is not wired.',
   },
   {
     id: 'aloha-ncr',
@@ -161,49 +170,59 @@ export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
   {
     id: 'lightspeed-retail',
     name: 'Lightspeed Retail',
+    // 2026-05-28 audit P1-6: was DIRECT but no OAuth + no sync handler.
+    // The oauth2 path already rejects connect attempts ("OAuth flow not
+    // yet implemented"), so this was a green "Self-serve" badge on a
+    // connector that can't connect. Downgraded to PARTNER for honesty.
     scope: 'retail',
-    integrationTier: 'DIRECT',
+    integrationTier: 'PARTNER',
     blurb: 'Lightspeed R-Series Items API — multi-location retail.',
     iconEmoji: '⚡',
     auth: 'oauth2',
     docsUrl: 'https://developers.lightspeedhq.com/retail/',
     websiteUrl: 'https://www.lightspeedhq.com/pos/retail/',
-    pricingNote: 'Free sandbox + OAuth',
+    pricingNote: 'Connector in development',
     bestFor: ['RETAIL', 'FASHION'],
     capabilities: { menuSync: true, categorySync: true, locationsSync: true },
-    tierReason: 'Public R-Series Items API — free sandbox, OAuth client request via dev portal.',
+    tierReason: 'Lightspeed\'s R-Series Items API is real (free sandbox + OAuth) — but our OAuth flow and sync handler are still in development. Re-promotes to DIRECT once the connector ships.',
   },
   {
     id: 'shopify-pos',
     name: 'Shopify POS',
+    // 2026-05-28 audit P1-6: was DIRECT but no OAuth + no sync handler.
+    // Same costume as Lightspeed — downgraded to PARTNER.
     scope: 'retail',
-    integrationTier: 'DIRECT',
+    integrationTier: 'PARTNER',
     blurb: 'Shopify Admin API — products, variants, inventory, locations.',
     iconEmoji: '🛍',
     auth: 'oauth2',
     docsUrl: 'https://shopify.dev/docs/api/admin-rest/2024-04/resources/product',
     websiteUrl: 'https://www.shopify.com/pos',
-    pricingNote: 'Shopify Plus plan recommended',
+    pricingNote: 'Connector in development',
     bestFor: ['RETAIL', 'FASHION'],
     capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: true },
-    tierReason: 'Public Shopify Admin API + free Partner account + dev store. Webhooks for real-time updates.',
+    tierReason: 'Shopify\'s Admin API is real (free Partner account + dev store) — but our OAuth flow and sync handler are still in development. Re-promotes to DIRECT once the connector ships.',
   },
 
   // ─── TIER 3 — UNIVERSAL ────────────────────────────────────────────
   {
     id: 'stripe-terminal',
     name: 'Stripe (Catalog)',
+    // 2026-05-28 audit P1-6: was DIRECT (`apiKey`) but had NO sync
+    // handler — same dead-end-on-connect costume as Clover. Downgraded
+    // to PARTNER. (Distinct from billing: this is the Products/Prices
+    // catalog as a menu source, not the Stripe billing integration.)
     scope: 'universal',
-    integrationTier: 'DIRECT',
+    integrationTier: 'PARTNER',
     blurb: 'Stripe Products + Prices — works anywhere Stripe runs.',
     iconEmoji: '💳',
     auth: 'apiKey',
     docsUrl: 'https://docs.stripe.com/api/products',
     websiteUrl: 'https://stripe.com',
-    pricingNote: 'Standard Stripe fees',
+    pricingNote: 'Connector in development',
     bestFor: ['QSR', 'RETAIL', 'GYM', 'BAR'],
     capabilities: { menuSync: true, categorySync: true },
-    tierReason: 'Stripe API + free test mode. Operator already has a Stripe account if they take card payments — perfect catalog source.',
+    tierReason: 'Stripe\'s Products/Prices API is a great catalog source (free test mode) — but our connector is still in development. Re-promotes to DIRECT once the sync handler ships.',
   },
 
   // ─── TIER 4 — GYM-SPECIFIC (partner) ───────────────────────────────

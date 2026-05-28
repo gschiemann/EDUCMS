@@ -493,13 +493,21 @@ export class IntegrationsHealthController {
         docsUrl: opts.docsUrl,
       });
     };
+    // 2026-05-28 audit P1-6: Square + Custom Webhook are the only POS
+    // connectors with a live sync handler. The rest (Toast / Clover /
+    // Lightspeed / Shopify / Stripe-catalog / MINDBODY) are PARTNER-tier
+    // and dead-end on sync, so they're reported COMING_SOON here — never
+    // a "READY"/"NOT_CONFIGURED" implication that connecting them works.
+    // Re-promote one to the dynamic `def(...)` form the moment its
+    // `providers/<id>.ts` handler + DIRECT tier ship.
+    const comingSoon = (reason: string) => ({ status: 'COMING_SOON' as const, message: reason });
     def('square', 'Square POS', { docsUrl: 'https://developer.squareup.com/docs/catalog-api/what-it-does' });
-    def('toast', 'Toast', { docsUrl: 'https://doc.toasttab.com/' });
-    def('clover', 'Clover', { docsUrl: 'https://docs.clover.com/docs/inventory-overview' });
-    def('lightspeed-retail', 'Lightspeed Retail', { presetId: 'retail-storefront-welcome', verticalHint: 'RETAIL', docsUrl: 'https://developers.lightspeedhq.com/retail/' });
-    def('shopify-pos', 'Shopify POS', { presetId: 'retail-storefront-welcome', verticalHint: 'RETAIL', docsUrl: 'https://shopify.dev/docs/api/admin-rest/2024-04/resources/product' });
-    def('stripe-terminal', 'Stripe (catalog)', { docsUrl: 'https://docs.stripe.com/api/products' });
-    def('mindbody', 'MINDBODY', { docsUrl: 'https://developers.mindbodyonline.com/' });
+    def('toast', 'Toast', { docsUrl: 'https://doc.toasttab.com/', ...comingSoon('Toast connector in development (Partner Program). Use Custom Webhook to push your catalog today.') });
+    def('clover', 'Clover', { docsUrl: 'https://docs.clover.com/docs/inventory-overview', ...comingSoon('Clover connector in development. Use Custom Webhook to push your catalog today.') });
+    def('lightspeed-retail', 'Lightspeed Retail', { presetId: 'retail-storefront-welcome', verticalHint: 'RETAIL', docsUrl: 'https://developers.lightspeedhq.com/retail/', ...comingSoon('Lightspeed connector in development. Use Custom Webhook to push your catalog today.') });
+    def('shopify-pos', 'Shopify POS', { presetId: 'retail-storefront-welcome', verticalHint: 'RETAIL', docsUrl: 'https://shopify.dev/docs/api/admin-rest/2024-04/resources/product', ...comingSoon('Shopify connector in development. Use Custom Webhook to push your catalog today.') });
+    def('stripe-terminal', 'Stripe (catalog)', { docsUrl: 'https://docs.stripe.com/api/products', ...comingSoon('Stripe Products/Prices catalog connector in development. Use Custom Webhook to push your catalog today.') });
+    def('mindbody', 'MINDBODY', { docsUrl: 'https://developers.mindbodyonline.com/', ...comingSoon('MINDBODY connector in development (Partner Program). Use Custom Webhook to push your catalog today.') });
     // Sample-data loaders — useful as a one-click "verify the
     // restaurant menu board works" smoke test.
     rows.push({

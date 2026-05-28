@@ -86,8 +86,20 @@ export class PosService {
         `${provider.name} does not have a public API for third-party CMS integration. ${provider.tierReason || ''}`,
       );
     }
-    // PARTNER tier connections save in PENDING — staff or the partner
-    // OAuth callback flips them to ACTIVE.
+    // 2026-05-28 audit P1-6: reject PARTNER-tier connect attempts at the
+    // API boundary. No PARTNER POS provider has a live sync handler yet
+    // (Toast / Clover / Lightspeed / Shopify / Stripe-catalog / MINDBODY)
+    // — `triggerSync` would return "not yet implemented" forever. The UI
+    // already shows an honest "connector in development" panel with no
+    // Connect button, but double-check here so a curl/Postman call can't
+    // create a dead PENDING row that pollutes the connections list and
+    // looks ready-but-never-syncs. Drop a provider to DIRECT (and ship
+    // its `providers/<id>.ts` handler) to re-enable self-serve connect.
+    if (provider.integrationTier === 'PARTNER') {
+      throw new ForbiddenException(
+        `${provider.name} is a partner integration that isn't live yet. ${provider.tierReason || 'Contact sales for activation.'}`,
+      );
+    }
     // Per-provider auth-shape validation (minimal — handlers do deeper validation).
     const creds = opts.credentials || {};
     // Cycle-2 BUG-003 fix (2026-05-03) — reject oauth2 connect attempts
