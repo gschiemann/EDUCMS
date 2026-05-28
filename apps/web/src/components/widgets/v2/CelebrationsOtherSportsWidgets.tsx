@@ -2193,3 +2193,502 @@ export function CelHornWidget({ config }: WidgetProps<CelHornCfg>) {
     </div>
   );
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * T2-4 — Pre-game Starting-Lineup Choreography
+ * ═══════════════════════════════════════════════════════════════════════
+ *
+ * CelPregameIntroWidget — cinematic scoreboard takeover that cycles
+ * through each starting-lineup player with a 3.5-second slot:
+ *
+ *   ┌─────────────────────────────────────────────────────────────────┐
+ *   │  [photo]  #12  JOHNSON               ──────────────────── WIDE │
+ *   │  Guard · HOME                        12.4 PPG  5.1 REB         │
+ *   │  ────────────────── team color accent bar ────────────────────  │
+ *   └─────────────────────────────────────────────────────────────────┘
+ *
+ * Design rules (CLAUDE.md rule #10 + Chromium-83 safety):
+ *   - No `inset`, no `gap` on flex — use `margin` between stacked items.
+ *   - Fixed-pixel design canvas (1920×1080) wrapped in transform:scale.
+ *   - position:absolute with top/right/bottom/left longhand only.
+ *   - No `backdrop-filter` (flaky on Android WebView <88).
+ *
+ * The widget operates in two layout branches:
+ *   - WIDE  (width:height ≥ 3.2) — ribbon mode: photo left, text right.
+ *   - SCENE (squarer, ≈16:9)     — scoreboard mode: photo + text stacked.
+ *
+ * AUDIO: the board page's cue-pump already handles `audioUrl` on the
+ * containing CUE event — the <audio> plays once at cue start for the
+ * full lineup duration. No per-slot audio management needed here.
+ * ════════════════════════════════════════════════════════════════════ */
+
+/** One player in the lineup array shipped inside the CUE payload. */
+export interface PregamePlayer {
+  id: string;
+  name: string;
+  number: string;
+  position: string;
+  photoUrl: string;
+  stats: Record<string, string>;
+}
+
+export interface CelPregameIntroCfg extends BaseCfg {
+  /** The team's display name shown in the header. */
+  teamName?: string;
+  /** Team primary color hex — used for the accent band + number glow. */
+  teamColor?: string;
+  /** Ordered list of players in the lineup. */
+  lineup?: PregamePlayer[];
+  /** Ms per player slot. Default 3500. */
+  slotMs?: number;
+  /** Whether the cue is skippable (forwarded for future dismiss UX). */
+  skippable?: boolean;
+}
+
+export function CelPregameIntroWidget({
+  config,
+  live = true,
+  height = 480,
+}: WidgetProps<CelPregameIntroCfg>) {
+  const c = config ?? {};
+  const r = resolveStyle({
+    bgColor: '#05070d',
+    accentColor: c.teamColor ?? '#fbbf24',
+    highlightColor: c.teamColor ?? '#fbbf24',
+    ...c.style,
+  });
+  const animOn = r.anim.on && live;
+
+  const teamName = c.teamName ?? 'HOME';
+  const accent = c.teamColor ?? r.accent.primary;
+  const lineup: PregamePlayer[] = Array.isArray(c.lineup) ? c.lineup : [];
+  const slotMs = Math.max(1000, Math.min(10_000, Number(c.slotMs ?? 3500)));
+
+  // Current player index — advances every slotMs.
+  const [idx, setIdx] = React.useState(0);
+  const [phase, setPhase] = React.useState<'in' | 'hold' | 'out'>('in');
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    if (!live || lineup.length === 0) return;
+    setIdx(0);
+    setPhase('in');
+  }, [live, lineup.length]);
+
+  React.useEffect(() => {
+    if (!live || lineup.length === 0) return;
+    // Phase timeline: 400ms IN → (slotMs - 800ms) HOLD → 400ms OUT → next.
+    const inDur = 400;
+    const outDur = 400;
+    const holdDur = Math.max(200, slotMs - inDur - outDur);
+    let t: ReturnType<typeof setTimeout>;
+    if (phase === 'in') {
+      t = setTimeout(() => setPhase('hold'), inDur);
+    } else if (phase === 'hold') {
+      t = setTimeout(() => setPhase('out'), holdDur);
+    } else {
+      // out
+      t = setTimeout(() => {
+        setIdx((i) => (i + 1) % lineup.length);
+        setPhase('in');
+      }, outDur);
+    }
+    timerRef.current = t;
+    return () => clearTimeout(t);
+  }, [live, phase, idx, lineup.length, slotMs]);
+
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
+  const wide = isWide(width, mh);
+
+  const player = lineup.length > 0 ? lineup[idx % lineup.length] : null;
+
+  // Stat lines — take the first two stat keys for the lower-third line.
+  const statEntries = player
+    ? Object.entries(player.stats ?? {}).slice(0, 2)
+    : [];
+  const statLine = statEntries.map(([k, v]) => `${v} ${k}`).join('  ·  ');
+
+  // Slide-in/out transform amounts — pixels based on measured height.
+  const slideInX = wide ? px(mh, 120 / 480) : 0;
+  const slideInY = wide ? 0 : px(mh, 80 / 480);
+  const opacity = phase === 'hold' ? 1 : 0;
+  const translateX = phase === 'hold' ? 0 : (phase === 'in' ? slideInX : -slideInX);
+  const translateY = phase === 'hold' ? 0 : (phase === 'in' ? slideInY : -slideInY);
+
+  // Photo dimension — fills the left column in wide mode, centred in scene.
+  const photoH = wide ? Math.round(mh * 0.82) : Math.round(Math.min(mh * 0.44, width * 0.28));
+  const photoW = Math.round(photoH * 0.72);
+
+  // Text sizes — longhand helpers (no gap, no inset).
+  const numSize = wide ? px(height, 0.52) : sceneHero(width, mh, 0.32, 0.20);
+  const nameSize = wide
+    ? Math.max(8, Math.round(Math.min(height * 0.16, width * 0.048)))
+    : sceneText(width, mh, 0.10, (player?.name ?? '').length);
+  const posSize = wide ? px(height, 0.075) : sceneText(width, mh, 0.062, 12);
+  const statSize = wide ? px(height, 0.065) : sceneText(width, mh, 0.054, statLine.length);
+  const headerSize = wide ? px(height, 0.07) : sceneText(width, mh, 0.055, teamName.length + 12);
+  const countSize = wide ? px(height, 0.065) : sceneText(width, mh, 0.052, 8);
+
+  // Keyframe declarations injected once per mount (only when animOn).
+  const kfBlock = animOn
+    ? `
+@keyframes celPregameAccentPulse {
+  0%,100% { opacity:1; }
+  50%      { opacity:0.55; }
+}
+@keyframes celPregameSlotFlash {
+  0%   { background:${accent}; }
+  40%  { background:${accent}cc; }
+  100% { background:${accent}22; }
+}
+@keyframes celPregamePhotoGlow {
+  0%,100% { box-shadow: 0 0 32px ${accent}88; }
+  50%     { box-shadow: 0 0 64px ${accent}cc; }
+}
+`
+    : '';
+
+  // Progress dots (one per player, current highlighted).
+  const dots =
+    lineup.length > 1
+      ? lineup.map((_, i) => (
+          <div
+            key={i}
+            style={{
+              width: i === idx ? px(mh, 14 / 480) * 2 : px(mh, 10 / 480),
+              height: px(mh, 10 / 480),
+              borderRadius: px(mh, 6 / 480),
+              background: i === idx ? accent : 'rgba(255,255,255,0.25)',
+              marginLeft: i === 0 ? 0 : px(mh, 8 / 480),
+              transition: animOn ? 'width 0.25s ease, background 0.25s ease' : undefined,
+            }}
+          />
+        ))
+      : null;
+
+  return (
+    <div ref={ref} style={{ ...frameStyle(r), background: '#05070d', overflow: 'hidden' }}>
+      {animOn && <style>{kfBlock}</style>}
+
+      {/* Diagonal stripe background — low-opacity team color accents */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+          backgroundImage: `repeating-linear-gradient(
+            135deg,
+            transparent 0px,
+            transparent 80px,
+            ${accent}18 80px,
+            ${accent}18 90px
+          )`,
+          pointerEvents: 'none',
+        }}
+      />
+
+      {/* Team header bar */}
+      <div
+        style={{
+          position: 'absolute', top: 0, left: 0, right: 0,
+          height: wide ? px(mh, 54 / 480) : px(mh, 44 / 480),
+          background: `linear-gradient(90deg, ${accent} 0%, ${accent}88 60%, transparent 100%)`,
+          display: 'flex', alignItems: 'center',
+          padding: `0 ${px(mh, 24 / 480)}px`,
+        }}
+      >
+        <span style={{ fontWeight: 900, fontSize: headerSize, letterSpacing: '0.14em', color: '#05070d' }}>
+          STARTING LINEUP · {teamName.toUpperCase()}
+        </span>
+        {/* Player count + current index */}
+        {lineup.length > 0 && (
+          <span style={{ fontWeight: 600, fontSize: countSize, color: 'rgba(5,7,13,0.65)', letterSpacing: '0.1em', marginLeft: px(mh, 20 / 480) }}>
+            {idx + 1}/{lineup.length}
+          </span>
+        )}
+      </div>
+
+      {/* Progress dots row */}
+      {dots && (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            bottom: px(mh, 14 / 480),
+            left: 0, right: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {dots}
+        </div>
+      )}
+
+      {player ? (
+        wide ? (
+          /* ── WIDE / ribbon layout ─────────────────────────────────── */
+          <div
+            style={{
+              position: 'absolute',
+              top: px(mh, 54 / 480),
+              left: px(mh, 32 / 480),
+              right: px(mh, 32 / 480),
+              bottom: px(mh, 28 / 480),
+              display: 'flex',
+              alignItems: 'center',
+              transform: animOn
+                ? `translateX(${translateX}px) translateY(${translateY}px)`
+                : undefined,
+              opacity: animOn ? opacity : 1,
+              transition: animOn
+                ? `transform 0.35s cubic-bezier(0.22,1,0.36,1), opacity 0.35s ease`
+                : undefined,
+            }}
+          >
+            {/* Photo */}
+            {player.photoUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={player.photoUrl}
+                alt={player.name}
+                style={{
+                  width: photoW,
+                  height: photoH,
+                  objectFit: 'cover',
+                  borderRadius: px(mh, 8 / 480),
+                  flexShrink: 0,
+                  boxShadow: animOn
+                    ? undefined
+                    : `0 0 32px ${accent}88`,
+                  animation: animOn ? 'celPregamePhotoGlow 2s ease-in-out infinite' : undefined,
+                }}
+              />
+            ) : (
+              /* Placeholder when no photo */
+              <div
+                style={{
+                  width: photoW,
+                  height: photoH,
+                  borderRadius: px(mh, 8 / 480),
+                  flexShrink: 0,
+                  background: `linear-gradient(135deg, ${accent}44 0%, ${accent}11 100%)`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <span style={{ fontSize: px(height, 0.20), opacity: 0.5 }}>👤</span>
+              </div>
+            )}
+
+            {/* Jersey number — large, between photo and name */}
+            <div
+              style={{
+                marginLeft: px(mh, 40 / 480),
+                fontWeight: 900,
+                fontSize: numSize,
+                lineHeight: 1,
+                color: accent,
+                letterSpacing: '-0.04em',
+                textShadow: `0 0 60px ${accent}cc, 0 4px 20px #000`,
+                flexShrink: 0,
+              }}
+            >
+              #{player.number || '—'}
+            </div>
+
+            {/* Name + position + stat line */}
+            <div style={{ marginLeft: px(mh, 32 / 480), flexShrink: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontWeight: 800,
+                  fontSize: nameSize,
+                  lineHeight: 1.1,
+                  letterSpacing: '0.03em',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {player.name.toUpperCase()}
+              </div>
+              {player.position && (
+                <div
+                  style={{
+                    fontWeight: 600,
+                    fontSize: posSize,
+                    letterSpacing: '0.10em',
+                    color: 'rgba(255,255,255,0.55)',
+                    marginTop: px(mh, 6 / 480),
+                  }}
+                >
+                  {player.position.toUpperCase()}
+                </div>
+              )}
+              {statLine && (
+                <div
+                  style={{
+                    fontWeight: 500,
+                    fontSize: statSize,
+                    letterSpacing: '0.06em',
+                    color: accent,
+                    marginTop: px(mh, 10 / 480),
+                  }}
+                >
+                  {statLine}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* ── SCENE / scoreboard layout ───────────────────────────── */
+          <div
+            style={{
+              position: 'absolute',
+              top: px(mh, 54 / 480),
+              left: 0,
+              right: 0,
+              bottom: px(mh, 28 / 480),
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transform: animOn
+                ? `translateX(${translateX}px) translateY(${translateY}px)`
+                : undefined,
+              opacity: animOn ? opacity : 1,
+              transition: animOn
+                ? `transform 0.35s cubic-bezier(0.22,1,0.36,1), opacity 0.35s ease`
+                : undefined,
+              padding: `0 ${px(mh, 32 / 480)}px`,
+            }}
+          >
+            {/* Photo */}
+            {player.photoUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={player.photoUrl}
+                alt={player.name}
+                style={{
+                  width: photoW,
+                  height: photoH,
+                  objectFit: 'cover',
+                  borderRadius: px(mh, 8 / 480),
+                  boxShadow: animOn
+                    ? undefined
+                    : `0 0 32px ${accent}88`,
+                  animation: animOn ? 'celPregamePhotoGlow 2s ease-in-out infinite' : undefined,
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: photoW,
+                  height: photoH,
+                  borderRadius: px(mh, 8 / 480),
+                  background: `linear-gradient(135deg, ${accent}44 0%, ${accent}11 100%)`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <span style={{ fontSize: sceneHero(width, mh, 0.18, 0.12), opacity: 0.5 }}>👤</span>
+              </div>
+            )}
+
+            {/* Jersey number */}
+            <div
+              style={{
+                fontWeight: 900,
+                fontSize: numSize,
+                lineHeight: 1,
+                color: accent,
+                letterSpacing: '-0.04em',
+                textShadow: `0 0 60px ${accent}cc, 0 4px 20px #000`,
+                marginTop: px(mh, 18 / 480),
+              }}
+            >
+              #{player.number || '—'}
+            </div>
+
+            {/* Name */}
+            <div
+              style={{
+                fontWeight: 800,
+                fontSize: nameSize,
+                lineHeight: 1.1,
+                letterSpacing: '0.03em',
+                textAlign: 'center',
+                marginTop: px(mh, 10 / 480),
+              }}
+            >
+              {player.name.toUpperCase()}
+            </div>
+
+            {/* Position */}
+            {player.position && (
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: posSize,
+                  letterSpacing: '0.10em',
+                  color: 'rgba(255,255,255,0.55)',
+                  marginTop: px(mh, 6 / 480),
+                }}
+              >
+                {player.position.toUpperCase()}
+              </div>
+            )}
+
+            {/* Stat line */}
+            {statLine && (
+              <div
+                style={{
+                  fontWeight: 500,
+                  fontSize: statSize,
+                  letterSpacing: '0.06em',
+                  color: accent,
+                  marginTop: px(mh, 10 / 480),
+                  textAlign: 'center',
+                }}
+              >
+                {statLine}
+              </div>
+            )}
+          </div>
+        )
+      ) : (
+        /* Empty roster fallback */
+        <div
+          style={{
+            position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div style={{ fontSize: px(height, 0.12), opacity: 0.4 }}>No players in roster</div>
+          <div style={{ fontSize: px(height, 0.07), color: 'rgba(255,255,255,0.3)', marginTop: px(mh, 12 / 480) }}>
+            Add players in Setup → Team rosters
+          </div>
+        </div>
+      )}
+
+      {/* Bottom accent bar — pulses with team color */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0, left: 0, right: 0,
+          height: px(mh, 8 / 480),
+          background: accent,
+          animation: animOn ? 'celPregameAccentPulse 1.2s ease-in-out infinite' : undefined,
+        }}
+      />
+    </div>
+  );
+}

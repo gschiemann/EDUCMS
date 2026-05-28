@@ -632,6 +632,16 @@ function GameControl() {
               />
             </Section>
 
+            {/* T2-4 — Starting-lineup intro choreography.
+                Fires a 'pregame-intro' CUE that takes over the
+                scoreboard with per-player slots (photo + name +
+                number + stats). Home and away buttons side by side.
+                Long-press / tap the down-arrow for audio URL or away
+                team — simple split-button pattern. */}
+            <Section title="Pregame intro">
+              <PregameIntroPanel gameId={gameId} ctl={ctl} game={g} />
+            </Section>
+
             <Section title="Put it on your screens">
               <ScreenPushPanel gameId={gameId} />
             </Section>
@@ -3243,6 +3253,121 @@ function ShotClockSetup({
       <p className="mt-2 text-[11px] text-slate-400">
         {OPTS.find((o) => o.v === len)?.hint}
       </p>
+    </div>
+  );
+}
+
+// ── PregameIntroPanel ─────────────────────────────────────────
+// T2-4 — Starting-lineup choreography trigger.
+// Appears in Setup mode below Team Rosters. Fires a 'pregame-intro'
+// CUE that takes over the scoreboard with per-player slots.
+// Two buttons: "Home lineup" and "Away lineup". An optional text input
+// lets the operator paste an audio URL (intro music). Only shown when
+// there are players in the roster; uses the query-param trigger path
+// for the ?intro= shortcut documented in the task spec.
+function PregameIntroPanel({
+  gameId,
+  ctl,
+  game,
+}: {
+  gameId: string;
+  ctl: ReturnType<typeof useGameControl>;
+  game: { homeTeam: string; awayTeam: string };
+}) {
+  const [audioUrl, setAudioUrl] = useState('');
+  const [showAudio, setShowAudio] = useState(false);
+  const [fired, setFired] = useState<'home' | 'away' | null>(null);
+  const firedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Query-param trigger — ?intro=home|away fires on mount (tablet UX).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const p = new URLSearchParams(window.location.search);
+    const intro = p.get('intro');
+    if (intro === 'home' || intro === 'away') {
+      ctl.firePregameIntro.mutate({ team: intro });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fire = (team: 'home' | 'away') => {
+    ctl.firePregameIntro.mutate(
+      { team, audioUrl: audioUrl || undefined },
+      {
+        onSuccess: () => {
+          setFired(team);
+          if (firedTimer.current) clearTimeout(firedTimer.current);
+          firedTimer.current = setTimeout(() => setFired(null), 3000);
+        },
+      },
+    );
+  };
+
+  useEffect(() => () => { if (firedTimer.current) clearTimeout(firedTimer.current); }, []);
+
+  const busy = ctl.firePregameIntro.isPending;
+  const succeeded = (team: 'home' | 'away') => fired === team;
+
+  return (
+    <div>
+      <p className="text-xs text-slate-500 mb-3">
+        Takes over the scoreboard with a per-player slot (photo + name + number + stats). Add players in Team Rosters first.
+      </p>
+
+      <div className="flex" style={{ marginBottom: 8 }}>
+        {/* Home intro button */}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => fire('home')}
+          className={`flex-1 rounded-l-xl border-y border-l px-4 py-3 text-sm font-bold transition-colors ${
+            succeeded('home')
+              ? 'border-green-500 bg-green-500 text-white'
+              : 'border-indigo-300 bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800'
+          }`}
+        >
+          {succeeded('home') ? '✓ Sent!' : `🎤 ${game.homeTeam} Intro`}
+        </button>
+
+        {/* Away intro button */}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => fire('away')}
+          className={`flex-1 rounded-r-xl border-y border-r px-4 py-3 text-sm font-bold transition-colors ${
+            succeeded('away')
+              ? 'border-green-500 bg-green-500 text-white'
+              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 active:bg-slate-200'
+          }`}
+          style={{ borderLeft: '1px solid #e2e8f0' }}
+        >
+          {succeeded('away') ? '✓ Sent!' : `🎤 ${game.awayTeam} Intro`}
+        </button>
+      </div>
+
+      {/* Audio URL toggle — collapsed by default to keep the panel clean */}
+      <button
+        type="button"
+        onClick={() => setShowAudio((v) => !v)}
+        className="text-xs text-indigo-500 hover:text-indigo-700 underline"
+      >
+        {showAudio ? 'Hide intro music URL' : 'Add intro music URL (optional)'}
+      </button>
+
+      {showAudio && (
+        <div style={{ marginTop: 8 }}>
+          <input
+            type="url"
+            placeholder="https://…/intro-music.mp3"
+            value={audioUrl}
+            onChange={(e) => setAudioUrl(e.target.value)}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+          <p className="mt-1 text-[11px] text-slate-400">
+            Plays once when the intro starts. Stops automatically when the intro ends.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

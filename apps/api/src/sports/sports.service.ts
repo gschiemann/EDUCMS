@@ -2971,6 +2971,113 @@ export class SportsService {
   }
 
   /**
+   * T2-4: Fire the pre-game starting-lineup choreography.
+   *
+   * Fetches the roster for `team` ('home' | 'away'), assembles the
+   * lineup array, and writes a CUE GameEvent with key 'pregame-intro'.
+   * The board page's existing cue-pump picks it up on the next 750ms
+   * poll and routes it to `CuelPregameIntroWidget` for a 30-second
+   * per-player cinematic takeover.
+   *
+   * `durationMs` is the per-player slot length (default 3500 ms).
+   * `skippable` is surfaced in the cue payload so the board can offer
+   * an escape hatch via an operator keypress (not used yet — forwarded
+   * for future use).
+   */
+  async firePregameIntro(
+    tenantId: string,
+    gameId: string,
+    dto: {
+      team?: 'home' | 'away';
+      audioUrl?: string;
+      slotMs?: number;
+      skippable?: boolean;
+    },
+    actorUserId?: string,
+  ) {
+    const game = await this.owned(tenantId, gameId);
+    const team: 'home' | 'away' = dto.team === 'away' ? 'away' : 'home';
+    const slotMs = Math.max(1000, Math.min(10_000, Number(dto.slotMs ?? 3500) || 3500));
+    const audioUrl = this.cleanText(dto.audioUrl, 2048);
+    const skippable = dto.skippable !== false;
+
+    // Fetch the roster — home or away, in display order.
+    const players = await this.prisma.client.rosterPlayer.findMany({
+      where: { gameId, team },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    // Shape each player to the minimal payload the widget needs — avoid
+    // sending the full DB row over the GameEvent feed (stays under Redis
+    // message-size limits even for 20-player rosters).
+    const lineup = players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      number: p.number ?? '',
+      position: p.position ?? '',
+      photoUrl: p.photoUrl ?? '',
+      stats: (p.stats && typeof p.stats === 'object' ? p.stats : {}) as Record<string, string>,
+    }));
+
+    const teamColor =
+      team === 'home'
+        ? (game.homeColor ?? null)
+        : (game.awayColor ?? null);
+    const teamName = team === 'home' ? game.homeTeam : game.awayTeam;
+
+    // Total runtime: slotMs × number of players, capped at 60 s so a
+    // huge bench never permanently blocks the board.
+    const totalMs = Math.min(60_000, slotMs * Math.max(1, lineup.length));
+
+    const event = await this.record(gameId, 'CUE', {
+      key: 'pregame-intro',
+      label: `${teamName} Starting Lineup`,
+      emoji: '🎤',
+      target: 'BOARD',        // scoreboard takeover only; ribbon keeps rotating
+      durationMs: totalMs,
+      audioUrl,
+      skippable,
+      team,
+      teamColor,
+      teamName,
+      lineup,
+      slotMs,
+      snapshot: this.cueSnapshot(game as Parameters<typeof this.cueSnapshot>[0]),
+    });
+
+    // Immutable AuditLog so game-presentation forensics can answer
+    // "who started the lineup intro and when."
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId ?? null,
+          action: 'SPORTS_PREGAME_INTRO_FIRED',
+          targetType: 'Game',
+          targetId: gameId,
+          details: JSON.stringify({
+            eventId: event.id,
+            team,
+            playerCount: lineup.length,
+            totalMs,
+            hasAudio: !!audioUrl,
+          }),
+        },
+      });
+    } catch {
+      // Best-effort — never let an audit failure block the cue.
+    }
+
+    return {
+      fired: true,
+      team,
+      playerCount: lineup.length,
+      totalMs,
+      eventId: event.id,
+    };
+  }
+
+  /**
    * Call a timeout for a team — the one coupled event Daktronics All
    * Sport has a dedicated TIMEOUT key for, and VenueOS had no atomic
    * equivalent. Calling this endpoint:

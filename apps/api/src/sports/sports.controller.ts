@@ -822,6 +822,43 @@ export class SportsController {
   }
 
   /**
+   * T2-4: Fire the pre-game starting-lineup choreography.
+   *
+   * Fetches the roster for the requested team, writes a CUE GameEvent
+   * with key 'pregame-intro' and the full lineup payload, and returns
+   * immediately. The board page's existing 750ms cue-pump picks it up
+   * and hands it to CelPregameIntroWidget for a 30-second per-player
+   * cinematic scoreboard takeover.
+   *
+   * RBAC: same as fireCue — any operator role can fire the intro.
+   */
+  @Post('games/:id/pregame-intro')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  pregameIntro(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      team?: 'home' | 'away';
+      audioUrl?: string;
+      slotMs?: number;
+      skippable?: boolean;
+    },
+  ) {
+    return this.sports.firePregameIntro(
+      req.user.tenantId,
+      id,
+      body || {},
+      req?.user?.id,
+    );
+  }
+
+  /**
    * Undo a specific GameEvent by id. Synthesizes the inverse mutation
    * and applies it via the existing PATCH endpoints, then records a
    * `UNDO_<TYPE>` event with `payload.undoOf = <eventId>`.

@@ -2654,6 +2654,23 @@ export function useGameControl(gameId: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-game', gameId] }),
   });
 
+  // T2-4: Pregame starting-lineup choreography — fires a 'pregame-intro'
+  // CUE GameEvent with the roster for the requested team. The board page's
+  // existing cue-pump picks it up within 750ms and routes it to
+  // CelPregameIntroWidget for a per-player cinematic scoreboard takeover.
+  const firePregameIntro = useMutation({
+    mutationFn: (body: {
+      team?: 'home' | 'away';
+      audioUrl?: string;
+      slotMs?: number;
+      skippable?: boolean;
+    }) =>
+      apiFetch(`/sports/games/${gameId}/pregame-intro`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+
   return {
     score,
     clock,
@@ -2661,6 +2678,7 @@ export function useGameControl(gameId: string) {
     playClock,
     penalties,
     callTimeout,
+    firePregameIntro,
     segment,
     stats,
     status,

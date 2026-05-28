@@ -30,6 +30,11 @@ import type { SportDefinition } from '@cms/api-types';
 // Game.scoreboardTemplateId is non-null; otherwise the legacy
 // BoardScene + status-aware scenes below render unchanged.
 import { CustomScoreboardScene } from './CustomScoreboardScene';
+// T2-4 — Pre-game starting-lineup choreography widget.
+import {
+  CelPregameIntroWidget,
+  type PregamePlayer,
+} from '@/components/widgets/v2/CelebrationsOtherSportsWidgets';
 
 interface Cue {
   id: string;
@@ -56,6 +61,13 @@ interface Cue {
   // Co-branded celebration attribution — shown below the cue label.
   sponsorName?: string | null;
   sponsorLogoUrl?: string | null;
+  // T2-4 — Pre-game lineup choreography fields (only present when
+  // key === 'pregame-intro').
+  lineup?: PregamePlayer[];
+  teamColor?: string | null;
+  teamName?: string | null;
+  slotMs?: number;
+  skippable?: boolean;
   // Frozen live-game snapshot, captured server-side at cue-fire time —
   // so a celebration shows the EXACT score + clock of the moment.
   snapshot?: {
@@ -1714,6 +1726,37 @@ function CueOverlay({
   sport?: string | null;
   pack?: 'v1' | 'v2';
 }) {
+  // T2-4 — Pre-game starting-lineup choreography. Full-screen takeover
+  // rendered by CelPregameIntroWidget; the board stays dark behind it.
+  // The board's existing holdMs logic uses cue.durationMs (total runtime
+  // = slotMs × playerCount, capped at 60s server-side).
+  if (cue.key === 'pregame-intro') {
+    const teamColor =
+      cue.teamColor ||
+      (cue.team === 'away' ? cue.snapshot?.awayColor : cue.snapshot?.homeColor) ||
+      '#fbbf24';
+    return (
+      <div
+        style={{
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+          zIndex: 50, background: '#05070d',
+          animation: 'venueCelebScrim 0.35s ease-out',
+        }}
+      >
+        <CelPregameIntroWidget
+          live
+          config={{
+            teamName: cue.teamName ?? (cue.team === 'away' ? cue.snapshot?.awayTeam : cue.snapshot?.homeTeam) ?? 'HOME',
+            teamColor,
+            lineup: cue.lineup ?? [],
+            slotMs: cue.slotMs ?? 3500,
+            skippable: cue.skippable !== false,
+          }}
+        />
+      </div>
+    );
+  }
+
   // Custom cue — the operator's uploaded content (a sponsor graphic, a
   // promo, a hype card).
   if (cue.mediaUrl) {
