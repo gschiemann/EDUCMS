@@ -80,26 +80,49 @@ export class JwtAuthGuard implements CanActivate {
 
       const payload = await this.jwtService.verifyAsync(token, { secret });
 
-      // Check Redis revocation set in production. Lane-1 P0 fix: previously a
-      // Redis error here LOGGED AND ALLOWED the token (fail-open), so a brief
-      // Redis hiccup let already-revoked tokens (logout, role downgrade) keep
+      // Token revocation checks. Lane-1 P0 fix: previously a Redis error
+      // here LOGGED AND ALLOWED the token (fail-open), so a brief Redis
+      // hiccup let already-revoked tokens (logout, role downgrade) keep
       // working. Now we fail CLOSED — if we can't confirm the token isn't
-      // revoked, we deny. Clients retry; transient Redis outages cause a brief
-      // auth blip rather than an auth bypass.
-      if (process.env.NODE_ENV === 'production') {
-        try {
-          const isRevoked = await this.redisService.sismember('jwt_revoked_list', token);
-          if (isRevoked) {
+      // revoked, we deny. Clients retry; transient Redis outages cause a
+      // brief auth blip rather than an auth bypass.
+      //
+      // P1-4 (2026-05-28): this block was gated on
+      // `process.env.NODE_ENV === 'production'`, making logout + every
+      // revocation a SILENT NO-OP in staging / preview / misconfigured
+      // deploys — while SSE (sse.controller.ts) and the WS gateway
+      // (realtime.gateway.ts) checked unconditionally. Gate removed: the
+      // check now runs in every environment and already fails closed, so
+      // there is no remaining environment where a revoked token survives.
+      try {
+        // (a) Single-token revocation — the logout path SADDs the exact
+        //     bearer token here.
+        const isRevoked = await this.redisService.sismember('jwt_revoked_list', token);
+        if (isRevoked) {
+          throw new UnauthorizedException('Session revoked');
+        }
+
+        // (b) P1-1 — per-user mass revocation. Individual user JWTs carry
+        //     no `jti` and a user can hold several live tokens, so the
+        //     single-token set above can't revoke a demoted user's OTHER
+        //     sessions. When an admin tightens a user's privileges (role
+        //     downgrade, canTriggerPanic→false) the writer records a
+        //     per-user "invalid-before" epoch; any token issued before it
+        //     is rejected. Device tokens (sub=screenId, no `iat`-vs-user
+        //     semantics) are exempt — this is a user-privilege control.
+        if (unverifiedKind !== 'device' && payload?.sub && typeof payload.iat === 'number') {
+          const invalidBefore = await this.redisService.getTokenInvalidBefore(payload.sub);
+          if (invalidBefore != null && payload.iat < invalidBefore) {
             throw new UnauthorizedException('Session revoked');
           }
-        } catch (redisError) {
-          if (redisError instanceof UnauthorizedException) {
-            throw redisError;
-          }
-          const msg = redisError instanceof Error ? redisError.message : String(redisError);
-          console.warn('[JwtAuthGuard] Redis revocation check failed (failing closed):', msg);
-          throw new UnauthorizedException('Auth check unavailable; please retry');
         }
+      } catch (redisError) {
+        if (redisError instanceof UnauthorizedException) {
+          throw redisError;
+        }
+        const msg = redisError instanceof Error ? redisError.message : String(redisError);
+        console.warn('[JwtAuthGuard] Redis revocation check failed (failing closed):', msg);
+        throw new UnauthorizedException('Auth check unavailable; please retry');
       }
 
       if (isDeviceToken) {

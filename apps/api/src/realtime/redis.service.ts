@@ -181,4 +181,73 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       return false;
     }
   }
+
+  // ───────────────────────────────────────────────────────────────────
+  // Per-user token invalidation (P1-1, 2026-05-28)
+  //
+  // Individual user JWTs carry no `jti`, and a user can hold several
+  // live tokens at once (multiple devices / browsers, rememberMe up to
+  // 30 days). Adding "the token" to `jwt_revoked_list` (the logout path)
+  // can only burn the ONE token presented at logout. To revoke EVERY
+  // outstanding token for a user the moment their privileges are
+  // tightened (role downgrade / canTriggerPanic→false), we store a
+  // per-user "invalid-before" epoch; the guard rejects any token whose
+  // `iat` predates it. One key, all sessions, no jti needed.
+  //
+  // Redis is the source of truth (same accepted tradeoff as
+  // jwt_revoked_list — see auth.controller.ts logout: "Redis is the
+  // ONLY revocation store"). The guard fails CLOSED on read error.
+  // ───────────────────────────────────────────────────────────────────
+
+  /** Redis key holding the per-user "all tokens issued before this epoch are invalid" marker. */
+  private tokenInvalidBeforeKey(userId: string): string {
+    return `jwt_invalid_before:${userId}`;
+  }
+
+  /**
+   * Mark every token currently held by `userId` as invalid: any JWT
+   * whose `iat` is < the stored epoch is rejected by JwtAuthGuard.
+   * Called on a privilege TIGHTENING (role downgrade, canTriggerPanic
+   * set false). TTL = 30d, the rememberMe ceiling — after that any
+   * affected token has expired on its own, so the marker can lapse.
+   *
+   * Throws on Redis failure so the caller can surface that the
+   * revocation did not take (the writer treats it as a hard error, the
+   * same way `auth.controller` logout 503s when Redis is down rather
+   * than pretending the session was burned).
+   */
+  async markUserTokensInvalid(userId: string, atEpochSeconds?: number): Promise<void> {
+    if (!this.publisher) {
+      throw new Error('Redis unavailable — cannot revoke user tokens');
+    }
+    // +1s so a token minted in the SAME second as the revocation (its
+    // `iat` floors to whole seconds) is still caught: iat < epoch.
+    const epoch = (atEpochSeconds ?? Math.floor(Date.now() / 1000)) + 1;
+    const key = this.tokenInvalidBeforeKey(userId);
+    // Monotonic: never move the marker backwards if two tightenings race
+    // (or this runs on multiple replicas) — keep the latest cutoff.
+    const existing = await this.publisher.get(key);
+    const next = existing ? Math.max(parseInt(existing, 10) || 0, epoch) : epoch;
+    await this.publisher.set(key, String(next), 'EX', 60 * 60 * 24 * 30);
+  }
+
+  /**
+   * Return the per-user "invalid-before" epoch (seconds) or null if no
+   * marker is set. Used by JwtAuthGuard to reject pre-revocation tokens.
+   * THROWS on Redis error (unlike `sismember`, which fails open) so the
+   * guard's fail-CLOSED catch handles a Redis outage as deny-and-retry.
+   */
+  async getTokenInvalidBefore(userId: string): Promise<number | null> {
+    if (!this.publisher) {
+      // No Redis configured (dev / Redis-less deploy). No marker can
+      // exist, so there is nothing to enforce — return null. (In prod a
+      // missing publisher is itself a misconfiguration the boot guard
+      // catches; here we don't want to brick every request in dev.)
+      return null;
+    }
+    const raw = await this.publisher.get(this.tokenInvalidBeforeKey(userId));
+    if (raw == null) return null;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) ? n : null;
+  }
 }

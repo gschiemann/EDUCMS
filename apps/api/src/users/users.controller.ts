@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, BadRequestException, ForbiddenException, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, BadRequestException, ForbiddenException, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../realtime/redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -14,6 +15,30 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+// P1-1 (2026-05-28) — privilege rank, HIGH→LOW. Used only to detect a
+// role DOWNGRADE so we can revoke the target's live tokens on a
+// tightening (never on a widening — a promotion already takes effect at
+// the next privilege check that reads the live DB row, and revoking on
+// promote would needlessly log the user out). Lower index = more
+// privileged. An unknown role sorts to the bottom (least privileged) so
+// any move INTO a known role from "unknown" is treated as a widening
+// (no revoke), and any move to "unknown" is treated as a downgrade.
+const ROLE_RANK: Record<string, number> = {
+  [AppRole.SUPER_ADMIN]: 0,
+  [AppRole.DISTRICT_ADMIN]: 1,
+  [AppRole.SCHOOL_ADMIN]: 2,
+  [AppRole.CONTRIBUTOR]: 3,
+  [AppRole.RESTRICTED_VIEWER]: 4,
+};
+
+function isRoleDowngrade(fromRole: string, toRole: string): boolean {
+  const from = ROLE_RANK[fromRole] ?? Number.MAX_SAFE_INTEGER;
+  const to = ROLE_RANK[toRole] ?? Number.MAX_SAFE_INTEGER;
+  // Higher rank number = less privileged. A downgrade is moving to a
+  // strictly-less-privileged role.
+  return to > from;
+}
+
 function validatePassword(password: string): void {
   if (!password || password.length < 8) {
     throw new BadRequestException('Password must be at least 8 characters.');
@@ -26,7 +51,50 @@ function validatePassword(password: string): void {
 @Controller('api/v1/users')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class UsersController {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger('UsersController');
+
+  constructor(
+    private readonly prisma: PrismaService,
+    // P1-1 — RedisService is the per-user token-revocation store
+    // (RealtimeModule is @Global, so no module wiring needed). Used to
+    // burn a target user's live tokens the moment their privileges are
+    // tightened. Optional-by-construction is unnecessary: every prod
+    // boot has RealtimeModule, and the revoke path tolerates a missing
+    // Redis publisher itself (see revokeUserTokens).
+    private readonly redis: RedisService,
+  ) {}
+
+  /**
+   * P1-1 (2026-05-28) — revoke ALL of a user's live JWTs after a
+   * privilege TIGHTENING (role downgrade, canTriggerPanic→false).
+   *
+   * Why this exists: `role` + `canTriggerPanic` are baked into the JWT
+   * claim (auth.service.ts) and read straight off the token by
+   * jwt-auth.guard.ts / rbac.guard.ts on the emergency path — they are
+   * never re-checked against the live DB row. So a demoted user, or one
+   * whose panic capability was just turned off, keeps the elevated
+   * capability until their token expires — up to 30 days with
+   * rememberMe. This stamps a per-user "invalid-before" epoch in Redis;
+   * the guard then rejects every token issued before now, across all of
+   * that user's devices/sessions.
+   *
+   * Best-effort by design: a Redis hiccup must not make the role/panic
+   * write fail (the DB row — the durable source of truth — already
+   * committed, and the guard itself fails CLOSED on Redis errors, so a
+   * Redis outage can't be the thing that lets a stale token through).
+   * We log a warning so a broken revocation path is visible rather than
+   * silent — the lesson from the 2026-05-21 safeguard-theater incident.
+   */
+  private async revokeUserTokens(userId: string, reason: string): Promise<void> {
+    try {
+      await this.redis.markUserTokensInvalid(userId);
+    } catch (e: any) {
+      this.logger.warn(
+        `Token revocation for user ${userId} (${reason}) did not take: ${e?.message ?? e}. ` +
+          `DB row is updated; stale tokens persist until expiry if Redis stays down.`,
+      );
+    }
+  }
 
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
@@ -218,6 +286,15 @@ export class UsersController {
       return u;
     });
 
+    // P1-1 — on a DOWNGRADE only, revoke the target's live tokens so the
+    // demotion takes effect immediately instead of lingering in their JWT
+    // claim for up to 30 days (rememberMe ceiling). A widening (promotion)
+    // is NOT revoked: the new privileges flow in at next login, and force-
+    // logging-out a just-promoted user would be pure annoyance.
+    if (isRoleDowngrade(user.role, body.role)) {
+      await this.revokeUserTokens(id, `role downgrade ${user.role}→${body.role}`);
+    }
+
     return updated;
   }
 
@@ -250,13 +327,14 @@ export class UsersController {
    *     scoped via the user lookup.
    *   - Every flip writes an immutable AuditLog row with
    *     before/after so privilege creep is detectable post-hoc.
-   *   - JWT-claim staleness caveat: the user's CURRENT JWT keeps the
-   *     old value until refresh / re-login. That's acceptable in v1
-   *     because the bypass only widens AT login time, never tightens
-   *     past it. To revoke immediately, the admin can also force a
-   *     /auth/logout on the target user (Sprint 2+ feature) or the
-   *     target user can sign out + back in. Documented in the
-   *     emergency-system help doc.
+   *   - P1-1 (2026-05-28) — TIGHTENING now revokes immediately. When
+   *     the flag is set to FALSE we burn the target's live tokens via
+   *     RedisService.markUserTokensInvalid, so the just-removed panic
+   *     capability stops working on the next request instead of
+   *     lingering in the user's JWT claim for up to 30 days
+   *     (rememberMe). Setting the flag to TRUE is a WIDENING and is NOT
+   *     revoked — the new capability takes effect at their next login,
+   *     and force-logging-out a user we just empowered would be pointless.
    */
   @Put(':id/can-trigger-panic')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
@@ -327,6 +405,15 @@ export class UsersController {
       });
       return u;
     });
+
+    // P1-1 — capability REMOVED (true→false) is a tightening: revoke the
+    // target's live tokens so the stale `canTriggerPanic:true` claim
+    // can't keep firing /emergency/trigger for up to 30 days. Only act
+    // on an actual transition (skip a no-op false→false flip — nothing
+    // to revoke, and we'd needlessly churn the Redis marker).
+    if (fromValue && !toValue) {
+      await this.revokeUserTokens(id, 'canTriggerPanic removed');
+    }
 
     return updated;
   }
