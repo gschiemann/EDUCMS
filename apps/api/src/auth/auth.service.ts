@@ -98,6 +98,34 @@ export class AuthService {
     return null;
   }
 
+  /**
+   * P0-4 (2026-05-28) — resolve the tenant a failed-login email maps to,
+   * so the controller can write an `AUTH_LOGIN_FAILED` AuditLog row
+   * attributed to the RIGHT tenant. `AuditLog.tenantId` is NOT NULL in
+   * the schema, so a failed attempt against a real account can only be
+   * audited if we know that account's tenant.
+   *
+   * Returns `null` when the email maps to no user — in that case there
+   * is no tenant to attribute the row to (and fabricating one would
+   * corrupt another tenant's audit trail), so the controller logs the
+   * miss to stdout instead. This deliberately performs NO password
+   * work — `validateUser` already ran the argon2 timing-equalizer, so
+   * this lookup is only reached after the credential check resolved and
+   * adds no enumeration side channel (it returns the same `null` to the
+   * caller regardless; the result never reaches the HTTP response).
+   */
+  async tenantIdForEmail(email: string): Promise<string | null> {
+    try {
+      const user = await this.prisma.client.user.findUnique({
+        where: { email },
+        select: { tenantId: true },
+      });
+      return user?.tenantId ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   async login(user: any, rememberMe?: boolean) {
     // P0-4 (audit 2026-05-27) — if MFA is enabled on this user we
     // STOP the normal session creation here and return a short-lived

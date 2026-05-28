@@ -83,7 +83,7 @@ import { ScreenWedgeDetectorCron } from './screens/screen-wedge-detector.cron';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
-import { AuditInterceptor } from './security/audit.interceptor';
+import { RequestLogInterceptor } from './security/request-log.interceptor';
 import { AnomalyMiddleware } from './security/anomaly.middleware';
 import { CsrfMiddleware } from './security/csrf.middleware';
 import { CsrfController } from './security/csrf.controller';
@@ -208,8 +208,11 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
       useClass: SanitizationPipe,
     },
     {
+      // Operational stdout breadcrumb for mutating requests. NOT the
+      // audit safeguard — the durable audit trail is the AuditLog table
+      // written by each route's domain code (P0-4, 2026-05-28).
       provide: APP_INTERCEPTOR,
-      useClass: AuditInterceptor,
+      useClass: RequestLogInterceptor,
     },
   ],
 })

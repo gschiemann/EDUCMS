@@ -104,7 +104,9 @@ export class SponsorsController {
       frequencyCapPerHour?: number | null;
     },
   ) {
-    return this.sponsors.create(req.user.tenantId, body);
+    // P0-4 — pass the actor so the SPONSOR_CREATED AuditLog row is
+    // attributable to a user, not just a tenant.
+    return this.sponsors.create(req.user.tenantId, body, req.user.id);
   }
 
   @Patch(':id')
@@ -126,12 +128,12 @@ export class SponsorsController {
       frequencyCapPerHour?: number | null;
     },
   ) {
-    return this.sponsors.update(req.user.tenantId, id, body);
+    return this.sponsors.update(req.user.tenantId, id, body, req.user.id);
   }
 
   @Delete(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   remove(@Request() req: any, @Param('id') id: string) {
-    return this.sponsors.remove(req.user.tenantId, id);
+    return this.sponsors.remove(req.user.tenantId, id, req.user.id);
   }
 }

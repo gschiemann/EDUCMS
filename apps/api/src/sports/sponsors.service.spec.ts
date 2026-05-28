@@ -49,9 +49,13 @@ const TENANT = 'tenant-1';
 function setup() {
   const sponsor = makeTable();
   const game = makeTable();
-  const prisma = { client: { sponsor, game } };
+  // P0-4 — sponsor CRUD now writes AuditLog rows; the in-memory fake
+  // needs the table or every mutation would hit the audit helper's
+  // try/catch and log a warn. Including it lets tests assert audit rows.
+  const auditLog = makeTable();
+  const prisma = { client: { sponsor, game, auditLog } };
   const service = new SponsorsService(prisma as any);
-  return { service, sponsor, game };
+  return { service, sponsor, game, auditLog };
 }
 
 describe('SponsorsService — create', () => {
@@ -165,5 +169,43 @@ describe('SponsorsService — proof-of-play report', () => {
     game.rows.push({ tenantId: TENANT, status: 'SCHEDULED', startedAt: null, endedAt: null, updatedAt: new Date() });
     const report = await service.report(TENANT);
     expect(report.totalLiveSeconds).toBe(0);
+  });
+});
+
+describe('SponsorsService — audit trail (P0-4)', () => {
+  it('writes a SPONSOR_CREATED row attributed to the actor', async () => {
+    const { service, auditLog } = setup();
+    const created = await service.create(TENANT, { name: 'Acme Co', weight: 3 }, 'user-9');
+    const row = auditLog.rows.find((r) => r.action === 'SPONSOR_CREATED');
+    expect(row).toBeTruthy();
+    expect(row.tenantId).toBe(TENANT);
+    expect(row.userId).toBe('user-9');
+    expect(row.targetType).toBe('Sponsor');
+    expect(row.targetId).toBe(created.id);
+    expect(JSON.parse(row.details).name).toBe('Acme Co');
+  });
+
+  it('writes a SPONSOR_UPDATED row listing the changed fields', async () => {
+    const { service, sponsor, auditLog } = setup();
+    sponsor.rows.push({ id: 'sp1', tenantId: TENANT, name: 'Gold', weight: 1, active: true });
+    await service.update(TENANT, 'sp1', { weight: 5, active: false }, 'user-9');
+    const row = auditLog.rows.find((r) => r.action === 'SPONSOR_UPDATED');
+    expect(row).toBeTruthy();
+    expect(row.targetId).toBe('sp1');
+    expect(JSON.parse(row.details).changedFields).toEqual(
+      expect.arrayContaining(['weight', 'active']),
+    );
+  });
+
+  it('writes a SPONSOR_DELETED row capturing the name before delete', async () => {
+    const { service, sponsor, auditLog } = setup();
+    sponsor.rows.push({ id: 'sp1', tenantId: TENANT, name: 'Gold', weight: 1, active: true });
+    await service.remove(TENANT, 'sp1', 'user-9');
+    const row = auditLog.rows.find((r) => r.action === 'SPONSOR_DELETED');
+    expect(row).toBeTruthy();
+    expect(row.targetId).toBe('sp1');
+    expect(JSON.parse(row.details).name).toBe('Gold');
+    // sponsor row itself is gone
+    expect(sponsor.rows.find((r) => r.id === 'sp1')).toBeUndefined();
   });
 });

@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
 
@@ -29,7 +29,45 @@ interface SponsorInput {
 
 @Injectable()
 export class SponsorsService {
+  private readonly auditLogger = new Logger('SponsorsService');
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * P0-4 (2026-05-28) — write a sponsor mutation to the immutable
+   * AuditLog. Sponsor rows are ad-inventory / revenue config that the
+   * proof-of-play billing report depends on; before this, sponsor CRUD
+   * wrote ZERO audit rows, so a bad actor could silently rewrite or
+   * delete ad inventory with no trail tying it to a user.
+   *
+   * Best-effort (a DB hiccup must never fail the operator's save) but
+   * NOT silent — a write failure logs at warn. `AuditLog.tenantId` is
+   * NOT NULL; every sponsor mutation is tenant-scoped so it is always
+   * known. `actorUserId` is optional only because the per-impression
+   * public path has no user — the three CRUD callers always supply it.
+   */
+  private async audit(
+    tenantId: string,
+    actorUserId: string | null | undefined,
+    action: 'SPONSOR_CREATED' | 'SPONSOR_UPDATED' | 'SPONSOR_DELETED',
+    sponsorId: string,
+    details: Record<string, unknown> = {},
+  ): Promise<void> {
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId ?? null,
+          action,
+          targetType: 'Sponsor',
+          targetId: sponsorId,
+          details: JSON.stringify(details),
+        },
+      });
+    } catch (e: any) {
+      this.auditLogger.warn(`audit(${action}, ${sponsorId}) failed: ${e?.message ?? e}`);
+    }
+  }
 
   // ── helpers ──────────────────────────────────────────────────
 
@@ -126,11 +164,11 @@ export class SponsorsService {
     });
   }
 
-  async create(tenantId: string, dto: SponsorInput) {
+  async create(tenantId: string, dto: SponsorInput, actorUserId?: string) {
     const name = this.clean(dto.name, 120);
     if (!name) throw new BadRequestException('Sponsor name is required');
 
-    return this.prisma.client.sponsor.create({
+    const sponsor = await this.prisma.client.sponsor.create({
       data: {
         tenantId,
         name,
@@ -145,9 +183,16 @@ export class SponsorsService {
         frequencyCapPerHour: dto.frequencyCapPerHour !== undefined ? this.cleanFreqCap(dto.frequencyCapPerHour) : null,
       },
     });
+    await this.audit(tenantId, actorUserId, 'SPONSOR_CREATED', sponsor.id, {
+      name: sponsor.name,
+      tier: sponsor.tier,
+      weight: sponsor.weight,
+      active: sponsor.active,
+    });
+    return sponsor;
   }
 
-  async update(tenantId: string, id: string, dto: SponsorInput) {
+  async update(tenantId: string, id: string, dto: SponsorInput, actorUserId?: string) {
     const current = await this.owned(tenantId, id);
 
     const data: Record<string, unknown> = {};
@@ -166,12 +211,26 @@ export class SponsorsService {
     if (dto.flightEndAt !== undefined) data.flightEndAt = this.cleanFlightDate(dto.flightEndAt);
     if (dto.frequencyCapPerHour !== undefined) data.frequencyCapPerHour = this.cleanFreqCap(dto.frequencyCapPerHour);
 
-    return this.prisma.client.sponsor.update({ where: { id }, data });
+    const updated = await this.prisma.client.sponsor.update({ where: { id }, data });
+    await this.audit(tenantId, actorUserId, 'SPONSOR_UPDATED', id, {
+      name: updated.name,
+      // keys only — records which inventory fields the operator touched
+      // (weight / flight window / active state are the billing-relevant
+      // ones) without bloating the row with logo URLs.
+      changedFields: Object.keys(data),
+    });
+    return updated;
   }
 
-  async remove(tenantId: string, id: string) {
-    await this.owned(tenantId, id);
+  async remove(tenantId: string, id: string, actorUserId?: string) {
+    // Capture the name BEFORE delete so the audit row is meaningful
+    // after the row is gone ("Operator X deleted sponsor 'Acme Co').
+    const existing = await this.owned(tenantId, id);
     await this.prisma.client.sponsor.delete({ where: { id } });
+    await this.audit(tenantId, actorUserId, 'SPONSOR_DELETED', id, {
+      name: existing.name,
+      tier: existing.tier,
+    });
     return { deleted: true };
   }
 

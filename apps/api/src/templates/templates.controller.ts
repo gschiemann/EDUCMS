@@ -24,10 +24,48 @@ import {
 @Controller('api/v1/templates')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class TemplatesController {
+  private readonly auditLogger = new Logger('TemplatesController');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
   ) {}
+
+  /**
+   * P0-4 (2026-05-28) — write a template mutation to the immutable
+   * AuditLog. Before this, the entire templates module wrote ZERO audit
+   * rows across 14+ mutating endpoints, so a bad admin could delete or
+   * rewrite every layout in the tenant with no forensic trail.
+   *
+   * Best-effort (a DB hiccup must never fail the operator's save), but
+   * NOT silent — a write failure logs at warn so a broken audit path is
+   * visible rather than masquerading as covered. `AuditLog.tenantId` is
+   * NOT NULL; every mutating template endpoint is gated by JwtAuthGuard
+   * which loads `req.user.tenantId`, so it is always known here.
+   */
+  private async audit(
+    req: any,
+    action: 'TEMPLATE_CREATED' | 'TEMPLATE_UPDATED' | 'TEMPLATE_DELETED' | 'TEMPLATE_IMPORTED',
+    templateId: string | null,
+    details: Record<string, unknown> = {},
+  ): Promise<void> {
+    const tenantId = req?.user?.tenantId;
+    if (!tenantId) return; // defensive — guard guarantees this, but never throw
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: req?.user?.id ?? null,
+          action,
+          targetType: 'Template',
+          targetId: templateId,
+          details: JSON.stringify(details),
+        },
+      });
+    } catch (e: any) {
+      this.auditLogger.warn(`audit(${action}, ${templateId}) failed: ${e?.message ?? e}`);
+    }
+  }
 
   // ───────────────────────────────────────────────────────
   // BRAND INHERITANCE HELPER (2026-05-04)
@@ -555,9 +593,11 @@ export class TemplatesController {
     });
     const sortOrder = (lastSort?.sortOrder ?? -1) + 1;
     try {
-      return await (this.prisma.client as any).templateScene.create({
+      const scene = await (this.prisma.client as any).templateScene.create({
         data: { templateId: tpl.id, name, sortOrder, isDefault: false },
       });
+      await this.audit(req, 'TEMPLATE_UPDATED', tpl.id, { via: 'scene-create', sceneName: name });
+      return scene;
     } catch (e: any) {
       // Unique (templateId, name) collision → return a friendly error.
       if (e?.code === 'P2002') {
@@ -595,7 +635,7 @@ export class TemplatesController {
     // previous default off, flip this one on, all-or-nothing so we
     // never end up with zero (or two) default scenes.
     if (body.isDefault === true && !scene.isDefault) {
-      return this.prisma.client.$transaction(async (tx: any) => {
+      const result = await this.prisma.client.$transaction(async (tx: any) => {
         await tx.templateScene.updateMany({
           where: { templateId: tpl.id, isDefault: true },
           data: { isDefault: false },
@@ -605,16 +645,20 @@ export class TemplatesController {
           data: { ...data, isDefault: true },
         });
       });
+      await this.audit(req, 'TEMPLATE_UPDATED', tpl.id, { via: 'scene-update', sceneId, setDefault: true });
+      return result;
     }
 
     if (Object.keys(data).length === 0 && body.isDefault === undefined) {
       throw new HttpException('Nothing to update', HttpStatus.BAD_REQUEST);
     }
     try {
-      return await (this.prisma.client as any).templateScene.update({
+      const result = await (this.prisma.client as any).templateScene.update({
         where: { id: sceneId },
         data,
       });
+      await this.audit(req, 'TEMPLATE_UPDATED', tpl.id, { via: 'scene-update', sceneId, changedFields: Object.keys(data) });
+      return result;
     } catch (e: any) {
       if (e?.code === 'P2002') {
         throw new HttpException(`A scene with that name already exists`, HttpStatus.CONFLICT);
@@ -667,6 +711,12 @@ export class TemplatesController {
         });
       }
     });
+    await this.audit(req, 'TEMPLATE_UPDATED', tpl.id, {
+      via: 'scene-delete',
+      sceneId,
+      sceneName: scene.name,
+      zonesReassigned: zonesOnDeletedScene.length,
+    });
     return { ok: true };
   }
 
@@ -697,6 +747,11 @@ export class TemplatesController {
   async create(
     @Request() req: any,
     @Body(new ZodValidationPipe(TemplateCreateSchema)) body: TemplateCreateInput,
+    // P0-4 internal flag: importTemplate() reuses this create path but
+    // wants to audit as TEMPLATE_IMPORTED, not TEMPLATE_CREATED. The
+    // flag is not a route param — Nest only injects the decorated
+    // params; internal callers pass it positionally.
+    skipAudit = false,
   ) {
     if (!body.name?.trim()) {
       throw new HttpException('Template name is required', HttpStatus.BAD_REQUEST);
@@ -755,6 +810,14 @@ export class TemplatesController {
         zones: { orderBy: { sortOrder: 'asc' } },
       },
     });
+    if (!skipAudit) {
+      await this.audit(req, 'TEMPLATE_CREATED', result.id, {
+        name: result.name,
+        category: result.category,
+        zoneCount: result.zones?.length ?? 0,
+        via: 'blank',
+      });
+    }
     return mapTemplate(result);
   }
 
@@ -893,6 +956,13 @@ export class TemplatesController {
       return fresh;
     });
 
+    await this.audit(req, 'TEMPLATE_CREATED', created?.id ?? null, {
+      name: created?.name,
+      zoneCount: created?.zones?.length ?? 0,
+      via: 'ai-touch',
+      aiSource: result.source,
+    });
+
     return {
       template: mapTemplate(created),
       ai: {
@@ -974,12 +1044,17 @@ export class TemplatesController {
         },
         include: { zones: { orderBy: { sortOrder: 'asc' } } },
       });
+      await this.audit(req, 'TEMPLATE_CREATED', presetResult.id, {
+        name: presetResult.name,
+        via: 'preset',
+        presetId,
+      });
       return mapTemplate(presetResult);
     }
 
     // Clone from database system template — same fill-blanks rule.
     const dbBrand = await this.getBrandDefaults(req.user.tenantId);
-    return this.prisma.client.template.create({
+    const dbPresetResult = await this.prisma.client.template.create({
       data: {
         tenantId: req.user.tenantId,
         name: body.name || `${source.name} (Copy)`,
@@ -1012,6 +1087,16 @@ export class TemplatesController {
       },
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
     });
+    await this.audit(req, 'TEMPLATE_CREATED', dbPresetResult.id, {
+      name: dbPresetResult.name,
+      via: 'preset-db',
+      presetId,
+    });
+    // Return shape preserved verbatim from before the audit change: this
+    // branch historically returned the raw Prisma row (defaultConfig as
+    // JSON strings), unlike the in-memory branch above which maps. Not
+    // touching that to keep this a pure audit addition.
+    return dbPresetResult;
   }
 
   // ───────────────────────────────────────────────────────
@@ -1062,7 +1147,7 @@ export class TemplatesController {
       ? `${source.name} (${screenWidth}×${screenHeight})`
       : `${source.name} (Copy)`;
 
-    return this.prisma.client.template.create({
+    const duplicated = await this.prisma.client.template.create({
       data: {
         tenantId: req.user.tenantId,
         name: body.name || defaultName,
@@ -1099,6 +1184,13 @@ export class TemplatesController {
       },
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
     });
+    await this.audit(req, 'TEMPLATE_CREATED', duplicated.id, {
+      name: duplicated.name,
+      via: 'duplicate',
+      sourceId: id,
+    });
+    // Return shape preserved verbatim (raw Prisma row, as before).
+    return duplicated;
   }
 
   // ───────────────────────────────────────────────────────
@@ -1195,7 +1287,14 @@ export class TemplatesController {
     }
     // Reuse the standard create path verbatim — zone-bounds validation,
     // orientation derivation, tenant-brand inheritance, mapTemplate.
-    return this.create(req, parsed.data);
+    // Pass skipAudit=true so we record TEMPLATE_IMPORTED here instead of
+    // create()'s TEMPLATE_CREATED (this is an import, not a blank build).
+    const created = await this.create(req, parsed.data, true);
+    await this.audit(req, 'TEMPLATE_IMPORTED', created?.id ?? null, {
+      name: created?.name,
+      zoneCount: created?.zones?.length ?? 0,
+    });
+    return created;
   }
 
   // ───────────────────────────────────────────────────────
@@ -1224,7 +1323,7 @@ export class TemplatesController {
       ? Math.max(5_000, Math.min(600_000, body.idleResetMs))
       : undefined;
 
-    return mapTemplate(await this.prisma.client.template.update({
+    const updated = await this.prisma.client.template.update({
       where: { id },
       data: {
         ...(body.name && { name: body.name.trim() }),
@@ -1241,7 +1340,15 @@ export class TemplatesController {
         ...(clampedIdle !== undefined && { idleResetMs: clampedIdle }),
       } as any,
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
-    }));
+    });
+    await this.audit(req, 'TEMPLATE_UPDATED', updated.id, {
+      // Record which fields the operator changed (keys only, not values
+      // — values can be large bgImage data URLs). Status changes
+      // (DRAFT→PUBLISHED→ARCHIVED) are the forensically interesting ones.
+      changedFields: Object.keys(body || {}),
+      ...(body.status ? { status: body.status } : {}),
+    });
+    return mapTemplate(updated);
   }
 
   // ───────────────────────────────────────────────────────
@@ -1332,6 +1439,10 @@ export class TemplatesController {
         scenes: { orderBy: { sortOrder: 'asc' } } as any,
       } as any,
     });
+    await this.audit(req, 'TEMPLATE_UPDATED', id, {
+      via: 'replace-zones',
+      zoneCount: body.zones.length,
+    });
     return mapTemplate(freshTemplate);
   }
 
@@ -1352,6 +1463,13 @@ export class TemplatesController {
 
     // Cascade deletes zones automatically via Prisma relation
     await this.prisma.client.template.delete({ where: { id } });
+    await this.audit(req, 'TEMPLATE_DELETED', id, {
+      // Capture the name from the pre-delete lookup so the audit row is
+      // meaningful after the row is gone ("Operator X deleted 'Lobby
+      // Welcome'"). The id alone is useless post-delete.
+      name: template.name,
+      category: template.category,
+    });
     return { deleted: true };
   }
 }
