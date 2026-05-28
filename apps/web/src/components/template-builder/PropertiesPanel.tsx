@@ -4062,9 +4062,13 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         // Manual editor: each menu item as a separate row. Operators
         // shouldn't need to hand-edit JSON to update a price.
         fields.push(<ColorPickerField key="accentColor" label="Accent color" value={cfg.accentColor || '#e8b94a'} onChange={(v) => setField({ accentColor: v })} />);
-        fields.push(<TextAreaField key="itemsJson" label="Menu items (JSON array of { name, desc, price, emoji, dietary })" value={typeof cfg.items === 'string' ? cfg.items : JSON.stringify(cfg.items || [], null, 2)} rows={12} onChange={(v) => {
-          try { setField({ items: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
-        }} />);
+        fields.push(<ListItemsEditor key="items" label="Menu items" itemNoun="item" help="Each row is one dish. Edit the name, price, and description right here — no code." value={cfg.items} onChange={(v) => setField({ items: v })} newItem={{ name: 'New item', price: '$0.00', desc: '', emoji: '', dietary: '' }} fields={[
+          { key: 'name', label: 'Name', type: 'text', placeholder: 'Classic Burger' },
+          { key: 'price', label: 'Price', type: 'price', placeholder: '$8.50' },
+          { key: 'desc', label: 'Description', type: 'textarea', placeholder: 'Aged cheddar, house sauce, brioche bun' },
+          { key: 'emoji', label: 'Photo / emoji', type: 'image' },
+          { key: 'dietary', label: 'Dietary tags', type: 'text', placeholder: 'GF, V' },
+        ]} />);
       }
       fields.push(<TextField key="columns" label="Columns (1–5)" value={String(cfg.columns || 3)} placeholder="3" onChange={(v) => setField({ columns: parseInt(v) || 3 })} />);
       fields.push(<SelectField key="theme" label="Color theme" value={cfg.theme || 'cream'} options={[['cream','Cream'],['charcoal','Charcoal'],['red','Red']]} onChange={(v) => setField({ theme: v })} />);
@@ -4087,9 +4091,16 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       }
       fields.push(<TextField key="columns" label="Columns (1-3)" value={String(cfg.columns || 2)} placeholder="2" onChange={(v) => setField({ columns: parseInt(v) || 2 })} />);
       if (!cfg.posSync) {
-        fields.push(<TextAreaField key="tapsJson" label="Taps (JSON array of { name, brewery, style, abv, ibu, price, color, isNew })" value={typeof cfg.taps === 'string' ? cfg.taps : JSON.stringify(cfg.taps || [], null, 2)} rows={10} onChange={(v) => {
-          try { setField({ taps: JSON.parse(v) }); } catch { /* keep previous valid value */ }
-        }} />);
+        fields.push(<ListItemsEditor key="taps" label="Taps" itemNoun="tap" help="Each row is one beer on tap." value={cfg.taps} onChange={(v) => setField({ taps: v })} newItem={{ name: 'New Pour', brewery: '', style: '', abv: '', ibu: '', price: '$7', color: '#f59e0b', isNew: false }} fields={[
+          { key: 'name', label: 'Beer name', type: 'text', placeholder: 'Hazy IPA' },
+          { key: 'brewery', label: 'Brewery', type: 'text', placeholder: 'Local Craft Co.' },
+          { key: 'style', label: 'Style', type: 'text', placeholder: 'New England IPA' },
+          { key: 'abv', label: 'ABV', type: 'text', placeholder: '6.8%' },
+          { key: 'ibu', label: 'IBU', type: 'text', placeholder: '45' },
+          { key: 'price', label: 'Price', type: 'price', placeholder: '$7' },
+          { key: 'color', label: 'Handle color', type: 'color' },
+          { key: 'isNew', label: 'Show "NEW" badge', type: 'toggle' },
+        ]} />);
       }
       break;
     }
@@ -4108,9 +4119,14 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       }
       fields.push(<TextField key="columns" label="Columns (1-2)" value={String(cfg.columns || 2)} placeholder="2" onChange={(v) => setField({ columns: parseInt(v) || 2 })} />);
       if (!cfg.posSync) {
-        fields.push(<TextAreaField key="cocktailsJson" label="Cocktails (JSON array of { name, ingredients, note, price, garnish, featured })" value={typeof cfg.cocktails === 'string' ? cfg.cocktails : JSON.stringify(cfg.cocktails || [], null, 2)} rows={10} onChange={(v) => {
-          try { setField({ cocktails: JSON.parse(v) }); } catch { /* keep previous valid value */ }
-        }} />);
+        fields.push(<ListItemsEditor key="cocktails" label="Cocktails" itemNoun="cocktail" help="Each row is one cocktail." value={cfg.cocktails} onChange={(v) => setField({ cocktails: v })} newItem={{ name: 'New Cocktail', ingredients: '', note: '', price: '$12', garnish: '', featured: false }} fields={[
+          { key: 'name', label: 'Name', type: 'text', placeholder: 'Old Fashioned' },
+          { key: 'ingredients', label: 'Ingredients', type: 'textarea', placeholder: 'Bourbon, bitters, sugar, orange' },
+          { key: 'note', label: 'Note', type: 'text', placeholder: 'House favorite' },
+          { key: 'price', label: 'Price', type: 'price', placeholder: '$12' },
+          { key: 'garnish', label: 'Garnish', type: 'text', placeholder: 'Orange peel' },
+          { key: 'featured', label: 'Feature this cocktail', type: 'toggle' },
+        ]} />);
       }
       break;
     }
@@ -4125,9 +4141,15 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       if (cfg.posSync) {
         fields.push(<PosCategoryPickerField key="posCategory" label="Department / category (optional)" value={cfg.posCategory || ''} onChange={(v) => setField({ posCategory: v || undefined })} />);
       } else {
-        fields.push(<TextAreaField key="productsJson" label="Products (JSON array of { name, price, salePrice, imageUrl, emoji, swatchColor, badge, category })" value={typeof cfg.products === 'string' ? cfg.products : JSON.stringify(cfg.products || [], null, 2)} rows={12} onChange={(v) => {
-          try { setField({ products: JSON.parse(v) }); } catch { /* keep previous valid value */ }
-        }} />);
+        fields.push(<ListItemsEditor key="products" label="Products" itemNoun="product" help="Each row is one product. Set the price, sale price, and photo right here." value={cfg.products} onChange={(v) => setField({ products: v })} newItem={{ name: 'New Product', price: '$0', salePrice: '', imageUrl: '', emoji: '', swatchColor: '', badge: '', category: '' }} fields={[
+          { key: 'name', label: 'Product name', type: 'text', placeholder: 'Wool Runner' },
+          { key: 'price', label: 'Price', type: 'price', placeholder: '$98' },
+          { key: 'salePrice', label: 'Sale price (optional)', type: 'price', placeholder: '$69' },
+          { key: 'imageUrl', label: 'Product photo', type: 'image' },
+          { key: 'swatchColor', label: 'Swatch color', type: 'color' },
+          { key: 'badge', label: 'Badge', type: 'text', placeholder: 'NEW / BESTSELLER' },
+          { key: 'category', label: 'Category', type: 'text', placeholder: 'Footwear' },
+        ]} />);
       }
       fields.push(<TextField key="columns" label="Columns" value={String(cfg.columns || 4)} placeholder="4" onChange={(v) => setField({ columns: parseInt(v) || 4 })} />);
       fields.push(<ToggleField key="showSaleBadges" label="Show sale badges" value={cfg.showSaleBadges !== false} onChange={(v) => setField({ showSaleBadges: v })} />);
@@ -7803,6 +7825,182 @@ function MenuCardsField({ label, value, onChange }: { label: string; value: Menu
           className="w-full py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-dashed border-indigo-200"
         >
           + Add card
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── ListItemsEditor (2026-05-28, audit "make templates editable") ──────────
+// THE fix for the operator complaint: "I have menus for restaurants, but how
+// the fuck do I even update the pricing?" Every list-based widget (menu items,
+// taps, cocktails, products, combos, class schedules, team lists, …) used to be
+// edited via a raw JSON textarea — `JSON array of { name, price, ... }`. No
+// operator hand-edits JSON to change a price. This schema-driven component
+// replaces all of those: each item is a card with real inputs (text / price /
+// description / image picker / color / number / toggle / select), plus add,
+// remove, and reorder. One component, driven by a per-widget field schema.
+//
+// `value` may arrive as a parsed array OR a JSON string (legacy configs store
+// some lists stringified) — we normalize defensively so the editor never blanks
+// out on a string. onChange always emits a real array.
+export type ListItemFieldType =
+  | 'text'
+  | 'textarea'
+  | 'number'
+  | 'price'
+  | 'image'
+  | 'color'
+  | 'toggle'
+  | 'select';
+
+export interface ListItemFieldSpec {
+  key: string;
+  label: string;
+  type?: ListItemFieldType; // default 'text'
+  placeholder?: string;
+  options?: [string, string][]; // for 'select'
+}
+
+export function ListItemsEditor({
+  label,
+  help,
+  value,
+  onChange,
+  fields,
+  newItem,
+  itemNoun = 'item',
+}: {
+  label: string;
+  help?: string;
+  value: unknown;
+  onChange: (v: Record<string, unknown>[]) => void;
+  fields: ListItemFieldSpec[];
+  newItem?: Record<string, unknown>;
+  itemNoun?: string;
+}) {
+  // Normalize: accept a parsed array OR a JSON string OR null/undefined.
+  let items: Record<string, unknown>[] = [];
+  if (Array.isArray(value)) {
+    items = value as Record<string, unknown>[];
+  } else if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) items = parsed as Record<string, unknown>[];
+    } catch {
+      /* leave empty — malformed legacy string */
+    }
+  }
+
+  const update = (idx: number, patch: Record<string, unknown>) => {
+    const next = items.slice();
+    next[idx] = { ...next[idx], ...patch };
+    onChange(next);
+  };
+  const add = () => {
+    const blank: Record<string, unknown> = newItem ? { ...newItem } : {};
+    for (const f of fields) {
+      if (!(f.key in blank)) blank[f.key] = f.type === 'toggle' ? false : '';
+    }
+    onChange([...items, blank]);
+  };
+  const remove = (idx: number) => onChange(items.filter((_, i) => i !== idx));
+  const move = (idx: number, dir: -1 | 1) => {
+    const j = idx + dir;
+    if (j < 0 || j >= items.length) return;
+    const next = items.slice();
+    [next[idx], next[j]] = [next[j], next[idx]];
+    onChange(next);
+  };
+
+  const primaryKey = fields[0]?.key;
+
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      {help && <p className="text-[10px] text-slate-400 mb-2 px-0.5">{help}</p>}
+      <div className="space-y-2">
+        {items.length === 0 && (
+          <p className="text-[11px] text-slate-400 italic px-1">No {itemNoun}s yet — add your first below.</p>
+        )}
+        {items.map((item, idx) => (
+          <div key={idx} className="bg-white border border-slate-200 rounded-lg p-2 space-y-1.5 shadow-sm">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-slate-400 shrink-0 w-4 text-center">{idx + 1}</span>
+              <span className="flex-1 min-w-0 truncate text-[11px] font-semibold text-slate-600">
+                {String(item[primaryKey] || '') || `Untitled ${itemNoun}`}
+              </span>
+              <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0} aria-label={`Move ${itemNoun} ${idx + 1} up`} className="w-6 h-6 shrink-0 rounded border border-slate-200 text-slate-400 hover:text-indigo-600 disabled:opacity-30 flex items-center justify-center text-[11px]">↑</button>
+              <button type="button" onClick={() => move(idx, 1)} disabled={idx === items.length - 1} aria-label={`Move ${itemNoun} ${idx + 1} down`} className="w-6 h-6 shrink-0 rounded border border-slate-200 text-slate-400 hover:text-indigo-600 disabled:opacity-30 flex items-center justify-center text-[11px]">↓</button>
+              <button type="button" onClick={() => remove(idx)} aria-label={`Remove ${itemNoun} ${idx + 1}`} className="w-6 h-6 shrink-0 rounded border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 flex items-center justify-center text-xs">×</button>
+            </div>
+            <div className="space-y-1.5 pl-5">
+              {fields.map((f) => {
+                const t = f.type || 'text';
+                const raw = item[f.key];
+                if (t === 'toggle') {
+                  return (
+                    <label key={f.key} className="flex items-center gap-2 text-[11px] text-slate-600">
+                      <input type="checkbox" checked={!!raw} onChange={(e) => update(idx, { [f.key]: e.target.checked })} aria-label={`${itemNoun} ${idx + 1} ${f.label}`} />
+                      {f.label}
+                    </label>
+                  );
+                }
+                if (t === 'image') {
+                  return (
+                    <AssetPickerField key={f.key} label={f.label} kind="image" value={typeof raw === 'string' ? raw : ''} onChange={(v) => update(idx, { [f.key]: v })} />
+                  );
+                }
+                if (t === 'color') {
+                  return (
+                    <ColorPickerField key={f.key} label={f.label} value={typeof raw === 'string' ? raw : '#000000'} onChange={(v: string) => update(idx, { [f.key]: v })} />
+                  );
+                }
+                if (t === 'select' && f.options) {
+                  return (
+                    <SelectField key={f.key} label={f.label} value={typeof raw === 'string' ? raw : (f.options[0]?.[0] ?? '')} options={f.options} onChange={(v) => update(idx, { [f.key]: v })} />
+                  );
+                }
+                if (t === 'textarea') {
+                  return (
+                    <textarea
+                      key={f.key}
+                      value={typeof raw === 'string' ? raw : ''}
+                      onChange={(e) => update(idx, { [f.key]: e.target.value })}
+                      placeholder={f.placeholder || f.label}
+                      aria-label={`${itemNoun} ${idx + 1} ${f.label}`}
+                      rows={2}
+                      className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  );
+                }
+                // text | number | price
+                return (
+                  <input
+                    key={f.key}
+                    type={t === 'number' ? 'number' : 'text'}
+                    inputMode={t === 'price' ? 'decimal' : undefined}
+                    value={raw === undefined || raw === null ? '' : String(raw)}
+                    onChange={(e) =>
+                      update(idx, {
+                        [f.key]: t === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value,
+                      })
+                    }
+                    placeholder={f.placeholder || f.label}
+                    aria-label={`${itemNoun} ${idx + 1} ${f.label}`}
+                    className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={add}
+          className="w-full py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-dashed border-indigo-200"
+        >
+          + Add {itemNoun}
         </button>
       </div>
     </div>
