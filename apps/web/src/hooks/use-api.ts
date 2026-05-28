@@ -2972,3 +2972,45 @@ export function useDeleteWebhook() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['webhooks'] }),
   });
 }
+
+// ── Undo rail — game event log + per-event undo ───────────────
+
+export type GameEventRow = {
+  id: string;
+  type: string;
+  payload: Record<string, unknown>;
+  undoable: boolean;
+  nonUndoableReason?: string;
+  createdAt: string;
+};
+
+/**
+ * Poll the last 25 game events for the undo rail.
+ * Refetches every 2 s while the component is mounted so the rail
+ * stays fresh without the operator having to manually refresh.
+ */
+export function useGameEvents(gameId: string | undefined) {
+  return useQuery<GameEventRow[]>({
+    queryKey: ['sports-game-events', gameId],
+    queryFn: () => apiFetch(`/sports/games/${gameId}/events?limit=25`),
+    enabled: !!gameId,
+    refetchInterval: 2_000,
+    staleTime: 0,
+  });
+}
+
+/**
+ * Undo a single game event by id. On success, invalidates the
+ * events list and the game so the scoreboard + rail both refresh.
+ */
+export function useUndoGameEvent(gameId: string) {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean; undoOf: string; originalType: string }, Error, string>({
+    mutationFn: (eventId: string) =>
+      apiFetch(`/sports/games/${gameId}/events/${eventId}/undo`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sports-game-events', gameId] });
+      qc.invalidateQueries({ queryKey: ['sports-game', gameId] });
+    },
+  });
+}

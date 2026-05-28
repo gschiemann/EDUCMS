@@ -6,7 +6,7 @@
  * fix), segment advance (incl. the count-up re-anchor fix), stat
  * bounding, cues, and the scoreboard-to-screen push. No DB required.
  */
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { SportsService } from './sports.service';
 
 // ── in-memory Prisma fake ──────────────────────────────────────
@@ -1142,5 +1142,153 @@ describe('SportsService — callTimeout', () => {
     await expect(
       service.callTimeout('other-tenant', g.id, { team: 'home' }),
     ).rejects.toThrow(NotFoundException);
+  });
+});
+
+// ── Undo rail — T1-2: getEvents + undoEvent ──────────────────
+
+describe('SportsService — undo rail (getEvents)', () => {
+  it('returns events in reverse-chronological order with undoable flag', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 });
+    await service.clockAction(TENANT, g.id, { action: 'pause' });
+
+    const events = await service.getEvents(TENANT, g.id, 25);
+    // Most-recent first.
+    expect(events[0].createdAt >= events[events.length - 1].createdAt).toBe(true);
+
+    // SCORE events are undoable.
+    const scoreEv = events.find((e) => e.type === 'SCORE');
+    expect(scoreEv).toBeDefined();
+    expect(scoreEv!.undoable).toBe(true);
+
+    // Non-auto CLOCK events are undoable.
+    const clockEv = events.find((e) => e.type === 'CLOCK' && !(e.payload as any).auto);
+    expect(clockEv).toBeDefined();
+    expect(clockEv!.undoable).toBe(true);
+  });
+
+  it('marks CUE events as non-undoable', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+
+    // Write a CUE GameEvent row directly.
+    await gameEvent.create({ data: { gameId: g.id, type: 'CUE', payload: { key: 'goal' } } });
+
+    const events = await service.getEvents(TENANT, g.id, 25);
+    const cueEv = events.find((e) => e.type === 'CUE');
+    expect(cueEv).toBeDefined();
+    expect(cueEv!.undoable).toBe(false);
+    expect(cueEv!.nonUndoableReason).toBe('type');
+  });
+
+  it('marks auto-advance SEGMENT events as non-undoable', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+
+    await gameEvent.create({
+      data: { gameId: g.id, type: 'SEGMENT', payload: { segment: 2, auto: true } },
+    });
+
+    const events = await service.getEvents(TENANT, g.id, 25);
+    const autoEv = events.find((e) => e.type === 'SEGMENT' && (e.payload as any).auto);
+    expect(autoEv).toBeDefined();
+    expect(autoEv!.undoable).toBe(false);
+    expect(autoEv!.nonUndoableReason).toBe('system');
+  });
+
+  it('throws NotFoundException for an unknown game', async () => {
+    const { service } = setup();
+    await expect(service.getEvents(TENANT, 'no-such-game', 25)).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('SportsService — undo rail (undoEvent)', () => {
+  it('inverts a SCORE event and records UNDO_SCORE', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 });
+    const scoreRow = gameEvent.rows.find((r: any) => r.type === 'SCORE');
+    expect(scoreRow).toBeDefined();
+
+    await service.undoEvent(TENANT, g.id, scoreRow.id);
+
+    const undoRow = gameEvent.rows.find((r: any) => r.type === 'UNDO_SCORE');
+    expect(undoRow).toBeDefined();
+    expect(undoRow.payload.undoOf).toBe(scoreRow.id);
+  });
+
+  it('inverts a STAT event using oldValues and records UNDO_STAT', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+
+    await service.updateStats(TENANT, g.id, { stats: { homeFouls: 3 } });
+    const statEv = gameEvent.rows.find((r: any) => r.type === 'STAT');
+    expect(statEv).toBeDefined();
+    expect((statEv.payload as any).oldValues).toBeDefined();
+
+    await service.undoEvent(TENANT, g.id, statEv.id);
+    const undoRow = gameEvent.rows.find((r: any) => r.type === 'UNDO_STAT');
+    expect(undoRow).toBeDefined();
+    expect(undoRow.payload.undoOf).toBe(statEv.id);
+  });
+
+  it('returns 422 BUG_NOT_UNDOABLE for a CUE event', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+
+    const cueRow = await gameEvent.create({
+      data: { gameId: g.id, type: 'CUE', payload: { key: 'goal' } },
+    });
+
+    await expect(service.undoEvent(TENANT, g.id, cueRow.id)).rejects.toThrow(
+      UnprocessableEntityException,
+    );
+  });
+
+  it('returns 422 BUG_NOT_UNDOABLE for a system auto-advance event', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+
+    const autoRow = await gameEvent.create({
+      data: { gameId: g.id, type: 'SEGMENT', payload: { segment: 2, auto: true } },
+    });
+
+    await expect(service.undoEvent(TENANT, g.id, autoRow.id)).rejects.toThrow(
+      UnprocessableEntityException,
+    );
+  });
+
+  it('returns 422 BUG_NOT_UNDOABLE for a pre-rail SCORE event lacking prevHomeScore', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+
+    // Simulate an old event without prev* fields.
+    const oldScoreRow = await gameEvent.create({
+      data: {
+        gameId: g.id,
+        type: 'SCORE',
+        payload: { team: 'set', homeScore: 7, awayScore: 3 },
+      },
+    });
+
+    await expect(service.undoEvent(TENANT, g.id, oldScoreRow.id)).rejects.toThrow(
+      UnprocessableEntityException,
+    );
+  });
+
+  it('returns 404 for an event that belongs to a different game', async () => {
+    const { service, gameEvent } = setup();
+    const g1: any = await newGame(service, 'basketball');
+    const g2: any = await newGame(service, 'basketball');
+
+    await service.adjustScore(TENANT, g1.id, { team: 'home', delta: 1 });
+    const ev = gameEvent.rows.find((r: any) => r.type === 'SCORE');
+
+    // Try to undo g1's event against g2 — should 404.
+    await expect(service.undoEvent(TENANT, g2.id, ev.id)).rejects.toThrow(NotFoundException);
   });
 });

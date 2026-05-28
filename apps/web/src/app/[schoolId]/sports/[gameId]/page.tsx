@@ -67,6 +67,7 @@ import { RibbonImagesPanel } from './RibbonImagesPanel';
 import { SurfacePreview } from './SurfacePreview';
 import { SurfaceHealthPills } from './SurfaceHealthPills';
 import { AssetPicker } from '@/components/assets/AssetPicker';
+import { RecentEventsRail } from './RecentEventsRail';
 
 // ── constants ──────────────────────────────────────────────────
 
@@ -340,21 +341,25 @@ function GameControl() {
 
       {/* ── mode panels ───────────────────────────────────────── */}
 
-      {/* RUN MODE — 3-zone no-scroll live console. Stays mounted even
-          while the cue popup is open, so firing a cue never leaves it. */}
+      {/* RUN MODE — 3-zone no-scroll live console + undo rail.
+          The rail is a collapsible 320px right panel that polls
+          GET /events?limit=25 every 2 s and surfaces per-row Undo. */}
       {mode === 'run' && (
-        <RunMode
-          gameId={gameId}
-          g={g}
-          def={def}
-          liveMs={liveMs}
-          homeColor={homeColor}
-          awayColor={awayColor}
-          ctl={ctl}
-          onShowCues={() => setShowCues(true)}
-          onHighlights={() => setShowHighlights(true)}
-          onPenalties={() => setShowPenalties(true)}
-        />
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          <RunMode
+            gameId={gameId}
+            g={g}
+            def={def}
+            liveMs={liveMs}
+            homeColor={homeColor}
+            awayColor={awayColor}
+            ctl={ctl}
+            onShowCues={() => setShowCues(true)}
+            onHighlights={() => setShowHighlights(true)}
+            onPenalties={() => setShowPenalties(true)}
+          />
+          <RecentEventsRail gameId={gameId} />
+        </div>
       )}
 
       {/* CUE POPUP — fire a cue without leaving the Run screen. The
