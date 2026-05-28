@@ -2637,12 +2637,26 @@ export function useGameControl(gameId: string) {
     onSuccess: writeBack,
   });
 
+  const callTimeout = useMutation({
+    // Timeout — atomically pauses the clock, decrements the team's
+    // remaining timeouts, fires the TIMEOUT overlay CUE, and resets
+    // the football play clock to 25s. Writes the game back so the
+    // timeout pip counter updates instantly on the operator console.
+    mutationFn: (body: { team: 'home' | 'away'; type?: 'full' | 'short' }) =>
+      apiFetch(`/sports/games/${gameId}/timeout`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-game', gameId] }),
+  });
+
   return {
     score,
     clock,
     shotClock,
     playClock,
     penalties,
+    callTimeout,
     segment,
     stats,
     status,

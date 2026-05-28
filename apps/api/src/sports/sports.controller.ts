@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -441,6 +442,29 @@ export class SportsController {
     };
   }
 
+  /**
+   * Call a timeout for a team. Atomically: decrements home/awayTimeouts
+   * (refuses with 400 if already 0), pauses the game clock, resets the
+   * football play clock to 25s for football games, appends a TIMEOUT
+   * GameEvent, fires a 'timeout' CUE overlay, and writes an AuditLog row.
+   *
+   * Body: `{ team: 'home' | 'away', type?: 'full' | 'short' }`
+   */
+  @Post('games/:id/timeout')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  callTimeout(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { team?: string; type?: string },
+  ) {
+    return this.sports.callTimeout(req.user.tenantId, id, body || {}, req?.user?.id);
+  }
+
   /** Fire a cue — a sport celebration (`key`) or a custom cue
    *  (`cueId`). Every surface playing this game plays it.
    *  Optional: `audioUrl` plays a sound; `sponsorName` + `sponsorLogoUrl`
@@ -769,5 +793,55 @@ export class SportsController {
     @Param('playerId') playerId: string,
   ) {
     return this.sports.deletePlayer(req.user.tenantId, id, playerId);
+  }
+
+  // ── Undo rail ─────────────────────────────────────────────────
+
+  /**
+   * Recent events for the undo rail. Returns the last N (default 25)
+   * GameEvent rows in reverse-chronological order, annotated with
+   * `undoable: boolean` so the UI can render an Undo button per row.
+   *
+   * RBAC: same as every other game-control endpoint (CONTRIBUTOR and
+   * above). Read-only — safe to call frequently.
+   */
+  @Get('games/:id/events')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  getEvents(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+  ) {
+    const lim = limit ? Math.min(50, Math.max(1, parseInt(limit, 10) || 25)) : 25;
+    return this.sports.getEvents(req.user.tenantId, id, lim);
+  }
+
+  /**
+   * Undo a specific GameEvent by id. Synthesizes the inverse mutation
+   * and applies it via the existing PATCH endpoints, then records a
+   * `UNDO_<TYPE>` event with `payload.undoOf = <eventId>`.
+   *
+   * Returns 422 with `{ code: "BUG_NOT_UNDOABLE", reason }` for CUE,
+   * system auto-advance, undo-of-undo, or pre-rail events that lack
+   * prev-state in their payload.
+   */
+  @Post('games/:id/events/:eventId/undo')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  undoEvent(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('eventId') eventId: string,
+  ) {
+    return this.sports.undoEvent(req.user.tenantId, id, eventId);
   }
 }
