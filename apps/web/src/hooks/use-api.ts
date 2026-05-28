@@ -2390,6 +2390,47 @@ export function useGames() {
   });
 }
 
+// ─── CTS console simulator (2026-05-28) ──────────────────────────
+// Pushes synthetic CTS snapshots to /sports/games/:id/cts-snapshot.
+// Used by /super/cts-simulator to drive a live game end-to-end as if a
+// physical Colorado Timing System Gen 6 console were on the wire. The
+// authed operator path (req.user.tenantId) — guards by RBAC, hits the
+// SAME ingest service the real bridge uses, so the demo exercises
+// every downstream path: cleanCtsSnapshot, syncShotClockToGameClock,
+// syncPenaltiesToClock, maybeAutoCelebrate, GameEvent + AuditLog
+// writes, board cache invalidation, and the public /board polling
+// surfaces. (Greg's "same rules apply" rule covered by T1-1.)
+
+export type CtsSimSnapshot = {
+  clockMs?: number;
+  clockRunning?: boolean;
+  segment?: number;
+  homeScore?: number;
+  awayScore?: number;
+  shotClock?: { ms: number; running: boolean; len?: number; at?: string };
+  homeShotClock?: { raw?: string; ms?: number; running?: boolean };
+  awayShotClock?: { raw?: string; ms?: number; running?: boolean };
+  homeExclusions?: ({ playerJersey: number; secondsRemaining: number } | null)[];
+  awayExclusions?: ({ playerJersey: number; secondsRemaining: number } | null)[];
+  homeTimeoutsRemaining?: number;
+  awayTimeoutsRemaining?: number;
+  horn?: boolean;
+};
+
+export function useCtsSimulator(gameId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (snap: CtsSimSnapshot) =>
+      apiFetch(`/sports/games/${gameId}/cts-snapshot`, {
+        method: 'POST',
+        body: JSON.stringify(snap),
+      }),
+    onSuccess: () => {
+      if (gameId) qc.invalidateQueries({ queryKey: ['sports-game', gameId] });
+    },
+  });
+}
+
 export function useGame(id: string | undefined) {
   return useQuery({
     queryKey: ['sports-game', id],
