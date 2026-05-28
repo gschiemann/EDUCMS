@@ -3209,7 +3209,7 @@ export class ScreensController {
       (screen as any).emergencyMedicalPortraitPlaylistId,
     ].filter((x): x is string => !!x);
 
-    const assets: Array<{ url: string; sha256: string; size: number; kind: string }> = [];
+    const assets: Array<{ url: string; sha256: string | null; size: number; kind: string }> = [];
     const seen = new Set<string>();
 
     if (playlistIds.length > 0) {
@@ -3228,15 +3228,24 @@ export class ScreensController {
           if (!item.asset?.fileUrl) continue;
           if (seen.has(item.asset.fileUrl)) continue;
           seen.add(item.asset.fileUrl);
-          // Asset.fileHash is the canonical SHA-256 if the upload pipeline
-          // computed it; otherwise we synthesize a stable id from the URL +
-          // fileSize so the SW can still de-dupe (re-download only when
-          // either changes).
-          const hash = item.asset.fileHash
-            ?? crypto.createHash('sha256').update(`${item.asset.fileUrl}:${item.asset.fileSize ?? 0}`).digest('hex');
+          // P0-1 (2026-05-28): ship the canonical SHA-256 of the file BODY,
+          // never a URL-derived digest. The SW recomputes the digest from the
+          // downloaded bytes and refuses to cache on mismatch
+          // (sw-player.js fetchAndStore). A URL-derived hash can NEVER equal
+          // the body's real SHA-256, so synthesizing one guaranteed every
+          // such emergency asset failed the integrity check, degraded the
+          // screen to text-only, and (because the set-hash never committed)
+          // re-attempted the full precache every 5 min forever.
+          //
+          // When `Asset.fileHash` is genuinely null (legacy / external-URL
+          // rows the upload pipeline never hashed), send `sha256: null`. The
+          // SW skips the integrity check for null-hash assets and caches the
+          // body as-is, rather than computing a fake hash it would then
+          // reject. (Recommend backfilling fileHash for null rows — see
+          // report; do NOT fabricate one here.)
           assets.push({
             url: item.asset.fileUrl,
-            sha256: hash,
+            sha256: item.asset.fileHash ?? null,
             size: item.asset.fileSize ?? 0,
             kind: item.asset.mimeType?.startsWith('video/') ? 'video' : 'image',
           });
@@ -3259,6 +3268,38 @@ export class ScreensController {
       (screen as any).emergencyMedicalPortraitAssetUrl,
     ].filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
 
+    // P0-1 (2026-05-28): per-screen emergency asset URLs (Sprint 8b scoped
+    // media — "evacuate via north exit" etc.) are stored as raw URL strings on
+    // the Screen row, not FK references. Previously we UNCONDITIONALLY
+    // synthesized a `${url}:screen-emergency` digest as the sha256 — which the
+    // SW's body-recompute integrity check could never match, so per-screen
+    // emergency media NEVER cached and the screen silently degraded to
+    // text-only in exactly the localized-threat scenarios these assets exist
+    // for. Look up the owning Asset.fileHash by fileUrl and ship the real body
+    // hash; fall back to `sha256: null` (SW skips verification) when the asset
+    // wasn't hashed or isn't a managed Asset row. Single batched query — no
+    // N+1.
+    const screenAssetHashByUrl = new Map<string, string | null>();
+    const uncachedScreenUrls = screenAssetUrls.filter((url) => !seen.has(url));
+    if (uncachedScreenUrls.length > 0) {
+      try {
+        const ownedAssets = await this.prisma.client.asset.findMany({
+          where: { fileUrl: { in: uncachedScreenUrls } },
+          select: { fileUrl: true, fileHash: true, fileSize: true },
+        });
+        for (const a of ownedAssets) {
+          // First match wins; fileUrl should be unique per asset row.
+          if (!screenAssetHashByUrl.has(a.fileUrl)) {
+            screenAssetHashByUrl.set(a.fileUrl, a.fileHash ?? null);
+          }
+        }
+      } catch (e) {
+        // Non-fatal: if the lookup fails we ship null hashes (SW caches
+        // without integrity check) rather than blocking emergency precache.
+        console.warn('[emergency-assets] per-screen asset hash lookup failed', (e as Error).message);
+      }
+    }
+
     for (const url of screenAssetUrls) {
       if (seen.has(url)) continue;
       seen.add(url);
@@ -3268,17 +3309,22 @@ export class ScreensController {
           : 'image';
       assets.push({
         url,
-        sha256: crypto.createHash('sha256').update(`${url}:screen-emergency`).digest('hex'),
+        // Real body SHA-256 when this URL maps to a managed Asset row;
+        // otherwise null so the SW skips integrity verification (it cannot
+        // verify a hash we don't have) rather than rejecting a fabricated one.
+        sha256: screenAssetHashByUrl.has(url) ? screenAssetHashByUrl.get(url)! : null,
         size: 0,
         kind,
       });
     }
 
     // Stable hash of the whole asset set so the player can short-circuit
-    // pre-cache when nothing has changed.
+    // pre-cache when nothing has changed. A null body-hash contributes the
+    // literal token "null" — deterministic, so the set-change short-circuit
+    // still works for null-hash (unhashed) assets.
     const setHash = crypto
       .createHash('sha256')
-      .update(assets.map(a => `${a.url}:${a.sha256}`).sort().join('|'))
+      .update(assets.map(a => `${a.url}:${a.sha256 ?? 'null'}`).sort().join('|'))
       .digest('hex');
 
     // sec-fix(wave1) #4: audit every emergency-asset fetch. Forensically

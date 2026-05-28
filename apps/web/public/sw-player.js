@@ -465,7 +465,16 @@ async function fetchAndStore(asset, cache, meta) {
   const storedHashRes = await meta.match(metaKey(asset.url));
   const storedHash = storedHashRes ? await storedHashRes.text() : '';
   const cached = await cache.match(req, { ignoreSearch: true });
-  if (cached && asset.sha256 && storedHash === asset.sha256) {
+  // P0-1 (2026-05-28): a manifest entry may legitimately carry no sha256
+  // (server ships `sha256: null` for assets the upload pipeline never hashed
+  // — legacy / external-URL rows). For those we have no body hash to compare
+  // against, so "already cached" alone means up-to-date. Without this branch a
+  // null-hash asset would re-download on every 5-min emergency sync forever
+  // (fleet-wide egress). When a real hash IS present we keep requiring an
+  // exact storedHash match (unchanged behavior).
+  const hasHash = !!asset.sha256;
+  const upToDate = cached && (hasHash ? storedHash === asset.sha256 : true);
+  if (upToDate) {
     if (!SIZE_BY_URL.has(norm)) {
       const sz = await measureResponseSize(cached, asset);
       if (sz > 0) {
@@ -488,6 +497,15 @@ async function fetchAndStore(asset, cache, meta) {
     // the same hash as last round?"), so a manifest-controlling attacker
     // could swap content silently. Here we recompute the digest from the
     // bytes we just received and refuse to cache on mismatch.
+    //
+    // P0-1 (2026-05-28): the `asset.sha256` guard is load-bearing. The server
+    // now ships `sha256: null` for assets it could not hash (legacy /
+    // external-URL rows) — for those we cache the body WITHOUT integrity
+    // verification, because we have no trusted hash to check against and
+    // computing a digest just to compare it to nothing (or to a fabricated
+    // URL-derived value, the old bug) would reject every such asset and break
+    // emergency caching. Real-hash assets still get full SHA-256 verification.
+    // Do NOT remove this guard or change it to verify when sha256 is null.
     if (asset.sha256 && self.crypto && self.crypto.subtle && self.crypto.subtle.digest) {
       try {
         const probe = res.clone();
