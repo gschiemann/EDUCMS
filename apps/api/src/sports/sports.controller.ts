@@ -465,6 +465,33 @@ export class SportsController {
     return this.sports.callTimeout(req.user.tenantId, id, body || {}, req?.user?.id);
   }
 
+  /**
+   * T2-8: Set possession — 'home' or 'away'.
+   *
+   * Writes to Game.possession (dedicated column, not a stat field).
+   * Atomically: updates the column, writes a POSSESSION GameEvent for
+   * the forensic trail, and an AuditLog row. The operator console shows
+   * a tap-to-flip POSS chip between the two score tiles; display surfaces
+   * (board, ribbon, scorebug) read Game.possession first and fall back to
+   * stats.possession for backward compat.
+   *
+   * Body: `{ team: 'home' | 'away' }`
+   */
+  @Post('games/:id/possession')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  setPossession(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { team?: string },
+  ) {
+    return this.sports.setPossession(req.user.tenantId, id, body || {}, req?.user?.id);
+  }
+
   /** Fire a cue — a sport celebration (`key`) or a custom cue
    *  (`cueId`). Every surface playing this game plays it.
    *  Optional: `audioUrl` plays a sound; `sponsorName` + `sponsorLogoUrl`

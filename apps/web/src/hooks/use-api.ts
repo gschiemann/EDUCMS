@@ -2699,6 +2699,22 @@ export function useGameControl(gameId: string) {
   });
   // ────────────────────────────────────────────────────────────────
 
+
+  const setPossession = useMutation({
+    // T2-8: Possession arrow — tap to flip between home and away.
+    // Writes to Game.possession (first-class column, not a stat field).
+    // Atomically: updates the column, writes a POSSESSION GameEvent for
+    // the forensic trail, and an AuditLog row. Board/ribbon/scorebug
+    // surfaces read Game.possession first and fall back to stats.possession
+    // for backward compat.
+    mutationFn: (body: { team: 'home' | 'away' }) =>
+      apiFetch(`/sports/games/${gameId}/possession`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-game', gameId] }),
+  });
+
   return {
     score,
     clock,
@@ -2707,6 +2723,8 @@ export function useGameControl(gameId: string) {
     penalties,
     callTimeout,
     firePregameIntro,
+
+    setPossession,
     segment,
     stats,
     status,

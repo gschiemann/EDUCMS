@@ -381,6 +381,21 @@ function useLiveClock(data: BoardData | null, def: SportDefinition | undefined):
  * Reads the SAME Game.stats keys the scoreboard's situational strip
  * uses, so the two surfaces never disagree.
  */
+/**
+ * T2-8: Merge Game.possession (first-class column) into the stats object
+ * so ribbonSituational reads the correct value when the column is set.
+ * Falls back to stats.possession for backward compat.
+ */
+function effectiveStatsWithPossession(
+  stats: Record<string, unknown>,
+  gamePossession: string | null | undefined,
+): Record<string, unknown> {
+  if (typeof gamePossession === 'string' && gamePossession) {
+    return { ...stats, possession: gamePossession };
+  }
+  return stats;
+}
+
 function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>): string | null {
   const num = (v: unknown): number => {
     const n = Number(v);
@@ -509,7 +524,7 @@ function buildLooks(data: BoardData, def: SportDefinition): Look[] {
 
   const situational: Look[] = [];
   if (enabled.has('situation')) {
-    const sit = ribbonSituational(def, (data.stats || {}) as Record<string, unknown>);
+    const sit = ribbonSituational(def, effectiveStatsWithPossession((data.stats || {}) as Record<string, unknown>, (data as any).possession));
     if (sit) situational.push({ kind: 'situational', id: 'situational', dwellMs: 8000 });
   }
   const slides: Look[] = enabled.has('slides')
@@ -767,7 +782,7 @@ export default function RibbonPage() {
   const looksKey = useMemo(() => {
     const src = viewData ?? data;
     if (!src || !def) return '';
-    const sit = !!ribbonSituational(def, (src.stats || {}) as Record<string, unknown>);
+    const sit = !!ribbonSituational(def, effectiveStatsWithPossession((src.stats || {}) as Record<string, unknown>, (src as any).possession));
     return JSON.stringify({
       presets: src.ribbonPresets ?? null,
       sponsors: (src.sponsors || []).map((s) => s.id),
@@ -891,7 +906,7 @@ export default function RibbonPage() {
     promptsOn && (data.ribbonMessages || []).map((m) => m.trim()).filter(Boolean).length > 0;
   const hasRoster = rosterOn && (data.roster || []).length > 0;
   const hasSituation =
-    situationOn && !!ribbonSituational(def, (data.stats || {}) as Record<string, unknown>);
+    situationOn && !!ribbonSituational(def, effectiveStatsWithPossession((data.stats || {}) as Record<string, unknown>, (data as any).possession));
   // Take the marquee-only path when there IS media/sponsor content AND
   // no other engagement-look has content. Operator-typed crowd messages
   // count as engagement content too — so a custom message like
@@ -1913,7 +1928,7 @@ function LookUnit({
     // Split on digit runs so NUMBERS render in a bright accent and pop
     // out of the label text (e.g. "HOME SHOTS 12" — the 12 reads as a
     // distinct figure).
-    const sit = ribbonSituational(def, (data.stats || {}) as Record<string, unknown>) || '';
+    const sit = ribbonSituational(def, effectiveStatsWithPossession((data.stats || {}) as Record<string, unknown>, (data as any).possession)) || '';
     const parts = sit.split(/(\d+)/);
     return (
       <div

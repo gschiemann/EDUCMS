@@ -1439,6 +1439,18 @@ function RunInteractiveScoreboard({
   const running = !!g.clockRunning;
   const hasClock = def.clock.type !== 'none';
   const segLabel = segmentText(def, g);
+  // T2-8: possession from the first-class column (Game.possession),
+  // falling back to stats.possession for backward compat with existing rows.
+  const possessionValue: string =
+    typeof (g as any).possession === 'string' && (g as any).possession
+      ? (g as any).possession
+      : typeof stats.possession === 'string'
+        ? stats.possession
+        : '';
+  // Only basketball and football have a possession concept in their sport defs.
+  const hasPossession =
+    def.stats.some((s) => s.key === 'possession') &&
+    (def.key === 'basketball' || def.key === 'football');
   return (
     <div className="bg-black px-3 py-4 border-b-2 border-slate-800">
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-stretch max-w-6xl mx-auto">
@@ -1536,6 +1548,21 @@ function RunInteractiveScoreboard({
           )}
           {/* Shot clock — water polo, basketball, lacrosse */}
           {def.shotClock && <RunShotClockMini stats={stats} def={def} ctl={ctl} />}
+
+          {/* T2-8: Possession arrow chip — basketball and football only.
+              Directional arrow shows who has the ball; tap to flip.
+              Reads from Game.possession (first-class column); writes via
+              the dedicated setPossession mutation, not the generic stats PATCH.
+              Only shown for sports that have a possession concept in their def. */}
+          {hasPossession && (
+            <PossessionArrowChip
+              value={possessionValue}
+              homeTeam={g.homeTeam}
+              awayTeam={g.awayTeam}
+              sportKey={def.key}
+              onFlip={(team) => ctl.setPossession.mutate({ team })}
+            />
+          )}
         </div>
 
         {/* AWAY tile */}
@@ -2896,6 +2923,79 @@ function StatNumberField({
         className="w-12 bg-transparent text-center text-lg font-black text-slate-900 tabular-nums leading-tight outline-none"
       />
     </div>
+  );
+}
+
+// ── PossessionArrowChip ────────────────────────────────────────
+// T2-8: First-class possession indicator between the two score tiles.
+// Shows a directional arrow (◀ HOME POSS ▶ / ◀ AWAY POSS ▶) or a
+// neutral "POSS?" state when possession is unset. Tapping flips to the
+// other team. Calls ctl.setPossession (writes Game.possession column,
+// not stats.possession). Basketball shows the alternating-possession
+// arrow label; football shows the ball emoji.
+function PossessionArrowChip({
+  value,
+  homeTeam,
+  awayTeam,
+  sportKey,
+  onFlip,
+}: {
+  value: string;
+  homeTeam: string;
+  awayTeam: string;
+  sportKey: string;
+  onFlip: (team: 'home' | 'away') => void;
+}) {
+  const poss = value.trim().toLowerCase();
+  const isHome = poss === 'home';
+  const isAway = poss === 'away';
+  const isNone = !isHome && !isAway;
+  // Basketball uses the arrow; football uses the ball emoji.
+  const indicator = sportKey === 'football' ? '🏈' : '◀▶';
+  const arrowLeft = sportKey === 'football' ? '🏈' : '◀';
+  const arrowRight = sportKey === 'football' ? '🏈' : '▶';
+  const label = sportKey === 'football' ? 'BALL' : 'POSS';
+
+  const flip = () => {
+    if (isHome) onFlip('away');
+    else onFlip('home');
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={flip}
+      aria-label={
+        isNone
+          ? 'Set possession — tap to assign'
+          : `${isHome ? homeTeam : awayTeam} has possession — tap to flip`
+      }
+      title={isNone ? 'Tap to set possession' : `Tap to give possession to ${isHome ? awayTeam : homeTeam}`}
+      className={`mt-2 flex flex-col items-center rounded-xl border px-4 py-2 transition-colors select-none ${
+        isNone
+          ? 'border-slate-700 bg-slate-800 text-slate-500 hover:bg-slate-700'
+          : 'border-indigo-600 bg-indigo-900 text-indigo-200 hover:bg-indigo-800'
+      }`}
+    >
+      <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase mb-0.5">
+        {label}
+      </span>
+      {isNone ? (
+        <span className="text-sm font-black tabular-nums text-slate-500">{indicator}</span>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          {isHome && (
+            <span className="text-sm font-black text-indigo-300">{arrowLeft}</span>
+          )}
+          <span className="text-xs font-black text-white uppercase truncate max-w-[80px]">
+            {isHome ? homeTeam : awayTeam}
+          </span>
+          {isAway && (
+            <span className="text-sm font-black text-indigo-300">{arrowRight}</span>
+          )}
+        </div>
+      )}
+    </button>
   );
 }
 

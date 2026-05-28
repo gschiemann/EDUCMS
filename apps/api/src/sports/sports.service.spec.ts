@@ -438,6 +438,76 @@ describe('SportsService — spotlight', () => {
   });
 });
 
+// ── T2-8: Possession arrow ─────────────────────────────────────
+describe('SportsService — setPossession (T2-8)', () => {
+  it('persists possession to Game.possession and writes a POSSESSION GameEvent', async () => {
+    const { service, game, gameEvent } = setup();
+    const g = await newGame(service, 'basketball');
+
+    const result = await service.setPossession(TENANT, g.id, { team: 'home' });
+
+    expect(result).toEqual({ success: true, possession: 'home' });
+
+    // Game.possession column is updated.
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    expect(updated?.possession).toBe('home');
+
+    // A POSSESSION GameEvent is appended.
+    const events = gameEvent.rows.filter((e: any) => e.gameId === g.id && e.type === 'POSSESSION');
+    expect(events).toHaveLength(1);
+    expect(events[0].payload.team).toBe('home');
+  });
+
+  it('records prevPossession in the GameEvent payload', async () => {
+    const { service, gameEvent } = setup();
+    const g = await newGame(service, 'basketball');
+
+    // Set to home first.
+    await service.setPossession(TENANT, g.id, { team: 'home' });
+    // Flip to away — the event should carry prevPossession = 'home'.
+    await service.setPossession(TENANT, g.id, { team: 'away' });
+
+    const events = gameEvent.rows.filter((e: any) => e.gameId === g.id && e.type === 'POSSESSION');
+    expect(events).toHaveLength(2);
+    expect(events[1].payload.team).toBe('away');
+    expect(events[1].payload.prevPossession).toBe('home');
+  });
+
+  it('writes an AuditLog row on every setPossession call', async () => {
+    const { service, auditLog } = setup();
+    const g = await newGame(service, 'football');
+
+    await service.setPossession(TENANT, g.id, { team: 'away' }, 'actor-user-1');
+
+    const auditRows = auditLog.rows.filter(
+      (r: any) => r.action === 'SPORTS_POSSESSION_SET' && r.targetId === g.id,
+    );
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0].userId).toBe('actor-user-1');
+    const details = JSON.parse(auditRows[0].details);
+    expect(details.team).toBe('away');
+    expect(details.sport).toBe('football');
+  });
+
+  it('defaults team to home when an invalid value is passed', async () => {
+    const { service, game } = setup();
+    const g = await newGame(service, 'basketball');
+
+    const result = await service.setPossession(TENANT, g.id, { team: 'invalid' as any });
+    expect(result.possession).toBe('home');
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    expect(updated?.possession).toBe('home');
+  });
+
+  it('is tenant-scoped and 404s another tenant\'s game', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'basketball');
+    await expect(
+      service.setPossession('other-tenant', g.id, { team: 'home' }),
+    ).rejects.toThrow(NotFoundException);
+  });
+});
+
 describe('SportsService — public board view', () => {
   it('returns the game plus its recent cue feed', async () => {
     const { service } = setup();

@@ -572,10 +572,17 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
     return () => clearInterval(t);
   }, [slots.length, spotSeconds]);
   const activeSlot = slots[slotIdx % slots.length] || slots[0];
-  // Football possession — lights the 🏈 marker on the team panel.
+  // T2-8: Football possession — lights the 🏈 marker on the team panel.
+  // Read from Game.possession (first-class column) first; fall back to
+  // stats.possession for backward compat with rows created before the
+  // add_game_possession migration.
   const ballSide =
     def.key === 'football'
-      ? String((data.stats as Record<string, unknown> | undefined)?.possession || '')
+      ? (
+          typeof (data as any).possession === 'string' && (data as any).possession
+            ? (data as any).possession
+            : String((data.stats as Record<string, unknown> | undefined)?.possession || '')
+        )
           .trim()
           .toLowerCase()
       : '';

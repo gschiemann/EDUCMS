@@ -1753,6 +1753,14 @@ model Game {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
 
+  // 2026-05-27 — T2-8: possession arrow as a first-class field.
+  // Replaces the free-text `stats.possession` approach — the operator
+  // no longer types 'home'/'away' into a generic stat field. The column
+  // is nullable so existing Game rows are unaffected (migration is
+  // additive-only). Display surfaces fall back to stats.possession for
+  // backward compat when this column is null.
+  possession   String?   // 'home' | 'away' | null
+
   // 2026-05-19 — Sprint 13 scoreboard builder. Each game can pick an
   // operator-customized Template for its three surfaces:
   //   * scoreboardTemplate → /board/[gameId]  (the big LED video wall)

@@ -3363,6 +3363,70 @@ export class SportsService {
   }
 
   /**
+   * T2-8: Set possession to 'home' or 'away' as a first-class column.
+   *
+   * Replaces the free-text `stats.possession` approach that required the
+   * operator to type 'home'/'away' into a generic stat field.  This writes
+   * to `Game.possession` (the new dedicated column) so the operator UI can
+   * offer a single tap-to-flip chip and display surfaces can read a typed
+   * value instead of an arbitrary string.
+   *
+   * Atomically:
+   *  1. Updates `Game.possession`
+   *  2. Writes a `POSSESSION` GameEvent with { team, prevPossession }
+   *  3. Writes an AuditLog row
+   *
+   * Sports that don't have a possession concept (baseball, volleyball, etc.)
+   * can still call this endpoint — the UI controls gate it by sport, but the
+   * service itself doesn't restrict by sport so future sports with possession
+   * tracking work automatically.
+   */
+  async setPossession(
+    tenantId: string,
+    gameId: string,
+    dto: { team?: string },
+    actorUserId?: string,
+  ) {
+    const team: 'home' | 'away' = dto.team === 'away' ? 'away' : 'home';
+
+    const game = await this.owned(tenantId, gameId);
+    const prevPossession = (game as any).possession as string | null | undefined;
+
+    // Write the new possession to Game.possession (the typed column).
+    await this.prisma.client.game.update({
+      where: { id: gameId },
+      data: { possession: team } as any,
+    });
+    this.invalidateBoardCache(gameId);
+
+    // Append-only POSSESSION event — forensic trail, same pattern as TIMEOUT.
+    await this.record(gameId, 'POSSESSION', {
+      team,
+      prevPossession: prevPossession ?? null,
+    });
+
+    // Immutable AuditLog row.
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId || null,
+          action: 'SPORTS_POSSESSION_SET',
+          targetType: 'Game',
+          targetId: gameId,
+          details: JSON.stringify({
+            team,
+            prevPossession: prevPossession ?? null,
+            sport: game.sport,
+          }),
+        },
+      });
+    } catch { /* best-effort */ }
+
+    return { success: true, possession: team };
+  }
+
+  /**
    * Set the stadium ribbon's custom message reel. Each line scrolls on
    * the ribbon in place of the default crowd prompts; an empty list
    * clears back to the auto prompts. Stored as a RIBBON GameEvent
