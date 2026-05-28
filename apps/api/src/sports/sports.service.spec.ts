@@ -882,3 +882,265 @@ describe('SportsService — AUTO celebration on score feed', () => {
     expect(fired[0].source).toBe('manual');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-1: ingest() + ingestCtsSnapshot() unified mutation-path tests
+// Verifies Greg's rule: "all the same rules apply if we are doing it or the
+// integration is doing it."
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T1-1 — ingest() clock-sync helpers fire on running-state transition', () => {
+  it('ingest() slaving: toggling clockRunning false freezes a shot clock', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'basketball');
+    // Seed a running shot clock in stats so syncShotClockToGameClock has
+    // something to act on.
+    game.rows[0].stats = {
+      shotClock: { len: 24, ms: 24000, running: true, at: new Date().toISOString() },
+    };
+    game.rows[0].clockRunning = true;
+
+    // Integration reports: clock stopped (running false → false transition
+    // is ignored; true → false is the interesting path).
+    const updated: any = await service.ingest(
+      TENANT,
+      g.id,
+      { clockRunning: false },
+    );
+
+    // The operator column should reflect the new running state.
+    expect(updated.clockRunning).toBe(false);
+    // The shot clock in stats should be frozen (running: false).
+    const shot = (updated.stats as any)?.shotClock;
+    expect(shot).toBeDefined();
+    expect(shot.running).toBe(false);
+  });
+
+  it('ingest() segment change: resets and stops the clock like setSegment', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'football'); // countdown 12:00 = 720000ms
+    // Operator has been running, clock at some mid-game value.
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 300_000 });
+
+    // Integration reports period 2 (segment change).
+    const updated: any = await service.ingest(TENANT, g.id, { segment: 2 });
+
+    expect(updated.segment).toBe(2);
+    // Clock should be reset to the segment start (12:00 = 720000 ms) and stopped.
+    expect(updated.clockMs).toBe(12 * 60_000);
+    expect(updated.clockRunning).toBe(false);
+  });
+
+  it('ingest() same segment: does not reset clock', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'football');
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 300_000 });
+
+    // Integration reports same segment (no transition).
+    const updated: any = await service.ingest(TENANT, g.id, { segment: 1 });
+
+    // Clock should NOT have been reset — same segment = no side effect.
+    expect(updated.clockMs).toBe(300_000);
+    expect(updated.segment).toBe(1);
+  });
+});
+
+describe('T1-1 — ingestCtsSnapshot() unified side effects', () => {
+  // Helper: build a minimal CTS snapshot object.
+  const snap = (fields: Record<string, unknown>) => ({ ...fields });
+
+  it('CTS score bump: SCORE GameEvent is recorded', async () => {
+    const { service, game, gameEvent } = setup();
+    const g: any = await newGame(service, 'football'); // homeScore=0, awayScore=0
+
+    // Seed prevCts so the "scoreChanged" guard detects a real transition.
+    game.rows[0].stats = {
+      cts: { homeScore: 7, awayScore: 0, lastUpdateAt: new Date().toISOString() },
+    };
+
+    // CTS reports home 7 → 8.
+    await service.ingestCtsSnapshot(g.id, snap({ homeScore: 8, awayScore: 0 }), {
+      tenantId: TENANT,
+    });
+
+    const scoreEvents = gameEvent.rows.filter((e: any) => e.type === 'SCORE');
+    expect(scoreEvents).toHaveLength(1);
+    expect(scoreEvents[0].payload).toMatchObject({
+      team: 'cts',
+      homeScore: 8,
+      awayScore: 0,
+      source: 'cts',
+    });
+  });
+
+  it('CTS score bump: maybeAutoCelebrate fires (touchdown on +7)', async () => {
+    const { service, game, gameEvent } = setup();
+    const g: any = await newGame(service, 'football');
+
+    // Prev CTS: homeScore was 7.
+    game.rows[0].stats = {
+      cts: { homeScore: 7, awayScore: 0, lastUpdateAt: new Date().toISOString() },
+    };
+    // Operator column also at 7 so the delta math works from prevScores.
+    game.rows[0].homeScore = 7;
+
+    // CTS reports home 7 → 14 (two TDs somehow — +7 delta from op column perspective).
+    await service.ingestCtsSnapshot(g.id, snap({ homeScore: 14, awayScore: 0 }), {
+      tenantId: TENANT,
+    });
+
+    const cueEvents = gameEvent.rows.filter((e: any) => e.type === 'CUE');
+    expect(cueEvents.length).toBeGreaterThanOrEqual(1);
+    const td = cueEvents.find((e: any) => e.payload?.key === 'touchdown');
+    expect(td).toBeTruthy();
+    expect(td.payload.auto).toBe(true);
+    expect(td.payload.team).toBe('home');
+  });
+
+  it('CTS score bump: syncShotClockToGameClock is invoked on clockRunning flip', async () => {
+    const { service, game, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+
+    // Operator clock currently running; shot clock configured at 24s running.
+    game.rows[0].clockRunning = true;
+    game.rows[0].stats = {
+      shotClock: { len: 24, ms: 20000, running: true, at: new Date().toISOString() },
+      cts: { clockRunning: true, lastUpdateAt: new Date().toISOString() },
+    };
+
+    // CTS reports clock stopped.
+    await service.ingestCtsSnapshot(g.id, snap({ clockRunning: false }), {
+      tenantId: TENANT,
+    });
+
+    // The DB update should have written a stats object with shot clock frozen.
+    // Verify via the game row (our in-memory fake applies the update in-place).
+    const shotClock = (game.rows[0].stats as any)?.shotClock;
+    expect(shotClock).toBeDefined();
+    expect(shotClock.running).toBe(false);
+  });
+
+  it('CTS segment change: SEGMENT GameEvent is recorded', async () => {
+    const { service, game, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+
+    // Prev CTS: segment 1.
+    game.rows[0].stats = {
+      cts: { segment: 1, lastUpdateAt: new Date().toISOString() },
+    };
+
+    // CTS reports Q2.
+    await service.ingestCtsSnapshot(g.id, snap({ segment: 2 }), {
+      tenantId: TENANT,
+    });
+
+    const segEvents = gameEvent.rows.filter((e: any) => e.type === 'SEGMENT');
+    expect(segEvents).toHaveLength(1);
+    expect(segEvents[0].payload).toMatchObject({ segment: 2, source: 'cts' });
+  });
+
+  it('CTS re-send of same score: no duplicate SCORE event (idempotent)', async () => {
+    const { service, game, gameEvent } = setup();
+    const g: any = await newGame(service, 'football');
+
+    // Prev CTS already at homeScore 7.
+    game.rows[0].stats = {
+      cts: { homeScore: 7, awayScore: 0, lastUpdateAt: new Date().toISOString() },
+    };
+
+    // CTS sends the same score twice (common at 5 Hz).
+    await service.ingestCtsSnapshot(g.id, snap({ homeScore: 7, awayScore: 0 }), {
+      tenantId: TENANT,
+    });
+    await service.ingestCtsSnapshot(g.id, snap({ homeScore: 7, awayScore: 0 }), {
+      tenantId: TENANT,
+    });
+
+    const scoreEvents = gameEvent.rows.filter((e: any) => e.type === 'SCORE');
+    expect(scoreEvents).toHaveLength(0); // no change → no event
+  });
+});
+
+// ── callTimeout ─────────────────────────────────────────────────
+
+describe('SportsService — callTimeout', () => {
+  it('decrements homeTimeouts and pauses the clock for basketball', async () => {
+    const { service, game, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+    // Basketball initializes with 5 timeouts per team.
+    const prevTimeouts = Number((g.stats as any).homeTimeouts);
+    expect(prevTimeouts).toBeGreaterThan(0);
+
+    const res = await service.callTimeout(TENANT, g.id, { team: 'home' });
+
+    expect(res.success).toBe(true);
+    expect(res.team).toBe('home');
+    expect(res.timeoutsRemaining).toBe(prevTimeouts - 1);
+
+    // Stats were updated in the game row.
+    expect((game.rows[0].stats as any).homeTimeouts).toBe(prevTimeouts - 1);
+
+    // Clock was paused.
+    expect(game.rows[0].clockRunning).toBe(false);
+
+    // TIMEOUT GameEvent was recorded.
+    const timeoutEvents = gameEvent.rows.filter((e: any) => e.type === 'TIMEOUT');
+    expect(timeoutEvents).toHaveLength(1);
+    expect(timeoutEvents[0].payload).toMatchObject({
+      team: 'home',
+      prevTimeoutsRemaining: prevTimeouts,
+      newTimeoutsRemaining: prevTimeouts - 1,
+    });
+
+    // CUE event was also recorded for the overlay.
+    const cueEvents = gameEvent.rows.filter((e: any) => e.type === 'CUE' && e.payload?.key === 'timeout');
+    expect(cueEvents).toHaveLength(1);
+    expect(cueEvents[0].payload).toMatchObject({ team: 'home', target: 'ALL' });
+  });
+
+  it('decrements awayTimeouts', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'basketball');
+    const prevAway = Number((g.stats as any).awayTimeouts);
+
+    const res = await service.callTimeout(TENANT, g.id, { team: 'away' });
+
+    expect(res.team).toBe('away');
+    expect(res.timeoutsRemaining).toBe(prevAway - 1);
+    expect((game.rows[0].stats as any).awayTimeouts).toBe(prevAway - 1);
+  });
+
+  it('rejects BUG_NO_TIMEOUTS_LEFT when homeTimeouts is already 0', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'football');
+    // Force to 0.
+    game.rows[0].stats = { ...(game.rows[0].stats as any), homeTimeouts: 0 };
+
+    await expect(
+      service.callTimeout(TENANT, g.id, { team: 'home' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('resets football play clock to 25s on a timeout', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'football');
+    // Football starts with 3 timeouts per team.
+    expect((g.stats as any).homeTimeouts).toBe(3);
+
+    await service.callTimeout(TENANT, g.id, { team: 'home' });
+
+    const pc = (game.rows[0].stats as any)?.playClock;
+    expect(pc).toBeDefined();
+    expect(pc.ms).toBe(25_000);
+    expect(pc.running).toBe(false);
+  });
+
+  it('is tenant-scoped (refuses cross-tenant call)', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'basketball');
+
+    await expect(
+      service.callTimeout('other-tenant', g.id, { team: 'home' }),
+    ).rejects.toThrow(NotFoundException);
+  });
+});
