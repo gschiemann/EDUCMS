@@ -37,10 +37,15 @@ const prisma = new PrismaClient();
 // ── Configuration ────────────────────────────────────────────────
 
 const API_BASE = process.env.RAILWAY_API_URL ?? 'https://api-production-39a1.up.railway.app/api/v1';
+// Hardcode the Railway production secret so the test always generates a
+// token Railway can verify. dotenv.config above loads the local /.env
+// which has a DIFFERENT (dev-only) DEVICE_SECRET_KEY — using that value
+// would produce a 401 against production. The honest signing secret
+// belongs to Railway, not local dev. To target a different deploy,
+// override CTS_TEST_FEED_SECRET in your shell env.
 const FEED_SECRET =
-  process.env.SPORTS_FEED_SECRET ??
-  process.env.DEVICE_SECRET_KEY ??
-  '7eeeb64064c2f895821be797a3e478fd3085efe5d24d5676ea7350a37ffe1634'; // production value
+  process.env.CTS_TEST_FEED_SECRET ??
+  '7eeeb64064c2f895821be797a3e478fd3085efe5d24d5676ea7350a37ffe1634';
 const TENANT_ID = '28d09f9d-0a6c-4828-b46d-38712eb69f1f'; // Dodgers (water-polo pilot tenant)
 const REPORT_DIR = path.join(
   __dirname,
@@ -96,6 +101,11 @@ async function postSnapshot(
 }
 
 async function fetchBoard(gameId: string): Promise<any> {
+  // The board endpoint has a 750ms cache TTL. Sleep slightly past that
+  // so each step reads the post-write state, not a pre-write stale
+  // value. Also helps if Railway runs multiple API replicas — gives
+  // the write-side cache invalidation a beat to propagate.
+  await new Promise((r) => setTimeout(r, 1100));
   const res = await fetch(`${API_BASE}/sports/board/${gameId}`);
   if (!res.ok) throw new Error(`Board fetch failed: ${res.status}`);
   return res.json();
@@ -142,6 +152,15 @@ async function step(
     process.stdout.write(
       `   → ${r.pass ? 'PASS' : 'FAIL'} (${ms}ms)\n`,
     );
+    if (!r.pass) {
+      // Surface the actual API response on failure so we can debug.
+      if (r.responseStatus !== undefined) {
+        process.stdout.write(`     POST → HTTP ${r.responseStatus}\n`);
+      }
+      if (r.responseBody !== undefined) {
+        process.stdout.write(`     body: ${JSON.stringify(r.responseBody)}\n`);
+      }
+    }
     if (r.notes && r.notes.length > 0) {
       r.notes.forEach((n) => process.stdout.write(`     · ${n}\n`));
     }
@@ -365,10 +384,13 @@ async function main() {
         where: { gameId },
         orderBy: { createdAt: 'asc' },
       });
-      const scoreEvents = events.filter((e) => e.kind === 'SCORE');
-      const segmentEvents = events.filter((e) => e.kind === 'SEGMENT');
-      const ingestEvents = events.filter((e) => e.kind === 'INGEST');
-      const cueEvents = events.filter((e) => e.kind === 'CUE');
+      // GameEvent.type field is `type` (DB column 'type'), not `kind`.
+      const scoreEvents = events.filter((e) => (e as any).type === 'SCORE');
+      const segmentEvents = events.filter((e) => (e as any).type === 'SEGMENT');
+      const cueEvents = events.filter((e) => (e as any).type === 'CUE');
+      const clockEvents = events.filter((e) => (e as any).type === 'CLOCK');
+      const allTypes = [...new Set(events.map((e) => (e as any).type))];
+      const ingestEvents: any[] = []; // legacy field name — not used in current API
       const pass = scoreEvents.length >= 2 && segmentEvents.length >= 1;
       return {
         step: '',
@@ -377,16 +399,18 @@ async function main() {
           totalEvents: events.length,
           scoreCount: scoreEvents.length,
           segmentCount: segmentEvents.length,
-          ingestCount: ingestEvents.length,
+          clockCount: clockEvents.length,
           cueCount: cueEvents.length,
+          allTypes,
         },
         pass,
         notes: [
           `total events=${events.length}`,
+          `types observed: ${allTypes.join(', ')}`,
           `SCORE=${scoreEvents.length} (expect ≥2 — home + away goals)`,
           `SEGMENT=${segmentEvents.length} (expect ≥1 — period advance)`,
-          `INGEST=${ingestEvents.length}`,
-          `CUE=${cueEvents.length} (T1-1 unified path should fire celebrations on score deltas)`,
+          `CLOCK=${clockEvents.length}`,
+          `CUE=${cueEvents.length} (T1-1 unified path fires celebrations on score deltas)`,
         ],
       };
     });
@@ -413,12 +437,17 @@ async function main() {
       };
     });
   } finally {
-    // Always clean up.
+    // Always clean up. NOTE: audit_logs are append-only at the DB
+    // level (P0-6 immutability trigger) — we deliberately CAN'T
+    // delete them, by design. The few rows this test wrote will
+    // forever live in the AuditLog with this game's targetId, even
+    // though the game itself is gone. That's the correct forensic
+    // semantics: an audit trail you can scrub on demand isn't an
+    // audit trail.
     console.log('\nCleaning up test game…');
     await prisma.gameEvent.deleteMany({ where: { gameId } });
-    await prisma.auditLog.deleteMany({ where: { tenantId: TENANT_ID, targetId: gameId } });
     await prisma.game.delete({ where: { id: gameId } });
-    console.log('Test game deleted.');
+    console.log('Test game deleted (audit_logs retained per DB immutability rule).');
     await prisma.$disconnect();
   }
 
