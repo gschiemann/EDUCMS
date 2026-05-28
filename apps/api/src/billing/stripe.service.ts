@@ -65,6 +65,34 @@ export interface WebhookHandlerResult {
   noTenantId?: boolean;
 }
 
+/** Outcome of a `syncSubscriptionQuantity` call.
+ *
+ *  `status` tells the caller what happened so the daily reconcile cron
+ *  can decide whether to write a `LICENSE_RECONCILED` audit row (only on
+ *  an actual `corrected` drift). The event-driven pair/unpair/delete
+ *  callers ignore this return value entirely — they keep firing it
+ *  `.catch(() => {})` and never await, so this richer return is purely
+ *  additive and changes nothing for them. */
+export interface SyncQuantityResult {
+  /** `corrected`  → Stripe quantity differed from live seats; we updated it.
+   *  `in-sync`    → quantity already matched; no Stripe write.
+   *  `skipped`    → not applicable (no Stripe, no card sub, PO/INVOICE,
+   *                 cancelled, or subscription not retrievable). */
+  status: 'corrected' | 'in-sync' | 'skipped';
+  /** Reason, when `skipped`. */
+  reason?:
+    | 'stripe-disabled'
+    | 'no-subscription'
+    | 'non-card-billing'
+    | 'cancelled'
+    | 'subscription-unretrievable'
+    | 'no-subscription-item';
+  /** Stripe subscription-item quantity before the sync (when known). */
+  from?: number;
+  /** Live paired-screen count we synced to (when known). */
+  to?: number;
+}
+
 /** A paid per-screen subscription has no hard seat cap — the tenant
  *  pays for whatever they pair. Set the License seatLimit far above
  *  any real fleet so seat enforcement never blocks a paying tenant.
@@ -127,16 +155,27 @@ export class StripeService {
    *
    * Callers fire this AFTER a screen is paired / unpaired / deleted
    * and MUST NOT await it — a Stripe hiccup can never block pairing.
+   *
+   * Returns a `SyncQuantityResult` so the daily reconcile cron can
+   * distinguish a real drift correction from a no-op. Event-driven
+   * callers ignore the return value (they fire-and-forget), so the
+   * richer return type is purely additive.
    */
-  async syncSubscriptionQuantity(tenantId: string): Promise<void> {
+  async syncSubscriptionQuantity(tenantId: string): Promise<SyncQuantityResult> {
     const stripe = this.getClient();
-    if (!stripe) return;
+    if (!stripe) return { status: 'skipped', reason: 'stripe-disabled' };
     const license = await this.prisma.client.license.findUnique({ where: { tenantId } });
-    if (!license?.stripeSubscriptionId) return;
+    if (!license?.stripeSubscriptionId) {
+      return { status: 'skipped', reason: 'no-subscription' };
+    }
     // Invoice / PO tenants are billed on a contracted seat count — the
     // operator tops them up by hand; never auto-adjust their plan.
-    if (license.billingMode && license.billingMode !== 'CARD') return;
-    if (license.status === 'CANCELLED') return;
+    if (license.billingMode && license.billingMode !== 'CARD') {
+      return { status: 'skipped', reason: 'non-card-billing' };
+    }
+    if (license.status === 'CANCELLED') {
+      return { status: 'skipped', reason: 'cancelled' };
+    }
 
     let sub: Record<string, any>;
     try {
@@ -146,20 +185,24 @@ export class StripeService {
         `quantity sync skipped: subscription ${license.stripeSubscriptionId} ` +
           `not retrievable — ${(e as Error).message}`,
       );
-      return;
+      return { status: 'skipped', reason: 'subscription-unretrievable' };
     }
     const item = sub.items?.data?.[0];
-    if (!item?.id) return;
+    if (!item?.id) return { status: 'skipped', reason: 'no-subscription-item' };
     const quantity = Math.max(1, await this.seatCount(tenantId));
-    if (item.quantity === quantity) return; // already in lockstep
+    const current: number = item.quantity ?? 0;
+    if (current === quantity) {
+      return { status: 'in-sync', from: current, to: quantity }; // already in lockstep
+    }
 
     await stripe.subscriptionItems.update(item.id, {
       quantity,
       proration_behavior: 'create_prorations',
     });
     this.logger.log(
-      `billing: tenant ${tenantId} subscription quantity ${item.quantity} → ${quantity}`,
+      `billing: tenant ${tenantId} subscription quantity ${current} → ${quantity}`,
     );
+    return { status: 'corrected', from: current, to: quantity };
   }
 
   /**
