@@ -390,19 +390,34 @@ function GameControl() {
             {/* game status */}
             <Section title="Game status">
               <div className="flex flex-wrap gap-2">
-                {GAME_STATUSES.map((s) => (
-                  <button
-                    key={s.key}
-                    onClick={() => ctl.status.mutate({ status: s.key })}
-                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                      g.status === s.key
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
+                {GAME_STATUSES.map((s) =>
+                  /* Destructive: FINAL ends real-time mutations — hold-to-confirm */
+                  s.key === 'FINAL' ? (
+                    <HoldChip
+                      key={s.key}
+                      label={s.label}
+                      ariaLabel="Mark game Final — ends real-time scoring"
+                      onConfirm={() => ctl.status.mutate({ status: s.key })}
+                      className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                        g.status === s.key
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    />
+                  ) : (
+                    <button
+                      key={s.key}
+                      onClick={() => ctl.status.mutate({ status: s.key })}
+                      className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                        g.status === s.key
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  )
+                )}
               </div>
             </Section>
 
@@ -826,25 +841,23 @@ function RunInteractiveScoreboard({
             button; just a slim chip. */}
         <div className="flex flex-col items-center justify-between bg-slate-950 border border-slate-800 rounded-xl px-4 pt-5 pb-3 min-h-[280px] min-w-[240px]">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest">
-            <button
-              type="button"
-              onClick={() => ctl.segment.mutate({ delta: -1 })}
+            {/* Destructive: resets clock to segment start — hold-to-confirm */}
+            <HoldChip
+              label="−"
+              ariaLabel="Previous segment"
+              onConfirm={() => ctl.segment.mutate({ delta: -1 })}
               className="h-6 w-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center text-sm font-bold border border-slate-700"
-              aria-label="Previous segment"
-            >
-              −
-            </button>
+            />
             <span className="min-w-[80px] text-center text-amber-400 text-sm font-black tracking-widest">
               {segLabel}
             </span>
-            <button
-              type="button"
-              onClick={() => ctl.segment.mutate({ delta: 1 })}
+            {/* Destructive: resets clock to segment start — hold-to-confirm */}
+            <HoldChip
+              label="+"
+              ariaLabel="Next segment"
+              onConfirm={() => ctl.segment.mutate({ delta: 1 })}
               className="h-6 w-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center text-sm font-bold border border-slate-700"
-              aria-label="Next segment"
-            >
-              +
-            </button>
+            />
           </div>
           {hasClock ? (
             <>
@@ -870,14 +883,14 @@ function RunInteractiveScoreboard({
                 >
                   {running ? <><Pause className="h-3 w-3" /> Stop</> : <><Play className="h-3 w-3" /> Start</>}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => ctl.clock.mutate({ action: 'reset' })}
+                {/* Destructive: resets clock to segment start — hold-to-confirm */}
+                <HoldChip
+                  ariaLabel="Reset clock to segment start"
+                  onConfirm={() => ctl.clock.mutate({ action: 'reset' })}
                   className="h-8 w-8 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 text-sm transition-colors border border-slate-700 flex items-center justify-center"
-                  title="Reset clock"
                 >
                   <RotateCcw className="h-3 w-3" />
-                </button>
+                </HoldChip>
                 <button
                   type="button"
                   onClick={() => ctl.clock.mutate({ action: 'set', ms: Math.max(0, liveMs - 1000) })}
@@ -2984,6 +2997,137 @@ function SponsorScheduleRow({
         </div>
       )}
     </div>
+  );
+}
+
+// ── HoldChip — hold-to-confirm for destructive game-console actions ──
+//
+// Reuses the exact same press-and-hold mechanic as the mobile panic page
+// (apps/web/src/app/panic/page.tsx) scaled down to small inline chips.
+// 800 ms hold → animated SVG ring fills → release-at-complete = fire;
+// release-early = no-op. setPointerCapture prevents finger drift from
+// cancelling the hold.
+//
+// Usage:
+//   <HoldChip label="−" ariaLabel="Previous segment" onConfirm={() => ...} />
+//   <HoldChip label="Final" ariaLabel="Mark game Final — hold to confirm"
+//             onConfirm={() => ...} className="px-4 py-2 ..." />
+//
+// Constraints (CLAUDE.md rule #10): no `inset` shorthand or `inset-0`
+// Tailwind class. All absolute positioning uses top-0 right-0 bottom-0
+// left-0 long-hand.
+const HOLD_CHIP_MS = 800;
+
+function HoldChip({
+  label,
+  ariaLabel,
+  onConfirm,
+  className,
+  children,
+}: {
+  label?: string;
+  ariaLabel: string;
+  onConfirm: () => void;
+  className?: string;
+  children?: React.ReactNode;
+}) {
+  const [holding, setHolding] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [liveMsg, setLiveMsg] = useState('');
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearHold = () => {
+    if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+    if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
+    setHolding(false);
+    setProgress(0);
+  };
+
+  const startHold = () => {
+    setHolding(true);
+    setProgress(0);
+    setLiveMsg(`Hold to confirm: ${ariaLabel}`);
+    const startTime = Date.now();
+    progressTimerRef.current = setInterval(() => {
+      const pct = Math.min(((Date.now() - startTime) / HOLD_CHIP_MS) * 100, 100);
+      setProgress(pct);
+    }, 30);
+    holdTimerRef.current = setTimeout(() => {
+      clearHold();
+      setLiveMsg('');
+      onConfirm();
+    }, HOLD_CHIP_MS);
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    try { (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* older WebView */ }
+    startHold();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    if (e.repeat) return;
+    e.preventDefault();
+    startHold();
+  };
+
+  const handleKeyUp = (e: React.KeyboardEvent) => {
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    e.preventDefault();
+    clearHold();
+  };
+
+  // Circumference for r=10 circle: 2π×10 ≈ 62.8
+  const CIRC = 62.8;
+
+  return (
+    <>
+      {/* SR live region — announces the hold prompt to screen readers */}
+      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {liveMsg}
+      </div>
+      <button
+        type="button"
+        aria-label={`${ariaLabel}. Hold to confirm.`}
+        onPointerDown={handlePointerDown}
+        onPointerUp={clearHold}
+        onPointerCancel={clearHold}
+        onKeyDown={handleKeyDown}
+        onKeyUp={handleKeyUp}
+        onBlur={clearHold}
+        onContextMenu={(e) => e.preventDefault()}
+        className={`relative select-none overflow-hidden ${className ?? ''}`}
+        style={{ touchAction: 'none', WebkitTapHighlightColor: 'transparent' }}
+      >
+        {/* Animated ring — absolute overlay using long-hand sides (CLAUDE.md rule #10) */}
+        <svg
+          className="absolute top-0 right-0 bottom-0 left-0 w-full h-full -rotate-90 pointer-events-none"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            cx="12" cy="12" r="10"
+            fill="none"
+            className="stroke-current opacity-20"
+            strokeWidth="2"
+          />
+          <circle
+            cx="12" cy="12" r="10"
+            fill="none"
+            className="stroke-current"
+            strokeWidth="2"
+            strokeDasharray={CIRC}
+            strokeDashoffset={holding ? CIRC - (CIRC * progress) / 100 : CIRC}
+            strokeLinecap="round"
+          />
+        </svg>
+        {/* Content */}
+        <span className="relative" style={{ zIndex: 1 }}>
+          {children ?? label}
+        </span>
+      </button>
+    </>
   );
 }
 
