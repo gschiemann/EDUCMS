@@ -1036,40 +1036,55 @@ export class ScreensController {
 
     // Audit fix #10: wrap the seat-availability check + the screen claim
     // in a SERIALIZABLE transaction so two admins can't simultaneously pass
-    // assertSeatAvailable and overshoot the seat limit. PostgreSQL retries
-    // on serialization conflict; one of the racing claims will get a
-    // structured 402 LICENSE_EXHAUSTED instead of silently sneaking past.
+    // assertSeatAvailable and overshoot the seat limit. Two admins racing
+    // the last seat each fall inside the other's predicate → PG SSI aborts
+    // one (40001 → Prisma P2034). The seat ceiling always holds.
+    //
+    // P2-B fix: wrap the whole SERIALIZABLE tx in withDbRetry so the loser
+    // of that race gets a clean retry instead of an unhandled 500. P2034 is
+    // in withDbRetry's transient set, so it re-runs the ENTIRE thunk (the
+    // assertSeatAvailable count AND the screen.update write) against a fresh
+    // serializable snapshot. On retry either a seat has freed (succeeds) or
+    // the ceiling is still hit and assertSeatAvailable throws a structured
+    // 402 LICENSE_EXHAUSTED — which is a plain HttpException, NOT a transient
+    // DB error, so withDbRetry re-throws it immediately (no wasteful retry).
+    // The success path is unchanged: a tx that commits on the first attempt
+    // returns its value with no added latency.
     // Re-pairing a screen that already belongs to this tenant is free.
     const isNewPair = !screen.tenantId;
-    const updated = await this.prisma.client.$transaction(
-      async (tx) => {
-        if (isNewPair) {
-          await this.license.assertSeatAvailable(req.user.tenantId, tx);
-        }
-        return tx.screen.update({
-          where: { id: screen.id },
-          data: {
-            tenantId: req.user.tenantId,
-            name: body.name?.trim() || screen.name,
-            screenGroupId: body.screenGroupId || null,
-            status: 'ONLINE',
-            pairedAt: new Date(),
-            pairingCode: null, // Clear the code after pairing
+    const updated = await withDbRetry(
+      () =>
+        this.prisma.client.$transaction(
+          async (tx) => {
+            if (isNewPair) {
+              await this.license.assertSeatAvailable(req.user.tenantId, tx);
+            }
+            return tx.screen.update({
+              where: { id: screen.id },
+              data: {
+                tenantId: req.user.tenantId,
+                name: body.name?.trim() || screen.name,
+                screenGroupId: body.screenGroupId || null,
+                status: 'ONLINE',
+                pairedAt: new Date(),
+                pairingCode: null, // Clear the code after pairing
+              },
+              include: { screenGroup: { select: { id: true, name: true } } },
+            });
           },
-          include: { screenGroup: { select: { id: true, name: true } } },
-        });
-      },
-      {
-        isolationLevel: 'Serializable',
-        // Default is 5s but Supabase's pgbouncer + SERIALIZABLE can
-        // push past that on first connection. Raise to 20s so we
-        // don't 500 on slow networks; user sees a crisp error either
-        // way if the actual work exceeds 20s (which means something
-        // is very wrong). maxWait bumps the pool acquisition timeout
-        // so we don't fail before the transaction even starts.
-        timeout: 20000,
-        maxWait: 10000,
-      },
+          {
+            isolationLevel: 'Serializable',
+            // Default is 5s but Supabase's pgbouncer + SERIALIZABLE can
+            // push past that on first connection. Raise to 20s so we
+            // don't 500 on slow networks; user sees a crisp error either
+            // way if the actual work exceeds 20s (which means something
+            // is very wrong). maxWait bumps the pool acquisition timeout
+            // so we don't fail before the transaction even starts.
+            timeout: 20000,
+            maxWait: 10000,
+          },
+        ),
+      { label: 'screen.pair.seatClaim' },
     );
 
     // Audit fix #6: if this re-pair changed the tenant, blast a
