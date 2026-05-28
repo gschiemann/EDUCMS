@@ -25,15 +25,57 @@ import { PrismaService } from '../prisma/prisma.service';
  * which the receiver verifies in constant time. Same envelope shape
  * Stripe / GitHub webhooks use.
  *
- * No retry queue in this first cut. Failed deliveries record the
- * status + error on the TenantWebhook row so the operator can see in
- * the UI which webhook is broken. A retry worker ships in a follow-up.
+ * Retry (Audit P1-5, 2026-05-28). Every delivery now writes a durable
+ * `WebhookDelivery` row. A receiver that is down during a lockdown no
+ * longer loses `emergency.triggered` permanently:
+ *   - Each fire creates a delivery row (status=PENDING) carrying the
+ *     EXACT signed body + signed timestamp, so a retry reproduces a
+ *     byte-identical payload AND signature.
+ *   - First POST happens inline (fire-and-forget on the next tick).
+ *   - On a 2xx → row flips to DELIVERED.
+ *   - On non-2xx / timeout / network error → the row is scheduled for
+ *     the next attempt (nextRetryAt = now + backoff). WebhookRetryWorker
+ *     picks it up. After max attempts the row flips to FAILED and a
+ *     warning is logged.
+ *   - lastDelivery* on the TenantWebhook row is still stamped so the
+ *     existing operator UI keeps showing per-webhook health.
+ *
+ * The retry POST itself lives in `attemptDelivery`, shared by the first
+ * send here and by WebhookRetryWorker, so the wire format is identical
+ * on every attempt.
  */
+
+/** Backoff schedule in ms for attempts 1, 2, 3 (after the initial send). */
+export const WEBHOOK_RETRY_BACKOFF_MS = [5_000, 30_000, 120_000];
+/** Total attempts including the first inline send = 1 + backoff steps. */
+export const WEBHOOK_MAX_ATTEMPTS = 1 + WEBHOOK_RETRY_BACKOFF_MS.length;
+
+/** Shape of a single delivery attempt's HTTP outcome. */
+export interface DeliveryOutcome {
+  ok: boolean;
+  status: number | null;
+  errorMessage: string | null;
+}
+
 @Injectable()
 export class WebhookDispatchService {
   private readonly logger = new Logger(WebhookDispatchService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Compute the next-retry timestamp for a row that just failed its
+   * `attempts`-th attempt, or null if attempts are exhausted (caller
+   * then flips status to FAILED). `attempts` is the post-increment count
+   * (i.e. how many tries have now happened). Exposed for the worker +
+   * unit tests.
+   */
+  static nextRetryDelayMs(attempts: number): number | null {
+    // attempts=1 → first retry uses backoff[0]; attempts=N → backoff[N-1].
+    const idx = attempts - 1;
+    if (idx < 0 || idx >= WEBHOOK_RETRY_BACKOFF_MS.length) return null;
+    return WEBHOOK_RETRY_BACKOFF_MS[idx];
+  }
 
   /**
    * Fire an event to every active webhook for a tenant that subscribed
@@ -79,23 +121,84 @@ export class WebhookDispatchService {
 
     // Parallel deliveries — bounded by typical N=1-3 webhooks per tenant.
     await Promise.all(
-      subscribers.map((row) => this.deliverOne(row, body, event, timestamp)),
+      subscribers.map((row) =>
+        this.deliverFirst(
+          { id: row.id, url: row.url, signingSecret: row.signingSecret },
+          tenantId,
+          body,
+          event,
+          timestamp,
+        ),
+      ),
     );
   }
 
-  private async deliverOne(
+  /**
+   * First delivery of a fresh event: persist a durable WebhookDelivery
+   * row, POST once, then either mark DELIVERED or schedule the first
+   * retry. Always stamps lastDelivery* on the webhook row for the
+   * existing operator UI.
+   */
+  private async deliverFirst(
     row: { id: string; url: string; signingSecret: string },
+    tenantId: string,
     body: string,
     event: string,
     timestamp: number,
   ): Promise<void> {
+    // Create the durable delivery record up front so a crash between the
+    // POST and the status write still leaves a row the worker can retry.
+    let deliveryRowId: string | null = null;
+    try {
+      const created = await this.prisma.client.webhookDelivery.create({
+        data: {
+          webhookId: row.id,
+          tenantId,
+          event,
+          body,
+          signedTimestamp: BigInt(timestamp),
+          status: 'PENDING',
+          attempts: 0,
+        },
+        select: { id: true },
+      });
+      deliveryRowId = created.id;
+    } catch (err: any) {
+      // If we can't persist the delivery row we can't retry it durably.
+      // Fall back to a best-effort single POST so behavior never regresses
+      // below the pre-retry world.
+      this.logger.warn(
+        `failed to persist delivery row for ${row.id}: ${err?.message ?? err} — single-shot POST only`,
+      );
+    }
+
+    const outcome = await this.attemptDelivery(row, body, event, timestamp);
+    await this.recordWebhookHealth(row.id, timestamp, outcome);
+
+    if (deliveryRowId) {
+      await this.applyOutcome(deliveryRowId, 1, outcome);
+    }
+  }
+
+  /**
+   * Perform ONE signed HTTP POST. Pure transport — no DB writes — so it
+   * is shared verbatim by the first send and by WebhookRetryWorker. The
+   * signature is recomputed from the persisted `signedTimestamp` + body
+   * so every attempt is byte-identical on the wire.
+   */
+  async attemptDelivery(
+    row: { id: string; url: string; signingSecret: string },
+    body: string,
+    event: string,
+    signedTimestamp: number,
+  ): Promise<DeliveryOutcome> {
     const signature = createHmac('sha256', row.signingSecret)
-      .update(`${timestamp}.${body}`)
+      .update(`${signedTimestamp}.${body}`)
       .digest('hex');
     const deliveryId =
       typeof globalThis.crypto?.randomUUID === 'function'
         ? globalThis.crypto.randomUUID()
-        : `dlv_${timestamp}_${Math.random().toString(36).slice(2, 10)}`;
+        : `dlv_${signedTimestamp}_${Math.random().toString(36).slice(2, 10)}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
 
@@ -111,7 +214,7 @@ export class WebhookDispatchService {
           'User-Agent': 'VenueOS-Webhook/1.0',
           'X-VenueOS-Event': event,
           'X-VenueOS-Delivery-Id': deliveryId,
-          'X-VenueOS-Timestamp': String(timestamp),
+          'X-VenueOS-Timestamp': String(signedTimestamp),
           'X-VenueOS-Signature': `sha256=${signature}`,
         },
         body,
@@ -131,21 +234,86 @@ export class WebhookDispatchService {
       clearTimeout(timer);
     }
 
-    // Record last delivery result on the webhook row so the operator
-    // can see in the UI which webhook is healthy vs failing.
+    return { ok: status !== null && status >= 200 && status < 300, status, errorMessage };
+  }
+
+  /**
+   * Apply a delivery outcome to a WebhookDelivery row.
+   * `attempts` is the number of tries that have now happened (1-based).
+   *   - success → status=DELIVERED, nextRetryAt cleared.
+   *   - failure with attempts remaining → status stays PENDING,
+   *     nextRetryAt = now + backoff(attempts).
+   *   - failure with no attempts left → status=FAILED (give up).
+   * Shared by the first send and the worker.
+   */
+  async applyOutcome(
+    deliveryRowId: string,
+    attempts: number,
+    outcome: DeliveryOutcome,
+  ): Promise<void> {
+    let data: Record<string, unknown>;
+    if (outcome.ok) {
+      data = {
+        status: 'DELIVERED',
+        attempts,
+        nextRetryAt: null,
+        lastStatusCode: outcome.status,
+        lastError: null,
+      };
+    } else {
+      const delay = WebhookDispatchService.nextRetryDelayMs(attempts);
+      if (delay === null) {
+        data = {
+          status: 'FAILED',
+          attempts,
+          nextRetryAt: null,
+          lastStatusCode: outcome.status,
+          lastError: outcome.errorMessage,
+        };
+        this.logger.warn(
+          `webhook delivery ${deliveryRowId} permanently failed after ${attempts} attempts: ${outcome.errorMessage ?? 'unknown error'}`,
+        );
+      } else {
+        data = {
+          status: 'PENDING',
+          attempts,
+          nextRetryAt: new Date(Date.now() + delay),
+          lastStatusCode: outcome.status,
+          lastError: outcome.errorMessage,
+        };
+      }
+    }
+    try {
+      await this.prisma.client.webhookDelivery.update({ where: { id: deliveryRowId }, data });
+    } catch (err: any) {
+      this.logger.warn(
+        `failed to update delivery row ${deliveryRowId}: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
+   * Stamp lastDelivery* on the TenantWebhook row so the existing
+   * operator UI keeps reflecting per-webhook health. Non-fatal on error.
+   */
+  private async recordWebhookHealth(
+    webhookId: string,
+    timestamp: number,
+    outcome: DeliveryOutcome,
+  ): Promise<void> {
     try {
       await this.prisma.client.tenantWebhook.update({
-        where: { id: row.id },
+        where: { id: webhookId },
         data: {
           lastDeliveryAt: new Date(timestamp),
-          lastDeliveryStatus: status,
-          lastDeliveryError: errorMessage,
+          lastDeliveryStatus: outcome.status,
+          lastDeliveryError: outcome.errorMessage,
         },
       });
     } catch (err: any) {
       // Persistence failure is non-fatal — the delivery itself
       // already happened (or didn't). Log and move on.
-      this.logger.warn(`failed to record delivery status for ${row.id}: ${err?.message ?? err}`);
+      this.logger.warn(`failed to record delivery status for ${webhookId}: ${err?.message ?? err}`);
     }
   }
 }

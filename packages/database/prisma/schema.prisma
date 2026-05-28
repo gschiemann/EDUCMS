@@ -236,8 +236,56 @@ model TenantWebhook {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  deliveries WebhookDelivery[]
+
   @@index([tenantId, isActive])
   @@map("tenant_webhooks")
+}
+
+/// Outbound webhook delivery record + retry ledger (Audit P1-5, 2026-05-28).
+///
+/// Before this, WebhookDispatchService only stamped lastDelivery* on the
+/// TenantWebhook row — clobbered by the next event, with NO retry. A
+/// receiver down for 8s during a lockdown lost `emergency.triggered`
+/// permanently. This table makes every delivery durable and gives failed
+/// ones a bounded exponential-backoff retry.
+///
+/// Multi-replica safety: WebhookRetryWorker claims due rows with an atomic
+/// `UPDATE ... WHERE id IN (... FOR UPDATE SKIP LOCKED) RETURNING` so two
+/// replicas never double-deliver the same row.
+///
+/// The original signed `body` + `signedTimestamp` are persisted so a retry
+/// reproduces a byte-identical payload AND a byte-identical
+/// HMAC-SHA256(secret, `${signedTimestamp}.${body}`) signature — receivers
+/// that dedup on the signature/delivery-id see the retry as the same event.
+model WebhookDelivery {
+  id               String    @id @default(uuid())
+  webhookId        String    @map("webhook_id")
+  tenantId         String    @map("tenant_id")
+  event            String
+  // The exact JSON body that was (or will be) POSTed. Persisted so retries
+  // reproduce a byte-identical payload + signature.
+  body             String
+  // UNIX-ms timestamp that was folded into the signature at first send.
+  // Stays constant across retries so the signature stays constant.
+  signedTimestamp  BigInt    @map("signed_timestamp")
+  // PENDING (queued/in-flight) | DELIVERED | FAILED (permanent, gave up).
+  status           String    @default("PENDING")
+  attempts         Int       @default(0)
+  // Null once terminal (DELIVERED / FAILED). Otherwise the earliest time a
+  // worker may claim this row for the next attempt.
+  nextRetryAt      DateTime? @map("next_retry_at")
+  lastStatusCode   Int?      @map("last_status_code")
+  lastError        String?   @map("last_error")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  webhook TenantWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  // The worker's hot path: "give me every row due for retry."
+  @@index([status, nextRetryAt])
+  @@index([webhookId])
+  @@map("webhook_deliveries")
 }
 
 // Auto-branding — scraped or manually configured visual identity that
