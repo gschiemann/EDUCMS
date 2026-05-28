@@ -60,6 +60,25 @@ async function bootstrap() {
   // Registered BEFORE listen so it catches startup-adjacent errors too.
   app.useGlobalFilters(new AllExceptionsFilter());
 
+  // 2026-05-27 — bump default body-parser limit from 100 KB to 5 MB.
+  // The default rejected POST /api/v1/bugs the moment the bug
+  // reporter started actually capturing screenshots (html-to-image
+  // commit e14eff6 fixed the silent-fail-on-oklch issue, so payloads
+  // grew from ~5 KB to 1-3 MB). Logged as
+  //   [POST /api/v1/bugs] 500 INTERNAL_ERROR: request entity too large
+  // The frontend already caps screenshot at BUG_SCREENSHOT_MAX_BYTES
+  // (2 MB) + capturedContext at 512 KB, so 5 MB is the right server-
+  // side ceiling. Per-endpoint validation in BugsController re-checks
+  // both caps after parse, so this just lets the request reach the
+  // controller instead of dying at the body parser. eslint-disable
+  // for the require — express's types are awkward to import alongside
+  // NestFactory and a require keeps this delta minimal.
+  //
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const expressBody = require('express');
+  app.use(expressBody.json({ limit: '5mb' }));
+  app.use(expressBody.urlencoded({ limit: '5mb', extended: true }));
+
   // Mandatory: Helmet for basic strict transport + CSP
   app.use(
     helmet({
