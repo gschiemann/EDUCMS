@@ -1399,3 +1399,373 @@ registerVariant({
   render: ScorebugWidget as any,
   defaultConfig: {},
 });
+
+// ════════════════════════════════════════════════════════════════════════
+// 2026-05-28 — MULTI-VERTICAL PALETTE TILES (P1-2 fix).
+//
+// Before this block: of 341 registerVariant() calls, 324 were K-12 and
+// only 17 SPORTS — so a QSR / RESTAURANT / BAR / RETAIL / FASHION / GYM
+// operator opening the builder palette (VariantPicker) saw ONLY the
+// universal subset. The restaurant / bar / retail / fitness widget
+// COMPONENTS already existed and rendered (WidgetRenderer.tsx switch
+// cases) and were already editable (PropertiesPanel.tsx switch cases),
+// but they were never registered as palette VARIANTS — so the operator
+// could only start from a preset, never drag a fresh Menu Board / Tap
+// List / Price Callout onto a canvas. (See VariantPicker
+// variantVisibleForVertical().)
+//
+// Every tile below was selected by the strict intersection of (a) a
+// dedicated WidgetRenderer case that returns a real component (NOT the
+// "Pick a style" placeholder) AND (b) a PropertiesPanel editor case —
+// so each one renders on the canvas AND is editable after dropping.
+//
+// Cross-vertical tagging:
+//   • RESTAURANT_* → verticals:['QSR','RESTAURANT'] — quick-service AND
+//     full-service both get the food-service widget set (audit fix #3:
+//     the QSR/RESTAURANT split was starving full-service tenants).
+//   • RETAIL_*     → verticals:['RETAIL','FASHION'] — FASHION ⊂ RETAIL,
+//     so a boutique gets the storefront widget set too (audit fix #9).
+//   • BAR_*        → vertical:'BAR'.
+//   • FITNESS_*    → vertical:'GYM'.
+//
+// NOT covered here (deliberately): CORPORATE / HEALTHCARE / HOSPITALITY /
+// WORSHIP have NO dedicated renderable+editable widget components — their
+// canonical widget types render the "Pick a style" placeholder in
+// WidgetRenderer (no registered variants). Registering tiles for them
+// would surface non-rendering / non-editable tiles, which violates the
+// "must render + must be editable" rule. They need real widget
+// components built first (tracked as separate work).
+//
+// `render` is set to the actual widget component (same pattern as the
+// SPORTS tiles above) so the picker thumbnail shows the real widget with
+// its built-in demo/fallback content; `defaultConfig: {}` lets each
+// widget fall back to its own sample data until the operator edits it in
+// the Properties panel. `as any` on widgetType + render matches the
+// SPORTS registrations — these vertical widget types live as strings in
+// the WidgetRenderer / PropertiesPanel switches, not in the WidgetType
+// union.
+// ════════════════════════════════════════════════════════════════════════
+
+// ── RESTAURANT / QSR (verticals: QSR + RESTAURANT) ──
+import { MenuBoardWidget } from './restaurant/MenuBoardWidget';
+import { ComboCarouselWidget } from './restaurant/ComboCarouselWidget';
+import { WaitTimeWidget } from './restaurant/WaitTimeWidget';
+import { LoyaltyTickerWidget } from './restaurant/LoyaltyTickerWidget';
+import { SpecialsCalloutWidget } from './restaurant/SpecialsCalloutWidget';
+import { AllergyLegendWidget } from './restaurant/AllergyLegendWidget';
+
+const FOOD_SERVICE_VERTICALS = ['QSR', 'RESTAURANT'];
+
+registerVariant({
+  id: 'restaurant-menu-board',
+  widgetType: 'RESTAURANT_MENU_BOARD' as any,
+  name: 'Menu Board',
+  description: 'Multi-column counter-service menu. Add items, prices, and category columns in Properties. Pulls from POS when connected.',
+  category: 'MODERN',
+  render: MenuBoardWidget as any,
+  verticals: FOOD_SERVICE_VERTICALS,
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'restaurant-combo-carousel',
+  widgetType: 'RESTAURANT_COMBO_CAROUSEL' as any,
+  name: 'Combo Carousel',
+  description: 'Auto-rotating combo / value-meal carousel. Add combos + photos in Properties.',
+  category: 'MODERN',
+  render: ComboCarouselWidget as any,
+  verticals: FOOD_SERVICE_VERTICALS,
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'restaurant-wait-time',
+  widgetType: 'RESTAURANT_WAIT_TIME' as any,
+  name: 'Wait Time',
+  description: 'Counter-service / dine-in queue display. Set current wait + label in Properties.',
+  category: 'MODERN',
+  render: WaitTimeWidget as any,
+  verticals: FOOD_SERVICE_VERTICALS,
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'restaurant-loyalty-ticker',
+  widgetType: 'RESTAURANT_LOYALTY_TICKER' as any,
+  name: 'Loyalty Ticker',
+  description: 'Rotating loyalty / rewards messaging strip. Edit the messages in Properties.',
+  category: 'MODERN',
+  render: LoyaltyTickerWidget as any,
+  verticals: FOOD_SERVICE_VERTICALS,
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'restaurant-specials-callout',
+  widgetType: 'RESTAURANT_SPECIALS_CALLOUT' as any,
+  name: 'Specials Callout',
+  description: '"TODAY ONLY" big-type promo card. Set the headline, price, and accent color in Properties.',
+  category: 'MODERN',
+  render: SpecialsCalloutWidget as any,
+  verticals: FOOD_SERVICE_VERTICALS,
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'restaurant-allergy-legend',
+  widgetType: 'RESTAURANT_ALLERGY_LEGEND' as any,
+  name: 'Allergy Legend',
+  description: 'Small icon legend explaining the dietary chips on your menu (GF, V, nut-free…). Toggle which icons show in Properties.',
+  category: 'MINIMAL',
+  render: AllergyLegendWidget as any,
+  verticals: FOOD_SERVICE_VERTICALS,
+  defaultConfig: {},
+});
+
+// ── BAR / nightlife (vertical: BAR) ──
+import { TapListWidget } from './bar/TapListWidget';
+import { CocktailMenuWidget } from './bar/CocktailMenuWidget';
+import { HappyHourCountdownWidget } from './bar/HappyHourCountdownWidget';
+import { GameDayScheduleWidget } from './bar/GameDayScheduleWidget';
+import { EventTonightWidget } from './bar/EventTonightWidget';
+import { TriviaScoreboardWidget } from './bar/TriviaScoreboardWidget';
+
+registerVariant({
+  id: 'bar-tap-list',
+  widgetType: 'BAR_TAP_LIST' as any,
+  name: 'Tap List',
+  description: 'Beer-on-tap menu for a taproom display. Add brews, ABV, and prices in Properties.',
+  category: 'MODERN',
+  render: TapListWidget as any,
+  vertical: 'BAR',
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'bar-cocktail-menu',
+  widgetType: 'BAR_COCKTAIL_MENU' as any,
+  name: 'Cocktail Menu',
+  description: 'Chalkboard-style cocktail list. Add drinks, ingredients, and prices in Properties.',
+  category: 'DARK',
+  render: CocktailMenuWidget as any,
+  vertical: 'BAR',
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'bar-happy-hour-countdown',
+  widgetType: 'BAR_HAPPY_HOUR_COUNTDOWN' as any,
+  name: 'Happy Hour Countdown',
+  description: 'Full-bleed countdown to happy-hour end. Set the end time + deal copy in Properties.',
+  category: 'BOLD',
+  render: HappyHourCountdownWidget as any,
+  vertical: 'BAR',
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'bar-game-day-schedule',
+  widgetType: 'BAR_GAME_DAY_SCHEDULE' as any,
+  name: 'Game Day Schedule',
+  description: "Today's sports schedule for a sports bar. Add games, channels, and times in Properties.",
+  category: 'BROADCAST',
+  render: GameDayScheduleWidget as any,
+  vertical: 'BAR',
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'bar-event-tonight',
+  widgetType: 'BAR_EVENT_TONIGHT' as any,
+  name: 'Event Tonight',
+  description: "Band / show / DJ poster for a live night. Set the act, time, and cover in Properties.",
+  category: 'BOLD',
+  render: EventTonightWidget as any,
+  vertical: 'BAR',
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'bar-trivia-scoreboard',
+  widgetType: 'BAR_TRIVIA_SCOREBOARD' as any,
+  name: 'Trivia Scoreboard',
+  description: 'Live trivia-night leaderboard. Add teams + scores in Properties.',
+  category: 'MODERN',
+  render: TriviaScoreboardWidget as any,
+  vertical: 'BAR',
+  defaultConfig: {},
+});
+
+// ── RETAIL / FASHION (verticals: RETAIL + FASHION) ──
+import { RetailProductGridWidget } from './retail/RetailProductGridWidget';
+import { RetailPriceCalloutWidget } from './retail/RetailPriceCalloutWidget';
+import { RetailSaleCountdownWidget } from './retail/RetailSaleCountdownWidget';
+import { RetailWayfindingMapWidget } from './retail/RetailWayfindingMapWidget';
+import { RetailLoyaltyQRWidget } from './retail/RetailLoyaltyQRWidget';
+import { RetailLookbookCarouselWidget } from './retail/RetailLookbookCarouselWidget';
+import { RetailStorefrontHoursWidget } from './retail/RetailStorefrontHoursWidget';
+
+const RETAIL_VERTICALS = ['RETAIL', 'FASHION'];
+
+registerVariant({
+  id: 'retail-product-grid',
+  widgetType: 'RETAIL_PRODUCT_GRID' as any,
+  name: 'Product Grid',
+  description: 'N-column product / lookbook grid. Add products, photos, and prices in Properties.',
+  category: 'MODERN',
+  render: RetailProductGridWidget as any,
+  verticals: RETAIL_VERTICALS,
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'retail-price-callout',
+  widgetType: 'RETAIL_PRICE_CALLOUT' as any,
+  name: 'Price Callout',
+  description: 'Single-product hero with a big price callout. Set product, photo, and price in Properties.',
+  category: 'BOLD',
+  render: RetailPriceCalloutWidget as any,
+  verticals: RETAIL_VERTICALS,
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'retail-sale-countdown',
+  widgetType: 'RETAIL_SALE_COUNTDOWN' as any,
+  name: 'Sale Countdown',
+  description: 'Big "Sale ends in 2d 14h" countdown. Set the end date + headline in Properties.',
+  category: 'BOLD',
+  render: RetailSaleCountdownWidget as any,
+  verticals: RETAIL_VERTICALS,
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'retail-wayfinding-map',
+  widgetType: 'RETAIL_WAYFINDING_MAP' as any,
+  name: 'Store Map',
+  description: 'Simple store map with department callouts. Edit departments + layout in Properties.',
+  category: 'MINIMAL',
+  render: RetailWayfindingMapWidget as any,
+  verticals: RETAIL_VERTICALS,
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'retail-loyalty-qr',
+  widgetType: 'RETAIL_LOYALTY_QR' as any,
+  name: 'Loyalty QR',
+  description: '"Scan to join" loyalty signup callout. Set the QR target + copy in Properties.',
+  category: 'MINIMAL',
+  render: RetailLoyaltyQRWidget as any,
+  verticals: RETAIL_VERTICALS,
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'retail-lookbook-carousel',
+  widgetType: 'RETAIL_LOOKBOOK_CAROUSEL' as any,
+  name: 'Lookbook Carousel',
+  description: 'Auto-rotating fashion-style hero carousel. Add slides + photos in Properties.',
+  category: 'MODERN',
+  render: RetailLookbookCarouselWidget as any,
+  verticals: RETAIL_VERTICALS,
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'retail-storefront-hours',
+  widgetType: 'RETAIL_STOREFRONT_HOURS' as any,
+  name: 'Store Hours',
+  description: 'Store-hours card with a live open/closed indicator. Set weekly hours in Properties.',
+  category: 'MINIMAL',
+  render: RetailStorefrontHoursWidget as any,
+  verticals: RETAIL_VERTICALS,
+  defaultConfig: {},
+});
+
+// ── GYM / fitness (vertical: GYM) ──
+import { FitnessClassScheduleWidget } from './fitness/FitnessClassScheduleWidget';
+import { FitnessMusicPlayerWidget } from './fitness/FitnessMusicPlayerWidget';
+import { FitnessLiveTVWidget } from './fitness/FitnessLiveTVWidget';
+import { FitnessAdBannerWidget } from './fitness/FitnessAdBannerWidget';
+import { FitnessTrainingVideoWidget } from './fitness/FitnessTrainingVideoWidget';
+import { FitnessWorkoutTimerWidget } from './fitness/FitnessWorkoutTimerWidget';
+import { FitnessMotivationalQuoteWidget } from './fitness/FitnessMotivationalQuoteWidget';
+import { FitnessAppLibraryWidget } from './fitness/FitnessAppLibraryWidget';
+import { FitnessStickLauncherWidget } from './fitness/FitnessStickLauncherWidget';
+
+registerVariant({
+  id: 'fitness-class-schedule',
+  widgetType: 'FITNESS_CLASS_SCHEDULE' as any,
+  name: 'Class Schedule',
+  description: "Today's class schedule on a gym wall display. Add classes, times, and instructors in Properties.",
+  category: 'MODERN',
+  render: FitnessClassScheduleWidget as any,
+  vertical: 'GYM',
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'fitness-music-player',
+  widgetType: 'FITNESS_MUSIC_PLAYER' as any,
+  name: 'Now Playing',
+  description: '"Now playing" display for a gym zone. Connect a music source or set static track info in Properties.',
+  category: 'DARK',
+  render: FitnessMusicPlayerWidget as any,
+  vertical: 'GYM',
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'fitness-live-tv',
+  widgetType: 'FITNESS_LIVE_TV' as any,
+  name: 'Live TV',
+  description: 'Live streaming video in a gym zone. Pick a streaming channel in Properties.',
+  category: 'BROADCAST',
+  render: FitnessLiveTVWidget as any,
+  vertical: 'GYM',
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'fitness-ad-banner',
+  widgetType: 'FITNESS_AD_BANNER' as any,
+  name: 'Ad Banner',
+  description: 'Rotating ad-creative display for a gym. Add your own creatives + interval in Properties.',
+  category: 'MODERN',
+  render: FitnessAdBannerWidget as any,
+  vertical: 'GYM',
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'fitness-training-video',
+  widgetType: 'FITNESS_TRAINING_VIDEO' as any,
+  name: 'Training Video',
+  description: 'Silent, looping equipment-tutorial video. Pick the video in Properties.',
+  category: 'MODERN',
+  render: FitnessTrainingVideoWidget as any,
+  vertical: 'GYM',
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'fitness-workout-timer',
+  widgetType: 'FITNESS_WORKOUT_TIMER' as any,
+  name: 'Workout Timer',
+  description: 'HIIT / Tabata / interval timer for a class floor. Set work/rest intervals + rounds in Properties.',
+  category: 'BOLD',
+  render: FitnessWorkoutTimerWidget as any,
+  vertical: 'GYM',
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'fitness-motivational-quote',
+  widgetType: 'FITNESS_MOTIVATIONAL_QUOTE' as any,
+  name: 'Motivational Quote',
+  description: 'Rotating gym-wall motivational quotes. Edit the quote list in Properties.',
+  category: 'BOLD',
+  render: FitnessMotivationalQuoteWidget as any,
+  vertical: 'GYM',
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'fitness-app-library',
+  widgetType: 'FITNESS_APP_LIBRARY' as any,
+  name: 'App Library',
+  description: 'Smart-TV-style app-picker grid for gym signage. Choose which app tiles show in Properties.',
+  category: 'DARK',
+  render: FitnessAppLibraryWidget as any,
+  vertical: 'GYM',
+  defaultConfig: {},
+});
+registerVariant({
+  id: 'fitness-stick-launcher',
+  widgetType: 'FITNESS_STICK_LAUNCHER' as any,
+  name: 'Streaming Stick Status',
+  description: 'Remote-control / streaming-stick status display for a gym TV. Set the device label + state in Properties.',
+  category: 'DARK',
+  render: FitnessStickLauncherWidget as any,
+  vertical: 'GYM',
+  defaultConfig: {},
+});
