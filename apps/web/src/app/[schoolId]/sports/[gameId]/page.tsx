@@ -65,6 +65,7 @@ import { RibbonPanel } from './RibbonPanel';
 import { RibbonPresetsPanel } from './RibbonPresetsPanel';
 import { RibbonImagesPanel } from './RibbonImagesPanel';
 import { SurfacePreview } from './SurfacePreview';
+import { SurfaceHealthPills } from './SurfaceHealthPills';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 
 // ── constants ──────────────────────────────────────────────────
@@ -729,6 +730,12 @@ function RunMode({
           still pins the whole stack to viewport — if total content
           exceeds 100dvh, the bottom clips and we have a sizing bug
           to fix in content, not in layout. */}
+      {/* T1-6 — Per-surface health pill row. One pill per paired screen,
+          40px tall, shows ONLINE/OFFLINE/off-air status + surface kind.
+          Click a pill → right-side drawer with live SurfacePreview.
+          Renders nothing when 0 screens are paired (graceful empty). */}
+      <SurfaceHealthPills gameId={gameId} />
+
       <div className="min-h-0 overflow-y-auto">
         <RunInteractiveScoreboard
           g={g}
@@ -833,6 +840,7 @@ function RunInteractiveScoreboard({
           def={def}
           stats={stats}
           onStat={(s) => ctl.stats.mutate({ stats: s })}
+          onTimeout={() => ctl.callTimeout.mutate({ team: 'home' })}
         />
 
         {/* CLOCK + SEGMENT tile — looks like the center column of a
@@ -928,6 +936,7 @@ function RunInteractiveScoreboard({
           def={def}
           stats={stats}
           onStat={(s) => ctl.stats.mutate({ stats: s })}
+          onTimeout={() => ctl.callTimeout.mutate({ team: 'away' })}
         />
       </div>
     </div>
@@ -959,6 +968,7 @@ function ScoreTile({
   def,
   stats,
   onStat,
+  onTimeout,
 }: {
   team: string;
   color: string;
@@ -970,6 +980,9 @@ function ScoreTile({
   def: SportDefinition;
   stats: Record<string, unknown>;
   onStat: (s: Record<string, number | string>) => void;
+  /** When provided, renders a dedicated Timeout button next to the
+   *  timeout count — fires callTimeout instead of raw stat edit. */
+  onTimeout?: (type?: 'full' | 'short') => void;
 }) {
   // 2026-05-27 — Per-team stat rows inside the tile. Operator: "i
   // wanted that integrated into the score boards cleanly some how".
@@ -1047,7 +1060,9 @@ function ScoreTile({
       </div>
       {/* Per-team stat rows — Shots, Exclusions, Timeouts for water
           polo; fouls + timeouts for basketball; etc. Compact: small
-          label on the left, −value+ stepper on the right. */}
+          label on the left, −value+ stepper on the right.
+          Timeout rows get an additional "T.O." chip that fires
+          callTimeout (pause clock + decrement + CUE) atomically. */}
       {sideStats.length > 0 && (
         <div className="w-full mt-3 pt-3 border-t border-slate-800 space-y-1">
           {sideStats.map((s) => {
@@ -1056,12 +1071,29 @@ function ScoreTile({
             const max = s.max ?? 99;
             const canDec = value > min;
             const canInc = value < max;
+            const isTimeoutStat = s.key.toLowerCase().includes('timeout');
+            const atZero = value <= 0;
             return (
               <div key={s.key} className="flex items-center justify-between text-xs">
                 <span className="font-black uppercase tracking-widest text-slate-500 text-[10px]">
                   {shortLabel(s.label)}
                 </span>
                 <div className="flex items-center gap-1">
+                  {/* Timeout button — fires callTimeout (pause + decrement + CUE).
+                      Styled as a compact amber chip matching the chip style
+                      used elsewhere on the page (shot-clock reset, etc.).
+                      Disabled when no timeouts remain. */}
+                  {isTimeoutStat && onTimeout && (
+                    <button
+                      type="button"
+                      onClick={() => onTimeout()}
+                      disabled={atZero}
+                      className="h-6 px-2 rounded bg-amber-800 hover:bg-amber-700 text-amber-200 text-[10px] font-black border border-amber-700 disabled:opacity-30 disabled:cursor-not-allowed uppercase tracking-wide"
+                      title={atZero ? 'No timeouts remaining' : `Call ${side} timeout`}
+                    >
+                      T.O.
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => onStat({ [s.key]: Math.max(min, value - 1) })}
