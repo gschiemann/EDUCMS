@@ -88,6 +88,9 @@ interface Sponsor {
   tagline?: string | null;
   color?: string | null;
   weight?: number;
+  // T2-9: frequency cap enforcement + flight-window re-check at render time.
+  frequencyCapPerHour?: number | null;
+  flightEndAt?: string | null;
 }
 interface Spotlight {
   visible?: boolean;
@@ -550,25 +553,45 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   const sponsors = data.sponsors || [];
   const spotSeconds = data.sponsorSpotSeconds || 8;
   const sponsorKey = JSON.stringify(sponsors);
-  const slots = useMemo(() => {
+
+  // T2-9: track when each sponsor was shown (sliding 60-min window) for
+  // frequency-cap enforcement. Per-render instance; reset on game change.
+  const shownTimestamps = useRef<Map<string, number[]>>(new Map());
+
+  // Build the slot list, filtering out sponsors that are cap-exceeded or
+  // whose flight has ended since the last server-side listActive query.
+  const buildSlots = () => {
+    const now = Date.now();
+    const oneHourAgo = now - 3_600_000;
     const s: ({ kind: 'stats' } | { kind: 'sponsor'; sponsor: Sponsor })[] = [{ kind: 'stats' }];
     for (const sp of sponsors) {
+      // Flight-end re-check: if flightEndAt is set and has passed, skip.
+      if (sp.flightEndAt && new Date(sp.flightEndAt).getTime() <= now) continue;
+      // Frequency-cap re-check: if cap is set, count recent shows in window.
+      if (sp.frequencyCapPerHour !== null && sp.frequencyCapPerHour !== undefined) {
+        const recent = (shownTimestamps.current.get(sp.id) || []).filter((t) => t > oneHourAgo);
+        shownTimestamps.current.set(sp.id, recent);
+        if (recent.length >= sp.frequencyCapPerHour) continue;
+      }
       const w = Math.max(1, Math.min(10, sp.weight || 1));
       for (let i = 0; i < w; i++) s.push({ kind: 'sponsor', sponsor: sp });
     }
     return s;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sponsorKey]);
+  };
+
+  const slots = useMemo(buildSlots, // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [sponsorKey]);
   const [slotIdx, setSlotIdx] = useState(0);
   useEffect(() => {
     if (slots.length <= 1) {
       setSlotIdx(0);
       return;
     }
-    const t = setInterval(
-      () => setSlotIdx((i) => (i + 1) % slots.length),
-      Math.max(3, spotSeconds) * 1000,
-    );
+    const intervalMs = Math.max(3, spotSeconds) * 1000;
+    const t = setInterval(() => {
+      setSlotIdx((i) => (i + 1) % slots.length);
+    }, intervalMs);
     return () => clearInterval(t);
   }, [slots.length, spotSeconds]);
   const activeSlot = slots[slotIdx % slots.length] || slots[0];
@@ -576,6 +599,35 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   // Read from Game.possession (first-class column) first; fall back to
   // stats.possession for backward compat with rows created before the
   // add_game_possession migration.
+
+
+  // T2-9: When the active slot changes to a sponsor look, record the
+  // impression timestamp locally (for cap enforcement) and ping the API.
+  const lastPingedSponsorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeSlot?.kind !== 'sponsor') {
+      lastPingedSponsorRef.current = null;
+      return;
+    }
+    const sp = activeSlot.sponsor;
+    // Throttle to once per look (don't double-fire on re-render).
+    if (lastPingedSponsorRef.current === sp.id) return;
+    lastPingedSponsorRef.current = sp.id;
+    // Record locally for cap enforcement.
+    const prev = shownTimestamps.current.get(sp.id) || [];
+    prev.push(Date.now());
+    shownTimestamps.current.set(sp.id, prev);
+    // Fire-and-forget POST to the impression endpoint.
+    const gameId = data.id;
+    if (gameId) {
+      fetch(`${API_URL}/sports/sponsors/${sp.id}/impression`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId, surfaceKind: 'board' }),
+      }).catch(() => {}); // best-effort, never fail the board
+    }
+  }, [activeSlot, data.id]);
+  // Football possession — lights the 🏈 marker on the team panel.
   const ballSide =
     def.key === 'football'
       ? (

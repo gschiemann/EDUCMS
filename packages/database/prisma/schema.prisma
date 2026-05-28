@@ -1865,10 +1865,32 @@ model Sponsor {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  impressions SponsorImpression[]
 
   @@index([tenantId, active])
   @@map("sponsors")
+}
+
+// VenueOS Sports — per-impression log for real sponsor proof-of-play.
+// Written fire-and-forget from board/ribbon/scorebug pages each time a
+// sponsor look enters view. Enables per-game reports that count real
+// airings per surface — replacing the arithmetic estimate in report().
+//
+// Additive — new table only, safe for live pilot tenants.
+// Generated with --create-only on 2026-05-27; lead applies on merge.
+model SponsorImpression {
+  id          String   @id @default(uuid())
+  sponsorId   String   @map("sponsor_id")
+  gameId      String   @map("game_id")
+  surfaceKind String   @map("surface_kind")  // 'board' | 'ribbon' | 'scorebug'
+  ts          DateTime @default(now())
+
+  sponsor Sponsor @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
+
+  @@index([sponsorId, ts])
+  @@index([gameId, ts])
+  @@map("sponsor_impressions")
 }
 
 // VenueOS Sports — the cue deck. A CustomCue is an operator-defined

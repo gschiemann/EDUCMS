@@ -115,6 +115,9 @@ interface Sponsor {
   logoUrl?: string | null;
   tagline?: string | null;
   color?: string | null;
+  // T2-9: frequency cap enforcement + mid-game flight-window re-check.
+  frequencyCapPerHour?: number | null;
+  flightEndAt?: string | null;
 }
 interface Player {
   id: string;
@@ -795,10 +798,33 @@ export default function RibbonPage() {
     });
   }, [viewData, data, def]);
 
+  // T2-9: track when each sponsor was shown (sliding 60-min window) for
+  // frequency-cap enforcement. Lives here in RibbonPage so it persists
+  // across looksKey rebuilds.
+  const shownTimestampsRibbon = useRef<Map<string, number[]>>(new Map());
+
   const looks = useMemo(
     () => {
       const src = viewData ?? data;
-      return src && def ? buildLooks(src, def) : [];
+      if (!src || !def) return [];
+      // Pre-filter sponsors for flight-window + frequency-cap before buildLooks.
+      const now = Date.now();
+      const oneHourAgo = now - 3_600_000;
+      const filtered: BoardData = {
+        ...src,
+        sponsors: (src.sponsors || []).filter((sp) => {
+          if (sp.flightEndAt && new Date(sp.flightEndAt).getTime() <= now) return false;
+          if (sp.frequencyCapPerHour !== null && sp.frequencyCapPerHour !== undefined) {
+            const recent = (shownTimestampsRibbon.current.get(sp.id) || []).filter(
+              (t) => t > oneHourAgo,
+            );
+            shownTimestampsRibbon.current.set(sp.id, recent);
+            if (recent.length >= sp.frequencyCapPerHour) return false;
+          }
+          return true;
+        }),
+      };
+      return buildLooks(filtered, def);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [looksKey],
@@ -819,6 +845,32 @@ export default function RibbonPage() {
     const t = setTimeout(() => setLookIdx((i) => (i + 1) % looks.length), dwell);
     return () => clearTimeout(t);
   }, [looks, lookIdx, activeCue, data?.ribbonSpeed]);
+
+  // T2-9: impression ping when a sponsor look enters view.
+  const lastPingedRibbonSponsor = useRef<string | null>(null);
+  useEffect(() => {
+    const look = looks[lookIdx % Math.max(looks.length, 1)];
+    if (!look || look.kind !== 'sponsor') {
+      lastPingedRibbonSponsor.current = null;
+      return;
+    }
+    const sp = look.sponsor;
+    if (lastPingedRibbonSponsor.current === sp.id) return;
+    lastPingedRibbonSponsor.current = sp.id;
+    // Record locally for cap enforcement.
+    const prev = shownTimestampsRibbon.current.get(sp.id) || [];
+    prev.push(Date.now());
+    shownTimestampsRibbon.current.set(sp.id, prev);
+    // Fire-and-forget POST.
+    if (gameId) {
+      fetch(`${API_URL}/sports/sponsors/${sp.id}/impression`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId, surfaceKind: 'ribbon' }),
+      }).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookIdx, looks, gameId]);
 
   if (!data || !def) {
     return (

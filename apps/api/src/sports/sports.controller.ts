@@ -9,12 +9,14 @@ import {
   Query,
   Request,
   UseGuards,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SportsService } from './sports.service';
+import { SponsorsService } from './sponsors.service';
 import { makeFeedToken } from './sports-feed-token';
 
 /** Editable fields for one roster player. The service sanitizes every
@@ -42,7 +44,10 @@ type RosterPlayerBody = {
 @Controller('api/v1/sports')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class SportsController {
-  constructor(private readonly sports: SportsService) {}
+  constructor(
+    private readonly sports: SportsService,
+    private readonly sponsors: SponsorsService,
+  ) {}
 
   /** The sport catalog (football, basketball, …) — drives the pickers. */
   @Get('definitions')
@@ -81,6 +86,35 @@ export class SportsController {
   )
   getGame(@Request() req: any, @Param('id') id: string) {
     return this.sports.getGame(req.user.tenantId, id);
+  }
+
+  /**
+   * T2-9: Per-game sponsor delivery report — real impression counts.
+   *
+   * Returns actual airings per sponsor per surface (board / ribbon /
+   * scorebug), aggregated from SponsorImpression rows written during the
+   * game. Also reports cap compliance so an operator can catch
+   * over-delivery before sending a proof-of-play PDF to the sponsor.
+   *
+   * Response shape:
+   *   { gameId, gameStartedAt, gameDurationMin,
+   *     sponsors: [{ sponsorId, name, board, ribbon, scorebug, total,
+   *                  capCompliant }] }
+   */
+  @Get('games/:id/sponsor-report')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+    AppRole.RESTRICTED_VIEWER,
+  )
+  async gameSponsorReport(@Request() req: any, @Param('id') id: string) {
+    const result = await this.sponsors.gameReport(req.user.tenantId, id);
+    if (!result) {
+      throw new NotFoundException('Game not found');
+    }
+    return result;
   }
 
   /** Create a game for a sport. */

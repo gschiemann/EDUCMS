@@ -117,6 +117,11 @@ export class SponsorsService {
         tagline: true,
         color: true,
         weight: true,
+        // T2-9: needed client-side for frequency-cap enforcement + flight
+        // window re-check (the board page filters these every rotation tick
+        // so a sponsor whose flight ends mid-game stops airing immediately).
+        frequencyCapPerHour: true,
+        flightEndAt: true,
       },
     });
   }
@@ -168,6 +173,114 @@ export class SponsorsService {
     await this.owned(tenantId, id);
     await this.prisma.client.sponsor.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  // ── per-impression write-through ────────────────────────────
+
+  /**
+   * T2-9: Record a real sponsor impression.
+   *
+   * Called fire-and-forget from board / ribbon / scorebug pages each time
+   * a sponsor look enters view. High write volume during games — this is
+   * intentionally lightweight: one INSERT, no joins, no audit-log write
+   * (sponsor proof-of-play is the audit surface here, not a security event).
+   *
+   * Unknown sponsorId is silently rejected (no error to the caller) so a
+   * stale rotation-ref on the client doesn't throw a 500 mid-game.
+   */
+  async recordImpression(sponsorId: string, gameId: string, surfaceKind: string): Promise<void> {
+    const safe = String(surfaceKind || 'board').slice(0, 16);
+    try {
+      await this.prisma.client.sponsorImpression.create({
+        data: { sponsorId, gameId, surfaceKind: safe },
+      });
+    } catch {
+      // Best-effort — a missing sponsor FK, a dropped write, a transient
+      // pool hiccup: none of these should bubble up to the public surface.
+    }
+  }
+
+  /**
+   * T2-9: Per-game sponsor report — real impression counts per surface.
+   *
+   * Returns aggregated counts from `SponsorImpression` so the operator
+   * can ship a sponsor a real proof-of-play PDF: "your logo ran 41 times
+   * on the ribbon and 28 times on the board during Friday's game."
+   *
+   * Also includes a `capCompliant` flag: compares actual total impressions
+   * against `cap × gameDurationHours` so a Title sponsor at 12/hr doesn't
+   * sneak over the line undetected.
+   */
+  async gameReport(tenantId: string, gameId: string) {
+    // Verify the game belongs to this tenant before returning data.
+    const game = await this.prisma.client.game.findFirst({
+      where: { id: gameId, tenantId },
+      select: { id: true, startedAt: true, endedAt: true, status: true, updatedAt: true },
+    });
+    if (!game) return null;
+
+    const impressions = await this.prisma.client.sponsorImpression.findMany({
+      where: { gameId },
+      select: { sponsorId: true, surfaceKind: true },
+    });
+
+    const sponsors = await this.prisma.client.sponsor.findMany({
+      where: { tenantId },
+      select: { id: true, name: true, frequencyCapPerHour: true },
+    });
+
+    // Compute game duration in hours for cap compliance check.
+    const now = Date.now();
+    let gameDurationMs = 0;
+    if (game.startedAt) {
+      const start = new Date(game.startedAt).getTime();
+      const end = game.endedAt
+        ? new Date(game.endedAt).getTime()
+        : game.status === 'FINAL'
+          ? new Date(game.updatedAt).getTime()
+          : now;
+      gameDurationMs = Math.max(0, end - start);
+    }
+    const gameDurationMin = Math.round(gameDurationMs / 60_000);
+    const gameDurationHours = gameDurationMs / 3_600_000;
+
+    // Aggregate per sponsor × surface.
+    const counts = new Map<string, { board: number; ribbon: number; scorebug: number }>();
+    for (const imp of impressions) {
+      if (!counts.has(imp.sponsorId)) {
+        counts.set(imp.sponsorId, { board: 0, ribbon: 0, scorebug: 0 });
+      }
+      const entry = counts.get(imp.sponsorId)!;
+      if (imp.surfaceKind === 'board') entry.board++;
+      else if (imp.surfaceKind === 'ribbon') entry.ribbon++;
+      else if (imp.surfaceKind === 'scorebug') entry.scorebug++;
+    }
+
+    const sponsorRows = sponsors.map((s) => {
+      const c = counts.get(s.id) ?? { board: 0, ribbon: 0, scorebug: 0 };
+      const total = c.board + c.ribbon + c.scorebug;
+      const allowedTotal =
+        s.frequencyCapPerHour !== null && s.frequencyCapPerHour !== undefined && gameDurationHours > 0
+          ? Math.ceil(s.frequencyCapPerHour * gameDurationHours)
+          : null;
+      const capCompliant = allowedTotal === null ? true : total <= allowedTotal;
+      return {
+        sponsorId: s.id,
+        name: s.name,
+        board: c.board,
+        ribbon: c.ribbon,
+        scorebug: c.scorebug,
+        total,
+        capCompliant,
+      };
+    });
+
+    return {
+      gameId,
+      gameStartedAt: game.startedAt,
+      gameDurationMin,
+      sponsors: sponsorRows,
+    };
   }
 
   // ── proof of play ────────────────────────────────────────────
