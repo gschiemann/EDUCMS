@@ -2234,12 +2234,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           fields.push(<TextField key="statKey" label="Stat key (advanced)" value={cfg.statKey || ''} placeholder="down" onChange={(v) => setField({ statKey: v })} />);
         }
         if (sbVariant === 'sb-sponsor') {
-          fields.push(<TextField key="imageUrl" label="Sponsor image URL" value={cfg.imageUrl || ''} placeholder="https://…/logo.png" onChange={(v) => setField({ imageUrl: v })} />);
+          fields.push(<AssetPickerField key="imageUrl" label="Sponsor image" value={cfg.imageUrl || ''} kind="image" onChange={(v) => setField({ imageUrl: v })} />);
         }
         // Team-logo elements: paste a logo URL to brand the board before
         // a game is bound (overrides the live game logo).
         if (sbVariant.startsWith('sb-team-logo')) {
-          fields.push(<TextField key="logoUrl" label="Logo image URL" value={cfg.logoUrl || ''} placeholder="https://…/team-logo.png" onChange={(v) => setField({ logoUrl: v })} />);
+          fields.push(<AssetPickerField key="logoUrl" label="Team logo" value={cfg.logoUrl || ''} kind="image" onChange={(v) => setField({ logoUrl: v })} />);
         }
         // Full style set — every aspect editable.
         fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
