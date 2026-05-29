@@ -31,6 +31,6 @@ jobs:
     name: OTA wiring check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run OTA wiring integrity script
         run: bash scripts/ota-wiring-check.sh
