@@ -17,7 +17,7 @@
  * jest.resetModules — that pulls a duplicate React copy with a null
  * hook dispatcher and crashes render()).
  */
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 
 // Network layer mocked; real component logic runs (that's what proves
 // it hits /ai/key and — critically — does NOT hit /ai/generate).
@@ -110,5 +110,49 @@ describe('AiGenerateButton — discoverability (§3)', () => {
     expect(screen.queryByRole('button', { name: /^AI$/i })).toBeNull();
     const calledGenerate = apiFetch.mock.calls.some(([p]) => p === '/ai/generate');
     expect(calledGenerate).toBe(false);
+  });
+
+  it('(d) cap-reached overlay "Open Settings" link is tenant-scoped (/[schoolId]/settings/ai, not a bare /settings that 404s)', async () => {
+    apiFetch.mockImplementation((path: string) => {
+      if (path === '/ai/key') {
+        // Provider configured (platform) → the real generate modal path,
+        // tenant at its monthly cap.
+        return Promise.resolve({ usage: { source: 'platform', used: 200, cap: 200, resetAt: null } });
+      }
+      if (path === '/ai/generate') {
+        // Server stamps the structured AI_CAP_REACHED code → modal flips
+        // to the cap-reached upgrade overlay.
+        return Promise.reject(Object.assign(new Error('monthly free AI cap'), { code: 'AI_CAP_REACHED' }));
+      }
+      return Promise.resolve(null);
+    });
+
+    await renderButton();
+
+    // Open the generate modal.
+    const openBtn = await screen.findByRole('button', { name: /AI/i });
+    await act(async () => {
+      fireEvent.click(openBtn);
+    });
+
+    // Enter context so the Generate button enables, then generate →
+    // server reports the cap is reached.
+    const textarea = await screen.findByRole('textbox');
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: 'Fall festival this Friday at 6pm' } });
+    });
+    const generateBtn = await screen.findByRole('button', { name: /Generate 3 options/i });
+    await act(async () => {
+      fireEvent.click(generateBtn);
+    });
+
+    // The cap overlay appears; its CTA must deep-link to the tenant-scoped
+    // BYOK provider card (the whole point of the prompt is "connect your
+    // own key"), NOT a bare /settings that 404s.
+    const settingsLink = await screen.findByRole('link', { name: /Open Settings/i });
+    expect(settingsLink).toHaveAttribute('href', '/school-1/settings/ai');
+    // target/rel preserved.
+    expect(settingsLink).toHaveAttribute('target', '_blank');
+    expect(settingsLink).toHaveAttribute('rel', 'noopener noreferrer');
   });
 });

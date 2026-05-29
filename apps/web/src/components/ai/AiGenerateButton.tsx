@@ -240,6 +240,20 @@ function AiGenerateModal({
   const [usage, setUsage] = useState<AiUsage | null>(null);
   const [capHit, setCapHit] = useState(false);
 
+  // Resolve the tenant-scoped schoolId from the dynamic route so the
+  // cap-reached overlay's "Open Settings" link lands on the REAL
+  // /[schoolId]/settings/ai BYOK provider card (the whole point of the
+  // cap prompt is "connect your own key"), not a bare /settings that
+  // 404s. Same fix pattern as the "Set up AI" affordance in
+  // AiGenerateButton above + the streaming-picker links in
+  // PropertiesPanel.tsx. Falls back to the unscoped path only when
+  // schoolId is absent.
+  const routeParams = useParams<{ schoolId?: string | string[] }>();
+  const schoolId = Array.isArray(routeParams?.schoolId)
+    ? routeParams.schoolId[0]
+    : routeParams?.schoolId;
+  const aiSettingsHref = schoolId ? `/${schoolId}/settings/ai` : '/settings/ai';
+
   // ai-imports-006 fix: a11y + focus management.
   //  - role="dialog" + aria-modal="true" + aria-labelledby tells screen
   //    readers this is a modal and points at its title.
@@ -532,7 +546,7 @@ function AiGenerateModal({
             </p>
             <div className="flex gap-2">
               <a
-                href="/settings"
+                href={aiSettingsHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-4 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-sm font-bold hover:from-violet-700 hover:to-fuchsia-700"
