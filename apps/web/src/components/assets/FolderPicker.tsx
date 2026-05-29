@@ -264,7 +264,12 @@ export function FolderPicker({
           role="dialog"
           aria-modal="true"
           aria-label={title}
-          className="pointer-events-auto bg-white dark:bg-slate-900 w-full max-w-md flex flex-col max-h-[90vh] rounded-t-2xl md:rounded-2xl shadow-2xl border border-slate-200 pb-[env(safe-area-inset-bottom)] md:pb-0 overflow-hidden"
+          // mobile: the sheet anchors to the viewport bottom (items-end) but the
+          // fixed MobileTabBar (z-60, ~56-64px tall) sits over that zone and was
+          // covering the Cancel / Choose-folder footer (operator screenshot,
+          // 2026-05-29). Reserve tab-bar height + safe-area so the footer always
+          // clears it. md:pb-0 — no tab bar on desktop.
+          className="pointer-events-auto bg-white dark:bg-slate-900 w-full max-w-md flex flex-col max-h-[88dvh] md:max-h-[90vh] rounded-t-2xl md:rounded-2xl shadow-2xl border border-slate-200 pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0 overflow-hidden"
         >
         {/* Drag handle on mobile signals the sheet metaphor. md:hidden
             so desktop sees a clean modal. */}
