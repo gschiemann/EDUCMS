@@ -17,6 +17,7 @@ import {
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { useGames, useCreateGame, useDeleteGame, useDuplicateGame, useScrapeBranding, useTemplates } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { SPORTS, findSport } from '@cms/api-types';
@@ -242,6 +243,7 @@ function readSavedHomeTeam(schoolId: string): SavedHomeTeam | null {
 }
 
 function CreateGameModal({ onClose }: { onClose: () => void }) {
+  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const params = useParams();
   const router = useRouter();
   const schoolId = String(params?.schoolId || '');

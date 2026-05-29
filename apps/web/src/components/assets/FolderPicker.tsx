@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Folder, FolderOpen, Home, Search, FolderPlus, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 export interface FolderPickerFolder {
   id: string;
@@ -84,6 +85,13 @@ export function FolderPicker({
   });
 
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // 2026-05-29 — systemic mobile fix: hide the bottom tab bar while this
+  // sheet is open so its footer (Cancel / Choose folder) clears the bottom
+  // of the screen. This SUPERSEDES the 2026-05-29 stopgap that reserved
+  // `pb-[calc(72px+safe-area)]` on the sheet — that padding was removed
+  // below so the two don't compound into a giant gap.
+  useOverlayLock();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -264,12 +272,12 @@ export function FolderPicker({
           role="dialog"
           aria-modal="true"
           aria-label={title}
-          // mobile: the sheet anchors to the viewport bottom (items-end) but the
-          // fixed MobileTabBar (z-60, ~56-64px tall) sits over that zone and was
-          // covering the Cancel / Choose-folder footer (operator screenshot,
-          // 2026-05-29). Reserve tab-bar height + safe-area so the footer always
-          // clears it. md:pb-0 — no tab bar on desktop.
-          className="pointer-events-auto bg-white dark:bg-slate-900 w-full max-w-md flex flex-col max-h-[88dvh] md:max-h-[90vh] rounded-t-2xl md:rounded-2xl shadow-2xl border border-slate-200 pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0 overflow-hidden"
+          // mobile: the sheet anchors to the viewport bottom (items-end).
+          // The MobileTabBar that used to cover this footer is now hidden
+          // while the sheet is open (useOverlayLock above), so we only need
+          // the iOS home-indicator safe-area inset on the footer, not the
+          // old tab-bar-height reserve. md:pb-0 — no tab bar on desktop.
+          className="pointer-events-auto bg-white dark:bg-slate-900 w-full max-w-md flex flex-col max-h-[88dvh] md:max-h-[90vh] rounded-t-2xl md:rounded-2xl shadow-2xl border border-slate-200 pb-[env(safe-area-inset-bottom)] md:pb-0 overflow-hidden"
         >
         {/* Drag handle on mobile signals the sheet metaphor. md:hidden
             so desktop sees a clean modal. */}

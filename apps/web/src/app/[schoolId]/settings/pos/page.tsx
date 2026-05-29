@@ -25,6 +25,7 @@ import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { ArrowLeft, Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, RefreshCw, Utensils } from 'lucide-react';
 
 interface PosProvider {
@@ -279,6 +280,7 @@ function ProviderTile({ provider, connected, onConnect }: { provider: PosProvide
 }
 
 function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvider; onClose: () => void; onConnected: () => void }) {
+  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [displayName, setDisplayName] = useState('');
   const [submitting, setSubmitting] = useState(false);

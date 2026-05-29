@@ -27,8 +27,12 @@ import { useEffect, useState } from 'react';
 import { X as XIcon, Check, Loader2 } from 'lucide-react';
 import { useMe, useUpdateMe } from '@/hooks/use-api';
 import { firstName as displayFirst, initials as displayInitials } from '@/lib/user-display';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 export function ProfileEditModal({ onClose }: { onClose: () => void }) {
+  // Hide the mobile tab bar so the Save footer (bottom-sheet on mobile)
+  // isn't occluded.
+  useOverlayLock();
   const { data: me, isLoading } = useMe();
   const update = useUpdateMe();
 

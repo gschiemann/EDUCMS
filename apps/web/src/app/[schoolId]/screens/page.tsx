@@ -16,6 +16,7 @@ import { useUIStore } from '@/store/ui-store';
 import { useParams, useRouter } from 'next/navigation';
 import QRCode from 'qrcode';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 /**
  * Derive "portrait" | "landscape" from a free-text resolution string
@@ -1351,6 +1352,9 @@ export default function ScreensPage() {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [showPairModal, setShowPairModal] = useState(false);
+  // Hide the mobile tab bar while the Pair-a-Screen modal is open so its
+  // footer isn't occluded. ScreenLocationModal manages its own lock.
+  useOverlayLock(showPairModal);
   const [pairGroupId, setPairGroupId] = useState<string>('');
   const [pairCode, setPairCode] = useState('');
   const [pairName, setPairName] = useState('');

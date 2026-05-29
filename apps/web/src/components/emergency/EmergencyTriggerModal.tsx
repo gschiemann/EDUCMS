@@ -1,6 +1,7 @@
 import { useAppStore } from '@/lib/store';
 import { X, Megaphone, ShieldAlert, WifiOff, Hand, Lock, HeartPulse, CloudLightning, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useState, useTransition } from 'react';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { broadcastEmergency } from '@/actions/trigger-emergency';
 import { clog } from '@/lib/client-logger';
 import * as Sentry from '@sentry/nextjs';
@@ -31,6 +32,9 @@ interface Props {
 }
 
 export function EmergencyTriggerModal({ onClose }: Props) {
+  // Life-safety modal — hide the mobile tab bar so the confirm/fire footer
+  // (bottom-anchored on mobile, items-end) is never occluded by the tab bar.
+  useOverlayLock();
   const setEmergencyActive = useAppStore((state) => state.setEmergencyActive);
   const user = useAppStore((state) => state.user);
   const token = useAppStore((state) => state.token);
@@ -144,7 +148,10 @@ export function EmergencyTriggerModal({ onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    // z-[100] (was z-50): a life-safety modal must always sit above the
+    // mobile tab bar (z-60). The tab bar is also hidden while this is open
+    // (useOverlayLock), so this is belt-and-suspenders.
+    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       {liveRegion}
       <div className="bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[90dvh] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
         {/* Header */}

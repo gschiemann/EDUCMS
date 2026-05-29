@@ -9,6 +9,7 @@ import {
   downloadRecent,
   type LogEntry,
 } from '@/lib/client-logger';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 /**
  * In-app log viewer. Opens with Ctrl+Shift+L (or Cmd+Shift+L on Mac).
@@ -25,6 +26,8 @@ import {
  */
 export function LogViewer() {
   const [open, setOpen] = useState(false);
+  // Hide the mobile tab bar while the log viewer is open.
+  useOverlayLock(open);
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [filter, setFilter] = useState<'all' | 'info' | 'warn' | 'error'>('all');
   const [tagFilter, setTagFilter] = useState('');

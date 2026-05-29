@@ -98,6 +98,30 @@ interface AppState {
   // UI state
   sidebarOpen: boolean;
   mobileSidebarOpen: boolean;
+  /**
+   * 2026-05-29 — count of overlays (modals / bottom-sheets / drawers /
+   * full-screen pickers) currently mounted. The mobile bottom tab bar
+   * (MobileTabBar.tsx, z-60, fixed bottom) is the perennial loser of the
+   * stacking war: any overlay anchored to the viewport bottom (its footer
+   * Cancel/Confirm buttons) lands in the same 56-64px strip the tab bar
+   * occupies, and across stacking contexts (transformed/blurred ancestors
+   * in DashboardLayout) the modal's z-index doesn't reliably win.
+   *
+   * Rather than patch every modal's bottom padding one-by-one (brittle,
+   * and the FIRST mobile pass missed asset-upload because it hand-picked a
+   * list), we hide the tab bar whenever ANY overlay is open — exactly the
+   * proven pattern already used for `mobileSidebarOpen`. ONE mobile nav
+   * surface usable at a time; every overlay's footer always clears the
+   * bottom of the screen. A COUNTER (not a boolean) so stacked overlays
+   * (e.g. a folder picker opened from inside the upload flow, or an
+   * appConfirm fired from a modal) don't prematurely un-hide the tab bar
+   * when only the topmost one closes.
+   *
+   * Components register via the `useOverlayLock(open)` hook
+   * (apps/web/src/hooks/use-overlay-lock.ts) so mount/unmount + StrictMode
+   * double-invoke are handled correctly and the counter can never leak.
+   */
+  overlayOpenCount: number;
   activeTenant: string | null;
   isEmergencyActive: boolean;
   /** 2026-05-23 launch audit P2 #3 — store the overrideId returned from
@@ -115,6 +139,10 @@ interface AppState {
   toggleSidebar: () => void;
   setMobileSidebarOpen: (open: boolean) => void;
   toggleMobileSidebar: () => void;
+  /** Increment when an overlay mounts (see overlayOpenCount). */
+  pushOverlay: () => void;
+  /** Decrement when an overlay unmounts; clamped at 0 so it can't underflow. */
+  popOverlay: () => void;
   setActiveTenant: (tenantId: string) => void;
   setEmergencyActive: (active: boolean, overrideId?: string | null) => void;
 }
@@ -127,6 +155,7 @@ export const useUIStore = create<AppState>((set) => ({
   // UI
   sidebarOpen: true,
   mobileSidebarOpen: false,
+  overlayOpenCount: 0,
   activeTenant: initial.user?.tenantSlug || initial.user?.tenantId || null,
   isEmergencyActive: false,
   activeEmergencyOverrideId: null,
@@ -179,6 +208,8 @@ export const useUIStore = create<AppState>((set) => ({
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
   toggleMobileSidebar: () => set((state) => ({ mobileSidebarOpen: !state.mobileSidebarOpen })),
+  pushOverlay: () => set((state) => ({ overlayOpenCount: state.overlayOpenCount + 1 })),
+  popOverlay: () => set((state) => ({ overlayOpenCount: Math.max(0, state.overlayOpenCount - 1) })),
   setActiveTenant: (tenantId) => set({ activeTenant: tenantId }),
   setEmergencyActive: (active, overrideId) =>
     set({

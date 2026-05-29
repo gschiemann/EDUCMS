@@ -20,6 +20,7 @@ import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { ArrowLeft, Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert, Wrench, Cable, ArrowRight, Globe, Music, Radio, Lock, Zap, Sparkles } from 'lucide-react';
 
 interface Provider {
@@ -525,6 +526,7 @@ function ProviderTile({ provider, connected, onConnect }: { provider: Provider; 
 
 // ─── Connect modal ──────────────────────────────────────────────────────
 function ConnectModal({ provider, onClose, onConnected }: { provider: Provider; onClose: () => void; onConnected: () => void }) {
+  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [displayName, setDisplayName] = useState('');
   // 2026-05-03 BUG FIX (cycle 1 integrations BUG-001+002) — `agreed`
@@ -674,6 +676,7 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
   onClose: () => void;
   onChanged: () => void;
 }) {
+  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const presets = useQuery<any[]>({
     queryKey: ['streaming-presets', connection.providerId],
     queryFn: () => apiFetch<any[]>(`/streaming/providers/${connection.providerId}/channels`),
@@ -944,6 +947,7 @@ function BridgeSetupModal({ provider, onClose, onContinue }: {
   onClose: () => void;
   onContinue: () => void;
 }) {
+  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const [confirmed, setConfirmed] = useState<Record<number, boolean>>({});
   const steps = provider.bridgeSteps || [];
   const allConfirmed = steps.length > 0 && steps.every((_, i) => confirmed[i]);
@@ -1154,6 +1158,7 @@ function WhyClosedModal({
   onPickAtmosphere: () => void;
   onPickDirectv: () => void;
 }) {
+  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -1265,6 +1270,7 @@ function WhyClosedModal({
 // the Connect button stayed permanently disabled (provider.auth ===
 // 'oauth2'). Honest, friendly stand-in until the OAuth flow ships.
 function SoundtrackComingSoonModal({ onClose }: { onClose: () => void }) {
+  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85dvh] overflow-y-auto p-6 space-y-4" onClick={(e) => e.stopPropagation()}>

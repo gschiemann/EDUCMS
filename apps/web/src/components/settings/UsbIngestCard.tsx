@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Usb, KeyRound, AlertTriangle, Copy, Check, Loader2, ShieldCheck, ShieldOff, ClipboardList } from 'lucide-react';
 import { useUsbIngestConfig, useToggleUsbIngest, useRotateUsbIngestKey, useUsbIngestEvents } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 /**
  * Settings card for the Sprint 7B USB sneakernet ingest feature. Lets the
@@ -17,6 +18,8 @@ export function UsbIngestCard() {
   const { data: events } = useUsbIngestEvents();
 
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  // Hide the mobile tab bar while the reveal-key modal is open.
+  useOverlayLock(!!revealedKey);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
 

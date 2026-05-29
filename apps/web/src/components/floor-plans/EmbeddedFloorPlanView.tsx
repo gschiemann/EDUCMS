@@ -35,6 +35,7 @@ import {
 } from '@/hooks/use-api';
 import { ScreenEmergencyContentConfig } from '@/components/settings/ScreenEmergencyContentConfig';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 const PIN_RADIUS = 18;
 const EMERGENCY_CONTENT_KEYS: Array<keyof FloorPlanScreen> = [
@@ -811,6 +812,7 @@ function ScreenDetailDrawer({
   onClose: () => void;
   onDetached: () => void;
 }) {
+  useOverlayLock(); // hide mobile tab bar so the drawer's controls clear it
   const detachMutation = useDetachScreenFromFloor();
 
   useEffect(() => {

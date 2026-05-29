@@ -43,6 +43,15 @@ export function MobileTabBar() {
   // its own backdrop + ESC + route-change auto-close, so closing it
   // brings the tab bar straight back.
   const mobileSidebarOpen = useAppStore((s) => s.mobileSidebarOpen);
+  // 2026-05-29 — same problem, generalized. ANY open overlay (modal,
+  // bottom-sheet, drawer, full-screen picker) registers via useOverlayLock,
+  // bumping overlayOpenCount. While an overlay is up we hide the tab bar so
+  // its footer (Cancel / Confirm / "Choose folder" / Upload) always clears
+  // the bottom of the screen — the tab bar was covering action buttons on
+  // bottom-anchored sheets (operator's asset-upload screenshot). The drawer
+  // case below (mobileSidebarOpen) predates this and is kept for clarity;
+  // an open overlay is the superset.
+  const overlayOpenCount = useAppStore((s) => s.overlayOpenCount);
   // Badge for pending reviews on the Home tab. Same hook the desktop
   // bell uses, so totals match what the operator sees on web.
   const { data: notifications } = useNotifications();
@@ -70,7 +79,10 @@ export function MobileTabBar() {
     /\/templates\/builder\//.test(pathname) ||
     // Drawer open → drawer owns the screen; hide the tab bar so its
     // footer Sign-out isn't occluded.
-    mobileSidebarOpen;
+    mobileSidebarOpen ||
+    // Any overlay open → it owns the screen; hide the tab bar so its
+    // bottom-anchored footer buttons aren't occluded.
+    overlayOpenCount > 0;
   if (isHidden) return null;
 
   // Routes prefixed with the schoolId since most tenant-scoped pages

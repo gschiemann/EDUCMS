@@ -9,6 +9,7 @@ import { useUIStore } from '@/store/ui-store';
 import { clog } from '@/lib/client-logger';
 import { FolderPicker } from '@/components/assets/FolderPicker';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 // Match the server limit (apps/api/src/assets/assets.controller.ts).
 // 200MB was rejecting any reasonably-sized video before it even tried to
@@ -125,6 +126,10 @@ export default function AssetsPage() {
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  // The asset detail slide-over is a full-viewport overlay with its own
+  // action footer; hide the mobile tab bar while it's open. (FolderPicker
+  // registers its own overlay lock, so it's not gated here.)
+  useOverlayLock(!!selectedAsset);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);

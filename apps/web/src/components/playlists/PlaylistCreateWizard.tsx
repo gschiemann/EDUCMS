@@ -125,6 +125,7 @@ import {
 import { CSS as DndCss } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 // ─── Shared constants ──────────────────────────────────────────────────
 
@@ -329,6 +330,10 @@ function StepIndicator({
 // ─── Main component ────────────────────────────────────────────────────
 
 export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
+  // Hide the mobile tab bar while the wizard is open so its footer
+  // (Back / Next / Create — bottom row) isn't occluded by the tab bar.
+  // Gate on `open` since this component stays mounted across open/close.
+  useOverlayLock(open);
   // Wizard state
   const [step, setStep] = useState<number>(1);
   const [highestVisited, setHighestVisited] = useState<number>(1);

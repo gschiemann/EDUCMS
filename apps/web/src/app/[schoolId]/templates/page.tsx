@@ -32,6 +32,7 @@ import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useUIStore } from '@/store/ui-store';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 // ─────────────────────────────────────────────────────
 // Constants & Helpers
@@ -392,6 +393,15 @@ export default function TemplatesPage() {
   // the builder for drag-adjustment. The duplicate inherits all zones
   // at their %-positions; widgets self-scale to fit the new aspect.
   const [adaptTemplate, setAdaptTemplate] = useState<Template | null>(null);
+
+  // Hide the mobile tab bar while any page-level overlay is open so its
+  // footer/action row clears the bottom of the screen. Covers the Create
+  // sheet (bottom-sheet on mobile), the full-screen template Preview, the
+  // Adapt-for-LED sheet, and the AI-generate sheet. (The fullscreen builder
+  // route already hides the tab bar at the layout level; its internal
+  // modals don't need this.) Must run before the `editingTemplate` early
+  // return below to satisfy the rules-of-hooks.
+  useOverlayLock(showCreate || !!previewTemplate || !!adaptTemplate || showAiGenerate);
 
   const { data: templates, isLoading } = useTemplates();
 

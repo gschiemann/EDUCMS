@@ -30,6 +30,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Search, MapPin, X, Loader2, CheckCircle2 } from 'lucide-react';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 interface PhotonFeature {
   geometry: { coordinates: [number, number] };
@@ -117,6 +118,8 @@ interface Props {
 }
 
 export function ScreenLocationModal({ screenName, currentAddress, onClose, onSave }: Props) {
+  // Hide the mobile tab bar so the Cancel/Save footer isn't occluded.
+  useOverlayLock();
   const [query, setQuery] = useState(currentAddress || '');
   const [results, setResults] = useState<NominatimResult[]>([]);
   const [searching, setSearching] = useState(false);

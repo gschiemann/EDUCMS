@@ -23,6 +23,7 @@ import {
   useUsers, useCreateSubmission,
 } from '@/hooks/use-api';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
@@ -749,6 +750,11 @@ export default function PlaylistsPage() {
   const [submitSchedDays, setSubmitSchedDays] = useState<string[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
   const [submitSchedTimeStart, setSubmitSchedTimeStart] = useState<string>('08:00');
   const [submitSchedTimeEnd, setSubmitSchedTimeEnd] = useState<string>('17:00');
+  // Hide the mobile tab bar while any of this page's overlays are open so
+  // their footers (Choose Media / Submit / Publish action rows) clear the
+  // bottom of the screen. The Publish modal in particular is a bottom-sheet
+  // on mobile (items-end). PlaylistCreateWizard manages its own lock.
+  useOverlayLock(showPicker || showPublishModal || showSubmitModal);
   const toggleSubmitTarget = (target: string) =>
     setSubmitTargets((prev) =>
       prev.includes(target) ? prev.filter((t) => t !== target) : [...prev, target],

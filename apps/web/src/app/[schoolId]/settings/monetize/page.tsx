@@ -19,6 +19,7 @@ import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { ArrowLeft, Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, Pause, Play, DollarSign, TrendingUp, Sparkles } from 'lucide-react';
 
 /**
@@ -381,6 +382,7 @@ function NetworkTile({ network, connected, onConnect }: { network: AdNetwork; co
 }
 
 function ConnectModal({ network, onClose, onConnected }: { network: AdNetwork; onClose: () => void; onConnected: () => void }) {
+  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [pauseDuringEmergency, setPauseDuringEmergency] = useState(true);
   const [blockedCategories, setBlockedCategories] = useState<string[]>([]);

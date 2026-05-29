@@ -24,6 +24,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { X, Upload, Loader2, ImageIcon, FolderOpen } from 'lucide-react';
 import { useAssets, useAssetFolders } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 export type AssetKind = 'image' | 'video' | 'all';
 
@@ -58,6 +59,8 @@ export function AssetPicker({
   onPick: (url: string) => void;
   onClose: () => void;
 }) {
+  // Hide the mobile tab bar while this picker is up (footer Upload/select).
+  useOverlayLock();
   const { data: assets, isLoading } = useAssets();
   const { data: folders } = useAssetFolders();
   const qc = useQueryClient();

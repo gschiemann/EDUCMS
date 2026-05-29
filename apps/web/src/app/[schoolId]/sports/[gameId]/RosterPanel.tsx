@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGameRoster, useRosterMutations, type RosterPlayer } from '@/hooks/use-api';
 import { AssetPicker } from '@/components/assets/AssetPicker';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 type Editing =
   | { mode: 'add'; team: 'home' | 'away' }
@@ -295,6 +296,7 @@ function PlayerEditorModal({
   onClose: () => void;
   onSave: (vals: Partial<RosterPlayer>) => Promise<void>;
 }) {
+  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const existing = editing.mode === 'edit' ? editing.player : null;
   const [name, setName] = useState(existing?.name || '');
   const [number, setNumber] = useState(existing?.number || '');

@@ -41,6 +41,7 @@ import {
   useSponsorGameReport,
 } from '@/hooks/use-api';
 import { AssetPicker } from '@/components/assets/AssetPicker';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 interface Sponsor {
   id: string;
@@ -226,6 +227,7 @@ function SponsorEditorModal({
   }) => Promise<void>;
   onDelete?: () => Promise<void>;
 }) {
+  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const [name, setName] = useState(sponsor?.name || '');
   const [logoUrl, setLogoUrl] = useState(sponsor?.logoUrl || '');
   const [tagline, setTagline] = useState(sponsor?.tagline || '');

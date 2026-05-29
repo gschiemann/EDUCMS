@@ -32,6 +32,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MonitorPlay, RectangleHorizontal, Monitor, WifiOff } from 'lucide-react';
 import { useGameScreens } from '@/hooks/use-api';
 import { SurfacePreview } from './SurfacePreview';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 // ── Pill status model ──────────────────────────────────────────
 
@@ -151,6 +152,7 @@ function PillDrawer({
   screen: PillData;
   onClose: () => void;
 }) {
+  useOverlayLock(); // hide mobile tab bar so the drawer's controls clear it
   // Esc dismisses
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

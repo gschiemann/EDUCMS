@@ -35,6 +35,7 @@ import { useAppStore } from '@/lib/store';
 import { captureBugBundle } from '@/lib/bug-capture';
 import { setBugCaptureIgnoreSelector } from '@/lib/bug-ringbuffers';
 import { useCreateBug } from '@/hooks/use-bugs';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import type { BugStatus } from '@cms/api-types';
 
 const ADMIN_ROLES = new Set(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']);
@@ -59,6 +60,9 @@ export function BugReporterButton() {
   const user = useAppStore((s) => s.user);
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  // Hide the mobile tab bar while the bug-report modal is up (its footer
+  // Submit button is bottom-anchored on mobile via items-end).
+  useOverlayLock(open);
 
   // Mount gate so SSR vs CSR don't disagree (user store rehydrates
   // client-side from sessionStorage — same pattern as SuperPage).

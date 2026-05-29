@@ -18,6 +18,7 @@ import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
 import {
@@ -284,6 +285,7 @@ async function uploadLogo(file: File): Promise<string> {
 }
 
 function SponsorModal({ sponsor, onClose }: { sponsor: Sponsor | null; onClose: () => void }) {
+  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const createSponsor = useCreateSponsor();
   const updateSponsor = useUpdateSponsor();
   const isEdit = !!sponsor;

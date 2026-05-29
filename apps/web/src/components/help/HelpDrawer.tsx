@@ -25,6 +25,7 @@ import {
 import type { HelpArticle } from '@/content/help/types';
 import { Markdown } from './Markdown';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 // 2026-05-26 — operator: "its talking about school but i think it
 // needs to be redone to be more general and maybe have sections on
@@ -107,6 +108,8 @@ const K12_ONLY_CATEGORIES = new Set(['Clever']);
  */
 export function HelpDrawer() {
   const [open, setOpen] = useState(false);
+  // Hide the mobile tab bar while the help drawer (full-height sheet) is up.
+  useOverlayLock(open);
   const [articles, setArticles] = useState<HelpArticle[] | null>(null);
   const [q, setQ] = useState('');
   const [activeSlug, setActiveSlug] = useState<string | null>(null);

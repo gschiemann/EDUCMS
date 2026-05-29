@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 type DialogTone = 'default' | 'danger' | 'warn' | 'info';
 
@@ -143,6 +144,10 @@ const TONE_STYLES: Record<DialogTone, { ring: string; icon: any; iconColor: stri
 export function AppDialogHost() {
   const [current, setCurrent] = useState<DialogRequest | null>(null);
   const [promptValue, setPromptValue] = useState('');
+  // Hide the mobile tab bar while a confirm/alert/prompt is up so its
+  // bottom-anchored (mobile: full-width, thumb-reach) footer buttons clear
+  // the tab bar. AppDialogHost is always mounted, so gate on `current`.
+  useOverlayLock(!!current);
   // 2026-05-13 — refs for the confirm row buttons so TV-remote arrow
   // keys can move focus between Cancel and Confirm. Operator hit this:
   // "the remote control works on the standard splash screen but when

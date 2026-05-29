@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { RoleGate } from '@/components/RoleGate';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -207,6 +208,11 @@ function GameControl() {
   const [showHighlights, setShowHighlights] = useState(false);
   const [showPenalties, setShowPenalties] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  // Hide the mobile tab bar while any Run-screen popup is open so its
+  // bottom-sheet footer (items-end on mobile) clears the bottom of the
+  // screen. The Shortcut cheat-sheet + PlayerActionMenu register their
+  // own locks within their own components.
+  useOverlayLock(showCues || showHighlights || showPenalties);
 
   // ── Keyboard shortcuts (Run mode only) ────────────────────────
   // Gates on mode === 'run' so Setup-mode typing is never intercepted.
@@ -2213,6 +2219,7 @@ function PlayerActionMenu({
   color: string;
   onClose: () => void;
 }) {
+  useOverlayLock(); // hide mobile tab bar so the action sheet clears it
   const playerName = String(player.name || '').trim() || 'Player';
   const onAir =
     spotlight.visible &&
@@ -4979,6 +4986,7 @@ function ShortcutCheatSheet({
   def: SportDefinition | undefined;
   onClose: () => void;
 }) {
+  useOverlayLock(); // hide mobile tab bar while the cheat sheet is open
   // Close on Escape
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

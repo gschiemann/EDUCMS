@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCues, useCueMutations, useGameControl, type CustomCue } from '@/hooks/use-api';
 import { AssetPicker } from '@/components/assets/AssetPicker';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import type { SportDefinition } from '@cms/api-types';
 
 /** Which surfaces a fired cue lands on. */
@@ -268,6 +269,7 @@ function CueEditorModal({
   onSave: (vals: Partial<CustomCue>) => Promise<void>;
   onDelete?: () => Promise<void>;
 }) {
+  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const [name, setName] = useState(cue?.name || '');
   const [mediaUrl, setMediaUrl] = useState(cue?.mediaUrl || '');
   const [durationMs, setDurationMs] = useState(cue?.durationMs || 6000);

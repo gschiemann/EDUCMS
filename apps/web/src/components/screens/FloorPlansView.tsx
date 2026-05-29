@@ -28,6 +28,7 @@ import { Map, Plus, Loader2, Upload, Trash2, MapPin } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { useFloorPlans, useUploadFloorPlan, useDeleteFloorPlan, type FloorPlan } from '@/hooks/use-api';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 export function FloorPlansView({ embedded = false }: { embedded?: boolean } = {}) {
   const params = useParams<{ schoolId: string }>();
@@ -230,6 +231,7 @@ function UploadModal({
   onUpload: (input: { file: File; name: string; buildingLabel?: string; floorLabel?: string }) => Promise<void>;
   uploading: boolean;
 }) {
+  useOverlayLock(); // hide mobile tab bar so the upload modal footer clears it
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState('');
