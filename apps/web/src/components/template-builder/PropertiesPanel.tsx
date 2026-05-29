@@ -683,16 +683,18 @@ export function PropertiesPanel() {
           <div>
             <label htmlFor={nameId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">
               Name
-              <span className="ml-1.5 font-normal text-slate-400">— shown in the Layers panel</span>
+              <span className="ml-1.5 font-normal text-slate-400">— layer label (rename in the Layers tab)</span>
             </label>
-            <input
+            {/* 2026-05-29 — operator: the layer Name should NOT be editable
+                here. It's not content (editing it got confused with the
+                team-name field). Read-only display; renaming lives in the
+                Layers tab. */}
+            <div
               id={nameId}
-              type="text"
-              value={zone.name}
-              onChange={(e) => updateZone(zone.id, { name: e.target.value }, false)}
-              onBlur={(e) => updateZone(zone.id, { name: e.target.value }, true)}
-              className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm inset-shadow-sm"
-            />
+              className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200/60 text-xs font-medium text-slate-600 select-none"
+            >
+              {zone.name}
+            </div>
           </div>
 
           {/* 2026-05-09 — operator: "whats the widget theme for, it does

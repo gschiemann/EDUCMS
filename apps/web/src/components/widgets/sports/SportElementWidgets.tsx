@@ -31,6 +31,7 @@
 
 import React from 'react';
 import { useGameState, type GameSnapshot } from './GameStateContext';
+import { FitText } from '../themes/FitText';
 
 // ── tier-preset display fonts ────────────────────────────────────────
 // The HS / College / Pro scoreboard tiers each specify a distinct family
@@ -132,7 +133,28 @@ export function TeamNameWidget({ config }: { config: ElCfg }) {
   const t = teamOf(s?.snapshot, team);
   const override = typeof config.teamName === 'string' ? config.teamName.trim() : '';
   const name = override || t.name || (team === 'away' ? 'TIGERS' : 'EAGLES');
-  return <div style={elRoot(config, { fontWeight: config.fontWeight ?? 800 })}>{config.uppercase === false ? name : name.toUpperCase()}</div>;
+  const display = config.uppercase === false ? name : name.toUpperCase();
+  // Auto-shrink to fit the zone so a long name (e.g. BROWNS) never overflows
+  // or clips. config.fontSize is the MAX; FitText picks the largest size that
+  // fits and re-fits on resize. (Operator 2026-05-29.)
+  return (
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitText
+        max={typeof config.fontSize === 'number' ? config.fontSize : 54}
+        min={10}
+        wrap={false}
+        center={config.align !== 'left'}
+        style={{
+          color: config.color ?? '#ffffff',
+          fontWeight: config.fontWeight ?? 800,
+          fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif',
+          letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined,
+        }}
+      >
+        {display}
+      </FitText>
+    </div>
+  );
 }
 
 // ── Team abbreviation (first 3 letters, or full if short) ────────────
