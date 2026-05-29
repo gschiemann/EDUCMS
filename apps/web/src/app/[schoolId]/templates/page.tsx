@@ -371,6 +371,26 @@ export default function TemplatesPage() {
   const tenantCopy = useTenantCopy();
 
   const openInBuilder = useCallback((t: Template) => {
+    // 2026-05-29 (mobile P1) — the template layout builder (both the V2
+    // route and the legacy <TemplateBuilder> portal) is desktop/tablet-
+    // landscape only; DashboardLayout gates the V2 route behind a
+    // `lg:hidden` "Larger screen required" wall at 1024px. Every create /
+    // duplicate / AI-generate / import / preset path funnels through here,
+    // so without a guard each one silently dumped the phone operator at
+    // that blank wall. Instead: on a sub-1024px viewport DON'T navigate
+    // into the builder — the new template already shows in the gallery
+    // (the mutation invalidates the list), so we just surface a clear
+    // handoff toast and leave the operator on the gallery. Desktop is
+    // unchanged. Matches the 1024px `lg` breakpoint of the builder gate.
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
+      void appAlert({
+        title: 'Open this on a larger screen to edit',
+        message: `"${t.name}" is ready in your gallery. The layout editor needs a tablet in landscape or a desktop (at least 1024px wide) — open it there to arrange widgets.`,
+        tone: 'info',
+        confirmLabel: 'Got it',
+      });
+      return;
+    }
     if (useV2Builder && !t.isSystem) {
       router.push(`/${params?.schoolId ?? ''}/templates/builder/${t.id}`);
     } else {
@@ -527,6 +547,23 @@ export default function TemplatesPage() {
    * → AdaptForLedModal, NOT through here.
    */
   function openTemplate(source: Template) {
+    // Mobile handoff (see openInBuilder): system presets take a direct
+    // route to the read-only V2 builder URL, which hits the same 1024px
+    // desktop wall. Gate it the same way so a phone operator gets the
+    // handoff toast instead of the blank "Larger screen required" page.
+    if (
+      source.isSystem &&
+      typeof window !== 'undefined' &&
+      window.matchMedia('(max-width: 1023px)').matches
+    ) {
+      void appAlert({
+        title: 'Open this on a larger screen to edit',
+        message: `"${source.name}" opens in the layout editor, which needs a tablet in landscape or a desktop (at least 1024px wide). You can still browse it here on your phone.`,
+        tone: 'info',
+        confirmLabel: 'Got it',
+      });
+      return;
+    }
     if (source.isSystem) {
       router.push(`/${params?.schoolId}/templates/builder/${source.id}`);
     } else {
@@ -619,7 +656,17 @@ export default function TemplatesPage() {
       {/* Hero Header */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 p-8 text-white">
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'%23fff\' fill-opacity=\'1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/svg%3E")' }} />
-        <div className="relative flex items-center justify-between">
+        {/* 2026-05-29 (mobile P0-3) — the hero CTA cluster used to be a
+            non-wrapping `flex justify-between`, so all 5 buttons (New /
+            Import design / Import .json / Generate with AI / Apply brand)
+            sheared off the right edge at 360–390px and an operator
+            literally could not create or import a template on a phone.
+            Fix copies the stack/wrap pattern the Imports page +
+            FolderPicker already use: title block stacks above the CTAs
+            below `md`, and the CTA row wraps with each button going
+            full-width 2-up on a phone (`flex-1 basis-…`) and back to
+            content-width on desktop. Desktop (≥md) layout is unchanged. */}
+        <div className="relative flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3">
               <LayoutTemplate className="w-8 h-8 opacity-80" />
@@ -633,8 +680,8 @@ export default function TemplatesPage() {
               Design beautiful screen layouts for every space in your {tenantCopy.orgSingular.toLowerCase()}. Pick a ready-made template or build your own from scratch.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <ApplyBrandButton disabled={isViewer} />
+          <div className="flex flex-wrap items-stretch gap-2 w-full md:w-auto md:flex-nowrap md:items-center md:shrink-0">
+            <ApplyBrandButton disabled={isViewer} className="flex-1 basis-[calc(50%-0.25rem)] md:flex-initial md:basis-auto" />
             {/* 2026-05-25 — Operator wanted design imports surfaced
                 INSIDE Templates ("its not a setting its a feature").
                 Distinct from the existing "Import .educms-template.json"
@@ -644,7 +691,7 @@ export default function TemplatesPage() {
               onClick={() => router.push(`/${params?.schoolId ?? ''}/templates/imports`)}
               disabled={isViewer}
               title={isViewer ? 'Read-only — viewer role' : 'Import a PDF / Canva / Slides export as a template or playlist'}
-              className="px-4 py-3 bg-white/10 text-white font-bold text-sm rounded-xl border border-white/30 hover:bg-white/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 basis-[calc(50%-0.25rem)] md:flex-initial md:basis-auto justify-center px-4 py-3 bg-white/10 text-white font-bold text-sm rounded-xl border border-white/30 hover:bg-white/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FileText className="w-5 h-5" /> Import design
             </button>
@@ -654,7 +701,7 @@ export default function TemplatesPage() {
               onClick={handleImportClick}
               disabled={isViewer}
               title={isViewer ? 'Read-only — viewer role' : 'Import a template from a .educms-template.json file'}
-              className="px-4 py-3 bg-white/10 text-white font-bold text-sm rounded-xl border border-white/30 hover:bg-white/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 basis-[calc(50%-0.25rem)] md:flex-initial md:basis-auto justify-center px-4 py-3 bg-white/10 text-white font-bold text-sm rounded-xl border border-white/30 hover:bg-white/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Upload className="w-5 h-5" /> Import .json
             </button>
@@ -667,7 +714,7 @@ export default function TemplatesPage() {
               onClick={() => { setShowAiGenerate(true); setAiError(null); }}
               disabled={isViewer}
               title={isViewer ? 'Read-only — viewer role' : 'Describe a touch template, get a working draft'}
-              className="px-4 py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 basis-[calc(50%-0.25rem)] md:flex-initial md:basis-auto justify-center px-4 py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl md:hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Sparkles className="w-5 h-5" /> Generate with AI
             </button>
@@ -675,7 +722,7 @@ export default function TemplatesPage() {
               onClick={() => setShowCreate(true)}
               disabled={isViewer}
               title={isViewer ? 'Read-only — viewer role' : undefined}
-              className="px-5 py-3 bg-white text-indigo-700 font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 basis-[calc(50%-0.25rem)] md:flex-initial md:basis-auto justify-center px-5 py-3 bg-white text-indigo-700 font-bold text-sm rounded-xl shadow-lg hover:shadow-xl md:hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-5 h-5" /> New Template
             </button>
@@ -802,11 +849,17 @@ export default function TemplatesPage() {
                         prompt,
                         vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
                       });
-                      const newId = res?.template?.id;
-                      if (newId) {
+                      const generated = res?.template;
+                      if (generated?.id) {
                         setShowAiGenerate(false);
                         setAiPrompt('');
-                        router.push(`/${params?.schoolId ?? ''}/templates/builder/${newId}`);
+                        // Route through openInBuilder so the sub-1024px
+                        // mobile handoff (toast + stay on gallery) applies
+                        // here too — the generated template already shows
+                        // in the gallery (the mutation invalidates
+                        // ['templates']). On desktop this still opens the
+                        // V2 builder, same as before.
+                        openInBuilder(generated as unknown as Template);
                       } else {
                         setAiError('Generation succeeded but returned no template id. Try again?');
                       }
@@ -3101,7 +3154,7 @@ function PlaylistPicker({ config, setConfig, inputClass }: { config: any; setCon
  * brand colors/fonts). Demo punchline: "60 templates rebranded in 30
  * seconds."
  */
-function ApplyBrandButton({ disabled }: { disabled: boolean }) {
+function ApplyBrandButton({ disabled, className }: { disabled: boolean; className?: string }) {
   const branding = useTenantBranding();
   const apply = useApplyBrandToTemplates();
   const tenantCopy = useTenantCopy();
@@ -3137,7 +3190,7 @@ function ApplyBrandButton({ disabled }: { disabled: boolean }) {
         onClick={() => setOpen(true)}
         disabled={disabled || !hasBrand}
         title={!hasBrand ? 'Configure your brand kit first (Brand tab in any template builder)' : disabled ? 'Read-only — viewer role' : `Re-skin every template with your ${tenantCopy.orgSingular.toLowerCase()} brand`}
-        className="px-4 py-3 bg-gradient-to-r from-pink-500 to-violet-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        className={`px-4 py-3 bg-gradient-to-r from-pink-500 to-violet-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl md:hover:scale-105 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${className ?? ''}`}
       >
         <Sparkles className="w-5 h-5" /> Brand all templates
       </button>

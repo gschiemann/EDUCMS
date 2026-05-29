@@ -571,12 +571,15 @@ export default function AssetsPage() {
         <div className="flex gap-2">
           {selectedIds.length > 0 && (
             <>
+              {/* 2026-05-29 (mobile P1) — bulk actions surface on touch
+                  (tiles get a tap-to-select affordance below), so bump
+                  these to the 44px touch minimum too; compact on ≥sm. */}
               <button
                 type="button"
                 onClick={() => setShowFolderPicker('bulk-move')}
                 disabled={isViewer}
                 title={isViewer ? 'Read-only — viewer role' : undefined}
-                className="px-4 py-2 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="min-h-11 sm:min-h-0 px-4 py-2 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <FolderInput className="w-4 h-4" /> Move to folder ({selectedIds.length})
               </button>
@@ -584,7 +587,7 @@ export default function AssetsPage() {
                 onClick={handleBulkDelete}
                 disabled={isViewer}
                 title={isViewer ? 'Read-only — viewer role' : undefined}
-                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="min-h-11 sm:min-h-0 px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Trash2 className="w-4 h-4" /> Delete ({selectedIds.length})
               </button>
@@ -594,7 +597,9 @@ export default function AssetsPage() {
             onClick={() => setShowUrlForm(!showUrlForm)}
             disabled={isViewer}
             title={isViewer ? 'Read-only — viewer role' : undefined}
-            className="px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            /* 2026-05-29 (mobile P1) — was px-3 py-2 = 34px tall, under the
+               44px touch minimum. Bump to min-h-11 on touch, compact on ≥sm. */
+            className="min-h-11 sm:min-h-0 px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Link2 className="w-3.5 h-3.5 text-indigo-500" /> Add URL
           </button>
@@ -606,7 +611,8 @@ export default function AssetsPage() {
           <button
             onClick={() => { setPendingFiles([]); setShowFolderPicker('upload'); }}
             disabled={isViewer}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            /* 2026-05-29 (mobile P1) — min-h-11 on touch (was 34px). */
+            className="min-h-11 sm:min-h-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             title={isViewer ? 'Read-only — viewer role' : 'Pick a destination folder (root is an option), then select files'}
           >
             <UploadCloud className="w-4 h-4" />
@@ -734,9 +740,13 @@ export default function AssetsPage() {
         </div>
         <div className="flex gap-2 items-center">
           <div className="relative"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" /><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." className="pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] outline-none focus:ring-2 focus:ring-indigo-500 w-44" /></div>
+          {/* 2026-05-29 (mobile P1) — the grid/list toggles were p-1.5 ≈
+              26px, well under the 44px touch minimum and jammed together
+              (mis-tap magnet). Give each a 44×44 hit area on touch via
+              min-w/min-h-11 + centered icon; compact p-1.5 on ≥sm. */}
           <div className="flex border border-slate-200 rounded-lg overflow-hidden">
-            <button onClick={()=>setViewMode('grid')} className={`p-1.5 ${viewMode==='grid'?'bg-slate-100 text-slate-700':'text-slate-400'}`}><Grid3X3 className="w-3.5 h-3.5" /></button>
-            <button onClick={()=>setViewMode('list')} className={`p-1.5 ${viewMode==='list'?'bg-slate-100 text-slate-700':'text-slate-400'}`}><List className="w-3.5 h-3.5" /></button>
+            <button onClick={()=>setViewMode('grid')} aria-label="Grid view" aria-pressed={viewMode==='grid'} className={`min-w-11 min-h-11 sm:min-w-0 sm:min-h-0 flex items-center justify-center p-1.5 ${viewMode==='grid'?'bg-slate-100 text-slate-700':'text-slate-400'}`}><Grid3X3 className="w-3.5 h-3.5" /></button>
+            <button onClick={()=>setViewMode('list')} aria-label="List view" aria-pressed={viewMode==='list'} className={`min-w-11 min-h-11 sm:min-w-0 sm:min-h-0 flex items-center justify-center p-1.5 ${viewMode==='list'?'bg-slate-100 text-slate-700':'text-slate-400'}`}><List className="w-3.5 h-3.5" /></button>
           </div>
         </div>
       </div>
@@ -953,24 +963,39 @@ export default function AssetsPage() {
             return (
               // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
               <li key={a.id} draggable={!isViewer} onDragStart={e => { if (isViewer) { e.preventDefault(); return; } e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`bg-white rounded-3xl overflow-hidden group transition-all duration-300 relative border-2 ${isSelected ? 'border-indigo-500 shadow-[0_8px_30px_rgb(99,102,241,0.2)]' : 'border-transparent hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]'}`}>
-                {/* Selection Checkbox Trigger */}
+                {/* Selection Checkbox Trigger.
+                    2026-05-29 (mobile P1) — was opacity-0 + group-hover
+                    reveal, which never fires on touch (no :hover on a
+                    phone), so bulk-select was desktop-only. Now: when
+                    unselected we keep it VISIBLE by default and only
+                    hide-until-hover on hover-capable pointers via the
+                    `[@media(hover:hover)]` arbitrary variant. Touch users
+                    always see the affordance; desktop keeps its clean
+                    reveal-on-hover. Bumped to a 44px tap target on touch
+                    (w/h-11) with a centered 20px box, compact 20px on ≥sm. */}
                 <button
                   onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }}
                   aria-label={isSelected ? `Deselect ${name}` : `Select ${name}`}
                   aria-pressed={isSelected}
-                  className={`absolute top-2.5 left-2.5 z-20 w-5 h-5 rounded flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-500 border border-indigo-500 opacity-100 scale-100' : 'bg-white border border-slate-300 opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 shadow-sm'}`}
+                  className={`absolute top-2.5 left-2.5 z-20 w-11 h-11 sm:w-5 sm:h-5 flex items-center justify-center transition-all ${isSelected ? 'opacity-100 scale-100' : 'opacity-100 scale-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:scale-90 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-hover:scale-100'}`}
                 >
-                  {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                  <span className={`w-5 h-5 rounded flex items-center justify-center ${isSelected ? 'bg-indigo-500 border border-indigo-500' : 'bg-white border border-slate-300 shadow-sm'}`}>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                  </span>
                 </button>
 
-                {/* Quick Delete Trash Trigger */}
+                {/* Quick Delete Trash Trigger — same touch-visibility fix
+                    as the select checkbox above. 44px tap target on touch. */}
                 <button
                   onClick={(e) => { e.stopPropagation(); appConfirm({ title: 'Delete asset?', message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }}
                   disabled={isViewer}
                   title={isViewer ? 'Read-only — viewer role' : undefined}
-                  className="absolute top-2.5 right-2.5 z-20 w-6 h-6 rounded bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label={`Delete ${name}`}
+                  className="absolute top-2.5 right-2.5 z-20 w-11 h-11 sm:w-6 sm:h-6 flex items-center justify-center transition-all opacity-100 scale-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:scale-90 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-hover:scale-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Trash className="w-3 h-3 text-white" />
+                  <span className="w-6 h-6 rounded bg-red-500 hover:bg-red-600 flex items-center justify-center shadow-sm">
+                    <Trash className="w-3 h-3 text-white" />
+                  </span>
                 </button>
 
                 <button
@@ -1073,13 +1098,17 @@ export default function AssetsPage() {
             return (
               // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
               <li key={a.id} draggable={!isViewer} onDragStart={e => { if (isViewer) { e.preventDefault(); return; } e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`flex items-center gap-4 px-4 py-3 transition-colors group ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}>
+                {/* 2026-05-29 (mobile P1) — 44px tap target on touch
+                    (compact 16px box on ≥sm); already touch-visible. */}
                 <button
                   onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }}
                   aria-label={isSelected ? `Deselect ${name}` : `Select ${name}`}
                   aria-pressed={isSelected}
-                  className={`w-4 h-4 rounded flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-500 border border-indigo-500 opacity-100' : 'bg-white border border-slate-300 opacity-50 hover:opacity-100 shadow-sm'}`}
+                  className="w-11 h-11 sm:w-4 sm:h-4 -my-3 sm:my-0 flex items-center justify-center transition-all shrink-0"
                 >
-                  {isSelected && <Check className="w-3 h-3 text-white" />}
+                  <span className={`w-4 h-4 rounded flex items-center justify-center ${isSelected ? 'bg-indigo-500 border border-indigo-500' : 'bg-white border border-slate-300 shadow-sm'}`}>
+                    {isSelected && <Check className="w-3 h-3 text-white" />}
+                  </span>
                 </button>
                 <button
                   onClick={() => {
@@ -1120,13 +1149,20 @@ export default function AssetsPage() {
                   </div>
                 </button>
                 <div className="flex items-center gap-3">
+                  {/* 2026-05-29 (mobile P1) — was opacity-0 group-hover,
+                      invisible on touch. Visible by default; hide-until-
+                      hover only on hover-capable pointers. 44px tap target
+                      on touch, compact 24px on ≥sm. */}
                   <button
                     onClick={(e) => { e.stopPropagation(); appConfirm({ title: 'Delete asset?', message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }}
                     disabled={isViewer}
                     title={isViewer ? 'Read-only — viewer role' : undefined}
-                    className="w-6 h-6 rounded bg-slate-200 hover:bg-red-500 text-slate-500 hover:text-white flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label={`Delete ${name}`}
+                    className="w-11 h-11 sm:w-6 sm:h-6 -my-3 sm:my-0 flex items-center justify-center transition-all opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Trash className="w-3 h-3" />
+                    <span className="w-6 h-6 rounded bg-slate-200 hover:bg-red-500 text-slate-500 hover:text-white flex items-center justify-center">
+                      <Trash className="w-3 h-3" />
+                    </span>
                   </button>
                   {typeBadge(a.mimeType)}
                 </div>
