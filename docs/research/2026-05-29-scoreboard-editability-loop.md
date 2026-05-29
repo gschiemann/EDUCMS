@@ -41,3 +41,35 @@ aren't editable. To make any element editable:
   override (widget reads override > live > sample) + a "Team name"
   TextField in Properties writing `cfg.teamName`. Placeholder shows the
   sample name so the operator sees what they're overriding.
+- **#3 Long name overflows + layer Name editable** (`b634f36`).
+  - AUTO-FIT: text element widgets rendered at a fixed `config.fontSize`, so
+    a long value (BROWNS / GOLDEN BEARS) overflowed/clipped.
+    ⚠️ FIRST tried `FitText` (binary-search) — it FLAKED on long single-line
+    text: stayed stuck at max, scrollWidth 700 in a 372px box (the imperative
+    width-set fights React re-renders). Confirmed via DOM-measure debug
+    (NAMEFIT=1 in scoreboard-shot.spec.ts logs `FITDEBUG`).
+    REAL FIX = **`FitOneLine`** (a local component in SportElementWidgets):
+    render the text at a FIXED font (nowrap), measure its natural scrollWidth
+    once (stable — font never changes → no feedback loop), then
+    `transform: scale(min(1, boxW/textW, boxH/textH))` to shrink it to fit.
+    Deterministic, Chromium-83/Taurus-safe. **This (not FitText) is the
+    standard auto-fit pattern for sport text elements** (name done; apply to
+    score/clock/segment/stat as flagged).
+    LESSON: ALWAYS screenshot + DOM-measure the REAL render before claiming a
+    visual fix works — I told the operator FitText worked twice before
+    measuring it; it didn't.
+  - LAYER NAME: the "Name — shown in Layers panel" field was an editable
+    `<input>` in Properties; made it a read-only label (rename belongs in the
+    Layers tab). Not content → shouldn't be a content field.
+  - DEFERRED: color-field hex display simplification. `ColorField` →
+    `ColorPickerField` is GLOBAL to every widget; change it in isolation +
+    verify, don't bundle into a scoreboard fix.
+
+## Standing rules learned
+- Verify against the REAL rendered zone variant (operator screenshot / live),
+  never a same-named sibling widget. (`scoreboard-main` ≠ the composed
+  `sb-*` element board.)
+- Global/shared controls (ColorPickerField, etc.) = bigger blast radius →
+  their own commit + own verification, not bundled.
+- Every fix: deploy-watch the Vercel commit status → tell the operator when
+  it's actually live (don't make them refresh-hunt).

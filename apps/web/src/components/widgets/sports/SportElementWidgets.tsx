@@ -31,7 +31,6 @@
 
 import React from 'react';
 import { useGameState, type GameSnapshot } from './GameStateContext';
-import { FitText } from '../themes/FitText';
 
 // ── tier-preset display fonts ────────────────────────────────────────
 // The HS / College / Pro scoreboard tiers each specify a distinct family
@@ -126,6 +125,64 @@ export function teamOf(snap: GameSnapshot | null | undefined, team: 'home' | 'aw
     : { name: snap.homeTeam, color: snap.homeColor, logo: snap.homeLogoUrl };
 }
 
+// ── Auto-shrink one-liner ─────────────────────────────────────────────
+// Renders text at a FIXED font (`maxFontPx`, nowrap) and geometrically
+// scales it DOWN with transform:scale to fit the zone. Deterministic — the
+// measured scrollWidth is stable (font never changes), so there's no
+// binary-search / re-render feedback loop (the failure mode FitText hit on
+// long team names: stuck at max, overflowing). Chromium-83 / Taurus safe
+// (transform:scale is universal; no flex gap / inset / backdrop).
+function FitOneLine({
+  children, maxFontPx, align = 'center', style,
+}: {
+  children: React.ReactNode;
+  maxFontPx: number;
+  align?: 'left' | 'center' | 'right';
+  style?: React.CSSProperties;
+}) {
+  const boxRef = React.useRef<HTMLDivElement>(null);
+  const txtRef = React.useRef<HTMLSpanElement>(null);
+  const [scale, setScale] = React.useState(1);
+  React.useLayoutEffect(() => {
+    const box = boxRef.current;
+    const txt = txtRef.current;
+    if (!box || !txt) return;
+    const measure = () => {
+      const bw = box.clientWidth;
+      const bh = box.clientHeight;
+      const tw = txt.scrollWidth;
+      const th = txt.scrollHeight;
+      if (!bw || !bh || !tw || !th) return;
+      setScale(Math.min(1, (bw * 0.96) / tw, (bh * 0.94) / th));
+    };
+    measure();
+    const raf = requestAnimationFrame(measure);
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    let lastW = 0, lastH = 0;
+    const poll = setInterval(() => {
+      const w = box.clientWidth, h = box.clientHeight;
+      if (w !== lastW || h !== lastH) { lastW = w; lastH = h; measure(); }
+    }, 500);
+    if (typeof document !== 'undefined' && (document as { fonts?: { ready?: Promise<unknown> } }).fonts?.ready) {
+      (document as { fonts: { ready: Promise<unknown> } }).fonts.ready.then(measure).catch(() => {});
+    }
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); clearInterval(poll); };
+  }, [children, maxFontPx]);
+  const justify = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
+  const origin = align === 'left' ? 'left center' : align === 'right' ? 'right center' : 'center center';
+  return (
+    <div ref={boxRef} style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: justify, overflow: 'hidden' }}>
+      <span
+        ref={txtRef}
+        style={{ ...style, fontSize: maxFontPx, whiteSpace: 'nowrap', display: 'inline-block', transform: `scale(${scale})`, transformOrigin: origin }}
+      >
+        {children}
+      </span>
+    </div>
+  );
+}
+
 // ── Team name ────────────────────────────────────────────────────────
 export function TeamNameWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
@@ -134,16 +191,12 @@ export function TeamNameWidget({ config }: { config: ElCfg }) {
   const override = typeof config.teamName === 'string' ? config.teamName.trim() : '';
   const name = override || t.name || (team === 'away' ? 'TIGERS' : 'EAGLES');
   const display = config.uppercase === false ? name : name.toUpperCase();
-  // Auto-shrink to fit the zone so a long name (e.g. BROWNS) never overflows
-  // or clips. config.fontSize is the MAX; FitText picks the largest size that
-  // fits and re-fits on resize. (Operator 2026-05-29.)
+  const align = config.align ?? 'center';
   return (
-    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
-      <FitText
-        max={typeof config.fontSize === 'number' ? config.fontSize : 54}
-        min={10}
-        wrap={false}
-        center={config.align !== 'left'}
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', position: 'relative', overflow: 'hidden' }}>
+      <FitOneLine
+        maxFontPx={typeof config.fontSize === 'number' ? config.fontSize : 54}
+        align={align}
         style={{
           color: config.color ?? '#ffffff',
           fontWeight: config.fontWeight ?? 800,
@@ -152,7 +205,7 @@ export function TeamNameWidget({ config }: { config: ElCfg }) {
         }}
       >
         {display}
-      </FitText>
+      </FitOneLine>
     </div>
   );
 }

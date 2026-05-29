@@ -49,22 +49,33 @@ function manifest() {
           screenWidth: 1920,
           screenHeight: 1080,
           bgColor: '#000000',
-          zones: [
-            {
-              id: 'z-board',
-              name: 'Scoreboard',
-              widgetType: WIDGET_TYPE,
-              x: 0,
-              y: 0,
-              width: 100,
-              height: 100,
-              zIndex: 1,
-              // The gallery "Scoreboard" preset dispatches via the variant
-              // registry (cfg.variant), NOT a bare widgetType. 'scoreboard-main'
-              // → MainScoreboardWidget — the real component the gallery renders.
-              defaultConfig: { variant: 'scoreboard-main', tier: TIER, gameId: '', ...EDIT_OVERRIDES },
-            },
-          ],
+          zones: process.env.NAMEFIT === '1'
+            ? [
+                // DEBUG (NAMEFIT=1): does the team-name element auto-shrink?
+                // Narrow blue box — "GOLDEN BEARS" at max 90px MUST shrink to
+                // fit ~384px. If FitText works the text stays inside the box;
+                // if broken it overflows.
+                { id: 'z-name-narrow', name: 'Name narrow', widgetType: 'SCOREBOARD', x: 6, y: 40, width: 20, height: 16, zIndex: 1,
+                  defaultConfig: { variant: 'sb-team-name-home', team: 'home', teamName: 'GOLDEN BEARS', fontSize: 90, color: '#ffffff', bgColor: '#1e3a8a' } },
+                { id: 'z-name-wide', name: 'Name wide', widgetType: 'SCOREBOARD', x: 32, y: 40, width: 58, height: 16, zIndex: 1,
+                  defaultConfig: { variant: 'sb-team-name-home', team: 'home', teamName: 'GOLDEN BEARS', fontSize: 90, color: '#ffffff', bgColor: '#7c3aed' } },
+              ]
+            : [
+                {
+                  id: 'z-board',
+                  name: 'Scoreboard',
+                  widgetType: WIDGET_TYPE,
+                  x: 0,
+                  y: 0,
+                  width: 100,
+                  height: 100,
+                  zIndex: 1,
+                  // The gallery "Scoreboard" preset dispatches via the variant
+                  // registry (cfg.variant), NOT a bare widgetType. 'scoreboard-main'
+                  // → MainScoreboardWidget — the real component the gallery renders.
+                  defaultConfig: { variant: 'scoreboard-main', tier: TIER, gameId: '', ...EDIT_OVERRIDES },
+                },
+              ],
         },
         items: [],
       },
@@ -153,7 +164,7 @@ test(`scoreboard ${TIER} — screenshot at native 1920×1080`, async ({ page }) 
   await installApiMocks(page, counters);
   await installPlayerTestHarness(page);
   await page.goto('/player?fp=' + FAKE_FINGERPRINT);
-  const zone = page.locator('[data-zone-id="z-board"]');
+  const zone = page.locator(`[data-zone-id="${process.env.NAMEFIT === '1' ? 'z-name-narrow' : 'z-board'}"]`);
   await zone.waitFor({ state: 'visible', timeout: 20_000 });
   // let fonts load + the scale-to-fit measure settle
   await page.waitForTimeout(1500);
@@ -174,4 +185,22 @@ test(`scoreboard ${TIER} — screenshot at native 1920×1080`, async ({ page }) 
 
   mkdirSync('/tmp/scoreboard-after', { recursive: true });
   await page.screenshot({ path: `/tmp/scoreboard-after/${TIER}.png` });
+
+  if (process.env.NAMEFIT === '1') {
+    const dbg = await page.evaluate(() => {
+      const z = document.querySelector('[data-zone-id="z-name-narrow"]') as HTMLElement | null;
+      if (!z) return { found: false };
+      const zr = z.getBoundingClientRect();
+      // walk descendants, find the text-bearing span + its nearest sized wrapper
+      const spans = Array.from(z.querySelectorAll('span,div')).map((el) => {
+        const e = el as HTMLElement;
+        const r = e.getBoundingClientRect();
+        const cs = getComputedStyle(e);
+        return { tag: e.tagName, text: (e.textContent || '').slice(0, 20), w: Math.round(r.width), h: Math.round(r.height), sw: e.scrollWidth, fs: cs.fontSize, ws: cs.whiteSpace };
+      });
+      return { found: true, zone: { w: Math.round(zr.width), h: Math.round(zr.height) }, spans };
+    });
+    // eslint-disable-next-line no-console
+    console.log('FITDEBUG ' + JSON.stringify(dbg));
+  }
 });
