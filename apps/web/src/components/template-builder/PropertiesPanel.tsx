@@ -4415,6 +4415,78 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       ]} />);
       break;
     }
+    // ── 2026-05-28 (§19) — formerly-orphan widgets ────────────────────────
+    // These 7 rendered types had NO PropertiesPanel case, so clicking one
+    // hit the terminal `return null` → blank panel ("JSON-only Advanced"),
+    // the exact §19 failure. Each now has a real case exposing the config
+    // its renderer actually reads (verified against WidgetRenderer.tsx /
+    // AnimatedBackgroundWidget.tsx — not invented fields). Text-bearing ones
+    // also pick up the universal Font + Text-color + B/I/U/S block below
+    // (none are in MEDIA_ONLY) + the universal Position & size section. The
+    // types are conservative additions; nothing is deleted.
+    case 'TOUCH_BUTTON': {
+      const ICONS: [string, string][] = [['', 'None'], ['arrow-right', 'Arrow'], ['chevron-right', 'Chevron'], ['bell', 'Bell'], ['globe', 'Globe'], ['map-pin', 'Map pin'], ['star', 'Star'], ['heart', 'Heart'], ['shield', 'Shield'], ['clock', 'Clock'], ['eye', 'Eye'], ['play', 'Play'], ['image', 'Image'], ['sparkles', 'Sparkles']];
+      fields.push(<TextField key="label" label="Button label" value={cfg.label || ''} placeholder="Tap" onChange={(v) => setField({ label: v })} />);
+      fields.push(<SelectField key="icon" label="Icon" value={String(cfg.icon || '')} options={ICONS} onChange={(v) => setField({ icon: v })} />);
+      fields.push(<ColorField key="bgColor" label="Button color" value={cfg.bgColor || '#4f46e5'} onChange={(v) => setField({ bgColor: v })} />);
+      fields.push(<ColorField key="color" label="Label color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
+      fields.push(<NumField key="radius" id="tb-radius" label="Corner radius (px)" value={typeof cfg.radius === 'number' ? cfg.radius : 18} onChange={(v) => setField({ radius: v })} min={0} max={120} step={1} />);
+      fields.push(<p key="tb-hint" className="text-[10px] text-slate-400 px-0.5">Set what this button does in the Tap action section below (enable touch on the template first).</p>);
+      break;
+    }
+    case 'TOUCH_MENU': {
+      fields.push(<SelectField key="orientation" label="Layout" value={cfg.orientation === 'horizontal' ? 'horizontal' : 'vertical'} options={[['vertical', 'Vertical (stacked)'], ['horizontal', 'Horizontal (row)']]} onChange={(v) => setField({ orientation: v })} />);
+      fields.push(<NumField key="gap" id="tm-gap" label="Gap between buttons (px)" value={typeof cfg.gap === 'number' ? cfg.gap : 12} onChange={(v) => setField({ gap: v })} min={0} max={80} step={2} />);
+      fields.push(<ListItemsEditor key="buttons" label="Menu buttons" itemNoun="button" help="Each row is one button in the menu. Colors are per-button; leave blank for the default dark style." value={cfg.buttons} onChange={(v) => setField({ buttons: v })} newItem={{ label: '', icon: '', bgColor: '', color: '' }} fields={[
+        { key: 'label', label: 'Label', type: 'text', placeholder: 'Directory' },
+        { key: 'icon', label: 'Icon', type: 'select', options: [['', 'None'], ['arrow-right', 'Arrow'], ['chevron-right', 'Chevron'], ['bell', 'Bell'], ['globe', 'Globe'], ['map-pin', 'Map pin'], ['star', 'Star'], ['heart', 'Heart'], ['shield', 'Shield'], ['clock', 'Clock'], ['eye', 'Eye'], ['play', 'Play'], ['image', 'Image'], ['sparkles', 'Sparkles']] },
+        { key: 'bgColor', label: 'Button color', type: 'color' },
+        { key: 'color', label: 'Label color', type: 'color' },
+      ]} />);
+      break;
+    }
+    case 'ON_SCREEN_KEYBOARD': {
+      fields.push(<SelectField key="mode" label="Keyboard type" value={cfg.mode === 'numeric' ? 'numeric' : 'qwerty'} options={[['qwerty', 'QWERTY (full)'], ['numeric', 'Numeric (0–9)']]} onChange={(v) => setField({ mode: v })} />);
+      fields.push(<TextField key="placeholder" label="Placeholder text" value={cfg.placeholder || ''} placeholder="Type here…" onChange={(v) => setField({ placeholder: v })} />);
+      break;
+    }
+    case 'ROOM_FINDER': {
+      fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Find a room" onChange={(v) => setField({ title: v })} />);
+      fields.push(<ListItemsEditor key="rooms" label="Rooms" itemNoun="room" help="Each row is one searchable room. Location is the line shown beside the name." value={cfg.rooms} onChange={(v) => setField({ rooms: v })} newItem={{ name: '', location: '', mapZoneId: '' }} fields={[
+        { key: 'name', label: 'Room / teacher', type: 'text', placeholder: 'Room 204 — Ms. Chen' },
+        { key: 'location', label: 'Location', type: 'text', placeholder: '2nd floor, B wing' },
+        { key: 'mapZoneId', label: 'Map zone id (optional)', type: 'text', placeholder: 'zone id to reveal on select' },
+      ]} />);
+      break;
+    }
+    case 'WAYFINDING_MAP': {
+      fields.push(<AssetPickerField key="mapImageUrl" label="Map image" kind="image" value={cfg.mapImageUrl || ''} onChange={(v) => setField({ mapImageUrl: v })} />);
+      fields.push(<TextField key="alt" label="Map alt text (for screen readers)" value={cfg.alt || ''} placeholder="Wayfinding map" onChange={(v) => setField({ alt: v })} />);
+      fields.push(<ListItemsEditor key="hotspots" label="Hotspots" itemNoun="hotspot" help="Each pin sits at an x / y position (0–100% of the map). Optional map zone id reveals a zone when tapped." value={cfg.hotspots} onChange={(v) => setField({ hotspots: v })} newItem={{ label: '', x: 50, y: 50, roomId: '' }} fields={[
+        { key: 'label', label: 'Label', type: 'text', placeholder: 'Main office' },
+        { key: 'x', label: 'X (0–100%)', type: 'number', placeholder: '50' },
+        { key: 'y', label: 'Y (0–100%)', type: 'number', placeholder: '50' },
+        { key: 'roomId', label: 'Map zone id (optional)', type: 'text' },
+      ]} />);
+      break;
+    }
+    case 'QUICK_POLL': {
+      fields.push(<TextField key="question" label="Question" value={cfg.question || ''} placeholder="Quick poll" onChange={(v) => setField({ question: v })} />);
+      fields.push(<ListItemsEditor key="options" label="Answer options" itemNoun="option" help="Each row is one tappable answer. Starting votes are optional (defaults to 0)." value={cfg.options} onChange={(v) => setField({ options: v })} newItem={{ label: '', votes: 0 }} fields={[
+        { key: 'label', label: 'Answer', type: 'text', placeholder: 'Pizza' },
+        { key: 'votes', label: 'Starting votes', type: 'number', placeholder: '0' },
+      ]} />);
+      break;
+    }
+    case 'ANIMATED_BACKGROUND': {
+      // Pure decoration — renders a rainbow ribbon + confetti, no foreground
+      // text/color of its own. Expose ONLY its real knobs (variant +
+      // confetti density); fabricated text/color fields would be a costume
+      // since the widget ignores them.
+      fields.push(<SelectField key="variant" label="Background style" value={String(cfg.variant || 'rainbow')} options={[['rainbow', 'Rainbow ribbon + confetti']]} onChange={(v) => setField({ variant: v })} />);
+      fields.push(<NumField key="confettiCount" id="abw-confetti" label="Confetti density" value={typeof cfg.confettiCount === 'number' ? cfg.confettiCount : 80} onChange={(v) => setField({ confettiCount: v })} min={0} max={300} step={10} />);
+      break;
+    }
     default: {
       // ── v2 widget pack — generic content + brand-style editor ──
       // Celebration / scoreboard / healthcare / corporate / hospitality
@@ -4875,7 +4947,10 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     // Font-SIZE is intentionally not added here: it would flatten the
     // initials-vs-tagline size hierarchy (the injection hits every text span),
     // which is also why the universal block ships font+color+format but no size.
-    const MEDIA_ONLY = new Set(['IMAGE', 'IMAGE_CAROUSEL', 'VIDEO', 'VIDEO_CAROUSEL', 'EXTERNAL_HTML']);
+    // 2026-05-28 (§19) — ANIMATED_BACKGROUND added: it's a textless decorative
+    // rainbow layer, so a font/color block would be a costume (the widget reads
+    // neither). Its real knobs (variant, confetti) live in its own case above.
+    const MEDIA_ONLY = new Set(['IMAGE', 'IMAGE_CAROUSEL', 'VIDEO', 'VIDEO_CAROUSEL', 'EXTERNAL_HTML', 'ANIMATED_BACKGROUND']);
     const isV2Widget = !!(cfg.variant && V2_BY_VARIANT_ID[String(cfg.variant)]);
     const alreadyStyleable = fields.some((f: any) => f && f.key === 'fontFamily');
     if (!alreadyStyleable && !isV2Widget && !MEDIA_ONLY.has(zone.widgetType)) {
