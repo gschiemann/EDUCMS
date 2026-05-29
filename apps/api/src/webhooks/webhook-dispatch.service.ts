@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { safeFetchPost, SsrfError } from '../branding/safe-fetch';
 
 /**
  * Outbound webhook delivery (Developer area, 2026-05-25).
@@ -199,16 +200,19 @@ export class WebhookDispatchService {
       typeof globalThis.crypto?.randomUUID === 'function'
         ? globalThis.crypto.randomUUID()
         : `dlv_${signedTimestamp}_${Math.random().toString(36).slice(2, 10)}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
 
     let status: number | null = null;
     let errorMessage: string | null = null;
 
     try {
-      const res = await fetch(row.url, {
-        method: 'POST',
-        signal: controller.signal,
+      // SSRF: route every POST (first send AND every retry) through
+      // safeFetchPost — it re-resolves the host and connect-pins the socket
+      // on THIS attempt, so a webhook url whose DNS later flips to an
+      // internal/metadata IP (169.254.169.254, 10/8, ::1, …) is rejected at
+      // delivery time, not just at create time. (Audit task #58 / 35-SSRF.)
+      const res = await safeFetchPost(row.url, {
+        body,
+        timeoutMs: 8000,
         headers: {
           'Content-Type': 'application/json',
           'User-Agent': 'VenueOS-Webhook/1.0',
@@ -217,21 +221,27 @@ export class WebhookDispatchService {
           'X-VenueOS-Timestamp': String(signedTimestamp),
           'X-VenueOS-Signature': `sha256=${signature}`,
         },
-        body,
       });
       status = res.status;
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        errorMessage = `${res.status} ${res.statusText}${text ? ' — ' + text.slice(0, 200) : ''}`;
+      if (status < 200 || status >= 300) {
+        // ANTI-EXFIL: never reflect the receiver's response body into a
+        // field the operator can read (lastError / lastDeliveryError surface
+        // in GET /webhooks). A hostile url could otherwise echo an internal
+        // service's response back to a customer admin. Store a generic
+        // status only. (Audit 35-SSRF response-body exfil twist.)
+        errorMessage = `HTTP ${status}`;
       }
     } catch (err: any) {
-      const msg = err?.name === 'AbortError'
-        ? 'request timed out after 8s'
-        : (err?.message || String(err));
-      errorMessage = msg;
-      this.logger.warn(`webhook ${row.id} → ${row.url} failed: ${msg}`);
-    } finally {
-      clearTimeout(timer);
+      // SSRF rejection, timeout, or transport error. Crucially we record a
+      // generic reason — for an SsrfError we deliberately do NOT echo the
+      // resolved private IP back to the operator (info-leak), just that the
+      // destination was refused.
+      if (err instanceof SsrfError) {
+        errorMessage = 'destination refused (not publicly reachable)';
+      } else {
+        errorMessage = 'delivery failed';
+      }
+      this.logger.warn(`webhook ${row.id} delivery failed: ${err?.message ?? err}`);
     }
 
     return { ok: status !== null && status >= 200 && status < 300, status, errorMessage };

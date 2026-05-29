@@ -104,6 +104,24 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // exempt list — every snapshot POST got 403 CsrfError, so the live
   // CTS path was completely broken in production. Added 2026-05-28.
   (p) => /^\/api\/v1\/sports\/board\/[^/]+\/cts-snapshot$/.test(p),
+  // CTS celebration-fired forensic write (Sprint 13). The CTS orchestrator
+  // on the kiosk player POSTs here fire-and-forget when it fires a cue —
+  // no browser session, so a CSRF token round-trip is impossible. The
+  // route is per-game rate-limited (40/10s) in SportsBoardController and
+  // tenant-scoped via the game id. Same machine-to-machine argument as
+  // /feed and /cts-snapshot. (Audit 37-infra R-2 — was 403'ing in enforce
+  // mode, silently dropping proof-of-play forensic rows.)
+  (p) => /^\/api\/v1\/sports\/board\/[^/]+\/cts-cue-fired$/.test(p),
+  // Public sponsor proof-of-play impression beacon (Sprint 13 Phase 2).
+  // The stadium board / ribbon / scorebug pages fire this from the kiosk
+  // WebView each time a sponsor look enters view — no dashboard session,
+  // so they send no CSRF cookie/header and (under enforce mode) every
+  // cross-origin POST was 403'ing, leaving SponsorImpression empty and
+  // gameReport all-zeros. Hardened instead via a per-game in-memory rate
+  // limit in SponsorsController + server-side tenant-match validation in
+  // recordImpression. (Audit 37-infra R-1/R-2 — exempt + throttle land
+  // TOGETHER so the exemption doesn't open an unthrottled write path.)
+  (p) => /^\/api\/v1\/sports\/sponsors\/[^/]+\/impression$/.test(p),
 ];
 
 export function isCsrfExempt(method: string, path: string): boolean {

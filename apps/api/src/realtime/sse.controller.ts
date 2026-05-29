@@ -60,15 +60,18 @@ export class SseController {
       // Lane-1 P1 (final audit): check the JWT revocation set so a revoked
       // device token can't keep streaming. Fail-closed on Redis error —
       // same posture as jwt-auth.guard.ts.
-      if (process.env.NODE_ENV === 'production') {
-        try {
-          if (await this.redis.sismember('jwt_revoked_list', token)) {
-            throw new Error('token revoked');
-          }
-        } catch (e) {
-          if ((e as Error)?.message === 'token revoked') throw e;
-          throw new Error('revocation check unavailable');
+      //
+      // 2026-05-29 (Audit 38-authz LOW #1): the NODE_ENV==='production'
+      // wrapper was removed so revocation runs in ALL envs — matching the
+      // jwt-auth.guard.ts P1-4 change. A revoked device token must not keep
+      // an SSE stream open in staging/dev either.
+      try {
+        if (await this.redis.sismember('jwt_revoked_list', token)) {
+          throw new Error('token revoked');
         }
+      } catch (e) {
+        if ((e as Error)?.message === 'token revoked') throw e;
+        throw new Error('revocation check unavailable');
       }
       deviceId = payload.sub;
       // Look up the tenant from the screen — kiosk JWT alone doesn't

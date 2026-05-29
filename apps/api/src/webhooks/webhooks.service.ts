@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { validatePublicUrl, SsrfError } from '../branding/safe-fetch';
 
 /**
  * Tenant-scoped outbound webhooks (Developer area, 2026-05-25).
@@ -72,15 +73,32 @@ export class WebhooksService {
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
       throw new BadRequestException('Webhook URL must use http or https.');
     }
-    // Reject obvious localhost / private network URLs in production —
-    // dev keeps them open so local testing works.
-    if (process.env.NODE_ENV === 'production') {
-      const host = parsed.hostname.toLowerCase();
-      if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local')) {
+    // Belt-and-suspenders SSRF gate (Audit 35-SSRF FIX 2): the real defense
+    // is the connect-time pin in WebhookDispatchService.attemptDelivery →
+    // safeFetchPost, but reject obviously-internal targets at create time too
+    // so they never get stored. validatePublicUrl blocks non-http(s) schemes,
+    // non-80/443 ports, and private/loopback/link-local/metadata IP LITERALS
+    // (169.254.169.254, 10/8, 192.168/16, 172.16/12, ::1, IPv4-mapped, CGNAT).
+    // Runs in ALL envs now — the old check was prod-only AND only matched the
+    // literal strings localhost/127.0.0.1/.local.
+    try {
+      validatePublicUrl(url);
+    } catch (e) {
+      if (e instanceof SsrfError) {
         throw new BadRequestException(
-          'Webhook URL must be publicly reachable (localhost / .local blocked in production).',
+          'Webhook URL must be a publicly reachable http(s) endpoint on port 80/443 (private, loopback, link-local, and metadata addresses are blocked).',
         );
       }
+      throw new BadRequestException('Webhook URL is not a valid URL.');
+    }
+    // Block localhost / *.local hostnames (DNS names, which the IP-literal
+    // check above can't catch). The connect-time pin in delivery still covers
+    // any other name that resolves to a private range.
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'localhost' || host === 'localhost.localdomain' || host.endsWith('.local')) {
+      throw new BadRequestException(
+        'Webhook URL must be publicly reachable (localhost / .local blocked).',
+      );
     }
 
     if (!Array.isArray(opts.events) || opts.events.length === 0) {

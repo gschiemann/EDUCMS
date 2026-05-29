@@ -212,6 +212,11 @@ function withLiveFloorPlanScreenStatus<T extends { screens?: FloorPlanScreenStat
   };
 }
 
+/** Short TTL for signed floor-plan image URLs. Long enough for the operator
+ *  to view/drag the plan in one session; short enough that a leaked URL
+ *  (history / referrer / cache) stops resolving quickly. */
+const FLOOR_PLAN_SIGNED_URL_TTL_SECONDS = 15 * 60; // 15 min
+
 @Controller('api/v1/floor-plans')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class FloorPlansController {
@@ -221,6 +226,22 @@ export class FloorPlansController {
     private readonly prisma: PrismaService,
     private readonly storage: SupabaseStorageService,
   ) {}
+
+  /**
+   * Replace a plan's permanent public `imageUrl` with a short-TTL SIGNED URL
+   * generated at read time (Audit 37-infra F-1 — Sprint-8b "signed short-TTL"
+   * requirement for sensitive building layouts). Derives the storage path
+   * from the stored URL (no schema change / migration needed) and re-signs.
+   * If signing fails for any reason, the stored URL is left as-is so the
+   * page never breaks — degrade gracefully, never blank the plan.
+   */
+  private async withSignedImageUrl<T extends { imageUrl?: string | null }>(plan: T): Promise<T> {
+    if (!plan || !plan.imageUrl) return plan;
+    const path = this.storage.pathFromObjectUrl(plan.imageUrl);
+    if (!path) return plan; // unrecognized URL shape — leave untouched
+    const signed = await this.storage.createSignedUrl(path, FLOOR_PLAN_SIGNED_URL_TTL_SECONDS);
+    return signed ? { ...plan, imageUrl: signed } : plan;
+  }
 
   // ─── List ──────────────────────────────────────────────────────
 
@@ -255,7 +276,10 @@ export class FloorPlansController {
       },
     });
     const now = Date.now();
-    return plans.map((plan: any) => withLiveFloorPlanScreenStatus(plan, now));
+    const withStatus = plans.map((plan: any) => withLiveFloorPlanScreenStatus(plan, now));
+    // Sign each plan's image URL on read (short-TTL). Parallel — N is small
+    // (one row per building/floor).
+    return Promise.all(withStatus.map((plan: any) => this.withSignedImageUrl(plan)));
   }
 
   // ─── Single (with screens + zones) ─────────────────────────────
@@ -320,7 +344,7 @@ export class FloorPlansController {
     if (!plan) {
       throw new HttpException('Floor plan not found', HttpStatus.NOT_FOUND);
     }
-    return withLiveFloorPlanScreenStatus(plan);
+    return this.withSignedImageUrl(withLiveFloorPlanScreenStatus(plan));
   }
 
   // ─── Create / upload ──────────────────────────────────────────
@@ -504,7 +528,9 @@ export class FloorPlansController {
       });
     } catch { /* swallow — audit failure shouldn't fail the request */ }
 
-    return plan;
+    // Return a signed short-TTL image URL — never the permanent public one
+    // (Audit 37-infra F-1). The path-derived public URL stays in the DB row.
+    return this.withSignedImageUrl(plan);
   }
 
   // ─── Rename / relabel ─────────────────────────────────────────

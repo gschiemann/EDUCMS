@@ -54,8 +54,14 @@ export class SupabaseStorageService implements OnModuleInit {
     // experience. Kept here as defense-in-depth alongside the
     // assets.controller assertUploadIntent gate — if someone hits the
     // Supabase upload URL directly, the bucket policy still rejects.
+    // 2026-05-29 (Audit 37-infra U-1) — dropped image/svg+xml. The bucket is
+    // PUBLIC and serves inline, so an SVG is a stored-XSS vector if it ever
+    // reaches a same-origin context. The assets controller already blocks SVG
+    // at upload (assets.controller.ts assertUploadIntent); this is the
+    // defense-in-depth bucket-policy half — without it, a direct hit on the
+    // Supabase upload URL could still land an SVG. Inconsistency removed.
     const ALLOWED_MIMES = [
-      'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
+      'image/jpeg', 'image/png', 'image/webp', 'image/gif',
       'image/x-icon', 'image/bmp',
       'video/mp4', 'video/webm', 'video/x-m4v',
       'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
@@ -226,6 +232,64 @@ export class SupabaseStorageService implements OnModuleInit {
   publicUrlForPath(filePath: string): string {
     const { url } = this.supabaseConfig();
     return `${url}/storage/v1/object/public/${BUCKET}/${filePath}`;
+  }
+
+  /**
+   * Best-effort: recover the bucket-relative storage PATH from a stored
+   * Supabase object URL (public OR signed). Floor-plan rows persist a full
+   * public URL in `imageUrl`; to re-sign on read (Audit 37-infra F-1) we need
+   * the path back. Returns null if the URL isn't a recognizable Supabase
+   * `…/object/(public|sign)/<bucket>/<path>` shape for OUR bucket — caller
+   * then falls back to the stored URL unchanged.
+   */
+  pathFromObjectUrl(objectUrl: string): string | null {
+    if (typeof objectUrl !== 'string' || !objectUrl) return null;
+    try {
+      const u = new URL(objectUrl);
+      // Strip any query (signed URLs carry ?token=…) before matching.
+      const marker = `/storage/v1/object/`;
+      const idx = u.pathname.indexOf(marker);
+      if (idx === -1) return null;
+      let rest = u.pathname.slice(idx + marker.length); // e.g. "public/assets/<tenant>/floor-plans/x.png"
+      // Drop the access-mode segment (public | sign | authenticated).
+      rest = rest.replace(/^(public|sign|authenticated)\//, '');
+      const prefix = `${BUCKET}/`;
+      if (!rest.startsWith(prefix)) return null;
+      const path = rest.slice(prefix.length);
+      return path ? decodeURIComponent(path) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Create a short-TTL SIGNED URL for a bucket object (Audit 37-infra F-1).
+   * Floor plans are operational-security data (building layouts/exits) and
+   * Sprint-8b mandates signed short-TTL serving rather than a permanent
+   * public URL that, once leaked (browser history / referrer / cache), is
+   * world-readable forever. We generate these on READ from the RBAC-gated
+   * floor-plan endpoints. Returns null on any failure so the caller can fall
+   * back to the stored URL instead of breaking the page.
+   */
+  async createSignedUrl(filePath: string, expiresInSeconds = 300): Promise<string | null> {
+    try {
+      const storage = this.ensureClient().storage.from(BUCKET) as any;
+      const { data, error } = await storage.createSignedUrl(filePath, expiresInSeconds);
+      if (error) {
+        this.logger.warn(`createSignedUrl failed for ${filePath}: ${error.message}`);
+        return null;
+      }
+      const raw = data?.signedUrl || data?.signedURL;
+      if (typeof raw !== 'string' || !raw) return null;
+      // The JS client returns an absolute URL in v2; if it ever returns a
+      // path-relative one, prefix the Supabase origin.
+      if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+      const { url } = this.supabaseConfig();
+      return raw.startsWith('/storage/v1') ? `${url}${raw}` : `${url}/storage/v1${raw.startsWith('/') ? '' : '/'}${raw}`;
+    } catch (e: any) {
+      this.logger.warn(`createSignedUrl threw for ${filePath}: ${e?.message ?? e}`);
+      return null;
+    }
   }
 
   async createSignedUploadUrl(filePath: string): Promise<{

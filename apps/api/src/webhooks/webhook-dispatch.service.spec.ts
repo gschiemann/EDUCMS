@@ -19,6 +19,19 @@
  */
 
 import { Logger } from '@nestjs/common';
+
+// SSRF (Audit task #58): attemptDelivery now POSTs through safeFetchPost, NOT
+// global fetch — it re-resolves + connect-pins the destination on every send,
+// so a rebinding webhook url can't reach an internal/metadata IP at delivery
+// time. Mock the module here; the dedicated webhook-dispatch.ssrf.spec.ts
+// exercises the REAL safeFetchPost against internal-IP URLs.
+jest.mock('../branding/safe-fetch', () => {
+  class SsrfError extends Error {
+    constructor(msg: string) { super(msg); this.name = 'SsrfError'; }
+  }
+  return { safeFetchPost: jest.fn(), SsrfError };
+});
+
 import {
   WebhookDispatchService,
   WEBHOOK_RETRY_BACKOFF_MS,
@@ -26,6 +39,10 @@ import {
 } from './webhook-dispatch.service';
 import { WebhookRetryWorker } from './webhook-retry.worker';
 import { PrismaService } from '../prisma/prisma.service';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+import { safeFetchPost, SsrfError } from '../branding/safe-fetch';
+
+const postMock = safeFetchPost as unknown as jest.Mock;
 
 // Silence the service's warn logs during the expected-failure cases.
 beforeAll(() => {
@@ -33,9 +50,6 @@ beforeAll(() => {
   jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined as any);
 });
 afterAll(() => jest.restoreAllMocks());
-
-const fetchMock = jest.fn();
-(globalThis as any).fetch = fetchMock;
 
 describe('WebhookDispatchService — retry scheduling (P1-5)', () => {
   describe('nextRetryDelayMs / backoff schedule', () => {
@@ -114,10 +128,10 @@ describe('WebhookDispatchService — retry scheduling (P1-5)', () => {
   });
 
   describe('attemptDelivery — wire format', () => {
-    beforeEach(() => fetchMock.mockReset());
+    beforeEach(() => postMock.mockReset());
 
     it('signs with the persisted timestamp so retries reproduce the same signature', async () => {
-      fetchMock.mockResolvedValue({ status: 200, ok: true, statusText: 'OK', text: async () => '' });
+      postMock.mockResolvedValue({ status: 200 });
       const prisma: any = { client: {} };
       const svc = new WebhookDispatchService(prisma as PrismaService);
       const out = await svc.attemptDelivery(
@@ -128,19 +142,21 @@ describe('WebhookDispatchService — retry scheduling (P1-5)', () => {
       );
       expect(out.ok).toBe(true);
       expect(out.status).toBe(200);
-      const [, init] = fetchMock.mock.calls[0];
+      // SSRF: the POST went through safeFetchPost (NOT global fetch).
+      const [url, init] = postMock.mock.calls[0];
+      expect(url).toBe('https://example.test/hook');
       // Same input timestamp + body → deterministic signature header.
       expect(init.headers['X-VenueOS-Timestamp']).toBe('1717000000000');
       expect(init.headers['X-VenueOS-Signature']).toMatch(/^sha256=[0-9a-f]{64}$/);
+      // The signed body is forwarded verbatim so the receiver can verify.
+      expect(init.body).toBe('{"event":"emergency.triggered"}');
     });
 
-    it('a non-2xx response is reported as not-ok with the status preserved', async () => {
-      fetchMock.mockResolvedValue({
-        status: 500,
-        ok: false,
-        statusText: 'Internal Server Error',
-        text: async () => 'boom',
-      });
+    it('a non-2xx response is reported as not-ok WITHOUT leaking the response body', async () => {
+      // safeFetchPost only returns a status — there is no upstream body to
+      // reflect. The recorded errorMessage must be a generic status string,
+      // never the receiver's response text (anti-exfil, Audit 35-SSRF).
+      postMock.mockResolvedValue({ status: 500 });
       const svc = new WebhookDispatchService({ client: {} } as PrismaService);
       const out = await svc.attemptDelivery(
         { id: 'wh1', url: 'https://example.test/hook', signingSecret: 's' },
@@ -150,13 +166,33 @@ describe('WebhookDispatchService — retry scheduling (P1-5)', () => {
       );
       expect(out.ok).toBe(false);
       expect(out.status).toBe(500);
-      expect(out.errorMessage).toContain('500');
+      expect(out.errorMessage).toBe('HTTP 500');
+    });
+
+    it('an SSRF rejection is recorded as a generic refusal, not the resolved IP', async () => {
+      // safeFetchPost throws SsrfError when the url resolves to a private /
+      // metadata IP. The outcome must NOT echo that IP back to the operator.
+      postMock.mockRejectedValue(
+        new SsrfError('DNS for evil.test resolved to private range (169.254.169.254)'),
+      );
+      const svc = new WebhookDispatchService({ client: {} } as PrismaService);
+      const out = await svc.attemptDelivery(
+        { id: 'wh1', url: 'http://evil.test/hook', signingSecret: 's' },
+        '{}',
+        'emergency.triggered',
+        1,
+      );
+      expect(out.ok).toBe(false);
+      expect(out.status).toBeNull();
+      expect(out.errorMessage).toBe('destination refused (not publicly reachable)');
+      // Critical: the private IP must not leak into the operator-visible field.
+      expect(out.errorMessage).not.toMatch(/169\.254|private range/);
     });
   });
 });
 
 describe('WebhookRetryWorker — claim + redeliver (P1-5)', () => {
-  beforeEach(() => fetchMock.mockReset());
+  beforeEach(() => postMock.mockReset());
 
   function makeWorker(opts: {
     claimed: Array<any>;
@@ -184,7 +220,7 @@ describe('WebhookRetryWorker — claim + redeliver (P1-5)', () => {
   }
 
   it('re-POSTs a claimed due row and marks it DELIVERED on a 2xx', async () => {
-    fetchMock.mockResolvedValue({ status: 200, ok: true, statusText: 'OK', text: async () => '' });
+    postMock.mockResolvedValue({ status: 200 });
     const { worker, prisma, deliveryUpdates } = makeWorker({
       claimed: [
         {
@@ -200,7 +236,7 @@ describe('WebhookRetryWorker — claim + redeliver (P1-5)', () => {
     });
 
     const res = await worker.tick();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(postMock).toHaveBeenCalledTimes(1);
     expect(res).toEqual({ claimed: 1, delivered: 1, failed: 0 });
     // The delivery row was flipped to DELIVERED.
     const final = deliveryUpdates.find((u) => u.where.id === 'dlv1');
@@ -209,12 +245,7 @@ describe('WebhookRetryWorker — claim + redeliver (P1-5)', () => {
   });
 
   it('reschedules a still-failing row that has retries left (stays PENDING)', async () => {
-    fetchMock.mockResolvedValue({
-      status: 502,
-      ok: false,
-      statusText: 'Bad Gateway',
-      text: async () => '',
-    });
+    postMock.mockResolvedValue({ status: 502 });
     const { worker, deliveryUpdates } = makeWorker({
       claimed: [
         {
@@ -238,12 +269,7 @@ describe('WebhookRetryWorker — claim + redeliver (P1-5)', () => {
   });
 
   it('marks a row FAILED once attempts are exhausted', async () => {
-    fetchMock.mockResolvedValue({
-      status: 500,
-      ok: false,
-      statusText: 'err',
-      text: async () => '',
-    });
+    postMock.mockResolvedValue({ status: 500 });
     const { worker, deliveryUpdates } = makeWorker({
       claimed: [
         {
@@ -281,7 +307,7 @@ describe('WebhookRetryWorker — claim + redeliver (P1-5)', () => {
     });
 
     const res = await worker.tick();
-    expect(fetchMock).not.toHaveBeenCalled(); // no POST to a dead webhook
+    expect(postMock).not.toHaveBeenCalled(); // no POST to a dead webhook
     expect(res.failed).toBe(1);
     const final = deliveryUpdates.find((u) => u.where.id === 'dlv1');
     expect(final?.data.status).toBe('FAILED');

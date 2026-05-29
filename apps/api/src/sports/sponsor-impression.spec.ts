@@ -118,6 +118,37 @@ describe('SponsorsController — POST :sponsorId/impression (PUBLIC route)', () 
     });
     expect(sponsorImpression.rows).toHaveLength(0);
   });
+
+  it('per-game rate-limits the beacon: 80/10s pass, the 81st is 429 (Audit 37-infra R-1)', async () => {
+    const { controller, sponsor, game } = setup();
+    seedValidPair(sponsor, game);
+    // 80 impressions for the same game id all succeed.
+    for (let i = 0; i < 80; i++) {
+      const res = await controller.impression('sp1', { gameId: 'game-1', surfaceKind: 'board' });
+      expect(res).toEqual({ ok: true });
+    }
+    // The 81st within the same 10s window is throttled — there is NO nginx
+    // layer on Railway, so this in-process limit is the only ceiling besides
+    // the global 600/min/IP.
+    await expect(
+      controller.impression('sp1', { gameId: 'game-1', surfaceKind: 'board' }),
+    ).rejects.toMatchObject({ status: HttpStatus.TOO_MANY_REQUESTS });
+  });
+
+  it('rate-limit is per-game — a flood on game-1 does not throttle game-2', async () => {
+    const { controller, sponsor, game } = setup();
+    seedValidPair(sponsor, game);
+    game.rows.push({ id: 'game-2', tenantId: TENANT, status: 'LIVE', startedAt: new Date(), endedAt: null });
+    for (let i = 0; i < 80; i++) {
+      await controller.impression('sp1', { gameId: 'game-1' });
+    }
+    // game-1 is now exhausted, but game-2 has its own fresh window.
+    await expect(
+      controller.impression('sp1', { gameId: 'game-1' }),
+    ).rejects.toMatchObject({ status: HttpStatus.TOO_MANY_REQUESTS });
+    const res = await controller.impression('sp1', { gameId: 'game-2' });
+    expect(res).toEqual({ ok: true });
+  });
 });
 
 describe('SponsorsService — recordImpression (cross-tenant hardening)', () => {

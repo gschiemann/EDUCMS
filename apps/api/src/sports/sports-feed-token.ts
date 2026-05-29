@@ -1,4 +1,5 @@
 import * as crypto from 'crypto';
+import { requireSecret } from '../security/required-secret';
 
 /**
  * Stateless, game-scoped feed token for EXTERNAL score ingestion.
@@ -23,11 +24,18 @@ import * as crypto from 'crypto';
  */
 
 function feedSecret(): string {
-  return (
-    process.env.SPORTS_FEED_SECRET ||
-    process.env.DEVICE_SECRET_KEY ||
-    'dev_only_feed_secret_CHANGE_ME'
-  );
+  // A dedicated SPORTS_FEED_SECRET wins if set. Otherwise fall back to
+  // DEVICE_SECRET_KEY via requireSecret, which THROWS in production when it
+  // is missing/empty (boot-validated anyway) and only yields a loud DEV-only
+  // fallback outside prod. 2026-05-29 (Audit 34-supplychain P3): the prior
+  // `||'dev_only_feed_secret_CHANGE_ME'` literal was NODE_ENV-ungated — dead
+  // in prod only by transitive boot-gate luck. Now it's explicit + consistent
+  // with the other secret call-sites.
+  const dedicated = process.env.SPORTS_FEED_SECRET;
+  if (dedicated && dedicated.trim().length >= 16) return dedicated;
+  return requireSecret('DEVICE_SECRET_KEY', {
+    devFallback: 'dev_only_feed_secret_CHANGE_ME',
+  });
 }
 
 export function makeFeedToken(gameId: string): string {

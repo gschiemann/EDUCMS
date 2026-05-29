@@ -152,6 +152,101 @@ export interface SafeFetchOptions {
   redirectCount?: number;    // internal; don't pass
 }
 
+export interface SafePostOptions {
+  body: string;
+  headers?: Record<string, string>;
+  maxBytes?: number;         // default 64 KB — we only need a small status echo
+  timeoutMs?: number;        // default 8000
+}
+
+/**
+ * SSRF-safe POST for OUTBOUND, user/operator-supplied destination URLs
+ * (e.g. tenant webhook delivery). Same defense as `safeFetch`:
+ *   - up-front `validatePublicUrl` (scheme / port / IP-literal block)
+ *   - DNS resolve + reject any private/loopback/link-local address
+ *   - connect-time `ssrfSafeLookup` pin so the socket only ever reaches an
+ *     address THIS validated — closes the DNS-rebind TOCTOU even though the
+ *     up-front resolve and the connect resolve are separate lookups
+ *
+ * Deliberately does NOT follow redirects (a 3xx from a webhook receiver is a
+ * misconfiguration, and following one would re-open a rebind/redirect-to-
+ * internal surface for a POST with a signed body). Reads at most `maxBytes`
+ * of the response so a hostile receiver can't stream us an unbounded body —
+ * but the caller MUST NOT reflect that body back to operators (it can be the
+ * contents of an internal service if a private IP somehow slipped through).
+ */
+export async function safeFetchPost(
+  rawUrl: string,
+  opts: SafePostOptions,
+): Promise<{ status: number }> {
+  const { body, headers = {}, maxBytes = 64 * 1024, timeoutMs = 8000 } = opts;
+
+  // Throws SsrfError on bad scheme / port / private IP literal. This is the
+  // first gate; the connect-time pin below is the rebind-proof second gate.
+  const url = validatePublicUrl(rawUrl);
+
+  // DNS-resolve and verify every returned address is public BEFORE we open
+  // the socket (mirrors safeFetch).
+  if (!isIP(url.hostname)) {
+    try {
+      const results = await lookup(url.hostname, { all: true });
+      if (!results.length) throw new SsrfError(`DNS returned no addresses for ${url.hostname}`);
+      for (const r of results) {
+        if (isPrivateIp(r.address)) {
+          throw new SsrfError(`DNS for ${url.hostname} resolved to private range (${r.address})`);
+        }
+      }
+    } catch (e) {
+      if (e instanceof SsrfError) throw e;
+      throw new SsrfError(`DNS lookup failed for ${url.hostname}`);
+    }
+  }
+
+  const isHttps = url.protocol === 'https:';
+  const lib = isHttps ? https : http;
+  const payload = Buffer.from(body, 'utf8');
+
+  return await new Promise<{ status: number }>((resolve, reject) => {
+    const req = lib.request(
+      url,
+      {
+        method: 'POST',
+        lookup: ssrfSafeLookup as any, // ← the SSRF connect-time pin (rebind-proof)
+        timeout: timeoutMs,
+        headers: {
+          ...headers,
+          'Content-Length': String(payload.length),
+        },
+      },
+      (res) => {
+        const status = res.statusCode || 0;
+        // Drain a bounded amount so we don't leak fds / let a hostile
+        // receiver stream forever, then discard — callers store only the
+        // status, never the body (anti-exfil).
+        let total = 0;
+        res.on('data', (c: Buffer) => {
+          total += c.length;
+          if (total > maxBytes) {
+            res.destroy();
+          }
+        });
+        res.on('end', () => resolve({ status }));
+        res.on('close', () => resolve({ status }));
+        res.on('error', (e) => reject(new SsrfError(`Read failed: ${e.message}`)));
+      },
+    );
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new SsrfError('Request timed out'));
+    });
+    req.on('error', (e: any) => {
+      reject(e instanceof SsrfError ? e : new SsrfError(`Request failed: ${e?.message || e}`));
+    });
+    req.write(payload);
+    req.end();
+  });
+}
+
 /**
  * Fetch a public URL with all SSRF protections enabled. Returns the
  * body as a Buffer + content-type. Caller may decode to string (HTML /

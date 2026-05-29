@@ -623,6 +623,19 @@ window.addEventListener('load',function(){
         message = err.message;
       }
 
+      // HTML-escape before interpolating into the error page (Audit 35-XSS
+      // minor). These are server-built strings today, but escaping is cheap
+      // hygiene and removes the standing footgun if a user-influenced value
+      // ever reaches err.message.
+      const escapeHtml = (s: string) =>
+        String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      message = escapeHtml(message);
+
       res.status(status).send(`
         <!DOCTYPE html>
         <html>

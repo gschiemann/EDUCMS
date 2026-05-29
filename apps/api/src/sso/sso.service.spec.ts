@@ -88,6 +88,44 @@ describe('SsoService', () => {
     });
   });
 
+  // Audit 34-supplychain P0-1 stopgap (CVE-2025-54419): the unauthenticated
+  // SAML callback must reject unless an ENABLED SAML config exists. Before
+  // the fix it only checked provider==='SAML', leaving the vulnerable
+  // passport-saml validatePostResponse reachable for any tenant with a SAML
+  // config row that was never turned on.
+  describe('validateSamlCallback — enabled-config gate', () => {
+    it('rejects when no SSO config exists', async () => {
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce(null);
+      await expect(
+        service.validateSamlCallback(tenant.slug, 'base64SAMLResponse'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rejects when the SAML config exists but is DISABLED (enabled=false)', async () => {
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce({
+        id: 'c1',
+        provider: 'SAML',
+        enabled: false,
+        x509Cert: null,
+      });
+      // Must throw BEFORE ever calling passport-saml's validatePostResponse.
+      await expect(
+        service.validateSamlCallback(tenant.slug, 'base64SAMLResponse'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rejects when the configured provider is OIDC, not SAML', async () => {
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce({
+        id: 'c1',
+        provider: 'OIDC',
+        enabled: true,
+      });
+      await expect(
+        service.validateSamlCallback(tenant.slug, 'base64SAMLResponse'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
   describe('upsertConfig', () => {
     it('rejects invalid provider', async () => {
       await expect(

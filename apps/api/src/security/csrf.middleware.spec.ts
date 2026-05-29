@@ -57,6 +57,19 @@ describe('isCsrfExempt', () => {
     expect(isCsrfExempt('POST', '/api/v1/notifications/abc/read')).toBe(false);
     expect(isCsrfExempt('POST', '/api/v1/notifications/read-all')).toBe(false);
   });
+
+  it('exempts the public sponsor impression beacon (Audit 37-infra R-2)', () => {
+    // Stadium board / ribbon / scorebug fire this cross-origin from the
+    // kiosk WebView with no CSRF cookie. Hardened via per-game rate limit +
+    // server-side tenant-match instead of CSRF.
+    expect(isCsrfExempt('POST', '/api/v1/sports/sponsors/sp-123/impression')).toBe(true);
+    // The CTS celebration-fired forensic write — same machine-to-machine
+    // argument as /feed and /cts-snapshot.
+    expect(isCsrfExempt('POST', '/api/v1/sports/board/game-1/cts-cue-fired')).toBe(true);
+    // Sanity — the GUARDED sponsor CRUD routes are NOT exempt.
+    expect(isCsrfExempt('POST', '/api/v1/sports/sponsors')).toBe(false);
+    expect(isCsrfExempt('DELETE', '/api/v1/sports/sponsors/sp-123')).toBe(false);
+  });
 });
 
 describe('CsrfMiddleware', () => {

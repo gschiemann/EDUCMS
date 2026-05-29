@@ -213,8 +213,22 @@ export class SsoService {
    */
   async validateSamlCallback(tenantSlug: string, samlResponseB64: string): Promise<SsoCallbackProfile> {
     const { config } = await this.getConfigByTenantSlug(tenantSlug);
-    if (!config || config.provider !== 'SAML') {
-      throw new BadRequestException('SAML SSO is not configured');
+    // SECURITY (Audit 34-supplychain P0-1, CVE-2025-54419 stopgap): hard-gate
+    // the UNAUTHENTICATED SAML callback on an ENABLED SAML config. Previously
+    // this only checked `provider !== 'SAML'`, looser than the login path
+    // (buildSamlLoginUrl already requires enabled). Without the enabled gate,
+    // a tenant that has a SAML config row but has NOT turned it on still has a
+    // live `validatePostResponse` path exposed.
+    //
+    // SECURITY: migrate off vulnerable passport-saml@3 (CVE-2025-54419)
+    // before enabling SAML for any tenant. passport-saml 3.x has NO patched
+    // release; the fix is the API-incompatible @node-saml/passport-saml v5+
+    // migration, deliberately deferred to a separate task. Exposure today is
+    // 0 SAML-enabled tenants (verified against prod), so this enabled-gate is
+    // the correct interim control: with 0 enabled configs the vulnerable
+    // verifier is unreachable.
+    if (!config || config.provider !== 'SAML' || !config.enabled) {
+      throw new BadRequestException('SAML SSO is not enabled for this tenant');
     }
     const cert = decryptSecret(config.x509Cert) ?? '';
     try {

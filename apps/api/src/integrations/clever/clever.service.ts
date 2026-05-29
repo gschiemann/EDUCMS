@@ -4,6 +4,7 @@ import type { CleverHttpClient, CleverUser } from './clever-http.client';
 import { RealCleverHttpClient } from './clever-http.client';
 import { decryptToken, encryptToken } from './clever-crypto';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { requireSecret } from '../../security/required-secret';
 
 // State envelope signed with HMAC-SHA256 over (tenantId|nonce|ts). Defends
 // against the historical "swap the state param to bind your Clever org to a
@@ -11,10 +12,13 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 // boot-validated as a >=16-char secret by required-secret.ts in production).
 const STATE_TTL_MS = 15 * 60 * 1000; // 15 min — OAuth round-trips finish in seconds
 function stateSecret(): string {
-  return (
-    process.env.DEVICE_SECRET_KEY ||
-    'dev-only-clever-state-fallback-do-not-use-in-production-1234567890'
-  );
+  // 2026-05-29 (Audit 34-supplychain P3): route through requireSecret so the
+  // dev fallback is THROWN in production (consistent with every other secret
+  // call-site) instead of being a NODE_ENV-ungated public literal that's dead
+  // in prod only by boot-gate transitivity.
+  return requireSecret('DEVICE_SECRET_KEY', {
+    devFallback: 'dev-only-clever-state-fallback-do-not-use-in-production-1234567890',
+  });
 }
 function signStatePayload(tenantId: string, nonce: string, ts: number): string {
   return createHmac('sha256', stateSecret())

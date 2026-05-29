@@ -53,6 +53,19 @@ import { SponsorsService } from './sponsors.service';
 export class SponsorsController {
   constructor(private readonly sponsors: SponsorsService) {}
 
+  // Per-game in-memory rate limit for the PUBLIC impression beacon (Audit
+  // 37-infra R-1). The old code claimed an "nginx / infra layer" handled
+  // this, but railway.json runs no nginx — so the only ceiling was the
+  // global 600/min/IP. Anyone holding a board's (game UUID) could inflate
+  // proof-of-play counts and amplify DB writes. A real board fires a
+  // handful of impressions/sec across all sponsors; 80/10s/game is generous
+  // headroom while capping a flood from a single known game id. Sliding
+  // 10s window. Memory-only (per-replica) — acceptable: it bounds DB-write
+  // amplification per pod, and the value is informational, not life-safety.
+  private readonly impressionHits = new Map<string, number[]>();
+  private static readonly IMPRESSION_WINDOW_MS = 10_000;
+  private static readonly IMPRESSION_MAX_PER_WINDOW = 80;
+
   @Get()
   @UseGuards(JwtAuthGuard, RbacGuard)
   @RequireRoles(
@@ -96,7 +109,9 @@ export class SponsorsController {
    * the game and only writes when they share a tenant, so an anonymous caller
    * cannot write a row that crosses tenants. The worst it can do is inflate
    * the counts of a game it already knows the (unguessable UUID) id of.
-   * Rate-limit is handled at the nginx / infra layer.
+   * Per-game in-memory rate limit (80/10s) caps that abuse and the DB-write
+   * amplification it would otherwise allow (Audit 37-infra R-1) — there is
+   * NO nginx layer on Railway, contrary to the prior comment.
    */
   @Post(':sponsorId/impression')
   async impression(
@@ -106,6 +121,21 @@ export class SponsorsController {
     if (!body || typeof body.gameId !== 'string' || !body.gameId) {
       throw new HttpException('gameId is required', HttpStatus.BAD_REQUEST);
     }
+
+    // Per-game sliding-window rate limit. Keyed by game id (the natural
+    // proof-of-play unit) so one busy game can't starve another, and a leaked
+    // game id can't be used to flood the DB. Prune-then-check-then-record.
+    const now = Date.now();
+    const recent = (this.impressionHits.get(body.gameId) || []).filter(
+      (t) => t > now - SponsorsController.IMPRESSION_WINDOW_MS,
+    );
+    if (recent.length >= SponsorsController.IMPRESSION_MAX_PER_WINDOW) {
+      this.impressionHits.set(body.gameId, recent);
+      throw new HttpException('Impression rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    recent.push(now);
+    this.impressionHits.set(body.gameId, recent);
+
     const surfaceKind = ['board', 'ribbon', 'scorebug'].includes(body.surfaceKind ?? '')
       ? (body.surfaceKind as string)
       : 'board';
