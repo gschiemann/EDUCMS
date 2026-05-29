@@ -11,10 +11,18 @@
  *   - Provider order: OpenAI 4o-mini vision (cheapest at $0.002/call)
  *     when an OPENAI_API_KEY is available on the tenant OR platform.
  *     Falls back to Anthropic claude-3-5-haiku with vision (similar
- *     cost) when only an ANTHROPIC_API_KEY is configured. Google Gemini
- *     vision is not yet supported here because the gemini-2.5-flash
- *     vision interface is more verbose to wire and the two-provider
- *     fallback covers the common BYOK + platform cases.
+ *     cost) when only an ANTHROPIC_API_KEY is configured.
+ *   - Google/Gemini vision IS now supported (2026-05-29 audit §3/§4
+ *     fix). The Gemini 2.x models are natively multimodal; we send the
+ *     image as an `inlineData` part (base64) to
+ *     `…/models/<model>:generateContent` with the key in the
+ *     `x-goog-api-key` HEADER (never on the URL — Google echoes the URL
+ *     in error bodies). This closes the gap where a tenant who set a
+ *     Google BYOK key got sparkle + touch-template but SILENTLY no
+ *     alt-text (the skip even falsely claimed "no provider configured").
+ *     Google vision is only ever used via BYOK (the platform fallback
+ *     keys are still OpenAI→Anthropic); a Google-keyed tenant uses
+ *     their configured gemini-* model.
  *   - Hard 5-second AbortSignal timeout per provider call. Alt-text is
  *     fire-and-forget from the controller, so the budget is small and
  *     should never block an upload.
@@ -40,7 +48,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { openAiKey } from './ai-key-cipher';
-import { mapProviderQuotaError } from './ai-providers';
+import { mapProviderQuotaError, defaultModelFor } from './ai-providers';
+
+/** Providers whose vision API alt-text supports. All three of the
+ *  catalog providers are now covered (OpenAI + Anthropic via platform
+ *  or BYOK, Google via BYOK). Kept as a named type so the quota-error
+ *  + result shapes stay in lock-step with resolveProvider. */
+type AltTextProvider = 'openai' | 'anthropic' | 'google';
 
 // Conservative cost estimates (USD per image @ ≤300-token reply,
 // includes the base64 image payload tokenization). These match the
@@ -51,6 +65,11 @@ import { mapProviderQuotaError } from './ai-providers';
 //   * claude-3-5-haiku  $1.00/M in, $5.00/M out → ~$0.003-0.005/call
 const OPENAI_EST_COST_USD = 0.002;
 const ANTHROPIC_EST_COST_USD = 0.004;
+//   * gemini-2.5-flash  $0.075/M in, $0.30/M out → ~$0.0005-0.0015/call
+//                   with image input. Cheapest of the three; Google's
+//                   free tier (1500 req/day) often makes it $0 for the
+//                   tenant.
+const GOOGLE_EST_COST_USD = 0.001;
 
 // Hard cap on persisted alt-text. WCAG short-alt ≤125 chars; this
 // matches the Prisma column VARCHAR(160). Anything longer is clipped
@@ -91,7 +110,7 @@ export interface GenerateAltTextArgs {
 
 export interface GenerateAltTextResult {
   altText: string;
-  provider: 'openai' | 'anthropic';
+  provider: AltTextProvider;
   model: string;
   /** Estimated USD spend for this call (catalog list price × tokens). */
   estCostUsd: number;
@@ -122,7 +141,7 @@ export interface GenerateAltTextResult {
  */
 export class AiAltTextQuotaError extends Error {
   constructor(
-    public readonly provider: 'openai' | 'anthropic',
+    public readonly provider: AltTextProvider,
     public readonly statusCode: number,
     message: string,
     public readonly code: 'AI_PROVIDER_OUT_OF_CREDIT' = 'AI_PROVIDER_OUT_OF_CREDIT',
@@ -143,43 +162,87 @@ export class AiAltTextService {
    * tenant's stored aiProvider preference first, falling back to
    * whichever platform env var is available.
    *
-   * Differs from AiService.resolveProviderKey because alt-text REQUIRES
-   * vision-capable models — Gemini wiring is deferred. Hard-prefers
-   * OpenAI 4o-mini (cheapest) when available; falls back to Anthropic.
+   * All three catalog providers now support vision alt-text:
+   *   - OpenAI    gpt-4o-mini (BYOK or platform OPENAI_API_KEY)
+   *   - Anthropic claude-3-5-haiku (BYOK or platform ANTHROPIC_API_KEY)
+   *   - Google    the tenant's gemini-* model (BYOK only — the platform
+   *               fallback keys are OpenAI→Anthropic, never Google)
+   *
+   * Returns one of three outcomes so the caller can emit an HONEST skip
+   * reason (2026-05-29 audit §3 fix — the old code logged
+   * `no_ai_provider_configured` even when a provider WAS configured but
+   * alt-text couldn't use it):
+   *   - { resolved }            → a usable vision provider + key
+   *   - { unsupportedProvider } → a BYOK key IS set, but for a provider
+   *                               alt-text can't use (no recognized
+   *                               vision branch). Caller emits
+   *                               `provider_unsupported_for_altext`.
+   *   - {}                      → no key at all anywhere. Caller emits
+   *                               `no_ai_provider_configured`.
    */
   private async resolveProvider(tenantId: string): Promise<{
-    provider: 'openai' | 'anthropic';
-    apiKey: string;
-    source: 'tenant' | 'platform';
-  } | null> {
-    // 1) Tenant BYOK — only if their key is for openai OR anthropic.
+    resolved?: {
+      provider: AltTextProvider;
+      apiKey: string;
+      model: string;
+      source: 'tenant' | 'platform';
+    };
+    /** Set when a BYOK key exists but its provider has no alt-text
+     *  vision branch — distinct from "no key at all". */
+    unsupportedProvider?: string;
+  }> {
+    // 1) Tenant BYOK — supports openai, anthropic, OR google for vision.
     const tenant = await this.prisma.client.tenant.findUnique({
       where: { id: tenantId },
-      select: { aiProvider: true, aiKeyEncrypted: true } as any,
+      select: { aiProvider: true, aiKeyEncrypted: true, aiModel: true } as any,
     }) as any;
     if (tenant?.aiKeyEncrypted && tenant?.aiProvider) {
       const provider = String(tenant.aiProvider).toLowerCase();
-      if (provider === 'openai' || provider === 'anthropic') {
+      if (provider === 'openai' || provider === 'anthropic' || provider === 'google') {
         try {
           const apiKey = openAiKey(tenant.aiKeyEncrypted);
-          return { provider: provider as 'openai' | 'anthropic', apiKey, source: 'tenant' };
+          // For Google we need the tenant's chosen gemini model (it
+          // drives the :generateContent URL). OpenAI/Anthropic pin a
+          // fixed cheap vision model below in generateImageAltText, so
+          // their model field here is unused. Fall back to the catalog
+          // default if the tenant somehow has no model saved.
+          const model = provider === 'google'
+            ? (typeof tenant.aiModel === 'string' && tenant.aiModel.trim()
+                ? tenant.aiModel.trim()
+                : defaultModelFor('google'))
+            : '';
+          return {
+            resolved: {
+              provider: provider as AltTextProvider,
+              apiKey,
+              model,
+              source: 'tenant',
+            },
+          };
         } catch (e: any) {
           // Decryption fail — log + try platform fallback.
           this.logger.warn(`Tenant ${tenantId} alt-text key decrypt failed: ${e?.message}`);
         }
+      } else {
+        // A BYOK key is configured but for a provider we have no vision
+        // branch for. With openai/anthropic/google all covered this is
+        // only reachable for a future/unknown provider — but we must
+        // NOT claim "no provider configured" (the §3 honesty bug).
+        return { unsupportedProvider: provider };
       }
     }
     // 2) Platform fallback — prefer OpenAI 4o-mini (cheapest); fall
-    // back to Anthropic Haiku.
+    // back to Anthropic Haiku. (No Google platform key — Google vision
+    // is BYOK-only above.)
     const openaiKey = process.env.OPENAI_API_KEY;
     if (openaiKey) {
-      return { provider: 'openai', apiKey: openaiKey, source: 'platform' };
+      return { resolved: { provider: 'openai', apiKey: openaiKey, model: '', source: 'platform' } };
     }
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
     if (anthropicKey) {
-      return { provider: 'anthropic', apiKey: anthropicKey, source: 'platform' };
+      return { resolved: { provider: 'anthropic', apiKey: anthropicKey, model: '', source: 'platform' } };
     }
-    return null;
+    return {};
   }
 
   /**
@@ -279,8 +342,26 @@ export class AiAltTextService {
       return null;
     }
 
-    // Guard 2: resolve a vision-capable provider.
-    const resolved = await this.resolveProvider(args.tenantId);
+    // Guard 2: resolve a vision-capable provider. Distinguish "no key
+    // at all" from "a key IS set but its provider can't do vision" so
+    // the skip reason is HONEST (2026-05-29 audit §3 fix).
+    const resolveOutcome = await this.resolveProvider(args.tenantId);
+    if (resolveOutcome.unsupportedProvider) {
+      await this.auditLog({
+        tenantId: args.tenantId,
+        userId: args.userId,
+        assetId: args.assetId,
+        action: 'AI_ALT_TEXT_SKIPPED',
+        details: {
+          reason: 'provider_unsupported_for_altext',
+          provider: resolveOutcome.unsupportedProvider,
+          message:
+            'This AI provider powers the text generators, but image alt-text needs OpenAI, Anthropic, or Google.',
+        },
+      });
+      return null;
+    }
+    const resolved = resolveOutcome.resolved;
     if (!resolved) {
       await this.auditLog({
         tenantId: args.tenantId,
@@ -315,6 +396,11 @@ export class AiAltTextService {
         model = 'gpt-4o-mini';
         altText = await this.callOpenAi(resolved.apiKey, base64, mime, args.contextHint, model);
         estCost = OPENAI_EST_COST_USD;
+      } else if (resolved.provider === 'google') {
+        // BYOK Gemini — use the tenant's chosen gemini-* model.
+        model = resolved.model || defaultModelFor('google');
+        altText = await this.callGoogle(resolved.apiKey, base64, mime, args.contextHint, model);
+        estCost = GOOGLE_EST_COST_USD;
       } else {
         model = 'claude-3-5-haiku-20241022';
         altText = await this.callAnthropic(resolved.apiKey, base64, mime, args.contextHint, model);
@@ -424,7 +510,7 @@ export class AiAltTextService {
    * about Anthropic 402/400 + OpenAI 429.
    */
   private throwMappedProviderError(
-    provider: 'openai' | 'anthropic',
+    provider: AltTextProvider,
     status: number,
     body: string,
   ): never {
@@ -435,7 +521,7 @@ export class AiAltTextService {
     // Pure rate-limit (helper → null) or any other non-2xx → generic
     // error → caller logs + returns null. The provider name + status
     // are preserved in the message for the audit row.
-    const label = provider === 'openai' ? 'OpenAI' : 'Anthropic';
+    const label = provider === 'openai' ? 'OpenAI' : provider === 'google' ? 'Google' : 'Anthropic';
     throw new Error(`${label} ${status}: ${body.slice(0, 200)}`);
   }
 
@@ -489,6 +575,76 @@ export class AiAltTextService {
     const json = (await res.json()) as any;
     const text = json?.choices?.[0]?.message?.content;
     return typeof text === 'string' && text.trim() ? text.trim() : null;
+  }
+
+  /**
+   * Google/Gemini vision call (2026-05-29 audit §3/§4 fix). Gemini 2.x
+   * models are natively multimodal — the image rides as an `inlineData`
+   * part (base64 + mimeType) alongside the text part under
+   * `contents[0].parts`, with the alt-text instruction as a
+   * `systemInstruction` sibling (same shape as the text-gen client in
+   * ai-providers.ts).
+   *
+   * SECURITY — the key goes in the `x-goog-api-key` HEADER, never on the
+   * URL: Google echoes the request URL in INVALID_ARGUMENT / quota /
+   * 429 error bodies, and those bodies flow into the audit row + logs.
+   * Header keeps the key out of `errorBody`; we ALSO redact any stray
+   * `key=…` substring belt-and-suspenders, mirroring the text-gen path.
+   *
+   * Same return contract as the OpenAI/Anthropic variants: raw alt text
+   * on success, or throws via the shared mapProviderQuotaError helper
+   * (Google out-of-credit is HTTP 429 + RESOURCE_EXHAUSTED → quota
+   * error; other non-2xx → generic error → caller returns null).
+   */
+  private async callGoogle(
+    apiKey: string,
+    base64Image: string,
+    mimeType: string,
+    contextHint: string | undefined,
+    model: string,
+  ): Promise<string | null> {
+    const userText = contextHint
+      ? `Context (from filename — may be misleading): ${contextHint.slice(0, 200)}. Describe the image:`
+      : 'Describe the image:';
+    const url =
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}` +
+      `:generateContent`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: ALT_TEXT_SYSTEM_PROMPT }] },
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: userText },
+              { inlineData: { mimeType, data: base64Image } },
+            ],
+          },
+        ],
+        generationConfig: { maxOutputTokens: 300, temperature: 0.7 },
+      }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      let body = await res.text().catch(() => '');
+      // Belt-and-suspenders: redact any key=… that slipped into a
+      // forwarded error page before it reaches the audit row / logs.
+      body = body.replace(/[?&]key=[^&\s"']+/g, '&key=REDACTED');
+      // Out-of-credit → quota error; rate-limit / other → generic.
+      this.throwMappedProviderError('google', res.status, body);
+    }
+    const json = (await res.json()) as any;
+    // Gemini returns parts[] under candidates[0].content.parts.
+    const parts = json?.candidates?.[0]?.content?.parts;
+    const text = Array.isArray(parts)
+      ? parts.map((p: any) => p?.text ?? '').join('').trim()
+      : '';
+    return text ? text : null;
   }
 
   /**

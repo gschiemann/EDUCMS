@@ -25,6 +25,22 @@ export function coerceProvider(s: string | null | undefined): AiProvider | null 
 }
 
 /**
+ * Recognize OpenAI "reasoning" models (gpt-5 family, o1/o3/o4). These
+ * use the Chat Completions API but with a DIFFERENT parameter contract:
+ * `max_completion_tokens` instead of `max_tokens`, and they reject any
+ * non-default `temperature`. Sending the legacy params 400s on every
+ * call. Centralized here so both the text-gen dispatcher and the
+ * alt-text vision path branch identically. Match is prefix-based so a
+ * future `gpt-5.1` / `o3-mini` is covered without a catalog edit.
+ */
+export function isOpenAiReasoningModel(modelId: string | null | undefined): boolean {
+  const id = String(modelId || '').trim().toLowerCase();
+  if (!id) return false;
+  // gpt-5*, o1*, o3*, o4* are reasoning models. gpt-4* / gpt-3.5* are not.
+  return /^(gpt-5|o1|o3|o4)(-|$|\.|\d)/.test(id);
+}
+
+/**
  * Sanity check the shape of a provider key BEFORE we send it. This is
  * a UX guardrail — catches "you pasted the wrong thing" early without
  * burning a real API call. The provider validates for real on the
@@ -298,6 +314,16 @@ export async function dispatchAi(
   const requested = input.model || '';
   const model = isKnownModel(provider, requested) ? requested : defaultModelFor(provider);
 
+  // Temperature parity (2026-05-29 audit §3) — pin a single explicit
+  // temperature on ALL three providers. Previously only Google sent
+  // `0.7` (Anthropic + OpenAI fell through to each provider's default,
+  // ~1.0), so the same prompt produced noticeably more divergent copy
+  // on Anthropic/OpenAI than on Google. 0.7 keeps signage copy varied
+  // (the operator wants 3 distinct options) without the off-the-rails
+  // drift of 1.0. Reasoning models (see openai branch below) reject an
+  // explicit temperature, so it's applied per-branch, not globally.
+  const TEMPERATURE = 0.7;
+
   // SECURITY (audit-B2 fix, 2026-05-25) — Node 20's `fetch` has no
   // default timeout. A hung provider would hold an Express handler
   // open indefinitely; with our small Railway dyno + 10-connection
@@ -319,6 +345,7 @@ export async function dispatchAi(
       body: JSON.stringify({
         model,
         max_tokens: input.maxTokens,
+        temperature: TEMPERATURE,
         system: input.system,
         messages: [{ role: 'user', content: input.userPrompt }],
       }),
@@ -335,20 +362,40 @@ export async function dispatchAi(
   if (provider === 'openai') {
     // Use chat completions (not the new /v1/responses) for max compat
     // with operators who configured a key on a non-current account.
+    //
+    // 2026-05-29 audit §5 (gpt-5 catalog) — OpenAI's reasoning models
+    // (gpt-5 family, o1/o3/o4) REJECT the legacy `max_tokens` param
+    // with a 400 ("Unsupported parameter: 'max_tokens' is not
+    // supported with this model. Use 'max_completion_tokens' instead.")
+    // AND reject any non-default `temperature` ("Unsupported value:
+    // 'temperature' does not support 0.7 ... only the default (1) is
+    // supported."). Branch the request body so the catalog's gpt-5
+    // Premium tier actually works instead of 400-ing on every call.
+    // Non-reasoning models (gpt-4o-mini, gpt-4.1) keep the classic
+    // `max_tokens` + explicit temperature for parity with the other
+    // providers.
+    const reasoning = isOpenAiReasoningModel(model);
+    const body: Record<string, any> = {
+      model,
+      messages: [
+        { role: 'system', content: input.system },
+        { role: 'user', content: input.userPrompt },
+      ],
+    };
+    if (reasoning) {
+      body.max_completion_tokens = input.maxTokens;
+      // Reasoning models only accept the default temperature — omit it.
+    } else {
+      body.max_tokens = input.maxTokens;
+      body.temperature = TEMPERATURE;
+    }
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${input.apiKey}`,
       },
-      body: JSON.stringify({
-        model,
-        max_tokens: input.maxTokens,
-        messages: [
-          { role: 'system', content: input.system },
-          { role: 'user', content: input.userPrompt },
-        ],
-      }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
@@ -387,7 +434,7 @@ export async function dispatchAi(
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: input.system }] },
         contents: [{ role: 'user', parts: [{ text: input.userPrompt }] }],
-        generationConfig: { maxOutputTokens: input.maxTokens, temperature: 0.7 },
+        generationConfig: { maxOutputTokens: input.maxTokens, temperature: TEMPERATURE },
       }),
       // SECURITY (audit-B2 fix) — see fetch-timeout note above the
       // anthropic branch.

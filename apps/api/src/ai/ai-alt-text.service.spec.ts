@@ -11,11 +11,21 @@
  *   4. Non-image mime (audio/video) → null + audit "skipped: not_an_image".
  *   5. No provider configured → null + audit "skipped: no_ai_provider_configured".
  *   6. Long output (>160 chars) → clipped to 159 chars + ellipsis.
+ *
+ * 2026-05-29 audit §3/§4 additions:
+ *   7. Google/Gemini BYOK → vision alt-text works: request hits
+ *      :generateContent with the key in the x-goog-api-key HEADER (not
+ *      the URL) and an inlineData image part; caption parsed from
+ *      candidates[0].content.parts; provider='google', model=tenant's.
+ *   8. A BYOK key for a provider with no vision branch → null + audit
+ *      "skipped: provider_unsupported_for_altext" (NOT the misleading
+ *      "no_ai_provider_configured").
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { AiAltTextService, AiAltTextQuotaError } from './ai-alt-text.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { sealAiKey } from './ai-key-cipher';
 
 // Mock global fetch — every provider call goes through it.
 const fetchMock = jest.fn();
@@ -366,5 +376,144 @@ describe('AiAltTextService (P1-2)', () => {
 
     const tenant = tenantsById.get('tenant-1');
     expect(tenant.aiPlatformUsageCount).toBe(1);
+  });
+
+  // ── 2026-05-29 audit §3/§4 — Google/Gemini vision alt-text ──────────
+
+  it('uses Google/Gemini vision for a Google-BYOK tenant — valid request shape + caption parse', async () => {
+    // Tenant has a Google BYOK key + a chosen gemini model. NO platform
+    // env keys — proves the Google branch is taken via BYOK, not a
+    // platform OpenAI/Anthropic fallback.
+    tenantsById.set('tenant-1', {
+      id: 'tenant-1',
+      aiProvider: 'google',
+      aiKeyEncrypted: sealAiKey('AIzaTESTKEY1234567890'),
+      aiModel: 'gemini-2.5-flash',
+    });
+
+    let capturedUrl = '';
+    let capturedInit: any = null;
+    fetchMock.mockImplementation(async (url: string, init: any) => {
+      capturedUrl = url;
+      capturedInit = init;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: 'A soccer team celebrating a goal on the pitch.' }] } }],
+        }),
+      };
+    });
+
+    const result = await service.generateImageAltText({
+      tenantId: 'tenant-1',
+      assetId: 'asset-g',
+      imageBuffer: Buffer.from([0xff, 0xd8, 0xff]),
+      mimeType: 'image/jpeg',
+      contextHint: 'goal-celebration.jpg',
+    });
+
+    // Caption parsed + provider/model correct.
+    expect(result).not.toBeNull();
+    expect(result!.altText).toBe('A soccer team celebrating a goal on the pitch.');
+    expect(result!.provider).toBe('google');
+    expect(result!.model).toBe('gemini-2.5-flash');
+
+    // Request shape: model on the :generateContent URL, key OFF the URL.
+    expect(capturedUrl).toContain('generativelanguage.googleapis.com');
+    expect(capturedUrl).toContain('gemini-2.5-flash:generateContent');
+    expect(capturedUrl).not.toMatch(/[?&]key=/);
+
+    // Key rides in the x-goog-api-key HEADER.
+    expect(capturedInit.headers['x-goog-api-key']).toBe('AIzaTESTKEY1234567890');
+    expect(capturedInit.headers.authorization).toBeUndefined();
+
+    // Body carries an inlineData image part with the base64 + mime, plus
+    // a systemInstruction (the alt-text prompt).
+    const body = JSON.parse(capturedInit.body);
+    const parts = body.contents[0].parts;
+    const inline = parts.find((p: any) => p.inlineData);
+    expect(inline).toBeDefined();
+    expect(inline.inlineData.mimeType).toBe('image/jpeg');
+    expect(typeof inline.inlineData.data).toBe('string');
+    expect(inline.inlineData.data.length).toBeGreaterThan(0);
+    expect(body.systemInstruction).toBeDefined();
+
+    // Audit row written with provider=google.
+    const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_GENERATED');
+    expect(audit).toBeDefined();
+    expect(JSON.parse(audit.details).provider).toBe('google');
+  });
+
+  it('maps Google 429 RESOURCE_EXHAUSTED to AiAltTextQuotaError via the shared helper', async () => {
+    tenantsById.set('tenant-1', {
+      id: 'tenant-1',
+      aiProvider: 'google',
+      aiKeyEncrypted: sealAiKey('AIzaTESTKEY1234567890'),
+      aiModel: 'gemini-2.5-flash',
+    });
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      text: async () => JSON.stringify({ error: { status: 'RESOURCE_EXHAUSTED', message: 'Quota exceeded' } }),
+    });
+
+    let caught: any;
+    await service
+      .generateImageAltText({
+        tenantId: 'tenant-1',
+        imageBuffer: Buffer.from([0]),
+        mimeType: 'image/png',
+      })
+      .catch((e) => { caught = e; });
+
+    expect(caught).toBeInstanceOf(AiAltTextQuotaError);
+    expect(caught.provider).toBe('google');
+    expect(caught.code).toBe('AI_PROVIDER_OUT_OF_CREDIT');
+  });
+
+  // §3 honesty fix — a BYOK key IS configured but for a provider with no
+  // vision branch. The skip reason must say so, NOT lie
+  // "no_ai_provider_configured".
+  it('emits provider_unsupported_for_altext (not "no provider") when a configured provider has no vision branch', async () => {
+    // 'azure' is not a recognized vision provider. The tenant clearly
+    // HAS a key — the old code wrongly skipped with
+    // no_ai_provider_configured. Prove the honest reason now.
+    tenantsById.set('tenant-1', {
+      id: 'tenant-1',
+      aiProvider: 'azure',
+      aiKeyEncrypted: sealAiKey('some-azure-key-1234567890'),
+      aiModel: '',
+    });
+
+    const result = await service.generateImageAltText({
+      tenantId: 'tenant-1',
+      imageBuffer: Buffer.from([0]),
+      mimeType: 'image/jpeg',
+    });
+
+    expect(result).toBeNull();
+    const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_SKIPPED');
+    expect(audit).toBeDefined();
+    const details = JSON.parse(audit.details);
+    expect(details.reason).toBe('provider_unsupported_for_altext');
+    expect(details.reason).not.toBe('no_ai_provider_configured');
+    expect(details.provider).toBe('azure');
+    // No upstream call made.
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // Guard the "truly no key" path still reports the original reason.
+  it('still reports no_ai_provider_configured when there is genuinely no key anywhere', async () => {
+    // tenant-1 from beforeEach has aiProvider:null, aiKeyEncrypted:null;
+    // no platform env keys set.
+    const result = await service.generateImageAltText({
+      tenantId: 'tenant-1',
+      imageBuffer: Buffer.from([0]),
+      mimeType: 'image/jpeg',
+    });
+    expect(result).toBeNull();
+    const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_SKIPPED');
+    expect(JSON.parse(audit.details).reason).toBe('no_ai_provider_configured');
   });
 });

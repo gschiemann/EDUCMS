@@ -22,7 +22,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Sparkles, Loader2, X, RefreshCw, AlertCircle, Zap } from 'lucide-react';
+import { useParams } from 'next/navigation';
+import { Sparkles, Loader2, X, RefreshCw, AlertCircle, Zap, Settings2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
@@ -89,15 +90,34 @@ async function getAiStatusSource(): Promise<AiStatusSource> {
       __aiStatusCache = { source: src, fetchedAt: Date.now() };
       return src;
     } catch {
-      // Fail-open: if we can't reach the status endpoint, render the
-      // button (the modal's own error path will tell the operator
-      // what's wrong). Better than hiding a working feature.
-      return 'platform';
+      // 2026-05-29 audit §3 — reconcile the old FAIL-OPEN quirk. The
+      // previous behavior returned 'platform' on a status-fetch error,
+      // which rendered a fully-active generate button for a no-key
+      // tenant → click → POST /ai/generate → 503. We now treat an
+      // unreachable status endpoint as 'none', which renders the
+      // unobtrusive "Set up AI" affordance (a LINK to /settings/ai —
+      // it never calls generate, so it can never 503). The worst case
+      // is a configured tenant briefly sees "Set up AI" during an
+      // outage; clicking it lands on settings (where their key shows
+      // configured) instead of throwing. Do NOT cache the error result
+      // so the next mount re-checks promptly once the endpoint recovers.
+      return 'none';
     } finally {
       __aiStatusInflight = null;
     }
   })();
   return __aiStatusInflight;
+}
+
+/**
+ * Test-only: clear the module-level AI-status cache so each test starts
+ * from a clean slate (the status is cached globally with a 60s TTL).
+ * Mirrors the `__resetSessionLogoutFired` escape hatch in api-client.ts.
+ * Never called in app code.
+ */
+export function __resetAiStatusCacheForTests() {
+  __aiStatusCache = null;
+  __aiStatusInflight = null;
 }
 
 export function AiGenerateButton({
@@ -118,21 +138,60 @@ export function AiGenerateButton({
   defaultContext?: string;
 }) {
   const [open, setOpen] = useState(false);
-  // 2026-05-26 audit AI-P0-3 — don't render the sparkle button at all
-  // when the tenant has no AI configured AND there's no platform-tier
-  // fallback. Before this fix the button always rendered → operator
-  // clicked → modal opened → modal called /ai/generate → 503 "AI is
-  // not configured" → 3 clicks of wasted effort to learn what they
-  // should've known at button-render time. Initial state is `null`
-  // (loading); falsy → don't render. The status hook resolves within
-  // one round-trip and the button appears.
+  // 2026-05-26 audit AI-P0-3 + 2026-05-29 §3 discoverability.
+  // Three render states driven by the cached /ai/key status:
+  //   - null  (loading)          → render nothing yet (avoids a flash;
+  //                                resolves within one round-trip)
+  //   - 'none' (no key anywhere) → render an UNOBTRUSIVE "Set up AI"
+  //                                affordance that LINKS to /settings/ai.
+  //                                It never calls generate, so it can
+  //                                never 503 — it just shows the
+  //                                operator that AI EXISTS and how to
+  //                                turn it on. Before this, the button
+  //                                vanished entirely and operators
+  //                                literally couldn't find the feature.
+  //   - 'platform' | 'tenant'    → render the real sparkle generate
+  //                                button (opens the modal).
   const [aiSource, setAiSource] = useState<AiStatusSource | null>(null);
   useEffect(() => {
     let alive = true;
     void getAiStatusSource().then((s) => { if (alive) setAiSource(s); });
     return () => { alive = false; };
   }, []);
-  if (aiSource === 'none') return null;
+
+  // Resolve the schoolId from the dynamic route so the "Set up AI" link
+  // points at /[schoolId]/settings/ai (the real, tenant-scoped route),
+  // not a bare /settings/ai which 404s — same fix pattern as the
+  // streaming-picker links in PropertiesPanel. Falls back to the
+  // unscoped path only if we're somehow rendered outside the route.
+  const routeParams = useParams<{ schoolId?: string | string[] }>();
+  const schoolId = Array.isArray(routeParams?.schoolId)
+    ? routeParams.schoolId[0]
+    : routeParams?.schoolId;
+  const aiSettingsHref = schoolId ? `/${schoolId}/settings/ai` : '/settings/ai';
+
+  // Loading — don't flash anything.
+  if (aiSource === null) return null;
+
+  // No AI configured — show the discoverable "Set up AI" link. It is a
+  // real <a> (keyboard-focusable, opens settings in a new tab) styled
+  // subtly so it doesn't compete with the operator's content fields.
+  // Crucially it does NOT call /ai/generate, so no click→503.
+  if (aiSource === 'none') {
+    return (
+      <a
+        href={aiSettingsHref}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 hover:text-violet-600 px-1.5 py-0.5 rounded hover:bg-violet-50 transition-colors"
+        title="Add your AI provider key to generate copy with AI"
+        data-testid="ai-setup-affordance"
+      >
+        <Settings2 className="w-3 h-3" /> Set up AI
+      </a>
+    );
+  }
+
   return (
     <>
       <button
