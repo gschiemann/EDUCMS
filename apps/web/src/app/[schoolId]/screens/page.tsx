@@ -1184,7 +1184,7 @@ function ScreenSettingsMenu({
         title="Screen settings"
         aria-haspopup="true"
         aria-expanded={open}
-        className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-slate-800 hover:border-slate-300 hover:bg-slate-50 transition-all shadow-sm"
+        className="flex items-center justify-center h-11 w-11 sm:h-auto sm:w-auto sm:p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-slate-800 hover:border-slate-300 hover:bg-slate-50 transition-all shadow-sm"
       >
         <Settings className="w-4 h-4" />
       </button>
@@ -1500,7 +1500,12 @@ export default function ScreensPage() {
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">Pair devices, organize into groups, and manage your display fleet.</p>
         </div>
-        <div className="flex gap-2 items-center">
+        {/* Mobile (<sm): the control cluster goes full-width and wraps so
+            nothing (notably "New Group") is clipped off the right edge —
+            the segmented List/Map/Floor toggle gets its own full-width
+            row; Pair + New Group share the row below. Desktop is
+            unchanged: a single inline `flex gap-2 items-center` row. */}
+        <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
           {/* List / Map / Floor plans — three views of the same fleet.
               Floor plans was its own sidebar entry until 2026-04-27 when
               the operator pointed out "this is just another way to see
@@ -1513,18 +1518,18 @@ export default function ScreensPage() {
               behave identically — flip viewMode, render inline. The
               floor-plans/[id] pin-placement editor stays a separate
               route because it's a focused full-screen workflow. */}
-          <div className="inline-flex bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+          <div className="flex w-full sm:inline-flex sm:w-auto bg-slate-100 rounded-lg p-0.5 border border-slate-200">
             <button onClick={() => setViewMode('list')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              className={`flex-1 sm:flex-none justify-center px-3 py-2 sm:py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               <ListIcon className="w-3.5 h-3.5" /> List
             </button>
             <button onClick={() => setViewMode('map')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'map' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              className={`flex-1 sm:flex-none justify-center px-3 py-2 sm:py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'map' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               <MapIcon className="w-3.5 h-3.5" /> Map
             </button>
             <button
               onClick={() => setViewMode('floor')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'floor' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`flex-1 sm:flex-none justify-center px-3 py-2 sm:py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'floor' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               title="View floor plans (drag screens onto a building map)"
             >
               <MapPin className="w-3.5 h-3.5" /> Floor plans
@@ -1548,14 +1553,14 @@ export default function ScreensPage() {
               <button onClick={() => { setShowPairModal(true); setPairGroupId(''); setPairCode(''); setPairName(''); setPairError(''); }}
                 disabled={isViewer}
                 title={isViewer ? 'Read-only — viewer role' : undefined}
-                className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 sm:flex-none justify-center px-4 py-2.5 sm:py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: 'var(--brand-accent, var(--brand-primary, #4f46e5))' }}>
                 <Wifi className="w-4 h-4" /> Pair Screen
               </button>
               <button onClick={() => setShowCreateGroup(true)}
                 disabled={isViewer}
                 title={isViewer ? 'Read-only — viewer role' : undefined}
-                className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 sm:flex-none justify-center px-4 py-2.5 sm:py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: 'var(--brand-primary, #4f46e5)' }}>
                 <Plus className="w-4 h-4" /> New Group
               </button>
@@ -1741,7 +1746,15 @@ export default function ScreensPage() {
                 {screens.length > 0 ? (
                   <div className="p-2 space-y-1">
                     {screens.map((screen: any) => (
-                      <div key={screen.id} className="px-4 py-3 flex items-center gap-3.5 group/item hover:bg-slate-50 rounded-2xl transition-colors cursor-default">
+                      // Mobile (<sm): reflow this desktop flex row into a
+                      // stacked card — identity line, a wrapping status
+                      // line, then a 44px-target action row — so the
+                      // delete/location/gear buttons stop rendering off
+                      // the right edge. The three `sm:contents` wrappers
+                      // dissolve on desktop, leaving the original single
+                      // `flex items-center gap-3.5` row byte-for-byte.
+                      <div key={screen.id} className="px-4 py-3 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3.5 group/item hover:bg-slate-50 rounded-2xl transition-colors cursor-default">
+                        <div className="flex items-center gap-3.5 min-w-0 sm:contents">
                         <div className={`w-2.5 h-2.5 rounded-full shrink-0 shadow-sm ${screen.status === 'ONLINE' ? 'bg-emerald-500 shadow-emerald-500/50 animate-pulse' : 'bg-slate-300'}`} />
                         <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
                           <OsIcon os={screen.osInfo} status={screen.status} />
@@ -1816,6 +1829,13 @@ export default function ScreensPage() {
                             )}
                           </div>
                         </div>
+                        </div>
+                        {/* Status group — wraps onto its own line on mobile
+                            (so the cramped pill cluster stops clipping),
+                            dissolves to inline on desktop via sm:contents.
+                            The cache chip gains a word label on mobile so
+                            the bare 🛡️ emoji isn't the only signal. */}
+                        <div className="flex flex-wrap items-center gap-2 sm:contents">
                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg ${
                           screen.status === 'ONLINE' ? 'bg-emerald-50 text-emerald-600'
                             : screen.status === 'PENDING' ? 'bg-amber-50 text-amber-600'
@@ -1832,9 +1852,9 @@ export default function ScreensPage() {
                           }
                           const emCount = r?.emergency?.count || 0;
                           if (emCount > 0) {
-                            return <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700" title={`${emCount} emergency assets cached on disk`}>🛡️ ready</span>;
+                            return <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700" title={`${emCount} emergency assets cached on disk`}>🛡️<span className="sm:hidden"> Cache ready</span><span className="hidden sm:inline"> ready</span></span>;
                           }
-                          return <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700" title="No emergency assets cached — would fetch from network during an alert">🛡️ none</span>;
+                          return <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700" title="No emergency assets cached — would fetch from network during an alert">🛡️<span className="sm:hidden"> No cache</span><span className="hidden sm:inline"> none</span></span>;
                         })()}
                         {screen.lastPingAt && (
                           // Relative "Xm ago" at a glance, full datetime in the
@@ -1848,13 +1868,20 @@ export default function ScreensPage() {
                             {timeAgo(screen.lastPingAt)}
                           </span>
                         )}
+                        </div>
+                        {/* Action group — on mobile this is a left-aligned
+                            44px-target row above its own divider so every
+                            control is on-screen + thumb-reachable; on
+                            desktop sm:contents dissolves it back to the
+                            trailing inline icon buttons. */}
+                        <div className="flex items-center gap-2 pt-2 border-t border-slate-100 sm:contents sm:border-0 sm:pt-0">
                         {/* Sprint 8 — set or update map location. Always
                             visible now (was opacity-0 group-hover which
                             the operator reported as "weird — completely
                             hidden"). */}
                         <button
                           onClick={() => handleSetLocation(screen.id, screen.name, (screen as any).address)}
-                          className={`p-2 bg-white border border-slate-100 rounded-lg transition-all shadow-sm ${
+                          className={`flex items-center justify-center gap-1.5 h-11 px-3 sm:h-auto sm:p-2 bg-white border border-slate-100 rounded-lg transition-all shadow-sm ${
                             (screen as any).latitude != null
                               ? 'text-emerald-600 border-emerald-100 hover:bg-emerald-50'
                               : 'screens-ext-link text-slate-400'
@@ -1862,13 +1889,14 @@ export default function ScreensPage() {
                           title={(screen as any).latitude != null ? `On map: ${(screen as any).address || 'set'}` : 'Set map location'}
                         >
                           <MapPin className="w-4 h-4" />
+                          <span className="sm:hidden text-xs font-semibold">{(screen as any).latitude != null ? 'Location' : 'Set location'}</span>
                         </button>
                         {/* Delete — also always visible. Still muted
                             grey by default; only turns red on hover, so
                             an accidental tap is one explicit step away
                             from triggering the mutate. */}
                         <button onClick={async () => { if (await appConfirm({ title: 'Delete screen?', message: `"${screen.name}" will be removed and unpaired — this cannot be undone.`, tone: 'danger', confirmLabel: 'Delete' })) deleteScreen.mutate(screen.id); }}
-                          className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all shadow-sm"
+                          className="flex items-center justify-center h-11 w-11 sm:h-auto sm:w-auto sm:p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all shadow-sm"
                           title="Delete screen">
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1888,6 +1916,7 @@ export default function ScreensPage() {
                           refreshWebPending={refreshWeb.isPending}
                           previewHref={buildPreviewUrl(screen)}
                         />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1950,7 +1979,11 @@ export default function ScreensPage() {
               </div>
               <div className="p-2 space-y-1">
                 {ungroupedScreens.map((screen: any) => (
-                  <div key={screen.id} className="px-4 py-3 flex items-center gap-3.5 group/item hover:bg-slate-50 rounded-2xl transition-colors cursor-default">
+                  // Mobile (<sm): same stacked-card reflow as the grouped
+                  // rows — identity line, status line, action row — via
+                  // sm:contents wrappers that dissolve on desktop.
+                  <div key={screen.id} className="px-4 py-3 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3.5 group/item hover:bg-slate-50 rounded-2xl transition-colors cursor-default">
+                    <div className="flex items-center gap-3.5 min-w-0 sm:contents">
                     <div className={`w-2.5 h-2.5 rounded-full shrink-0 shadow-sm ${screen.status === 'ONLINE' ? 'bg-emerald-500 shadow-emerald-500/50 animate-pulse' : 'bg-slate-300'}`} />
                     <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
                       <OsIcon os={screen.osInfo} status={screen.status} />
@@ -1990,10 +2023,16 @@ export default function ScreensPage() {
                         )}
                       </div>
                     </div>
-                    {/* Add to group dropdown */}
-                    <div className="opacity-0 group-hover/item:opacity-100 transition-opacity flex items-center gap-2 mr-2">
-                      <select 
-                        className="text-[10px] border border-slate-200 rounded px-1.5 py-1 bg-white outline-none"
+                    </div>
+                    {/* Add to group dropdown — on mobile it's always
+                        visible (touch has no hover; the old
+                        opacity-0 group-hover made it permanently
+                        unreachable on a phone) and full-width on its own
+                        line; on desktop it keeps the hover-reveal
+                        behavior in its original position. */}
+                    <div className="opacity-100 sm:opacity-0 sm:group-hover/item:opacity-100 transition-opacity flex items-center gap-2 sm:mr-2">
+                      <select
+                        className="w-full sm:w-auto h-11 sm:h-auto text-xs sm:text-[10px] border border-slate-200 rounded-lg sm:rounded px-2.5 sm:px-1.5 py-1 bg-white outline-none"
                         onChange={(e) => {
                           if (e.target.value) {
                             updateScreen.mutateAsync({ id: screen.id, screenGroupId: e.target.value });
@@ -2007,6 +2046,9 @@ export default function ScreensPage() {
                         ))}
                       </select>
                     </div>
+                    {/* Status group — wraps to its own line on mobile,
+                        inline on desktop via sm:contents. */}
+                    <div className="flex flex-wrap items-center gap-2 sm:contents">
                     <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg ${
                       screen.status === 'ONLINE' ? 'bg-emerald-50 text-emerald-600'
                         : screen.status === 'PENDING' ? 'bg-amber-50 text-amber-600'
@@ -2023,8 +2065,12 @@ export default function ScreensPage() {
                         {timeAgo(screen.lastPingAt)}
                       </span>
                     )}
+                    </div>
+                    {/* Action group — 44px-target row above its own
+                        divider on mobile; sm:contents on desktop. */}
+                    <div className="flex items-center gap-2 pt-2 border-t border-slate-100 sm:contents sm:border-0 sm:pt-0">
                     <button onClick={async () => { if (await appConfirm({ title: 'Delete screen?', message: `"${screen.name}" will be removed and unpaired — this cannot be undone.`, tone: 'danger', confirmLabel: 'Delete' })) deleteScreen.mutate(screen.id); }}
-                      className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all shadow-sm"
+                      className="flex items-center justify-center h-11 w-11 sm:h-auto sm:w-auto sm:p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all shadow-sm"
                       title="Delete screen">
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -2039,6 +2085,7 @@ export default function ScreensPage() {
                       refreshWebPending={refreshWeb.isPending}
                       previewHref={buildPreviewUrl(screen)}
                     />
+                    </div>
                   </div>
                 ))}
               </div>

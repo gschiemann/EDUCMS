@@ -142,7 +142,31 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick }: P
 
   return (
     <div className="space-y-3">
-      <div className="relative h-[600px] w-full rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+      {/* Mobile (<sm): the legend renders ABOVE the map so the pin
+          colors are explained before you scroll past a tall map; on
+          desktop it stays below (sm:hidden here, sm:flex copy below). */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs sm:hidden">
+        {(Object.keys(STATUS_META) as StatusKey[]).map(k => {
+          const Icon = STATUS_META[k].icon;
+          return (
+            <div key={k} className="flex items-center gap-1.5">
+              <span
+                className="inline-flex items-center justify-center w-5 h-5 rounded-full ring-2 ring-white shadow"
+                style={{ background: STATUS_META[k].color }}
+                aria-hidden
+              >
+                <Icon className="w-3 h-3 text-white" strokeWidth={2.4} />
+              </span>
+              <span className="font-semibold text-slate-600">{STATUS_META[k].label}</span>
+              <span className="font-mono text-slate-400">({counts[k]})</span>
+            </div>
+          );
+        })}
+      </div>
+      {/* Map: capped to ~60% of the viewport on a phone (was a fixed
+          600px ≈ 73% of an iPhone, which buried the legend + occluded
+          the bottom under the tab bar). Full 600px on desktop. */}
+      <div className="relative h-[60dvh] max-h-[600px] sm:h-[600px] sm:max-h-none w-full rounded-xl overflow-hidden border border-slate-200 shadow-sm">
         <MapContainer
           center={defaultCenter}
           zoom={defaultZoom}
@@ -196,8 +220,10 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick }: P
 
       {/* Legend + summary — A3 a11y fix: legend swatch is the same
           colored pin + Lucide icon used on the map so a CVD user
-          can match each swatch to its on-map pin by SHAPE. */}
-      <div className="flex flex-wrap items-center gap-3 text-xs">
+          can match each swatch to its on-map pin by SHAPE.
+          Hidden on mobile (rendered above the map instead) so the
+          status key isn't buried below a tall map. */}
+      <div className="hidden sm:flex flex-wrap items-center gap-3 text-xs">
         {(Object.keys(STATUS_META) as StatusKey[]).map(k => {
           const Icon = STATUS_META[k].icon;
           return (
@@ -238,6 +264,22 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick }: P
           justify-content: center;
         }
         .edu-pin svg { display: block; }
+        /* Touch hit-target: the visible pin stays 24px (so dense
+           buildings don't turn into a blob), but on coarse pointers a
+           transparent overlay expands the tappable area to ~44px so a
+           thumb can land it reliably. WCAG 2.5.5 / Apple HIG min. */
+        @media (pointer: coarse) {
+          .edu-pin::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 44px;
+            height: 44px;
+            transform: translate(-50%, -50%);
+          }
+          .edu-pin { position: relative; }
+        }
         .edu-pin-pulse {
           animation: edu-pin-pulse 1.2s ease-in-out infinite;
         }

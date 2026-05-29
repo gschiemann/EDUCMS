@@ -11,7 +11,9 @@ export const ScreenMapClient = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-[600px] w-full rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center">
+      // Match ScreenMap's responsive height so the skeleton doesn't
+      // flash a 600px slab on a phone before the map mounts.
+      <div className="h-[60dvh] max-h-[600px] sm:h-[600px] sm:max-h-none w-full rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
       </div>
     ),
