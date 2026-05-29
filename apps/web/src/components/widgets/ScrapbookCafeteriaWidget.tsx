@@ -139,8 +139,8 @@ export function ScrapbookCafeteriaWidget({ config, live }: { config: Cfg; live?:
           <div className="sbc-caption" data-field="polaroidCaption" style={{ whiteSpace: 'pre-wrap' }}>{c.polaroidCaption || '~ snapped this morning ~'}</div>
         </div>
 
-        <div className="sbc-menuStack">
-          {cards.slice(0, 4).map((card, i) => (
+        <div className="sbc-menuStack" data-dense={cards.length > 4 ? 'true' : 'false'}>
+          {cards.slice(0, 8).map((card, i) => (
             <div
               key={i}
               className="sbc-card"
@@ -318,7 +318,8 @@ const CSS_SBC = `
 
 .sbc-menuStack {
   position: absolute; left: 1140px; top: 226px; width: 732px; height: 660px;
-  display: flex; flex-direction: column; gap: 22px;
+  display: flex; flex-direction: column;
+  min-height: 0; overflow: hidden;
 }
 .sbc-card {
   background: #fffaf0; padding: 18px 24px 18px;
@@ -328,9 +329,19 @@ const CSS_SBC = `
   transform: rotate(var(--rot, -1deg));
   background-image: repeating-linear-gradient(to bottom, transparent 0 36px, rgba(180,83,9,.18) 36px 37px);
   background-position: 0 14px;
-  flex: 1;
+  flex: 1 1 0; min-height: 0; overflow: hidden;
   display: flex; flex-direction: column; justify-content: center;
 }
+.sbc-card h3 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Per-child margin, NOT flex gap — Chromium-83 (NovaStar Taurus) lacks flex gap. */
+.sbc-card + .sbc-card { margin-top: 22px; }
+/* Dense menu (5–8 cards): tighter type + spacing so each shorter card
+   still reads cleanly. Fixed px + per-child margin (NOT gap) — Taurus/Chromium-83 safe. */
+.sbc-menuStack[data-dense="true"] .sbc-card + .sbc-card { margin-top: 12px; }
+.sbc-menuStack[data-dense="true"] .sbc-card { padding: 8px 22px; }
+.sbc-menuStack[data-dense="true"] .sbc-card h3 { font-size: 38px; }
+.sbc-menuStack[data-dense="true"] .sbc-card p { font-size: 20px; margin: 4px 0 6px; }
+.sbc-menuStack[data-dense="true"] .sbc-card::before { display: none; }
 .sbc-card::before {
   content: ''; position: absolute; top: -14px; left: 50%; transform: translateX(-50%) rotate(-3deg);
   width: 100px; height: 22px;

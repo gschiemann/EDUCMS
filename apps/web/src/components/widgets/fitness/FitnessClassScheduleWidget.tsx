@@ -120,8 +120,16 @@ export function FitnessClassScheduleWidget({
     if (nextIdx >= 0) annotated[nextIdx]._isNext = true;
   }
 
+  // After the last class of the day every row is past, so the normal
+  // "hide past" filter would empty the board — a wall display going
+  // blank at 8pm is a defect, not a feature. When nothing upcoming
+  // remains, show the full day ghosted (the "done for today" state)
+  // instead of rendering an empty board.
+  const hasUpcoming = annotated.some((r) => !r._isPast && r._minutesMark >= 0);
+  const dayIsOver = !hasUpcoming && annotated.length > 0;
+
   const visible = annotated
-    .filter((r) => showPast || !r._isPast || r._isNext)
+    .filter((r) => showPast || dayIsOver || !r._isPast || r._isNext)
     .slice(0, maxRows);
 
   // Intensity dots config
@@ -212,12 +220,17 @@ export function FitnessClassScheduleWidget({
         })}
       </div>
 
-      {/* Count of additional classes not shown */}
-      {allClasses.length > maxRows && (
+      {/* Footer: "done for today" when the day is over, else the
+          "N more classes" overflow count. Never leave the board blank. */}
+      {dayIsOver ? (
+        <div className="fcsw-more fcsw-more--done">
+          ✓ That&rsquo;s a wrap for today — see you tomorrow!
+        </div>
+      ) : allClasses.length > maxRows ? (
         <div className="fcsw-more">
           +{allClasses.length - maxRows} more classes today
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -231,6 +244,7 @@ const CSS = `
   color: #f8fafc;
   font-family: 'Inter', system-ui, sans-serif;
   container-type: size;
+  display: flex; flex-direction: column;
 }
 
 /* ─── Background stack ─── */
@@ -296,7 +310,9 @@ const CSS = `
 .fcsw-list {
   position: relative; z-index: 10;
   display: flex; flex-direction: column;
-  padding: 0 clamp(10px, 2.5cqw, 24px);
+  justify-content: space-between;
+  flex: 1 1 0; min-height: 0;
+  padding: 8px clamp(10px, 2.5cqw, 24px);
   overflow: hidden;
 }
 
@@ -305,10 +321,10 @@ const CSS = `
   position: relative;
   display: flex; align-items: center;
   gap: clamp(8px, 2cqw, 18px);
+  flex: 1 1 0; min-height: 0;
   padding: clamp(9px, 1.8cqh, 16px) clamp(8px, 1.5cqw, 14px);
   border-bottom: 1px solid rgba(255,255,255,0.055);
   border-radius: 6px;
-  margin: 1px 0;
   transition: background 300ms ease;
 }
 .fcsw-row:last-child {
@@ -452,11 +468,19 @@ const CSS = `
 /* ─── "N more" footer ─── */
 .fcsw-more {
   position: relative; z-index: 10;
+  flex: 0 0 auto;
   padding: clamp(6px, 1.2cqh, 10px) clamp(14px, 3.5cqw, 28px);
   font-family: 'Inter', sans-serif;
   font-size: clamp(9px, 1.4cqh, 12px);
   color: #334155;
   letter-spacing: 0.04em;
   border-top: 1px solid rgba(255,255,255,0.05);
+}
+/* "Done for today" state — brighter so it reads as a deliberate
+   end-of-day message, not the muted overflow count. */
+.fcsw-more--done {
+  color: var(--fcsw-accent, #00d4ff);
+  font-weight: 600;
+  letter-spacing: 0.08em;
 }
 `;

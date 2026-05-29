@@ -252,6 +252,9 @@ const CSS = `
   border-top: 1px solid rgba(0,0,0,0.12);
   padding-top: clamp(12px, 2.5cqh, 24px);
   min-height: 0;
+  /* Become a flex column so the day list can claim the remaining
+     height and spread the rows instead of bunching at the top. */
+  display: flex; flex-direction: column;
 }
 .rshw-hours-title {
   font-family: 'Inter', sans-serif;
@@ -261,15 +264,20 @@ const CSS = `
   text-transform: uppercase;
   opacity: 0.55;
   margin-bottom: clamp(8px, 1.5cqh, 14px);
+  flex: 0 0 auto;
 }
 .rshw-hours-list {
   list-style: none;
   padding: 0; margin: 0;
   display: flex; flex-direction: column;
+  /* Fill + distribute the 7 day rows across the card height. */
+  flex: 1 1 0; min-height: 0;
+  justify-content: space-between;
   gap: clamp(4px, 0.8cqh, 8px);
 }
 .rshw-hours-row {
   display: flex; align-items: baseline;
+  flex: 0 1 auto;
   gap: clamp(6px, 1cqw, 12px);
   font-family: 'Inter', sans-serif;
   font-weight: 500;

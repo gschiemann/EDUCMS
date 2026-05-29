@@ -139,6 +139,7 @@ const CSS = `
   container-type: size;
   padding: clamp(16px, 3cqh, 36px);
   box-sizing: border-box;
+  display: flex; flex-direction: column;
 }
 
 /* ─── Slate texture ─── */
@@ -167,6 +168,7 @@ const CSS = `
 /* ─── Header ─── */
 .bcm-header {
   position: relative; z-index: 10;
+  flex: 0 0 auto;
   display: flex; flex-direction: column; align-items: center;
   margin-bottom: clamp(8px, 2cqh, 18px);
 }
@@ -178,7 +180,11 @@ const CSS = `
   text-shadow:
     0 0 20px rgba(254,243,199,0.18),
     1px 1px 0 rgba(0,0,0,0.4);
-  line-height: 1;
+  /* Permanent Marker's glyphs ride above the cap line; line-height:1
+     inside an overflow:hidden root clipped the top of the title.
+     A touch more leading + padding gives the strokes room. */
+  line-height: 1.18;
+  padding-top: 0.08em;
 }
 .bcm-flourish {
   width: clamp(140px, 30cqw, 320px);
@@ -197,16 +203,22 @@ const CSS = `
 /* ─── Cocktail grid ─── */
 .bcm-grid {
   position: relative; z-index: 10;
+  flex: 1 1 0; min-height: 0;
   display: grid;
   grid-template-columns: repeat(var(--bcm-cols, 2), minmax(0, 1fr));
+  /* Equal-height rows that grow to fill the slate height so a short
+     list doesn't bunch at the top and leave the chalkboard half-empty. */
+  grid-auto-rows: minmax(0, 1fr);
   gap: clamp(6px, 1.4cqh, 14px) clamp(20px, 4cqw, 50px);
-  align-content: start;
+  align-content: stretch;
 }
 
 /* ─── Cocktail item ─── */
 .bcm-item {
   position: relative;
   font-family: 'Caveat', cursive;
+  display: flex; flex-direction: column; justify-content: center;
+  min-height: 0; overflow: hidden;
   padding: clamp(2px, 0.4cqh, 5px) 0;
 }
 .bcm-item--featured .bcm-item-name {
@@ -291,8 +303,10 @@ const CSS = `
 
 /* ─── Footer ─── */
 .bcm-footer {
-  position: absolute; left: 0; right: 0; bottom: clamp(10px, 2cqh, 22px);
+  position: relative;
+  flex: 0 0 auto;
   z-index: 10;
+  margin-top: 12px;
   display: flex; align-items: center; justify-content: center;
   gap: clamp(6px, 1.2cqw, 14px);
   font-family: 'Caveat', cursive;

@@ -72,7 +72,10 @@ export function RetailWayfindingMapWidget({
   const departments = c.departments && c.departments.length > 0 ? c.departments : DEMO_DEPARTMENTS;
   const heading = c.heading ?? 'Store Directory';
   const subheading = c.subheading ?? 'Find your aisle';
-  const youAreHere = c.youAreHere === null ? null : (c.youAreHere ?? { x: 50, y: 92 });
+  // Default the "you are here" pin to the empty floor in the bottom-left
+  // corner. The previous default (x:50, y:92) sat dead-center on top of
+  // the Checkout tile's label — "YOU ARE HERE" rendered over "CHECKOUT".
+  const youAreHere = c.youAreHere === null ? null : (c.youAreHere ?? { x: 16, y: 90 });
   const bg = c.bgColor ?? '#faf6f1';
   const ink = c.inkColor ?? '#1a1411';
   const accent = c.accentColor ?? '#9a2d2d';

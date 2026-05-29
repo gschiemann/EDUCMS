@@ -176,6 +176,7 @@ const CSS = `
   color: #f8fafc;
   font-family: 'Inter', system-ui, sans-serif;
   container-type: size;
+  display: flex; flex-direction: column;
 }
 
 /* ─── Background ─── */
@@ -204,6 +205,7 @@ const CSS = `
 /* ─── Header ─── */
 .btl-header {
   position: relative; z-index: 10;
+  flex: 0 0 auto;
   display: flex; align-items: baseline; justify-content: space-between;
   padding: clamp(10px, 2.5cqh, 22px) clamp(14px, 3cqw, 30px) clamp(8px, 2cqh, 14px);
   border-bottom: 2px solid rgba(245, 158, 11, 0.4);
@@ -237,11 +239,16 @@ const CSS = `
 /* ─── Grid ─── */
 .btl-grid {
   position: relative; z-index: 10;
+  flex: 1 1 0; min-height: 0;
   display: grid;
   grid-template-columns: repeat(var(--btl-cols, 2), minmax(0, 1fr));
+  /* Equal-height implicit rows that GROW to fill the board height —
+     the grid analogue of the cafeteria list's flex:1 1 0 rows.
+     Kills the dead band beneath a short tap list. */
+  grid-auto-rows: minmax(0, 1fr);
   gap: clamp(4px, 0.8cqh, 10px) clamp(10px, 2cqw, 22px);
   padding: clamp(8px, 2cqh, 16px) clamp(14px, 3cqw, 30px);
-  align-content: start;
+  align-content: stretch;
 }
 
 /* ─── Row ─── */

@@ -200,9 +200,12 @@ export function StorybookCafeteriaWidget({ config, live }: { config: Cfg; live?:
 
           <div className="book-spine" />
 
-          <div className="book-panels">
-            {menuItems.slice(0, 3).map((it, i) => {
-              const dropcap = (it.emoji || (it.name || '?').charAt(0) || '?').toString().charAt(0).toUpperCase();
+          <div className="book-panels" data-dense={menuItems.length > 4 ? 'true' : 'false'}>
+            {menuItems.slice(0, 8).map((it, i) => {
+              // Drop cap: prefer the item emoji, else the first letter of
+              // the name, else a "?" placeholder so an unnamed item still
+              // renders an illuminated initial rather than a blank cap.
+              const dropcap = (it.emoji || (it.name || '').charAt(0) || '?').toString().charAt(0).toUpperCase();
               const badges = (it.price || '').split(/[·•,]+/).map(s => s.trim()).filter(Boolean);
               return (
                 <div key={i} className="book-panel">
@@ -388,23 +391,39 @@ const CSS_BOOK = `
 
 .book-panels {
   grid-column: 3; grid-row: 2;
-  display: flex; flex-direction: column; gap: 18px; padding: 20px 12px;
+  display: flex; flex-direction: column; padding: 20px 12px;
+  min-height: 0; overflow: hidden;
 }
 .book-panel {
-  flex: 1;
+  flex: 1 1 0; min-height: 0; overflow: hidden;
   border: 2px solid #8b5a2b;
   background: rgba(255,248,225,.5);
   box-shadow: inset 0 0 0 5px #faecc6, inset 0 0 0 6px #8b5a2b;
-  padding: 16px 22px;
-  display: flex; gap: 18px; align-items: center;
+  padding: 12px 22px;
+  display: flex; align-items: center;
 }
 .book-dropcap {
   font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 110px;
   line-height: 1; color: #8b5a2b;
-  border-right: 2px solid #c89868; padding-right: 18px;
+  border-right: 2px solid #c89868; padding-right: 18px; flex: 0 0 auto;
 }
-.book-body { flex: 1; }
-.book-body h3 { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 46px; line-height: 1; margin: 0 0 6px; color: #3d2410; }
+.book-body { flex: 1 1 0; min-width: 0; margin-left: 18px; }
+.book-body h3 {
+  font-family: 'Cormorant Garamond', serif; font-weight: 700;
+  font-size: 46px; line-height: 1; margin: 0 0 6px; color: #3d2410;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Per-child margin, NOT flex gap — Chromium-83 (NovaStar Taurus) lacks flex gap.
+   Base panel-to-panel spacing + base row spacing handled via margin (see above). */
+.book-panel + .book-panel { margin-top: 14px; }
+/* Dense menu (5–8 items): smaller type + tighter margins so each shorter panel
+   reads cleanly without bleeding. Fixed px + margin (NOT gap) — Taurus-safe. */
+.book-panels[data-dense="true"] .book-panel + .book-panel { margin-top: 10px; }
+.book-panels[data-dense="true"] .book-dropcap { font-size: 60px; padding-right: 14px; }
+.book-panels[data-dense="true"] .book-panel { padding: 8px 18px; }
+.book-panels[data-dense="true"] .book-body { margin-left: 14px; }
+.book-panels[data-dense="true"] .book-body h3 { font-size: 32px; margin: 0 0 3px; }
+.book-panels[data-dense="true"] .book-body p { font-size: 18px; margin: 0 0 4px; }
 .book-body p  { font-family: 'Quattrocento', serif; font-size: 22px; color: #5d3a1a; margin: 0 0 10px; line-height: 1.3; }
 .book-badges { display: flex; gap: 8px; flex-wrap: wrap; }
 .book-badge {

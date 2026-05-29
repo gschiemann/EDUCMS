@@ -65,6 +65,7 @@ export function AnimatedAchievementShowcaseWidget({ config, live }: { config?: C
   const c = config || {};
   const isLive = !!live;
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
 
   useEffect(() => {
@@ -83,8 +84,44 @@ export function AnimatedAchievementShowcaseWidget({ config, live }: { config?: C
     return () => { cancelAnimationFrame(r1); cancelAnimationFrame(r2); ro.disconnect(); };
   }, []);
 
-  const leftHonors = (Array.isArray(c.leftHonors) && c.leftHonors.length > 0) ? c.leftHonors : DEFAULT_LEFT;
-  const rightHonors = (Array.isArray(c.rightHonors) && c.rightHonors.length > 0) ? c.rightHonors : DEFAULT_RIGHT;
+  const titleText = c.title || 'Student of the Week';
+  // Auto-fit the headline into a reserved 2-line band so a long
+  // school name shrinks to fit instead of wrapping down onto the date
+  // bar and the medal below it. Measured against canvas px (the scene
+  // is scaled as a whole), independent of the on-screen scale.
+  const TITLE_MAX_PX = 110;   // design size — used for short titles
+  const TITLE_MIN_PX = 44;    // floor so it stays legible at distance
+  const TITLE_BAND_H = 150;   // reserved height for up to 2 lines
+  const [titleFont, setTitleFont] = useState(TITLE_MAX_PX);
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    // Measure the UNCLAMPED wrapped height: temporarily lift the
+    // 2-line clamp so scrollHeight reflects the true text height, then
+    // step the font down until the title fits the reserved band.
+    const prevClamp = el.style.webkitLineClamp;
+    const prevOverflow = el.style.overflow;
+    el.style.webkitLineClamp = 'unset';
+    el.style.overflow = 'visible';
+    let size = TITLE_MAX_PX;
+    el.style.fontSize = size + 'px';
+    let guard = 0;
+    while (el.scrollHeight > TITLE_BAND_H && size > TITLE_MIN_PX && guard < 40) {
+      size -= 4;
+      el.style.fontSize = size + 'px';
+      guard += 1;
+    }
+    el.style.webkitLineClamp = prevClamp;
+    el.style.overflow = prevOverflow;
+    setTitleFont(size);
+  }, [titleText]);
+
+  // Cap each honor column to what fits the reserved band between the
+  // header (top: 300) and the stats row — an over-long roster used to
+  // bleed past the bottom of the canvas.
+  const MAX_HONORS = 8;
+  const leftHonors = ((Array.isArray(c.leftHonors) && c.leftHonors.length > 0) ? c.leftHonors : DEFAULT_LEFT).slice(0, MAX_HONORS);
+  const rightHonors = ((Array.isArray(c.rightHonors) && c.rightHonors.length > 0) ? c.rightHonors : DEFAULT_RIGHT).slice(0, MAX_HONORS);
   const stats = (Array.isArray(c.stats) && c.stats.length > 0) ? c.stats.slice(0, 4) : DEFAULT_STATS;
 
   const tickerText = useMemo(() => {
@@ -119,7 +156,7 @@ export function AnimatedAchievementShowcaseWidget({ config, live }: { config?: C
       >
         <div className="as-header">
           <div className="as-eyebrow" data-field="eyebrow" style={{ whiteSpace: 'pre-wrap' }}>{c.eyebrow || '★ Wall of Fame ★'}</div>
-          <div className="as-h1" data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || 'Student of the Week'}</div>
+          <div ref={titleRef} className="as-h1" data-field="title" style={{ fontSize: titleFont }}>{titleText}</div>
           <div className="as-dateBar" data-field="dateBar" style={{ whiteSpace: 'pre-wrap' }}>{c.dateBar || 'monday · april 19 · 2026'}</div>
         </div>
 
@@ -246,20 +283,33 @@ const CSS_AS = `
 }
 @keyframes as-rayspin { to { transform: rotate(360deg); } }
 
-.as-header { position: absolute; top: 40px; left: 0; right: 0; text-align: center; z-index: 5; }
+.as-header {
+  position: absolute; top: 40px; left: 0; right: 0;
+  /* Reserve the band between the top and the medal (top: 210) for the
+     header so the auto-fit headline + date bar can never collide with
+     the hero medal below. */
+  height: 165px;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  text-align: center; z-index: 5; padding: 0 60px;
+}
 .as-eyebrow {
   font-family: 'Inter', sans-serif; font-weight: 800; font-size: 26px;
   color: #fbbf24; letter-spacing: .4em; text-transform: uppercase;
   text-shadow: 0 0 18px rgba(251,191,36,.4);
+  white-space: pre-wrap;
 }
 .as-h1 {
-  font-family: 'Anton', sans-serif; font-size: 110px; line-height: .95;
+  font-family: 'Anton', sans-serif; line-height: .95;
+  /* font-size is auto-fit in JS to keep a long title inside the band. */
   letter-spacing: .02em;
   text-shadow: 0 0 30px rgba(251,191,36,.25);
   margin-top: 2px;
   background: linear-gradient(180deg, #fef3c7 0%, #fbbf24 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 6px 12px rgba(0,0,0,.4));
+  /* Never more than 2 lines, never taller than the reserved band. */
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; max-width: 100%;
 }
 .as-dateBar { font-family: 'Caveat', cursive; font-size: 32px; color: #e0e7ff; margin-top: 2px; }
 
@@ -355,6 +405,9 @@ const CSS_AS = `
 
 .as-honorRoll {
   position: absolute; top: 300px; width: 280px; z-index: 3;
+  /* Hard ceiling so the column can never bleed into the stats row at
+     the bottom, even if a config passes more entries than MAX_HONORS. */
+  max-height: 488px; overflow: hidden;
   display: flex; flex-direction: column; gap: 10px;
 }
 .as-left  { left: 36px;  transform: rotate(-2deg); }
@@ -378,8 +431,12 @@ const CSS_AS = `
   text-shadow: 0 0 8px rgba(251,191,36,.6);
 }
 .as-nm {
-  flex: 1; font-family: 'Inter', sans-serif; font-weight: 700;
+  flex: 1 1 0; min-width: 0;
+  font-family: 'Inter', sans-serif; font-weight: 700;
   font-size: 25px; color: #fff; line-height: 1.1;
+  /* Keep long honoree names on one line so an entry can't grow tall
+     and push the column past the stats row below it. */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .as-hEmoji { font-size: 28px; line-height: 1; }
 

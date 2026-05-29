@@ -209,17 +209,25 @@ const CSS = `
 }
 .rmb-col {
   display: flex; flex-direction: column;
+  /* Distribute items down the full column height so a short menu
+     fills the 1080px canvas instead of clumping at the top with a
+     dead band beneath it. */
+  justify-content: space-between;
   gap: clamp(8px, 1.6cqh, 18px);
+  min-height: 0;
   overflow: hidden;
 }
 
 .rmb-item {
   display: flex; flex-direction: column;
+  justify-content: center;
+  flex: 0 1 auto;
   gap: clamp(2px, 0.4cqh, 5px);
   padding-bottom: clamp(6px, 1.2cqh, 12px);
   border-bottom: 1px dashed currentColor;
   border-color: rgba(0,0,0,0.1);
 }
+.rmb-item:last-child { border-bottom: none; padding-bottom: 0; }
 .rmb-item-row {
   display: flex; justify-content: space-between; align-items: baseline;
   gap: clamp(8px, 1.4cqw, 18px);

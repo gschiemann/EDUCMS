@@ -224,13 +224,14 @@ const CSS = `
 
 .rcc-stage {
   position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 5;
-  display: flex; align-items: center; gap: clamp(14px, 3cqw, 36px);
+  display: flex; align-items: stretch; gap: clamp(14px, 3cqw, 36px);
   padding: clamp(40px, 8cqh, 80px) clamp(18px, 3cqw, 36px) clamp(18px, 3cqh, 32px);
 }
 
 .rcc-tile {
   position: relative;
   flex: 0 0 42%;
+  align-self: center;
   aspect-ratio: 1 / 1;
   max-height: 100%;
   border-radius: clamp(10px, 1.5cqh, 22px);
@@ -265,8 +266,11 @@ const CSS = `
 .rcc-info {
   flex: 1;
   display: flex; flex-direction: column;
+  /* Span the stage height and spread name → includes → price so the
+     info column fills the canvas instead of clumping in the middle. */
+  justify-content: space-between;
   gap: clamp(8px, 1.6cqh, 18px);
-  min-width: 0;
+  min-width: 0; min-height: 0;
 }
 .rcc-combo-name {
   font-family: 'Bebas Neue', sans-serif;

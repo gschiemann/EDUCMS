@@ -335,7 +335,13 @@ const CSS_BH = `
   width: 200px; flex: 0 0 200px;
   font-family: 'Special Elite', serif; font-size: 18px; color: #44403c; letter-spacing: .04em;
 }
-.bh-name { flex: 1; font-family: 'Indie Flower', cursive; font-size: 36px; color: #1f2937; line-height: 1.1; }
+.bh-name {
+  flex: 1 1 0; min-width: 0;
+  font-family: 'Indie Flower', cursive; font-size: 36px; color: #1f2937; line-height: 1.1;
+  /* Long teacher names used to wrap to a 2nd line and overlap the
+     next schedule row. Keep each name to a single ellipsised line. */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .bh-room {
   font-family: 'Special Elite', serif; font-size: 16px; color: #44403c;
   background: #fef3c7; padding: 4px 10px; border: 1px solid #d97706;
