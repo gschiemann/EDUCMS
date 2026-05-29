@@ -288,8 +288,14 @@ describe('EmergencyController', () => {
       {
         scopeType: 'tenant',
         scopeId: 't1',
-        mediaUrls: ['https://cdn/1.jpg', 'https://cdn/2.mp4'],
-        audioUrl: 'https://cdn/a.mp3',
+        // URLs must clear the SSRF media-url allowlist (media-url-guard.ts):
+        // https + a *.supabase.co host. The guard runs before any mutation,
+        // so emergency media has to come from tenant storage.
+        mediaUrls: [
+          'https://proj.supabase.co/storage/v1/object/public/media/1.jpg',
+          'https://proj.supabase.co/storage/v1/object/public/media/2.mp4',
+        ],
+        audioUrl: 'https://proj.supabase.co/storage/v1/object/public/media/a.mp3',
         textBlob: 'SHELTER IN PLACE',
         severity: 'CRITICAL',
       } as any,
@@ -299,7 +305,10 @@ describe('EmergencyController', () => {
     expect(res.success).toBe(true);
     const createArg = prismaService.client.emergencyMessage.create.mock.calls[0][0];
     expect(createArg.data.type).toBe('MEDIA_ALERT');
-    expect(JSON.parse(createArg.data.mediaUrls)).toEqual(['https://cdn/1.jpg', 'https://cdn/2.mp4']);
+    expect(JSON.parse(createArg.data.mediaUrls)).toEqual([
+      'https://proj.supabase.co/storage/v1/object/public/media/1.jpg',
+      'https://proj.supabase.co/storage/v1/object/public/media/2.mp4',
+    ]);
     expect(signerService.signMessage).toHaveBeenCalledWith('MEDIA_ALERT', expect.any(Object));
   });
 
@@ -492,7 +501,8 @@ describe('EmergencyController', () => {
 
     it('/media-alert allows same-tenant call', async () => {
       const req = { user: { id: 'admin1', tenantId: 't1' } };
-      const body = { scopeType: 'tenant' as const, scopeId: 't1', mediaUrls: ['https://cdn/img.jpg'], textBlob: 'SHELTER IN PLACE', severity: 'CRITICAL' as const } as any;
+      // Supabase-storage host clears the media-url-guard SSRF allowlist.
+      const body = { scopeType: 'tenant' as const, scopeId: 't1', mediaUrls: ['https://proj.supabase.co/storage/v1/object/public/media/img.jpg'], textBlob: 'SHELTER IN PLACE', severity: 'CRITICAL' as const } as any;
       const result = await controller.mediaAlert(body, req);
       expect(result.success).toBe(true);
     });

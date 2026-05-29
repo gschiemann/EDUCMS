@@ -13,6 +13,10 @@ describe('NotificationsService', () => {
       findMany: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
+      // createMany: the per-screen offline path was collapsed from N serial
+      // upserts to a single createMany({ skipDuplicates }) (Audit P1 N+1 fix);
+      // scanOfflineScreens now reports `notified` from its `count`.
+      createMany: jest.fn(),
       upsert: jest.fn(),
       count: jest.fn(),
       update: jest.fn(),
@@ -115,16 +119,21 @@ describe('NotificationsService', () => {
     screen.groupBy.mockResolvedValue([
       { tenantId: 't1', _count: { _all: 10 } },
     ]);
-    // dedupe path now goes through upsert (audit fix #11)
-    notification.upsert.mockImplementation(async (args: any) => ({ id: args.create.dedupeKey }));
+    // Per-screen offline notifications now go through a single
+    // createMany({ skipDuplicates }) (Audit P1 N+1 fix) — `notified` is its
+    // returned count. The infra-event path still uses notify()/upsert, but
+    // a 2/10 drop is below the cohort threshold so it stays per-screen.
+    notification.createMany.mockResolvedValue({ count: 2 });
 
     const res = await service.scanOfflineScreens(5);
     expect(res.found).toBe(2);
     expect(res.notified).toBe(2);
     expect(res.infraEvents).toBe(0);
-    expect(notification.upsert).toHaveBeenCalledTimes(2);
-    const createdKinds = notification.upsert.mock.calls.map((c: any[]) => c[0].create.kind);
-    expect(createdKinds).toEqual(['SCREEN_OFFLINE', 'SCREEN_OFFLINE']);
+    expect(notification.upsert).not.toHaveBeenCalled();
+    expect(notification.createMany).toHaveBeenCalledTimes(1);
+    const batch = notification.createMany.mock.calls[0][0].data;
+    expect(batch.map((r: any) => r.kind)).toEqual(['SCREEN_OFFLINE', 'SCREEN_OFFLINE']);
+    expect(notification.createMany.mock.calls[0][0].skipDuplicates).toBe(true);
   });
 
   it('scanOfflineScreens emits INFRA_EVENT and suppresses per-screen when >50% drop in 90s', async () => {
@@ -167,15 +176,18 @@ describe('NotificationsService', () => {
     // Fleet of 2 — below COHORT_MIN_FLEET (default 3). Even though
     // 100% of the fleet just dropped, this should fall through to
     // per-screen notifications (the dropping rate isn't statistically
-    // meaningful at this scale).
+    // meaningful at this scale) — i.e. the createMany batch path, not
+    // an aggregated INFRA_EVENT upsert.
     screen.groupBy.mockResolvedValue([
       { tenantId: 't1', _count: { _all: 2 } },
     ]);
-    notification.upsert.mockImplementation(async (args: any) => ({ id: args.create.dedupeKey }));
+    notification.createMany.mockResolvedValue({ count: 2 });
 
     const res = await service.scanOfflineScreens(5);
     expect(res.found).toBe(2);
     expect(res.notified).toBe(2);
     expect(res.infraEvents).toBe(0);
+    expect(notification.upsert).not.toHaveBeenCalled();
+    expect(notification.createMany).toHaveBeenCalledTimes(1);
   });
 });

@@ -81,7 +81,11 @@ describe('HardwareRecommenderService', () => {
     it('looks up a specific model by id', () => {
       const ep6n = svc.describe('goodview-ep6n');
       expect(ep6n?.name).toMatch(/EP6N/i);
-      expect(ep6n?.manufacturer).toBe('Goodview');
+      // The canonical catalog (packages/api-types/src/hardware.ts) carries the
+      // full legal manufacturer name ("Shanghai Goodview Electronic
+      // Technology"). Match on the brand substring so the test doesn't break
+      // when the catalog tweaks the legal-entity string.
+      expect(ep6n?.manufacturer).toMatch(/Goodview/i);
     });
 
     it('returns null for unknown models', () => {

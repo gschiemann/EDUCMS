@@ -24,12 +24,16 @@ describe('RealtimeGateway', () => {
     } as any;
 
     // Mock PrismaService — added in 769400b for the WS screen-existence
-    // check on auth. Default returns a valid screen; individual tests can
-    // override findUnique to simulate unpair / tenant-rebind paths.
+    // check on auth. processHello looks the screen up by decoded.deviceId
+    // and then rejects ('Screen tenant changed') if decoded.tenantId differs
+    // from the DB row's tenantId. The handleHello test signs a JWT with
+    // deviceId='dev_123', tenantId='tenant_1', so the default screen row MUST
+    // match BOTH or auth fails closed. Individual tests can override
+    // findUnique to simulate unpair / tenant-rebind paths.
     const prismaService = {
       client: {
         screen: {
-          findUnique: jest.fn().mockResolvedValue({ id: 'screen-1', tenantId: 'tenant-1' }),
+          findUnique: jest.fn().mockResolvedValue({ id: 'dev_123', tenantId: 'tenant_1' }),
         },
       },
     } as any;

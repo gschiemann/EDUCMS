@@ -88,7 +88,28 @@ function setup() {
   const customCue = makeTable();
   // Audit-Fix 1: AuditLog mock table.
   const auditLog = makeTable();
-  const prisma = { client: { game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog } };
+  // assertOwnedGameRefs (Sprint 13 — operator-picked custom layouts) verifies
+  // every scoreboard/ribbon/scorebug template id belongs to the tenant (or is
+  // a system preset) via `template.findMany({ where: { id: { in }, OR: [...] }})`.
+  // The shared `matches()` helper doesn't model Prisma's `OR`, so this table
+  // gets a dedicated findMany that only honours the `id: { in }` filter (tenant
+  // scoping is exercised by the in-memory rows we seed below, all owned by
+  // TENANT). Seed the layout templates the duplicateGame/updateGameDetails
+  // tests reference so ownership validation passes instead of NPE'ing on an
+  // undefined `template` model.
+  const template = makeTable();
+  template.rows.push(
+    { id: 'tmpl-board', tenantId: TENANT, isSystem: false },
+    { id: 'tmpl-ribbon', tenantId: TENANT, isSystem: false },
+    { id: 'tmpl-scorebug', tenantId: TENANT, isSystem: false },
+  );
+  template.findMany = async ({ where }: any = {}) => {
+    const ids: string[] | undefined = where?.id?.in;
+    return template.rows.filter((r) => (ids ? ids.includes(r.id) : true));
+  };
+  const prisma = {
+    client: { game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, template },
+  };
   const redis = { publish: jest.fn().mockResolvedValue(undefined) };
   const signer = { signMessage: jest.fn(() => ({ eventId: 'e', signature: 's' })) };
   // SportsService gained a SponsorsService dependency (Phase 2 sponsorship)

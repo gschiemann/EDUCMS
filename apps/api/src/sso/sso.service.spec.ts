@@ -15,6 +15,13 @@ describe('SsoService', () => {
   beforeEach(async () => {
     prismaMock = {
       client: {
+        // upsertConfig / deleteConfig (added 2026-05-23) wrap the upsert +
+        // audit-log write in an interactive `$transaction(async (tx) => …)`
+        // so a failed audit rolls back the SSO state change. The mock runs
+        // the callback with the same mock client as `tx`, so the existing
+        // tenantSSOConfig.upsert / auditLog.create mocks below are exercised
+        // exactly as in production.
+        $transaction: jest.fn(async (cb: any) => cb(prismaMock.client)),
         tenant: {
           findUnique: jest.fn(async ({ where }: any) => {
             if (where?.slug === tenant.slug || where?.id === tenant.id) return tenant;
@@ -84,7 +91,9 @@ describe('SsoService', () => {
       prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce({ id: 'c1', provider: 'SAML' });
       const res = await service.getConfigByTenantSlug(tenant.slug);
       expect(res.tenant.id).toBe(tenant.id);
-      expect(res.config.provider).toBe('SAML');
+      // config is non-null here — this test seeds a SAML config via the
+      // findUnique mock above. Non-null assertion keeps strict-null tsc happy.
+      expect(res.config!.provider).toBe('SAML');
     });
   });
 
