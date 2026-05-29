@@ -96,8 +96,23 @@ const PATTERNS = {
 
 const FILE_RE = /\.(tsx?|jsx?|css|scss)$/;
 
+// Strip `//` line comments and `/* … */` block comments before pattern
+// matching. A comment NEVER ships as rendered CSS, so removing it can only
+// drop false positives — never hide a real Chromium-83 violation. This
+// closes a recurring foot-gun: prose like "fixes the reliability gap: …"
+// or "the inset: shorthand is broken" inside a code comment was being
+// miscounted as a real `gap:` / `inset:` CSS declaration and red-ing CI
+// (2026-05-29: a render-proof heartbeat comment tripped player/page.tsx
+// gap 4→5). Stripping from `//` to EOL is safe even across URLs: anything
+// after `//` is non-shipping comment text, so its removal can't mask code.
+function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, ' ') // block comments
+    .replace(/\/\/[^\n]*/g, ' ');      // line comments
+}
+
 function scanFile(absPath) {
-  const text = fs.readFileSync(absPath, 'utf8');
+  const text = stripComments(fs.readFileSync(absPath, 'utf8'));
   const out = {};
   let any = false;
   for (const [name, re] of Object.entries(PATTERNS)) {

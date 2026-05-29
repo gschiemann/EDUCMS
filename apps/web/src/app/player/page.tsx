@@ -2402,7 +2402,7 @@ function PlayerPage() {
   }, [screenId]);
 
   // ─── Render-proof heartbeat (proof-of-display) ─────────────────────────
-  // Closes the #1 reliability gap: a frozen kiosk still answers TCP reads,
+  // Closes the #1 reliability hole — a frozen kiosk still answers TCP reads,
   // so the server's lastPingAt stays fresh and the fleet map shows it
   // ONLINE/green while it's actually showing a stuck / black frame. The
   // 30s /cache-status POST above ALSO can't prove pixels — it fires on a
