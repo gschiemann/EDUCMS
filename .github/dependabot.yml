@@ -1,9 +1,19 @@
 # Dependabot — weekly dependency updates for the pnpm monorepo.
 # `npm` ecosystem covers pnpm (Dependabot reads pnpm-lock.yaml).
 # One entry per package.json directory + one for GitHub Actions.
-# Minor + patch bumps are grouped into a single PR per directory to cut
-# noise; majors come as their own PRs (they can break builds — e.g. argon2
-# native compile, see CLAUDE.md "Deploy Reliability").
+#
+# NOISE POLICY (2026-05-29): minor + patch bumps are GROUPED into a single
+# PR per directory. Routine MAJOR bumps are IGNORED — they break builds
+# (argon2 native compile, eslint 9->10 flat-config, prisma 5->7, typescript
+# 5->6, actions/checkout 4->6, helmet 7->8 ...; see CLAUDE.md "Deploy
+# Reliability") and must be done DELIBERATELY, not auto-PR'd. The first
+# un-filtered run opened 20 PRs (many red on breaking majors) — this stops
+# that flood.
+#   * Security updates STILL come through — Dependabot security alerts
+#     bypass version-update ignores, so a CVE patch (even a major) is not
+#     suppressed by the rule below.
+#   * To take a major on purpose: bump it in a feature branch and let CI
+#     verify it, or temporarily drop the ignore for that one dependency.
 # apps/player is Android/Gradle, not npm — not managed here.
 version: 2
 updates:
@@ -12,111 +22,123 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     groups:
       minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # ---- Apps ----
   - package-ecosystem: "npm"
     directory: "/apps/api"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     groups:
       minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/apps/web"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     groups:
       minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/apps/edge"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     groups:
       minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # ---- Shared packages ----
   - package-ecosystem: "npm"
     directory: "/packages/api-types"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
     groups:
       minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/packages/auth-core"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
     groups:
       minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/packages/database"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
     groups:
       minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/packages/ws-events"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
     groups:
       minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/packages/scoreboard-cts"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
     groups:
       minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
-  # ---- GitHub Actions (11 workflows pin third-party actions) ----
+  # ---- GitHub Actions (workflows pin third-party actions) ----
+  # Majors here also break (checkout 4->6 needs a newer runner). Group
+  # minor/patch; majors are a manual, reviewed bump.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     groups:
       actions-minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
