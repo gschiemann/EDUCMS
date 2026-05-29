@@ -211,7 +211,7 @@ export default function StreamingSettingsPage() {
             icon={<Zap className="w-5 h-5" />}
             badge="OWN URL"
             title="My own video stream"
-            blurb="Got an HLS / DASH / IPTV URL from your AV integrator? Paste it. Works with anything that ends .m3u8 or .mpd."
+            blurb="Got an HLS / IPTV URL from your AV integrator? Paste it. Works with any HLS playlist that ends .m3u8."
             cta="Add custom stream"
             onClick={() => {
               const hls = providers.data?.find((p) => p.id === 'custom-hls');
@@ -615,7 +615,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: Provider; 
 
           {provider.auth === 'customHls' && (
             <>
-              <Field label="Playback URL (.m3u8 / .mpd)" placeholder="https://example.com/live.m3u8" value={credentials.playbackUrl || ''} onChange={(v) => setCredentials({ ...credentials, playbackUrl: v })} />
+              <Field label="Playback URL (.m3u8)" placeholder="https://example.com/live.m3u8" value={credentials.playbackUrl || ''} onChange={(v) => setCredentials({ ...credentials, playbackUrl: v })} />
               <p className="text-[11px] text-slate-500">
                 You certify you own or are licensed for the content at this URL. We do not validate licensing.
               </p>

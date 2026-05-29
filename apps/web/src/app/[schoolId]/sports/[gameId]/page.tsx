@@ -36,6 +36,7 @@ import {
   Volume2,
   Radio,
   Keyboard,
+  Copy,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { RoleGate } from '@/components/RoleGate';
@@ -819,6 +820,44 @@ function GameControl() {
                   <CtsConsoleStatus
                     stats={(g.stats as Record<string, unknown> | undefined) || {}}
                   />
+                </div>
+
+                {/* External score feed — the generic HMAC ingest path.
+                    Any machine that can POST JSON (Sportzcast box, a
+                    console reader, a custom script) can push live score /
+                    clock to this game without a dashboard login. The
+                    "Copy feed URL" button fetches a server-minted token
+                    from /sports/games/:id/feed-credentials and copies the
+                    ingest URL + token + a ready-to-run curl example.
+                    2026-05-28: re-surfaced — the handler existed but had
+                    no button (the toolbar entry was dropped for the
+                    CTS-only water-polo install). */}
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    External score feed
+                  </p>
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="text-xs text-slate-500 mb-3">
+                      Push live score &amp; clock from a Sportzcast box, console
+                      reader, or any script that can POST JSON. Copy the
+                      authenticated ingest URL + token below — no dashboard
+                      login needed on the sending machine.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={copyFeedUrl}
+                      title="Copy the machine-to-machine ingest URL + token (HMAC-authenticated)"
+                    >
+                      {feedCopied ? (
+                        <Check className="h-4 w-4 text-emerald-600" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                      <span>{feedCopied ? 'Copied feed URL + token' : 'Copy feed URL'}</span>
+                    </Button>
+                  </div>
                 </div>
               </div>
             </Section>

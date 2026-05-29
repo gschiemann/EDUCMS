@@ -251,7 +251,9 @@ export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
     blurb: 'Push your own catalog from any internal system. JSON spec we publish.',
     iconEmoji: '🔗',
     auth: 'webhook',
-    docsUrl: '/docs/pos/custom-webhook-spec',
+    // No docsUrl: there is no /docs route — the JSON spec is shown inline in
+    // the connect modal (settings/pos). A dead "/docs/pos/custom-webhook-spec"
+    // link was removed (2026-05-28 honesty sweep).
     pricingNote: 'Free',
     bestFor: ['QSR', 'RETAIL', 'GYM', 'BAR', 'CORPORATE'],
     capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: true },

@@ -460,20 +460,16 @@ export class StreamingService {
     }
 
     if (/\.mpd(\?|$)/i.test(url)) {
-      try {
-        const r = await safeFetch(url, { timeoutMs: 6000, maxBytes: 64 * 1024 });
-        if (r.status >= 400) {
-          return { ok: false, type: 'dash', embeddable: false, reason: `DASH manifest returned ${r.status}.` };
-        }
-        return { ok: true, type: 'dash', embeddable: true, normalizedUrl: url };
-      } catch (e) {
-        return {
-          ok: false,
-          type: 'dash',
-          embeddable: false,
-          reason: `Could not reach DASH manifest: ${e instanceof Error ? e.message : 'network error'}.`,
-        };
-      }
+      // MPEG-DASH is NOT supported — the player bundles no DASH renderer, so
+      // accepting a .mpd URL would mean a black box on the screen. Be honest
+      // up-front and point the operator at HLS.
+      return {
+        ok: false,
+        type: 'dash',
+        embeddable: false,
+        reason: 'MPEG-DASH (.mpd) is not supported.',
+        suggestion: 'Use an HLS (.m3u8) URL instead — most providers offer both formats.',
+      };
     }
 
     // ─── Unknown — let it through, but warn ───

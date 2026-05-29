@@ -738,20 +738,22 @@ export class IntegrationsHealthController {
         message: 'Stage 1 import works today. Drop a PDF / PNG / JPG / WEBP up to 50 MB; we turn it into Asset + Playlist rows.',
         latencyMs: null,
         checkedAt,
-        configurePath: '/settings/imports',
+        configurePath: '/templates/imports',
         docsUrl: 'https://github.com/gschiemann/EDUCMS/blob/master/docs/CANVA_INTEGRATION.md',
       },
       {
         id: 'design-import-canva',
         name: 'Canva Connect (OAuth + auto-resync)',
         category: 'design-import',
-        status: canvaConfigured ? 'DEGRADED' : 'COMING_SOON',
+        status: 'COMING_SOON',
         message: canvaConfigured
-          ? 'CANVA_CLIENT_ID / CANVA_CLIENT_SECRET set — OAuth flow is provisioned but the live picker UX is still pending.'
-          : 'Pending Canva partner approval. Once approved, paste CANVA_CLIENT_ID / CANVA_CLIENT_SECRET to flip on the "Sign in with Canva" button.',
+          // Honest: the live OAuth picker / Connect flow is NOT built (Sprint 11).
+          // Setting the env vars alone does not enable a working "Sign in with Canva".
+          ? 'CANVA_CLIENT_ID / CANVA_CLIENT_SECRET are set, but Canva Connect (the OAuth picker + auto-resync) is not built yet — Sprint 11. Export your Canva design to PDF/PNG and drop it at /templates/imports today.'
+          : 'Canva Connect (live OAuth import) is not built yet — Sprint 11. Today: export your Canva design to PDF/PNG and drop it at /templates/imports — it works.',
         latencyMs: null,
         checkedAt,
-        configurePath: '/settings/imports',
+        configurePath: '/templates/imports',
         docsUrl: 'https://www.canva.dev/docs/connect/',
       },
       {

@@ -9,9 +9,11 @@
  *
  * Playback modes (resolved per-channel):
  *   • hls    → <video> tag with hls.js polyfill for non-Safari browsers.
- *   • dash   → loads dash.js dynamically when first used.
  *   • iframe → YouTube / Twitch / Vimeo embed via their iframe URL
  *     pattern. NO third-party SDKs loaded — the embed URL is enough.
+ *   • dash   → NOT supported. We don't bundle a DASH player, so a .mpd
+ *     URL surfaces an honest "use HLS instead" message rather than
+ *     silently failing on a black box.
  *   • rtmp   → not browser-native; we surface a "needs server transcode"
  *     placeholder so operators see the limitation without crashing.
  *
@@ -143,12 +145,25 @@ export function StreamingWidget({ config, live }: { config?: StreamingCfg; live?
     );
   }
 
+  // MPEG-DASH (.mpd) is NOT supported — we don't bundle a DASH player, so
+  // attempting playback would silently fail. Tell the operator honestly to
+  // use HLS instead rather than showing a black box that never plays.
+  if (playbackType === 'dash') {
+    return (
+      <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ background: '#0f172a', color: '#fbbf24', fontSize: '0.9em', textAlign: 'center', padding: 16 }}>
+        <div>
+          <div style={{ fontSize: '2em' }}>⚠️</div>
+          <div style={{ fontWeight: 700 }}>MPEG-DASH (.mpd) isn&apos;t supported.</div>
+          <div style={{ fontSize: '0.85em', marginTop: 4 }}>Use an HLS (.m3u8) URL instead — most providers offer both.</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'hidden', background: '#000' }}>
       {playbackType === 'iframe' ? (
         <IframeStream url={c.embedUrl || resolvedPlaybackUrl} muted={c.muted ?? true} live={isLive} />
-      ) : playbackType === 'dash' ? (
-        <DashStream url={resolvedPlaybackUrl} muted={c.muted ?? true} fit={fit} live={isLive} />
       ) : (
         // Default to HLS — uses capability-resolved best-codec URL
         <HlsStream url={resolvedPlaybackUrl} muted={c.muted ?? true} fit={fit} live={isLive} />
@@ -239,49 +254,6 @@ function HlsStream({ url, muted, fit, live }: { url: string; muted: boolean; fit
         controls={false}
         style={{ width: '100%', height: '100%', objectFit: fit, background: '#000' }}
       />
-      {errMsg && (
-        <div className="absolute top-2 left-2 px-2 py-1 rounded text-[11px] bg-rose-600 text-white pointer-events-none">
-          {errMsg}
-        </div>
-      )}
-    </>
-  );
-}
-
-// ─── DASH player (lazy loads shaka-player on first use) ────────────────
-function DashStream({ url, muted, fit, live }: { url: string; muted: boolean; fit: 'cover' | 'contain'; live: boolean }) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [errMsg, setErrMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    // dash.js is ~600KB minified. Load lazily so HLS-only customers
-    // never pay the cost. If the import fails (no dash.js installed
-    // in this build), surface a friendly error instead of crashing.
-    let player: any = null;
-    let cancelled = false;
-    (async () => {
-      try {
-        const mod = await import('dashjs' as any);
-        if (cancelled) return;
-        const dashjs = (mod as any).default || mod;
-        const v = videoRef.current;
-        if (!v || !url) return;
-        player = dashjs.MediaPlayer().create();
-        player.initialize(v, url, live);
-        player.setMute(muted);
-      } catch (e) {
-        setErrMsg(`DASH playback unavailable: install dash.js to enable. (${(e as Error).message})`);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      try { player?.reset?.(); } catch { /* ignore */ }
-    };
-  }, [url, live, muted]);
-
-  return (
-    <>
-      <video ref={videoRef} autoPlay playsInline muted={muted} style={{ width: '100%', height: '100%', objectFit: fit, background: '#000' }} />
       {errMsg && (
         <div className="absolute top-2 left-2 px-2 py-1 rounded text-[11px] bg-rose-600 text-white pointer-events-none">
           {errMsg}

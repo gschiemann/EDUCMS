@@ -124,10 +124,11 @@ const FAST_APPS: FitnessSource[] = [
     notes: 'Pluto TV streams are free and permitted for commercial display. 300+ channels covering news, sports, movies, reality, and music.',
   },
   {
-    id: 'samsung-tv-plus', name: 'Samsung TV Plus', tagline: '200+ free channels', category: 'free-fast', status: 'READY',
+    id: 'samsung-tv-plus', name: 'Samsung TV Plus', tagline: 'Commercial HLS access required', category: 'free-fast', status: 'PARTNER',
     icon: 'S', widgetType: 'FITNESS_LIVE_TV', accentColor: '#1428a0',
     configFields: [
-      { key: 'channelId', label: 'Channel', type: 'channel-picker', channelCatalogKey: 'samsung', required: true },
+      { key: 'samsungInfo', label: 'Partner HLS URL required', type: 'info',
+        infoBody: 'Samsung TV Plus streams require a tokenized CDN URL from Samsung\'s partner program — we don\'t ship a public catalog for it. If you have an authorized HLS URL, add a "Local News HLS" / direct-HLS source and paste it there instead.' },
     ],
   },
   {
@@ -138,24 +139,27 @@ const FAST_APPS: FitnessSource[] = [
     ],
   },
   {
-    id: 'tubi', name: 'Tubi', tagline: 'Free movies + TV', category: 'free-fast', status: 'READY',
+    id: 'tubi', name: 'Tubi', tagline: 'Commercial HLS access required', category: 'free-fast', status: 'PARTNER',
     icon: 'T', widgetType: 'FITNESS_LIVE_TV', accentColor: '#fa382f',
     configFields: [
-      { key: 'channelId', label: 'Channel', type: 'channel-picker', channelCatalogKey: 'tubi', required: true },
+      { key: 'tubiInfo', label: 'Partner HLS URL required', type: 'info',
+        infoBody: 'Tubi does not publish a public linear-HLS catalog. Use the Tubi embed via a direct iframe source, or contact Tubi for a commercial HLS arrangement.' },
     ],
   },
   {
-    id: 'roku-channel', name: 'The Roku Channel', tagline: 'Free live + on-demand', category: 'free-fast', status: 'READY',
+    id: 'roku-channel', name: 'The Roku Channel', tagline: 'Commercial HLS access required', category: 'free-fast', status: 'PARTNER',
     icon: 'Rc', widgetType: 'FITNESS_LIVE_TV', accentColor: '#662d91',
     configFields: [
-      { key: 'channelId', label: 'Channel', type: 'channel-picker', channelCatalogKey: 'roku-free', required: true },
+      { key: 'rokuInfo', label: 'Partner HLS URL required', type: 'info',
+        infoBody: 'The Roku Channel\'s live CDN uses per-session tokens — there\'s no public catalog to ship. Use the Roku Channel embed via a direct iframe source, or contact Roku for a commercial HLS arrangement.' },
     ],
   },
   {
-    id: 'lg-channels', name: 'LG Channels', tagline: 'Free ad-supported channels', category: 'free-fast', status: 'READY',
+    id: 'lg-channels', name: 'LG Channels', tagline: 'Commercial HLS access required', category: 'free-fast', status: 'PARTNER',
     icon: 'LG', widgetType: 'FITNESS_LIVE_TV', accentColor: '#a50034',
     configFields: [
-      { key: 'channelId', label: 'Channel', type: 'channel-picker', channelCatalogKey: 'lg', required: true },
+      { key: 'lgInfo', label: 'Partner HLS URL required', type: 'info',
+        infoBody: 'LG Channels uses a device-session token CDN — no public catalog to ship. Contact LG for commercial partner access, or paste an authorized HLS URL via a direct-HLS source.' },
     ],
   },
   {

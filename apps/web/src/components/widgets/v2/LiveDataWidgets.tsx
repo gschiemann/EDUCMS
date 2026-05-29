@@ -501,7 +501,7 @@ export function TrafficCamWidget({ config, live = true, height = 480 }: WidgetPr
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.056), display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <div style={{ color: '#fff', fontFamily: 'Plus Jakarta Sans', fontWeight: 800, fontSize: px(height, 0.05), letterSpacing: '-0.02em' }}>Traffic · {city}</div>
-          <div style={{ color: '#9aa3b2', fontSize: px(height, 0.0204), fontWeight: 600 }}>Updated 30s ago · via DOT cameras</div>
+          <div style={{ color: '#9aa3b2', fontSize: px(height, 0.0204), fontWeight: 600 }}>Sample data</div>
         </div>
         <div style={{ flex: 1, marginTop: px(height, 0.033), display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
           {cams.slice(0, 4).map((cam, i) => (
@@ -514,7 +514,7 @@ export function TrafficCamWidget({ config, live = true, height = 480 }: WidgetPr
                 </div>
                 <div style={{ background: cam.status === 'HEAVY' ? '#dc2626' : cam.status === 'SLOW' ? '#f59e0b' : '#22c55e', color: '#fff', fontWeight: 800, fontSize: px(height, 0.0167), padding: `${px(height, 0.0074)}px ${px(height, 0.013)}px`, borderRadius: px(height, 0.0074), letterSpacing: '0.04em' }}>{cam.status}</div>
               </div>
-              <div style={{ position: 'absolute', top: px(height, 0.0167), left: px(height, 0.0167), color: '#fff', fontWeight: 700, fontSize: px(height, 0.0148), background: '#0006', padding: `${px(height, 0.0037)}px ${px(height, 0.0093)}px`, borderRadius: px(height, 0.0056) }}>● LIVE</div>
+              <div style={{ position: 'absolute', top: px(height, 0.0167), left: px(height, 0.0167), color: '#cfd8e3', fontWeight: 700, fontSize: px(height, 0.0148), background: '#0006', padding: `${px(height, 0.0037)}px ${px(height, 0.0093)}px`, borderRadius: px(height, 0.0056), letterSpacing: '0.04em' }}>SAMPLE</div>
             </div>
           ))}
         </div>

@@ -96,7 +96,12 @@ const RULES: ProviderRule[] = [
     name: 'Square',
     category: 'pos',
     blurb: 'Sync your Square POS catalog so menu boards auto-update when prices or items change.',
-    connectHref: '/connect/square',
+    // `/connect/square` has no page (404). `/connect/square/done` exists but is
+    // the OAuth *callback* landing — visiting it without OAuth params falsely
+    // flashes "Square connected". The operator-facing place to START the connect
+    // is the POS settings page (it mints the OAuth URL via /pos/oauth/square/
+    // authorize), consistent with the SSO entries' `/settings/sso`.
+    connectHref: '/settings/pos',
     signals: [
       { pattern: /\bsquare(?:up)?\.com\b/i, weight: 0.6, label: 'links to squareup.com' },
       { pattern: /\bsquare\s+(?:pos|reader|terminal|checkout)\b/i, weight: 0.4, label: 'mentions Square POS hardware' },

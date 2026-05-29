@@ -65,7 +65,7 @@ export type StreamIntegrationTier = 'DIRECT' | 'PARTNER' | 'BRIDGE' | 'CLOSED';
 /** Playback technology — drives which renderer the streaming widget uses. */
 export type StreamPlaybackKind =
   | 'hls'      // <video> with hls.js polyfill — most common for FAST + IPTV
-  | 'dash'     // <video> with shaka-player
+  | 'dash'     // .mpd — NOT supported (no DASH player bundled); widget shows "use HLS" message
   | 'iframe'   // YouTube / Twitch / Vimeo embed
   | 'rtmp'     // flash-era RTMP — limited browser support, server-only
   | 'rtsp';    // requires a transcoding gateway
@@ -298,8 +298,14 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     id: 'vimeo-live',
     name: 'Vimeo Live',
     category: 'live-platform',
-    integrationTier: 'DIRECT',
-    blurb: 'Branded live stream embeds for venues + events.',
+    // PARTNER, not DIRECT: the OAuth connect flow is NOT built yet
+    // (the connect modal dead-ends at "OAuth not implemented — contact
+    // sales"). Marking it DIRECT showed a green "Self-serve" badge that
+    // promised a working connect we don't have. The working path TODAY is
+    // to paste a Vimeo URL via "Custom HLS / IPTV" (iframe-embedded), so
+    // this tile is honestly Partnership/assisted until the OAuth ships.
+    integrationTier: 'PARTNER',
+    blurb: 'Branded live stream embeds for venues + events. OAuth connect coming soon — for now, paste a Vimeo URL via "My own video stream".',
     iconEmoji: '🎥',
     auth: 'oauth2',
     playback: 'iframe',
@@ -309,7 +315,7 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     docsUrl: 'https://developer.vimeo.com/',
     websiteUrl: 'https://vimeo.com/live',
     bestFor: ['CORPORATE', 'RESTAURANT', 'RETAIL'],
-    tierReason: 'Vimeo Player SDK + REST API are publicly documented. Operator pays Vimeo directly for OTT plan; we embed.',
+    tierReason: 'Direct Vimeo OAuth connect is not built yet (contact sales). Working path today: paste any Vimeo video/live URL into the Custom HLS source — we embed it via Vimeo\'s iframe player.',
   },
 
   // ─── TIER 4 — MUSIC / RADIO ─────────────────────────────────────────
@@ -356,10 +362,10 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
   // ─── TIER 5 — CUSTOM (operator brings their own URL) ────────────────
   {
     id: 'custom-hls',
-    name: 'Custom HLS / DASH URL',
+    name: 'Custom HLS URL',
     category: 'custom',
     integrationTier: 'DIRECT',
-    blurb: 'Paste any HLS (.m3u8) or DASH (.mpd) playlist URL. Self-managed.',
+    blurb: 'Paste any HLS (.m3u8) playlist URL. Self-managed.',
     iconEmoji: '🔗',
     auth: 'customHls',
     playback: 'hls',
@@ -367,7 +373,7 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     pricingNote: 'Bring your own',
     allowsAdOverlay: true,
     bestFor: ['CORPORATE', 'GYM', 'BAR', 'RESTAURANT', 'RETAIL'],
-    tierReason: 'Operator certifies they own or are licensed for the content. We just play the URL via hls.js / shaka. Most powerful path — works with any legal HLS / DASH source.',
+    tierReason: 'Operator certifies they own or are licensed for the content. We just play the URL via hls.js. Most powerful path — works with any legal HLS source. (MPEG-DASH .mpd is not supported — most providers also offer HLS.)',
   },
   {
     id: 'iptv-m3u',

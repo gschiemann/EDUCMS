@@ -22,20 +22,18 @@
  *   • `iframe`          — same as legacy 'iframe'; uses config.streamUrl
  *   • `demo`            — same as legacy 'demo'
  *   • `pluto`           — look up HLS URL from Pluto TV catalog via config.channelId
- *   • `samsung-tv-plus` — look up from Samsung TV Plus catalog
  *   • `xumo`            — look up from Xumo catalog
- *   • `tubi`            — look up from Tubi catalog
- *   • `roku-free`       — look up from Roku Free catalog
- *   • `lg`              — look up from LG Channels catalog
  *   • `youtube-live`    — resolve current live video from config.youtubeChannelUrl
  *                         via /api/v1/fitness/youtube-live/resolve, render as iframe
  *
- * FAST catalog providers (pluto, xumo, samsung-tv-plus, tubi, roku-free, lg)
- * look up the hlsUrl from fastChannelCatalogs.ts using config.channelId, then
- * fall through to the existing HLS playback path. If channelId is not found in
- * the catalog, an error overlay is shown with the channel ID and catalog name.
- * Channels marked `placeholder: true` show a config-required overlay instead
- * of attempting playback.
+ * FAST catalog providers (pluto, xumo) look up the hlsUrl from
+ * fastChannelCatalogs.ts using config.channelId, then fall through to the
+ * existing HLS playback path. Only catalogs with real, public, no-auth HLS
+ * URLs ship (Pluto, Xumo); Samsung TV Plus / Tubi / Roku / LG were removed
+ * because they require a partner/tokenized CDN URL we don't have — paste
+ * such a URL via provider='hls' or provider='iframe' instead. If channelId
+ * is not found in the catalog, an error overlay is shown with the channel ID
+ * and catalog name.
  *
  * Channel logo: if the resolved channel has a `logo` field, it is shown in the
  * top-left channel bug area; otherwise falls back to config.channelLogoUrl,
@@ -66,16 +64,13 @@ export type LiveTVProvider =
   | 'iframe'
   | 'demo'
   | 'pluto'
-  | 'samsung-tv-plus'
   | 'xumo'
-  | 'tubi'
-  | 'roku-free'
-  | 'lg'
   | 'youtube-live';
 
-/** FAST catalog providers that resolve channelId → hlsUrl */
+/** FAST catalog providers that resolve channelId → hlsUrl.
+ *  Only Pluto + Xumo ship real public HLS catalogs (see fastChannelCatalogs.ts). */
 const CATALOG_PROVIDERS: ReadonlySet<LiveTVProvider> = new Set([
-  'pluto', 'samsung-tv-plus', 'xumo', 'tubi', 'roku-free', 'lg',
+  'pluto', 'xumo',
 ]);
 
 // ─── Config interface ─────────────────────────────────────────────────────────
@@ -98,8 +93,7 @@ export interface FitnessLiveTVConfig {
   streamUrl?: string;
 
   /**
-   * For FAST catalog providers (pluto, samsung-tv-plus, xumo, tubi,
-   * roku-free, lg): the channel ID from the catalog.
+   * For FAST catalog providers (pluto, xumo): the channel ID from the catalog.
    */
   channelId?: string;
 

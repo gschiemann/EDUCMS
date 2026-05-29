@@ -8,11 +8,16 @@
  * /settings/streaming (provider tile grid → connect modal → list of
  * connections + sync status).
  *
- * Per-provider OAuth/sync handlers ship in
- * apps/api/src/pos/providers/<id>.ts. Until they ship, the wizard
- * accepts credentials but the sync button returns "Sync handler not
- * yet implemented" — so an operator can still PRE-CONFIGURE a
- * provider and trigger sync once the handler lands.
+ * What actually works today (2026-05-28 honesty pass):
+ *   • DIRECT providers — Square (OAuth → catalog sync → MenuBoard) and
+ *     Custom Webhook (you POST your catalog to us) — show real connect
+ *     forms and sync end-to-end.
+ *   • PARTNER providers — Toast / Clover / Lightspeed / Shopify /
+ *     Stripe-catalog / MINDBODY — have NO sync handler yet, so their
+ *     connect modal shows an honest "connector in development" panel
+ *     (no credential form). They no longer save inert PENDING rows.
+ *   • CLOSED providers (Aloha/NCR) are info-only tiles linking to docs.
+ * Per-provider sync handlers will ship in apps/api/src/pos/providers/<id>.ts.
  */
 import { useState } from 'react';
 import Link from 'next/link';
