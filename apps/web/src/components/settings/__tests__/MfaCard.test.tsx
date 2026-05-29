@@ -140,4 +140,18 @@ describe('MfaCard — settings enroll flow', () => {
     // Flips to the manage view (Disable available) instead of a dead end.
     expect(await screen.findByRole('button', { name: /Disable 2FA/i })).toBeInTheDocument();
   });
+
+  it('(status) reflects enrolled state on cold load when GET /auth/mfa/status returns enabled', async () => {
+    apiFetch.mockImplementation((path: string) => {
+      if (path === '/auth/mfa/status') return Promise.resolve({ enabled: true });
+      return Promise.resolve(null);
+    });
+
+    await act(async () => { renderCard(); });
+
+    // No user action — the mount-time status query flips the card to the
+    // enabled/manage view (closes the cold-load wart the audit flagged).
+    expect(await screen.findByText(/Two-factor authentication is on/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Disable 2FA/i })).toBeInTheDocument();
+  });
 });

@@ -32,6 +32,7 @@ import {
   Body,
   Controller,
   ForbiddenException,
+  Get,
   HttpCode,
   HttpException,
   HttpStatus,
@@ -128,6 +129,28 @@ export class MfaController {
    * provisional secret with a new one (last-write-wins) so a user
    * who fails to scan can simply re-issue.
    */
+  /**
+   * GET /auth/mfa/status — is TOTP MFA enabled for the authenticated user?
+   * Lets the settings UI render the correct enrolled state on a cold page
+   * load (instead of inferring it only from an enroll-attempt 400). Reloads
+   * the canonical DB row — JWT claims may be stale after a cross-session change.
+   */
+  @Get('status')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  async status(@Req() req: Request) {
+    const reqUser = (req as any).user;
+    if (!reqUser?.id) {
+      throw new UnauthorizedException('Authentication required');
+    }
+    const dbUser = await this.prisma.client.user.findUnique({
+      where: { id: reqUser.id },
+      select: { mfaTotpVerifiedAt: true },
+    });
+    return { enabled: !!dbUser?.mfaTotpVerifiedAt };
+  }
+
   @Post('enroll')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)

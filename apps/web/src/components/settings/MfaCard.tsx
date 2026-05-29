@@ -17,6 +17,7 @@ import {
   useMfaVerify,
   useMfaDisable,
   useMfaRegenerateBackupCodes,
+  useMfaStatus,
   type MfaEnrollResponse,
 } from '@/hooks/use-api';
 
@@ -29,16 +30,11 @@ import {
  *   secret → user types a code → verify → backup codes shown ONCE →
  *   enabled. Plus Disable (password re-auth) + Regenerate backup codes.
  *
- * NOTE (reported contract gap, 2026-05-28): there is no GET endpoint
- * that returns "is MFA enabled for me", so on a cold page load this card
- * can't know the persisted state. It therefore starts in an "offer to
- * enable" posture and reacts to what the backend actually says:
- *  - clicking Enable when already enrolled → backend 400 MFA_ALREADY_ENABLED
- *    → we flip the card to the "enabled / manage" view.
- *  - completing verify → enabled.
- *  - disabling → back to the enable posture.
- * A small `GET /auth/mfa/status` would let this reflect persisted state
- * across reloads; flagged to the backend owner.
+ * Cold-load state comes from GET /auth/mfa/status (wired 2026-05-28): on
+ * mount the card reflects the persisted enrolled state. It also still reacts
+ * to backend signals — clicking Enable when already enrolled → 400
+ * MFA_ALREADY_ENABLED → manage view; completing verify → enabled; disabling
+ * → back to the enable posture.
  */
 
 type View = 'idle' | 'enrolling' | 'codes' | 'enabled';
@@ -70,6 +66,13 @@ export function MfaCard() {
   const verifyMut = useMfaVerify();
   const disableMut = useMfaDisable();
   const regenMut = useMfaRegenerateBackupCodes();
+
+  // Cold-load enrolled state from GET /auth/mfa/status — only promote from
+  // the initial 'idle' posture, never clobber an in-progress enroll/codes view.
+  const { data: mfaStatus } = useMfaStatus();
+  useEffect(() => {
+    if (mfaStatus?.enabled && view === 'idle') setView('enabled');
+  }, [mfaStatus?.enabled, view]);
 
   // Render the otpauth URL into a scannable QR data-URL whenever a new
   // enrollment arrives. qrcode.toDataURL is a pure client computation —

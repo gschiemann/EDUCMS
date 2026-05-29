@@ -3184,6 +3184,26 @@ export interface MfaCodesResponse {
   backupCodes: string[];
 }
 
+/** Response of GET /auth/mfa/status. */
+export interface MfaStatusResponse {
+  /** Whether TOTP MFA is enabled (verified) for the signed-in user. */
+  enabled: boolean;
+}
+
+/**
+ * Is MFA enabled for the signed-in user? Lets the settings card render the
+ * correct enrolled state on a cold page load (rather than inferring it only
+ * from an enroll-attempt 400). Read-only GET, safe to fire on mount.
+ */
+export function useMfaStatus() {
+  return useQuery<MfaStatusResponse, Error>({
+    queryKey: ['mfa-status'],
+    queryFn: () => apiFetch<MfaStatusResponse>('/auth/mfa/status'),
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
 /**
  * Begin enrollment — generate a fresh (provisional) TOTP secret + otpauth
  * URL. Login still works password-only until /verify succeeds, so an
