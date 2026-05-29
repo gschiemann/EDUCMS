@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff, ChevronDown, Clock, RefreshCw, FileClock, Code2 } from 'lucide-react';
+import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff, ChevronDown, Clock, RefreshCw, FileClock, Code2, Lock } from 'lucide-react';
 import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { RoleGate } from '@/components/RoleGate';
@@ -134,6 +134,28 @@ export default function SettingsPage() {
         </h1>
         <p className="text-sm text-slate-500 mt-0.5">Manage team members, roles, and system info.</p>
       </div>
+
+      {/* Account security (per-USER, every role). 2026-05-28 — entry
+          point for two-factor (TOTP) auth. Deliberately OUTSIDE the admin
+          RoleGate below: a CONTRIBUTOR / VIEWER must be able to secure
+          their own account too. Slim status-row pattern matching the
+          Developer / Audit-log rows; the full enable/manage UI lives on
+          the dedicated /settings/security page. */}
+      <Link
+        href={`${pathname}/security`}
+        className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between hover:border-indigo-300 hover:shadow-md transition-all"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center">
+            <Lock className="w-4 h-4 text-indigo-600" />
+          </div>
+          <div>
+            <div className="text-sm font-bold text-slate-800">Security &amp; two-factor</div>
+            <div className="text-[11px] text-slate-500">Add a 6-digit code from your phone to every sign-in. Manage backup codes here too.</div>
+          </div>
+        </div>
+        <span className="text-xs text-indigo-600 font-bold">Manage →</span>
+      </Link>
 
       {/* 2026-05-03 — VenueOS vertical switcher (DISTRICT_ADMIN +
           SUPER_ADMIN only). Lets a tenant admin switch industry

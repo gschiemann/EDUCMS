@@ -3141,3 +3141,99 @@ export function useUndoGameEvent(gameId: string) {
     },
   });
 }
+
+// ─── MFA / TOTP (two-factor authentication) ─────────────────────
+//
+// 2026-05-28 — frontend for the already-built, audited MFA backend
+// (apps/api/src/auth/mfa.controller.ts). Five endpoints, all under
+// /api/v1/auth/mfa — apiFetch prepends /api/v1, so the paths below are
+// the controller routes minus that prefix.
+//
+// Contract matched against the real controller, not assumed:
+//   POST /auth/mfa/enroll        (Bearer) → { secret, otpauthUrl, qrSvg, issuer, label }
+//   POST /auth/mfa/verify        (Bearer) { code } → { success, backupCodes[] }
+//   POST /auth/mfa/disable       (Bearer) { password } → { success }
+//   POST /auth/mfa/backup-codes  (Bearer) { password } → { success, backupCodes[] }
+//   POST /auth/mfa/challenge     (public) { mfaToken, code?|backupCode? } → login envelope
+//
+// NOTE (reported contract gap): there is NO GET endpoint that returns
+// "is MFA enabled for me" — /users/me omits mfaTotpVerifiedAt and the
+// login user object doesn't carry it either. The settings page therefore
+// reflects enrolled-state from the actions performed in-session (enroll/
+// verify → enabled; disable → disabled) and surfaces an "unknown until you
+// act" affordance on a cold load. The challenge step on the LOGIN page
+// uses raw fetch (no hook) because it runs pre-auth, before any token /
+// QueryClient exists.
+
+/** Response of POST /auth/mfa/enroll. */
+export interface MfaEnrollResponse {
+  /** base32 TOTP secret — shown ONCE for manual Authenticator entry. */
+  secret: string;
+  /** otpauth:// URL the client renders into a QR code. */
+  otpauthUrl: string;
+  /** Backend currently always null — QR rendering is the client's job. */
+  qrSvg: string | null;
+  issuer: string;
+  label: string;
+}
+
+/** Response of POST /auth/mfa/verify and /auth/mfa/backup-codes. */
+export interface MfaCodesResponse {
+  success: true;
+  /** 10 single-use backup codes — shown ONCE, must be saved by the user. */
+  backupCodes: string[];
+}
+
+/**
+ * Begin enrollment — generate a fresh (provisional) TOTP secret + otpauth
+ * URL. Login still works password-only until /verify succeeds, so an
+ * abandoned enrollment can never lock the user out.
+ */
+export function useMfaEnroll() {
+  return useMutation<MfaEnrollResponse, Error, void>({
+    mutationFn: () => apiFetch<MfaEnrollResponse>('/auth/mfa/enroll', { method: 'POST' }),
+  });
+}
+
+/**
+ * Confirm the user can read codes from their Authenticator. On success
+ * the secret flips to verified and 10 backup codes are minted + returned
+ * ONCE.
+ */
+export function useMfaVerify() {
+  return useMutation<MfaCodesResponse, Error, { code: string }>({
+    mutationFn: (body) =>
+      apiFetch<MfaCodesResponse>('/auth/mfa/verify', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+/**
+ * Disable MFA. Requires password re-auth so a stolen session alone can't
+ * strip the second factor.
+ */
+export function useMfaDisable() {
+  return useMutation<{ success: true }, Error, { password: string }>({
+    mutationFn: (body) =>
+      apiFetch<{ success: true }>('/auth/mfa/disable', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+/**
+ * Regenerate the 10 backup codes (invalidates any unused ones). Requires
+ * password re-auth.
+ */
+export function useMfaRegenerateBackupCodes() {
+  return useMutation<MfaCodesResponse, Error, { password: string }>({
+    mutationFn: (body) =>
+      apiFetch<MfaCodesResponse>('/auth/mfa/backup-codes', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+}

@@ -4,7 +4,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, AlertCircle, KeyRound } from 'lucide-react';
+import { Loader2, AlertCircle, KeyRound, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { API_URL, warnIfMisconfigured, isLikelyMisconfigured } from '@/lib/api-url';
@@ -62,6 +62,95 @@ function LoginContent() {
   const [ssoSlug, setSsoSlug] = useState('');
   const [ssoChecking, setSsoChecking] = useState(false);
 
+  // ── MFA challenge step ──────────────────────────────────────────
+  // When /auth/login responds { mfaRequired: true, mfaToken }, the
+  // password was correct but the account has TOTP enabled. We hold the
+  // short-lived mfaToken and render a second step: the user enters a
+  // 6-digit code (or a backup code) which we trade — together with the
+  // mfaToken — at POST /auth/mfa/challenge for the real session.
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [useBackupCode, setUseBackupCode] = useState(false);
+  const [mfaSubmitting, setMfaSubmitting] = useState(false);
+
+  // Shared post-login completion — used by BOTH the normal password path
+  // and the MFA challenge path so EULA persistence + the cross-tenant-safe
+  // redirect logic live in exactly one place.
+  const completeLogin = (data: any) => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(EULA_KEY, 'yes');
+        window.localStorage.setItem(`${EULA_KEY}_at`, new Date().toISOString());
+        window.localStorage.setItem(`${EULA_KEY}_by`, email);
+      }
+    } catch { /* best-effort */ }
+    clog.info('auth', 'EULA accepted', { version: EULA_VERSION, userId: data.user?.id });
+    login(data.access_token, data.user);
+    // 2026-05-03 — cross-tenant bleed fix. Only honor `redirectTarget`
+    // if it points within the authenticated user's own tenant slug;
+    // otherwise hard-redirect to their home dashboard.
+    const userSlug = data.user.tenantSlug || data.user.tenantId;
+    const homeUrl = `/${userSlug}/dashboard`;
+    const safeRedirect =
+      redirectTarget &&
+      (redirectTarget === '/' ||
+        redirectTarget.startsWith(`/${userSlug}/`) ||
+        redirectTarget.startsWith(`/${userSlug}?`))
+        ? redirectTarget
+        : homeUrl;
+    router.push(safeRedirect);
+  };
+
+  const handleMfaChallenge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mfaToken) return;
+    const trimmed = mfaCode.trim();
+    if (!trimmed) {
+      setError(useBackupCode ? 'Enter one of your backup codes.' : 'Enter the 6-digit code from your authenticator app.');
+      return;
+    }
+    setError('');
+    setMfaSubmitting(true);
+    try {
+      const res = await fetch(`${API_URL}/auth/mfa/challenge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          useBackupCode
+            ? { mfaToken, backupCode: trimmed }
+            : { mfaToken, code: trimmed },
+        ),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.access_token) {
+        completeLogin(data);
+        return;
+      }
+      // MFA_TOKEN_INVALID → the partial token expired; send them back to
+      // the start. Otherwise surface the specific code-mismatch message.
+      if (data?.code === 'MFA_TOKEN_INVALID') {
+        setMfaToken(null);
+        setMfaCode('');
+        setUseBackupCode(false);
+        setError('Your sign-in attempt timed out. Please enter your password again.');
+      } else {
+        clog.warn('auth', 'MFA challenge rejected', { status: res.status, code: data?.code });
+        setError(data?.message || 'That code did not match. Please try again.');
+      }
+    } catch {
+      setError("Can't reach the server to verify your code. Try again in a moment.");
+    } finally {
+      setMfaSubmitting(false);
+    }
+  };
+
+  const cancelMfa = () => {
+    setMfaToken(null);
+    setMfaCode('');
+    setUseBackupCode(false);
+    setError('');
+  };
+
   const handleSsoStart = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -105,47 +194,19 @@ function LoginContent() {
         body: JSON.stringify({ email, password, rememberMe })
       });
       const data = await res.json();
-      if (res.ok && data.access_token) {
-        // Persist EULA acceptance AFTER a successful login so we know
-        // which user/account the acceptance is tied to. Logged to the
-        // client log so we have an audit crumb if counsel ever asks.
-        try {
-          if (typeof window !== 'undefined') {
-            window.localStorage.setItem(EULA_KEY, 'yes');
-            window.localStorage.setItem(`${EULA_KEY}_at`, new Date().toISOString());
-            window.localStorage.setItem(`${EULA_KEY}_by`, email);
-          }
-        } catch { /* best-effort */ }
-        clog.info('auth', 'EULA accepted', { version: EULA_VERSION, userId: data.user?.id });
-        login(data.access_token, data.user);
-        // 2026-05-03 — cross-tenant bleed fix. Operator (2026-05-03):
-        // "logged back out and in as the education user and kept the
-        // gym URL but the updated info for the school". The previous
-        // unconditional `redirectTarget || ...` would honor the
-        // redirect query param even when the target tenant slug
-        // doesn't match the just-authenticated user's tenant. Result:
-        // user lands on /<other-tenant>/dashboard with their actual
-        // tenant's data, which is a confusing cross-tenant URL/data
-        // mismatch and a borderline security smell.
-        //
-        // Fix: only honor `redirectTarget` if it points within the
-        // authenticated user's own tenant slug (or one of their
-        // accessible child tenants). Otherwise hard-redirect to the
-        // user's home dashboard. The accessible-child-tenant case
-        // (DISTRICT_ADMIN with multi-school access) is approximated
-        // here by allowing any path that starts with their tenantSlug
-        // OR tenantId; a stricter cross-check happens server-side
-        // when the target tenant's API responds 403/404.
-        const userSlug = data.user.tenantSlug || data.user.tenantId;
-        const homeUrl = `/${userSlug}/dashboard`;
-        const safeRedirect =
-          redirectTarget &&
-          (redirectTarget === '/' ||
-            redirectTarget.startsWith(`/${userSlug}/`) ||
-            redirectTarget.startsWith(`/${userSlug}?`))
-            ? redirectTarget
-            : homeUrl;
-        router.push(safeRedirect);
+      if (res.ok && data.mfaRequired && data.mfaToken) {
+        // Password was correct, but this account has TOTP enabled. Hold
+        // the short-lived challenge token and render the second step.
+        // EULA persistence is deferred to completeLogin() so it only
+        // records on a FULLY successful sign-in (after the code check).
+        clog.info('auth', 'MFA required — showing challenge step', { email });
+        setMfaToken(data.mfaToken);
+        setMfaCode('');
+        setUseBackupCode(false);
+      } else if (res.ok && data.access_token) {
+        // Normal (no-MFA) path. Persist EULA acceptance + redirect via
+        // the shared completion helper.
+        completeLogin(data);
       } else {
         clog.warn('auth', 'Login rejected', { status: res.status, message: data?.message });
         setError(data.message || 'Invalid email or password. Please try again.');
@@ -174,13 +235,90 @@ function LoginContent() {
             <polygon points="22,16 19,21.2 13,21.2 10,16 13,10.8 19,10.8" fill="#a5b4fc" />
           </svg>
           <h1 className="mt-4 text-xl font-semibold tracking-tight text-slate-900">
-            Sign in to {brand.name}
+            {mfaToken ? 'Two-factor verification' : `Sign in to ${brand.name}`}
           </h1>
-          <p className="mt-1 text-sm text-slate-500">{brand.tagline}</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {mfaToken
+              ? (useBackupCode
+                  ? 'Enter one of your saved backup codes to finish signing in.'
+                  : 'Enter the 6-digit code from your authenticator app to finish signing in.')
+              : brand.tagline}
+          </p>
         </div>
 
         {/* card */}
         <div className="bg-white border border-slate-200 rounded-2xl p-7">
+          {mfaToken ? (
+            /* ── MFA challenge step ─────────────────────────────── */
+            <form onSubmit={handleMfaChallenge} className="space-y-4">
+              <div className="flex justify-center">
+                <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
+                  <ShieldCheck className="w-6 h-6 text-indigo-600" />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="mfa-code" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  {useBackupCode ? 'Backup code' : 'Authentication code'}
+                </label>
+                <input
+                  id="mfa-code"
+                  name="mfa-code"
+                  type="text"
+                  inputMode={useBackupCode ? 'text' : 'numeric'}
+                  autoComplete="one-time-code"
+                  autoFocus
+                  required
+                  placeholder={useBackupCode ? 'XXXX-XXXX' : '123456'}
+                  className={INPUT_CLS + (useBackupCode ? '' : ' tracking-[0.4em] text-center font-mono text-base')}
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  aria-describedby="mfa-help"
+                />
+                <p id="mfa-help" className="mt-1.5 text-[11px] text-slate-400">
+                  {useBackupCode
+                    ? 'Each backup code works once.'
+                    : 'Open your authenticator app (Google Authenticator, 1Password, Authy) for the current code.'}
+                </p>
+              </div>
+
+              {error && (
+                <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
+                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-rose-700 font-medium">{error}</p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={mfaSubmitting}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {mfaSubmitting ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</>
+                ) : (
+                  'Verify & sign in'
+                )}
+              </button>
+
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={cancelMfa}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setUseBackupCode((v) => !v); setMfaCode(''); setError(''); }}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                >
+                  {useBackupCode ? 'Use authenticator code' : 'Use a backup code'}
+                </button>
+              </div>
+            </form>
+          ) : (
+          <>
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 mb-1.5">Email</label>
@@ -324,6 +462,8 @@ function LoginContent() {
               </form>
             )}
           </div>
+          </>
+          )}
         </div>
 
         <p className="text-center text-xs text-slate-500 mt-6">
