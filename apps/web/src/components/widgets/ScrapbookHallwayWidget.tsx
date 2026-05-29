@@ -290,7 +290,7 @@ const CSS_SBH = `
   width: 220px; flex: 0 0 220px;
   font-family: 'Kalam', cursive; font-weight: 700; font-size: 22px; color: #92400e;
 }
-.sbh-name { flex: 1; font-family: 'Patrick Hand', cursive; font-size: 34px; color: #3a2614; line-height: 1.05; }
+.sbh-name { flex: 1; font-family: 'Patrick Hand', cursive; font-size: 36px; color: #3a2614; line-height: 1.05; }
 .sbh-room { font-family: 'Shadows Into Light', cursive; font-size: 28px; color: #be185d; padding-right: 8px; }
 .sbh-row.sbh-hl {
   background: rgba(252,211,77,.5);

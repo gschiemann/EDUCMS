@@ -335,7 +335,7 @@ const CSS_BH = `
   width: 200px; flex: 0 0 200px;
   font-family: 'Special Elite', serif; font-size: 18px; color: #44403c; letter-spacing: .04em;
 }
-.bh-name { flex: 1; font-family: 'Indie Flower', cursive; font-size: 32px; color: #1f2937; line-height: 1.1; }
+.bh-name { flex: 1; font-family: 'Indie Flower', cursive; font-size: 36px; color: #1f2937; line-height: 1.1; }
 .bh-room {
   font-family: 'Special Elite', serif; font-size: 16px; color: #44403c;
   background: #fef3c7; padding: 4px 10px; border: 1px solid #d97706;

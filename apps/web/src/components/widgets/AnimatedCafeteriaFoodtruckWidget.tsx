@@ -650,11 +650,11 @@ const CSS_FT = `
 .ft-itemImg { width: 46px; height: 46px; object-fit: contain; border-radius: 6px; }
 .ft-itemBody { flex: 1; min-width: 0; }
 .ft-nm {
-  font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px;
+  font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 32px;
   color: #1f2937; line-height: 1;
 }
 .ft-allergen {
-  font-family: 'Permanent Marker', cursive; font-size: 16px;
+  font-family: 'Permanent Marker', cursive; font-size: 22px;
   color: #b91c1c; margin-top: 2px;
 }
 

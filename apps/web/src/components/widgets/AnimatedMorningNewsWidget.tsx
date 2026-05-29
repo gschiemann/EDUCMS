@@ -412,7 +412,7 @@ const CSS_MN = `
 .mn-story:nth-child(4) .mn-cat { color: #6ee7b7; }
 .mn-storyTitle {
   font-family: 'Inter', sans-serif; font-weight: 700;
-  font-size: clamp(17px, 30cqh, 28px);
+  font-size: clamp(17px, 30cqh, 38px);
   color: #fff; line-height: 1.15;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden;
@@ -473,7 +473,7 @@ const CSS_MN = `
 @keyframes mn-breakingFlash { 0%, 100% { opacity: 1; } 50% { opacity: .75; } }
 .mn-bScroll { flex: 1; overflow: hidden; }
 .mn-bText {
-  font-family: 'Inter', sans-serif; font-weight: 800; font-size: 22px;
+  font-family: 'Inter', sans-serif; font-weight: 800; font-size: 30px;
   color: #fff; white-space: nowrap;
   padding-left: 100%; display: inline-block;
   animation: mn-scroll 40s linear infinite;

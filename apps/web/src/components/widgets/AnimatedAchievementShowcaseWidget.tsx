@@ -379,7 +379,7 @@ const CSS_AS = `
 }
 .as-nm {
   flex: 1; font-family: 'Inter', sans-serif; font-weight: 700;
-  font-size: 18px; color: #fff; line-height: 1.1;
+  font-size: 25px; color: #fff; line-height: 1.1;
 }
 .as-hEmoji { font-size: 28px; line-height: 1; }
 

@@ -349,7 +349,7 @@ const CSS_SH = `
   box-shadow: inset 0 0 0 3px #faecc6;
 }
 .sh-time { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 22px; color: #8b5a2b; width: 170px; flex: 0 0 170px; }
-.sh-name { flex: 1; font-family: 'Quattrocento', serif; font-size: 30px; color: #3d2410; line-height: 1.1; }
+.sh-name { flex: 1; font-family: 'Quattrocento', serif; font-size: 36px; color: #3d2410; line-height: 1.1; }
 .sh-room { font-family: 'Italianno', cursive; font-size: 34px; color: #8b5a2b; }
 .sh-row.sh-hl { background: rgba(252,211,77,.4); }
 

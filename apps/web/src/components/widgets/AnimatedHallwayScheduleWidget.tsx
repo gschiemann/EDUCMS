@@ -349,6 +349,14 @@ const CSS_HS = `
 
 .hs-notebook {
   position: relative; flex: 1;
+  /* MUST be a flex column: .hs-rows has container-type:size (→ contain:size),
+     so it ignores its own content for sizing and needs a determinate height
+     from a flex parent. Without this, .hs-rows + every .hs-row collapse to
+     0px and the whole schedule renders invisible (the period rows use the
+     clamp(_, Ncqh, _) auto-fit pattern, which resolves to its floor at a
+     0-height container). Verified via Playwright: rows 0px → 580px once this
+     parent is a column. */
+  display: flex; flex-direction: column;
   background: #fffdf5;
   border: 1px solid rgba(180,83,9,.15);
   border-radius: 4px;
@@ -401,9 +409,14 @@ const CSS_HS = `
   box-shadow: inset 3px 0 0 #fbbf24;
 }
 .hs-num { font-family: 'Caveat', cursive; font-weight: 700; font-size: 36px; color: #be185d; text-align: center; line-height: 1; }
-.hs-time { font-family: 'Caveat', cursive; font-weight: 700; font-size: 30px; color: #92400e; letter-spacing: .02em; }
-.hs-name { font-family: 'Caveat', cursive; font-weight: 700; font-size: 34px; color: #4a2818; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hs-room { font-family: 'Caveat', cursive; font-weight: 500; font-size: 26px; color: #b45309; text-align: right; }
+/* Fixed px (NOT cqh) — Chromium-83 Taurus has no container-query units;
+   the cq-unit polyfill exists but taurus-safety ratchets cq usage DOWN-only,
+   and this widget ships to the player. .hs-rows has overflow:hidden + rows are
+   flex:1 1 0, so fixed px clips gracefully at high row counts (no bleed). These
+   are the larger end of the prior clamp — more legible than the original 34/30/26. */
+.hs-time { font-family: 'Caveat', cursive; font-weight: 700; font-size: 36px; color: #92400e; letter-spacing: .02em; }
+.hs-name { font-family: 'Caveat', cursive; font-weight: 700; font-size: 40px; color: #4a2818; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hs-room { font-family: 'Caveat', cursive; font-weight: 500; font-size: 30px; color: #b45309; text-align: right; }
 .hs-row::before { content: '•'; position: absolute; left: 54px; color: rgba(74,40,24,.6); font-size: 22px; }
 
 .hs-announce {

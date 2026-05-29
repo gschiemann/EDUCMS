@@ -1166,11 +1166,11 @@ const CSS = `
 }
 .ms-hr-card-p {
   font-family: 'Fraunces', serif; font-style: italic; font-weight: 900;
-  font-size: 50px; line-height: 1; color: var(--crayon-b);
+  font-size: 64px; line-height: 1; color: var(--crayon-b);
   letter-spacing: -.01em;
 }
 .ms-hr-card-t {
-  font-family: 'Patrick Hand', cursive; font-size: 26px; color: var(--ink-2);
+  font-family: 'Patrick Hand', cursive; font-size: 44px; color: var(--ink-2);
   letter-spacing: .06em;
 }
 .ms-hr-card-c {
