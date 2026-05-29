@@ -421,6 +421,127 @@ export class MenuService {
     return { itemsUpserted, overridesUpserted, skipped, catalogId: catalog.id };
   }
 
+  // ─── Operator-authed self-serve import ("paste your menu") ─────────
+
+  /**
+   * Operator-authed equivalent of {@link ingestCustomWebhookMenu}, for the
+   * dashboard "paste your menu" / price-book console path (session/JWT +
+   * RBAC, NOT a device/HMAC webhook). Same `{ menu: [...] }` upsert
+   * semantics and the same normalization, but:
+   *   • the tenant comes from the authenticated user's tenant (never the
+   *     body), and the catalog is the tenant's connection-less default
+   *     ("Menu") so repeated pastes + POS-console edits all converge;
+   *   • the AuditLog row is attributed to the operator (userId) with
+   *     `source: 'operator-import'`.
+   *
+   * Returns `imported` (the count the frontend's importMenu() reads) plus
+   * the same detail counts the webhook path returns.
+   */
+  async ingestOperatorMenu(
+    tenantId: string,
+    userId: string | null,
+    payload: { menu?: unknown; catalogId?: unknown; catalogName?: unknown },
+  ): Promise<{ imported: number; itemsUpserted: number; overridesUpserted: number; skipped: number; catalogId: string }> {
+    const rawMenu = Array.isArray((payload as any)?.menu) ? (payload as any).menu : null;
+    if (!rawMenu) {
+      throw new BadRequestException('Body must be { "menu": [ ... ] }.');
+    }
+    if (rawMenu.length > 2000) {
+      throw new BadRequestException('Too many menu items in one import (max 2000). Split into batches.');
+    }
+
+    // Connection-less ("manual") catalog. An explicit catalogId is still
+    // honoured (and tenant-checked inside resolveOrCreateCatalog) so the
+    // operator can target a specific catalog if the UI ever exposes it.
+    const catalog = await this.resolveOrCreateCatalog(
+      tenantId,
+      null,
+      typeof payload.catalogId === 'string' ? payload.catalogId : undefined,
+      typeof payload.catalogName === 'string' ? payload.catalogName : 'Menu',
+    );
+
+    const categoryIdByName = new Map<string, string>();
+    let itemsUpserted = 0;
+    let overridesUpserted = 0;
+    let skipped = 0;
+
+    for (const raw of rawMenu) {
+      const norm = this.normalizeMenuItem(raw);
+      if (!norm) {
+        skipped++;
+        continue;
+      }
+
+      let categoryId: string | null = null;
+      if (norm.category) {
+        categoryId = await this.resolveOrCreateCategory(tenantId, catalog.id, norm.category, categoryIdByName);
+      }
+
+      const item = await (this.prisma.client as any).menuItem.upsert({
+        where: { catalogId_externalId: { catalogId: catalog.id, externalId: norm.externalId } },
+        update: {
+          name: norm.name,
+          description: norm.description,
+          defaultPriceCents: norm.defaultPriceCents,
+          imageUrl: norm.imageUrl,
+          allergens: norm.allergens,
+          tags: norm.tags,
+          sortOrder: norm.sortOrder,
+          ...(categoryId ? { categoryId } : {}),
+        },
+        create: {
+          tenantId,
+          catalogId: catalog.id,
+          categoryId,
+          externalId: norm.externalId,
+          name: norm.name,
+          description: norm.description,
+          defaultPriceCents: norm.defaultPriceCents,
+          imageUrl: norm.imageUrl,
+          allergens: norm.allergens,
+          tags: norm.tags,
+          sortOrder: norm.sortOrder,
+        },
+      });
+      itemsUpserted++;
+
+      for (const loc of norm.locations) {
+        await (this.prisma.client as any).menuLocationOverride.upsert({
+          where: {
+            locationTenantId_menuItemId: { locationTenantId: loc.locationTenantId, menuItemId: item.id },
+          },
+          update: {
+            priceCents: loc.priceCents,
+            isAvailable: loc.isAvailable,
+            soldOutUntil: loc.soldOutUntil,
+            isHidden: loc.isHidden,
+            source: 'operator-import',
+          },
+          create: {
+            tenantId,
+            locationTenantId: loc.locationTenantId,
+            menuItemId: item.id,
+            priceCents: loc.priceCents,
+            isAvailable: loc.isAvailable,
+            soldOutUntil: loc.soldOutUntil,
+            isHidden: loc.isHidden,
+            source: 'operator-import',
+          },
+        });
+        overridesUpserted++;
+      }
+    }
+
+    await this.audit(tenantId, userId, 'MENU_IMPORT_OPERATOR', catalog.id, {
+      itemsUpserted,
+      overridesUpserted,
+      skipped,
+      source: 'operator-import',
+    });
+
+    return { imported: itemsUpserted, itemsUpserted, overridesUpserted, skipped, catalogId: catalog.id };
+  }
+
   // ─── Auto-86 ──────────────────────────────────────────────────────
 
   /**
@@ -658,10 +779,13 @@ export class MenuService {
 
   /** Find (or create) the catalog this push targets. A custom-webhook
    *  connection gets one default catalog unless an explicit id/name is
-   *  given. */
+   *  given. `connectionId` is null for operator-authed imports (the
+   *  dashboard "paste your menu" / price-book console) — those reuse the
+   *  tenant's single connection-less catalog so console edits and pastes
+   *  all land in the same place. */
   private async resolveOrCreateCatalog(
     tenantId: string,
-    connectionId: string,
+    connectionId: string | null,
     catalogId?: string,
     catalogName?: string,
   ): Promise<{ id: string }> {

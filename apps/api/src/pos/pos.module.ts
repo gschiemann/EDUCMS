@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { PosController } from './pos.controller';
 import { PosOAuthController } from './pos-oauth.controller';
+import { MenuAdminController } from './menu-admin.controller';
 import { PosService } from './pos.service';
 import { MenuService } from './menu.service';
+import { MenuAdminService } from './menu-admin.service';
 import { PosSyncCron } from './pos-sync.cron';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
@@ -18,8 +20,8 @@ import { AuthModule } from '../auth/auth.module';
  */
 @Module({
   imports: [PrismaModule, AuthModule],
-  controllers: [PosController, PosOAuthController],
-  providers: [PosService, MenuService, PosSyncCron],
+  controllers: [PosController, PosOAuthController, MenuAdminController],
+  providers: [PosService, MenuService, MenuAdminService, PosSyncCron],
   // MenuService is exported so ScreensController (declared in AppModule,
   // which imports PosModule) can resolve the device-authed
   // GET /screens/:id/menu read.

@@ -418,3 +418,54 @@ describe('MenuService.applySquareInventoryCounts', () => {
     expect(prisma.client.menuLocationOverride.upsert).not.toHaveBeenCalled();
   });
 });
+
+describe('MenuService.ingestOperatorMenu (dashboard "paste your menu")', () => {
+  it('upserts into a CONNECTION-LESS catalog (connectionId null) scoped to the actor tenant', async () => {
+    const prisma = makeMockPrisma();
+    prisma.client.menuCatalog.findFirst.mockResolvedValue(null); // no manual catalog yet
+    prisma.client.menuCatalog.create.mockResolvedValue({ id: 'cat-manual' });
+    const res = await svcWith(prisma).ingestOperatorMenu(TENANT, 'user-1', {
+      // The frontend's parseMenuText always stamps an externalId
+      // (pasted-<slug>-<i>); a real import never sends a name without one.
+      menu: [{ externalId: 'pasted-latte-0', name: 'Latte', price: 4.5, tenantId: 'EVIL' }],
+    });
+    expect(res.imported).toBe(1);
+    expect(res.catalogId).toBe('cat-manual');
+    // catalog created with connectionId: null and the actor's tenant (NOT EVIL)
+    expect(prisma.client.menuCatalog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ tenantId: TENANT, connectionId: null }) }),
+    );
+    const createArg = prisma.client.menuItem.upsert.mock.calls[0][0].create;
+    expect(createArg.tenantId).toBe(TENANT);
+    expect(createArg.defaultPriceCents).toBe(450);
+  });
+
+  it('is idempotent — re-importing the same item upserts by catalog+externalId', async () => {
+    const prisma = makeMockPrisma();
+    prisma.client.menuCatalog.findFirst.mockResolvedValue({ id: 'cat-manual' });
+    const payload = { menu: [{ externalId: 'fries', name: 'Fries', priceCents: 349 }] };
+    await svcWith(prisma).ingestOperatorMenu(TENANT, 'user-1', payload);
+    await svcWith(prisma).ingestOperatorMenu(TENANT, 'user-1', payload);
+    const k1 = prisma.client.menuItem.upsert.mock.calls[0][0].where;
+    const k2 = prisma.client.menuItem.upsert.mock.calls[1][0].where;
+    expect(k1).toEqual(k2);
+    expect(k1).toEqual({ catalogId_externalId: { catalogId: 'cat-manual', externalId: 'fries' } });
+  });
+
+  it('tags overrides + audit with source operator-import', async () => {
+    const prisma = makeMockPrisma();
+    prisma.client.menuCatalog.findFirst.mockResolvedValue({ id: 'cat-manual' });
+    await svcWith(prisma).ingestOperatorMenu(TENANT, 'user-1', {
+      menu: [{ id: 'latte', name: 'Latte', defaultPriceCents: 450, locations: [{ locationTenantId: LOC_A, priceCents: 500 }] }],
+    });
+    expect(prisma.client.menuLocationOverride.upsert.mock.calls[0][0].create.source).toBe('operator-import');
+    expect(prisma.client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'MENU_IMPORT_OPERATOR', userId: 'user-1' }) }),
+    );
+  });
+
+  it('rejects a body without a menu array', async () => {
+    const prisma = makeMockPrisma();
+    await expect(svcWith(prisma).ingestOperatorMenu(TENANT, 'user-1', {} as any)).rejects.toThrow();
+  });
+});
