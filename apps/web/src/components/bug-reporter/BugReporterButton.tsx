@@ -78,6 +78,18 @@ export function BugReporterButton() {
   const isAdmin = !!user && ADMIN_ROLES.has(user.role);
   const shouldRender = mounted && isAdmin && isVisibleSurface;
 
+  // P2 (mobile-UX audit 2026-05-29): the FAB is fixed at z-[70] and was NOT
+  // overlay-aware, so the "Report bug" chip floated over modal/sheet footers
+  // (and over the emergency overlay) on every bottom-anchored surface. Hide
+  // the FAB whenever ANY overlay is open — same `overlayOpenCount` signal the
+  // MobileTabBar uses. Note: opening THIS component's own modal calls
+  // `useOverlayLock(open)` above, which bumps the count, so `> 0` also hides
+  // the chip behind its own modal (the modal still renders below via
+  // `{open && …}`). The keyboard shortcut + modal mount stay gated on
+  // `shouldRender` (NOT this) so a modal that's already open keeps rendering.
+  const overlayOpenCount = useAppStore((s) => s.overlayOpenCount);
+  const showFab = shouldRender && overlayOpenCount === 0;
+
   useEffect(() => {
     if (!shouldRender) return;
     const onKey = (e: KeyboardEvent) => {
@@ -104,19 +116,24 @@ export function BugReporterButton() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="Report a bug"
-        title="Report a bug (⌘⇧B)"
-        // Sit ABOVE the MobileTabBar (z-[60]) and the EmergencyOverlay
-        // chrome. The bottom-24 offset keeps it clear of the mobile tab
-        // bar (h-56px + safe-area). On desktop it lifts to bottom-6.
-        className="fixed right-4 bottom-24 md:bottom-6 md:right-6 z-[70] inline-flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-700 transition-colors text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
-      >
-        <Bug className="w-4 h-4" aria-hidden />
-        <span className="hidden sm:inline">Report bug</span>
-      </button>
+      {showFab && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Report a bug"
+          title="Report a bug (⌘⇧B)"
+          // Sit ABOVE the MobileTabBar (z-[60]) and the EmergencyOverlay
+          // chrome. The bottom-24 offset keeps it clear of the mobile tab
+          // bar (h-56px + safe-area). On desktop it lifts to bottom-6.
+          // Only rendered when `overlayOpenCount === 0` (see showFab) so it
+          // never floats over another modal/sheet footer or the emergency
+          // overlay.
+          className="fixed right-4 bottom-24 md:bottom-6 md:right-6 z-[70] inline-flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-700 transition-colors text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
+        >
+          <Bug className="w-4 h-4" aria-hidden />
+          <span className="hidden sm:inline">Report bug</span>
+        </button>
+      )}
       {open && (
         <BugReporterModal
           onClose={() => setOpen(false)}

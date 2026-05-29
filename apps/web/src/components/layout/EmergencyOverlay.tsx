@@ -4,8 +4,19 @@ import { useAppStore } from '@/lib/store';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { allClearEmergency } from '@/actions/trigger-emergency';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 export function EmergencyOverlay() {
+  // P0-10 (mobile-UX audit 2026-05-29) — LIFE-SAFETY. The fixed
+  // MobileTabBar (z-60) rendered tappable OVER this overlay (z-50 inside a
+  // relative dashboard container), so a user could navigate AWAY from the
+  // all-clear screen mid-incident. Registering the overlay with the global
+  // overlay lock bumps `overlayOpenCount`, which makes MobileTabBar.isHidden
+  // true and unmounts the tab bar entirely while the emergency overlay is up
+  // — so the all-clear control owns the screen. (Paired with the z-[60] bump
+  // on the overlay root below as defense-in-depth.) This touches ONLY
+  // overlay layering — no trigger / broadcast / all-clear / audit logic.
+  useOverlayLock();
   const setEmergencyActive = useAppStore((state) => state.setEmergencyActive);
   const user = useAppStore((state) => state.user);
   const token = useAppStore((state) => state.token);
@@ -89,7 +100,12 @@ export function EmergencyOverlay() {
       // a nested wrapper + aria-live="assertive" + aria-atomic ensures
       // the SR speaks the title+desc the moment the overlay appears
       // (which is exactly the life-safety moment we need it to).
-      className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-red-950/90 backdrop-blur-3xl border-8 border-red-500 transition-all duration-300"
+      // z-[60] (was z-50): defense-in-depth alongside useOverlayLock() above
+      // so the overlay is never painted under the fixed MobileTabBar (z-[60])
+      // even on a frame before the tab bar unmounts. Life-safety: the
+      // all-clear control must always own the screen during an active
+      // emergency (mobile-UX audit P0-10, 2026-05-29).
+      className="absolute inset-0 z-[60] flex items-center justify-center p-6 bg-red-950/90 backdrop-blur-3xl border-8 border-red-500 transition-all duration-300"
     >
       {/* Inner alert region — announces the title + description on mount.
           The outer alertdialog handles focus + modal semantics; this

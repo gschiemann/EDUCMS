@@ -79,7 +79,20 @@ export function NotificationsBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 left-auto top-12 w-[380px] max-w-[calc(100vw-1rem)] max-h-[480px] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-50 flex flex-col">
+        <div
+          className={
+            // P0-8 (mobile-UX audit 2026-05-29): the bell sits near the
+            // right edge of the toolbar, so an `absolute right-0 w-[380px]`
+            // panel extended ~43px off the LEFT edge of a 390px phone and
+            // clipped the first word of every notification. Below `md` we
+            // anchor the panel to the VIEWPORT (`fixed left-2 right-2`, auto
+            // width) so it's always fully on-screen. From `md` up we keep the
+            // original bell-anchored 380px dropdown so desktop is unchanged.
+            "fixed left-2 right-2 top-14 w-auto " +
+            "md:absolute md:left-auto md:right-0 md:top-12 md:w-[380px] md:max-w-[calc(100vw-1rem)] " +
+            "max-h-[480px] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-50 flex flex-col"
+          }
+        >
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
             <div className="text-sm font-bold text-slate-800">Notifications</div>
             <button

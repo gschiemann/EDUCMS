@@ -543,21 +543,39 @@ export function Sidebar() {
                 href={item.href}
                 onClick={() => setMobileSidebarOpen(false)}
                 className={cn(
+                  // P0-9 (mobile-UX audit 2026-05-29): the active item was
+                  // `bg-[color-mix(in_srgb,var(--brand-primary)_8%,transparent)]`
+                  // — a Tailwind arbitrary `color-mix()` class that the dev
+                  // codegen renders as the SOLID brand color, not the intended
+                  // 8% tint (same arbitrary-class-codegen failure as the
+                  // Fredoka/logo bugs). With the label also set to
+                  // `var(--brand-primary)` that was indigo-text-on-indigo-bg —
+                  // an invisible active label. Fixed with a standard, codegen-
+                  // safe `bg-indigo-50` tint pill + a dark, always-legible
+                  // label (`text-slate-900`); the brand color is still carried
+                  // by the left indicator bar and the icon (inline styles
+                  // below), so the active state stays on-brand AND readable on
+                  // any palette. Applies to desktop static sidebar + mobile
+                  // drawer (shared render block).
                   "flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-300 group relative overflow-hidden",
                   isActive
-                    ? "bg-[color-mix(in_srgb,var(--brand-primary,#4f46e5)_8%,transparent)] shadow-[0_2px_10px_rgba(99,102,241,0.05)]"
+                    ? "bg-indigo-50 text-slate-900 shadow-[0_2px_10px_rgba(99,102,241,0.05)]"
                     : "sidebar-nav-item text-slate-500 hover:bg-slate-50"
                 )}
-                style={isActive ? { color: 'var(--brand-primary, #3730a3)' } : undefined}
               >
                 {/* Active Indicator Bar */}
                 {isActive && (
                   <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full" style={{ background: 'var(--brand-primary, #6366f1)', boxShadow: '0 0 8px color-mix(in srgb, var(--brand-primary, #6366f1) 50%, transparent)' }} />
                 )}
-                <item.icon className={cn(
-                  "w-[22px] h-[22px] transition-transform duration-300",
-                  isActive ? "scale-110 drop-shadow-sm" : "group-hover:scale-110"
-                )} />
+                <item.icon
+                  className={cn(
+                    "w-[22px] h-[22px] transition-transform duration-300",
+                    isActive ? "scale-110 drop-shadow-sm" : "group-hover:scale-110"
+                  )}
+                  // Keep the active icon on-brand for color identity while the
+                  // label stays a high-contrast slate-900 (set on the Link).
+                  style={isActive ? { color: 'var(--brand-primary, #3730a3)' } : undefined}
+                />
                 <span className="flex-1">{item.name}</span>
                 {/* Admin-only pending-review count. Shown on the Review
                     Queue row when there's at least one asset waiting on
@@ -598,7 +616,11 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => setEmergencyModalOpen(true)}
-                  className="inline-flex px-5 py-2 rounded-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold items-center gap-1.5 shadow-md shadow-red-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
+                  // P1 (mobile-UX audit 2026-05-29): was `py-2` ≈ 32px tall —
+                  // below the 44px touch minimum for a LIFE-SAFETY control.
+                  // `min-h-[44px]` guarantees a ≥44px tap target; the pill
+                  // still reads compact on desktop.
+                  className="inline-flex px-5 py-2 min-h-[44px] rounded-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold items-center gap-1.5 shadow-md shadow-red-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
                 >
                   <ShieldAlert className="w-3.5 h-3.5" />
                   Emergency
@@ -644,7 +666,13 @@ export function Sidebar() {
             </div>
             <button
               onClick={() => { logout(); router.push('/login'); }}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+              // P1 (mobile-UX audit 2026-05-29): was `p-1.5` ≈ 28px — below
+              // the 44px touch minimum, and it's the only sign-out on the
+              // mobile drawer. `min-w-[44px] min-h-[44px]` + centering gives a
+              // ≥44px tap target without enlarging the icon; the `-mr-1.5`
+              // pulls the wider hit box back to the row's right edge so the
+              // visual layout is unchanged on desktop.
+              className="flex items-center justify-center min-w-[44px] min-h-[44px] -mr-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
               title="Sign out"
               aria-label="Sign out"
             >
