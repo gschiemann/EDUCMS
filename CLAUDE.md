@@ -2,7 +2,11 @@
 
 ## Project Mission
 
-A secure, real-time K-12 school CMS for interactive digital displays, signage, and emergency alerts. Built for districts and schools to manage content on thousands of screens in lockdowns, weather events, and daily operations. Ambition: adopted by every K-12 district in the United States.
+**VenueOS** — a secure, real-time signage + emergency-alert CMS. Born in K-12 (interactive displays, digital signage, and life-safety lockdown / weather / evacuation alerts across thousands of screens) and now **multi-vertical**: K-12 districts (the beachhead + the emergency moat), live **sports venues** (Sprint 13 — scoreboards, ribbon boards, game presentation), and QSR / restaurant / retail / worship / corporate. The wedge: ONE platform that runs everyday signage **and** native life-safety **and** (in sports) full game presentation on the same screens — so the board earns its keep 5 days a week, not just on Friday night.
+
+> **READ FIRST — current state of the app:** `docs/research/2026-05-28-opus48-audit/00-MASTER-SYNTHESIS.md` is the canonical, code-verified status. New here? Start with `CONTRIBUTING.md`. Pre-launch April-2026 design docs in `docs/archive/` are HISTORICAL ONLY — ignore them.
+
+Ambition: the default operating system for every screen a school, venue, or multi-location operator runs.
 
 ## Technology Stack
 
@@ -1820,6 +1824,8 @@ Every "audit the entire app" pass MUST score every Standard Audit Surface sectio
 - **FUNCTIONALITY**: does it actually work end-to-end? Or is it "Coming soon" wearing a real-button costume?
 
 The audit report's page 1 coverage table now has 3 columns (D / UX / F) × 19 rows. Anything ≤ B in any column is a gap.
+
+**UX time-budget — a standing acceptance gate (added 2026-05-29).** Beyond audits: NO new operator-facing feature ships without a named **happy path** a non-IT operator can complete in **under 30 seconds / a handful of clicks**, plus a screenshot (or Playwright run) proving it. "Easiest UX — the app almost does the work for them" is a north-star, not a nicety: default to auto-detect + sensible defaults + one-click over forms; route operators through the **Integration Concierge** (paste-URL / describe-in-a-sentence → we discover + wire the integration + auto-seed the first template) wherever they'd otherwise need an IT consultant. If a feature can't clear its 30-second happy path, it isn't done.
 
 ### 21. Verification Before Claim — discipline
 
