@@ -71,7 +71,7 @@ jobs:
       # cold-cache install closer to ~1 min instead of ~4 min.
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ matrix.browser }}-${{ hashFiles('apps/web/package.json', 'pnpm-lock.yaml') }}

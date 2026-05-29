@@ -72,7 +72,7 @@ jobs:
       # from package.json so a Playwright bump auto-invalidates.
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-webkit-${{ hashFiles('apps/web/package.json') }}
@@ -149,7 +149,7 @@ jobs:
 
       - name: Cache Playwright browsers
         id: playwright-cache-widget
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           # Keyed on chromium+webkit so this cache is distinct from the
