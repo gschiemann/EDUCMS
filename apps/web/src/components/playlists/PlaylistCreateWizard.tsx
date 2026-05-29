@@ -109,7 +109,8 @@ import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 import {
   DndContext,
   closestCenter,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
@@ -1531,11 +1532,15 @@ function SelectedMediaDrawer({
   // type any value 1-600 then hit Apply.
   const [bulkSeconds, setBulkSeconds] = useState<number>(10);
 
-  // Sensors mirror the main editor — pointer for mouse/touch +
-  // keyboard for a11y. 8px activation distance so a click on the
-  // grip doesn't fight a normal click on adjacent controls.
+  // Sensors mirror the main editor (page.tsx:1069). 2026-05-29 — this used
+  // to be a single PointerSensor, which on iOS loses the race against
+  // Safari's built-in long-press (text-select + copy/lookup menu fires
+  // before dnd-kit can start the drag). Split into Mouse (distance:8,
+  // desktop unchanged) + Touch (delay:150, tolerance:6, wins vs iOS
+  // long-press) + Keyboard (a11y), matching the detail-page editor exactly.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -1655,9 +1660,9 @@ function SortableMediaRow({
         {...attributes}
         {...listeners}
         aria-label="Drag to reorder"
-        className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-700 cursor-grab active:cursor-grabbing shrink-0 mr-1.5 touch-none"
+        className="min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 hover:text-slate-700 cursor-grab active:cursor-grabbing shrink-0 -ml-1 mr-0.5 touch-none"
       >
-        <GripVertical className="w-3.5 h-3.5" />
+        <GripVertical className="w-5 h-5" />
       </button>
       <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 text-[10px] font-bold shrink-0 mr-2">
         {index + 1}
@@ -1692,7 +1697,7 @@ function SortableMediaRow({
             if (!isNaN(n)) onDuration(item.assetId, n);
           }}
           aria-label={`Duration in seconds for ${asset.originalName || 'item'}`}
-          className="w-12 text-xs text-right px-1.5 py-0.5 border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          className="w-12 text-xs text-right px-1.5 py-2 border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
         />
         <span className="text-[10px] font-bold text-slate-400 ml-1 uppercase tracking-wider">
           sec
@@ -1702,9 +1707,9 @@ function SortableMediaRow({
         type="button"
         onClick={() => onRemove(item.assetId)}
         aria-label="Remove item"
-        className="w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 ml-0.5"
+        className="w-10 h-10 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50"
       >
-        <X className="w-3.5 h-3.5" />
+        <X className="w-4 h-4" />
       </button>
     </li>
   );
@@ -2077,6 +2082,188 @@ function Step3Screens({
   );
 }
 
+// ─── Shared schedule fields ───────────────────────────────────────────
+//
+// 2026-05-29 — extracted so the wizard's Step-4 schedule sub-form and the
+// playlist-detail "Publish to Screens" bottom sheet share ONE markup. Before
+// this, the two were hand-rolled separately: the detail sheet stacked its
+// date/time inputs responsively (sm:flex-row) while the wizard packed them in
+// a fixed non-wrapping row that sheared the end-time/end-date off the right
+// edge at phone widths. Same concept, two code paths, one broken — now one.
+//
+// Pure presentational: parent owns all state. Every interactive control is a
+// legitimate sibling (no nesting inside a <button>) so this can drop into a
+// non-interactive container without hydration errors.
+//
+// Responsive rule (the actual fix): date + time rows are
+// `flex-col sm:flex-row` with each native input `flex-1 min-w-0`, so on a
+// phone they stack and on desktop they sit side-by-side — never clipped.
+// No `inset-*` / no flex `gap-*` collapse risk here (this surface is admin-
+// only, but we follow the longhand convention regardless).
+
+const SCHED_ACCENT = {
+  indigo: {
+    dayOn: 'bg-indigo-600 text-white shadow-sm',
+    dayOff: 'bg-white text-slate-400 border border-slate-200 hover:border-indigo-300',
+    ring: 'focus:ring-indigo-500',
+    quick: 'text-indigo-600',
+  },
+  sky: {
+    dayOn: 'bg-sky-600 text-white shadow-sm',
+    dayOff: 'bg-slate-100 text-slate-500 hover:bg-slate-200',
+    ring: 'focus:ring-sky-500',
+    quick: 'text-sky-600',
+  },
+} as const;
+
+export function ScheduleWindowFields({
+  days,
+  onToggleDay,
+  onSetDays,
+  timeStart,
+  setTimeStart,
+  timeEnd,
+  setTimeEnd,
+  startDate,
+  setStartDate,
+  endDate,
+  setEndDate,
+  accent = 'indigo',
+  showQuickPicks = false,
+  showDateHelp = false,
+  className = '',
+}: {
+  days: string[];
+  onToggleDay: (d: string) => void;
+  onSetDays?: (d: string[]) => void;
+  timeStart: string;
+  setTimeStart: (s: string) => void;
+  timeEnd: string;
+  setTimeEnd: (s: string) => void;
+  startDate: string;
+  setStartDate: (s: string) => void;
+  endDate: string;
+  setEndDate: (s: string) => void;
+  accent?: keyof typeof SCHED_ACCENT;
+  /** Weekdays / Weekends / Every-day shortcut row (detail Publish sheet). */
+  showQuickPicks?: boolean;
+  /** Plain-English "Active Mon→Fri" summary under the date range. */
+  showDateHelp?: boolean;
+  className?: string;
+}) {
+  const a = SCHED_ACCENT[accent];
+  const today = new Date().toISOString().slice(0, 10);
+  const fmtDate = (d: string) =>
+    new Date(d + 'T00:00:00').toLocaleDateString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    });
+
+  return (
+    <div className={className}>
+      {/* Days of week — buttons wrap on narrow widths, ≥40px tall touch
+          targets (was 24–29px). */}
+      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+        Days of week
+      </p>
+      <div className="flex flex-wrap mb-1">
+        {DAYS.map((d) => (
+          <button
+            key={d}
+            type="button"
+            onClick={() => onToggleDay(d)}
+            aria-pressed={days.includes(d)}
+            className={`mr-1 mb-1 px-3 min-h-[40px] text-[11px] font-bold rounded-lg transition-all ${
+              days.includes(d) ? a.dayOn : a.dayOff
+            }`}
+          >
+            {d}
+          </button>
+        ))}
+      </div>
+      {showQuickPicks && onSetDays && (
+        <div className="flex flex-wrap mb-3 -mt-0.5">
+          <button type="button" onClick={() => onSetDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'])} className={`mr-3 mb-1 text-[11px] font-semibold ${a.quick} hover:underline`}>Weekdays</button>
+          <button type="button" onClick={() => onSetDays(['Sat', 'Sun'])} className={`mr-3 mb-1 text-[11px] font-semibold ${a.quick} hover:underline`}>Weekends</button>
+          <button type="button" onClick={() => onSetDays([...DAYS])} className={`mb-1 text-[11px] font-semibold ${a.quick} hover:underline`}>Every day</button>
+        </div>
+      )}
+      {!showQuickPicks && <div className="mb-2" />}
+
+      {/* Time of day — stacks on phone, row on sm:. flex-1 inputs never
+          clip. */}
+      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+        Time of day
+      </p>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center mb-3">
+        <label className="sr-only" htmlFor="swf-time-start">Start time</label>
+        <input
+          id="swf-time-start"
+          type="time"
+          value={timeStart}
+          onChange={(e) => setTimeStart(e.target.value)}
+          className={`flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 ${a.ring}`}
+        />
+        <span className="my-1 sm:my-0 sm:mx-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">
+          to
+        </span>
+        <label className="sr-only" htmlFor="swf-time-end">End time</label>
+        <input
+          id="swf-time-end"
+          type="time"
+          value={timeEnd}
+          onChange={(e) => setTimeEnd(e.target.value)}
+          className={`flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 ${a.ring}`}
+        />
+      </div>
+
+      {/* Date range (optional) — same stacked pattern. */}
+      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+        Date range <span className="font-normal text-slate-400 normal-case italic">(optional)</span>
+      </p>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center">
+        <label className="sr-only" htmlFor="swf-date-start">Start date</label>
+        <input
+          id="swf-date-start"
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          min={today}
+          className={`flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 ${a.ring}`}
+        />
+        <span className="my-1 sm:my-0 sm:mx-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">
+          through
+        </span>
+        <label className="sr-only" htmlFor="swf-date-end">End date</label>
+        <input
+          id="swf-date-end"
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          min={startDate || today}
+          className={`flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 ${a.ring}`}
+        />
+      </div>
+      {showDateHelp ? (
+        <p className="text-[10px] text-slate-500 mt-1.5 leading-tight">
+          {!startDate && !endDate
+            ? 'Starts immediately and runs until you turn the playlist off.'
+            : startDate && !endDate
+              ? `Starts ${fmtDate(startDate)} and runs until you turn it off.`
+              : !startDate && endDate
+                ? `Starts immediately and stops on ${fmtDate(endDate)}.`
+                : `Active ${fmtDate(startDate)} → ${fmtDate(endDate)}.`}
+        </p>
+      ) : (
+        <p className="text-[10px] text-slate-400 mt-1">
+          Leave the dates blank to start now and never stop.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Step 4 — Publish ─────────────────────────────────────────────────
 
 function Step4Publish({
@@ -2160,127 +2347,66 @@ function Step4Publish({
         </div>
       </button>
 
-      <button
-        type="button"
-        onClick={() => setActivate(false)}
-        aria-pressed={!activate}
-        className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+      {/* 2026-05-29 — P0-6 fix: this card used to be a single <button> with
+          the day-picker buttons + time/date inputs nested INSIDE it, which is
+          invalid HTML (<button> in <button>) and threw a React hydration error
+          on every load — hence the e.stopPropagation() on every control. Now
+          the card is a <div role="radio">; the header is its own selector
+          <button>, and the schedule controls are legitimate siblings via
+          <ScheduleWindowFields>. No nesting, no stopPropagation band-aids. */}
+      <div
+        role="radio"
+        aria-checked={!activate}
+        className={`w-full rounded-xl border-2 transition-all ${
           !activate
             ? 'border-sky-500 bg-sky-50/40 ring-2 ring-sky-100'
             : 'border-slate-200 hover:border-sky-300'
         }`}
       >
-        <div className="flex items-start">
-          <div
-            className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 mr-3 ${
-              !activate ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-500'
-            }`}
-          >
-            <Calendar className="w-5 h-5" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-bold text-slate-800">Schedule a window</p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Pick specific days and times. The playlist activates only inside the window.
-            </p>
-          </div>
-          {!activate && (
-            <div className="w-6 h-6 rounded-full bg-sky-600 flex items-center justify-center shadow-sm shrink-0">
-              <Check className="w-4 h-4 text-white" />
+        <button
+          type="button"
+          onClick={() => setActivate(false)}
+          className="w-full text-left p-4 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+        >
+          <div className="flex items-start">
+            <div
+              className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 mr-3 ${
+                !activate ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-500'
+              }`}
+            >
+              <Calendar className="w-5 h-5" />
             </div>
-          )}
-        </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-slate-800">Schedule a window</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Pick specific days and times. The playlist activates only inside the window.
+              </p>
+            </div>
+            {!activate && (
+              <div className="w-6 h-6 rounded-full bg-sky-600 flex items-center justify-center shadow-sm shrink-0">
+                <Check className="w-4 h-4 text-white" />
+              </div>
+            )}
+          </div>
+        </button>
 
         {!activate && (
-          <div className="mt-4 pl-13" style={{ paddingLeft: 52 }}>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-              Days of week
-            </p>
-            <div className="flex flex-wrap mb-3">
-              {DAYS.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleDay(d);
-                  }}
-                  className={`mr-1 mb-1 px-2.5 py-1 text-[11px] font-bold rounded ${
-                    days.includes(d)
-                      ? 'bg-sky-600 text-white'
-                      : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                  }`}
-                >
-                  {d}
-                </button>
-              ))}
-            </div>
-
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-              Time of day
-            </p>
-            <div className="flex items-center mb-3 text-xs">
-              <input
-                type="time"
-                value={timeStart}
-                onChange={(e) => {
-                  e.stopPropagation();
-                  setTimeStart(e.target.value);
-                }}
-                onClick={(e) => e.stopPropagation()}
-                className="px-2 py-1.5 border border-slate-200 rounded bg-white text-slate-700"
-              />
-              <span className="mx-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                to
-              </span>
-              <input
-                type="time"
-                value={timeEnd}
-                onChange={(e) => {
-                  e.stopPropagation();
-                  setTimeEnd(e.target.value);
-                }}
-                onClick={(e) => e.stopPropagation()}
-                className="px-2 py-1.5 border border-slate-200 rounded bg-white text-slate-700"
-              />
-            </div>
-
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-              Date range (optional)
-            </p>
-            <div className="flex items-center text-xs">
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => {
-                  e.stopPropagation();
-                  setStartDate(e.target.value);
-                }}
-                onClick={(e) => e.stopPropagation()}
-                placeholder="Start"
-                className="px-2 py-1.5 border border-slate-200 rounded bg-white text-slate-700"
-              />
-              <span className="mx-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                through
-              </span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => {
-                  e.stopPropagation();
-                  setEndDate(e.target.value);
-                }}
-                onClick={(e) => e.stopPropagation()}
-                placeholder="End"
-                className="px-2 py-1.5 border border-slate-200 rounded bg-white text-slate-700"
-              />
-            </div>
-            <p className="text-[10px] text-slate-400 mt-1">
-              Leave the dates blank to start now and never stop.
-            </p>
-          </div>
+          <ScheduleWindowFields
+            accent="sky"
+            className="px-4 pb-4 -mt-1"
+            days={days}
+            onToggleDay={toggleDay}
+            timeStart={timeStart}
+            setTimeStart={setTimeStart}
+            timeEnd={timeEnd}
+            setTimeEnd={setTimeEnd}
+            startDate={startDate}
+            setStartDate={setStartDate}
+            endDate={endDate}
+            setEndDate={setEndDate}
+          />
         )}
-      </button>
+      </div>
     </div>
   );
 }

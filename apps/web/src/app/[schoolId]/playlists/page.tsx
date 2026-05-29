@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings, Upload, AlertCircle, Download, Usb, Check, RefreshCw } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { PlaylistPreviewThumb, derivePlaylistContentLabel, type TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
-import { PlaylistCreateWizard } from '@/components/playlists/PlaylistCreateWizard';
+import { PlaylistCreateWizard, ScheduleWindowFields } from '@/components/playlists/PlaylistCreateWizard';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   DndContext, closestCenter, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, DragEndEvent
@@ -263,7 +263,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
               disabled={isViewer}
               title={isViewer ? 'Read-only — viewer role' : 'Duration in seconds'}
               data-allow-small-input
-              className="w-12 md:w-14 px-1.5 py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-center font-medium outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              className="w-12 md:w-14 px-1.5 py-2 md:py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-center font-medium outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
             />
             {/* "sec" label desktop-only — input context makes it
                 obvious on mobile. */}
@@ -451,7 +451,7 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
           aria-label={`Open playlist ${playlist.name}`}
           className="absolute inset-0 w-full h-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 z-0"
         />
-        <div className="relative z-10 flex items-center gap-4 px-4 py-3 pointer-events-none">
+        <div className="relative z-10 flex items-center gap-2 sm:gap-4 px-4 py-3 pointer-events-none">
           {/* Mini thumbnail (operator: "add mini previews when we
               switch it from tile mode to list mode...we still have
               room for small thumbnails"). Replaces the old colored
@@ -462,14 +462,21 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
             templateLookup={templateLookup}
             size="list"
           />
+          {/* 2026-05-29 — P0-5 fix: on a phone this row over-packed (thumb +
+              name + content badge + a 4-item metadata strip + Live chip +
+              toggle + delete + chevron all in one non-wrapping flex row), and
+              flex-shrink collapsed the `flex-1` name container to 0px wide —
+              the playlist name rendered invisible. Fix: hide the metadata
+              strip and the content badge below `sm` so the name owns the full
+              width; both return on desktop. */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-slate-800 truncate">{playlist.name}</h3>
-              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${isTemplate ? 'bg-violet-100 text-violet-600' : 'bg-indigo-100 text-indigo-600'}`}>
+              <h3 className="text-sm font-bold text-slate-800 truncate min-w-0">{playlist.name}</h3>
+              <span className={`hidden sm:inline-block shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${isTemplate ? 'bg-violet-100 text-violet-600' : 'bg-indigo-100 text-indigo-600'}`}>
                 {contentLabel}
               </span>
             </div>
-            <div className="flex items-center gap-3 mt-0.5 text-[10px] text-slate-400">
+            <div className="hidden sm:flex items-center gap-3 mt-0.5 text-[10px] text-slate-400">
               <span>{isTemplate ? `${playlist.template.screenWidth}×${playlist.template.screenHeight}` : `${slideCount} slide${slideCount !== 1 ? 's' : ''}`}</span>
               <span className="truncate max-w-36" title={creator}>{creator}</span>
               <span>Updated {fmtPlaylistDate(playlist.updatedAt || playlist.createdAt)}</span>
@@ -505,12 +512,15 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
           >
             <span className={`inline-block w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${isLive ? 'translate-x-6' : 'translate-x-1'}`} />
           </button>
+          {/* Delete is hover-gated → undiscoverable on touch; hide it below
+              sm so it doesn't steal width from the name (mobile delete lives
+              in the detail view). */}
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             disabled={isViewer}
             title={isViewer ? 'Read-only — viewer role' : undefined}
             aria-label={`Delete playlist ${playlist.name}`}
-            className="relative z-10 shrink-0 p-1.5 rounded-lg text-slate-200 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all pointer-events-auto disabled:opacity-50 disabled:cursor-not-allowed"
+            className="relative z-10 shrink-0 hidden sm:flex p-1.5 rounded-lg text-slate-200 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all pointer-events-auto disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
@@ -2343,85 +2353,32 @@ export default function PlaylistsPage() {
               </div>
 
               {schedMode === 'scheduled' && (
-                <div className="space-y-4 mb-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  {/* 2026-05-14 — date range. Empty = "starts now, no
-                      end date" (legacy behavior). Operator can leave
-                      both empty for an always-recurring schedule, or
-                      pick a campaign window (e.g. homecoming week). */}
-                  <div>
-                    <p className="block text-xs font-semibold text-slate-600 mb-2">Date Range <span className="font-normal text-slate-400 italic">(optional)</span></p>
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                      <label htmlFor="sched-date-start" className="sr-only">Start date</label>
-                      <input
-                        id="sched-date-start"
-                        type="date"
-                        value={schedStartDate}
-                        onChange={e => setSchedStartDate(e.target.value)}
-                        min={new Date().toISOString().slice(0, 10)}
-                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                      <span className="text-xs text-slate-400 font-semibold text-center sm:px-1">to</span>
-                      <label htmlFor="sched-date-end" className="sr-only">End date</label>
-                      <input
-                        id="sched-date-end"
-                        type="date"
-                        value={schedEndDate}
-                        onChange={e => setSchedEndDate(e.target.value)}
-                        min={schedStartDate || new Date().toISOString().slice(0, 10)}
-                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </div>
-                    <p className="text-[10px] text-slate-500 mt-1.5 leading-tight">
-                      {!schedStartDate && !schedEndDate
-                        ? 'Starts immediately and runs until you turn the playlist off.'
-                        : schedStartDate && !schedEndDate
-                          ? `Starts ${new Date(schedStartDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} and runs until you turn it off.`
-                          : !schedStartDate && schedEndDate
-                            ? `Starts immediately and stops on ${new Date(schedEndDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}.`
-                            : `Active ${new Date(schedStartDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} → ${new Date(schedEndDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}.`}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="block text-xs font-semibold text-slate-600 mb-2">Days of Week</p>
-                    <div className="flex gap-1">
-                      {DAYS.map(day => (
-                        <button
-                          key={day}
-                          onClick={() => setSchedDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])}
-                          className={`px-2.5 py-1.5 text-[10px] font-bold rounded-lg transition-all ${
-                            schedDays.includes(day)
-                              ? 'bg-indigo-600 text-white shadow-sm'
-                              : 'bg-white text-slate-400 border border-slate-200 hover:border-indigo-300'
-                          }`}
-                        >
-                          {day}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex gap-2 mt-2">
-                      <button onClick={() => setSchedDays(['Mon','Tue','Wed','Thu','Fri'])} className="text-[10px] font-semibold text-indigo-600 hover:underline">Weekdays</button>
-                      <button onClick={() => setSchedDays(['Sat','Sun'])} className="text-[10px] font-semibold text-indigo-600 hover:underline">Weekends</button>
-                      <button onClick={() => setSchedDays([...DAYS])} className="text-[10px] font-semibold text-indigo-600 hover:underline">Every day</button>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="block text-xs font-semibold text-slate-600 mb-2">Time Window</p>
-                    <div className="flex items-center gap-2">
-                      <label htmlFor="sched-time-start" className="sr-only">Start time</label>
-                      <input
-                        id="sched-time-start"
-                        type="time" value={schedTimeStart} onChange={e => setSchedTimeStart(e.target.value)}
-                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                      <span className="text-xs text-slate-400 font-semibold">to</span>
-                      <label htmlFor="sched-time-end" className="sr-only">End time</label>
-                      <input
-                        id="sched-time-end"
-                        type="time" value={schedTimeEnd} onChange={e => setSchedTimeEnd(e.target.value)}
-                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </div>
-                  </div>
+                /* 2026-05-29 — consolidated onto the shared
+                   <ScheduleWindowFields> (defined in PlaylistCreateWizard).
+                   This sheet's hand-rolled days/time/date markup and the
+                   wizard's Step-4 form were divergent copies of the same
+                   concept; the wizard's copy clipped its end inputs off the
+                   right edge on a phone. One component now backs both, so the
+                   fix can't regress in only one place. Empty dates = "starts
+                   now, no end" (legacy behavior); quick-picks + plain-English
+                   summary preserved via props. */
+                <div className="mb-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <ScheduleWindowFields
+                    accent="indigo"
+                    showQuickPicks
+                    showDateHelp
+                    days={schedDays}
+                    onToggleDay={(day) => setSchedDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])}
+                    onSetDays={setSchedDays}
+                    timeStart={schedTimeStart}
+                    setTimeStart={setSchedTimeStart}
+                    timeEnd={schedTimeEnd}
+                    setTimeEnd={setSchedTimeEnd}
+                    startDate={schedStartDate}
+                    setStartDate={setSchedStartDate}
+                    endDate={schedEndDate}
+                    setEndDate={setSchedEndDate}
+                  />
                 </div>
               )}
 
