@@ -44,6 +44,11 @@ import { readGpioState } from './gpio.service';
 // so the server has to infer it. inferIfUnknown() returns null when
 // the column is already set, so we never overwrite a manual override.
 import { inferIfUnknown } from './hardware-detect';
+// 2026-05-29 — render-proof heartbeat (proof-of-display). Surfaces a
+// frozen-but-TCP-reachable kiosk as degraded/RED on the fleet list even
+// when lastPingAt is fresh. Pure helper so the verdict is unit-tested
+// without a Prisma client (same discipline as ScreenWedgeDetectorCron.decide).
+import { deriveRenderHealth } from './render-proof';
 
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -954,6 +959,25 @@ export class ScreensController {
         if (isAlive && s.tenantId) liveStatus = 'ONLINE';
         else if (s.status === 'ONLINE' || s.tenantId) liveStatus = 'OFFLINE';
       }
+      // ── Render-proof overlay (2026-05-29) ───────────────────────────
+      // ADDITIVE: `liveStatus` (ONLINE/OFFLINE/PENDING/REVOKED) is computed
+      // above from lastPingAt EXACTLY as before — untouched. Render-proof
+      // is a SEPARATE `renderHealth` field that catches the failure
+      // lastPingAt structurally CANNOT: a kiosk that's TCP-reachable
+      // (fresh ping → ONLINE) but whose renderer is wedged showing a
+      // stuck/black frame. The player advances a paint counter only when
+      // it actually composites a frame and POSTs it to /render-proof; a
+      // stale lastRenderedAt on an ONLINE screen means "looks online,
+      // shows nothing" → STALE/RED. We do NOT mutate `status` for this
+      // (the fleet map keys OFFLINE off `status !== 'ONLINE'`, and a
+      // frozen screen is reachable, not offline) — UIs read renderHealth.
+      const renderProof = deriveRenderHealth({
+        isLiveOnline: liveStatus === 'ONLINE',
+        lastRenderedAtMs: (s as any).lastRenderedAt
+          ? new Date((s as any).lastRenderedAt).getTime()
+          : null,
+        nowMs: now,
+      });
       // Strip heavyweight columns from the LIST response. The dashboard
       // polls /screens every 10s; at fleet scale these fields dominate
       // egress without ever being read by the list view:
@@ -995,6 +1019,17 @@ export class ScreensController {
         effectiveLongitude,
         effectiveAddress,
         geoSource,
+        // Render-proof (2026-05-29). Additive; status above is unchanged.
+        //   renderHealth: 'OK'      — painted a frame within the window
+        //                 'STALE'   — ONLINE (fresh ping) but NOT painting → RED
+        //                 'UNKNOWN' — never reported render-proof (older build /
+        //                              fresh pair / offline) — do NOT alarm
+        //   renderStale: true only for the frozen-but-reachable case. A fresh
+        //   ping ALONE never makes a screen OK or STALE here — only an actual
+        //   render-proof POST does.
+        renderHealth: renderProof.renderHealth,
+        renderStale: renderProof.renderStale,
+        renderStaleSeconds: renderProof.renderStaleSeconds,
         // Real browser-engine version + a flag the dashboard uses to warn
         // "this screen can't render container-query templates" etc.
         chromiumMajor,
@@ -3109,6 +3144,67 @@ export class ScreensController {
         lastCacheReport: body as any,
         lastCacheReportAt: new Date(),
       },
+    });
+    return { ok: true };
+  }
+
+  // ─── PUBLIC: Render-proof heartbeat (proof-of-display) ───────────────
+  // Closes the #1 player-reliability gap: a frozen kiosk still answers TCP
+  // reads, so lastPingAt stays fresh and the fleet map shows it ONLINE/green
+  // while it's actually showing a stuck / black frame.
+  //
+  // The player advances a requestAnimationFrame-driven paint counter that
+  // ONLY increments when the browser/WebView actually composites a frame
+  // (rAF callbacks are suppressed when the renderer is frozen, the tab is
+  // hidden, or the compositor is wedged) and POSTs it here every ~30s WHILE
+  // it is rendering content. We record lastRenderedAt (server clock) so the
+  // fleet list (deriveRenderHealth) can flag the screen render-STALE/RED when
+  // this timestamp goes stale EVEN IF lastPingAt is fresh.
+  //
+  // Auth: device JWT bound to this screenId (or the short-lived HMAC fallback)
+  // — IDENTICAL to /cache-status. Without this, any unauthenticated client
+  // could spoof a fresh render-proof and mask a real freeze for any screen in
+  // the fleet, defeating the whole point of the signal.
+  //
+  // Strictly additive + safe: this is a NEW endpoint + 3 NEW nullable columns.
+  // It touches NOTHING about lastPingAt, status, the emergency path, or the
+  // manifest. It does NOT update lastPingAt (so it can never paper over a real
+  // network outage) and is best-effort from the player's side — if it never
+  // POSTs, the screen reads renderHealth UNKNOWN, never falsely RED.
+  //
+  // Body shape (all optional):
+  //   { frames?: number,    // monotonic painted-frame counter (forensics/liveness delta)
+  //     hash?: string,      // short signature of the content on screen (proof-of-display)
+  //     contentKind?: string } // 'template' | 'video' | 'image' | 'emergency' | 'url' (diagnostics)
+  @Post(':id/render-proof')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async reportRenderProof(
+    @Param('id') id: string,
+    @Req() req: ExpressReq,
+    @Body() body: { frames?: number; hash?: string; contentKind?: string },
+  ) {
+    const authResult = verifyDeviceForScreen(req, id);
+    if (!authResult.ok) {
+      throw new HttpException(`Device auth required (${authResult.reason})`, HttpStatus.UNAUTHORIZED);
+    }
+    const screen = await this.prisma.client.screen.findUnique({ where: { id }, select: { id: true } });
+    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    // Sanitize: clamp the frame counter to a sane non-negative int and cap
+    // the content hash so a misbehaving / hostile device can't bloat the row.
+    const frames =
+      typeof body?.frames === 'number' && Number.isFinite(body.frames) && body.frames >= 0
+        ? Math.min(Math.floor(body.frames), Number.MAX_SAFE_INTEGER)
+        : null;
+    const hash = body?.hash ? String(body.hash).slice(0, 128) : null;
+
+    await this.prisma.client.screen.update({
+      where: { id },
+      data: {
+        lastRenderedAt: new Date(),
+        ...(frames != null ? { lastRenderedFrames: frames } : {}),
+        ...(hash != null ? { lastRenderedHash: hash } : {}),
+      } as any,
     });
     return { ok: true };
   }

@@ -1,0 +1,32 @@
+-- 2026-05-29 — Render-proof heartbeat (proof-of-display).
+--
+-- Closes the #1 player-reliability gap: a frozen kiosk that still answers
+-- TCP reads looks "online" (green) on the fleet map while it is actually
+-- showing a stuck / black frame. `last_ping_at` proves only that the box is
+-- TCP-reachable and its JS event loop is alive — NOT that pixels are
+-- painting. These three columns are the render-proof signal that does:
+--
+--   last_rendered_at      TIMESTAMP — server clock when the most recent
+--                                     render-proof POST landed. Stale even
+--                                     when last_ping_at is fresh ⇒ the
+--                                     renderer is wedged ⇒ surface RED.
+--   last_rendered_frames  INTEGER   — monotonic painted-frame counter the
+--                                     player reports (advances only when a
+--                                     requestAnimationFrame paint fires).
+--                                     A frozen renderer reports the same
+--                                     value tick after tick; the API can use
+--                                     the delta as a secondary liveness check.
+--   last_rendered_hash    TEXT      — short signature of the content that was
+--                                     actually on screen at that paint. Feeds
+--                                     incident replay / proof-of-display
+--                                     (V2 B-2) — "what did screen X show at
+--                                     09:42:03?".
+--
+-- Purely additive + safe: every column is nullable and defaults to NULL on
+-- every already-paired screen. NOTHING about last_ping_at / status /
+-- emergency / manifest behavior changes. A NULL last_rendered_at reads as
+-- "render-proof unknown" (renderHealth = UNKNOWN), never as RED — so older
+-- player builds that do not yet POST render-proof are never falsely alarmed.
+ALTER TABLE "screens" ADD COLUMN IF NOT EXISTS "last_rendered_at" TIMESTAMP(3);
+ALTER TABLE "screens" ADD COLUMN IF NOT EXISTS "last_rendered_frames" INTEGER;
+ALTER TABLE "screens" ADD COLUMN IF NOT EXISTS "last_rendered_hash" TEXT;

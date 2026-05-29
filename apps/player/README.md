@@ -184,13 +184,103 @@ V1 (this scaffold):
 - [x] Adaptive icon + Material 3 theme
 
 V2 (next):
-- [ ] Local asset cache (Room + WorkManager pre-fetch) — already-stubbed entities under `apps/player/app/src/main/java/com/educms/player/data` (now removed; rebuild against single namespace)
-- [ ] Foreground service heartbeat (notify server every 60s)
+- [x] Local asset cache (Service Worker + Cache API, two tiers — playlist + never-evict emergency) — `apps/web/public/sw-player.js`
+- [ ] Foreground service heartbeat (notify server every 60s) — see **Render-proof heartbeat & native watchdog** below; the web-side render-proof shipped 2026-05-29, the native foreground-service watchdog is the remaining piece
 - [ ] OTA APK self-update via APK Expansion or in-app installer
 - [ ] Device-owner provisioning helper for true kiosk lockdown
 - [ ] ExoPlayer for video-heavy zones (bypass WebView for HEVC/HDR)
 - [ ] Local emergency cache (last 4 emergency payloads play even if offline)
-- [ ] Crash reporting → Sentry (free tier shared with web)
+- [x] Crash reporting → Sentry (free tier shared with web) — **web/renderer side wired 2026-05-29**: `PlayerErrorBoundary.componentDidCatch` in `apps/web/src/app/player/page.tsx` calls `Sentry.captureException` (tagged `surface=player`, with the React component stack). No-op unless `NEXT_PUBLIC_SENTRY_DSN` is set. A *native* (Kotlin) Sentry SDK for crashes that kill the WebView host process itself is still a follow-up — see below.
+
+## Render-proof heartbeat & native watchdog (the "frozen kiosk shows green" fix)
+
+> **Status (2026-05-29):** the **render-proof heartbeat** (web side) and
+> **Sentry renderer-crash reporting** (web side) shipped. The **native
+> Android foreground-service watchdog** below is the remaining, documented
+> follow-up — it is **not yet built**.
+
+**The gap this closes.** A kiosk can freeze while still answering TCP reads:
+the Android shell is alive, the network stack responds, so the server's
+`lastPingAt` (and the `/cache-status` POST, which fires on a plain
+`setInterval`) stay fresh — and the fleet map shows the screen **ONLINE /
+green** while it is actually displaying a stuck or black frame. That is the
+single worst live-game / live-emergency failure: *looks online, shows
+nothing.* `lastPingAt` proves "TCP-reachable + JS event loop alive"; it does
+**not** prove "pixels painting."
+
+### What shipped (web side) — 2026-05-29
+
+1. **Render-proof signal in the player.** A `requestAnimationFrame` loop in
+   `apps/web/src/app/player/page.tsx` advances a paint counter. rAF callbacks
+   are scheduled by the compositor, so the counter **only advances when a
+   frame is actually painted** — a frozen renderer, backgrounded tab, or
+   wedged compositor stops it. The player POSTs the counter + a content
+   signature to **`POST /api/v1/screens/:id/render-proof`** every ~30s, but
+   **only while rendering operator content** (playing a playlist/template or
+   showing an emergency), and **skips the POST if the counter hasn't advanced**
+   since the last report — so a frozen renderer lets `lastRenderedAt` go stale
+   instead of papering over the freeze.
+2. **Three additive `Screen` columns** (`last_rendered_at`,
+   `last_rendered_frames`, `last_rendered_hash` — migration
+   `20260529000000_add_screen_render_proof`). All nullable; nothing about
+   `lastPingAt` / `status` / emergency / manifest behavior changed.
+3. **Fleet-status RED.** `GET /api/v1/screens` now derives a **separate**
+   `renderHealth` field (`OK` / `STALE` / `UNKNOWN`) via
+   `apps/api/src/screens/render-proof.ts` `deriveRenderHealth()`: a screen
+   that is `status: ONLINE` (fresh ping) but whose `lastRenderedAt` is stale
+   reads `renderHealth: STALE` (degraded/RED). `status` itself is **not**
+   reinterpreted — a frozen screen is reachable, not offline — so the existing
+   dashboard map (which keys OFFLINE off `status !== 'ONLINE'`) is unchanged;
+   UIs that want the true frozen signal read `renderHealth`. A `null`
+   `lastRenderedAt` (older player build / freshly-paired / offline) reads
+   `UNKNOWN`, never RED, so old builds are never falsely alarmed.
+4. **Sentry renderer-crash reporting** — see the Roadmap item above.
+
+### Follow-up — native Android foreground-service watchdog (NOT yet built)
+
+The render-proof above recovers the case where the JS event loop is alive but
+not painting (it makes the freeze *visible* to the operator, and the existing
+`ScreenWedgeDetectorCron` fires `REFRESH_WEB`). It does **not** cover the case
+where the **WebView host process itself is gone / ANR'd** — there is nothing
+inside the dead WebView left to POST anything. That needs a watchdog living
+**above** the WebView, in native Android. Spec for the next agent:
+
+- **A `Service` running in the foreground** (`startForeground` with a
+  low-priority "VenueOS player running" notification — required on Android 8+
+  so the OS doesn't kill it). Foreground services survive Activity teardown
+  and memory pressure far better than a plain Activity timer.
+- **Liveness ping from the WebView → the service.** The web player already
+  calls `EduCmsNative.heartbeat()` every 60s (updates
+  `MainActivity.lastSuccessfulLoadAtMs`). Extend the bridge so the **render-
+  proof paint counter** (not just "JS ran") is what the service watches —
+  i.e. surface `renderFramesRef` over the bridge and have the service treat
+  "frames not advancing for N seconds" as wedged, not just "no heartbeat
+  method call." This is the key upgrade: today the native watchdog reads a
+  signal that proves the event loop ran, not that pixels painted.
+- **Escalating recovery ladder:** (1) `WebView.reload()` →
+  (2) recreate the `Activity` / WebView → (3) if still wedged after K
+  attempts, `Process.killProcess(myPid())` and let the boot/keep-alive
+  receiver relaunch the whole app. Bound the cadence (exponential backoff)
+  so a hard-crashing build can't hot-loop the CPU — mirror the web
+  `PlayerErrorBoundary`'s 3-fast-then-slow strategy.
+- **Native Sentry SDK** (`io.sentry:sentry-android`, gated on a DSN
+  BuildConfig field) so a crash that takes down the **host process** —
+  invisible to the web-side `Sentry.captureException` — is still reported.
+- **Report each forced recovery** to the existing
+  `POST /api/v1/screens/status/:fp/crash-report` (source `player`) so the
+  dashboard shows "native watchdog force-restarted this kiosk N times" —
+  the operator's cue to push an APK update or physically intervene (the same
+  escalation `ScreenWedgeDetectorCron` already audits with
+  `AUTO_RECOVERY_GAVE_UP`).
+- **Keep it below the 2-min `lastPingAt` OFFLINE threshold** so a watchdog
+  restart that takes a few seconds is invisible on the fleet map.
+
+This is the R2/R3 "native watchdog ABOVE the WebView" item from
+`docs/research/2026-05-29-sports-provenue-gap/05-reliability-multisurface-hardware.md`
+(Tier-1 reliability hardening). It pairs with — does not replace — the
+web-side render-proof: render-proof makes a freeze *observable* fleet-wide;
+the native watchdog makes a freeze *self-recovering* even when the WebView
+process is dead.
 
 ## Notes
 

@@ -34,6 +34,14 @@ import {
   type CacheStatus,
 } from './offline-cache';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+// 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
+// initialized in apps/web/sentry.client.config.ts and is GATED on
+// NEXT_PUBLIC_SENTRY_DSN: when the DSN env is unset, Sentry.init() never runs
+// and captureException() is a harmless no-op — so wiring it here costs nothing
+// on a deploy without Sentry. When the DSN IS set (free tier is plenty), a
+// player renderer crash is reported with full stack + component trail so we
+// can ship a fix without an operator hand-walking logcat.
+import * as Sentry from '@sentry/nextjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bullet-proof helpers (Phase 1 hardening)
@@ -1266,6 +1274,22 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
   static getDerivedStateFromError(err: any) { return { hasError: true, err }; }
   componentDidCatch(err: any, info: any) {
     console.error('[Player] FATAL render error', err, info);
+    // 2026-05-29 — report the player/renderer crash to Sentry. No-op unless
+    // NEXT_PUBLIC_SENTRY_DSN is configured (Sentry.init gates on it in
+    // sentry.client.config.ts), so this is free on a deploy without Sentry.
+    // We tag it as a player renderer crash + attach the React component
+    // stack so a kiosk that crash-loops in the field is diagnosable remotely
+    // (closes the "Sentry UNCHECKED" item in apps/player/README.md). Wrapped
+    // in try/catch so a Sentry failure can NEVER block the crash-recovery
+    // reload path below — recovery is life-safety-adjacent and must proceed.
+    try {
+      Sentry.captureException(err, {
+        tags: { surface: 'player', subsystem: 'renderer' },
+        contexts: {
+          react: { componentStack: String(info?.componentStack || '').slice(0, 4000) },
+        },
+      });
+    } catch { /* never let crash reporting block crash recovery */ }
     // Surface WHAT crashed on the recovery screen — the operator can
     // read it off the kiosk and report it, turning a blind crash-loop
     // into a one-shot fix. info.componentStack names the component
@@ -2368,6 +2392,124 @@ function PlayerPage() {
           body: JSON.stringify({
             playlist: status.playlist,
             emergency: status.emergency,
+          }),
+        });
+      } catch { /* best-effort — admin visibility, not safety-critical */ }
+    };
+    post();
+    const t = setInterval(post, 30_000);
+    return () => clearInterval(t);
+  }, [screenId]);
+
+  // ─── Render-proof heartbeat (proof-of-display) ─────────────────────────
+  // Closes the #1 reliability gap: a frozen kiosk still answers TCP reads,
+  // so the server's lastPingAt stays fresh and the fleet map shows it
+  // ONLINE/green while it's actually showing a stuck / black frame. The
+  // 30s /cache-status POST above ALSO can't prove pixels — it fires on a
+  // plain setInterval, which keeps running even if the renderer is wedged
+  // and the screen shows nothing (that's exactly the wedge the
+  // ScreenWedgeDetectorCron chases). lastPingAt and cache-report prove
+  // "TCP-reachable + JS event loop alive"; neither proves "painting."
+  //
+  // The render-proof that DOES: a requestAnimationFrame loop. rAF callbacks
+  // are driven by the compositor — the browser/WebView only schedules them
+  // when it actually paints a frame. A frozen renderer, a backgrounded tab,
+  // or a wedged compositor stops firing rAF entirely, so the frame counter
+  // STOPS ADVANCING. We POST the counter (+ a content signature) every 30s
+  // ONLY while we're actually rendering content (phase 'playing'/'emergency'
+  // or an active emergency overlay) — so the server's lastRenderedAt is a
+  // true proof-of-display, and the fleet list flags render-STALE/RED when it
+  // goes stale even though lastPingAt is fresh.
+  //
+  // Additive + safe: best-effort POST to a NEW endpoint with a device JWT
+  // (same auth as cache-status). Never touches the emergency path, the
+  // manifest, lastPingAt, or any existing heartbeat. If it never POSTs (old
+  // build / browser-only / network down) the server reads renderHealth
+  // UNKNOWN — never falsely RED. Preview mode is skipped so it can't write
+  // proof on behalf of the real paired device.
+  const renderFramesRef = useRef(0);
+  // Mirror the live render state into refs so the rAF loop + the 30s POST
+  // timer read CURRENT values without restarting their effects on every
+  // content/phase change (which would reset the frame counter mid-stream).
+  const renderStateRef = useRef<{ rendering: boolean; sig: string; kind: string }>({
+    rendering: false,
+    sig: '',
+    kind: 'idle',
+  });
+  useEffect(() => {
+    // "Actually rendering content" = paired + past the splash phases, not
+    // paused, and either playing a playlist/template or showing an
+    // emergency. This gates render-proof so we don't claim proof-of-display
+    // while sitting on the pairing/connecting splash (which DOES paint, but
+    // isn't operator content — we only want to assert "the content the
+    // operator scheduled is on screen").
+    const emergencyOn = !!activeEmergency || phase === 'emergency';
+    const playingContent = phase === 'playing' && !!playlist && !playbackStopped;
+    const rendering = emergencyOn || playingContent;
+    // Short content signature so lastRenderedHash is meaningful for
+    // proof-of-display / incident replay without shipping a giant payload.
+    let sig = '';
+    let kind = 'idle';
+    if (emergencyOn) {
+      kind = 'emergency';
+      const em: any = activeEmergency || {};
+      sig = `em:${em.type || em.severity || 'active'}`;
+    } else if (playingContent) {
+      kind = (playlist as any)?.template ? 'template' : 'playlist';
+      // currentPlaylistSigRef already tracks the live playlist/template
+      // signature (it changes when the operator swaps content); use it as a
+      // compact proof-of-display token. (We deliberately don't fold in the
+      // slide index — currentIndexRef is declared lower in this component,
+      // and the playlist signature alone is enough to prove WHAT is on screen.)
+      sig = `pl:${currentPlaylistSigRef.current || (playlist as any)?.id || 'unknown'}`;
+    }
+    renderStateRef.current = { rendering, sig: sig.slice(0, 128), kind };
+  }, [phase, playlist, playbackStopped, activeEmergency]);
+
+  // The rAF paint counter. One loop for the lifetime of the page; it only
+  // advances when the compositor paints. We DON'T gate the loop on
+  // `rendering` — we always want a live paint counter — but the 30s POST
+  // below only reports it when we're rendering operator content.
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof requestAnimationFrame !== 'function') return;
+    let raf = 0;
+    let stopped = false;
+    const tick = () => {
+      if (stopped) return;
+      renderFramesRef.current = (renderFramesRef.current + 1) % Number.MAX_SAFE_INTEGER;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { stopped = true; cancelAnimationFrame(raf); };
+  }, []);
+
+  // POST render-proof every 30s while rendering content.
+  useEffect(() => {
+    if (!screenId) return;
+    if (isPreviewMode()) return;
+    let lastReportedFrames = -1;
+    const post = async () => {
+      const state = renderStateRef.current;
+      // Only assert proof-of-display while actually showing operator content.
+      if (!state.rendering) return;
+      const frames = renderFramesRef.current;
+      // If the paint counter hasn't advanced AT ALL since the last report,
+      // the renderer is wedged — skip the POST so lastRenderedAt goes stale
+      // and the fleet flags this screen RED. (Reporting a frozen counter
+      // would keep lastRenderedAt fresh and HIDE the freeze — the exact bug.)
+      if (frames === lastReportedFrames) return;
+      lastReportedFrames = frames;
+      try {
+        const tok = getDeviceToken();
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (tok) headers['Authorization'] = `Bearer ${tok}`;
+        await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/render-proof`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            frames,
+            hash: state.sig,
+            contentKind: state.kind,
           }),
         });
       } catch { /* best-effort — admin visibility, not safety-critical */ }

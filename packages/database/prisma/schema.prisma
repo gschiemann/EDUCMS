@@ -689,6 +689,34 @@ model Screen {
   // without trusting the network at the moment of an emergency.
   lastCacheReport                     Json?        @map("last_cache_report")
   lastCacheReportAt                   DateTime?    @map("last_cache_report_at")
+  // ── Render-proof heartbeat (2026-05-29) ──────────────────────────────
+  // The #1 player-reliability gap: a frozen kiosk still answers TCP reads
+  // (lastPingAt stays fresh, status stays ONLINE) while it's actually
+  // showing a stuck/black frame. lastPingAt proves "TCP-reachable + JS
+  // event loop alive" — it does NOT prove "pixels are painting." These
+  // three columns are the proof-of-display signal that DOES.
+  //
+  // The player advances a requestAnimationFrame-driven paint counter that
+  // ONLY increments when the browser/WebView actually composites a frame
+  // (rAF callbacks are suppressed when the renderer is frozen, the tab is
+  // hidden, or the compositor is wedged). It POSTs the counter + a content
+  // signature to /screens/:id/render-proof every ~30s WHILE rendering
+  // content. The fleet-status endpoint then flags a screen as render-stale
+  // (degraded/RED) when lastRenderedAt is stale EVEN IF lastPingAt is fresh.
+  //
+  // Purely additive: every column is nullable, defaults to null on every
+  // already-paired screen, and NOTHING about lastPingAt / status /
+  // emergency / manifest behavior changes. A null lastRenderedAt simply
+  // reads as "render-proof unknown" (renderHealth UNKNOWN) — never as RED,
+  // so older player builds that don't yet POST render-proof are not falsely
+  // alarmed. Also feeds incident replay (V2 B-2 proof+replay): lastRenderedHash
+  // is what the screen last actually painted.
+  //   lastRenderedAt     — server clock when the most recent render-proof POST landed
+  //   lastRenderedFrames — monotonic painted-frame counter the player reported (forensics / liveness delta)
+  //   lastRenderedHash   — short signature of the content that was on screen at that paint (proof-of-display)
+  lastRenderedAt                      DateTime?    @map("last_rendered_at")
+  lastRenderedFrames                  Int?         @map("last_rendered_frames")
+  lastRenderedHash                    String?      @map("last_rendered_hash")
   // Android APK self-reported version. The player OTA worker already
   // POSTs versionName + versionCode to /player/update-check every 6h
   // and on boot; we just persist the two strings so admins can see at
