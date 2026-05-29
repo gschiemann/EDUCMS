@@ -4220,9 +4220,15 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<ColorPickerField key="bgColor" label="Background color" value={cfg.bgColor || '#faf6f1'} onChange={(v) => setField({ bgColor: v })} />);
       fields.push(<ColorPickerField key="inkColor" label="Body ink color" value={cfg.inkColor || '#1a1411'} onChange={(v) => setField({ inkColor: v })} />);
       fields.push(<ColorPickerField key="accentColor" label="Headline + open pill accent" value={cfg.accentColor || '#9a2d2d'} onChange={(v) => setField({ accentColor: v })} />);
-      fields.push(<TextAreaField key="openHoursJson" label="Open hours (JSON object — keys: sun mon tue wed thu fri sat; values: free-form like '10am – 9pm' or 'Closed')" value={typeof cfg.openHours === 'string' ? cfg.openHours : JSON.stringify(cfg.openHours || {}, null, 2)} rows={9} onChange={(v) => {
-        try { setField({ openHours: JSON.parse(v) }); } catch { /* keep previous valid value */ }
-      }} />);
+      // G4 (§19) — replaced the openHoursJson TextArea with a 7-row
+      // day → hours editor. The widget's shape is
+      // `Partial<Record<'sun'|…|'sat', string>>` where each value is a
+      // single free-form string ('10am – 9pm' / 'Closed') — NOT an
+      // {open,close} pair (verified against RetailStorefrontHoursWidget.tsx
+      // `openHours?: Partial<Record<DayKey, string>>`). DayHoursField
+      // accepts a legacy JSON string too, so presets that still carry the
+      // old string blob keep working.
+      fields.push(<DayHoursField key="openHours" label="Open hours" value={cfg.openHours} onChange={(v) => setField({ openHours: v })} />);
       break;
     }
     case 'RETAIL_PRICE_CALLOUT': {
@@ -4271,9 +4277,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<ColorPickerField key="bgColor" label="Background color" value={cfg.bgColor || '#faf6f1'} onChange={(v) => setField({ bgColor: v })} />);
       fields.push(<ColorPickerField key="inkColor" label="Outline + label ink" value={cfg.inkColor || '#1a1411'} onChange={(v) => setField({ inkColor: v })} />);
       fields.push(<ColorPickerField key="accentColor" label="Highlight + pin accent" value={cfg.accentColor || '#9a2d2d'} onChange={(v) => setField({ accentColor: v })} />);
-      fields.push(<TextAreaField key="youAreHereJson" label="You are here position (JSON { x, y } 0-100, or null to hide)" value={cfg.youAreHere === null ? 'null' : (typeof cfg.youAreHere === 'string' ? cfg.youAreHere : JSON.stringify(cfg.youAreHere || { x: 50, y: 92 }, null, 2))} rows={4} onChange={(v) => {
-        try { setField({ youAreHere: JSON.parse(v) }); } catch { /* keep previous valid value */ }
-      }} />);
+      // G4 (§19) — replaced the youAreHereJson TextArea with two number
+      // inputs + a "show the marker" toggle. Widget shape is
+      // `{ x: number; y: number } | null` (verified against
+      // RetailWayfindingMapWidget.tsx); null hides the marker. Accepts a
+      // legacy JSON string for back-compat.
+      fields.push(<YouAreHereField key="youAreHere" label="“You are here” marker" value={cfg.youAreHere} onChange={(v) => setField({ youAreHere: v })} />);
       fields.push(<ListItemsEditor key="departments" label="Departments" itemNoun="department" help="Each tile is a department on the map. x / y / width / height are 0–100 percentages of the map area." value={cfg.departments} onChange={(v) => setField({ departments: v })} newItem={{ name: '', x: 6, y: 12, width: 38, height: 30, color: '#e8dcc8', emoji: '', highlight: false }} fields={[
         { key: 'name', label: 'Name', type: 'text', placeholder: 'Womens' },
         { key: 'emoji', label: 'Emoji', type: 'text', placeholder: '👗' },
@@ -4944,9 +4953,18 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     // controls flow through BuilderZone's + the player's
     // `[data-widget-content] *:not(svg)` injection (verified identical in both),
     // so a tenant can brand the wordmark. The <img> logo ignores color/font.
-    // Font-SIZE is intentionally not added here: it would flatten the
-    // initials-vs-tagline size hierarchy (the injection hits every text span),
-    // which is also why the universal block ships font+color+format but no size.
+    // 2026-05-28 (§19 / G2) — Font-SIZE added. The render path already injects
+    // cfg.fontSize: BuilderZone.buildRules() emits `font-size: Npx !important`
+    // scoped to `[data-zone-id] [data-widget-content] *:not(svg)` (BuilderZone
+    // line ~617) and the player mirrors it byte-for-byte (player/page.tsx line
+    // ~5267). NO control wrote cfg.fontSize for any auto-form widget, so every
+    // MS / Fitness / themed full-screen widget failed the §19 "font size"
+    // criterion despite the plumbing existing. Adding it here lifts all of them
+    // at once. Like the font/color above, the override is zone-wide and uniform
+    // (the injection hits every text span); operators who need per-field size
+    // hierarchy use the per-field StyleableField bottom-bar on HS widgets. For
+    // the auto-forms this is the difference between "can set the size" (B) and
+    // "can't touch it" (the audit's complaint) — a real, verifiable win.
     // 2026-05-28 (§19) — ANIMATED_BACKGROUND added: it's a textless decorative
     // rainbow layer, so a font/color block would be a costume (the widget reads
     // neither). Its real knobs (variant, confetti) live in its own case above.
@@ -4960,6 +4978,15 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         </div>,
       );
       fields.push(<FontFamilyField key="_uts-font" label="Font" value={cfg.fontFamily || ''} onChange={(v) => setField({ fontFamily: v })} />);
+      fields.push(
+        <FontSizeField
+          key="_uts-size"
+          label="Font size"
+          value={typeof cfg.fontSize === 'number' && Number.isFinite(cfg.fontSize) ? cfg.fontSize : null}
+          onChange={(v) => setField({ fontSize: v })}
+          getMeasuredSize={() => measureZoneFontSize(zone.id)}
+        />,
+      );
       fields.push(<ColorField key="_uts-color" label="Text color" value={cfg.color || ''} onChange={(v) => setField({ color: v })} allowTransparent />);
       fields.push(
         <FormatToggles
@@ -5350,20 +5377,32 @@ function ExternalHtmlTextEditor({
   const [discoveredFields, setDiscoveredFields] = useState<
     Array<{ key: string; defaultText: string; sectionKey: string; isShortish: boolean }> | null
   >(null);
+  // G3 (§19) — discoveredImages: ordered list of swappable image slots.
+  // Mirrors the text discovery but for images. Each entry is keyed by the
+  // template's `data-img` attr (preferred / forward-compat) OR the existing
+  // `data-widget="image-slot"` convention's `data-slot` value (38 such slots
+  // ship across 17 templates today — verified in public/templates). null =
+  // loading, [] = none.
+  const [discoveredImages, setDiscoveredImages] = useState<
+    Array<{ key: string; label: string; aspect: string }> | null
+  >(null);
 
   useEffect(() => {
     if (!url) {
       setDiscoveredFields([]);
+      setDiscoveredImages([]);
       return;
     }
     let cancelled = false;
     setDiscoveredFields(null);
+    setDiscoveredImages(null);
     fetch(url, { credentials: 'omit' })
       .then((res) => res.ok ? res.text() : '')
       .then((html) => {
         if (cancelled) return;
         if (!html) {
           setDiscoveredFields([]);
+          setDiscoveredImages([]);
           return;
         }
         try {
@@ -5394,12 +5433,36 @@ function ExternalHtmlTextEditor({
             out.push({ key, defaultText, sectionKey, isShortish });
           });
           setDiscoveredFields(out);
+
+          // G3 — image-slot discovery. The shipped templates mark a
+          // replaceable photo with `data-widget="image-slot"` + a unique
+          // `data-slot="<key>"`; we ALSO honor a literal `data-img="<key>"`
+          // (forward-compat). Key precedence: data-img → data-slot. The
+          // shim (inject-shim-v2.cjs) applies the override to the element
+          // with the matching key, so editor key === render key === shim key.
+          const imgSeen = new Set<string>();
+          const imgOut: Array<{ key: string; label: string; aspect: string }> = [];
+          const imgNodes = doc.querySelectorAll('[data-img],[data-widget="image-slot"]');
+          imgNodes.forEach((el) => {
+            const e = el as HTMLElement;
+            const key = e.getAttribute('data-img') || e.getAttribute('data-slot') || '';
+            if (!key || imgSeen.has(key)) return;
+            imgSeen.add(key);
+            // Friendly label: the slot's caption text (e.g. "Group portrait"),
+            // else the key humanized.
+            const lblNode = e.querySelector('.lbl, .label, figcaption');
+            const label = (lblNode?.textContent || '').trim() || prettyFieldLabel(key);
+            const aspect = e.getAttribute('data-aspect') || '';
+            imgOut.push({ key, label, aspect });
+          });
+          setDiscoveredImages(imgOut);
         } catch {
           setDiscoveredFields([]);
+          setDiscoveredImages([]);
         }
       })
       .catch(() => {
-        if (!cancelled) setDiscoveredFields([]);
+        if (!cancelled) { setDiscoveredFields([]); setDiscoveredImages([]); }
       });
     return () => { cancelled = true; };
   }, [url]);
@@ -5412,6 +5475,10 @@ function ExternalHtmlTextEditor({
     (cfg?.textOverrides && typeof cfg.textOverrides === 'object') ? cfg.textOverrides : {};
   const styles: FieldStyleMap =
     (cfg?._styles && typeof cfg._styles === 'object') ? (cfg._styles as FieldStyleMap) : {};
+  // G3 — imageOverrides: per-slot URL map the V2 shim applies as
+  // background-image / src on the matching [data-img]/[data-slot] element.
+  const imageOverrides: Record<string, string> =
+    (cfg?.imageOverrides && typeof cfg.imageOverrides === 'object') ? cfg.imageOverrides : {};
 
   if (!url) {
     return (
@@ -5420,17 +5487,17 @@ function ExternalHtmlTextEditor({
       </div>
     );
   }
-  if (discoveredFields === null) {
+  if (discoveredFields === null || discoveredImages === null) {
     return (
       <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-500">
         Scanning template…
       </div>
     );
   }
-  if (discoveredFields.length === 0) {
+  if (discoveredFields.length === 0 && discoveredImages.length === 0) {
     return (
       <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
-        This template has no editable text hooks yet. Recolor / restyle via the controls below; we&apos;ll add inline text editing to this template in a future update.
+        This template has no editable text or image hooks yet. Recolor / restyle via the controls below; we&apos;ll add inline editing to this template in a future update.
       </div>
     );
   }
@@ -5459,9 +5526,37 @@ function ExternalHtmlTextEditor({
   const setStylesMap = (s: FieldStyleMap) => {
     setField({ _styles: Object.keys(s).length ? s : undefined });
   };
+  // G3 — set / clear a per-slot image override. Empty value removes the
+  // key so the template's own placeholder shows through again.
+  const setImageOverride = (key: string, value: string) => {
+    const next = { ...imageOverrides };
+    if (!value || !value.trim()) delete next[key];
+    else next[key] = value.trim();
+    setField({ imageOverrides: Object.keys(next).length ? next : undefined });
+  };
 
   return (
     <div className="space-y-3">
+      {/* G3 — image slots. Rendered first so a hero photo is the operator's
+          top edit. AssetPickerField supports both the asset library AND a
+          pasted URL (its built-in URL input), satisfying the §19 "asset
+          picker OR URL paste" requirement. */}
+      {discoveredImages.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white/70 p-3 space-y-2">
+          <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">
+            Images
+          </div>
+          {discoveredImages.map((img) => (
+            <AssetPickerField
+              key={`img:${img.key}`}
+              label={img.aspect ? `${img.label} (${img.aspect})` : img.label}
+              kind="image"
+              value={imageOverrides[img.key] || ''}
+              onChange={(v) => setImageOverride(img.key, v)}
+            />
+          ))}
+        </div>
+      )}
       {sectionOrder.map((sec) => (
         <div key={sec} className="rounded-xl border border-slate-200 bg-white/70 p-3 space-y-2">
           <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">
@@ -7903,6 +7998,138 @@ export function ScheduleRowsField({ label, value, onChange }: { label: string; v
           + Add period
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── DayHoursField (2026-05-28, §19 / G4) ───────────────────────────────────
+// 7-row day → hours editor for RETAIL_STOREFRONT_HOURS. The widget's shape is
+// `openHours?: Partial<Record<'sun'|'mon'|…|'sat', string>>` — one free-form
+// string per day ('10am – 9pm' / 'Closed'), NOT an {open,close} pair (verified
+// against RetailStorefrontHoursWidget.tsx). One labeled input per day; emits a
+// plain object. Back-compat: a legacy JSON string value is parsed on read so
+// presets that still carry the old stringified blob keep rendering.
+const DAY_HOURS_KEYS: Array<[string, string]> = [
+  ['sun', 'Sunday'],
+  ['mon', 'Monday'],
+  ['tue', 'Tuesday'],
+  ['wed', 'Wednesday'],
+  ['thu', 'Thursday'],
+  ['fri', 'Friday'],
+  ['sat', 'Saturday'],
+];
+function DayHoursField({ label, value, onChange }: { label: string; value: unknown; onChange: (v: Record<string, string>) => void }) {
+  // Normalize: accept a parsed object OR a legacy JSON string OR null.
+  let hours: Record<string, string> = {};
+  if (value && typeof value === 'object') {
+    hours = value as Record<string, string>;
+  } else if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object') hours = parsed as Record<string, string>;
+    } catch {
+      /* leave empty — malformed legacy string */
+    }
+  }
+  const setDay = (key: string, v: string) => {
+    const next = { ...hours };
+    if (v) next[key] = v;
+    else delete next[key];
+    onChange(next);
+  };
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <div className="space-y-1.5">
+        {DAY_HOURS_KEYS.map(([key, dayLabel]) => (
+          <div key={key} className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold text-slate-500 w-16 shrink-0">{dayLabel}</span>
+            <input
+              type="text"
+              value={typeof hours[key] === 'string' ? hours[key] : ''}
+              placeholder="10am – 9pm or Closed"
+              onChange={(e) => setDay(key, e.target.value)}
+              aria-label={`${dayLabel} hours`}
+              className="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm"
+            />
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-slate-400 mt-1.5 px-0.5">Leave a day blank to omit it from the plate.</p>
+    </div>
+  );
+}
+
+// ─── YouAreHereField (2026-05-28, §19 / G4) ─────────────────────────────────
+// Two number inputs (x / y, 0–100) + a "show the marker" toggle for
+// RETAIL_WAYFINDING_MAP. Widget shape is `{ x: number; y: number } | null`
+// (verified against RetailWayfindingMapWidget.tsx); null hides the marker.
+// Back-compat: a legacy JSON string ('{"x":50,"y":92}' / 'null') is parsed on
+// read so old presets keep working.
+function YouAreHereField({ label, value, onChange }: { label: string; value: unknown; onChange: (v: { x: number; y: number } | null) => void }) {
+  // Normalize. `null` (or string 'null') = hidden. Object / legacy JSON
+  // string = shown at {x,y}. Anything else defaults to the visible center-ish.
+  let pos: { x: number; y: number } | null = { x: 50, y: 92 };
+  if (value === null) {
+    pos = null;
+  } else if (value && typeof value === 'object') {
+    const o = value as { x?: unknown; y?: unknown };
+    pos = { x: typeof o.x === 'number' ? o.x : 50, y: typeof o.y === 'number' ? o.y : 92 };
+  } else if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed === null) pos = null;
+      else if (parsed && typeof parsed === 'object') pos = { x: typeof parsed.x === 'number' ? parsed.x : 50, y: typeof parsed.y === 'number' ? parsed.y : 92 };
+    } catch {
+      /* keep default */
+    }
+  }
+  const shown = pos !== null;
+  const cur = pos ?? { x: 50, y: 92 };
+  const setCoord = (axis: 'x' | 'y', raw: string) => {
+    const n = raw === '' ? 0 : Number(raw);
+    onChange({ ...cur, [axis]: Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : cur[axis] });
+  };
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <label className="flex items-center gap-2 text-[11px] text-slate-600 mb-2">
+        <input
+          type="checkbox"
+          checked={shown}
+          onChange={(e) => onChange(e.target.checked ? cur : null)}
+          aria-label="Show the “you are here” marker"
+        />
+        Show the marker on the map
+      </label>
+      {shown && (
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <span className="block text-[10px] text-slate-400 mb-0.5">X (0–100)</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={cur.x}
+              onChange={(e) => setCoord('x', e.target.value)}
+              aria-label="Marker X position (0–100)"
+              className="w-full px-2 py-1.5 rounded-lg bg-white border border-slate-200/60 text-xs font-semibold text-center focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm"
+            />
+          </div>
+          <div className="flex-1">
+            <span className="block text-[10px] text-slate-400 mb-0.5">Y (0–100)</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={cur.y}
+              onChange={(e) => setCoord('y', e.target.value)}
+              aria-label="Marker Y position (0–100)"
+              className="w-full px-2 py-1.5 rounded-lg bg-white border border-slate-200/60 text-xs font-semibold text-center focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -2708,14 +2708,17 @@ function QrCodeVariant({ config, bgColor, color }: { config: any; bgColor: strin
 function ExternalHtmlWidget({ config }: { config: any }) {
   const url = typeof config?.url === 'string' ? config.url.trim() : '';
 
-  // Passthrough payload — base64url-encoded JSON on three URL params:
+  // Passthrough payload — base64url-encoded JSON on URL params:
   //   ?brand=…       CSS custom-property overrides (colors, fonts)
   //   ?text=…        per-data-field text overrides
   //   ?textStyles=…  per-data-field inline-style overrides
-  // The V2 shim (apps/web/scripts/inject-brand-shim.cjs) reads all
-  // three and applies them at first paint. Only non-empty keys are
-  // sent so a template's own defaults show through for anything the
-  // operator hasn't customized.
+  //   ?img=…         per-image-slot URL overrides (G3) — keyed by the
+  //                  template's data-img / data-slot, applied as
+  //                  background-image / src on the matching element.
+  // The V2 shim (apps/web/scripts/inject-shim-v2.cjs) reads them all
+  // and applies them at first paint. Only non-empty keys are sent so a
+  // template's own defaults show through for anything the operator
+  // hasn't customized.
   //
   // textStyles is the canonical source for per-field inline-style
   // overrides; cfg._styles is the source the editor's bottom-bar
@@ -2729,6 +2732,7 @@ function ExternalHtmlWidget({ config }: { config: any }) {
       ['brand', config?.brand],
       ['text', config?.textOverrides],
       ['textStyles', styles],
+      ['img', config?.imageOverrides],
     ];
     const segments: string[] = [];
     for (const [name, raw] of params) {
@@ -2754,7 +2758,7 @@ function ExternalHtmlWidget({ config }: { config: any }) {
     if (segments.length === 0) return url;
     const joiner = url.includes('?') ? '&' : '?';
     return `${url}${joiner}${segments.join('&')}`;
-  }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles]);
+  }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides]);
 
   if (!url) {
     return (

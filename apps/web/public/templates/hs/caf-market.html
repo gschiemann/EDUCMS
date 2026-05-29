@@ -105,19 +105,20 @@
   .ticker .tag::before{content:'';width:18px;height:18px;background:#fff;border-radius:50%;animation:blink 1.4s steps(2) infinite}
   .ticker .msg{font-family:'Archivo',sans-serif;font-weight:700;font-size:32px;padding-left:36px;white-space:nowrap;letter-spacing:.04em;text-transform:uppercase;animation:sc 90s linear infinite}
   .ticker .msg .star{color:var(--s1);margin:0 22px}
-</style><script>/*EDUCMS-SHIM-V2*/(function(){try{
+</style><script>/*EDUCMS-SHIM-V3*/(function(){try{
 function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
-function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{}};}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
 var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas'],surface:['--paper','--brand-paper','--surface'],
 text:['--ink','--fg','--brand-ink','--brand-fg','--text'],muted:['--mute','--brand-mute','--text-muted'],
 primary:['--primary','--brand-primary','--color-primary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent'],
 fontDisplay:['--font-display','--font-headline'],fontBody:['--font-grotesk','--font-body','--font-sans'],fontCondensed:['--font-condensed','--font-numeric']};
 function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k])BRAND_MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});}
 function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){if(el.children.length===0){el.textContent=text[k];}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=text[k];}else{el.insertBefore(document.createTextNode(text[k]),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
-function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string'||!v)return;var esc=k.replace(/"/g,'\\"');var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;var safe=v.replace(/["'()\s]/g,'');if(!safe)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);}
 applyBrand(readParams().brand);
 if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
-addEventListener('message',function(e){try{var d=e.data;if(d&&d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});}}catch(_){}});
+addEventListener('message',function(e){try{var d=e.data;if(d&&d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}}catch(_){}});
 }catch(e){}})();</script>
 </head><body>
 <script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-hs-caf-market-v1" }/*EDITMODE-END*/;</script>
