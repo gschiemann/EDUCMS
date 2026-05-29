@@ -3729,12 +3729,13 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="intervalMs" label="Rotate every (ms)" value={String(cfg.intervalMs ?? 8000)} placeholder="8000" onChange={(v) => setField({ intervalMs: parseInt(v) || 8000 })} />);
       fields.push(<SelectField key="placement" label="Placement style" value={cfg.placement || 'banner'} options={[['banner','Banner (contain)'],['square','Square (contain)'],['fullbleed','Full-bleed (cover, no pip indicator)']]} onChange={(v) => setField({ placement: v })} />);
       fields.push(<ToggleField key="showSponsorLabel" label='Show "Sponsored · {name}" disclosure' value={cfg.showSponsorLabel !== false} onChange={(v) => setField({ showSponsorLabel: v })} />);
-      fields.push(<TextAreaField key="slotsJson" label="Sponsor slots (JSON array of { assetUrl, assetMime?, sponsorName?, ctaText?, clickThroughUrl? })" value={typeof cfg.slots === 'string' ? cfg.slots : JSON.stringify(cfg.slots || [], null, 2)} rows={8} onChange={(v) => {
-        // BUG-003 fix pattern (FITNESS_AD_BANNER) — only commit on
-        // successful parse so mid-typing strings don't leak into
-        // cfg.slots and crash the renderer's .map().
-        try { setField({ slots: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
-      }} />);
+      fields.push(<ListItemsEditor key="slots" label="Sponsor slots" itemNoun="slot" help="Each slot is one sponsor creative in the rotation." value={cfg.slots} onChange={(v) => setField({ slots: v })} newItem={{ assetUrl: '', assetMime: '', sponsorName: '', ctaText: '', clickThroughUrl: '' }} fields={[
+        { key: 'assetUrl', label: 'Image / video', type: 'image' },
+        { key: 'sponsorName', label: 'Sponsor name', type: 'text', placeholder: "Joe's Pizza" },
+        { key: 'ctaText', label: 'Call-to-action text', type: 'text', placeholder: 'Order online' },
+        { key: 'clickThroughUrl', label: 'Click-through URL', type: 'text', placeholder: 'https://example.com' },
+        { key: 'assetMime', label: 'Asset MIME (e.g. video/mp4 — auto if blank)', type: 'text', placeholder: 'image/png' },
+      ]} />);
       break;
     }
     // 2026-05-26 monetize-audit FAIL #4 + #10/#11 — MusicPlayerWidget
@@ -3908,14 +3909,17 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<ColorPickerField key="accentColor" label="Accent color (AD chip + progress)" value={cfg.accentColor || '#fbbf24'} onChange={(v) => setField({ accentColor: v })} />);
       fields.push(<ToggleField key="showAdBadge" label='Show "AD" disclosure chip' value={cfg.showAdBadge !== false} onChange={(v) => setField({ showAdBadge: v })} />);
       fields.push(<ToggleField key="enableImpressionLogging" label="Log impressions to /ads/impressions" value={cfg.enableImpressionLogging !== false} onChange={(v) => setField({ enableImpressionLogging: v })} />);
-      fields.push(<TextAreaField key="creativesJson" label="Creatives (JSON array of { headline, sub, ctaText, ctaUrl })" value={typeof cfg.creatives === 'string' ? cfg.creatives : JSON.stringify(cfg.creatives || [], null, 2)} rows={6} onChange={(v) => {
-        // editor-BUG-003 fix: only commit on successful parse. Mid-typing
-        // strings used to leak into cfg.creatives and crash the renderer
-        // when it tried to .map() the raw string. Keep the previous valid
-        // value while the user is editing — the textarea retains the
-        // in-progress text via its own local state.
-        try { setField({ creatives: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
-      }} />);
+      {/* Each creative carries a stable `id` used as the widget's React
+          key (FitnessAdBannerWidget keys its slide map on cre.id), so we
+          mint a fresh id per added row via makeNewItem — a static newItem
+          would clone the same id into every creative. Field shapes match
+          FitnessAdCreative (imageUrl / videoUrl / advertiser / headline). */}
+      fields.push(<ListItemsEditor key="creatives" label="Creatives" itemNoun="creative" help="Each creative is one ad in the rotation. Upload an image or paste a video URL." value={cfg.creatives} onChange={(v) => setField({ creatives: v })} makeNewItem={() => ({ id: `cr_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, imageUrl: '', videoUrl: '', advertiser: '', headline: '' })} fields={[
+        { key: 'imageUrl', label: 'Image', type: 'image' },
+        { key: 'videoUrl', label: 'Video URL (takes precedence over image)', type: 'text', placeholder: 'https://example.com/spot.mp4' },
+        { key: 'advertiser', label: 'Advertiser name', type: 'text', placeholder: 'Your Brand' },
+        { key: 'headline', label: 'Headline (shown when no image/video)', type: 'text', placeholder: 'New Member Special · 50% off' },
+      ]} />);
       break;
     }
     case 'FITNESS_APP_LIBRARY': {
@@ -3935,10 +3939,14 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="maxRows" label="Max rows shown" value={String(cfg.maxRows || 6)} placeholder="6" onChange={(v) => setField({ maxRows: parseInt(v) || 6 })} />);
       fields.push(<ToggleField key="highlightNextClass" label="Highlight next upcoming class" value={cfg.highlightNextClass !== false} onChange={(v) => setField({ highlightNextClass: v })} />);
       fields.push(<ToggleField key="showPastClasses" label="Show past classes (dimmed)" value={!!cfg.showPastClasses} onChange={(v) => setField({ showPastClasses: v })} />);
-      fields.push(<TextAreaField key="classesJson" label="Classes (JSON array of { time, name, instructor, room })" value={typeof cfg.classes === 'string' ? cfg.classes : JSON.stringify(cfg.classes || [], null, 2)} rows={8} onChange={(v) => {
-        // editor-BUG-003 fix: don't leak partial keystrokes into cfg.classes.
-        try { setField({ classes: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
-      }} />);
+      fields.push(<ListItemsEditor key="classes" label="Classes" itemNoun="class" help="Each row is one class on today's schedule." value={cfg.classes} onChange={(v) => setField({ classes: v })} newItem={{ time: '', name: '', instructor: '', studio: '', intensity: '', durationMin: '' }} fields={[
+        { key: 'time', label: 'Time', type: 'text', placeholder: '7:00 AM' },
+        { key: 'name', label: 'Class name', type: 'text', placeholder: 'Power Yoga' },
+        { key: 'instructor', label: 'Instructor', type: 'text', placeholder: 'Jordan' },
+        { key: 'studio', label: 'Studio / room', type: 'text', placeholder: 'Studio A' },
+        { key: 'intensity', label: 'Intensity', type: 'select', options: [['', '—'], ['easy', 'Easy'], ['moderate', 'Moderate'], ['hard', 'Hard']] },
+        { key: 'durationMin', label: 'Duration (min)', type: 'number', placeholder: '45' },
+      ]} />);
       break;
     }
     case 'FITNESS_MOTIVATIONAL_QUOTE': {
@@ -3965,10 +3973,10 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<SelectField key="transitionStyle" label="Transition" value={cfg.transitionStyle || 'crossfade'} options={[['crossfade','Crossfade'],['typewriter','Typewriter'],['slide','Slide']]} onChange={(v) => setField({ transitionStyle: v })} />);
       fields.push(<SelectField key="align" label="Text alignment" value={cfg.align || 'center'} options={[['center','Center'],['left','Left']]} onChange={(v) => setField({ align: v })} />);
       fields.push(<SelectField key="bgStyle" label="Background style" value={cfg.bgStyle || 'gradient'} options={[['solid','Solid color'],['gradient','Gradient'],['photo-overlay','Photo with overlay']]} onChange={(v) => setField({ bgStyle: v })} />);
-      fields.push(<TextAreaField key="quotesJson" label="Quotes (JSON array of { text, author })" value={typeof cfg.quotes === 'string' ? cfg.quotes : JSON.stringify(cfg.quotes || [], null, 2)} rows={6} onChange={(v) => {
-        // editor-BUG-003 fix: don't leak partial keystrokes into cfg.quotes.
-        try { setField({ quotes: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
-      }} />);
+      fields.push(<ListItemsEditor key="quotes" label="Quotes" itemNoun="quote" help="Each row is one quote in the rotation. The AI button above appends here too." value={cfg.quotes} onChange={(v) => setField({ quotes: v })} newItem={{ text: '', author: '' }} fields={[
+        { key: 'text', label: 'Quote', type: 'textarea', placeholder: 'The only bad workout is the one that didn’t happen.' },
+        { key: 'author', label: 'Author', type: 'text', placeholder: 'Unknown' },
+      ]} />);
       break;
     }
     case 'FITNESS_MUSIC_PLAYER': {
@@ -4168,9 +4176,15 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="fadeMs" label="Crossfade duration (ms)" value={String(cfg.fadeMs ?? 800)} placeholder="800" onChange={(v) => setField({ fadeMs: parseInt(v) || 800 })} />);
       fields.push(<ColorPickerField key="inkColor" label="Caption ink color" value={cfg.inkColor || '#ffffff'} onChange={(v) => setField({ inkColor: v })} />);
       fields.push(<ColorPickerField key="accentColor" label="Eyebrow + price accent" value={cfg.accentColor || '#e8c87a'} onChange={(v) => setField({ accentColor: v })} />);
-      fields.push(<TextAreaField key="slidesJson" label="Slides (JSON array of { eyebrow, headline, subhead, price, imageUrl, swatchColor, emoji })" value={typeof cfg.slides === 'string' ? cfg.slides : JSON.stringify(cfg.slides || [], null, 2)} rows={8} onChange={(v) => {
-        try { setField({ slides: JSON.parse(v) }); } catch { /* keep previous valid value */ }
-      }} />);
+      fields.push(<ListItemsEditor key="slides" label="Slides" itemNoun="slide" help="Each slide is one editorial frame in the carousel." value={cfg.slides} onChange={(v) => setField({ slides: v })} newItem={{ eyebrow: '', headline: '', subhead: '', price: '', imageUrl: '', swatchColor: '', emoji: '' }} fields={[
+        { key: 'eyebrow', label: 'Eyebrow', type: 'text', placeholder: 'SS26 · NEW IN' },
+        { key: 'headline', label: 'Headline', type: 'text', placeholder: 'The Linen Edit' },
+        { key: 'subhead', label: 'Subhead', type: 'text', placeholder: 'Effortless silhouettes for warmer days.' },
+        { key: 'price', label: 'Price', type: 'price', placeholder: 'from $98' },
+        { key: 'imageUrl', label: 'Hero image', type: 'image' },
+        { key: 'swatchColor', label: 'Swatch color (fallback)', type: 'color' },
+        { key: 'emoji', label: 'Emoji (fallback)', type: 'text', placeholder: '👗' },
+      ]} />);
       break;
     }
     case 'RETAIL_STOREFRONT_HOURS': {
@@ -4199,9 +4213,7 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<ColorPickerField key="bgColor" label="Background color" value={cfg.bgColor || '#faf6f1'} onChange={(v) => setField({ bgColor: v })} />);
       fields.push(<ColorPickerField key="inkColor" label="Body ink color" value={cfg.inkColor || '#1a1411'} onChange={(v) => setField({ inkColor: v })} />);
       fields.push(<ColorPickerField key="accentColor" label="Price + starburst accent" value={cfg.accentColor || '#9a2d2d'} onChange={(v) => setField({ accentColor: v })} />);
-      fields.push(<TextAreaField key="sellingPointsJson" label="Selling points (JSON array of strings, max 3)" value={typeof cfg.sellingPoints === 'string' ? cfg.sellingPoints : JSON.stringify(cfg.sellingPoints || [], null, 2)} rows={5} onChange={(v) => {
-        try { setField({ sellingPoints: JSON.parse(v) }); } catch { /* keep previous valid value */ }
-      }} />);
+      fields.push(<StringListEditor key="sellingPoints" label="Selling points" itemNoun="point" maxItems={3} placeholder="Hand-finished in Italy" help="Up to 3 short bullets shown beside the price." value={cfg.sellingPoints} onChange={(v) => setField({ sellingPoints: v })} />);
       break;
     }
     case 'RETAIL_SALE_COUNTDOWN': {
@@ -4225,9 +4237,7 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<ColorPickerField key="bgColor" label="Background color" value={cfg.bgColor || '#faf6f1'} onChange={(v) => setField({ bgColor: v })} />);
       fields.push(<ColorPickerField key="inkColor" label="Body ink color" value={cfg.inkColor || '#1a1411'} onChange={(v) => setField({ inkColor: v })} />);
       fields.push(<ColorPickerField key="accentColor" label="Eyebrow + perks accent" value={cfg.accentColor || '#9a2d2d'} onChange={(v) => setField({ accentColor: v })} />);
-      fields.push(<TextAreaField key="perksJson" label="Perks (JSON array of strings, max 3)" value={typeof cfg.perks === 'string' ? cfg.perks : JSON.stringify(cfg.perks || [], null, 2)} rows={5} onChange={(v) => {
-        try { setField({ perks: JSON.parse(v) }); } catch { /* keep previous valid value */ }
-      }} />);
+      fields.push(<StringListEditor key="perks" label="Perks" itemNoun="perk" maxItems={3} placeholder="Free to join" help="Up to 3 short loyalty perks." value={cfg.perks} onChange={(v) => setField({ perks: v })} />);
       break;
     }
     case 'RETAIL_WAYFINDING_MAP': {
@@ -4239,9 +4249,16 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextAreaField key="youAreHereJson" label="You are here position (JSON { x, y } 0-100, or null to hide)" value={cfg.youAreHere === null ? 'null' : (typeof cfg.youAreHere === 'string' ? cfg.youAreHere : JSON.stringify(cfg.youAreHere || { x: 50, y: 92 }, null, 2))} rows={4} onChange={(v) => {
         try { setField({ youAreHere: JSON.parse(v) }); } catch { /* keep previous valid value */ }
       }} />);
-      fields.push(<TextAreaField key="departmentsJson" label="Departments (JSON array of { name, x, y, width, height, color, emoji, highlight })" value={typeof cfg.departments === 'string' ? cfg.departments : JSON.stringify(cfg.departments || [], null, 2)} rows={10} onChange={(v) => {
-        try { setField({ departments: JSON.parse(v) }); } catch { /* keep previous valid value */ }
-      }} />);
+      fields.push(<ListItemsEditor key="departments" label="Departments" itemNoun="department" help="Each tile is a department on the map. x / y / width / height are 0–100 percentages of the map area." value={cfg.departments} onChange={(v) => setField({ departments: v })} newItem={{ name: '', x: 6, y: 12, width: 38, height: 30, color: '#e8dcc8', emoji: '', highlight: false }} fields={[
+        { key: 'name', label: 'Name', type: 'text', placeholder: 'Womens' },
+        { key: 'emoji', label: 'Emoji', type: 'text', placeholder: '👗' },
+        { key: 'color', label: 'Tile color', type: 'color' },
+        { key: 'x', label: 'X (0–100)', type: 'number' },
+        { key: 'y', label: 'Y (0–100)', type: 'number' },
+        { key: 'width', label: 'Width (0–100)', type: 'number' },
+        { key: 'height', label: 'Height (0–100)', type: 'number' },
+        { key: 'highlight', label: 'Highlight this tile (pulses + pin)', type: 'toggle' },
+      ]} />);
       break;
     }
     // editor-BUG-002 fix — explicit cases for the 9 highest-priority
@@ -4254,9 +4271,15 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="title" label="Section title" value={cfg.title || ''} placeholder="COMBOS · BUILT TO SHARE" onChange={(v) => setField({ title: v })} />);
       fields.push(<ColorPickerField key="accentColor" label="Mustard accent color" value={cfg.accentColor || '#e8b94a'} onChange={(v) => setField({ accentColor: v })} />);
       fields.push(<TextField key="rotationMs" label="Rotate every (ms)" value={String(cfg.rotationMs || 7000)} placeholder="7000" onChange={(v) => setField({ rotationMs: parseInt(v) || 7000 })} />);
-      fields.push(<TextAreaField key="combosJson" label="Combos (JSON array of { name, includes, price, emoji, badge })" value={typeof cfg.combos === 'string' ? cfg.combos : JSON.stringify(cfg.combos || [], null, 2)} rows={8} onChange={(v) => {
-        try { setField({ combos: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
-      }} />);
+      fields.push(<ListItemsEditor key="combos" label="Combos" itemNoun="combo" help="Each combo is one slide in the carousel." value={cfg.combos} onChange={(v) => setField({ combos: v })} newItem={{ name: '', includes: [], price: '', imageUrl: '', emoji: '', badge: '', tileBg: '' }} fields={[
+        { key: 'name', label: 'Combo name', type: 'text', placeholder: 'Big Burger Combo' },
+        { key: 'price', label: 'Price', type: 'price', placeholder: '$9.99' },
+        { key: 'includes', label: 'Includes', type: 'stringList', placeholder: '1/3 lb cheeseburger' },
+        { key: 'imageUrl', label: 'Photo', type: 'image' },
+        { key: 'emoji', label: 'Emoji (fallback)', type: 'text', placeholder: '🍔' },
+        { key: 'badge', label: 'Badge', type: 'text', placeholder: 'TODAY ONLY' },
+        { key: 'tileBg', label: 'Tile color', type: 'color' },
+      ]} />);
       break;
     }
     case 'RESTAURANT_SPECIALS_CALLOUT': {
@@ -4299,9 +4322,11 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<SelectField key="layout" label="Layout" value={cfg.layout || 'horizontal'} options={[['horizontal','Horizontal strip'],['grid','2-column grid card']]} onChange={(v) => setField({ layout: v })} />);
       fields.push(<SelectField key="theme" label="Background theme" value={cfg.theme || 'cream'} options={[['cream','Cream'],['charcoal','Charcoal']]} onChange={(v) => setField({ theme: v })} />);
       fields.push(<ColorPickerField key="accentColor" label="Accent color (codes)" value={cfg.accentColor || '#7a1f1f'} onChange={(v) => setField({ accentColor: v })} />);
-      fields.push(<TextAreaField key="entriesJson" label="Custom entries (JSON array of { code, label, emoji }) — leave blank for defaults" value={typeof cfg.entries === 'string' ? cfg.entries : JSON.stringify(cfg.entries || [], null, 2)} rows={6} onChange={(v) => {
-        try { setField({ entries: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
-      }} />);
+      fields.push(<ListItemsEditor key="entries" label="Legend entries" itemNoun="entry" help="Leave empty to use the built-in defaults (Vegan, GF, etc.). Each row is one dietary code." value={cfg.entries} onChange={(v) => setField({ entries: v })} newItem={{ code: '', label: '', emoji: '' }} fields={[
+        { key: 'code', label: 'Code', type: 'text', placeholder: 'GF' },
+        { key: 'label', label: 'Label', type: 'text', placeholder: 'Gluten-free' },
+        { key: 'emoji', label: 'Icon emoji', type: 'text', placeholder: '🌾' },
+      ]} />);
       break;
     }
     case 'BAR_HAPPY_HOUR_COUNTDOWN': {
@@ -4311,9 +4336,12 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="endsAt" label="End time (e.g. 7:00 PM, 19:00, 7pm)" value={cfg.endsAt || ''} placeholder="7:00 PM" onChange={(v) => setField({ endsAt: v })} />);
       fields.push(<ColorPickerField key="accentColor" label="Accent neon color" value={cfg.accentColor || '#ec4899'} onChange={(v) => setField({ accentColor: v })} />);
       fields.push(<TextField key="postEndedMs" label="Show 'ended' state for (ms)" value={String(cfg.postEndedMs || 1800000)} placeholder="1800000" onChange={(v) => setField({ postEndedMs: parseInt(v) || 1800000 })} />);
-      fields.push(<TextAreaField key="drinksJson" label="Featured drinks (JSON array of { name, regularPrice, happyPrice, emoji })" value={typeof cfg.drinks === 'string' ? cfg.drinks : JSON.stringify(cfg.drinks || [], null, 2)} rows={6} onChange={(v) => {
-        try { setField({ drinks: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
-      }} />);
+      fields.push(<ListItemsEditor key="drinks" label="Featured drinks" itemNoun="drink" help="Each row is one happy-hour drink with its regular vs. happy-hour price." value={cfg.drinks} onChange={(v) => setField({ drinks: v })} newItem={{ name: '', regularPrice: '', happyPrice: '', emoji: '' }} fields={[
+        { key: 'name', label: 'Drink', type: 'text', placeholder: 'Drafts' },
+        { key: 'regularPrice', label: 'Regular price', type: 'price', placeholder: '$8' },
+        { key: 'happyPrice', label: 'Happy-hour price', type: 'price', placeholder: '$5' },
+        { key: 'emoji', label: 'Emoji', type: 'text', placeholder: '🍺' },
+      ]} />);
       break;
     }
     case 'BAR_GAME_DAY_SCHEDULE': {
@@ -4321,9 +4349,15 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="TODAY'S MATCHUPS" onChange={(v) => setField({ subtitle: v })} />);
       fields.push(<ColorPickerField key="accentColor" label="LIVE chip / accent color" value={cfg.accentColor || '#ef4444'} onChange={(v) => setField({ accentColor: v })} />);
       fields.push(<TextField key="maxRows" label="Max games shown" value={String(cfg.maxRows || 6)} placeholder="6" onChange={(v) => setField({ maxRows: parseInt(v) || 6 })} />);
-      fields.push(<TextAreaField key="gamesJson" label="Games (JSON array of { league, away, home, time, channel, status, emoji })" value={typeof cfg.games === 'string' ? cfg.games : JSON.stringify(cfg.games || [], null, 2)} rows={8} onChange={(v) => {
-        try { setField({ games: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
-      }} />);
+      fields.push(<ListItemsEditor key="games" label="Games" itemNoun="game" help="Each row is one matchup. Status auto-detects from the time when left on Auto." value={cfg.games} onChange={(v) => setField({ games: v })} newItem={{ league: '', away: '', home: '', time: '', channel: '', status: '', emoji: '' }} fields={[
+        { key: 'league', label: 'League', type: 'text', placeholder: 'NFL' },
+        { key: 'away', label: 'Away team', type: 'text', placeholder: 'Cowboys' },
+        { key: 'home', label: 'Home team', type: 'text', placeholder: 'Eagles' },
+        { key: 'time', label: 'Time', type: 'text', placeholder: '1:00 PM' },
+        { key: 'channel', label: 'Channel', type: 'text', placeholder: 'FOX' },
+        { key: 'status', label: 'Status', type: 'select', options: [['', 'Auto-detect'], ['UPCOMING', 'Upcoming'], ['LIVE', 'Live'], ['FINAL', 'Final']] },
+        { key: 'emoji', label: 'Emoji', type: 'text', placeholder: '🏈' },
+      ]} />);
       break;
     }
     case 'BAR_EVENT_TONIGHT': {
@@ -4348,9 +4382,12 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="questionDeadline" label="Question deadline (ISO timestamp, optional)" value={cfg.questionDeadline || ''} placeholder="2026-05-03T20:30:00Z" onChange={(v) => setField({ questionDeadline: v })} />);
       fields.push(<ColorPickerField key="accentColor" label="Accent color (neon green)" value={cfg.accentColor || '#22c55e'} onChange={(v) => setField({ accentColor: v })} />);
       fields.push(<TextField key="maxRows" label="Visible rows" value={String(cfg.maxRows || 5)} placeholder="5" onChange={(v) => setField({ maxRows: parseInt(v) || 5 })} />);
-      fields.push(<TextAreaField key="teamsJson" label="Teams (JSON array of { name, score, emoji, delta })" value={typeof cfg.teams === 'string' ? cfg.teams : JSON.stringify(cfg.teams || [], null, 2)} rows={8} onChange={(v) => {
-        try { setField({ teams: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
-      }} />);
+      fields.push(<ListItemsEditor key="teams" label="Teams" itemNoun="team" help="Each row is one team. Teams auto-sort by score; delta drives the ▲ / ▼ arrow." value={cfg.teams} onChange={(v) => setField({ teams: v })} newItem={{ name: '', score: 0, emoji: '', delta: 0 }} fields={[
+        { key: 'name', label: 'Team name', type: 'text', placeholder: 'Quizzly Bears' },
+        { key: 'score', label: 'Score', type: 'number', placeholder: '47' },
+        { key: 'emoji', label: 'Emoji', type: 'text', placeholder: '🐻' },
+        { key: 'delta', label: 'Change since last round', type: 'number', placeholder: '6' },
+      ]} />);
       break;
     }
     default: {
@@ -7852,7 +7889,11 @@ export type ListItemFieldType =
   | 'image'
   | 'color'
   | 'toggle'
-  | 'select';
+  | 'select'
+  // A sub-array of plain strings inside one item (e.g. a combo's
+  // `includes` bullets). Edited as a newline-delimited textarea and
+  // stored back as `string[]` so the widget's `.map()` keeps working.
+  | 'stringList';
 
 export interface ListItemFieldSpec {
   key: string;
@@ -7869,6 +7910,7 @@ export function ListItemsEditor({
   onChange,
   fields,
   newItem,
+  makeNewItem,
   itemNoun = 'item',
 }: {
   label: string;
@@ -7877,6 +7919,13 @@ export function ListItemsEditor({
   onChange: (v: Record<string, unknown>[]) => void;
   fields: ListItemFieldSpec[];
   newItem?: Record<string, unknown>;
+  /**
+   * Factory for a fresh blank item. Use this (instead of `newItem`) when
+   * each row needs a UNIQUE value — e.g. a stable `id` used as the
+   * widget's React `key`. Static `newItem` would clone the same id into
+   * every added row, producing duplicate-key warnings + render glitches.
+   */
+  makeNewItem?: () => Record<string, unknown>;
   itemNoun?: string;
 }) {
   // Normalize: accept a parsed array OR a JSON string OR null/undefined.
@@ -7898,9 +7947,13 @@ export function ListItemsEditor({
     onChange(next);
   };
   const add = () => {
-    const blank: Record<string, unknown> = newItem ? { ...newItem } : {};
+    const blank: Record<string, unknown> = makeNewItem
+      ? { ...makeNewItem() }
+      : newItem
+        ? { ...newItem }
+        : {};
     for (const f of fields) {
-      if (!(f.key in blank)) blank[f.key] = f.type === 'toggle' ? false : '';
+      if (!(f.key in blank)) blank[f.key] = f.type === 'toggle' ? false : f.type === 'stringList' ? [] : '';
     }
     onChange([...items, blank]);
   };
@@ -7974,6 +8027,29 @@ export function ListItemsEditor({
                     />
                   );
                 }
+                if (t === 'stringList') {
+                  // Sub-array of plain strings: one per line in the
+                  // textarea, stored back as string[]. Blank lines are
+                  // dropped so the widget never renders an empty bullet.
+                  const arr = Array.isArray(raw) ? (raw as unknown[]).map((s) => String(s)) : [];
+                  return (
+                    <label key={f.key} className="block">
+                      <span className="block text-[10px] text-slate-400 mb-0.5">{f.label} (one per line)</span>
+                      <textarea
+                        value={arr.join('\n')}
+                        onChange={(e) =>
+                          update(idx, {
+                            [f.key]: e.target.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
+                          })
+                        }
+                        placeholder={f.placeholder || f.label}
+                        aria-label={`${itemNoun} ${idx + 1} ${f.label}`}
+                        rows={3}
+                        className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                    </label>
+                  );
+                }
                 // text | number | price
                 return (
                   <input
@@ -8001,6 +8077,96 @@ export function ListItemsEditor({
           className="w-full py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-dashed border-indigo-200"
         >
           + Add {itemNoun}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── StringListEditor ───────────────────────────────────────────────────────
+// Sibling of ListItemsEditor for the handful of widget configs whose list is
+// a plain `string[]` (not an array of objects) — e.g. RETAIL_LOYALTY_QR.perks
+// and RETAIL_PRICE_CALLOUT.sellingPoints. Each string gets its own input with
+// add / remove / reorder, so the operator never hand-edits a JSON array of
+// quoted strings. onChange always emits a real `string[]`; `value` is
+// normalized from an array OR a legacy JSON string.
+export function StringListEditor({
+  label,
+  help,
+  value,
+  onChange,
+  placeholder,
+  itemNoun = 'line',
+  maxItems,
+}: {
+  label: string;
+  help?: string;
+  value: unknown;
+  onChange: (v: string[]) => void;
+  placeholder?: string;
+  itemNoun?: string;
+  maxItems?: number;
+}) {
+  let items: string[] = [];
+  if (Array.isArray(value)) {
+    items = (value as unknown[]).map((s) => String(s));
+  } else if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) items = parsed.map((s) => String(s));
+    } catch {
+      /* leave empty — malformed legacy string */
+    }
+  }
+
+  const update = (idx: number, v: string) => {
+    const next = items.slice();
+    next[idx] = v;
+    onChange(next);
+  };
+  const add = () => onChange([...items, '']);
+  const remove = (idx: number) => onChange(items.filter((_, i) => i !== idx));
+  const move = (idx: number, dir: -1 | 1) => {
+    const j = idx + dir;
+    if (j < 0 || j >= items.length) return;
+    const next = items.slice();
+    [next[idx], next[j]] = [next[j], next[idx]];
+    onChange(next);
+  };
+
+  const atCap = typeof maxItems === 'number' && items.length >= maxItems;
+
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      {help && <p className="text-[10px] text-slate-400 mb-2 px-0.5">{help}</p>}
+      <div className="space-y-2">
+        {items.length === 0 && (
+          <p className="text-[11px] text-slate-400 italic px-1">No {itemNoun}s yet — add your first below.</p>
+        )}
+        {items.map((item, idx) => (
+          <div key={idx} className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold text-slate-400 shrink-0 w-4 text-center">{idx + 1}</span>
+            <input
+              type="text"
+              value={item}
+              onChange={(e) => update(idx, e.target.value)}
+              placeholder={placeholder || `${itemNoun} ${idx + 1}`}
+              aria-label={`${itemNoun} ${idx + 1}`}
+              className="flex-1 min-w-0 px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+            <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0} aria-label={`Move ${itemNoun} ${idx + 1} up`} className="w-6 h-6 shrink-0 rounded border border-slate-200 text-slate-400 hover:text-indigo-600 disabled:opacity-30 flex items-center justify-center text-[11px]">↑</button>
+            <button type="button" onClick={() => move(idx, 1)} disabled={idx === items.length - 1} aria-label={`Move ${itemNoun} ${idx + 1} down`} className="w-6 h-6 shrink-0 rounded border border-slate-200 text-slate-400 hover:text-indigo-600 disabled:opacity-30 flex items-center justify-center text-[11px]">↓</button>
+            <button type="button" onClick={() => remove(idx)} aria-label={`Remove ${itemNoun} ${idx + 1}`} className="w-6 h-6 shrink-0 rounded border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 flex items-center justify-center text-xs">×</button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={add}
+          disabled={atCap}
+          className="w-full py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-dashed border-indigo-200 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {atCap ? `Max ${maxItems} ${itemNoun}s` : `+ Add ${itemNoun}`}
         </button>
       </div>
     </div>
