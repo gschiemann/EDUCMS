@@ -23,6 +23,17 @@ const TIER = (process.env.TIER || 'hs').toLowerCase();
 const WIDGET_TYPE =
   TIER === 'pro' ? 'SCOREBOARD_PRO' : TIER === 'college' ? 'SCOREBOARD_COLLEGE' : 'SCOREBOARD_HS';
 
+// Override config to PROVE editability — if the screenshot shows LIONS 88
+// (green) vs BEARS 80 (purple) + RIVALRY NIGHT + orange accent, then the
+// operator's Properties-panel edits actually drive the render (not just
+// the bound-game/sample path). Set EDIT=0 to see the live sample instead.
+const EDIT_OVERRIDES = process.env.EDIT === '0' ? {} : {
+  bannerText: 'RIVALRY NIGHT',
+  homeName: 'LIONS', awayName: 'BEARS',
+  homeScore: 88, awayScore: 80,
+  homeColor: '#16a34a', awayColor: '#7c3aed', accentColor: '#f59e0b',
+};
+
 function manifest() {
   return {
     tenantId: FAKE_TENANT_ID,
@@ -51,7 +62,7 @@ function manifest() {
               // The gallery "Scoreboard" preset dispatches via the variant
               // registry (cfg.variant), NOT a bare widgetType. 'scoreboard-main'
               // → MainScoreboardWidget — the real component the gallery renders.
-              defaultConfig: { variant: 'scoreboard-main', tier: TIER, gameId: '' },
+              defaultConfig: { variant: 'scoreboard-main', tier: TIER, gameId: '', ...EDIT_OVERRIDES },
             },
           ],
         },

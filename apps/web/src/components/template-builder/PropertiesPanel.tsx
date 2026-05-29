@@ -2200,6 +2200,24 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       const isSportEl = sbVariant.startsWith('sb-')
         || sbVariant === 'scoreboard-main' || sbVariant === 'ribbon-main' || sbVariant === 'scorebug-main';
       if (isSportEl) {
+        // ── Main board — full hand-typed control (works without a bound
+        // game; a live Game still wins over these at render time). 2026-05-29:
+        // operator "make sure its editable" — type names/scores/colors here.
+        if (sbVariant === 'scoreboard-main') {
+          fields.push(<TextField key="bannerText" label="Banner text" value={cfg.bannerText ?? ''} placeholder="GAME NIGHT" onChange={(v) => setField({ bannerText: v })} />);
+          fields.push(<TextField key="homeName" label="Home team" value={cfg.homeName ?? ''} placeholder="EAGLES (blank = live game)" onChange={(v) => setField({ homeName: v })} />);
+          fields.push(<TextField key="awayName" label="Away team" value={cfg.awayName ?? ''} placeholder="TIGERS (blank = live game)" onChange={(v) => setField({ awayName: v })} />);
+          fields.push(<NumField key="homeScore" id="sb-homeScore" label="Home score" value={typeof cfg.homeScore === 'number' ? cfg.homeScore : 0} onChange={(v) => setField({ homeScore: v })} min={0} max={999} step={1} />);
+          fields.push(<NumField key="awayScore" id="sb-awayScore" label="Away score" value={typeof cfg.awayScore === 'number' ? cfg.awayScore : 0} onChange={(v) => setField({ awayScore: v })} min={0} max={999} step={1} />);
+          fields.push(<ColorField key="homeColor" label="Home color" value={cfg.homeColor || '#1e3a8a'} onChange={(v) => setField({ homeColor: v })} />);
+          fields.push(<ColorField key="awayColor" label="Away color" value={cfg.awayColor || '#b91c1c'} onChange={(v) => setField({ awayColor: v })} />);
+          fields.push(<ColorField key="sbAccent" label="Accent (gold trim)" value={cfg.accentColor || '#fbbf24'} onChange={(v) => setField({ accentColor: v })} />);
+          fields.push(<TextField key="period" label="Period" value={cfg.period ?? ''} placeholder="auto from game (e.g. QUARTER 3)" onChange={(v) => setField({ period: v })} />);
+          fields.push(<TextField key="clock" label="Clock" value={cfg.clock ?? ''} placeholder="auto from game (e.g. 7:42)" onChange={(v) => setField({ clock: v })} />);
+          fields.push(<TextField key="homeLogoUrl" label="Home logo URL" value={cfg.homeLogoUrl || ''} placeholder="https://…/home.png" onChange={(v) => setField({ homeLogoUrl: v })} />);
+          fields.push(<TextField key="awayLogoUrl" label="Away logo URL" value={cfg.awayLogoUrl || ''} placeholder="https://…/away.png" onChange={(v) => setField({ awayLogoUrl: v })} />);
+          break;
+        }
         // Which side — shown for any element that carries a team.
         if (cfg.team !== undefined) {
           fields.push(<SelectField key="team" label="Team side" value={String(cfg.team || 'home')} options={[['home', 'Home'], ['away', 'Away']]} onChange={(v) => setField({ team: v })} />);

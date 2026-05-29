@@ -8,30 +8,23 @@
  *
  * REBUILT 2026-05-29 to faithfully match the approved vibrant HS mockup
  * (scratch/design/scoreboards/hs.html) — the prior render was a muted,
- * half-empty dark board (washed gradient panels, bare amber clock, no
- * banner / shot-clock / possession / fouls-timeout modules) that looked
- * generic next to the mockup. This is the CLAUDE.md design-loop port:
+ * half-empty dark board. This is the CLAUDE.md design-loop port:
  *   HTML mockup (approved) → React port (this file) → screenshot verify.
+ *
+ * EDITABLE: every value is operator-overridable from the Properties panel
+ * (team names, scores, team colors, gold accent, banner, period, clock,
+ * shot clock, possession, fouls, timeouts). When a live Game is bound
+ * (GameStateProvider), its live values WIN over the static overrides — so
+ * the one template works live OR hand-typed. Outside a provider it
+ * self-plays a sample so the builder tile is alive.
  *
  * APPROVED 2026-05-29 — matches scratch/design/scoreboards/hs.html,
  * screenshot-verified via apps/web/tests/e2e/scoreboard-shot.spec.ts.
  * DO NOT regress to vw/% units or the muted-panel look.
  *
- * Data: reads useGameState() (the GameStateProvider that
- * CustomScoreboardScene wraps the rendered template in) — bound to a
- * game it shows live score / clock / period / stats. OUTSIDE a provider
- * (builder canvas, gallery thumbnail) it self-plays a sample so the tile
- * is always alive.
- *
- * Sizing: fixed 1920×1080 scene + useScaleToFit transform:scale (the
- * ScaledTemplateThumbnail pattern) — drops into any zone / LED size,
- * pixel-faithful, no unit drift.
- *
- * Chromium-83 / NovaStar-Taurus safe — long-hand top/right/bottom/left,
- * NO flex `gap` (margins / justify-content), NO `inset` shorthand, NO
- * `backdrop-filter`, NO `aspect-ratio`. Font: Fredoka (self-hosted via
- * next/font — offline + Taurus safe), the chunky rounded face the HS
- * pep-rally mockup was designed in.
+ * Sizing: fixed 1920×1080 scene + useScaleToFit transform:scale.
+ * Chromium-83 / Taurus safe — long-hand sides, NO flex `gap`, NO `inset`
+ * shorthand, NO `backdrop-filter`. Font: Fredoka (self-hosted next/font).
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -42,7 +35,7 @@ import type { BaseCfg, WidgetProps } from '../v2/_shared/types';
 
 const DEFAULT_HOME = '#1e3a8a';
 const DEFAULT_AWAY = '#b91c1c';
-const ACCENT = '#fbbf24'; // gold trim
+const ACCENT_DEFAULT = '#fbbf24';
 const DISPLAY_FONT = "var(--font-fredoka), 'Fredoka', 'Baloo 2', system-ui, sans-serif";
 
 function ordinal(n: number): string {
@@ -50,7 +43,6 @@ function ordinal(n: number): string {
   const v = n % 100;
   return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
 }
-
 function segmentLabel(def: SportDefinition, snap: GameSnapshot): string {
   const n = snap.segment;
   if (def.segment.name === 'Inning') {
@@ -63,7 +55,6 @@ function segmentLabel(def: SportDefinition, snap: GameSnapshot): string {
   }
   return `${def.segment.name.toUpperCase()} ${n}`;
 }
-
 const num = (v: unknown): number => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -74,7 +65,10 @@ const sideOf = (v: unknown): 'home' | 'away' | null => {
   if (s === 'away' || s === 'a') return 'away';
   return null;
 };
-
+/** Use the override when set (not undefined/null/''), else the fallback. */
+function pick<T>(override: T | undefined | null, fallback: T): T {
+  return override === undefined || override === null || (override as unknown) === '' ? fallback : override;
+}
 /** Blend a #rrggbb toward black by `amt` (0..1). Passthrough on non-hex. */
 function darken(hex: string, amt: number): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
@@ -134,7 +128,29 @@ function useScaleToFit(naturalW: number, naturalH: number) {
 export interface MainScoreboardCfg extends BaseCfg {
   /** Center banner text. Defaults to "GAME NIGHT". */
   bannerText?: string;
-  /** Reserved — future per-board overrides. */
+  /** Gold trim color (banner / clock frame / borders). */
+  accentColor?: string;
+  // ── Static overrides (editable in Properties). A bound game's live
+  //    values win over these, so the template works live OR hand-typed.
+  homeName?: string;
+  awayName?: string;
+  homeScore?: number;
+  awayScore?: number;
+  homeColor?: string;
+  awayColor?: string;
+  homeLogoUrl?: string;
+  awayLogoUrl?: string;
+  /** Literal period text (e.g. "QUARTER 3"); else derived from the game. */
+  period?: string;
+  /** Literal clock text (e.g. "7:42"); else derived from the game. */
+  clock?: string;
+  shotClock?: number;
+  possession?: 'home' | 'away' | '';
+  homeFouls?: number;
+  awayFouls?: number;
+  homeTimeouts?: number;
+  awayTimeouts?: number;
+  status?: string;
   hideWordmark?: boolean;
 }
 
@@ -142,7 +158,6 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
   const c = config ?? {};
   const state = useGameState();
 
-  // Live game from context, else the self-playing sample.
   const [sampleMs, setSampleMs] = useState(SAMPLE.clockMs);
   const [sampleShot, setSampleShot] = useState(14);
   useEffect(() => {
@@ -167,27 +182,38 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
     );
   }
 
-  const homeColor = snap.homeColor || DEFAULT_HOME;
-  const awayColor = snap.awayColor || DEFAULT_AWAY;
   const stats = (snap.stats || {}) as Record<string, unknown>;
-  const isLive = snap.status === 'LIVE' && live !== false;
   const hasClock = def.clock.type !== 'none';
-  const clockStr = hasClock ? fmtClock(clockMs) : '';
-  const clockUrgent = hasClock && snap.clockRunning && clockMs > 0 && clockMs < 60_000;
 
-  // Center modules — driven off real data; hidden when the sport / feed
-  // doesn't supply them, so a clock-only sport doesn't show empty chrome.
-  const shotClock = state?.snapshot ? num(stats.shotClock) : sampleShot;
-  const hasShot = ('shotClock' in stats || !state?.snapshot) && shotClock > 0 && hasClock;
-  const poss = sideOf(stats.possession);
-  const hasFouls = 'homeFouls' in stats || 'awayFouls' in stats;
-  const hasTimeouts = 'homeTimeouts' in stats || 'awayTimeouts' in stats;
-  const homeTO = num(stats.homeTimeouts);
-  const awayTO = num(stats.awayTimeouts);
+  // ── view = static config overrides layered over live/sample data ──
+  const homeColor = pick(c.homeColor, snap.homeColor || DEFAULT_HOME);
+  const awayColor = pick(c.awayColor, snap.awayColor || DEFAULT_AWAY);
+  const accent = pick(c.accentColor, ACCENT_DEFAULT);
+  const homeName = String(pick(c.homeName, snap.homeTeam) || 'HOME');
+  const awayName = String(pick(c.awayName, snap.awayTeam) || 'AWAY');
+  const homeScore = pick(c.homeScore, snap.homeScore);
+  const awayScore = pick(c.awayScore, snap.awayScore);
+  const homeLogoUrl = pick(c.homeLogoUrl, snap.homeLogoUrl);
+  const awayLogoUrl = pick(c.awayLogoUrl, snap.awayLogoUrl);
+  const status = String(pick(c.status, snap.status));
+  const isLive = status === 'LIVE' && live !== false;
+  const periodText = pick(c.period, segmentLabel(def, snap));
+  const clockText = pick(c.clock, hasClock ? fmtClock(clockMs) : '');
+  const clockUrgent = !c.clock && hasClock && snap.clockRunning && clockMs > 0 && clockMs < 60_000;
+
+  const shotClock = pick(c.shotClock, state?.snapshot ? num(stats.shotClock) : sampleShot);
+  const hasShot = (c.shotClock !== undefined || 'shotClock' in stats || !state?.snapshot) && shotClock > 0 && hasClock;
+  const poss = sideOf(pick(c.possession, stats.possession));
+  const hasFouls = c.homeFouls !== undefined || c.awayFouls !== undefined || 'homeFouls' in stats || 'awayFouls' in stats;
+  const hasTimeouts = c.homeTimeouts !== undefined || c.awayTimeouts !== undefined || 'homeTimeouts' in stats || 'awayTimeouts' in stats;
+  const homeFouls = pick(c.homeFouls, num(stats.homeFouls));
+  const awayFouls = pick(c.awayFouls, num(stats.awayFouls));
+  const homeTO = pick(c.homeTimeouts, num(stats.homeTimeouts));
+  const awayTO = pick(c.awayTimeouts, num(stats.awayTimeouts));
   const maxTO = 3;
 
-  const homeInitial = (snap.homeTeam || '—').trim().charAt(0).toUpperCase();
-  const awayInitial = (snap.awayTeam || '—').trim().charAt(0).toUpperCase();
+  const homeInitial = homeName.trim().charAt(0).toUpperCase();
+  const awayInitial = awayName.trim().charAt(0).toUpperCase();
   const BLOCK_W = 620;
 
   const sideBlock = (which: 'home' | 'away'): React.CSSProperties => {
@@ -197,7 +223,7 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
       [which === 'home' ? 'left' : 'right']: 0,
       width: BLOCK_W, height: 1080,
       background: `linear-gradient(${which === 'home' ? 160 : 200}deg, ${col} 0%, ${darken(col, 0.28)} 60%, ${darken(col, 0.45)} 100%)`,
-      [which === 'home' ? 'borderRight' : 'borderLeft']: `14px solid ${ACCENT}`,
+      [which === 'home' ? 'borderRight' : 'borderLeft']: `14px solid ${accent}`,
       boxShadow: `inset ${which === 'home' ? '-40px' : '40px'} 0 80px rgba(0,0,0,0.35)`,
     } as React.CSSProperties;
   };
@@ -225,7 +251,7 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
   const tagStyle = (which: 'home' | 'away'): React.CSSProperties => ({
     position: 'absolute', top: 478,
     [which === 'home' ? 'left' : 'right']: 0,
-    width: BLOCK_W, textAlign: 'center', fontWeight: 600, fontSize: 34, letterSpacing: 12, color: ACCENT,
+    width: BLOCK_W, textAlign: 'center', fontWeight: 600, fontSize: 34, letterSpacing: 12, color: accent,
   } as React.CSSProperties);
   const scoreStyle = (which: 'home' | 'away'): React.CSSProperties => ({
     position: 'absolute', top: 552,
@@ -255,50 +281,50 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
         {/* HOME side */}
         <div style={sideBlock('home')} />
         <div style={logoCoin('home')}>
-          {snap.homeLogoUrl ? (
+          {homeLogoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={snap.homeLogoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+            <img src={homeLogoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
           ) : homeInitial}
         </div>
-        <div style={nameStyle('home')}>{(snap.homeTeam || 'HOME').toUpperCase()}</div>
+        <div style={nameStyle('home')}>{homeName.toUpperCase()}</div>
         <div style={tagStyle('home')}>HOME</div>
-        <div style={scoreStyle('home')}>{snap.homeScore}</div>
+        <div style={scoreStyle('home')}>{homeScore}</div>
 
         {/* AWAY side */}
         <div style={sideBlock('away')} />
         <div style={logoCoin('away')}>
-          {snap.awayLogoUrl ? (
+          {awayLogoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={snap.awayLogoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+            <img src={awayLogoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
           ) : awayInitial}
         </div>
-        <div style={nameStyle('away')}>{(snap.awayTeam || 'AWAY').toUpperCase()}</div>
+        <div style={nameStyle('away')}>{awayName.toUpperCase()}</div>
         <div style={tagStyle('away')}>AWAY</div>
-        <div style={scoreStyle('away')}>{snap.awayScore}</div>
+        <div style={scoreStyle('away')}>{awayScore}</div>
 
         {/* CENTER COLUMN */}
         <div style={{ position: 'absolute', top: 0, left: BLOCK_W, width: 680, height: 1080 }}>
           {/* banner */}
-          <div style={{ position: 'absolute', top: 0, left: 0, width: 680, height: 150, background: `linear-gradient(180deg, ${ACCENT}, ${darken(ACCENT, 0.22)})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 50, letterSpacing: 4, color: '#1e2a4a', boxShadow: '0 8px 22px rgba(0,0,0,0.4)' }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, width: 680, height: 150, background: `linear-gradient(180deg, ${accent}, ${darken(accent, 0.22)})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 50, letterSpacing: 4, color: '#1e2a4a', boxShadow: '0 8px 22px rgba(0,0,0,0.4)' }}>
             <span style={{ fontSize: 40, marginRight: 18 }}>★</span>
-            {(c.bannerText || 'GAME NIGHT').toUpperCase()}
+            {String(pick(c.bannerText, 'GAME NIGHT')).toUpperCase()}
             <span style={{ fontSize: 40, marginLeft: 18 }}>★</span>
           </div>
 
           {/* period chip */}
           <div style={{ position: 'absolute', top: 196, left: 140, width: 400, height: 96, background: '#fff', borderRadius: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 52, color: darken(homeColor, 0.15), boxShadow: '0 10px 0 rgba(0,0,0,0.22)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-            {segmentLabel(def, snap)}
+            {periodText}
           </div>
 
           {/* clock card (or sport plate for no-clock sports) */}
-          {clockStr ? (
-            <div style={{ position: 'absolute', top: 330, left: 60, width: 560, height: 300, background: '#0a0f1c', border: `10px solid ${ACCENT}`, borderRadius: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 16px 0 rgba(0,0,0,0.30), inset 0 0 60px ${ACCENT}1a` }}>
+          {clockText ? (
+            <div style={{ position: 'absolute', top: 330, left: 60, width: 560, height: 300, background: '#0a0f1c', border: `10px solid ${accent}`, borderRadius: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 16px 0 rgba(0,0,0,0.30), inset 0 0 60px ${accent}1a` }}>
               <span style={{ fontWeight: 800, fontSize: 200, lineHeight: 1, color: clockUrgent ? '#f87171' : '#fde047', fontVariantNumeric: 'tabular-nums', textShadow: '0 0 40px rgba(253,224,71,0.55)', animation: clockUrgent ? 'mainSbClk 1s ease-in-out infinite' : undefined }}>
-                {clockStr}
+                {clockText}
               </span>
             </div>
           ) : (
-            <div style={{ position: 'absolute', top: 330, left: 60, width: 560, height: 300, background: '#0a0f1c', border: `10px solid ${ACCENT}`, borderRadius: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 84, color: ACCENT, letterSpacing: 4, textAlign: 'center', padding: '0 20px' }}>
+            <div style={{ position: 'absolute', top: 330, left: 60, width: 560, height: 300, background: '#0a0f1c', border: `10px solid ${accent}`, borderRadius: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 84, color: accent, letterSpacing: 4, textAlign: 'center', padding: '0 20px' }}>
               {def.name.toUpperCase()}
             </div>
           )}
@@ -327,9 +353,9 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
                 <div style={{ height: 100, background: '#161c2b', border: '4px solid #2a3450', borderRadius: 22, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 26px' }}>
                   <span style={{ fontWeight: 600, fontSize: 28, letterSpacing: 3, color: '#cbd5e1' }}>TEAM FOULS</span>
                   <span style={{ display: 'flex', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 800, fontSize: 56, lineHeight: 1, width: 92, textAlign: 'center', borderRadius: 16, padding: '4px 0', background: homeColor, color: '#fff' }}>{num(stats.homeFouls)}</span>
+                    <span style={{ fontWeight: 800, fontSize: 56, lineHeight: 1, width: 92, textAlign: 'center', borderRadius: 16, padding: '4px 0', background: homeColor, color: '#fff' }}>{homeFouls}</span>
                     <span style={{ fontWeight: 600, fontSize: 26, color: '#64748b', margin: '0 16px' }}>–</span>
-                    <span style={{ fontWeight: 800, fontSize: 56, lineHeight: 1, width: 92, textAlign: 'center', borderRadius: 16, padding: '4px 0', background: awayColor, color: '#fff' }}>{num(stats.awayFouls)}</span>
+                    <span style={{ fontWeight: 800, fontSize: 56, lineHeight: 1, width: 92, textAlign: 'center', borderRadius: 16, padding: '4px 0', background: awayColor, color: '#fff' }}>{awayFouls}</span>
                   </span>
                 </div>
               )}
