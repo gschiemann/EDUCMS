@@ -31,6 +31,7 @@
  */
 const { webkit } = require('@playwright/test');
 const { spawn } = require('node:child_process');
+const http = require('node:http');
 const { setTimeout: delay } = require('node:timers/promises');
 const { mkdirSync, writeFileSync } = require('node:fs');
 const { resolve } = require('node:path');
@@ -51,11 +52,34 @@ const results = [];
 function pass(template, step, detail = '') { results.push({ template, step, ok: true, detail }); }
 function fail(template, step, detail = '') { results.push({ template, step, ok: false, detail }); }
 
+// Resolve once the server is actually accepting connections, or throw.
+// A fixed `await delay(600)` raced the first page.goto into "Connection
+// refused" on a loaded CI runner (flaky Cross-Browser red, 2026-05-28) —
+// python's http.server can take well over 600ms to bind. Poll instead.
+async function waitForServer(port, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastErr;
+  while (Date.now() < deadline) {
+    try {
+      await new Promise((res, rej) => {
+        const req = http.get(`http://localhost:${port}/`, (r) => { r.resume(); res(); });
+        req.on('error', rej);
+        req.setTimeout(1000, () => req.destroy(new Error('readiness probe timeout')));
+      });
+      return; // listening
+    } catch (e) {
+      lastErr = e;
+      await delay(200);
+    }
+  }
+  throw new Error(`local HTTP server on port ${port} did not become ready in ${timeoutMs}ms: ${lastErr && lastErr.message}`);
+}
+
 async function startServer() {
   const proc = spawn('python3', ['-m', 'http.server', String(PORT), '--directory', PUBLIC_DIR], {
     stdio: ['ignore', 'ignore', 'ignore'],
   });
-  await delay(600);
+  await waitForServer(PORT);
   return proc;
 }
 
