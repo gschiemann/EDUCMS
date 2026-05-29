@@ -1,98 +1,108 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# VenueOS API (`apps/api`)
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS 11 + Express API server. The system-of-record for the whole
+platform: tenancy, auth, content (assets / playlists / templates),
+the emergency trigger pipeline, billing, and the signed realtime fan-out.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+- **Runtime:** NestJS 11, Prisma ORM → PostgreSQL (Supabase), Redis pub/sub
+- **Port:** `8080` (or `$PORT`)
+- **Deployed on:** Railway (Docker, root `Dockerfile`)
+- **API base path:** all routes under `/api/v1`
 
-## Description
+> This is one workspace in a pnpm + Turborepo monorepo. Run commands from
+> the **repo root** unless noted. The source of truth for architecture,
+> conventions, and the emergency-system safeguards is the root
+> [`CLAUDE.md`](../../CLAUDE.md) — read it before changing anything here.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Local dev
 
-## Project setup
+From the repo root (installs the whole workspace, generates the Prisma
+client via `postinstall`):
 
 ```bash
-$ npm install
+pnpm install
+pnpm db:push          # apply Prisma schema to your database
+pnpm db:seed          # seed tenants, users, templates
+pnpm dev:api          # NestJS in watch mode on :8080
 ```
 
-## Compile and run the project
+Or from this directory:
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+pnpm dev              # nest start --watch
 ```
 
-## Run tests
+Sanity check it's up:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+curl -s http://localhost:8080/api/v1/health    # → { status, db, redis, uptime, ... }
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Build & run (production)
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+pnpm --filter api run build         # nest build → dist/
+pnpm --filter api run start:prod    # node dist/main
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+On Railway this happens inside the root `Dockerfile` (Alpine + the native
+toolchain argon2 needs — see CLAUDE.md "Deploy Reliability" for the build
+failure modes that CI catches before they reach Railway).
 
-## Resources
+## Tests & lint
 
-Check out a few resources that may come in handy when working with NestJS:
+```bash
+pnpm --filter api run test          # jest unit (*.spec.ts next to source)
+pnpm --filter api run test:cov      # with coverage
+pnpm --filter api run test:e2e      # jest e2e (test/jest-e2e.json)
+pnpm --filter api run lint          # eslint --fix
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+Before pushing anything, run `pnpm preflight` from the repo root — it runs
+the same non-Docker build/type checks CI does, in under 90s.
 
-## Support
+## Environment
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+The API reads its config from `.env` (gitignored — never commit it; the
+repo is **public**). The full annotated table lives in
+[`CLAUDE.md` → Environment Variables](../../CLAUDE.md#environment-variables).
+The load-bearing ones:
 
-## Stay in touch
+| Variable | Why it matters |
+|---|---|
+| `DATABASE_URL` | Pooled Supabase URL. **Must include `connection_limit=10&pool_timeout=20`** — Prisma's pgbouncer default of 1 causes cascading 500s. |
+| `DIRECT_URL` | Direct Postgres URL, migrations only. |
+| `JWT_SECRET` / `SESSION_SECRET` / `DEVICE_SECRET_KEY` / `DEVICE_JWT_SECRET` | 64-char hex secrets. In production the API **refuses to boot** if any are missing (`src/security/required-secret.ts`). |
+| `ALLOWED_ORIGINS` | CORS whitelist (comma-sep). **Required in production** — API refuses to boot if unset. |
+| `REDIS_URL` | Realtime pub/sub. If absent the API still boots and falls back to HTTP-polling realtime. |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Auth + object storage. |
+| `RESEND_API_KEY` / `EMAIL_FROM` | Outbound email. Watch the `EMAIL_FROM` Resend gotcha documented in CLAUDE.md. |
+| `STRIPE_*` | Billing. Dormant + degrades gracefully when unset. |
+| `ANTHROPIC_API_KEY` | AI content generation. Degrades gracefully when unset. |
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## Module map
 
-## License
+```
+src/
+  auth/          JWT + Argon2 + express-session, RBAC guards
+  emergency/     trigger / all-clear (LOAD-BEARING — review required)
+  realtime/      signed WS gateway + Redis fan-out gate + SSE fallback
+  screens/       pairing, manifest, heartbeat, device tokens
+  templates/     17 system presets + custom templates
+  billing/       Stripe checkout / portal / invoices / webhook
+  security/      required-secret boot validation, CSRF
+  health/        /health (liveness), /health/ready, /health/emergency-path
+```
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+## Health endpoints (Railway + monitoring)
+
+- `GET /api/v1/health` — liveness, always 200. Railway healthcheck.
+- `GET /api/v1/health/ready` — readiness, 503 when DB unreachable. Monitoring.
+- `GET /api/v1/health/emergency-path` — verifies DB + WS signer chain pre-drill.
+
+## Changing the emergency system
+
+Any change to emergency endpoints, payload validation, the
+`@AllowPanicBypass` decorator, audit logging, or the signed Redis fan-out
+gate requires explicit code review and end-to-end trigger/clear testing.
+See CLAUDE.md → "Emergency System (Load-Bearing)".

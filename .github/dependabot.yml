@@ -1,0 +1,122 @@
+# Dependabot — weekly dependency updates for the pnpm monorepo.
+# `npm` ecosystem covers pnpm (Dependabot reads pnpm-lock.yaml).
+# One entry per package.json directory + one for GitHub Actions.
+# Minor + patch bumps are grouped into a single PR per directory to cut
+# noise; majors come as their own PRs (they can break builds — e.g. argon2
+# native compile, see CLAUDE.md "Deploy Reliability").
+# apps/player is Android/Gradle, not npm — not managed here.
+version: 2
+updates:
+  # ---- Root workspace (Turborepo tooling, shared devDeps) ----
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ---- Apps ----
+  - package-ecosystem: "npm"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/apps/edge"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ---- Shared packages ----
+  - package-ecosystem: "npm"
+    directory: "/packages/api-types"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/packages/auth-core"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/packages/database"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/packages/ws-events"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/packages/scoreboard-cts"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ---- GitHub Actions (11 workflows pin third-party actions) ----
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
