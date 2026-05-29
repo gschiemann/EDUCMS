@@ -232,10 +232,6 @@ const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
 };
 
 type BellPeriod = { label: string; start: string; end?: string };
-// 2026-05-03 — extended event shape mirrors v2 CalendarWidgets reads:
-// { date, time, title, location, tag }. Legacy reads {date,title,color}.
-// We persist BOTH so legacy + v2 variants render the same data.
-type CalendarEvent = { title: string; date: string; color?: string; time?: string; location?: string; tag?: string };
 
 const DEFAULT_BELL_PERIODS: BellPeriod[] = [
   { label: 'Period 1', start: '8:00', end: '8:50' },
@@ -245,36 +241,6 @@ const DEFAULT_BELL_PERIODS: BellPeriod[] = [
   { label: 'Period 4', start: '11:20', end: '12:10' },
   { label: 'Period 5', start: '12:15', end: '1:05' },
   { label: 'Period 6', start: '1:10', end: '2:00' },
-];
-
-const DEFAULT_EVENTS: CalendarEvent[] = [
-  { title: 'Spring Assembly', date: 'Today, 10:00 AM', color: '#6366f1' },
-  { title: 'PTA Meeting', date: 'Tomorrow, 6:30 PM', color: '#f59e0b' },
-  { title: 'Science Fair', date: 'This Week', color: '#22c55e' },
-  { title: 'Staff Development Day', date: 'Next Week', color: '#ec4899' },
-  { title: 'Spring Break Begins', date: 'Soon', color: '#0ea5e9' },
-];
-const DEFAULT_STATS = [
-  { value: '97%', label: 'Attendance' },
-  { value: '4.2', label: 'Avg GPA' },
-  { value: '84', label: 'Clubs' },
-];
-const DEFAULT_PERIODS = [
-  { num: '1', name: 'Homeroom', time: '8:00 - 8:15' },
-  { num: '2', name: 'English', time: '8:20 - 9:15' },
-  { num: '3', name: 'Math', time: '9:20 - 10:15' },
-  { num: '4', name: 'Science', time: '10:20 - 11:15' },
-  { num: '5', name: 'Lunch', time: '11:20 - 12:00' },
-  { num: '6', name: 'History', time: '12:05 - 1:00' },
-  { num: '7', name: 'PE', time: '1:05 - 2:00' },
-  { num: '8', name: 'Art', time: '2:05 - 3:00' },
-];
-const DEFAULT_BIRTHDAYS = ['Morgan P.', 'Samir K.', 'Ava L.'];
-const DEFAULT_STUDENTS = [
-  { name: 'Jordan Lee', reason: 'Perfect attendance + top math score' },
-  { name: 'Maria Santos', reason: 'Kindness award' },
-  { name: 'Tyler Chen', reason: 'Band district selection' },
-  { name: 'Ava Patel', reason: 'Essay contest' },
 ];
 
 function parseBellLine(line: string): BellPeriod {
@@ -309,27 +275,9 @@ function bellScheduleForEditor(value: unknown): BellPeriod[] {
   return DEFAULT_BELL_PERIODS.map((p) => ({ ...p }));
 }
 
-function eventsForEditor(value: unknown): CalendarEvent[] {
-  if (Array.isArray(value) && value.length) {
-    return value.map((e, idx) => ({
-      title: String((e as any)?.title || 'Event'),
-      date: String((e as any)?.date || ''),
-      color: (e as any)?.color || DEFAULT_EVENTS[idx % DEFAULT_EVENTS.length]?.color,
-      time: (e as any)?.time ? String((e as any).time) : undefined,
-      location: (e as any)?.location ? String((e as any).location) : undefined,
-      tag: (e as any)?.tag ? String((e as any).tag) : undefined,
-    }));
-  }
-  return DEFAULT_EVENTS.map((e) => ({ ...e }));
-}
-
 function tickerTextForEditor(cfg: any): string {
   if (Array.isArray(cfg.messages) && cfg.messages.length) return cfg.messages.join('\n');
   return typeof cfg.text === 'string' ? cfg.text : '';
-}
-
-function arrayForEditor<T>(value: unknown, defaults: T[]): T[] {
-  return Array.isArray(value) && value.length ? value as T[] : defaults;
 }
 
 // Field-key → human-readable label. The MS-pack widgets use developer-
@@ -1518,7 +1466,12 @@ function MultiAlignButtons() {
 // ─────────────────────────────────────────────────────────
 // Content fields — friendly inputs based on widget type
 // ─────────────────────────────────────────────────────────
-function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
+// Exported for RTL tests (2026-05-28 §19 editability proof). ContentFields is
+// the real per-widget field switch + the universal text-style block, driven by
+// a `zone` + `updateZone(id, patch, commit)` — exactly what PropertiesPanel
+// passes it. Tests mount it directly to prove the LOGO font/color controls and
+// the converted list/schedule editors fire through to a config write.
+export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
   const cfg = zone.defaultConfig || {};
   const setField = (patch: Record<string, any>) => {
     updateZone(zone.id, { defaultConfig: { ...cfg, ...patch } }, true);
@@ -2025,20 +1978,22 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
     }
     case 'CALENDAR':
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Upcoming Events" onChange={(v) => setField({ title: v })} />);
-      // 2026-05-03 — extended pipe format: `date | title | time | location | tag`.
-      // First two fields are required; trailing fields are optional but
-      // populate v2 widgets (CalendarNeonGrid, CalendarPaperAgenda, etc.)
-      // which render time/location/tag columns. Legacy widgets ignore
-      // the extras silently. Empty trailing slots are accepted.
-      fields.push(<TextAreaField key="events" label="Events (date | title | time | location | tag — one per line)" value={eventsForEditor(cfg.events).map((e: any) => [e.date || '', e.title || '', e.time || '', e.location || '', e.tag || ''].filter((_, i, arr) => i < 2 || arr.slice(i).some(Boolean)).join(' | ')).join('\n')} placeholder="TUE 04 | Spring Concert | 7:00 PM | Auditorium | ARTS&#10;WED 05 | Robotics Meet | 3:30 PM | STEM Lab | CLUB" onChange={(v) => setField({ events: v.split('\n').filter(Boolean).map(line => {
-        const parts = line.split('|').map(s => s.trim());
-        const [date = '', title = '', time = '', location = '', tag = ''] = parts;
-        const ev: any = { date, title };
-        if (time) ev.time = time;
-        if (location) ev.location = location;
-        if (tag) ev.tag = tag;
-        return ev;
-      }) })} rows={5} />);
+      // 2026-05-28 (§19) — was a pipe-delimited `date | title | time |
+      // location | tag` textarea. cfg.events is stored as an array of
+      // { date, title, time?, location?, tag?, color? }. The base
+      // CalendarWidget renders date/title/color; the v2 themed calendars
+      // (CalendarNeonGrid, CalendarPaperAgenda, …) also render
+      // time/location/tag. ListItemsEditor gives a per-event card with all
+      // those fields PLUS a per-event color (the pipe editor had none) and
+      // accepts a legacy array OR JSON string, so back-compat is automatic.
+      fields.push(<ListItemsEditor key="events" label="Events" itemNoun="event" help="Each row is one event. Date + title are the essentials; time, location, and tag show on themed calendars." value={cfg.events} onChange={(v) => setField({ events: v })} newItem={{ date: '', title: '', time: '', location: '', tag: '', color: '' }} fields={[
+        { key: 'date', label: 'Date', type: 'text', placeholder: 'TUE 04' },
+        { key: 'title', label: 'Title', type: 'text', placeholder: 'Spring Concert' },
+        { key: 'time', label: 'Time', type: 'text', placeholder: '7:00 PM' },
+        { key: 'location', label: 'Location', type: 'text', placeholder: 'Auditorium' },
+        { key: 'tag', label: 'Tag', type: 'text', placeholder: 'ARTS' },
+        { key: 'color', label: 'Dot color', type: 'color' },
+      ]} />);
       fields.push(<TextField key="maxEvents" label="Max events to show" value={String(cfg.maxEvents || 4)} placeholder="4" onChange={(v) => setField({ maxEvents: parseInt(v) || 4 })} />);
       fields.push(<TextField key="feedUrl" label="iCal/feed URL (optional)" value={cfg.feedUrl || ''} placeholder="https://…/calendar.ics" onChange={(v) => setField({ feedUrl: v })} />);
       break;
@@ -2180,7 +2135,14 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="author" label="Author" value={cfg.author || ''} placeholder="Theodore Roosevelt" onChange={(v) => setField({ author: v })} />);
       break;
     case 'STATS':
-      fields.push(<TextAreaField key="stats" label="Stats (value | label — one per line)" value={arrayForEditor(cfg.stats, DEFAULT_STATS).map((s: any) => `${s.value || ''} | ${s.label || ''}`).join('\n')} placeholder="97% | Attendance&#10;4.2 | Avg GPA" onChange={(v) => setField({ stats: v.split('\n').filter(Boolean).map(line => { const [value, label] = line.split('|').map(s => s.trim()); return { value, label }; }) })} rows={5} />);
+      // 2026-05-28 (§19) — was a pipe-delimited `value | label` textarea.
+      // StatsWidget reads cfg.stats as { value, label }[] (max 5 cards).
+      // ListItemsEditor accepts a parsed array OR a legacy JSON string, so
+      // back-compat is automatic; onChange always emits a real array.
+      fields.push(<ListItemsEditor key="stats" label="Stats" itemNoun="stat" help="Each card is one big number with a label underneath. Up to 5 show." value={cfg.stats} onChange={(v) => setField({ stats: v })} newItem={{ value: '', label: '' }} fields={[
+        { key: 'value', label: 'Big number', type: 'text', placeholder: '97%' },
+        { key: 'label', label: 'Label', type: 'text', placeholder: 'Attendance' },
+      ]} />);
       break;
     case 'MENU_ITEM':
       fields.push(<TextField key="itemName" label="Item name" value={cfg.itemName || ''} placeholder="Today's Special" onChange={(v) => setField({ itemName: v })} />);
@@ -2497,7 +2459,15 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
     }
     case 'SCHEDULE_GRID':
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Today's Schedule" onChange={(v) => setField({ title: v })} />);
-      fields.push(<TextAreaField key="periods" label="Periods (num | name | time — one per line)" value={arrayForEditor(cfg.periods, DEFAULT_PERIODS).map((p: any) => `${p.num || ''} | ${p.name || ''} | ${p.time || ''}`).join('\n')} placeholder="1 | Homeroom | 8:00 - 8:15" onChange={(v) => setField({ periods: v.split('\n').filter(Boolean).map(line => { const [num, name, time] = line.split('|').map(s => s.trim()); return { num, name, time }; }) })} rows={8} />);
+      // 2026-05-28 (§19) — was a pipe-delimited `num | name | time` textarea.
+      // ScheduleGridWidget reads cfg.periods as { num, name, time }[] (max 8).
+      // ScheduleRowsField renders time + name (+ optional room) per row and
+      // auto-renumbers `num` to a stable 1..N, which is exactly the widget's
+      // period-badge contract. A legacy `{num,name,time}[]` array loads
+      // straight in (Array.isArray passthrough); `room` is preserved if
+      // present and ignored by the widget. The pipe `num` is dropped in
+      // favor of the row position so reorder keeps the badges tidy.
+      fields.push(<ScheduleRowsField key="periods" label="Periods" value={Array.isArray(cfg.periods) ? cfg.periods : []} onChange={(v) => setField({ periods: v })} />);
       break;
     case 'ATTENDANCE':
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Attendance Today" onChange={(v) => setField({ title: v })} />);
@@ -2506,11 +2476,21 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       break;
     case 'BIRTHDAYS':
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Happy Birthday!" onChange={(v) => setField({ title: v })} />);
-      fields.push(<TextAreaField key="birthdays" label="Names (one per line)" value={arrayForEditor(cfg.birthdays, DEFAULT_BIRTHDAYS).join('\n')} placeholder="Morgan P.&#10;Samir K." onChange={(v) => setField({ birthdays: v.split('\n').filter(Boolean) })} rows={5} />);
+      // 2026-05-28 (§19) — was a one-name-per-line textarea. BirthdaysWidget
+      // (and the rainbow-animated variant) read cfg.birthdays as string[]
+      // (max 5 show). StringListEditor gives each name its own input with
+      // add / remove / reorder and accepts a legacy array OR JSON string.
+      fields.push(<StringListEditor key="birthdays" label="Names" itemNoun="name" placeholder="Morgan P." help="Each name shows on its own line. Up to 5 display." value={cfg.birthdays} onChange={(v) => setField({ birthdays: v })} />);
       break;
     case 'HONOR_ROLL':
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Honor Roll" onChange={(v) => setField({ title: v })} />);
-      fields.push(<TextAreaField key="students" label="Students (name | reason — one per line)" value={arrayForEditor(cfg.students, DEFAULT_STUDENTS).map((s: any) => `${s.name || ''} | ${s.reason || ''}`).join('\n')} placeholder="Jordan Lee | Perfect attendance" onChange={(v) => setField({ students: v.split('\n').filter(Boolean).map(line => { const [name, reason] = line.split('|').map(s => s.trim()); return { name, reason }; }) })} rows={5} />);
+      // 2026-05-28 (§19) — was a pipe-delimited `name | reason` textarea.
+      // HonorRollWidget reads cfg.students as { name, reason }[] (max 5).
+      // ListItemsEditor accepts a parsed array OR a legacy JSON string.
+      fields.push(<ListItemsEditor key="students" label="Students" itemNoun="student" help="Each row is one honoree — their name and the reason. Up to 5 show." value={cfg.students} onChange={(v) => setField({ students: v })} newItem={{ name: '', reason: '' }} fields={[
+        { key: 'name', label: 'Name', type: 'text', placeholder: 'Jordan Lee' },
+        { key: 'reason', label: 'Reason', type: 'text', placeholder: 'Perfect attendance' },
+      ]} />);
       break;
     case 'LOGO':
       fields.push(<TextField key="initials" label="Initials" value={cfg.initials || ''} placeholder="SE" onChange={(v) => setField({ initials: v })} />);
@@ -4847,7 +4827,18 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
   // already fully styleable), it is a v2 widget (its own Style
   // section covers this), or it is a pure-media widget with no text.
   {
-    const MEDIA_ONLY = new Set(['IMAGE', 'IMAGE_CAROUSEL', 'VIDEO', 'VIDEO_CAROUSEL', 'LOGO', 'EXTERNAL_HTML']);
+    // 2026-05-28 (§19) — LOGO removed from MEDIA_ONLY. LOGO_* variants render
+    // schoolName / tagline / initials as TEXT, but the wordmark had zero
+    // font/color control (the audit graded it B for exactly this). It is NOT
+    // pure-media: the image picker lives in the LOGO case itself and is
+    // untouched by this block, while the universal Font + Text-color + B/I/U/S
+    // controls flow through BuilderZone's + the player's
+    // `[data-widget-content] *:not(svg)` injection (verified identical in both),
+    // so a tenant can brand the wordmark. The <img> logo ignores color/font.
+    // Font-SIZE is intentionally not added here: it would flatten the
+    // initials-vs-tagline size hierarchy (the injection hits every text span),
+    // which is also why the universal block ships font+color+format but no size.
+    const MEDIA_ONLY = new Set(['IMAGE', 'IMAGE_CAROUSEL', 'VIDEO', 'VIDEO_CAROUSEL', 'EXTERNAL_HTML']);
     const isV2Widget = !!(cfg.variant && V2_BY_VARIANT_ID[String(cfg.variant)]);
     const alreadyStyleable = fields.some((f: any) => f && f.key === 'fontFamily');
     if (!alreadyStyleable && !isV2Widget && !MEDIA_ONLY.has(zone.widgetType)) {
@@ -7732,7 +7723,8 @@ function BellScheduleEditor({ value, onChange }: { value: Array<{ label: string;
 // (the widgets print it directly, so "8:15 — 9:00" or "1st block" both work);
 // `num` auto-renumbers on add/remove/reorder.
 type ScheduleRow = { num?: string | number; time?: string; name?: string; room?: string; highlight?: boolean };
-function ScheduleRowsField({ label, value, onChange }: { label: string; value: ScheduleRow[]; onChange: (v: ScheduleRow[]) => void }) {
+// Exported for RTL tests — SCHEDULE_GRID + the themed Hallway widgets use this.
+export function ScheduleRowsField({ label, value, onChange }: { label: string; value: ScheduleRow[]; onChange: (v: ScheduleRow[]) => void }) {
   const rows = Array.isArray(value) ? value : [];
   // Keep `num` a stable 1..N sequence so the widget's period badges stay tidy
   // regardless of how the operator reorders/removes rows.
