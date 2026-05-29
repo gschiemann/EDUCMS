@@ -2,7 +2,7 @@
 
 import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles } from 'lucide-react';
+import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink } from 'lucide-react';
 import type { TouchActionConfig } from './types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
@@ -5535,6 +5535,42 @@ function ExternalHtmlTextEditor({
     setField({ imageOverrides: Object.keys(next).length ? next : undefined });
   };
 
+  // ── 2026-05-29 — BYO field-binding to a live POS item ──────────────
+  // A BYO / signage template's text field can be BOUND to a specific
+  // catalog item so it auto-fills the live (per-location) value:
+  // a price field → `{{pos.item:<externalId>.price}}`, a name →
+  // `.name`, an availability flag → `.available`. The binding is stored
+  // in cfg.posItemBindings[fieldKey] for the picker UI, AND mirrored as
+  // the token string in textOverrides[fieldKey] so it rides the EXISTING
+  // `?text=` transport to the server + player unchanged — the server
+  // resolves the token per the screen's location at render time.
+  const posBindings: Record<string, { externalId: string; field: 'price' | 'name' | 'available' }> =
+    (cfg?.posItemBindings && typeof cfg.posItemBindings === 'object') ? cfg.posItemBindings : {};
+  const setPosBinding = (
+    key: string,
+    binding: { externalId: string; field: 'price' | 'name' | 'available' } | null,
+  ) => {
+    const nextBindings = { ...posBindings };
+    const nextOverrides = { ...textOverrides };
+    if (!binding) {
+      // Unbind: drop the binding AND the token from textOverrides so the
+      // field reverts to the template default (or a manual override the
+      // operator types next).
+      delete nextBindings[key];
+      if (typeof nextOverrides[key] === 'string' && nextOverrides[key].startsWith('{{pos.item:')) {
+        delete nextOverrides[key];
+      }
+    } else {
+      nextBindings[key] = binding;
+      // The token the server/player shim resolves per-location.
+      nextOverrides[key] = `{{pos.item:${binding.externalId}.${binding.field}}}`;
+    }
+    setField({
+      posItemBindings: Object.keys(nextBindings).length ? nextBindings : undefined,
+      textOverrides: Object.keys(nextOverrides).length ? nextOverrides : undefined,
+    });
+  };
+
   return (
     <div className="space-y-3">
       {/* G3 — image slots. Rendered first so a hero photo is the operator's
@@ -5563,35 +5599,61 @@ function ExternalHtmlTextEditor({
             {prettySectionLabel(sec)}
           </div>
           {sections[sec].map((f) => {
-            const current = textOverrides[f.key] ?? f.defaultText;
             const label = prettyFieldLabel(f.key);
+            const binding = posBindings[f.key];
+            // BOUND fields render a live-binding chip instead of an
+            // editable input — the value comes from the connected POS
+            // item per location, so a free-text box would be misleading.
+            if (binding) {
+              return (
+                <PosItemBindField
+                  key={f.key}
+                  label={label}
+                  binding={binding}
+                  onBind={(b) => setPosBinding(f.key, b)}
+                />
+              );
+            }
+            const current = textOverrides[f.key] ?? f.defaultText;
             // Long text → textarea; short → single-line input. Heuristic
             // is just len < 60 in the source default; works well across
             // titles (short), descriptions (medium), and copy blocks
             // (long, multi-line).
-            return f.isShortish ? (
-              <StyleableField
-                key={f.key}
-                fieldName={f.key}
-                styles={styles}
-                onStylesChange={setStylesMap}
-                label={label}
-                value={current}
-                placeholder={f.defaultText}
-                onChange={(v) => setOverride(f.key, v, f.defaultText)}
-              />
-            ) : (
-              <StyleableAreaField
-                key={f.key}
-                fieldName={f.key}
-                styles={styles}
-                onStylesChange={setStylesMap}
-                label={label}
-                value={current}
-                placeholder={f.defaultText}
-                rows={3}
-                onChange={(v) => setOverride(f.key, v, f.defaultText)}
-              />
+            return (
+              <div key={f.key} className="space-y-1">
+                {f.isShortish ? (
+                  <StyleableField
+                    fieldName={f.key}
+                    styles={styles}
+                    onStylesChange={setStylesMap}
+                    label={label}
+                    value={current}
+                    placeholder={f.defaultText}
+                    onChange={(v) => setOverride(f.key, v, f.defaultText)}
+                  />
+                ) : (
+                  <StyleableAreaField
+                    fieldName={f.key}
+                    styles={styles}
+                    onStylesChange={setStylesMap}
+                    label={label}
+                    value={current}
+                    placeholder={f.defaultText}
+                    rows={3}
+                    onChange={(v) => setOverride(f.key, v, f.defaultText)}
+                  />
+                )}
+                {/* BYO binding affordance — bind this field to a live POS
+                    item so it auto-fills per location. Only on short
+                    fields (a price/name/availability, not a paragraph). */}
+                {f.isShortish && (
+                  <PosItemBindField
+                    label={label}
+                    binding={undefined}
+                    onBind={(b) => setPosBinding(f.key, b)}
+                  />
+                )}
+              </div>
             );
           })}
         </div>
@@ -7301,6 +7363,16 @@ interface PosCategoryDto {
   itemCount: number;
 }
 
+// Shape of one row from GET /pos/items (subset we need for the per-item
+// binding picker). Mirrors PosMenuItem in @cms/api-types.
+interface PosMenuItemDto {
+  id: string;
+  externalId: string;
+  name: string;
+  priceCents: number;
+  category?: string;
+}
+
 function PosCategoryPickerField({
   label,
   value,
@@ -7356,6 +7428,168 @@ function PosCategoryPickerField({
           </a>
         </p>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// PosItemBindField — bind ONE template text field to a live POS item.
+//
+// 2026-05-29 — BYO field-binding (docs/research/2026-05-29-menu-mgmt-
+// scale §"Tier 3"). The per-CATEGORY posSync above fills a whole menu
+// board. This binds a SINGLE field on a customer's OWN designed
+// (EXTERNAL_HTML) template to a specific catalog item's live value, so
+// e.g. their hand-built hero "$8.99" tracks the real Square price per
+// location. The binding is stored as cfg.posItemBindings[fieldKey] and
+// mirrored as a `{{pos.item:<externalId>.<field>}}` token in
+// textOverrides (which already rides the `?text=` transport) — the
+// server resolves it per the screen's location at render.
+//
+// Two states:
+//   • bound → a chip showing the item + which value, with an unbind.
+//   • unbound → a collapsed "Bind to a menu item" link that expands to
+//     an item picker + value selector (price / name / availability).
+function PosItemBindField({
+  label,
+  binding,
+  onBind,
+}: {
+  label: string;
+  binding: { externalId: string; field: 'price' | 'name' | 'available' } | undefined;
+  onBind: (b: { externalId: string; field: 'price' | 'name' | 'available' } | null) => void;
+}) {
+  const params = useParams<{ schoolId?: string | string[] }>();
+  const schoolId = Array.isArray(params?.schoolId) ? params.schoolId[0] : params?.schoolId;
+  const [open, setOpen] = useState(false);
+
+  // Only fetch the catalog once the operator opens the picker (or a
+  // binding already exists, so we can resolve the item's name to show).
+  const enabled = open || !!binding;
+  const { data: items, isLoading, isError } = useQuery<PosMenuItemDto[]>({
+    queryKey: ['pos-items-bind-picker'],
+    queryFn: () => apiFetch<PosMenuItemDto[]>('/pos/items'),
+    staleTime: 60_000,
+    enabled,
+  });
+
+  const FIELD_LABEL: Record<'price' | 'name' | 'available', string> = {
+    price: 'Price',
+    name: 'Name',
+    available: 'In-stock flag',
+  };
+
+  if (binding) {
+    const item = (items || []).find((i) => i.externalId === binding.externalId);
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
+        <div className="min-w-0">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1">
+            <Link2 className="w-3 h-3" /> {label}
+          </div>
+          <div className="text-[11px] text-emerald-800 truncate">
+            live {FIELD_LABEL[binding.field].toLowerCase()} from{' '}
+            <span className="font-semibold">{item?.name || binding.externalId}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onBind(null)}
+          title="Unbind — go back to manual text"
+          aria-label="Unbind from POS item"
+          className="inline-flex items-center justify-center w-6 h-6 rounded text-emerald-600 hover:text-rose-600 hover:bg-white transition-colors shrink-0"
+        >
+          <Unlink className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600 hover:text-indigo-700"
+      >
+        <Link2 className="w-3 h-3" /> Bind to a live menu item
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-2.5 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Bind {label}</span>
+        <button type="button" onClick={() => setOpen(false)} className="text-indigo-400 hover:text-indigo-600" aria-label="Cancel binding">
+          <XIcon className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      {isLoading ? (
+        <p className="text-[10px] text-slate-400">Loading menu items…</p>
+      ) : isError ? (
+        <p className="text-[10px] text-rose-600">Couldn&rsquo;t load items — try refresh.</p>
+      ) : !items || items.length === 0 ? (
+        <p className="text-[10px] text-slate-500">
+          No POS connected yet —{' '}
+          <a href={schoolId ? `/${schoolId}/settings/pos` : '/settings/pos'} className="underline text-indigo-600 inline-flex items-center gap-0.5">
+            connect a POS <ExternalLink className="w-2.5 h-2.5" />
+          </a>
+        </p>
+      ) : (
+        <PosItemBindControls items={items} fieldLabels={FIELD_LABEL} onConfirm={(b) => { onBind(b); setOpen(false); }} />
+      )}
+    </div>
+  );
+}
+
+function PosItemBindControls({
+  items,
+  fieldLabels,
+  onConfirm,
+}: {
+  items: PosMenuItemDto[];
+  fieldLabels: Record<'price' | 'name' | 'available', string>;
+  onConfirm: (b: { externalId: string; field: 'price' | 'name' | 'available' }) => void;
+}) {
+  const [externalId, setExternalId] = useState('');
+  const [field, setField] = useState<'price' | 'name' | 'available'>('price');
+  return (
+    <div className="space-y-2">
+      <select
+        value={externalId}
+        onChange={(e) => setExternalId(e.target.value)}
+        className="w-full px-2.5 py-2 rounded-md bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+      >
+        <option value="">— pick a menu item —</option>
+        {items.map((i) => (
+          <option key={i.externalId} value={i.externalId}>
+            {i.name} (${(i.priceCents / 100).toFixed(2)})
+          </option>
+        ))}
+      </select>
+      <div className="flex items-center gap-1.5">
+        {(['price', 'name', 'available'] as const).map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setField(f)}
+            className={[
+              'flex-1 px-2 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-colors',
+              field === f ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:border-indigo-300',
+            ].join(' ')}
+          >
+            {fieldLabels[f]}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        disabled={!externalId}
+        onClick={() => externalId && onConfirm({ externalId, field })}
+        className="w-full px-3 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors"
+      >
+        Bind this field
+      </button>
     </div>
   );
 }

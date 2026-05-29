@@ -1,11 +1,25 @@
 'use client';
 // 2026-05-03 — POS sync: when `config.posSync` is true the widget
-// fetches items live from /api/v1/pos/items (optionally filtered by
+// fetches items live from the connected POS (optionally filtered by
 // `config.posCategory`) instead of using static config. Falls through
 // to static items / DEMO_ITEMS if the fetch fails or returns empty so
 // the widget NEVER renders blank even when the POS is unhealthy.
-import { useEffect, useState } from 'react';
+//
+// 2026-05-29 — TIER-0 FIX (docs/research/2026-05-29-menu-mgmt-scale/
+// 01-codebase-reality.md). This widget is PLAYER-SHIPPED. The old hook
+// called the session-authed `/pos/items` with the user JWT — which a
+// real Pi/kiosk doesn't have (it holds a DEVICE token with no role) →
+// 403 → DEMO_ITEMS on every actual wall. Now it reads the device-authed
+// `GET /screens/:id/menu` (location-resolved server-side) when running
+// on a player, and falls back to the session `/pos/items` only for the
+// dashboard preview. It also re-renders on a poll instead of the old
+// one-shot useEffect, so a price change / 86 reaches the wall live.
+import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
+import {
+  fetchDeviceMenu,
+  MENU_POLL_INTERVAL_MS,
+} from '@/lib/menu/device-menu';
 
 /**
  * MenuBoardWidget — multi-column QSR / counter-service menu.
@@ -275,28 +289,63 @@ const CSS = `
 }
 `;
 
-// 2026-05-03 — POS-sync hook. When `enabled` (config.posSync) is true,
-// fetches /api/v1/pos/items optionally filtered by category. Returns
-// an array of MenuBoardItems mapped from PosMenuItem rows. Returns
-// null on error / loading so the caller falls back to static items.
+// 2026-05-29 — POS-sync hook, rebuilt for the live multi-location menu
+// platform. When `enabled` (config.posSync) is true it fetches the
+// menu via `fetchDeviceMenu`:
+//   • On a real player (device token + screenId resolvable) → the
+//     device-authed `GET /screens/:id/menu`, which the server resolves
+//     to THIS screen's location (per-location prices + auto-86 applied
+//     server-side). This is the path that was 403-ing before.
+//   • On the dashboard preview (user session, no device token) → the
+//     legacy `/pos/items` so editing + preview stay unchanged.
+// It RE-RENDERS on a poll (every MENU_POLL_INTERVAL_MS) so a price edit
+// or an 86 reaches the wall without a manual refresh. On any error it
+// KEEPS the last good list (or null → caller falls back to static /
+// DEMO_ITEMS) so the board never flashes blank mid-service.
 function usePosMenuItems(enabled: boolean, category?: string): MenuBoardItem[] | null {
   const [items, setItems] = useState<MenuBoardItem[] | null>(null);
+  // Tracks whether we've EVER loaded a real list this mount. Using a ref
+  // (not the `items` state) avoids a stale-closure trap inside the poll
+  // loop: every tick must see the live "have we loaded?" value, not the
+  // value captured when the effect first ran.
+  const hasLoadedRef = useRef(false);
   useEffect(() => {
-    if (!enabled) { setItems(null); return; }
+    if (!enabled) { setItems(null); hasLoadedRef.current = false; return; }
     let cancelled = false;
-    const path = category ? `/pos/items?category=${encodeURIComponent(category)}` : "/pos/items";
-    apiFetch<any[]>(path).then((rows) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let controller: AbortController | null = null;
+
+    const tick = async () => {
+      controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const next = await fetchDeviceMenu(
+        { category, signal: controller?.signal },
+        // Session fallback for the dashboard preview path. `apiFetch`
+        // attaches the user JWT + CSRF; device-menu never uses it on a
+        // real player (no session there).
+        (path, init) => apiFetch<any[]>(path, init as any),
+      );
       if (cancelled) return;
-      if (!Array.isArray(rows) || rows.length === 0) { setItems(null); return; }
-      const mapped: MenuBoardItem[] = rows.map((r) => ({
-        name: r.name,
-        desc: r.description,
-        price: `$${(r.priceCents / 100).toFixed(2)}`,
-        dietary: r.badges,
-      }));
-      setItems(mapped);
-    }).catch(() => { if (!cancelled) setItems(null); });
-    return () => { cancelled = true; };
+      if (next && next.length > 0) {
+        // Got a real list → render it.
+        hasLoadedRef.current = true;
+        setItems(next);
+      } else if (!hasLoadedRef.current) {
+        // FIRST load failed → null so the caller uses static / DEMO items.
+        // (Once we've loaded once, a transient null is IGNORED — we keep
+        // the last good menu on screen instead of blanking mid-service.)
+        setItems(null);
+      }
+      if (!cancelled) {
+        timer = setTimeout(tick, MENU_POLL_INTERVAL_MS);
+      }
+    };
+
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      try { controller?.abort(); } catch { /* noop */ }
+    };
   }, [enabled, category]);
   return items;
 }

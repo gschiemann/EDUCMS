@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {
   Home, FolderOpen, ListMusic, MonitorPlay, Siren,
   LayoutGrid, Trophy, LayoutTemplate, Settings, ClipboardCheck, FileClock, User, X,
+  UtensilsCrossed,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
@@ -94,6 +95,7 @@ export function MobileTabBar() {
     user?.role === 'DISTRICT_ADMIN' ||
     user?.role === 'SCHOOL_ADMIN';
   const isSportsVertical = vertical === 'SPORTS';
+  const isMenuVertical = vertical === 'RESTAURANT' || vertical === 'RETAIL';
 
   type Tab = { key: string; label: string; icon: typeof Home; href: string; badge?: number; danger?: boolean };
   // The five primary tabs. Labels match the desktop Sidebar's exact
@@ -127,6 +129,9 @@ export function MobileTabBar() {
   const moreItems: MoreItem[] = [
     ...(isSportsVertical
       ? [{ key: 'sports', label: 'Sports', icon: Trophy, href: `${base}/sports` }]
+      : []),
+    ...(isMenuVertical
+      ? [{ key: 'menu', label: 'Menu', icon: UtensilsCrossed, href: `${base}/menu` }]
       : []),
     { key: 'templates', label: 'Templates', icon: LayoutTemplate, href: `${base}/templates` },
     ...(isAdmin

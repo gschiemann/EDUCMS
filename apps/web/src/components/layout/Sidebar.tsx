@@ -7,7 +7,7 @@ import DOMPurify from 'isomorphic-dompurify';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
-import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy } from 'lucide-react';
+import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy, UtensilsCrossed } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { usePendingAssets, useSubmissions, useTenantBranding } from '@/hooks/use-api';
@@ -224,6 +224,11 @@ export function Sidebar() {
   // Operator (2026-05-19): "the sports menu should only show when you
   // pick the sports venue type, not the others."
   const isSportsVertical = mounted && tenantCopyForBrand.vertical === 'SPORTS';
+  // Menu & pricing console — only for verticals that run menu boards
+  // (RESTAURANT / RETAIL). Same vertical-gate pattern as Sports above.
+  // /menu is still reachable by typing the URL for other verticals.
+  const isMenuVertical =
+    mounted && (tenantCopyForBrand.vertical === 'RESTAURANT' || tenantCopyForBrand.vertical === 'RETAIL');
   const navItems = [
     { name: 'Dashboard', href: hrefFor('/dashboard'), icon: LayoutDashboard },
     // Floor-plans is now a tab inside Screens (List | Floor Plans toggle),
@@ -238,6 +243,11 @@ export function Sidebar() {
     // see it. /sports is still reachable by typing the URL.
     ...(isSportsVertical
       ? [{ name: 'Sports', href: hrefFor('/sports'), icon: Trophy }]
+      : []),
+    // Menu & pricing (multi-location price book + 86) — RESTAURANT /
+    // RETAIL only.
+    ...(isMenuVertical
+      ? [{ name: 'Menu', href: hrefFor('/menu'), icon: UtensilsCrossed }]
       : []),
     { name: 'Settings', href: hrefFor('/settings'), icon: Settings },
   ];
