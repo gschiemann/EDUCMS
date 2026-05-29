@@ -662,11 +662,16 @@ export default function TemplatesPage() {
             sheared off the right edge at 360–390px and an operator
             literally could not create or import a template on a phone.
             Fix copies the stack/wrap pattern the Imports page +
-            FolderPicker already use: title block stacks above the CTAs
-            below `md`, and the CTA row wraps with each button going
-            full-width 2-up on a phone (`flex-1 basis-…`) and back to
-            content-width on desktop. Desktop (≥md) layout is unchanged. */}
-        <div className="relative flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            FolderPicker already use. IMPORTANT: the desktop base classes
+            are LEFT EXACTLY AS THEY WERE and the mobile reflow is layered
+            on with `max-md:` overrides only — so desktop (≥768px) renders
+            the original single inline row with zero behavioral change,
+            and only `<md` (phones/small tablets) stacks the title above a
+            wrapping 2-up CTA grid. (An earlier attempt used base-mobile +
+            `md:` reverts; the `md:` reverts didn't win over `flex-1`, so
+            we invert it: desktop is the untouched base, mobile is the
+            override.) */}
+        <div className="relative flex items-center justify-between max-md:flex-col max-md:items-stretch max-md:gap-5">
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3">
               <LayoutTemplate className="w-8 h-8 opacity-80" />
@@ -680,8 +685,8 @@ export default function TemplatesPage() {
               Design beautiful screen layouts for every space in your {tenantCopy.orgSingular.toLowerCase()}. Pick a ready-made template or build your own from scratch.
             </p>
           </div>
-          <div className="flex flex-wrap items-stretch gap-2 w-full md:w-auto md:flex-nowrap md:items-center md:shrink-0">
-            <ApplyBrandButton disabled={isViewer} className="flex-1 basis-[calc(50%-0.25rem)] md:flex-initial md:basis-auto" />
+          <div className="flex items-center gap-2 max-md:flex-wrap max-md:w-full max-md:items-stretch">
+            <ApplyBrandButton disabled={isViewer} className="max-md:flex-1 max-md:basis-[calc(50%-0.25rem)]" />
             {/* 2026-05-25 — Operator wanted design imports surfaced
                 INSIDE Templates ("its not a setting its a feature").
                 Distinct from the existing "Import .educms-template.json"
@@ -691,7 +696,7 @@ export default function TemplatesPage() {
               onClick={() => router.push(`/${params?.schoolId ?? ''}/templates/imports`)}
               disabled={isViewer}
               title={isViewer ? 'Read-only — viewer role' : 'Import a PDF / Canva / Slides export as a template or playlist'}
-              className="flex-1 basis-[calc(50%-0.25rem)] md:flex-initial md:basis-auto justify-center px-4 py-3 bg-white/10 text-white font-bold text-sm rounded-xl border border-white/30 hover:bg-white/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-3 bg-white/10 text-white font-bold text-sm rounded-xl border border-white/30 hover:bg-white/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed max-md:flex-1 max-md:basis-[calc(50%-0.25rem)]"
             >
               <FileText className="w-5 h-5" /> Import design
             </button>
@@ -701,7 +706,7 @@ export default function TemplatesPage() {
               onClick={handleImportClick}
               disabled={isViewer}
               title={isViewer ? 'Read-only — viewer role' : 'Import a template from a .educms-template.json file'}
-              className="flex-1 basis-[calc(50%-0.25rem)] md:flex-initial md:basis-auto justify-center px-4 py-3 bg-white/10 text-white font-bold text-sm rounded-xl border border-white/30 hover:bg-white/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-3 bg-white/10 text-white font-bold text-sm rounded-xl border border-white/30 hover:bg-white/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed max-md:flex-1 max-md:basis-[calc(50%-0.25rem)]"
             >
               <Upload className="w-5 h-5" /> Import .json
             </button>
@@ -714,7 +719,7 @@ export default function TemplatesPage() {
               onClick={() => { setShowAiGenerate(true); setAiError(null); }}
               disabled={isViewer}
               title={isViewer ? 'Read-only — viewer role' : 'Describe a touch template, get a working draft'}
-              className="flex-1 basis-[calc(50%-0.25rem)] md:flex-initial md:basis-auto justify-center px-4 py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl md:hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed max-md:flex-1 max-md:basis-[calc(50%-0.25rem)] max-md:hover:scale-100"
             >
               <Sparkles className="w-5 h-5" /> Generate with AI
             </button>
@@ -722,7 +727,7 @@ export default function TemplatesPage() {
               onClick={() => setShowCreate(true)}
               disabled={isViewer}
               title={isViewer ? 'Read-only — viewer role' : undefined}
-              className="flex-1 basis-[calc(50%-0.25rem)] md:flex-initial md:basis-auto justify-center px-5 py-3 bg-white text-indigo-700 font-bold text-sm rounded-xl shadow-lg hover:shadow-xl md:hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-5 py-3 bg-white text-indigo-700 font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed max-md:flex-1 max-md:basis-full max-md:hover:scale-100"
             >
               <Plus className="w-5 h-5" /> New Template
             </button>
@@ -3190,7 +3195,7 @@ function ApplyBrandButton({ disabled, className }: { disabled: boolean; classNam
         onClick={() => setOpen(true)}
         disabled={disabled || !hasBrand}
         title={!hasBrand ? 'Configure your brand kit first (Brand tab in any template builder)' : disabled ? 'Read-only — viewer role' : `Re-skin every template with your ${tenantCopy.orgSingular.toLowerCase()} brand`}
-        className={`px-4 py-3 bg-gradient-to-r from-pink-500 to-violet-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl md:hover:scale-105 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${className ?? ''}`}
+        className={`px-4 py-3 bg-gradient-to-r from-pink-500 to-violet-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 max-md:hover:scale-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${className ?? ''}`}
       >
         <Sparkles className="w-5 h-5" /> Brand all templates
       </button>
