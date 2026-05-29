@@ -1,5 +1,21 @@
 # Design System & Aesthetics
 
+> **Scope — read first.** These rules govern the **admin dashboard and every
+> standard-browser / LCD surface** (Mac/Windows browsers, Raspberry Pi and
+> generic-Android players, mobile). Use the full premium toolkit here —
+> glassmorphism, flex `gap`, `backdrop-blur`, modern color — and **never dumb
+> it down for old engines.** Cutting-edge visuals are the product.
+>
+> The **only** exception is code that ships to a **NovaStar Taurus LED
+> controller**: the player/widget surfaces under `apps/web/src/app/player`,
+> `apps/web/src/components/player`, `apps/web/src/components/widgets`, and the
+> sports `board` / `ribbon` / `scorebug` routes. Those run Chromium 83–87 and
+> have hard constraints — no flex `gap`, no `inset` shorthand, no
+> `backdrop-filter`, no `:has()` / container queries / `oklch()`. See CLAUDE.md
+> rule #10 and the `taurus-safety` CI gate (it scans only those paths). On the
+> Taurus path, build the premium version and add graceful degradation; do
+> **not** let that constraint leak back into the dashboard.
+
 ## Core Aesthetic: Modern SaaS
 - Break away from default "Bootstrap" utility aesthetics. The interface should feel premium, similar to platforms like Vercel, Linear, or Stripe.
 - **Foundation:** `slate-800` and `slate-900` for deep dark mode backgrounds; `slate-50` and `white` for light mode to maintain a crisp feel.
