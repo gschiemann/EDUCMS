@@ -10,10 +10,15 @@
  * the score, the clock) within ~1s — the operator builds the look
  * before the game and watches it come together, then pushes it to
  * the screens.
+ *
+ * The Scorebug surface also carries the "Copy stream-overlay URL"
+ * affordance — the transparent broadcast overlay you add as a Browser
+ * Source in OBS / vMix / Hudl. Same live game state as the in-venue
+ * board, so the stream bug and the big board can never disagree.
  */
 
 import { useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Copy, Check } from 'lucide-react';
 
 interface Surface {
   key: string;
@@ -83,6 +88,80 @@ export function SurfacePreview({ gameId }: { gameId: string }) {
         within ~1s as you edit. Load everything in, watch it here, then push it to
         your screens below.
       </p>
+
+      {/* Streaming a game on NFHS Network / Hudl / OBS? The Scorebug
+          surface doubles as a transparent broadcast overlay. Surface
+          the copy-URL + Browser-Source helper right here, next to the
+          live preview, so the operator finds it while setting up the
+          broadcast. */}
+      {key === 'scorebug' && <StreamOverlayHelper gameId={gameId} />}
+    </div>
+  );
+}
+
+/**
+ * "Copy stream-overlay URL" + a 2-line "Add as a Browser Source in
+ * OBS / vMix / Hudl" helper. Points at the full-canvas /overlay route
+ * (the broadcast variant that pins the bug inside a fixed 1920×1080
+ * canvas so it renders identically at 720p / 1080p / 4K output).
+ */
+function StreamOverlayHelper({ gameId }: { gameId: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const overlayUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/overlay/${gameId}?surface=stream`
+      : `/overlay/${gameId}?surface=stream`;
+
+  const copy = () => {
+    const done = () => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    };
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(overlayUrl)
+        .then(done)
+        .catch(() => window.prompt('Copy the stream-overlay URL:', overlayUrl));
+    } else if (typeof window !== 'undefined') {
+      window.prompt('Copy the stream-overlay URL:', overlayUrl);
+    }
+  };
+
+  return (
+    <div className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-indigo-900">Stream overlay (OBS / vMix / Hudl)</p>
+          <p className="mt-0.5 text-[11px] leading-snug text-indigo-700/80">
+            Transparent broadcast scorebug, driven by this same game — your stream
+            and the in-venue board can never disagree.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={copy}
+          className="flex shrink-0 items-center gap-1.5 rounded-md bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-indigo-700"
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? 'Copied!' : 'Copy URL'}
+        </button>
+      </div>
+
+      <code className="mt-2 block truncate rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] text-slate-700">
+        {overlayUrl}
+      </code>
+
+      {/* The 2-line "how to add it" helper. */}
+      <ol className="mt-2 list-decimal space-y-0.5 pl-4 text-[11px] leading-snug text-indigo-800/80">
+        <li>
+          In OBS / vMix / Hudl, add a <strong>Browser Source</strong> and paste this URL.
+        </li>
+        <li>
+          Set its size to your stream canvas (e.g. <strong>1920 × 1080</strong>) — the
+          background is transparent, so the bug composites over your video.
+        </li>
+      </ol>
     </div>
   );
 }

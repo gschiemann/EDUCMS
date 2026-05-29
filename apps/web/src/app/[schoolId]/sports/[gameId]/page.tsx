@@ -359,10 +359,14 @@ function GameControl() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, ctl, recentEvents, undoEvent]);
 
-  // Stream overlay URL — copy to clipboard for OBS / vMix browser source.
+  // Stream-overlay URL — copy to clipboard for an OBS / vMix / Hudl
+  // Browser Source. Points at the full-canvas /overlay route (the
+  // broadcast variant that pins the bug inside a fixed 1920×1080 canvas
+  // so it renders identically at 720p / 1080p / 4K output). Same live
+  // game state as the in-venue board → the stream + board never disagree.
   const [copied, setCopied] = useState(false);
   const copyOverlayUrl = () => {
-    const url = `${window.location.origin}/scorebug/${gameId}`;
+    const url = `${window.location.origin}/overlay/${gameId}?surface=stream`;
     const done = () => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2200);
@@ -515,6 +519,18 @@ function GameControl() {
             <ExternalLink className="h-4 w-4" />
             <span className="hidden sm:inline">Scoreboard</span>
           </Button>
+          {mode === 'run' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={copyOverlayUrl}
+              title="Copy the transparent stream-overlay URL — add it as a Browser Source in OBS / vMix / Hudl (1920×1080). Same live game state as the in-venue board."
+            >
+              {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+              <span className="hidden sm:inline">{copied ? 'Copied!' : 'Stream'}</span>
+            </Button>
+          )}
           {mode === 'run' && (
             <Button
               variant="outline"
