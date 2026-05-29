@@ -2214,8 +2214,8 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           fields.push(<ColorField key="sbAccent" label="Accent (gold trim)" value={cfg.accentColor || '#fbbf24'} onChange={(v) => setField({ accentColor: v })} />);
           fields.push(<TextField key="period" label="Period" value={cfg.period ?? ''} placeholder="auto from game (e.g. QUARTER 3)" onChange={(v) => setField({ period: v })} />);
           fields.push(<TextField key="clock" label="Clock" value={cfg.clock ?? ''} placeholder="auto from game (e.g. 7:42)" onChange={(v) => setField({ clock: v })} />);
-          fields.push(<TextField key="homeLogoUrl" label="Home logo URL" value={cfg.homeLogoUrl || ''} placeholder="https://…/home.png" onChange={(v) => setField({ homeLogoUrl: v })} />);
-          fields.push(<TextField key="awayLogoUrl" label="Away logo URL" value={cfg.awayLogoUrl || ''} placeholder="https://…/away.png" onChange={(v) => setField({ awayLogoUrl: v })} />);
+          fields.push(<AssetPickerField key="homeLogoUrl" label="Home logo" value={cfg.homeLogoUrl || ''} kind="image" onChange={(v) => setField({ homeLogoUrl: v })} />);
+          fields.push(<AssetPickerField key="awayLogoUrl" label="Away logo" value={cfg.awayLogoUrl || ''} kind="image" onChange={(v) => setField({ awayLogoUrl: v })} />);
           break;
         }
         // Which side — shown for any element that carries a team.
