@@ -1,7 +1,7 @@
 {
   "name": "@cms/scoreboard-cts",
   "version": "1.1.0",
-  "description": "Colorado Time Systems (CTS) System 6 / Gen 6 serial-protocol decoder for VenueOS Sprint 13.",
+  "description": "Scoreboard-console serial-protocol decoders for VenueOS Sprint 13: Colorado Time Systems (CTS) System 6/Gen 6 + Daktronics All Sport 5000 Enhanced RTD, with a console-profile registry.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

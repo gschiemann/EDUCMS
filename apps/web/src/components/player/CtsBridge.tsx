@@ -58,6 +58,13 @@ import {
   REHEARSAL_SCRIPT,
   scriptGame,
   type CtsFullSnapshot,
+  DaktronicsParser,
+  type DaktronicsSnapshot,
+  type DaktronicsSport,
+  resolveConsoleProfile,
+  type ConsoleProfile,
+  type ConsoleProfileId,
+  type SerialSettings,
 } from '@cms/scoreboard-cts';
 import { parseCtsClockToMs } from '@/lib/cts-merge';
 
@@ -291,28 +298,36 @@ const CLOCK_PAUSE_FACTOR = 1.5;
 const CLOCK_PAUSE_MIN_MS = 900;
 
 /**
- * Optional URL query-param overrides for hardware-specific quirks.
- * Most installs leave these alone; documented here so the lead can
- * use them on-site if a CTS console reports baud / parity unusual.
+ * Resolve the serial settings to open the port with.
+ *
+ * The base defaults come from the selected console profile
+ * (`profile.serial`): CTS Gen 6 → 9600/8/E/1, Daktronics All Sport →
+ * 19200/8/N/1. The existing `cts*` URL query params still override any
+ * field on-site (kept for backward compat — the lead can hand-tune baud
+ * / parity for an oddball console without a redeploy). A param left
+ * unset falls through to the profile default, so a Daktronics deploy
+ * with NO query params gets 19200/8/N/1 automatically.
  */
-function readSerialOptsFromQuery(): {
+function readSerialOptsFromQuery(base: SerialSettings): {
   baudRate: number;
   dataBits: 7 | 8;
   stopBits: 1 | 2;
   parity: 'none' | 'even' | 'odd';
 } {
   if (typeof window === 'undefined') {
-    return { baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'even' };
+    return { ...base };
   }
   const p = new URLSearchParams(window.location.search);
-  const baudRate = parseInt(p.get('ctsBaud') || '', 10) || 9600;
-  const dataBitsRaw = parseInt(p.get('ctsDataBits') || '', 10) || 8;
+  const baudRate = parseInt(p.get('ctsBaud') || '', 10) || base.baudRate;
+  const dataBitsRaw = parseInt(p.get('ctsDataBits') || '', 10) || base.dataBits;
   const dataBits: 7 | 8 = dataBitsRaw === 7 ? 7 : 8;
-  const stopBitsRaw = parseInt(p.get('ctsStopBits') || '', 10) || 1;
+  const stopBitsRaw = parseInt(p.get('ctsStopBits') || '', 10) || base.stopBits;
   const stopBits: 1 | 2 = stopBitsRaw === 2 ? 2 : 1;
-  const parityRaw = (p.get('ctsParity') || 'even').toLowerCase();
+  const parityRaw = (p.get('ctsParity') || '').toLowerCase();
   const parity: 'none' | 'even' | 'odd' =
-    parityRaw === 'none' || parityRaw === 'odd' ? parityRaw : 'even';
+    parityRaw === 'none' || parityRaw === 'odd' || parityRaw === 'even'
+      ? (parityRaw as 'none' | 'even' | 'odd')
+      : base.parity;
   return { baudRate, dataBits, stopBits, parity };
 }
 
@@ -346,6 +361,18 @@ export interface CtsBridgeProps {
    *  `{ rs232_1: 'cts', rs232_2: 'off' }` for backward compatibility
    *  with every existing single-port install. */
   wiring?: CtsBridgeWiring;
+  /** 2026-05-29 — which scoreboard console this kiosk is wired to.
+   *  Selects BOTH the serial settings (CTS 9600/8/E/1 vs Daktronics
+   *  19200/8/N/1) AND the parser. Defaults to 'cts-gen6' so every
+   *  existing CTS install behaves exactly as before. Can also be set
+   *  via the `?consoleProfile=` URL query param (the prop wins if both
+   *  are present). */
+  consoleProfile?: ConsoleProfileId;
+  /** 2026-05-29 — for the Daktronics profile, which sport's RTD field
+   *  map to decode against (football | basketball | baseball). Ignored
+   *  by the CTS profile (CTS is water polo only). Defaults to
+   *  'football'; can also be set via `?dakSport=` URL query param. */
+  daktronicsSport?: DaktronicsSport;
   /** Compact mode: skip debug JSON pretty-print + last-bytes counter. */
   compact?: boolean;
 }
@@ -357,6 +384,8 @@ export function CtsBridge({
   gameId,
   feedToken,
   wiring,
+  consoleProfile,
+  daktronicsSport,
   compact = false,
 }: CtsBridgeProps) {
   // Resolve the wiring with the legacy single-port default.
@@ -364,21 +393,59 @@ export function CtsBridge({
     wiring?.rs232_1 ?? 'cts';
   const rs232_2Role: 'cts' | 'streamdeck' | 'aux' | 'off' =
     wiring?.rs232_2 ?? 'off';
+
+  // 2026-05-29 — Resolve the console profile (prop > query param >
+  // default 'cts-gen6'). The profile carries the serial settings AND
+  // tells us which decoder to drive. Resolved once per render; the
+  // value is stable for a given install.
+  const profileId: string | null | undefined =
+    consoleProfile ??
+    (typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('consoleProfile')
+      : null);
+  const profile: ConsoleProfile = resolveConsoleProfile(profileId);
+  const isDaktronics = profile.decoder === 'daktronics';
+  // Hold the profile's serial settings in a ref so the connection-
+  // lifecycle effects/callbacks below can read them WITHOUT taking a
+  // dep on the (new-every-render) `profile.serial` object — those
+  // effects must re-run only on nativeMode / role changes, never on a
+  // profile-object identity churn. The values are install-constant.
+  const serialBaseRef = useRef<SerialSettings>(profile.serial);
+  serialBaseRef.current = profile.serial;
+  // Sport for the Daktronics decoder (prop > query param > 'football').
+  const dakSport: DaktronicsSport =
+    daktronicsSport ??
+    (((typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('dakSport')
+      : null) as DaktronicsSport | null) || 'football');
   const [supported, setSupported] = useState<boolean | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [bytesRead, setBytesRead] = useState<number>(0);
   const [lastSnapshot, setLastSnapshot] = useState<CtsFullSnapshot | null>(null);
+  // 2026-05-29 — last decoded Daktronics snapshot (for the debug panel).
+  const [lastDakSnapshot, setLastDakSnapshot] = useState<DaktronicsSnapshot | null>(null);
   const [postCount, setPostCount] = useState<number>(0);
   const [postLastStatus, setPostLastStatus] = useState<string | null>(null);
 
   const parserRef = useRef<CtsParser | null>(null);
+  // 2026-05-29 — Daktronics All Sport RTD parser. Only instantiated +
+  // fed when the resolved profile is the Daktronics one; null on a CTS
+  // install so the CTS path is untouched. Exactly one of the two
+  // parsers is live per bridge mount.
+  const dakParserRef = useRef<DaktronicsParser | null>(null);
   const portRef = useRef<SerialPortLite | null>(null);
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const disposedRef = useRef<boolean>(false);
   const pendingSnapshotRef = useRef<CtsFullSnapshot | null>(null);
   const postTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPostAtRef = useRef<number>(0);
+  // 2026-05-29 — Daktronics POST throttle state (parallel to the CTS
+  // refs above; same latest-wins throttle, separate pending slot so the
+  // two snapshot types never alias).
+  const pendingDakSnapshotRef = useRef<DaktronicsSnapshot | null>(null);
+  const dakPostTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastDakPostAtRef = useRef<number>(0);
 
   // 2026-05-27 — EP6N dual-RS232. Each port maintains its OWN line
   // accumulator (Stream Deck) and its own port handles. The CtsParser
@@ -461,17 +528,29 @@ export function CtsBridge({
     setSupported(!!nav.serial);
   }, []);
 
-  // Initialize parser once.
+  // Initialize the parser for the selected console profile.
+  //   - CTS profile     → CtsParser (water polo seven-segment decoder)
+  //   - Daktronics      → DaktronicsParser (All Sport RTD buffer decoder)
+  // Exactly one is live. Stream Deck line accumulators are profile-
+  // independent (cue text is the same regardless of which scoreboard
+  // console is on the other port).
   useEffect(() => {
-    parserRef.current = new CtsParser();
+    if (isDaktronics) {
+      dakParserRef.current = new DaktronicsParser({ sport: dakSport });
+      parserRef.current = null;
+    } else {
+      parserRef.current = new CtsParser();
+      dakParserRef.current = null;
+    }
     streamDeckLines1Ref.current = new LineAccumulator();
     streamDeckLines2Ref.current = new LineAccumulator();
     return () => {
       parserRef.current = null;
+      dakParserRef.current = null;
       streamDeckLines1Ref.current = null;
       streamDeckLines2Ref.current = null;
     };
-  }, []);
+  }, [isDaktronics, dakSport]);
 
   /**
    * 2026-05-27 — dispatch a Stream Deck command via the same
@@ -540,7 +619,12 @@ export function CtsBridge({
     (portIndex: 1 | 2, role: 'cts' | 'streamdeck' | 'aux' | 'off', bytes: Uint8Array) => {
       if (role === 'off' || bytes.length === 0) return;
       if (role === 'cts') {
-        parserRef.current?.feed(bytes);
+        // The 'cts' wiring role means "this port carries the scoreboard
+        // console" — which console it actually is depends on the
+        // resolved profile. Feed the live parser (CtsParser OR
+        // DaktronicsParser). Only one is non-null per mount.
+        if (dakParserRef.current) dakParserRef.current.feed(bytes);
+        else parserRef.current?.feed(bytes);
         return;
       }
       if (role === 'streamdeck') {
@@ -633,7 +717,7 @@ export function CtsBridge({
     if (rs232_1Role === 'off') return;
     const n = window.EduCmsNative;
     if (!n?.ctsSerialConnect) return;
-    const opts = readSerialOptsFromQuery();
+    const opts = readSerialOptsFromQuery(serialBaseRef.current);
     // tty path comes from URL query (?ctsTty=/dev/ttyS2) or defaults
     // to /dev/ttyS1 — the Phoenix Terminal 1 RS232 RX on the
     // ECBox3576. APK settings UI (Phase 3) will let the operator pick
@@ -677,7 +761,7 @@ export function CtsBridge({
       console.warn('[CtsBridge] wiring.rs232_2 set but APK has no ctsSerialConnect2 — update Player APK to enable second port.');
       return;
     }
-    const opts = readSerialOptsFromQuery();
+    const opts = readSerialOptsFromQuery(serialBaseRef.current);
     const tty = typeof window !== 'undefined'
       ? (new URLSearchParams(window.location.search).get('ctsTty2') || '/dev/ttyS2')
       : '/dev/ttyS2';
@@ -722,7 +806,7 @@ export function CtsBridge({
           setTimeout(() => {
             const n = window.EduCmsNative;
             if (!n?.ctsSerialConnect) return;
-            const opts = readSerialOptsFromQuery();
+            const opts = readSerialOptsFromQuery(serialBaseRef.current);
             const tty = new URLSearchParams(window.location.search).get('ctsTty') || '/dev/ttyS1';
             try {
               const resp = n.ctsSerialConnect(tty, opts.baudRate, opts.dataBits, opts.stopBits, opts.parity);
@@ -918,7 +1002,7 @@ export function CtsBridge({
     [flushPost],
   );
 
-  // Subscribe the parser → schedule POST.
+  // Subscribe the CTS parser → schedule POST.
   useEffect(() => {
     const parser = parserRef.current;
     if (!parser) return;
@@ -927,6 +1011,154 @@ export function CtsBridge({
     });
     return unsub;
   }, [schedulePost]);
+
+  // 2026-05-29 — POST a Daktronics snapshot. Maps the normalized
+  // DaktronicsSnapshot onto the SAME body shape the CTS path posts, so
+  // the server / board / ribbon / scorebug surfaces never care which
+  // console produced the data. Same two destinations (gameId-keyed
+  // persistent path vs legacy WS broadcast), same keepalive semantics,
+  // same latest-wins throttle.
+  //
+  // Key difference vs CTS: the All Sport has an EXPLICIT clock-stopped
+  // flag, so `clockRunning` comes straight off the snapshot — no
+  // cadence-based derivation needed (that was a CTS-only workaround
+  // because CTS has no running bit).
+  const flushDakPost = useCallback(async () => {
+    if (disposedRef.current) return;
+    const snap = pendingDakSnapshotRef.current;
+    if (!snap) return;
+    pendingDakSnapshotRef.current = null;
+    lastDakPostAtRef.current = Date.now();
+
+    if (gameId && feedToken) {
+      // Sport-specific extension blob, kept under a namespaced key so
+      // the server can store it in stats without colliding with CTS's
+      // water-polo fields.
+      const sportExtra: Record<string, unknown> =
+        snap.sport === 'football' && snap.football
+          ? {
+              down: snap.football.down || undefined,
+              toGo: snap.football.toGo || undefined,
+              ballOn: snap.football.ballOn || undefined,
+              possession: snap.football.possession ?? undefined,
+              playClock: snap.football.playClock || undefined,
+            }
+          : snap.sport === 'basketball' && snap.basketball
+            ? {
+                homeTeamFouls: snap.basketball.homeTeamFouls || undefined,
+                guestTeamFouls: snap.basketball.guestTeamFouls || undefined,
+                homeBonus: snap.basketball.homeBonus || undefined,
+                homeDoubleBonus: snap.basketball.homeDoubleBonus || undefined,
+                guestBonus: snap.basketball.guestBonus || undefined,
+                guestDoubleBonus: snap.basketball.guestDoubleBonus || undefined,
+                possession: snap.basketball.possession ?? undefined,
+                shotClock: snap.basketball.shotClock || undefined,
+              }
+            : snap.sport === 'baseball' && snap.baseball
+              ? {
+                  balls: snap.baseball.balls || undefined,
+                  strikes: snap.baseball.strikes || undefined,
+                  outs: snap.baseball.outs || undefined,
+                  atBat: snap.baseball.atBat ?? undefined,
+                  homeHits: snap.baseball.homeHits || undefined,
+                  awayHits: snap.baseball.awayHits || undefined,
+                  homeErrors: snap.baseball.homeErrors || undefined,
+                  awayErrors: snap.baseball.awayErrors || undefined,
+                  batterNumber: snap.baseball.batterNumber || undefined,
+                }
+              : {};
+
+      const body: Record<string, unknown> = {
+        clockMs: parseCtsClockToMs(snap.clock) ?? undefined,
+        clockRunning: snap.clockRunning,
+        segment: typeof snap.period === 'number' ? snap.period : undefined,
+        homeScore: typeof snap.homeScore === 'number' ? snap.homeScore : undefined,
+        awayScore: typeof snap.awayScore === 'number' ? snap.awayScore : undefined,
+        horn: snap.horn === true ? true : undefined,
+        raw: typeof snap.clock === 'string' ? snap.clock : undefined,
+        homeTimeoutsRemaining:
+          typeof snap.homeTimeoutsRemaining === 'number'
+            ? snap.homeTimeoutsRemaining
+            : undefined,
+        awayTimeoutsRemaining:
+          typeof snap.awayTimeoutsRemaining === 'number'
+            ? snap.awayTimeoutsRemaining
+            : undefined,
+        // Provenance + sport-specific data. `source: 'daktronics'` lets
+        // the server-side merge distinguish console families if it ever
+        // needs to; today it's stored alongside the normalized fields.
+        source: 'daktronics',
+        sport: snap.sport,
+        daktronics: sportExtra,
+      };
+      try {
+        const res = await fetch(
+          `${apiRoot}/api/v1/sports/board/${encodeURIComponent(gameId)}/cts-snapshot`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-feed-token': feedToken,
+            },
+            body: JSON.stringify(body),
+            keepalive: true,
+          },
+        );
+        setPostCount((n) => n + 1);
+        setPostLastStatus(`${res.status}`);
+      } catch (e) {
+        setPostLastStatus(`err: ${(e as Error).message}`);
+      }
+      return;
+    }
+
+    // Legacy WS-broadcast path — no game bound.
+    try {
+      const res = await fetch(
+        `${apiRoot}/api/v1/screens/${encodeURIComponent(screenId)}/game-state`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(deviceToken ? { Authorization: `Bearer ${deviceToken}` } : {}),
+          },
+          body: JSON.stringify({ source: 'daktronics', snapshot: snap }),
+          keepalive: true,
+        },
+      );
+      setPostCount((n) => n + 1);
+      setPostLastStatus(`${res.status}`);
+    } catch (e) {
+      setPostLastStatus(`err: ${(e as Error).message}`);
+    }
+  }, [apiRoot, deviceToken, screenId, gameId, feedToken]);
+
+  const scheduleDakPost = useCallback(
+    (snap: DaktronicsSnapshot) => {
+      pendingDakSnapshotRef.current = snap;
+      setLastDakSnapshot(snap);
+      const elapsed = Date.now() - lastDakPostAtRef.current;
+      if (elapsed >= POST_THROTTLE_MS) {
+        flushDakPost();
+      } else if (dakPostTimerRef.current === null) {
+        dakPostTimerRef.current = setTimeout(() => {
+          dakPostTimerRef.current = null;
+          flushDakPost();
+        }, POST_THROTTLE_MS - elapsed);
+      }
+    },
+    [flushDakPost],
+  );
+
+  // Subscribe the Daktronics parser → schedule POST.
+  useEffect(() => {
+    const parser = dakParserRef.current;
+    if (!parser) return;
+    const unsub = parser.onUpdate((snap) => {
+      scheduleDakPost(snap);
+    });
+    return unsub;
+  }, [scheduleDakPost]);
 
   // Read loop: pump bytes from the port's readable stream through
   // the role router (CTS parser / Stream Deck lines / aux logger).
@@ -985,7 +1217,7 @@ export function CtsBridge({
       try {
         setStat('connecting');
         setError(null);
-        const opts = readSerialOptsFromQuery();
+        const opts = readSerialOptsFromQuery(serialBaseRef.current);
         await port.open(opts);
         if (portIndex === 1) portRef.current = port;
         else port2Ref.current = port;
@@ -1217,7 +1449,7 @@ export function CtsBridge({
           }}
         />
         <strong style={{ marginRight: 8 }}>
-          CTS Bridge{nativeMode ? ' · ECBox' : ''}{gameId && feedToken ? ' · game' : ''}
+          {isDaktronics ? `Daktronics (${dakSport})` : 'CTS'} Bridge{nativeMode ? ' · ECBox' : ''}{gameId && feedToken ? ' · game' : ''}
         </strong>
         <span style={{ opacity: 0.7 }}>P1:{rs232_1Role} {status}</span>
       </div>
@@ -1346,8 +1578,13 @@ export function CtsBridge({
           game with goals/exclusions/horn) through the SAME parser
           the live bridge uses. Every downstream surface sees the
           same data shape it'd get from a real CTS console — perfect
-          for dress-rehearsing the full show flow without hardware. */}
-      {status !== 'connected' && !simRunning && (
+          for dress-rehearsing the full show flow without hardware.
+
+          2026-05-29 — the bundled rehearsal is a WATER-POLO script for
+          the CTS parser, so the button only shows on the CTS profile.
+          A Daktronics sample-game script is a future add (would feed
+          MockDaktronicsFeed instead). */}
+      {!isDaktronics && status !== 'connected' && !simRunning && (
         <button
           type="button"
           onClick={onStartSim}
@@ -1425,6 +1662,42 @@ export function CtsBridge({
     homeExcl: lastSnapshot.homeExclusions,
     awayExcl: lastSnapshot.awayExclusions,
     horn: lastSnapshot.horn,
+  },
+  null,
+  2,
+)}
+              </pre>
+            </details>
+          )}
+          {/* 2026-05-29 — Daktronics last-state panel (parity with the
+              CTS one above). Shows the normalized snapshot + the active
+              sport's extension fields so the install tech can confirm
+              the offset map is reading real values off the console. */}
+          {lastDakSnapshot && (
+            <details style={{ marginTop: 4 }}>
+              <summary style={{ cursor: 'pointer' }}>last state</summary>
+              <pre
+                style={{
+                  margin: '4px 0 0 0',
+                  fontSize: 10,
+                  background: '#0f172a',
+                  padding: 6,
+                  borderRadius: 4,
+                  overflow: 'auto',
+                  maxWidth: 296,
+                }}
+              >
+{JSON.stringify(
+  {
+    sport: lastDakSnapshot.sport,
+    clock: lastDakSnapshot.clock,
+    running: lastDakSnapshot.clockRunning,
+    period: lastDakSnapshot.period,
+    score: `${lastDakSnapshot.homeScore}-${lastDakSnapshot.awayScore}`,
+    horn: lastDakSnapshot.horn,
+    football: lastDakSnapshot.football,
+    basketball: lastDakSnapshot.basketball,
+    baseball: lastDakSnapshot.baseball,
   },
   null,
   2,
