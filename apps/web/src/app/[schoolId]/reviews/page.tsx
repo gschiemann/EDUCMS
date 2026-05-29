@@ -48,7 +48,15 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
     // collapses to 15px of detail on a 375px iPhone, which made the
     // /reviews page unusable from a phone — exactly the Sprint 1.5
     // approval-from-anywhere intent.
-    <div className="flex flex-col md:flex-row h-[calc(100vh-64px)]">
+    // 2026-05-28 mobile-UX fix: was h-[calc(100vh-64px)] — `100vh`
+    // over-counts on mobile browsers (toolbar/URL-bar chrome) AND the
+    // 64px subtraction only accounted for the top toolbar, not the
+    // ~56px bottom MobileTabBar, so the sticky approve bar rendered
+    // partly under the tab bar. `dvh` tracks the live viewport; on
+    // <md we also subtract the tab bar (~64px incl. safe-area) so the
+    // detail pane stops above it and the sticky Approve/Reject bar is
+    // fully tappable. md+ uses just the 73px toolbar (no tab bar).
+    <div className="flex flex-col md:flex-row h-[calc(100dvh-137px)] md:h-[calc(100dvh-73px)]">
       {/* Left rail — submission list. Full width on mobile when no
           selection; hidden when a row is selected (so the detail pane
           gets the full viewport). On desktop, always-on 360px fixed
@@ -99,7 +107,10 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
           full width when active on mobile so admins can approve from
           their phone without horizontal scroll. */}
       <div
-        className={`${selectedId ? 'flex' : 'hidden md:flex'} flex-1 overflow-y-auto bg-slate-50/40`}
+        // 2026-05-28 mobile-UX: pb on <md keeps the sticky Approve/Reject
+        // bar (sticky bottom-4 inside ReviewDetail) floating clear of the
+        // bottom MobileTabBar (~56px + safe-area). md+ drops it (no tab bar).
+        className={`${selectedId ? 'flex' : 'hidden md:flex'} flex-1 overflow-y-auto bg-slate-50/40 pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0`}
       >
         {selectedId ? (
           <ReviewDetail id={selectedId} onBack={() => setSelectedId(null)} statusFilter={statusFilter} />

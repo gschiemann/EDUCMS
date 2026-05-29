@@ -306,7 +306,10 @@ export function Sidebar() {
           // Desktop: part of the flex flow
           "md:static md:h-full md:w-72 md:translate-x-0 md:z-20",
           // Mobile: fixed drawer, slide in/out
-          "fixed top-0 left-0 h-screen w-72 max-w-[85vw] z-40 transition-transform duration-300 ease-out",
+          // 2026-05-28 mobile-UX: h-screen → h-dvh so the drawer tracks the
+          // live mobile viewport (URL-bar chrome) and its footer Sign-out
+          // isn't pushed below the fold on iOS Safari.
+          "fixed top-0 left-0 h-dvh w-72 max-w-[85vw] z-40 transition-transform duration-300 ease-out",
           mobileSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
         aria-label="Primary navigation"

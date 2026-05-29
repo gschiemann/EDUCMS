@@ -71,7 +71,7 @@ export function SchoolSwitcher() {
         <ChevronsUpDown className="w-3.5 h-3.5 text-slate-400" />
       </button>
       {open && (
-        <div className="absolute right-0 top-11 w-[280px] bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-50 max-h-[360px] overflow-y-auto">
+        <div className="absolute right-0 left-auto top-11 w-[280px] max-w-[calc(100vw-1rem)] bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-50 max-h-[360px] overflow-y-auto">
           {switchError && (
             <div className="px-3 py-2 mb-1 text-[10px] font-medium text-red-700 bg-red-50 border-b border-red-100">
               {switchError}

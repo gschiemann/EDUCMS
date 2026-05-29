@@ -36,6 +36,13 @@ export function MobileTabBar() {
   const params = useParams<{ schoolId?: string }>();
   const schoolId = params?.schoolId || '';
   const user = useAppStore((s) => s.user);
+  // 2026-05-28 — when the mobile sidebar drawer (Sidebar.tsx, z-40) is
+  // open, its footer Sign-out button sits UNDER this tab bar (z-60),
+  // so it was untappable. Hide the tab bar while the drawer is open so
+  // exactly ONE mobile nav surface is usable at a time. The drawer has
+  // its own backdrop + ESC + route-change auto-close, so closing it
+  // brings the tab bar straight back.
+  const mobileSidebarOpen = useAppStore((s) => s.mobileSidebarOpen);
   // Badge for pending reviews on the Home tab. Same hook the desktop
   // bell uses, so totals match what the operator sees on web.
   const { data: notifications } = useNotifications();
@@ -60,7 +67,10 @@ export function MobileTabBar() {
     pathname.startsWith('/panic') ||
     pathname.startsWith('/player') ||
     pathname.startsWith('/onboarding') ||
-    /\/templates\/builder\//.test(pathname);
+    /\/templates\/builder\//.test(pathname) ||
+    // Drawer open → drawer owns the screen; hide the tab bar so its
+    // footer Sign-out isn't occluded.
+    mobileSidebarOpen;
   if (isHidden) return null;
 
   // Routes prefixed with the schoolId since most tenant-scoped pages

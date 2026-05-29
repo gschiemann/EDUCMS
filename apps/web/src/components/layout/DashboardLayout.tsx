@@ -64,7 +64,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen w-full bg-slate-50 overflow-hidden text-slate-900 font-sans relative">
+    <div className="flex h-dvh w-full bg-slate-50 overflow-hidden text-slate-900 font-sans relative">
       {/* AuthExpirationGuard redirects to /login when the session 401s
           or the user is explicitly logged out. Mounted high in the tree
           so every dashboard page is protected. */}

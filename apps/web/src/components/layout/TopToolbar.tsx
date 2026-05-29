@@ -107,7 +107,7 @@ export function TopToolbar() {
             </button>
 
             {showUserMenu && (
-              <div className="absolute right-0 top-12 w-56 bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-50">
+              <div className="absolute right-0 left-auto top-12 w-56 max-w-[calc(100vw-1rem)] bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-50">
                 <div className="px-4 py-2 border-b border-slate-100">
                   <p className="text-xs font-semibold text-slate-800 truncate">{fullDisplayName || user?.email}</p>
                   {fullDisplayName && user?.email && (
