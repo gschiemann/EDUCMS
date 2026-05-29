@@ -1848,6 +1848,10 @@ This is now the standing rule for every parallel-agent deployment:
 
 1. **Worktree isolation is mandatory.** Every Agent call that writes code MUST pass `isolation: "worktree"`. Without it, agents share the same working tree and stomp each other's untracked files. The Integration Concierge service files were wiped twice from contention before this rule landed.
 
+   **1b. ANY agent that RUNS the app gets a worktree too — not just code-writers (2026-05-29).** Even a "read-only" audit agent that starts a dev server, runs a build, or drives Playwright WILL write into the working tree — `.next*` build dirs, and (observed) `next.config.ts` / `tsconfig.json` edits to stand up an isolated dev server on its own port. A 5-agent read-only mobile-UX audit fleet dispatched WITHOUT worktrees dirtied the main tree's `next.config.ts` + `tsconfig.json` and left orphaned `assets/page.tsx` / `templates/page.tsx` edits — which the lead then MISATTRIBUTED to an innocent worktree-isolated fix agent (whose transcript proved 100% of its edits were worktree-scoped). Rule: if the agent's job involves `pnpm dev` / `build` / Playwright at all → pass `isolation: "worktree"`. Only pure web-research / pure-read (grep/Read, no app run) agents may stay in the main tree.
+
+   **1c. Assert the main tree is clean before AND after every agent batch.** Run `git status --short`; it MUST be empty (modulo intended lead commits). Any agent-origin dirtiness is a HARD STOP — reconcile it (`git checkout HEAD -- <file>` to drop orphaned edits; cherry-pick the agent's *worktree branch* as the source of truth) before merging/pushing. And before blaming an agent for main-tree edits, VERIFY via its transcript (`grep '"file_path"' <task>.output`) whether its writes were worktree-scoped or main-tree — never assert contention without proof (the 2026-05-29 misattribution).
+
 2. **Lead agent (me) owns the merge.** Agents return their branch name. Lead reviews the diff (`git diff master..agent-branch`), audits, cherry-picks or merges, then commits + pushes to master. Agents never push to master directly.
 
 3. **Commit before dispatch.** Any uncommitted local work must be committed (even WIP) before parallel agents fire. Untracked files survive nothing.
@@ -2055,9 +2059,24 @@ The page renders inside the brand shell — same chrome, same palette, same font
 
 10. **NEVER use the `inset` shorthand in widget or player styles —
     neither the CSS `inset: 0` property NOR the Tailwind `inset-0`
-    utility class.** NovaStar Taurus LED controllers — one of our
-    production targets — ship Chromium 83 (June 2020). The CSS `inset`
-    shorthand was added in Chrome 87. On Chromium 83, `inset: 0` is
+    utility class.**
+
+    **SCOPE (clarified 2026-05-29 — do NOT over-apply this):** this rule
+    governs ONLY code shipped to a **NovaStar Taurus LED controller**
+    (player/widget surfaces on that target). **Standard LCD displays
+    (Raspberry Pi, generic Android players, desktop/mobile browsers) and
+    the admin dashboard have NO such constraint — never dumb down their
+    visuals for it.** The Taurus floor is Chromium **83–87** (Android-11
+    units run 87, where `inset`/`gap` work); "83" is the conservative
+    worst-case floor, not a blanket version ban. The `taurus-safety` CI
+    gate scans only player/widget paths for exactly this reason. Default:
+    build the premium/cutting-edge version for LCDs; add graceful
+    degradation ONLY when a template is genuinely deployed to a Taurus LED
+    wall.
+
+    NovaStar Taurus LED controllers — one of our
+    production targets — ship Chromium 83–87 (the oldest units are June-2020
+    Chromium 83). The CSS `inset` shorthand was added in Chrome 87. On Chromium 83, `inset: 0` is
     silently dropped: in inline styles set via React's CSSOM (every
     `"use client"` page on the player route), the property never even
     reaches the DOM's `style` attribute string. In `<style>` blocks
