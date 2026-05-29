@@ -585,7 +585,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
     screenWidth: 1920, screenHeight: 1080, bgColor: '#05070d',
     zones: [
-      { name: 'Status', widgetType: 'SCOREBOARD', x: 43, y: 3, width: 14, height: 7, zIndex: 3, sortOrder: 0, defaultConfig: { variant: 'sb-status', fontSize: 30 } },
+      { name: 'Status', widgetType: 'SCOREBOARD', x: 43, y: 3, width: 14, height: 7, zIndex: 3, sortOrder: 0, defaultConfig: { variant: 'sb-status', fontSize: 34 } },
       { name: 'Home Logo', widgetType: 'SCOREBOARD', x: 6, y: 12, width: 18, height: 22, zIndex: 2, sortOrder: 1, defaultConfig: { variant: 'sb-team-logo-home', team: 'home' } },
       { name: 'Home Name', widgetType: 'SCOREBOARD', x: 2, y: 36, width: 26, height: 9, zIndex: 2, sortOrder: 2, defaultConfig: { variant: 'sb-team-name-home', team: 'home', fontSize: 54 } },
       { name: 'Home Score', widgetType: 'SCORE_HOME', x: 4, y: 46, width: 22, height: 40, zIndex: 2, sortOrder: 3, defaultConfig: { variant: 'score-home', color: '#ffffff', fontWeight: 900, fontSize: 300, align: 'center' } },
@@ -688,7 +688,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
     screenWidth: 1920, screenHeight: 1080, bgColor: '#11151c',
     zones: [
-      { name: 'Status', widgetType: 'SCOREBOARD', x: 34, y: 7, width: 32, height: 6, zIndex: 3, sortOrder: 0, defaultConfig: { variant: 'sb-status', fontSize: 26 } },
+      { name: 'Status', widgetType: 'SCOREBOARD', x: 34, y: 7, width: 32, height: 6, zIndex: 3, sortOrder: 0, defaultConfig: { variant: 'sb-status', fontSize: 34 } },
       { name: 'Clock', widgetType: 'GAME_CLOCK', x: 34, y: 14, width: 32, height: 20, zIndex: 2, sortOrder: 1, defaultConfig: { variant: 'game-clock', color: '#f8fafc', fontWeight: 700, fontSize: 200, fontFamily: "'Saira', 'Oswald', sans-serif", align: 'center' } },
       { name: 'Quarter', widgetType: 'GAME_SEGMENT', x: 34, y: 35, width: 32, height: 6, zIndex: 2, sortOrder: 2, defaultConfig: { variant: 'game-segment', color: '#94a3b8', fontWeight: 600, fontSize: 48, fontFamily: "'Saira', 'Oswald', sans-serif", align: 'center' } },
       { name: 'Shot Clock', widgetType: 'SCOREBOARD', x: 45, y: 43, width: 10, height: 12, zIndex: 2, sortOrder: 3, defaultConfig: { variant: 'sb-shot-clock', fontSize: 80 } },
@@ -727,7 +727,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
       { name: 'Home Timeouts', widgetType: 'SCOREBOARD', x: 8, y: 76, width: 18, height: 7, zIndex: 2, sortOrder: 9, defaultConfig: { variant: 'sb-timeouts-home', team: 'home', accentColor: '#67e8f9', fontSize: 34 } },
       { name: 'Possession', widgetType: 'SCOREBOARD', x: 44, y: 75, width: 12, height: 8, zIndex: 2, sortOrder: 10, defaultConfig: { variant: 'sb-possession-arrow', accentColor: '#67e8f9', fontSize: 40 } },
       { name: 'Away Timeouts', widgetType: 'SCOREBOARD', x: 74, y: 76, width: 18, height: 7, zIndex: 2, sortOrder: 11, defaultConfig: { variant: 'sb-timeouts-away', team: 'away', accentColor: '#67e8f9', fontSize: 34 } },
-      { name: 'Sponsor', widgetType: 'SCOREBOARD', x: 30, y: 91, width: 40, height: 8, zIndex: 2, sortOrder: 12, defaultConfig: { variant: 'sb-sponsor', label: 'PRESENTED BY', fontSize: 22 } },
+      { name: 'Sponsor', widgetType: 'SCOREBOARD', x: 30, y: 91, width: 40, height: 8, zIndex: 2, sortOrder: 12, defaultConfig: { variant: 'sb-sponsor', label: 'PRESENTED BY', fontSize: 34 } },
     ],
   },
   {

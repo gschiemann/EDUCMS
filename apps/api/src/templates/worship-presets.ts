@@ -131,7 +131,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 3,
         defaultConfig: {
           content: 'Sunday Worship · 9:00 & 11:00am',
-          fontSize: 40,
+          fontSize: 56,
           color: GOLD,
           alignment: 'right',
           fontFamily: SERIF,
@@ -147,7 +147,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         defaultConfig: {
           content:
             '"This is the day the Lord has made; let us rejoice and be glad in it." — Psalm 118:24',
-          fontSize: 34,
+          fontSize: 56,
           color: '#e9ddc2',
           alignment: 'center',
           italic: true,
@@ -202,7 +202,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 1,
         defaultConfig: {
           content: 'Gather With Us',
-          fontSize: 84,
+          fontSize: 120,
           color: GOLD,
           alignment: 'center',
           bold: true,
@@ -307,7 +307,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 2,
         defaultConfig: {
           content: 'CURRENT SERIES · WEEK 3 OF 6',
-          fontSize: 32,
+          fontSize: 48,
           color: GOLD,
           alignment: 'center',
           bold: true,
@@ -323,7 +323,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 3,
         defaultConfig: {
           content: 'Rooted: A Study in the Psalms',
-          fontSize: 96,
+          fontSize: 128,
           color: CREAM,
           alignment: 'center',
           bold: true,
@@ -339,7 +339,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 4,
         defaultConfig: {
           content: 'Today: "Streams in the Desert"  ·  Pastor Daniel Reyes',
-          fontSize: 40,
+          fontSize: 60,
           color: '#e9ddc2',
           alignment: 'center',
           fontFamily: SERIF,
@@ -354,7 +354,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 5,
         defaultConfig: {
           content: 'Psalm 1:1–6',
-          fontSize: 34,
+          fontSize: 48,
           color: GOLD,
           alignment: 'center',
           italic: true,
@@ -392,7 +392,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 1,
         defaultConfig: {
           content: 'This Morning We Sing',
-          fontSize: 80,
+          fontSize: 120,
           color: GOLD,
           alignment: 'center',
           bold: true,
@@ -427,7 +427,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 3,
         defaultConfig: {
           content: 'Lyrics on screen in the sanctuary · Sing along, all are welcome',
-          fontSize: 30,
+          fontSize: 48,
           color: '#e9ddc2',
           alignment: 'center',
           italic: true,
@@ -465,7 +465,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 1,
         defaultConfig: {
           content: 'This Week at Church',
-          fontSize: 76,
+          fontSize: 120,
           color: GOLD,
           alignment: 'center',
           bold: true,
@@ -521,7 +521,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         defaultConfig: {
           content:
             '"And let us consider how we may spur one another on toward love and good deeds." — Hebrews 10:24',
-          fontSize: 30,
+          fontSize: 48,
           color: '#e9ddc2',
           alignment: 'center',
           italic: true,
@@ -579,7 +579,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 1,
         defaultConfig: {
           content: 'Building for the Next Generation',
-          fontSize: 72,
+          fontSize: 120,
           color: GOLD,
           alignment: 'center',
           bold: true,
@@ -647,7 +647,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         defaultConfig: {
           content:
             '"Each of you should give what you have decided in your heart to give, not reluctantly or under compulsion, for God loves a cheerful giver." — 2 Corinthians 9:7',
-          fontSize: 34,
+          fontSize: 60,
           color: '#e9ddc2',
           alignment: 'center',
           italic: true,
@@ -684,7 +684,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 1,
         defaultConfig: {
           content: 'VERSE OF THE DAY',
-          fontSize: 36,
+          fontSize: 48,
           color: BURGUNDY,
           alignment: 'center',
           bold: true,
@@ -701,7 +701,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         defaultConfig: {
           content:
             '"The Lord is my shepherd, I lack nothing. He makes me lie down in green pastures, he leads me beside quiet waters, he refreshes my soul."',
-          fontSize: 64,
+          fontSize: 96,
           color: '#1c2440',
           alignment: 'center',
           italic: true,
@@ -718,7 +718,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 3,
         defaultConfig: {
           content: '— Psalm 23:1–3',
-          fontSize: 48,
+          fontSize: 56,
           color: BURGUNDY,
           alignment: 'center',
           bold: true,
@@ -734,7 +734,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 4,
         defaultConfig: {
           content: 'Be still, and know.',
-          fontSize: 32,
+          fontSize: 48,
           color: '#7a6a48',
           alignment: 'center',
           italic: true,
@@ -772,7 +772,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         sortOrder: 1,
         defaultConfig: {
           content: 'Welcome — We\'re Glad You\'re Here',
-          fontSize: 68,
+          fontSize: 96,
           color: GOLD,
           alignment: 'left',
           bold: true,
@@ -854,7 +854,7 @@ export const WORSHIP_TEMPLATE_PRESETS: SystemPreset[] = [
         defaultConfig: {
           content:
             '"Let everything that has breath praise the Lord." — Psalm 150:6',
-          fontSize: 36,
+          fontSize: 60,
           color: '#e9ddc2',
           alignment: 'center',
           italic: true,

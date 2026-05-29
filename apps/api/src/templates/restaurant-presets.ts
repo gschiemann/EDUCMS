@@ -208,7 +208,7 @@ export const RESTAURANT_TEMPLATE_PRESETS: SystemPreset[] = [
         zIndex: 2,
         sortOrder: 1,
         defaultConfig: {
-          html: '<h1 style="font-family:Bebas Neue,sans-serif;font-size:96px;letter-spacing:0.06em;margin:0;color:#7a1f1f;">SMASH & GRILL</h1><p style="font-family:Playfair Display,serif;font-style:italic;font-size:28px;color:#1a1714;opacity:0.7;margin:4px 0 0;">order at the counter · pickup at the window</p>',
+          html: '<h1 style="font-family:Bebas Neue,sans-serif;font-size:96px;letter-spacing:0.06em;margin:0;color:#7a1f1f;">SMASH & GRILL</h1><p style="font-family:Playfair Display,serif;font-style:italic;font-size:44px;color:#1a1714;opacity:0.7;margin:4px 0 0;">order at the counter · pickup at the window</p>',
         },
       },
       // ── Clock — top right ──
@@ -380,7 +380,7 @@ export const RESTAURANT_TEMPLATE_PRESETS: SystemPreset[] = [
         zIndex: 2,
         sortOrder: 1,
         defaultConfig: {
-          html: '<div style="text-align:center;"><div style="font-family:Playfair Display,serif;font-style:italic;font-size:32px;color:#1a1714;opacity:0.6;letter-spacing:0.4em;text-transform:uppercase;">est. 2018</div><h1 style="font-family:Bebas Neue,sans-serif;font-size:120px;letter-spacing:0.08em;margin:0;color:#5a3a1a;">CEDAR &amp; GRAIN</h1></div>',
+          html: '<div style="text-align:center;"><div style="font-family:Playfair Display,serif;font-style:italic;font-size:48px;color:#1a1714;opacity:0.6;letter-spacing:0.4em;text-transform:uppercase;">est. 2018</div><h1 style="font-family:Bebas Neue,sans-serif;font-size:120px;letter-spacing:0.08em;margin:0;color:#5a3a1a;">CEDAR &amp; GRAIN</h1></div>',
         },
       },
       // ── Espresso menu (left) ──
@@ -519,7 +519,7 @@ export const RESTAURANT_TEMPLATE_PRESETS: SystemPreset[] = [
         zIndex: 2,
         sortOrder: 1,
         defaultConfig: {
-          html: '<div style="text-align:center;"><h1 style="font-family:Bebas Neue,sans-serif;font-size:140px;letter-spacing:0.08em;margin:0;color:#7a1f1f;">VITTORIO\'S</h1><p style="font-family:Playfair Display,serif;font-style:italic;font-size:32px;color:#1a1714;opacity:0.7;margin:6px 0 0;">slice · pie · panini · est. 1986</p></div>',
+          html: '<div style="text-align:center;"><h1 style="font-family:Bebas Neue,sans-serif;font-size:140px;letter-spacing:0.08em;margin:0;color:#7a1f1f;">VITTORIO\'S</h1><p style="font-family:Playfair Display,serif;font-style:italic;font-size:48px;color:#1a1714;opacity:0.7;margin:6px 0 0;">slice · pie · panini · est. 1986</p></div>',
         },
       },
       // ── By the slice (left half) ──
@@ -634,7 +634,7 @@ export const RESTAURANT_TEMPLATE_PRESETS: SystemPreset[] = [
         zIndex: 2,
         sortOrder: 1,
         defaultConfig: {
-          html: '<div style="text-align:center;color:#fbf6ee;"><div style="font-family:Playfair Display,serif;font-style:italic;font-size:34px;letter-spacing:0.4em;text-transform:uppercase;color:#e8b94a;opacity:0.85;">蕎麦・刺身・温</div><h1 style="font-family:Playfair Display,serif;font-weight:900;font-size:130px;letter-spacing:0.04em;margin:8px 0 0;color:#fbf6ee;">KAIDŌ</h1><p style="font-family:Playfair Display,serif;font-style:italic;font-size:28px;color:rgba(251,246,238,0.6);margin:2px 0 0;">noodles · sushi · small plates</p></div>',
+          html: '<div style="text-align:center;color:#fbf6ee;"><div style="font-family:Playfair Display,serif;font-style:italic;font-size:48px;letter-spacing:0.4em;text-transform:uppercase;color:#e8b94a;opacity:0.85;">蕎麦・刺身・温</div><h1 style="font-family:Playfair Display,serif;font-weight:900;font-size:130px;letter-spacing:0.04em;margin:8px 0 0;color:#fbf6ee;">KAIDŌ</h1><p style="font-family:Playfair Display,serif;font-style:italic;font-size:44px;color:rgba(251,246,238,0.6);margin:2px 0 0;">noodles · sushi · small plates</p></div>',
         },
       },
       // ── Sushi rolls (left) ──
@@ -844,7 +844,7 @@ export const RESTAURANT_TEMPLATE_PRESETS: SystemPreset[] = [
         zIndex: 2,
         sortOrder: 1,
         defaultConfig: {
-          html: '<div style="text-align:center;"><div style="font-family:Playfair Display,serif;font-style:italic;font-size:30px;color:#7a1f1f;letter-spacing:0.4em;text-transform:uppercase;">free to join · always</div><h1 style="font-family:Bebas Neue,sans-serif;font-size:120px;letter-spacing:0.06em;margin:0;color:#1a1714;">REWARDS</h1></div>',
+          html: '<div style="text-align:center;"><div style="font-family:Playfair Display,serif;font-style:italic;font-size:48px;color:#7a1f1f;letter-spacing:0.4em;text-transform:uppercase;">free to join · always</div><h1 style="font-family:Bebas Neue,sans-serif;font-size:120px;letter-spacing:0.06em;margin:0;color:#1a1714;">REWARDS</h1></div>',
         },
       },
       // ── Big "1 pt per $1" hero ──
@@ -872,7 +872,7 @@ export const RESTAURANT_TEMPLATE_PRESETS: SystemPreset[] = [
         zIndex: 2,
         sortOrder: 3,
         defaultConfig: {
-          html: '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;background:linear-gradient(140deg,#7a1f1f 0%,#4d0e0e 100%);border-radius:24px;padding:40px;color:#fbf6ee;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.25);"><div style="font-family:Playfair Display,serif;font-style:italic;font-size:24px;letter-spacing:0.3em;text-transform:uppercase;color:#e8b94a;opacity:0.9;">member of the week</div><div style="font-size:96px;line-height:1;margin:18px 0;">⭐</div><div style="font-family:Bebas Neue,sans-serif;font-size:64px;letter-spacing:0.04em;margin:0;">RACHEL P.</div><p style="font-family:Inter,sans-serif;font-weight:400;font-size:18px;line-height:1.4;color:rgba(251,246,238,0.85);margin:12px 0 0;">Visited every Friday for a year — earned 4 free shakes and a birthday cookie. Thanks Rachel.</p></div>',
+          html: '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;background:linear-gradient(140deg,#7a1f1f 0%,#4d0e0e 100%);border-radius:24px;padding:40px;color:#fbf6ee;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.25);"><div style="font-family:Playfair Display,serif;font-style:italic;font-size:44px;letter-spacing:0.3em;text-transform:uppercase;color:#e8b94a;opacity:0.9;">member of the week</div><div style="font-size:96px;line-height:1;margin:18px 0;">⭐</div><div style="font-family:Bebas Neue,sans-serif;font-size:64px;letter-spacing:0.04em;margin:0;">RACHEL P.</div><p style="font-family:Inter,sans-serif;font-weight:400;font-size:48px;line-height:1.4;color:rgba(251,246,238,0.85);margin:12px 0 0;">Visited every Friday for a year — earned 4 free shakes and a birthday cookie. Thanks Rachel.</p></div>',
         },
       },
       // ── Loyalty messaging ticker (mid strip) ──
@@ -927,7 +927,7 @@ export const RESTAURANT_TEMPLATE_PRESETS: SystemPreset[] = [
         zIndex: 2,
         sortOrder: 6,
         defaultConfig: {
-          html: '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;background:#fbf6ee;border:3px dashed #7a1f1f;border-radius:24px;padding:24px;"><div style="font-family:Bebas Neue,sans-serif;font-size:54px;letter-spacing:0.06em;color:#7a1f1f;margin:0;">SCAN TO JOIN</div><div style="width:160px;height:160px;background:#1a1714;margin:18px auto;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fbf6ee;font-size:80px;">▣</div><p style="font-family:Inter,sans-serif;font-size:20px;color:#1a1714;opacity:0.7;margin:0;">or sign up at the counter — takes 30 seconds</p></div>',
+          html: '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;background:#fbf6ee;border:3px dashed #7a1f1f;border-radius:24px;padding:24px;"><div style="font-family:Bebas Neue,sans-serif;font-size:54px;letter-spacing:0.06em;color:#7a1f1f;margin:0;">SCAN TO JOIN</div><div style="width:160px;height:160px;background:#1a1714;margin:18px auto;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fbf6ee;font-size:80px;">▣</div><p style="font-family:Inter,sans-serif;font-size:44px;color:#1a1714;opacity:0.7;margin:0;">or sign up at the counter — takes 30 seconds</p></div>',
         },
       },
     ],

@@ -198,7 +198,7 @@ function sportScoreboard(
     screenHeight: 1080,
     bgColor,
     zones: [
-      sbZone('Status', 'sb-status', 40, 4, 20, 6, 0, { fontSize: 28 }),
+      sbZone('Status', 'sb-status', 40, 4, 20, 6, 0, { fontSize: 34 }),
       sbZone('Home Logo', 'sb-team-logo-home', 9, 12, 13, 22, 1, { team: 'home' }),
       sbZone('Home Name', 'sb-team-name-home', 2, 35, 28, 8, 2, { team: 'home', fontSize: 54 }),
       sbZone('Home Score', 'score-home', 3, 45, 26, 36, 3, { color: '#ffffff', fontWeight: 900, fontSize: 320, align: 'center' }, 'SCORE_HOME'),
@@ -551,7 +551,7 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
     '#06121f', '#67e8f9',
     [
       sbZone('Shot Clock', 'sb-shot-clock', 65, 16, 9, 13, 9, { fontSize: 80, color: '#67e8f9' }),
-      sbZone('Power Play / PK', 'sb-power-play', 40, 46, 20, 7, 10, { fontSize: 24 }),
+      sbZone('Power Play / PK', 'sb-power-play', 40, 46, 20, 7, 10, { fontSize: 36 }),
       sbZone('Home Penalty Box', 'sb-penalty-home', 4, 84, 20, 12, 11, { team: 'home', fontSize: 36 }),
       sbZone('Away Penalty Box', 'sb-penalty-away', 76, 84, 20, 12, 12, { team: 'away', fontSize: 36 }),
     ],
@@ -581,7 +581,7 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
     bgColor: '#0a1020',
     zones: [
       { name: 'Event Title', widgetType: 'TEXT', x: 6, y: 5, width: 88, height: 12, zIndex: 2, sortOrder: 0, defaultConfig: { content: 'EVENT — 100M FINAL', fontSize: 64, alignment: 'center', color: '#fbbf24' } },
-      sbZone('Leaderboard', 'sb-leaderboard', 12, 19, 76, 66, 1, { fontSize: 30 }),
+      sbZone('Leaderboard', 'sb-leaderboard', 12, 19, 76, 66, 1, { fontSize: 40 }),
       { name: 'Announcements', widgetType: 'TICKER', x: 0, y: 88, width: 100, height: 10, zIndex: 2, sortOrder: 2, defaultConfig: { theme: 'track-day', messages: ['NEXT EVENT — 200M PRELIMS', 'FIELD EVENTS UNDERWAY — LONG JUMP PIT 2', 'GO TEAM!'], speed: 'normal' } },
     ],
   },
@@ -594,7 +594,7 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
     [
       { name: 'Header', widgetType: 'TEXT', x: 8, y: 6, width: 84, height: 14, zIndex: 2, sortOrder: 0, defaultConfig: { content: 'TONIGHT’S GAME BROUGHT TO YOU BY', fontSize: 52, alignment: 'center', color: '#fbbf24' } },
       { name: 'Sponsor Logos', widgetType: 'IMAGE_CAROUSEL', x: 14, y: 22, width: 72, height: 58, zIndex: 2, sortOrder: 1, defaultConfig: { urls: [], intervalSec: 6, fitMode: 'contain' } },
-      sbZone('Presenting Slot', 'sb-sponsor', 30, 82, 40, 12, 2, { label: 'YOUR SPONSOR HERE', fontSize: 26 }),
+      sbZone('Presenting Slot', 'sb-sponsor', 30, 82, 40, 12, 2, { label: 'YOUR SPONSOR HERE', fontSize: 40 }),
     ],
   ),
   sponsorBoard(
