@@ -72,6 +72,7 @@ const mockRedis: any = { publish: jest.fn() };
 const mockSigner: any = { signMessage: jest.fn() };
 const mockLicense: any = { assertSeatAvailable: jest.fn() };
 const mockStripe: any = {};
+const mockMenu: any = { resolveMenuForLocation: jest.fn() };
 
 let controller: ScreensController;
 
@@ -101,7 +102,7 @@ beforeEach(() => {
   mockPrisma.client.playlist.findMany.mockResolvedValue([]);
   mockPrisma.client.asset.findMany.mockResolvedValue([]);
   mockPrisma.client.auditLog.create.mockResolvedValue({});
-  controller = new ScreensController(mockPrisma, mockRedis, mockSigner, mockLicense, mockStripe);
+  controller = new ScreensController(mockPrisma, mockRedis, mockSigner, mockLicense, mockStripe, mockMenu);
 });
 
 // Helper: the forbidden synthesized hashes the old code produced.

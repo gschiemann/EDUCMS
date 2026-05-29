@@ -42,7 +42,7 @@ let controller: ScreensController;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  controller = new ScreensController(mockPrisma, mockRedis, mockSigner, mockLicense);
+  controller = new ScreensController(mockPrisma, mockRedis, mockSigner, mockLicense, {} as any, {} as any);
 });
 
 const ADMIN_REQ = {

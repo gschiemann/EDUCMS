@@ -61,7 +61,7 @@ beforeEach(() => {
   _registerFpCooldown.clear();
   // Default: STRICT_REPAIR_AUTH off (legacy compat mode).
   delete process.env.STRICT_REPAIR_AUTH;
-  controller = new ScreensController(mockPrisma, mockRedis, mockSigner, mockLicense);
+  controller = new ScreensController(mockPrisma, mockRedis, mockSigner, mockLicense, {} as any, {} as any);
 });
 
 afterEach(() => {
@@ -138,7 +138,7 @@ it('P5-1: paired re-register with valid priorDeviceToken → 365-day token issue
 it('P5-2: paired re-register without priorDeviceToken + STRICT_REPAIR_AUTH=true → 1h token + requiresRePair', async () => {
   process.env.STRICT_REPAIR_AUTH = 'true';
   // Recreate controller so it reads the updated env.
-  controller = new ScreensController(mockPrisma, mockRedis, mockSigner, mockLicense);
+  controller = new ScreensController(mockPrisma, mockRedis, mockSigner, mockLicense, {} as any, {} as any);
 
   mockPrisma.client.screen.findUnique.mockResolvedValue(pairedScreen());
   mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated());

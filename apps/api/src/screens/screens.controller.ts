@@ -22,6 +22,9 @@ import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { LicenseService } from '../license/license.service';
 import { StripeService } from '../billing/stripe.service';
+// Menu-mgmt-at-scale (2026-05-29) — device-authed GET /screens/:id/menu
+// resolves the screen's location → per-location menu via MenuService.
+import { MenuService } from '../pos/menu.service';
 import { requireSecret } from '../security/required-secret';
 import {
   getTenantState,
@@ -145,6 +148,7 @@ export class ScreensController {
     private readonly signer: WebsocketSignerService,
     private readonly license: LicenseService,
     private readonly stripe: StripeService,
+    private readonly menu: MenuService,
   ) {}
 
   private async notifySync(tenantId: string) {
@@ -3379,6 +3383,89 @@ export class ScreensController {
       assetCount: assets.length,
       totalBytes: assets.reduce((sum, a) => sum + a.size, 0),
       setHash,
+    };
+  }
+
+  // ─── DEVICE-AUTHED: per-location resolved menu ─────────────────────
+  //
+  // Menu-mgmt-at-scale (2026-05-29) — the Tier-0 unblock. Before this,
+  // MenuBoardWidget on a real kiosk fetched the SESSION-authed
+  // /api/v1/pos/items with a token the player doesn't have → 403 →
+  // hardcoded DEMO_ITEMS on every wall. This endpoint accepts a DEVICE
+  // token (the same `verifyDeviceForScreen` model as /:id/manifest and
+  // /:id/emergency-assets) and returns the RESOLVED menu for the
+  // screen's location: per-location prices, 86'd items hidden,
+  // dayparted sections filtered by the location's local time.
+  //
+  // Location resolution (no client input — all from the verified screen):
+  //   • location tenant = the screen's posLocation.locationTenantId if
+  //     the screen is mapped to a POS location, else the screen's own
+  //     tenantId.
+  //   • catalog-owning (chain) tenant = the location tenant's parent
+  //     (Tenant.parentId) if it has one, else the location tenant itself.
+  //   This lets a 50-store chain design ONE catalog on the parent tenant
+  //   and have every store screen resolve its own per-location prices.
+  @Get(':id/menu')
+  async getMenu(@Param('id') id: string, @Req() req: ExpressReq) {
+    const authResult = verifyDeviceForScreen(req, id);
+    if (!authResult.ok) {
+      throw new HttpException(`Device auth required (${authResult.reason})`, HttpStatus.UNAUTHORIZED);
+    }
+
+    // Single round-trip: the screen + its POS-location mapping + the
+    // location-tenant's parent (chain) id.
+    const screen = await (this.prisma.client.screen as any).findUnique({
+      where: { id },
+      select: {
+        tenantId: true,
+        posLocationId: true,
+        posLocation: { select: { locationTenantId: true } },
+        tenant: { select: { id: true, parentId: true } },
+      },
+    });
+    if (!screen?.tenantId) {
+      throw new HttpException('Screen not found or not paired', HttpStatus.NOT_FOUND);
+    }
+
+    // The screen's effective location tenant: the POS-location mapping
+    // wins (operator assigned this screen to a specific store), else the
+    // screen's own tenant is the location.
+    const locationTenantId: string =
+      screen.posLocation?.locationTenantId || screen.tenantId;
+
+    // The catalog-owning tenant: the location's parent (chain) if any,
+    // else the location tenant itself (single-location operator).
+    const catalogTenantId: string =
+      screen.tenant?.parentId || locationTenantId;
+
+    const resolved = await this.menu.resolveMenuForLocation(locationTenantId, {
+      catalogTenantId,
+    });
+
+    // Shape compatible with what MenuBoardWidget maps (name / description
+    // / priceCents / badges). `badges` mirrors PosMenuItem's contract so
+    // the existing renderer drops in; we alias allergens+tags → badges.
+    return {
+      screenId: id,
+      tenantId: screen.tenantId,
+      locationTenantId,
+      generatedAt: resolved.generatedAt,
+      categories: resolved.categories,
+      items: resolved.items.map((it) => ({
+        id: it.id,
+        externalId: it.externalId,
+        name: it.name,
+        description: it.description ?? undefined,
+        priceCents: it.priceCents,
+        priceOverridden: it.priceOverridden,
+        category: it.category ?? undefined,
+        imageUrl: it.imageUrl ?? undefined,
+        // The widget reads `badges`; surface allergens + tags there.
+        badges: [...it.allergens, ...it.tags],
+        allergens: it.allergens,
+        tags: it.tags,
+        available: true, // resolveMenuForLocation already drops 86'd items
+      })),
     };
   }
 }

@@ -20,6 +20,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { PosService } from './pos.service';
+import { MenuService } from './menu.service';
 import { PosOAuthController } from './pos-oauth.controller';
 import { PrismaService } from '../prisma/prisma.service';
 import { sealCredentials } from '../streaming/creds-cipher';
@@ -61,6 +62,7 @@ describe('Custom POS webhook', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PosService,
+        MenuService,
         {
           provide: PrismaService,
           useValue: { client: { posProviderConnection, posMenuItem } },
@@ -70,7 +72,8 @@ describe('Custom POS webhook', () => {
 
     const prisma = module.get(PrismaService);
     svc = module.get(PosService);
-    controller = new PosOAuthController(prisma, svc);
+    const menu = module.get(MenuService);
+    controller = new PosOAuthController(prisma, svc, menu);
   });
 
   describe('findCustomWebhookConnectionBySecret', () => {

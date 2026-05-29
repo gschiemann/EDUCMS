@@ -102,6 +102,7 @@ beforeEach(() => {
     mockSigner,
     mockLicense,
     mockStripe,
+    {} as any,
   );
   // Default: $transaction runs the thunk against txClient and honors whatever
   // the thunk does (so assertSeatAvailable can throw from inside it).

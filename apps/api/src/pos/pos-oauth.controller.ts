@@ -46,6 +46,7 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { PosService } from './pos.service';
+import { MenuService } from './menu.service';
 import {
   newOAuthStateToken,
   squareAuthorizeUrl,
@@ -82,6 +83,7 @@ export class PosOAuthController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly svc: PosService,
+    private readonly menu: MenuService,
   ) {}
 
   // ─── OAuth: kick off ───────────────────────────────────────────────
@@ -248,6 +250,25 @@ export class PosOAuthController {
       return { ok: true, unknownMerchant: true };
     }
 
+    // Auto-86 (menu-mgmt-at-scale 2026-05-29): an inventory.count.updated
+    // event carries `inventory_counts[]` with the variation
+    // (catalog_object_id), location_id, and quantity. Flip the per-
+    // location MenuLocationOverride availability straight from the
+    // payload — no extra Square API call, sub-second latency. The
+    // hide-filter in resolveMenuForLocation already drops 86'd items.
+    if (eventType === 'inventory.count.updated') {
+      const counts: any[] = Array.isArray(evt?.data?.object?.inventory_counts)
+        ? evt.data.object.inventory_counts
+        : [];
+      if (counts.length > 0) {
+        void this.menu
+          .applySquareInventoryCounts(conn, counts)
+          .catch((err) =>
+            this.logger.warn(`Square auto-86 failed: ${err?.message || err}`),
+          );
+      }
+    }
+
     // Catalog / inventory changes → re-sync the snapshot. We could be
     // smarter (only re-sync the affected item) — initial impl is a
     // full delta to keep the surface honest. Fire-and-forget; Square
@@ -282,6 +303,23 @@ export class PosOAuthController {
   // first) takes precedence; this param route only ever serves
   // `custom-webhook`. Any other providerId → 404, so this can never
   // shadow or mishandle a real per-provider receiver.
+  //
+  // Three payload shapes, routed by key (menu-mgmt-at-scale 2026-05-29):
+  //   1. { menu: [ { externalId, name, defaultPriceCents|price,
+  //        category?, allergens?, tags?, locations?:[{ locationTenantId,
+  //        priceCents?, isAvailable?, soldOutUntil?, isHidden? }] } ] }
+  //        → design-once catalog + per-location overrides (MenuService).
+  //   2. { availability: [ { externalId, available, soldOutUntil?,
+  //        locationTenantId? } ] }  (alias: { eightySix: [...] })
+  //        → auto-86 only; flips MenuLocationOverride.isAvailable.
+  //   3. { items: [ ... ] }  → LEGACY flat PosMenuItem catalog (the
+  //        original 2026-05-28 shape). Preserved verbatim for
+  //        backward-compat. An `{items}` push whose entries all carry an
+  //        explicit `available` and NO `name`/`price` is treated as an
+  //        auto-86 push instead (a pure availability ping).
+  //
+  // Optional `eventId` on any shape enables replay-safe idempotency via
+  // ProcessedPosEvent (same dedup the Square receiver uses).
   @Post('webhook/:providerId')
   @HttpCode(200)
   async customWebhook(
@@ -307,9 +345,85 @@ export class PosOAuthController {
 
     const body = (req as any).body;
     if (!body || typeof body !== 'object') {
-      throw new BadRequestException('Body must be JSON: { "items": [ ... ] }.');
+      throw new BadRequestException('Body must be JSON: { "menu": [ ... ] } | { "items": [ ... ] } | { "availability": [ ... ] }.');
     }
 
+    // Optional replay-safe idempotency: if the caller stamps an eventId,
+    // first-delivery wins, replays no-op. Scoped per (provider, eventId)
+    // like the Square receiver. No eventId → process every push (the
+    // original behaviour; many simple senders won't supply one).
+    const eventId = String((body as any).eventId ?? (body as any).event_id ?? '').trim();
+    if (eventId) {
+      const eventType = String(
+        Array.isArray((body as any).menu)
+          ? 'menu'
+          : Array.isArray((body as any).availability) || Array.isArray((body as any).eightySix)
+            ? 'availability'
+            : 'items',
+      );
+      const first = await this.svc.claimWebhookEvent('custom-webhook', eventId, eventType);
+      if (!first) {
+        this.logger.log(`Custom POS webhook duplicate eventId=${eventId} (ignored)`);
+        return { ok: true, deduped: true };
+      }
+    }
+
+    // ── Shape 1: { menu: [...] } — catalog + per-location overrides ──
+    if (Array.isArray((body as any).menu)) {
+      const result = await this.menu.ingestCustomWebhookMenu(conn, body as any);
+      this.logger.log(
+        `Custom POS menu push: tenant=${conn.tenantId} conn=${conn.id} ` +
+          `items=${result.itemsUpserted} overrides=${result.overridesUpserted} skipped=${result.skipped}`,
+      );
+      return {
+        ok: true,
+        itemsUpserted: result.itemsUpserted,
+        overridesUpserted: result.overridesUpserted,
+        skipped: result.skipped,
+        catalogId: result.catalogId,
+      };
+    }
+
+    // ── Shape 2: { availability: [...] } / { eightySix: [...] } — 86 ──
+    const availabilityList =
+      (Array.isArray((body as any).availability) && (body as any).availability) ||
+      (Array.isArray((body as any).eightySix) && (body as any).eightySix) ||
+      null;
+    // ── Shape 3-as-86: an { items: [...] } push that is purely an
+    //    availability ping (every entry has `available` and no name/price).
+    const items86 =
+      !availabilityList &&
+      Array.isArray((body as any).items) &&
+      (body as any).items.length > 0 &&
+      (body as any).items.every(
+        (it: any) =>
+          it && typeof it === 'object' && 'available' in it && it.name == null && it.price == null && it.priceCents == null,
+      )
+        ? (body as any).items
+        : null;
+
+    const eightySixEntries = availabilityList || items86;
+    if (eightySixEntries) {
+      const entries = (eightySixEntries as any[]).map((e) => ({
+        externalId: String(e?.externalId ?? e?.id ?? '').trim(),
+        available: e?.available === true,
+        soldOutUntil: e?.soldOutUntil ?? null,
+        locationTenantId: e?.locationTenantId ?? e?.locationId ?? null,
+      }));
+      const result = await this.menu.applyAutoEightySix(conn, entries);
+      this.logger.log(
+        `Custom POS 86 push: tenant=${conn.tenantId} conn=${conn.id} ` +
+          `matched=${result.itemsMatched} overrides=${result.overridesUpdated} skipped=${result.skipped}`,
+      );
+      return {
+        ok: true,
+        itemsMatched: result.itemsMatched,
+        overridesUpdated: result.overridesUpdated,
+        skipped: result.skipped,
+      };
+    }
+
+    // ── Shape 3: { items: [...] } — LEGACY flat PosMenuItem catalog ──
     const result = await this.svc.ingestCustomWebhookCatalog(conn, body);
     this.logger.log(
       `Custom POS webhook: tenant=${conn.tenantId} conn=${conn.id} upserted=${result.upserted} skipped=${result.skipped}`,
