@@ -91,15 +91,16 @@ export class SportsController {
   /**
    * T2-9: Per-game sponsor delivery report — real impression counts.
    *
-   * Returns actual airings per sponsor per surface (board / ribbon /
-   * scorebug), aggregated from SponsorImpression rows written during the
-   * game. Also reports cap compliance so an operator can catch
-   * over-delivery before sending a proof-of-play PDF to the sponsor.
+   * Returns actual airings per sponsor per surface (board / ribbon),
+   * aggregated from SponsorImpression rows written during the game. Also
+   * reports cap compliance so an operator can catch over-delivery before
+   * sending a proof-of-play to the sponsor. (The broadcast scorebug is a
+   * transparent OBS overlay that shows no sponsor and fires no impression,
+   * so it is NOT a reported surface — see FIX 3, 2026-05-28.)
    *
    * Response shape:
    *   { gameId, gameStartedAt, gameDurationMin,
-   *     sponsors: [{ sponsorId, name, board, ribbon, scorebug, total,
-   *                  capCompliant }] }
+   *     sponsors: [{ sponsorId, name, board, ribbon, total, capCompliant }] }
    */
   @Get('games/:id/sponsor-report')
   @RequireRoles(

@@ -15,6 +15,7 @@
  */
 
 import { useState } from 'react';
+import { useParams } from 'next/navigation';
 import {
   Plus,
   Pencil,
@@ -25,6 +26,9 @@ import {
   Megaphone,
   BarChart3,
   ChevronDown,
+  Download,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +38,7 @@ import {
   useUpdateSponsor,
   useDeleteSponsor,
   useSponsorReport,
+  useSponsorGameReport,
 } from '@/hooks/use-api';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 
@@ -110,6 +115,7 @@ export function SponsorPanel() {
         </p>
       )}
 
+      {sponsors.length > 0 && <GameProofOfPlay />}
       {sponsors.length > 0 && <SponsorReport />}
 
       {editing && (
@@ -453,6 +459,170 @@ interface SponsorReportData {
   sponsors?: SponsorReportRow[];
 }
 
+// ── REAL per-game proof-of-play ───────────────────────────────────
+// Surfaces are board + ribbon only. The broadcast scorebug overlay is a
+// transparent OBS bug that shows no sponsor + fires no impression, so it
+// is intentionally NOT a reported column (see FIX 3, 2026-05-28).
+interface GameReportSponsorRow {
+  sponsorId: string;
+  name: string;
+  board: number;
+  ribbon: number;
+  total: number;
+  capCompliant: boolean;
+}
+interface GameReportData {
+  gameId?: string;
+  gameStartedAt?: string | null;
+  gameDurationMin?: number;
+  sponsors?: GameReportSponsorRow[];
+}
+
+/** Escape a CSV cell (quote-wrap + double internal quotes). */
+function csvCell(v: string | number): string {
+  const s = String(v ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
+ * REAL per-game proof-of-play — counts the actual impressions the board
+ * and ribbon logged during THIS game, per surface, with a cap-compliance
+ * flag. This is the number you hand a sponsor at renewal: it's measured,
+ * not estimated. Sits above the lifetime estimate so the operator sees
+ * the hard count first and can clearly tell the two apart.
+ *
+ * Reads gameId from the route (`[schoolId]/sports/[gameId]`) since the
+ * panel is mounted without props.
+ */
+function GameProofOfPlay() {
+  const params = useParams();
+  const gameId = typeof params?.gameId === 'string' ? params.gameId : undefined;
+  const { data, isLoading } = useSponsorGameReport(gameId);
+  const [open, setOpen] = useState(false);
+
+  const report = (data && typeof data === 'object' ? data : null) as GameReportData | null;
+  const allRows = report?.sponsors || [];
+  // Only sponsors that actually got at least one impression this game.
+  const rows = allRows.filter((s) => s.total > 0);
+  const measured = rows.reduce((sum, s) => sum + s.total, 0);
+  const durMin = report?.gameDurationMin || 0;
+
+  const downloadCsv = () => {
+    const header = ['Sponsor', 'Board', 'Ribbon', 'Total', 'Within cap'];
+    const lines = [header.map(csvCell).join(',')];
+    for (const s of rows) {
+      lines.push(
+        [s.name, s.board, s.ribbon, s.total, s.capCompliant ? 'yes' : 'OVER']
+          .map(csvCell)
+          .join(','),
+      );
+    }
+    lines.push('');
+    lines.push(`# Game duration: ${durMin} min`);
+    lines.push(`# Generated: ${new Date().toISOString()}`);
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `proof-of-play-${(gameId || 'game').slice(0, 8)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="mt-3 rounded-xl border border-indigo-200 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2 px-3 py-2.5 bg-indigo-50 hover:bg-indigo-100 cursor-pointer text-left"
+      >
+        <BarChart3 className="h-4 w-4 text-indigo-600 shrink-0" />
+        <span className="text-sm font-bold text-slate-800">Proof of play</span>
+        <span className="text-[11px] text-indigo-500 font-semibold truncate">
+          — this game, measured ({measured.toLocaleString()} impression
+          {measured === 1 ? '' : 's'})
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 text-slate-400 ml-auto shrink-0 transition-transform ${
+            open ? 'rotate-180' : ''
+          }`}
+        />
+      </button>
+      {open && (
+        <div className="px-3 py-3">
+          {isLoading ? (
+            <p className="text-[11px] text-slate-400 py-1">Loading proof of play…</p>
+          ) : rows.length === 0 ? (
+            <p className="text-[11px] text-slate-400">
+              No impressions recorded for this game yet. Counts appear here once a
+              sponsor look has shown on a live board or ribbon during the game.
+            </p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2 mb-2.5">
+                <p className="text-[11px] text-slate-400">
+                  {durMin} min of game time · real airings per surface — the numbers
+                  you hand a sponsor.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 shrink-0 h-7 text-[11px]"
+                  onClick={downloadCsv}
+                >
+                  <Download className="h-3.5 w-3.5" /> CSV
+                </Button>
+              </div>
+              {/* header row */}
+              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-slate-400 px-2.5 pb-1">
+                <span className="flex-1">Sponsor</span>
+                <span className="tabular-nums w-12 text-right">Board</span>
+                <span className="tabular-nums w-12 text-right">Ribbon</span>
+                <span className="tabular-nums w-12 text-right">Total</span>
+                <span className="w-5" />
+              </div>
+              <div className="space-y-1.5">
+                {rows.map((s) => (
+                  <div
+                    key={s.sponsorId}
+                    className="flex items-center gap-2 text-xs rounded-lg bg-slate-50 px-2.5 py-1.5"
+                  >
+                    <span className="font-semibold text-slate-700 truncate flex-1">
+                      {s.name}
+                    </span>
+                    <span className="tabular-nums text-slate-500 w-12 text-right">
+                      {s.board.toLocaleString()}
+                    </span>
+                    <span className="tabular-nums text-slate-500 w-12 text-right">
+                      {s.ribbon.toLocaleString()}
+                    </span>
+                    <span className="tabular-nums font-bold text-indigo-600 w-12 text-right">
+                      {s.total.toLocaleString()}
+                    </span>
+                    {s.capCompliant ? (
+                      <CheckCircle2
+                        className="h-3.5 w-3.5 text-green-500 shrink-0"
+                        aria-label="Within frequency cap"
+                      />
+                    ) : (
+                      <AlertTriangle
+                        className="h-3.5 w-3.5 text-amber-500 shrink-0"
+                        aria-label="Over the frequency cap for this game length"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Proof of play — the report that closes the ad renewal. It tells a
  * sponsor "your logo ran ~N spots for M minutes of live game time"
@@ -476,10 +646,10 @@ function SponsorReport() {
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center gap-2 px-3 py-2.5 bg-slate-50 hover:bg-slate-100 cursor-pointer text-left"
       >
-        <BarChart3 className="h-4 w-4 text-indigo-600 shrink-0" />
-        <span className="text-sm font-bold text-slate-800">Proof of play</span>
+        <BarChart3 className="h-4 w-4 text-slate-400 shrink-0" />
+        <span className="text-sm font-bold text-slate-800">Lifetime estimate</span>
         <span className="text-[11px] text-slate-400 truncate">
-          — what each sponsor got across {games} game{games === 1 ? '' : 's'}
+          — rough exposure across all {games} game{games === 1 ? '' : 's'}
         </span>
         <ChevronDown
           className={`h-4 w-4 text-slate-400 ml-auto shrink-0 transition-transform ${

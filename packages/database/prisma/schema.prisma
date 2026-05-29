@@ -1890,9 +1890,13 @@ model GameEvent {
 // slot. `weight` is how many slots per rotation cycle the sponsor
 // gets (a Title sponsor shows more often than a Community one).
 //
-// Proof-of-play is computed, not stored: the report endpoint divides
-// each game's live duration across active sponsors by weight. No
-// per-impression rows, no write path from the public board.
+// Proof-of-play has TWO surfaces: a tenant-wide ARITHMETIC ESTIMATE
+// (the report endpoint divides each game's live duration across active
+// sponsors by weight — no impression rows needed) AND real per-game,
+// per-surface counts aggregated from the `SponsorImpression` rows below,
+// which the public board/ribbon write fire-and-forget as a sponsor look
+// enters view. The estimate is the quick glance; the impression rows are
+// the renewal-closing proof ("ran 41× on the ribbon, 28× on the board").
 //
 // Additive — one new table, safe for live pilot tenants.
 // ─────────────────────────────────────────────────────────────

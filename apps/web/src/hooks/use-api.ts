@@ -2801,6 +2801,22 @@ export function useSponsorReport() {
   });
 }
 
+/**
+ * REAL per-game proof-of-play — counts the actual `SponsorImpression`
+ * rows the public board/ribbon wrote during ONE game, per surface, with
+ * a per-sponsor cap-compliance flag. Distinct from `useSponsorReport`
+ * (the tenant-wide arithmetic ESTIMATE). This is the number a sponsor
+ * sees at renewal: "your logo ran 41× on the ribbon, 28× on the board."
+ */
+export function useSponsorGameReport(gameId: string | undefined) {
+  return useQuery({
+    queryKey: ['sports-sponsor-game-report', gameId],
+    queryFn: () => apiFetch(`/sports/games/${gameId}/sponsor-report`),
+    enabled: !!gameId,
+    refetchInterval: 30_000,
+  });
+}
+
 export type SponsorInput = {
   name?: string;
   logoUrl?: string | null;

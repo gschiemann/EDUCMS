@@ -5,11 +5,15 @@ import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
 /**
  * VenueOS Sports — Sprint 13 Phase 2. Sponsorship service.
  *
- * Sponsor CRUD plus the proof-of-play report. The report is the part
- * that closes the ad sale — it tells a sponsor "your logo ran N spots
- * for M minutes of live game time." It is computed entirely at read
- * time from each game's live duration and the rotation cadence: no
- * per-impression rows, no write path from the public scoreboard.
+ * Sponsor CRUD plus TWO proof-of-play reports:
+ *   - `report()`     — tenant-wide ARITHMETIC ESTIMATE, computed at read
+ *     time from each game's live duration and the rotation cadence. No
+ *     impression rows needed; honest "Estimated" number for a quick glance.
+ *   - `gameReport()` — REAL per-game, per-surface counts aggregated from
+ *     the `SponsorImpression` rows the public board/ribbon write as a
+ *     sponsor look enters view (see `recordImpression`). This is the
+ *     proof-of-play that closes a renewal: "your logo ran 41× on the
+ *     ribbon, 28× on the board," with a per-sponsor cap-compliance flag.
  */
 
 interface SponsorInput {
@@ -240,16 +244,42 @@ export class SponsorsService {
    * T2-9: Record a real sponsor impression.
    *
    * Called fire-and-forget from board / ribbon / scorebug pages each time
-   * a sponsor look enters view. High write volume during games — this is
-   * intentionally lightweight: one INSERT, no joins, no audit-log write
-   * (sponsor proof-of-play is the audit surface here, not a security event).
+   * a sponsor look enters view. High write volume during games — kept
+   * lightweight: two cheap indexed point-reads + one INSERT, no audit-log
+   * write (sponsor proof-of-play is the audit surface here, not a security
+   * event).
    *
-   * Unknown sponsorId is silently rejected (no error to the caller) so a
-   * stale rotation-ref on the client doesn't throw a 500 mid-game.
+   * PUBLIC-ROUTE HARDENING (P0, 2026-05-28). This is reachable WITHOUT auth
+   * (the un-guarded `:sponsorId/impression` route), so it must not let an
+   * anonymous caller forge cross-tenant rows. We resolve both the sponsor
+   * and the game and only write when they belong to the SAME tenant:
+   *   - unknown sponsorId → no row (the sponsor lookup misses);
+   *   - unknown gameId    → no row (the game lookup misses);
+   *   - sponsor.tenant ≠ game.tenant → no row (cross-tenant forgery).
+   * All three are silent (no error to the caller) so a stale rotation-ref
+   * or a probe never throws a 500 onto the public board. The only thing a
+   * caller who already knows a game's unguessable UUID can do is inflate
+   * that game's own counts with that tenant's own sponsors.
    */
   async recordImpression(sponsorId: string, gameId: string, surfaceKind: string): Promise<void> {
     const safe = String(surfaceKind || 'board').slice(0, 16);
+    if (!sponsorId || !gameId) return;
     try {
+      // Resolve tenant for each side. Both reads hit a primary-key /
+      // indexed lookup; selecting only tenantId keeps them tiny.
+      const [sponsor, game] = await Promise.all([
+        this.prisma.client.sponsor.findUnique({
+          where: { id: sponsorId },
+          select: { tenantId: true },
+        }),
+        this.prisma.client.game.findUnique({
+          where: { id: gameId },
+          select: { tenantId: true },
+        }),
+      ]);
+      // Reject unknown ids and any cross-tenant pairing.
+      if (!sponsor || !game || sponsor.tenantId !== game.tenantId) return;
+
       await this.prisma.client.sponsorImpression.create({
         data: { sponsorId, gameId, surfaceKind: safe },
       });
@@ -304,20 +334,29 @@ export class SponsorsService {
     const gameDurationHours = gameDurationMs / 3_600_000;
 
     // Aggregate per sponsor × surface.
-    const counts = new Map<string, { board: number; ribbon: number; scorebug: number }>();
+    //
+    // FIX 3 (P0, 2026-05-28) — only `board` + `ribbon` are real sponsor
+    // surfaces. The broadcast scorebug overlay (apps/web/src/app/scorebug)
+    // is a tight transparent OBS bug that renders NO sponsor and fires NO
+    // impression, so a `scorebug` column was permanently 0 — a dishonest
+    // "we measure this" costume. It's dropped from the report. Any stray
+    // `scorebug` row (e.g. a future surface or an external poster) is still
+    // counted toward `total` so a number is never silently lost, but we no
+    // longer advertise a per-scorebug column that nothing fills.
+    const counts = new Map<string, { board: number; ribbon: number; other: number }>();
     for (const imp of impressions) {
       if (!counts.has(imp.sponsorId)) {
-        counts.set(imp.sponsorId, { board: 0, ribbon: 0, scorebug: 0 });
+        counts.set(imp.sponsorId, { board: 0, ribbon: 0, other: 0 });
       }
       const entry = counts.get(imp.sponsorId)!;
       if (imp.surfaceKind === 'board') entry.board++;
       else if (imp.surfaceKind === 'ribbon') entry.ribbon++;
-      else if (imp.surfaceKind === 'scorebug') entry.scorebug++;
+      else entry.other++;
     }
 
     const sponsorRows = sponsors.map((s) => {
-      const c = counts.get(s.id) ?? { board: 0, ribbon: 0, scorebug: 0 };
-      const total = c.board + c.ribbon + c.scorebug;
+      const c = counts.get(s.id) ?? { board: 0, ribbon: 0, other: 0 };
+      const total = c.board + c.ribbon + c.other;
       const allowedTotal =
         s.frequencyCapPerHour !== null && s.frequencyCapPerHour !== undefined && gameDurationHours > 0
           ? Math.ceil(s.frequencyCapPerHour * gameDurationHours)
@@ -328,7 +367,6 @@ export class SponsorsService {
         name: s.name,
         board: c.board,
         ribbon: c.ribbon,
-        scorebug: c.scorebug,
         total,
         capCompliant,
       };
