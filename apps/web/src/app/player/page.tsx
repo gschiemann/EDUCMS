@@ -5319,6 +5319,22 @@ function PlayerPage() {
               height: `${zone.height}%`,
               zIndex: zone.zIndex || 0,
               cursor: zoneTouchAction ? 'pointer' : undefined,
+              // 2026-05-28 (§19) — zone rotation + opacity, set in the
+              // builder's "Position & size" panel and stored under
+              // defaultConfig._zoneRotation / _zoneOpacity. Mirrors
+              // BuilderZone exactly so the player matches the editor.
+              // `transform: rotate()` + `opacity` are Chromium-83-safe
+              // (Taurus runs Chrome 83); no `inset`. Identity values are
+              // skipped so untouched zones carry no extra transform.
+              ...(() => {
+                const c = (cfg || {}) as Record<string, unknown>;
+                const rot = typeof c._zoneRotation === 'number' ? c._zoneRotation : 0;
+                const opa = typeof c._zoneOpacity === 'number' ? c._zoneOpacity : 1;
+                const extra: React.CSSProperties = {};
+                if (rot) extra.transform = `rotate(${rot}deg)`;
+                if (opa < 1) extra.opacity = opa;
+                return extra;
+              })(),
             }}>
             {_cssChunks.length > 0 && <style>{_cssChunks.join('\n')}</style>}
             {/* Per-widget error boundary — one throwing widget can no

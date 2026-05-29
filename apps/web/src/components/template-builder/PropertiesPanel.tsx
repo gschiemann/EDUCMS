@@ -824,6 +824,43 @@ export function PropertiesPanel() {
               Fit Height
             </button>
           </div>
+
+          {/* 2026-05-28 (§19) — Rotation + Opacity. Required by the
+              editability standard ("rotation, z-index, opacity") and
+              previously available ONLY on DECORATION. Stored under
+              defaultConfig._zoneRotation / _zoneOpacity (underscore-keyed
+              = zone-chrome, kept distinct from widget content config and
+              from DECORATION's own cfg.opacity). Both BuilderZone AND the
+              player apply these to the zone wrapper as
+              `transform: rotate(Ndeg)` + `opacity:N` — Chromium-83-safe
+              (transform/opacity predate the Taurus's Chrome 83 by years),
+              no `inset`. Verified end-to-end in both renderers. */}
+          <div className="pt-2 border-t border-slate-200/50 grid grid-cols-2 gap-3">
+            <NumField
+              id={`${xId}-rot`}
+              label="Rotation (°)"
+              value={typeof (zone.defaultConfig as Record<string, unknown> | null | undefined)?._zoneRotation === 'number' ? (zone.defaultConfig as Record<string, number>)._zoneRotation : 0}
+              onChange={(v) => {
+                const next = ((Number(v) % 360) + 360) % 360; // normalize 0–359
+                set({ defaultConfig: { ...(zone.defaultConfig || {}), _zoneRotation: next } });
+              }}
+              min={0}
+              max={359}
+              step={1}
+            />
+            <NumField
+              id={`${xId}-opa`}
+              label="Opacity (0–1)"
+              value={typeof (zone.defaultConfig as Record<string, unknown> | null | undefined)?._zoneOpacity === 'number' ? (zone.defaultConfig as Record<string, number>)._zoneOpacity : 1}
+              onChange={(v) => {
+                const next = Math.max(0, Math.min(1, Number(v)));
+                set({ defaultConfig: { ...(zone.defaultConfig || {}), _zoneOpacity: next } });
+              }}
+              min={0}
+              max={1}
+              step={0.05}
+            />
+          </div>
         </div>
       </CollapsibleSection>
 

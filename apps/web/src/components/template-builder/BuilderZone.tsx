@@ -347,6 +347,23 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         width: `${zone.width}%`,
         height: `${zone.height}%`,
         zIndex: zone.zIndex,
+        // 2026-05-28 (§19) — zone rotation + opacity, edited in the
+        // "Position & size" panel and stored under
+        // defaultConfig._zoneRotation / _zoneOpacity. Applied identically
+        // here and on the player (apps/web/src/app/player/page.tsx) so the
+        // builder is WYSIWYG. `transform: rotate()` + `opacity` are both
+        // Chromium-83-safe (predate the Taurus's Chrome 83 by years); no
+        // `inset`. Omitted entirely when unset/identity so 99% of zones
+        // get no extra transform.
+        ...(() => {
+          const c = (zone.defaultConfig || {}) as Record<string, unknown>;
+          const rot = typeof c._zoneRotation === 'number' ? c._zoneRotation : 0;
+          const opa = typeof c._zoneOpacity === 'number' ? c._zoneOpacity : 1;
+          const extra: React.CSSProperties = {};
+          if (rot) extra.transform = `rotate(${rot}deg)`;
+          if (opa < 1) extra.opacity = opa;
+          return extra;
+        })(),
         // High-contrast white-on-canvas zone that's UNMISTAKABLE in
         // edit mode. Earlier attempt used `${color.bg}80` (the pale
         // pastel zone color at 50% opacity) but those pastels are
