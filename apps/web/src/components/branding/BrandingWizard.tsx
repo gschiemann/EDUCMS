@@ -461,9 +461,24 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
   }, [preview, derivedPalette, selectedLogoIdx, displayName, tagline]);
 
   return (
-    <div className="mx-auto max-w-[1600px] px-4 py-8 grid grid-cols-1 lg:grid-cols-[minmax(380px,560px)_1fr] gap-6">
-      {/* ── LEFT PANE — Controls ─────────────────────────── */}
-      <div className="space-y-4">
+    <div
+      className={cn(
+        'mx-auto max-w-[1600px] px-4 pt-8 grid grid-cols-1 lg:grid-cols-[minmax(380px,560px)_1fr] gap-6',
+        // Mobile (<lg) gets bottom padding so the fixed Adopt bar
+        // (rendered at the end, lg:hidden) never covers the last
+        // controls. Desktop keeps the original py-8 bottom spacing.
+        preview ? 'pb-28 lg:pb-8' : 'pb-8',
+      )}
+    >
+      {/* ── LEFT PANE — Controls ─────────────────────────────
+          2026-05-29 (mobile-UX P0-7): on <lg the columns stack to one.
+          Once a scan/brand exists, the live preview must come FIRST so
+          the operator sees the "repaints as you tweak" moment without
+          scrolling ~2 screens past every control. We reorder via
+          `order-*` only when there's a preview to surface; on the blank
+          first-load state the URL input stays on top. Desktop ordering
+          (controls left, preview right) is untouched via lg:order-*. */}
+      <div className={cn('space-y-4', preview ? 'order-2 lg:order-1' : 'order-1')}>
         <Card className="p-5 space-y-4">
           <div className="flex items-center gap-2">
             {/* 2026-05-25 — Wand2 dropped here per operator: "in this
@@ -833,8 +848,11 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
         )}
       </div>
 
-      {/* ── RIGHT PANE — Live preview ────────────────────── */}
-      <div className="lg:sticky lg:top-6 h-fit">
+      {/* ── RIGHT PANE — Live preview ──────────────────────
+          On <lg this jumps ABOVE the controls (order-1) when a preview
+          exists so the repaint is the first thing the operator sees;
+          on desktop it stays in the right column and is sticky. */}
+      <div className={cn('lg:sticky lg:top-6 h-fit', preview ? 'order-1 lg:order-2' : 'order-2')}>
         <div className="flex items-center gap-2 mb-3 text-sm font-medium text-slate-700">
           <Eye className="h-4 w-4" /> Live preview
           <span className="text-xs text-slate-400">— repaints as you tweak</span>
@@ -849,6 +867,35 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
             already telegraph what to do — the dashed box was
             redundant chrome. */}
       </div>
+
+      {/* ── Mobile sticky Adopt bar (mobile-UX P0-7) ──────────────
+          On <lg the Adopt action otherwise sits a full scroll below
+          the controls. This pins it to the bottom of the viewport so
+          the operator can preview-then-adopt without a 2-screen scroll.
+          Only shown once a preview exists. Sits ABOVE the MobileTabBar
+          (<md, min-h-56px + safe-area) by offsetting bottom; in the
+          md–lg band (no tab bar) it goes flush with its own safe-area
+          padding. lg:hidden so the desktop inline toolbar stays the
+          single Adopt control on wide screens. */}
+      {preview && (
+        <div
+          className="lg:hidden fixed right-0 left-0 bottom-[calc(56px+env(safe-area-inset-bottom))] md:bottom-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur-md px-4 py-3 md:pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.06)]"
+        >
+          {mode === 'demo' ? (
+            <Button disabled className="w-full" title="Sign in to adopt this branding">
+              Adopt (login required)
+            </Button>
+          ) : (
+            <Button onClick={adopt} disabled={adopting} className="w-full">
+              {adopting ? (
+                <><Loader2 className="h-4 w-4 animate-spin mr-2" />Applying</>
+              ) : (
+                <><Check className="h-4 w-4 mr-2" />Adopt branding</>
+              )}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

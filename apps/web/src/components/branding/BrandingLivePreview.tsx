@@ -7,11 +7,20 @@
  */
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { cn } from '@/lib/utils';
 import { LayoutDashboard, MonitorPlay, LayoutTemplate, Folders, Settings, Bell, ShieldAlert, Search, ChevronDown } from 'lucide-react';
 import { useLogoTone } from './useLogoTone';
+
+// Natural width of the faux-desktop scene below. The whole mock is built
+// at this fixed pixel width (180px sidebar + ~700px content) so it always
+// reads as a real desktop dashboard. ScaleToFit then measures the actual
+// container and shrinks the WHOLE thing proportionally via transform:
+// scale() — the same pattern ScaledTemplateThumbnail / the player
+// TemplateScaler use. Without this, the fixed 180px sidebar ate half a
+// 360px phone and the chrome was illegibly small (mobile-UX audit P1).
+const PREVIEW_NATURAL_WIDTH = 880;
 
 // Defense-in-depth: the API now sanitizes on write, but rows written
 // before the fix (or injected via a different code path) could still
@@ -75,7 +84,8 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
   const needsDarkBacking = logoTone === 'light' || logoTone === 'unknown';
 
   return (
-    <div className="preview-root relative bg-white" style={style}>
+    <ScaleToFit naturalWidth={PREVIEW_NATURAL_WIDTH}>
+    <div className="preview-root relative bg-white" style={{ ...style, width: PREVIEW_NATURAL_WIDTH }}>
       <style>{`
         .preview-root { font-family: var(--bp-font-body); color: var(--bp-ink); transition: color .15s; }
         .preview-root .preview-heading { font-family: var(--bp-font-heading); }
@@ -239,6 +249,65 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
             ))}
           </div>
         </main>
+      </div>
+    </div>
+    </ScaleToFit>
+  );
+}
+
+/**
+ * ScaleToFit — measures its own width and shrinks a fixed-`naturalWidth`
+ * child via CSS `transform: scale()`, exactly like ScaledTemplateThumbnail
+ * and the player's TemplateScaler. The child keeps every px size intact
+ * (so the faux-desktop mock never reflows into a cramped phone layout);
+ * the whole scene just renders smaller. We cap scale at 1 so the mock
+ * never upscales past its natural size on a wide desktop pane.
+ *
+ * The wrapper reports the SCALED height back to its own box so the
+ * surrounding <Card> collapses flush to the shrunk preview with no dead
+ * space below it.
+ */
+function ScaleToFit({ naturalWidth, children }: { naturalWidth: number; children: React.ReactNode }) {
+  const outerRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+  const [scaledHeight, setScaledHeight] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    const measure = () => {
+      const w = outer.getBoundingClientRect().width;
+      if (w <= 0) return;
+      // Never upscale: a desktop pane wider than naturalWidth renders at 1:1.
+      const next = Math.min(1, w / naturalWidth);
+      setScale(next);
+      // offsetHeight is the UNSCALED layout box (transforms don't affect
+      // it), so multiplying by `next` gives the on-screen scaled height —
+      // no dependency on the previous scale value.
+      const naturalHeight = inner.offsetHeight;
+      if (naturalHeight > 0) setScaledHeight(naturalHeight * next);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(outer);
+    ro.observe(inner);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [naturalWidth]);
+
+  return (
+    <div ref={outerRef} style={{ width: '100%', height: scaledHeight, overflow: 'hidden' }}>
+      <div
+        ref={innerRef}
+        style={{
+          width: naturalWidth,
+          transform: `scale(${scale})`,
+          transformOrigin: 'top left',
+        }}
+      >
+        {children}
       </div>
     </div>
   );
