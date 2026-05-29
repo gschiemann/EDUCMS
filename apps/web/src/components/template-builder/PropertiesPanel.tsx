@@ -2241,6 +2241,14 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         if (sbVariant.startsWith('sb-team-logo')) {
           fields.push(<AssetPickerField key="logoUrl" label="Team logo" value={cfg.logoUrl || ''} kind="image" onChange={(v) => setField({ logoUrl: v })} />);
         }
+        // Team name / abbreviation — operator-typed override. 2026-05-29:
+        // TeamNameWidget rendered a hardcoded EAGLES/TIGERS sample with NO
+        // editable field (clicking it showed nothing to type, and edits did
+        // nothing). This writes cfg.teamName, which TeamNameWidget +
+        // TeamAbbrWidget now read (override > live game name > sample).
+        if (sbVariant.startsWith('sb-team-name') || sbVariant.startsWith('sb-team-abbr')) {
+          fields.push(<TextField key="teamName" label="Team name" value={cfg.teamName ?? ''} placeholder={String(cfg.team) === 'away' ? 'TIGERS (or bind a game)' : 'EAGLES (or bind a game)'} onChange={(v) => setField({ teamName: v })} />);
+        }
         // Full style set — every aspect editable.
         fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
         fields.push(<ColorField key="accentColor" label="Accent color" value={cfg.accentColor || '#fbbf24'} onChange={(v) => setField({ accentColor: v })} />);

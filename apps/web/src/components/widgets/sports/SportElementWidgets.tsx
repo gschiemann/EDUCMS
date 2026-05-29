@@ -60,6 +60,9 @@ injectScoreboardFonts();
 // ── shared style ─────────────────────────────────────────────────────
 export interface ElCfg {
   team?: 'home' | 'away';
+  /** Operator-typed team name override. Wins over the live game name, so a
+   *  scoreboard works hand-typed in the builder OR live when a game binds. */
+  teamName?: string;
   color?: string;
   bgColor?: string;
   accentColor?: string;
@@ -127,7 +130,8 @@ export function TeamNameWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const team = config.team ?? 'home';
   const t = teamOf(s?.snapshot, team);
-  const name = t.name ?? (team === 'away' ? 'TIGERS' : 'EAGLES');
+  const override = typeof config.teamName === 'string' ? config.teamName.trim() : '';
+  const name = override || t.name || (team === 'away' ? 'TIGERS' : 'EAGLES');
   return <div style={elRoot(config, { fontWeight: config.fontWeight ?? 800 })}>{config.uppercase === false ? name : name.toUpperCase()}</div>;
 }
 
@@ -136,7 +140,8 @@ export function TeamAbbrWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const team = config.team ?? 'home';
   const t = teamOf(s?.snapshot, team);
-  const name = t.name ?? (team === 'away' ? 'TIGERS' : 'EAGLES');
+  const override = typeof config.teamName === 'string' ? config.teamName.trim() : '';
+  const name = override || t.name || (team === 'away' ? 'TIGERS' : 'EAGLES');
   const abbr = name.trim().slice(0, 3).toUpperCase();
   return <div style={elRoot(config, { fontWeight: config.fontWeight ?? 900 })}>{abbr}</div>;
 }
