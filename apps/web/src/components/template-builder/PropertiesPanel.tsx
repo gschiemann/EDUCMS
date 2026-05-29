@@ -1304,6 +1304,12 @@ function TapActionEditor({
 }) {
   const isTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
   const setTouchEnabled = useBuilderStore((s) => s.setTouchEnabled);
+  // 2026-05-28 — associate the "Do this" label with its <select> so
+  // screen readers announce the control AND so it's addressable by
+  // accessible name. Previously the label was visually adjacent but
+  // not programmatically linked (no htmlFor/id), failing WCAG 1.3.1
+  // + 4.1.2 on the single most important control in the touch maker.
+  const actionTypeId = useId();
 
   // Gate: this editor only makes sense for touch-enabled templates.
   // We DON'T hide it entirely though — when isTouchEnabled is off,
@@ -1365,10 +1371,12 @@ function TapActionEditor({
           When a visitor taps this zone…
         </div>
         <div>
-          <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">
+          <label htmlFor={actionTypeId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">
             Do this
           </label>
           <select
+            id={actionTypeId}
+            aria-label="Tap action — do this when a visitor taps this zone"
             value={action?.type ?? ''}
             onChange={(e) => {
               const v = e.target.value;

@@ -107,6 +107,40 @@ function isHttpUrl(u: unknown): u is string {
   }
 }
 
+// 2026-05-28 — `tel:` + `mailto:` are first-class kiosk touch targets:
+// the Phone Button + Email Button touch variants tell the operator (in
+// their own picker descriptions) to "pair with open-url tel:+1…" /
+// "mailto:…". But isHttpUrl() only accepts http(s), so the open-url
+// dispatcher silently rejected those targets and the visitor's tap did
+// NOTHING — exactly the "touch widget doesn't function" complaint.
+//
+// These two schemes are safe to navigate directly: they hand off to the
+// OS dialer / mail client and can't exfiltrate the device JWT the way
+// `javascript:` / `data:` / `file:` could (which stay blocked). We
+// validate the scheme is EXACTLY tel:/mailto: (not a lookalike) before
+// allowing it.
+export function isContactUrl(u: unknown): u is string {
+  if (typeof u !== 'string' || !u) return false;
+  try {
+    const p = new URL(u).protocol;
+    return p === 'tel:' || p === 'mailto:';
+  } catch {
+    return false;
+  }
+}
+
+// Thin, override-able navigation seam. Production sets
+// `window.location.href` (the cross-browser way to invoke the OS dialer
+// / mail client for tel:/mailto:). Exported so tests can assert the
+// dispatcher decided to navigate without fighting jsdom's read-only
+// `location`. Failures are swallowed — a kiosk WebView with no dialer
+// shouldn't throw on a tap.
+export const playerNav = {
+  go(url: string): void {
+    try { window.location.href = url; } catch { /* no-op on locked-down WebViews */ }
+  },
+};
+
 function isPublicHttpUrl(u: unknown): u is string {
   if (!isHttpUrl(u)) return false;
   try {
@@ -162,7 +196,7 @@ function isPublicHttpUrl(u: unknown): u is string {
  * request-help posts a signed event to the same Redis channel
  * emergency triggers use — reusing the existing notification path.
  */
-function dispatchTouchAction(
+export function dispatchTouchAction(
   action: any,
   ctx: { screenId: string | null; tenantId: string | null; zoneId?: string | null },
 ): void {
@@ -210,11 +244,19 @@ function dispatchTouchAction(
 
   switch (type) {
     case 'open-url': {
+      // 2026-05-28 — tel:/mailto: hand off to the OS dialer / mail
+      // client. An iframe overlay can't load these schemes, so navigate
+      // them directly. This is what makes the Phone + Email touch
+      // variants actually DO something when tapped.
+      if (isContactUrl(target)) {
+        playerNav.go(target as string);
+        return;
+      }
       // Phase D1.6 security gate — reject javascript:/data:/file:/etc.
       // (Security review 2026-05-12: rogue operator could exfiltrate
       // the device JWT via window.open('javascript:...')).
       if (!isHttpUrl(target)) {
-        try { console.warn('[touch] open-url rejected — not http(s):', target); } catch {}
+        try { console.warn('[touch] open-url rejected — not http(s)/tel/mailto:', target); } catch {}
         return;
       }
       if (action.openInNewTab) {
@@ -337,8 +379,13 @@ function dispatchTouchAction(
     // Legacy v0 aliases — keep working unchanged (but with the same
     // http(s) gate; the security fix backports to legacy rows too).
     case 'url': {
+      // tel:/mailto: navigate directly (see open-url above).
+      if (isContactUrl(target)) {
+        playerNav.go(target as string);
+        return;
+      }
       if (!isHttpUrl(target)) {
-        try { console.warn('[touch] url (legacy) rejected — not http(s):', target); } catch {}
+        try { console.warn('[touch] url (legacy) rejected — not http(s)/tel/mailto:', target); } catch {}
         return;
       }
       window.open(target, '_blank', 'noopener,noreferrer');
