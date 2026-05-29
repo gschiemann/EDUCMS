@@ -3,46 +3,47 @@
 /**
  * MainScoreboardWidget — the REAL scoreboard, as an editable template.
  *
- * Operator (2026-05-19): "the [scoreboard presets] you gave me are all
- * the same and they are fucking useless, nothing like the final
- * scoreboard we created." Right — the generic SCORE_HOME/GAME_CLOCK
- * 7-zone preset was a stripped-down toy. THIS widget is a faithful
- * pixel reproduction of the actual BoardScene that /board/[gameId]
- * pushes to screens: header strip + status pill, team-color panels
- * with logos + 264px scores + winning glow, the 188px amber game
- * clock, sport-aware segment label, football possession marker,
- * VENUEOS wordmark.
+ * Variant `scoreboard-main` ("Main Scoreboard (live)") — THIS is the
+ * component the gallery / builder renders for a sports scoreboard.
  *
- * Data: reads useGameState() (the GameStateProvider that CustomScoreboardScene
- * wraps the rendered template in), so a "Main Scoreboard" template bound
- * to a game shows live score / clock / period exactly like the real
- * board. OUTSIDE a provider (builder canvas, gallery thumbnail) it
- * renders a self-playing sample game so the tile is always alive.
+ * REBUILT 2026-05-29 to faithfully match the approved vibrant HS mockup
+ * (scratch/design/scoreboards/hs.html) — the prior render was a muted,
+ * half-empty dark board (washed gradient panels, bare amber clock, no
+ * banner / shot-clock / possession / fouls-timeout modules) that looked
+ * generic next to the mockup. This is the CLAUDE.md design-loop port:
+ *   HTML mockup (approved) → React port (this file) → screenshot verify.
  *
- * Sizing: fixed 1920×1080 scene + useScaleToFit transform:scale — the
- * same pattern AnimatedWelcomeWidget / ScaledTemplateThumbnail use, so
- * it drops into any zone and any LED resolution and stays pixel-faithful.
+ * APPROVED 2026-05-29 — matches scratch/design/scoreboards/hs.html,
+ * screenshot-verified via apps/web/tests/e2e/scoreboard-shot.spec.ts.
+ * DO NOT regress to vw/% units or the muted-panel look.
+ *
+ * Data: reads useGameState() (the GameStateProvider that
+ * CustomScoreboardScene wraps the rendered template in) — bound to a
+ * game it shows live score / clock / period / stats. OUTSIDE a provider
+ * (builder canvas, gallery thumbnail) it self-plays a sample so the tile
+ * is always alive.
+ *
+ * Sizing: fixed 1920×1080 scene + useScaleToFit transform:scale (the
+ * ScaledTemplateThumbnail pattern) — drops into any zone / LED size,
+ * pixel-faithful, no unit drift.
  *
  * Chromium-83 / NovaStar-Taurus safe — long-hand top/right/bottom/left,
- * no flex `gap`, no `inset` shorthand, no `aspect-ratio`.
+ * NO flex `gap` (margins / justify-content), NO `inset` shorthand, NO
+ * `backdrop-filter`, NO `aspect-ratio`. Font: Fredoka (self-hosted via
+ * next/font — offline + Taurus safe), the chunky rounded face the HS
+ * pep-rally mockup was designed in.
  */
 
-import React, { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { findSport } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { useGameState, fmtClock, type GameSnapshot } from './GameStateContext';
 import type { BaseCfg, WidgetProps } from '../v2/_shared/types';
 
-const DEFAULT_HOME = '#4f46e5';
-const DEFAULT_AWAY = '#dc2626';
-
-const STATUS_STYLE: Record<string, { label: string; bg: string; pulse?: boolean }> = {
-  SCHEDULED: { label: 'SCHEDULED', bg: '#475569' },
-  PRE_GAME: { label: 'PRE-GAME', bg: '#d97706' },
-  LIVE: { label: 'LIVE', bg: '#dc2626', pulse: true },
-  HALFTIME: { label: 'HALFTIME', bg: '#2563eb' },
-  FINAL: { label: 'FINAL', bg: '#1e293b' },
-};
+const DEFAULT_HOME = '#1e3a8a';
+const DEFAULT_AWAY = '#b91c1c';
+const ACCENT = '#fbbf24'; // gold trim
+const DISPLAY_FONT = "var(--font-fredoka), 'Fredoka', 'Baloo 2', system-ui, sans-serif";
 
 function ordinal(n: number): string {
   const s = ['TH', 'ST', 'ND', 'RD'];
@@ -52,18 +53,41 @@ function ordinal(n: number): string {
 
 function segmentLabel(def: SportDefinition, snap: GameSnapshot): string {
   const n = snap.segment;
-  if (n > def.segment.count) {
-    const ot = n - def.segment.count;
-    return ot > 1 ? `OT${ot}` : 'OT';
-  }
   if (def.segment.name === 'Inning') {
     const half = String((snap.stats || {}).half || '').toUpperCase();
     return `${half ? half + ' ' : ''}${ordinal(n)}`;
   }
+  if (n > def.segment.count) {
+    const ot = n - def.segment.count;
+    return ot > 1 ? `OT${ot}` : 'OT';
+  }
   return `${def.segment.name.toUpperCase()} ${n}`;
 }
 
-// Self-playing sample so the builder canvas / gallery tile is alive.
+const num = (v: unknown): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+const sideOf = (v: unknown): 'home' | 'away' | null => {
+  const s = String(v ?? '').trim().toLowerCase();
+  if (s === 'home' || s === 'h') return 'home';
+  if (s === 'away' || s === 'a') return 'away';
+  return null;
+};
+
+/** Blend a #rrggbb toward black by `amt` (0..1). Passthrough on non-hex. */
+function darken(hex: string, amt: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const r = Math.round(((n >> 16) & 255) * (1 - amt));
+  const g = Math.round(((n >> 8) & 255) * (1 - amt));
+  const b = Math.round((n & 255) * (1 - amt));
+  return `rgb(${r},${g},${b})`;
+}
+
+// Self-playing sample so the builder canvas / gallery tile is alive +
+// shows the full rich board (shot clock, possession, fouls, timeouts).
 const SAMPLE: GameSnapshot = {
   id: 'sample',
   sport: 'basketball',
@@ -73,16 +97,14 @@ const SAMPLE: GameSnapshot = {
   awayTeam: 'TIGERS',
   homeScore: 62,
   awayScore: 58,
-  homeColor: '#4f46e5',
-  awayColor: '#dc2626',
+  homeColor: '#1e3a8a',
+  awayColor: '#b91c1c',
   homeLogoUrl: null,
   awayLogoUrl: null,
   clockMs: 7 * 60_000 + 42_000,
-  // running so the sample/thumbnail shows the signature amber glowing
-  // clock (the iconic "live" look), not the dimmed stopped state.
   clockRunning: true,
   clockUpdatedAt: new Date().toISOString(),
-  stats: {},
+  stats: { shotClock: 14, possession: 'home', homeFouls: 3, awayFouls: 5, homeTimeouts: 2, awayTimeouts: 1 },
   serverTime: Date.now(),
 };
 
@@ -109,65 +131,10 @@ function useScaleToFit(naturalW: number, naturalH: number) {
   return { ref, scale };
 }
 
-// ── team panel ───────────────────────────────────────────────────
-function TeamPanel({
-  side, name, score, color, logoUrl, winning, hasPossession,
-}: {
-  side: 'home' | 'away';
-  name: string;
-  score: number;
-  color: string;
-  logoUrl: string | null;
-  winning: boolean;
-  hasPossession?: boolean;
-}) {
-  return (
-    <div style={{
-      position: 'relative', flex: 1, height: '100%',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      background: `linear-gradient(${side === 'home' ? '135deg' : '225deg'}, ${color}2e, #0b0f1a 72%)`,
-      borderTop: `10px solid ${color}`,
-    }}>
-      {/* logo with team-color halo (or initial circle) */}
-      <div style={{ position: 'relative', width: 200, height: 176, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: `radial-gradient(circle at 50% 48%, ${color}59, transparent 64%)` }} />
-        {logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logoUrl} alt="" style={{ position: 'relative', width: 176, height: 176, objectFit: 'contain', filter: 'drop-shadow(0 8px 20px rgba(0,0,0,0.55))' }}
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-        ) : (
-          <div style={{
-            position: 'relative', width: 130, height: 130, borderRadius: '50%', background: color,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 66, fontWeight: 900, color: '#fff', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-          }}>
-            {(name.trim()[0] || '?').toUpperCase()}
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', maxWidth: 660, marginTop: 6 }}>
-        {hasPossession && <span aria-hidden style={{ fontSize: 40, lineHeight: 1, marginRight: 14 }}>🏈</span>}
-        <div style={{ fontSize: 54, fontWeight: 800, letterSpacing: 1, color: '#fff', textAlign: 'center', lineHeight: 1.05, textShadow: '0 4px 18px rgba(0,0,0,0.6)' }}>
-          {name}
-        </div>
-      </div>
-      <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: 6, color, marginTop: 8 }}>
-        {side === 'home' ? 'HOME' : 'AWAY'}
-      </div>
-      <div style={{
-        fontSize: 264, fontWeight: 900, color: '#fff', lineHeight: 1, marginTop: 2,
-        fontVariantNumeric: 'tabular-nums',
-        textShadow: winning ? `0 0 64px ${color}` : '0 8px 30px rgba(0,0,0,0.7)',
-      }}>
-        {score}
-      </div>
-    </div>
-  );
-}
-
 export interface MainScoreboardCfg extends BaseCfg {
-  /** Reserved — future per-board overrides (hide branding, accent, etc.). */
+  /** Center banner text. Defaults to "GAME NIGHT". */
+  bannerText?: string;
+  /** Reserved — future per-board overrides. */
   hideWordmark?: boolean;
 }
 
@@ -175,12 +142,15 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
   const c = config ?? {};
   const state = useGameState();
 
-  // Live game from context, else the self-playing sample. In the
-  // sample path we tick the clock down locally so the tile feels alive.
+  // Live game from context, else the self-playing sample.
   const [sampleMs, setSampleMs] = useState(SAMPLE.clockMs);
+  const [sampleShot, setSampleShot] = useState(14);
   useEffect(() => {
-    if (state?.snapshot) return;            // real game bound — context drives the clock
-    const id = setInterval(() => setSampleMs((m) => (m <= 0 ? 7 * 60_000 + 42_000 : m - 1000)), 1000);
+    if (state?.snapshot) return;
+    const id = setInterval(() => {
+      setSampleMs((m) => (m <= 0 ? 7 * 60_000 + 42_000 : m - 1000));
+      setSampleShot((s) => (s <= 0 ? 24 : s - 1));
+    }, 1000);
     return () => clearInterval(id);
   }, [state?.snapshot]);
 
@@ -191,69 +161,203 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
 
   if (!def) {
     return (
-      <div ref={ref} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#05070d', color: '#64748b', fontFamily: 'Inter, system-ui, sans-serif', fontSize: 20, fontWeight: 700 }}>
+      <div ref={ref} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0d12', color: '#64748b', fontFamily: DISPLAY_FONT, fontSize: 28, fontWeight: 700 }}>
         UNKNOWN SPORT
       </div>
     );
   }
 
-  const status = STATUS_STYLE[snap.status] || STATUS_STYLE.SCHEDULED;
   const homeColor = snap.homeColor || DEFAULT_HOME;
   const awayColor = snap.awayColor || DEFAULT_AWAY;
+  const stats = (snap.stats || {}) as Record<string, unknown>;
+  const isLive = snap.status === 'LIVE' && live !== false;
   const hasClock = def.clock.type !== 'none';
-  const ballSide = def.key === 'football'
-    ? String((snap.stats as Record<string, unknown> | undefined)?.possession || '').trim().toLowerCase()
-    : '';
-  const pulse = !!status.pulse && live !== false;
+  const clockStr = hasClock ? fmtClock(clockMs) : '';
+  const clockUrgent = hasClock && snap.clockRunning && clockMs > 0 && clockMs < 60_000;
+
+  // Center modules — driven off real data; hidden when the sport / feed
+  // doesn't supply them, so a clock-only sport doesn't show empty chrome.
+  const shotClock = state?.snapshot ? num(stats.shotClock) : sampleShot;
+  const hasShot = ('shotClock' in stats || !state?.snapshot) && shotClock > 0 && hasClock;
+  const poss = sideOf(stats.possession);
+  const hasFouls = 'homeFouls' in stats || 'awayFouls' in stats;
+  const hasTimeouts = 'homeTimeouts' in stats || 'awayTimeouts' in stats;
+  const homeTO = num(stats.homeTimeouts);
+  const awayTO = num(stats.awayTimeouts);
+  const maxTO = 3;
+
+  const homeInitial = (snap.homeTeam || '—').trim().charAt(0).toUpperCase();
+  const awayInitial = (snap.awayTeam || '—').trim().charAt(0).toUpperCase();
+  const BLOCK_W = 620;
+
+  const sideBlock = (which: 'home' | 'away'): React.CSSProperties => {
+    const col = which === 'home' ? homeColor : awayColor;
+    return {
+      position: 'absolute', top: 0,
+      [which === 'home' ? 'left' : 'right']: 0,
+      width: BLOCK_W, height: 1080,
+      background: `linear-gradient(${which === 'home' ? 160 : 200}deg, ${col} 0%, ${darken(col, 0.28)} 60%, ${darken(col, 0.45)} 100%)`,
+      [which === 'home' ? 'borderRight' : 'borderLeft']: `14px solid ${ACCENT}`,
+      boxShadow: `inset ${which === 'home' ? '-40px' : '40px'} 0 80px rgba(0,0,0,0.35)`,
+    } as React.CSSProperties;
+  };
+  const logoCoin = (which: 'home' | 'away'): React.CSSProperties => {
+    const col = which === 'home' ? homeColor : awayColor;
+    return {
+      position: 'absolute', top: 96,
+      [which === 'home' ? 'left' : 'right']: 194,
+      width: 232, height: 232, borderRadius: '50%',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontWeight: 700, fontSize: 150, color: '#fff',
+      background: `radial-gradient(circle at 38% 32%, ${col}, ${darken(col, 0.45)})`,
+      border: '12px solid rgba(255,255,255,0.92)',
+      boxShadow: '0 18px 44px rgba(0,0,0,0.45), inset 0 6px 18px rgba(255,255,255,0.12)',
+      overflow: 'hidden',
+    } as React.CSSProperties;
+  };
+  const nameStyle = (which: 'home' | 'away'): React.CSSProperties => ({
+    position: 'absolute', top: 360,
+    [which === 'home' ? 'left' : 'right']: 0,
+    width: BLOCK_W, textAlign: 'center', fontWeight: 800, fontSize: 90, lineHeight: 0.95,
+    color: '#fff', letterSpacing: 1, textShadow: '0 6px 0 rgba(0,0,0,0.28)',
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '0 24px', boxSizing: 'border-box',
+  } as React.CSSProperties);
+  const tagStyle = (which: 'home' | 'away'): React.CSSProperties => ({
+    position: 'absolute', top: 478,
+    [which === 'home' ? 'left' : 'right']: 0,
+    width: BLOCK_W, textAlign: 'center', fontWeight: 600, fontSize: 34, letterSpacing: 12, color: ACCENT,
+  } as React.CSSProperties);
+  const scoreStyle = (which: 'home' | 'away'): React.CSSProperties => ({
+    position: 'absolute', top: 552,
+    [which === 'home' ? 'left' : 'right']: 0,
+    width: BLOCK_W, textAlign: 'center', fontWeight: 800, fontSize: 440, lineHeight: 0.8,
+    color: '#fff', fontVariantNumeric: 'tabular-nums',
+    textShadow: '0 14px 0 rgba(0,0,0,0.30), 0 0 70px rgba(255,255,255,0.22)',
+  } as React.CSSProperties);
+  const pip = (on: boolean, color: string): React.CSSProperties => ({
+    width: 30, height: 30, borderRadius: '50%', marginLeft: 12,
+    background: on ? color : 'transparent', border: `3px solid ${on ? color : 'rgba(255,255,255,0.5)'}`, display: 'inline-block',
+  });
 
   return (
-    <div ref={ref} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#05070d' }}>
-      {pulse && <style>{`@keyframes mainSbPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.62; } }`}</style>}
-      <div style={{
-        width: 1920, height: 1080, flexShrink: 0,
-        transform: scale > 0 ? `scale(${scale})` : 'scale(0)', transformOrigin: 'center center',
-        background: 'radial-gradient(ellipse at 50% 0%, #131a2e, #05070d 75%)',
-        display: 'flex', flexDirection: 'column', fontFamily: 'Inter, system-ui, sans-serif', color: '#fff', position: 'relative',
-      }}>
-        {/* header */}
-        <div style={{ height: 92, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 44px', background: '#05070d', borderBottom: '2px solid #1e2638' }}>
-          <div style={{ display: 'flex', alignItems: 'center', fontSize: 40, fontWeight: 800, letterSpacing: 1 }}>
-            <span style={{ fontSize: 48, marginRight: 16 }}>{def.emoji}</span>
-            {def.name.toUpperCase()}
+    <div ref={ref} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0d12' }}>
+      <div
+        style={{
+          width: 1920, height: 1080, flexShrink: 0,
+          transform: scale > 0 ? `scale(${scale})` : 'scale(0)', transformOrigin: 'center center',
+          position: 'relative', overflow: 'hidden', fontFamily: DISPLAY_FONT,
+          background: '#11151d',
+          backgroundImage: 'repeating-linear-gradient(115deg, rgba(255,255,255,0.018) 0 60px, rgba(255,255,255,0) 60px 120px)',
+        }}
+      >
+        <style>{`@keyframes mainSbBlink{0%,100%{opacity:1}50%{opacity:.25}}@keyframes mainSbClk{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
+
+        {/* HOME side */}
+        <div style={sideBlock('home')} />
+        <div style={logoCoin('home')}>
+          {snap.homeLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={snap.homeLogoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+          ) : homeInitial}
+        </div>
+        <div style={nameStyle('home')}>{(snap.homeTeam || 'HOME').toUpperCase()}</div>
+        <div style={tagStyle('home')}>HOME</div>
+        <div style={scoreStyle('home')}>{snap.homeScore}</div>
+
+        {/* AWAY side */}
+        <div style={sideBlock('away')} />
+        <div style={logoCoin('away')}>
+          {snap.awayLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={snap.awayLogoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+          ) : awayInitial}
+        </div>
+        <div style={nameStyle('away')}>{(snap.awayTeam || 'AWAY').toUpperCase()}</div>
+        <div style={tagStyle('away')}>AWAY</div>
+        <div style={scoreStyle('away')}>{snap.awayScore}</div>
+
+        {/* CENTER COLUMN */}
+        <div style={{ position: 'absolute', top: 0, left: BLOCK_W, width: 680, height: 1080 }}>
+          {/* banner */}
+          <div style={{ position: 'absolute', top: 0, left: 0, width: 680, height: 150, background: `linear-gradient(180deg, ${ACCENT}, ${darken(ACCENT, 0.22)})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 50, letterSpacing: 4, color: '#1e2a4a', boxShadow: '0 8px 22px rgba(0,0,0,0.4)' }}>
+            <span style={{ fontSize: 40, marginRight: 18 }}>★</span>
+            {(c.bannerText || 'GAME NIGHT').toUpperCase()}
+            <span style={{ fontSize: 40, marginLeft: 18 }}>★</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', background: status.bg, padding: '12px 28px', borderRadius: 999, fontSize: 30, fontWeight: 900, letterSpacing: 3, animation: pulse ? 'mainSbPulse 1.6s ease-in-out infinite' : undefined }}>
-            {status.pulse && <span style={{ width: 16, height: 16, borderRadius: 999, background: '#fff', marginRight: 14, display: 'inline-block' }} />}
-            {status.label}
+
+          {/* period chip */}
+          <div style={{ position: 'absolute', top: 196, left: 140, width: 400, height: 96, background: '#fff', borderRadius: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 52, color: darken(homeColor, 0.15), boxShadow: '0 10px 0 rgba(0,0,0,0.22)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+            {segmentLabel(def, snap)}
           </div>
+
+          {/* clock card (or sport plate for no-clock sports) */}
+          {clockStr ? (
+            <div style={{ position: 'absolute', top: 330, left: 60, width: 560, height: 300, background: '#0a0f1c', border: `10px solid ${ACCENT}`, borderRadius: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 16px 0 rgba(0,0,0,0.30), inset 0 0 60px ${ACCENT}1a` }}>
+              <span style={{ fontWeight: 800, fontSize: 200, lineHeight: 1, color: clockUrgent ? '#f87171' : '#fde047', fontVariantNumeric: 'tabular-nums', textShadow: '0 0 40px rgba(253,224,71,0.55)', animation: clockUrgent ? 'mainSbClk 1s ease-in-out infinite' : undefined }}>
+                {clockStr}
+              </span>
+            </div>
+          ) : (
+            <div style={{ position: 'absolute', top: 330, left: 60, width: 560, height: 300, background: '#0a0f1c', border: `10px solid ${ACCENT}`, borderRadius: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 84, color: ACCENT, letterSpacing: 4, textAlign: 'center', padding: '0 20px' }}>
+              {def.name.toUpperCase()}
+            </div>
+          )}
+
+          {/* shot clock coin */}
+          {hasShot && (
+            <div style={{ position: 'absolute', top: 300, left: 470, width: 168, height: 168, borderRadius: '50%', background: 'radial-gradient(circle at 40% 34%, #ff5b5b, #c81e1e)', border: '9px solid #fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 12px 28px rgba(0,0,0,0.5)' }}>
+              <span style={{ fontWeight: 800, fontSize: 92, lineHeight: 0.9, color: '#fff' }}>{shotClock}</span>
+              <span style={{ fontWeight: 600, fontSize: 21, letterSpacing: 2, color: '#ffe2e2', marginTop: 2 }}>SHOT</span>
+            </div>
+          )}
+
+          {/* possession bar */}
+          {poss && (
+            <div style={{ position: 'absolute', top: 658, left: 60, width: 560, height: 92, background: '#fff', borderRadius: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 0 rgba(0,0,0,0.2)' }}>
+              <span style={{ fontSize: 60, lineHeight: 1, color: darken(homeColor, 0.1), opacity: poss === 'home' ? 1 : 0.18 }}>◄</span>
+              <span style={{ fontWeight: 600, fontSize: 32, letterSpacing: 3, color: '#475569', margin: '0 22px' }}>POSSESSION</span>
+              <span style={{ fontSize: 60, lineHeight: 1, color: darken(awayColor, 0.1), opacity: poss === 'away' ? 1 : 0.18 }}>►</span>
+            </div>
+          )}
+
+          {/* fouls + timeouts meters */}
+          {(hasFouls || hasTimeouts) && (
+            <div style={{ position: 'absolute', top: 776, left: 60, width: 560, height: 216, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              {hasFouls && (
+                <div style={{ height: 100, background: '#161c2b', border: '4px solid #2a3450', borderRadius: 22, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 26px' }}>
+                  <span style={{ fontWeight: 600, fontSize: 28, letterSpacing: 3, color: '#cbd5e1' }}>TEAM FOULS</span>
+                  <span style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 800, fontSize: 56, lineHeight: 1, width: 92, textAlign: 'center', borderRadius: 16, padding: '4px 0', background: homeColor, color: '#fff' }}>{num(stats.homeFouls)}</span>
+                    <span style={{ fontWeight: 600, fontSize: 26, color: '#64748b', margin: '0 16px' }}>–</span>
+                    <span style={{ fontWeight: 800, fontSize: 56, lineHeight: 1, width: 92, textAlign: 'center', borderRadius: 16, padding: '4px 0', background: awayColor, color: '#fff' }}>{num(stats.awayFouls)}</span>
+                  </span>
+                </div>
+              )}
+              {hasTimeouts && (
+                <div style={{ height: 100, background: '#161c2b', border: '4px solid #2a3450', borderRadius: 22, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 26px' }}>
+                  <span style={{ fontWeight: 600, fontSize: 28, letterSpacing: 3, color: '#cbd5e1' }}>TIMEOUTS</span>
+                  <span style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ display: 'flex', alignItems: 'center' }}>
+                      {Array.from({ length: maxTO }).map((_, i) => <span key={`h${i}`} style={pip(i < homeTO, '#60a5fa')} />)}
+                    </span>
+                    <span style={{ fontWeight: 600, fontSize: 26, color: '#64748b', margin: '0 16px' }}>/</span>
+                    <span style={{ display: 'flex', alignItems: 'center' }}>
+                      {Array.from({ length: maxTO }).map((_, i) => <span key={`a${i}`} style={pip(i < awayTO, '#f87171')} />)}
+                    </span>
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* main row */}
-        <div style={{ flex: 1, display: 'flex', position: 'relative' }}>
-          <TeamPanel side="home" name={snap.homeTeam} score={snap.homeScore} color={homeColor} logoUrl={snap.homeLogoUrl}
-            winning={snap.homeScore > snap.awayScore && snap.status !== 'SCHEDULED'} hasPossession={ballSide === 'home'} />
-
-          {/* center column */}
-          <div style={{ width: 600, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#05070d' }}>
-            <div style={{ fontSize: 38, fontWeight: 800, letterSpacing: 5, color: '#94a3b8' }}>{segmentLabel(def, snap)}</div>
-            {hasClock ? (
-              <div style={{
-                fontSize: 188, fontWeight: 900, lineHeight: 1, marginTop: 18, fontVariantNumeric: 'tabular-nums',
-                color: snap.clockRunning ? '#fbbf24' : '#e2e8f0',
-                textShadow: snap.clockRunning ? '0 0 50px rgba(251,191,36,0.5)' : 'none', whiteSpace: 'nowrap',
-              }}>
-                {fmtClock(clockMs)}
-              </div>
-            ) : (
-              <div style={{ fontSize: 150, fontWeight: 900, lineHeight: 1, marginTop: 24, color: '#e2e8f0' }}>{def.emoji}</div>
-            )}
-            {!c.hideWordmark && (
-              <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 3, color: '#475569', marginTop: 18 }}>VENUEOS</div>
-            )}
+        {/* LIVE flag */}
+        {isLive && (
+          <div style={{ position: 'absolute', top: 28, left: '50%', transform: 'translateX(-50%)', background: '#dc2626', color: '#fff', fontWeight: 700, fontSize: 30, letterSpacing: 4, padding: '8px 26px', borderRadius: 999, display: 'flex', alignItems: 'center', boxShadow: '0 6px 16px rgba(0,0,0,0.4)', zIndex: 5 }}>
+            <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', marginRight: 12, animation: 'mainSbBlink 1.3s ease-in-out infinite' }} />
+            LIVE
           </div>
-
-          <TeamPanel side="away" name={snap.awayTeam} score={snap.awayScore} color={awayColor} logoUrl={snap.awayLogoUrl}
-            winning={snap.awayScore > snap.homeScore && snap.status !== 'SCHEDULED'} hasPossession={ballSide === 'away'} />
-        </div>
+        )}
       </div>
     </div>
   );
