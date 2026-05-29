@@ -32,6 +32,15 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build workspace packages (API tests import @cms/* by package name)
+        # The API jest suite imports @cms/api-types, @cms/auth-core, etc. by
+        # package name → resolves to each package's `main` (dist/). Those MUST
+        # be built before jest runs, or every importing spec dies with
+        # "Cannot find module '@cms/api-types'". This build-order gap was masked
+        # for ages by the API test step's `continue-on-error: true`; making the
+        # gate blocking (2026-05-29) surfaced it. Mirrors `pnpm preflight`.
+        run: pnpm --filter @cms/api-types --filter @cms/auth-core --filter @cms/ws-events --filter @cms/scoreboard-cts build
+
       - name: Run Tests
         # BLOCKING (governance review #1, 2026-05-29). Previously gated with
         # `continue-on-error: true`, which made the API jest suite decorative —
