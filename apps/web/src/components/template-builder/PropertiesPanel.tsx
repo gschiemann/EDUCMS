@@ -886,6 +886,11 @@ const POS_LIVE_TYPES = new Set<string>([
   'RESTAURANT_MENU_BOARD',
   'BAR_TAP_LIST',
   'BAR_COCKTAIL_MENU',
+  // 2026-05-30 — wired to the same shared usePosMenuItems hook: the
+  // specials callout (drives its featured item from posItems[0]) and the
+  // combo carousel (maps each POS item → a combo card).
+  'RESTAURANT_SPECIALS_CALLOUT',
+  'RESTAURANT_COMBO_CAROUSEL',
 ]);
 
 /**
