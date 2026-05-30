@@ -346,7 +346,9 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         top: `${zone.y}%`,
         width: `${zone.width}%`,
         height: `${zone.height}%`,
-        zIndex: zone.zIndex,
+        // Selected zone lifts just enough that its clean outline isn't buried
+        // under overlapping zones (composed scoreboards overlap heavily).
+        zIndex: selected && !previewMode ? 1000 : zone.zIndex,
         // 2026-05-28 (§19) — zone rotation + opacity, edited in the
         // "Position & size" panel and stored under
         // defaultConfig._zoneRotation / _zoneOpacity. Applied identically

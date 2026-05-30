@@ -65,6 +65,35 @@ aren't editable. To make any element editable:
     `ColorPickerField` is GLOBAL to every widget; change it in isolation +
     verify, don't bundle into a scoreboard fix.
 
+- **#4 No highlight when editing + "highlight the hotspot AND the left
+  field"** (this commit). Operator clicked a scoreboard text element and
+  (a) saw NO selection outline on the canvas and (b) the left Properties
+  field for that text didn't light up. Two root causes + the fix:
+  - CANVAS: the selected zone's clean `2px solid #6366f1` outline was being
+    **buried under overlapping zones** (a composed board overlaps heavily,
+    and a prior "no giant highlight" revert removed the z-index lift). FIX:
+    `BuilderZone` lifts the selected zone to `zIndex: 1000` (only while
+    selected, non-preview) so its outline paints above neighbors. NO glow,
+    NO banner — just the clean outline the operator asked for.
+  - LEFT PANEL: the app already has the Canva-style "click canvas hotspot →
+    matching panel field rings + scrolls into view" link
+    (`template-edit-field` event → `PropertiesPanel` finds
+    `[data-field-section="<key>"]` → adds `.is-active-section`). The
+    scoreboard **element** zones weren't `[data-field]` hotspots, so
+    selecting one never fired that event + the fields had no
+    `data-field-section`. FIX: (1) wrapped each element's PRIMARY field
+    (teamName / logoUrl / imageUrl / label / scoreboard-main homeName) in a
+    `<div data-field-section="<key>">`; (2) `BuilderShell` fires
+    `template-edit-field` with that element's primary key on selection →
+    the existing handler rings + scrolls to it.
+  - LESSON: the highlight link ALREADY EXISTED for themed widgets — reused
+    it instead of inventing a new highlight. When the operator describes a
+    behavior the app does elsewhere ("Canva click-to-edit"), find that
+    mechanism and wire the new surface into it; don't build a parallel one.
+  - ⚠️ UNVERIFIED-IN-BUILDER: builder is auth-gated + no browser connected,
+    so this is code-correct + tsc-clean but NOT visually confirmed by me —
+    operator is the visual check this round.
+
 ## Standing rules learned
 - Verify against the REAL rendered zone variant (operator screenshot / live),
   never a same-named sibling widget. (`scoreboard-main` ≠ the composed

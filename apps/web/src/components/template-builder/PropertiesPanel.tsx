@@ -2207,7 +2207,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         // operator "make sure its editable" — type names/scores/colors here.
         if (sbVariant === 'scoreboard-main') {
           fields.push(<TextField key="bannerText" label="Banner text" value={cfg.bannerText ?? ''} placeholder="GAME NIGHT" onChange={(v) => setField({ bannerText: v })} />);
-          fields.push(<TextField key="homeName" label="Home team" value={cfg.homeName ?? ''} placeholder="EAGLES (blank = live game)" onChange={(v) => setField({ homeName: v })} />);
+          fields.push(
+            <div key="homeName" data-field-section="homeName">
+              <TextField label="Home team" value={cfg.homeName ?? ''} placeholder="EAGLES (blank = live game)" onChange={(v) => setField({ homeName: v })} />
+            </div>,
+          );
           fields.push(<TextField key="awayName" label="Away team" value={cfg.awayName ?? ''} placeholder="TIGERS (blank = live game)" onChange={(v) => setField({ awayName: v })} />);
           fields.push(<NumField key="homeScore" id="sb-homeScore" label="Home score" value={typeof cfg.homeScore === 'number' ? cfg.homeScore : 0} onChange={(v) => setField({ homeScore: v })} min={0} max={999} step={1} />);
           fields.push(<NumField key="awayScore" id="sb-awayScore" label="Away score" value={typeof cfg.awayScore === 'number' ? cfg.awayScore : 0} onChange={(v) => setField({ awayScore: v })} min={0} max={999} step={1} />);
@@ -2226,7 +2230,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         }
         // Editable copy.
         if (cfg.label !== undefined) {
-          fields.push(<TextField key="label" label="Label" value={cfg.label || ''} placeholder="Label" onChange={(v) => setField({ label: v })} />);
+          fields.push(
+            <div key="label" data-field-section="label">
+              <TextField label="Label" value={cfg.label || ''} placeholder="Label" onChange={(v) => setField({ label: v })} />
+            </div>,
+          );
         }
         if (cfg.placeholder !== undefined) {
           fields.push(<TextField key="placeholder" label="Sample / fallback text" value={cfg.placeholder || ''} placeholder="—" onChange={(v) => setField({ placeholder: v })} />);
@@ -2236,12 +2244,20 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           fields.push(<TextField key="statKey" label="Stat key (advanced)" value={cfg.statKey || ''} placeholder="down" onChange={(v) => setField({ statKey: v })} />);
         }
         if (sbVariant === 'sb-sponsor') {
-          fields.push(<AssetPickerField key="imageUrl" label="Sponsor image" value={cfg.imageUrl || ''} kind="image" onChange={(v) => setField({ imageUrl: v })} />);
+          fields.push(
+            <div key="imageUrl" data-field-section="imageUrl">
+              <AssetPickerField label="Sponsor image" value={cfg.imageUrl || ''} kind="image" onChange={(v) => setField({ imageUrl: v })} />
+            </div>,
+          );
         }
         // Team-logo elements: paste a logo URL to brand the board before
         // a game is bound (overrides the live game logo).
         if (sbVariant.startsWith('sb-team-logo')) {
-          fields.push(<AssetPickerField key="logoUrl" label="Team logo" value={cfg.logoUrl || ''} kind="image" onChange={(v) => setField({ logoUrl: v })} />);
+          fields.push(
+            <div key="logoUrl" data-field-section="logoUrl">
+              <AssetPickerField label="Team logo" value={cfg.logoUrl || ''} kind="image" onChange={(v) => setField({ logoUrl: v })} />
+            </div>,
+          );
         }
         // Team name / abbreviation — operator-typed override. 2026-05-29:
         // TeamNameWidget rendered a hardcoded EAGLES/TIGERS sample with NO
@@ -2249,7 +2265,14 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         // nothing). This writes cfg.teamName, which TeamNameWidget +
         // TeamAbbrWidget now read (override > live game name > sample).
         if (sbVariant.startsWith('sb-team-name') || sbVariant.startsWith('sb-team-abbr')) {
-          fields.push(<TextField key="teamName" label="Team name" value={cfg.teamName ?? ''} placeholder={String(cfg.team) === 'away' ? 'TIGERS (or bind a game)' : 'EAGLES (or bind a game)'} onChange={(v) => setField({ teamName: v })} />);
+          // data-field-section lets the canvas click light THIS field up
+          // (is-active-section ring + scroll-to) when the operator clicks the
+          // team-name element — the Canva "click text → its field highlights" link.
+          fields.push(
+            <div key="teamName" data-field-section="teamName">
+              <TextField label="Team name" value={cfg.teamName ?? ''} placeholder={String(cfg.team) === 'away' ? 'TIGERS (or bind a game)' : 'EAGLES (or bind a game)'} onChange={(v) => setField({ teamName: v })} />
+            </div>,
+          );
         }
         // Full style set — every aspect editable.
         fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);

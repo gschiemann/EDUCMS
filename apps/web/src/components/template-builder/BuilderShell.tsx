@@ -850,6 +850,37 @@ function BuilderBottomBar() {
     return () => window.removeEventListener('template-edit-field', handler);
   }, [selectedZone?.id, setActiveFieldName]);
 
+  // 2026-05-29 — Scoreboard elements (the composed sb-* board) aren't
+  // `[data-field]` hotspots, so selecting one on the canvas never lit up
+  // its matching Properties field. Operator: "i want the hot spot AND the
+  // tool bar on the left where i edit the text to get highlighted." When a
+  // scoreboard element is selected, fire the SAME `template-edit-field`
+  // event a hotspot click fires → PropertiesPanel scrolls to + ring-
+  // highlights (is-active-section) the field for that element's primary copy.
+  useEffect(() => {
+    if (!selectedZone) return;
+    const v = String((selectedZone.defaultConfig as Record<string, any> | undefined)?.variant || '');
+    const dc = (selectedZone.defaultConfig || {}) as Record<string, any>;
+    const primary =
+      v.startsWith('sb-team-name') || v.startsWith('sb-team-abbr') ? 'teamName'
+      : v.startsWith('sb-team-logo') ? 'logoUrl'
+      : v === 'sb-sponsor' ? 'imageUrl'
+      : v === 'scoreboard-main' ? 'homeName'
+      : (v.startsWith('sb-') && dc.label !== undefined) ? 'label'
+      : null;
+    if (!primary) return;
+    // Let the panel render the field first (the handler also retries),
+    // then point it at the primary field for this element.
+    const t = setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent('template-edit-field', {
+          detail: { zoneId: selectedZone.id, fieldKey: primary, sectionKey: primary },
+        }),
+      );
+    }, 60);
+    return () => clearTimeout(t);
+  }, [selectedZone?.id]);
+
   const activeFieldName = storeActiveFieldName;
   // Per-field UX is offered for any selected widget that already
   // supports the `_styles` schema OR is an HS template (consumes the
