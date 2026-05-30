@@ -49,6 +49,9 @@ export interface MenuBoardItem {
   price: string;            // free-form string, e.g. "$8.99", "12 / 16"
   dietary?: string[];       // tags like 'V', 'GF', 'DF', 'spicy'
   emoji?: string;           // optional fallback when no image
+  /** Asset URL for a dish photo. When set, shown as a small thumbnail
+   *  left of the name (replaces the emoji glyph). */
+  imageUrl?: string;
 }
 
 export interface MenuBoardConfig {
@@ -153,7 +156,22 @@ export function MenuBoardWidget({
               <div key={ii} className="rmb-item">
                 <div className="rmb-item-row">
                   <div className="rmb-item-name">
-                    {item.emoji && <span className="rmb-item-emoji" aria-hidden>{item.emoji}</span>}
+                    {/* imageUrl takes priority; fall back to emoji if it looks like
+                        a URL (the PropertiesPanel 'image' type writes asset URLs to
+                        the `emoji` key for back-compat), then fall back to the raw
+                        emoji glyph. */}
+                    {(item.imageUrl || (item.emoji && item.emoji.startsWith('http'))) ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        className="rmb-item-thumb"
+                        src={item.imageUrl || item.emoji}
+                        alt=""
+                        aria-hidden
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    ) : item.emoji ? (
+                      <span className="rmb-item-emoji" aria-hidden>{item.emoji}</span>
+                    ) : null}
                     <span>{item.name}</span>
                   </div>
                   <div className="rmb-item-price">{item.price}</div>
@@ -257,6 +275,13 @@ const CSS = `
 .rmb-item-emoji {
   font-size: clamp(14px, 2.4cqh, 28px);
   line-height: 1;
+}
+.rmb-item-thumb {
+  width: clamp(22px, 3.6cqh, 40px);
+  height: clamp(22px, 3.6cqh, 40px);
+  object-fit: cover;
+  border-radius: clamp(3px, 0.5cqh, 6px);
+  flex-shrink: 0;
 }
 .rmb-item-price {
   font-family: 'Bebas Neue', sans-serif;
