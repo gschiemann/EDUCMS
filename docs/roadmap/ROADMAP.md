@@ -1,0 +1,1153 @@
+# VenueOS — Roadmap & Sprint Plan
+
+> **Extracted from CLAUDE.md 2026-05-30** (governance review #9 — split load-bearing rules from forward-looking roadmap). This is plan + context, NOT rules. The load-bearing rules, the Standard Audit Surface, the Agent Dispatch Protocol, and the For-AI-Assistants rules all stay in `CLAUDE.md`.
+
+---
+
+## Sprint Plan Context
+
+Zero-budget roadmap underway (6 sprints planned):
+
+**Sprint 1** (in progress)
+- Observability (Sentry free tier)
+- Accessibility (axe-core automated testing)
+- E2E (Playwright + CI pipeline)
+- CSRF protection
+- Zod at API boundary (request/response validation)
+- Feature flags (GrowthBook self-hosted)
+- Health check endpoints + probes
+- Secret hygiene review
+
+**Sprints 2–6**
+- SSO (OIDC/SAML)
+- SIS integration (Clever)
+- Template builder UI (drag-drop zones)
+- Touch/kiosk hardening
+- Emergency system expansion (SOS button, broadcastable text, media)
+- Polish (UX, performance, mobile)
+
+**Sprint 1.5 — Submit-for-review workflow (CONTRIBUTOR → ADMIN approval)**
+
+Partner asked (2026-04-25):
+> "they should be able to add assets, customize templates, then
+> create and schedule the playlist but when they do that they get
+> to pick one or multiple users that get notified its ready to go,
+> then the admin go to the reviewer tab, review everything, update
+> anything needed, and then approve it and it gets published"
+
+Today's state: `Asset.status` already has `PENDING_APPROVAL` →
+`APPROVED`. Playlists/Schedules have no equivalent. CONTRIBUTOR
+role exists. No notification system. No "Reviewer" UI tab.
+
+What v1 needs (this is a Sprint 1.5 build, NOT v2):
+
+- **`Submission` Prisma model** — bundles a draft set of changes for
+  one review:
+  ```
+  Submission {
+    id           String  @id @default(uuid())
+    tenantId     String
+    submittedById String  // user who submitted
+    notifyUserIds String[] // who to ping (admin user ids)
+    status       String  // PENDING | APPROVED | REJECTED
+    note         String? // submitter's "what is this for"
+    reviewerNote String? // admin feedback on reject/approve
+    assetIds     String[] // assets in this submission
+    playlistIds  String[]
+    scheduleIds  String[]
+    createdAt    DateTime
+    decidedAt    DateTime?
+    decidedById  String?
+  }
+  ```
+  Asset / Playlist / Schedule each grow an optional
+  `submissionId String?` reverse pointer for "what submission is
+  this part of."
+
+- **API endpoints** (all tenant-scoped, RBAC-checked):
+    - `POST /submissions` — CONTRIBUTOR role; creates a submission
+      bundling references to draft assets/playlists/schedules they
+      already created. Body includes `notifyUserIds` (must all be
+      DISTRICT_ADMIN or SCHOOL_ADMIN in the same tenant).
+    - `GET /submissions?status=PENDING` — DISTRICT_ADMIN /
+      SCHOOL_ADMIN; lists submissions targeting them.
+    - `GET /submissions/:id` — full payload with embedded
+      assets/playlists/schedules so the reviewer sees the full
+      context in one screen.
+    - `POST /submissions/:id/approve` — DISTRICT_ADMIN /
+      SCHOOL_ADMIN; flips Asset.status PENDING_APPROVAL→APPROVED,
+      Schedule.isActive false→true (if asked), playlist publish
+      flag if relevant. Writes immutable AuditLog entry.
+    - `POST /submissions/:id/reject` — same actors; writes
+      reviewerNote. CONTRIBUTOR sees the rejection on their
+      dashboard with the feedback inline.
+
+- **Notification delivery (Phase 2 of this sprint, ship-after-MVP):**
+    - In-app: Notification table + UnreadBadge on the toolbar bell
+      icon (already-modeled `Notification` row exists; just need to
+      wire the trigger).
+    - Email: a `pendingReviewSubmissions` daily-digest cron is
+      enough for v1. Real-time email is a Phase-3 polish.
+
+- **UI surface:**
+    - On Playlists page: a "Submit for review" button next to
+      Save. Opens a small modal: "Notify whom?" (multi-select of
+      admins in the tenant) + free-text note. Hits `POST /submissions`.
+    - New `/[schoolId]/reviews` page (tab in the dashboard nav for
+      DISTRICT_ADMIN / SCHOOL_ADMIN only): list of pending
+      submissions with submitter, date, # of items in the
+      submission. Click to drill in: full preview of each asset /
+      playlist with the existing in-product editors inline.
+      Approve / Reject buttons + a textarea for reviewerNote.
+    - On the CONTRIBUTOR dashboard: a "My submissions" widget
+      showing PENDING / REJECTED with admin feedback.
+
+- **RBAC:**
+    - CONTRIBUTOR can submit + view own submissions
+    - DISTRICT_ADMIN / SCHOOL_ADMIN can list, approve, reject
+    - SUPER_ADMIN can do everything across tenants
+
+- **Why Sprint 1.5 (between Sprint 1 and 2-6):** the partner's
+  pilot tenant has CONTRIBUTOR users who are already creating
+  content but cannot publish without admin approval. Today they're
+  emailing the admin asking "can you approve my asset?" — that's
+  brittle and doesn't scale. Sprint 1.5 closes that workflow gap.
+  Sized at ~1 week of focused work for the MVP (without
+  notifications); ~2 weeks with email + in-app delivery.
+
+- **Schema migration is purely additive** (new table + 3 nullable
+  columns on existing tables) so it's safe to ship to the live
+  pilot tenant without risk of data loss. Per memory:
+  "additive only" — and the new optional pointers don't change
+  existing query patterns.
+
+- **NOT in scope for Sprint 1.5:** version-control of in-flight
+  edits (the "submission" is a snapshot in time; mid-flight edits
+  to the same asset land directly in the live row). That's a
+  Sprint 9-ish polish.
+
+**Sprint 8 — Screen management at scale (map view + fleet ops)**
+
+Once a customer has 100+ screens across multiple buildings or
+locations, the flat list in `/screens` stops being useful. Sprint 8
+turns screen management into a real operations console.
+
+- **Geographic data on Screen.** Add `latitude` / `longitude` /
+  `address` columns. Auto-geocode `address` via OpenStreetMap
+  Nominatim (free, rate-limited; fall back to manual lat/lng entry).
+  When a screen first registers we capture nothing — admin sets the
+  location once when assigning to a building.
+- **Map view at `/[schoolId]/screens?view=map`.** Toggle between
+  list and map. Use **Leaflet + OpenStreetMap tiles** (free, no key)
+  with `leaflet.markercluster` for dense areas. Mapbox is the easy
+  upsell when funding lands; Leaflet stays default.
+- **Status-coded pins:**
+    - 🟢 ONLINE + emergency cache READY
+    - 🟡 ONLINE but emergency cache NONE (would fetch over network)
+    - 🟠 ONLINE but offline-flag (last manifest sync >5min)
+    - 🔴 OFFLINE (last_ping_at >2min)
+    - 🚨 EMERGENCY ACTIVE (huge red ring, blinking)
+    - ⚪ PENDING / unpaired
+- **Drill-down panel.** Click a pin → side panel slides in showing:
+  screen name + photo, last 5 cache reports, current playlist, last
+  ingest event, "Open player" / "Sync now" / "Trigger emergency on
+  this screen only" buttons.
+- **Cluster colors and counts.** A cluster shows the worst-status
+  pin's color so a district admin instantly sees "3 screens in
+  Lincoln HS are red." Cluster click zooms in.
+- **Filters in the toolbar.** By status, screen group, building,
+  emergency-cache readiness, last ping age, license tier (for
+  SUPER_ADMIN cross-tenant view).
+- **Heat-map mode for SUPER_ADMIN.** Across every tenant, density
+  by status. Useful for "where do we have outage clusters?" when
+  CDN/region issues hit.
+- **Geo-scoped emergency triggers.** Future: lasso-select an area
+  on the map → trigger emergency on every screen inside. Backed by
+  the same signed pub/sub used today, just with a geographic scope
+  filter applied server-side (and audit log entry includes the
+  bounding box for forensics).
+- **Bulk operations.** Multi-select pins → "assign to group X",
+  "unpair selected", "force sync", "swap playlist". Same actions
+  as the list view, but with map-driven multi-select.
+- **Mobile-friendly map.** District admins on a phone can pan/zoom
+  + tap a pin to drill in. Tailwind breakpoints already cover the
+  layout; just need touch-friendly hit targets on the cluster pins.
+- **Photo per screen.** Optional `Screen.photoUrl` so the drill-in
+  shows what the wall actually looks like. Operator uploads on first
+  install. Helps remote troubleshooting ("the lobby one near the
+  trophy case is red").
+
+Implementation order:
+  1. Add lat/lng/address columns + Nominatim geocoder service.
+  2. Map view route with Leaflet + clustering.
+  3. Status-coded pins driven off existing /screens endpoint payload
+     (we already report cache status + lastPingAt).
+  4. Drill-down panel reusing existing screen-detail components.
+  5. Geo-scoped emergency triggers (security review required).
+
+No vendor commitment; Leaflet + OSM is free and hits the mark for
+v1. Mapbox / Google Maps slot in cleanly later via a tile-source env
+var if a customer demands it.
+
+---
+
+**Sprint 8b — Indoor floor plans + per-screen emergency targeting**
+
+Sprint 8 covers the *outdoor* "where in the city" map view. Sprint 8b
+covers the *indoor* "where in the building" view AND the matching
+emergency model — instead of one tenant-wide alert, you trigger
+**different content on different screens at the same time** based on
+where the threat is and where each screen physically lives.
+
+This is the single biggest emergency-product differentiator from
+Yodeck / Rise Vision / OptiSigns, none of whom do per-screen scoped
+emergencies. Real customer scenarios:
+
+  - Active shooter localized to the gym → gym + adjacent hallway
+    screens show "lockdown immediately, do NOT move." Wing-A
+    classrooms show "lockdown, secure room." Cafeteria shows
+    "evacuate via north exit, NOT central corridor."
+  - Cafeteria flood → only cafeteria screens show the wet-floor
+    alert. Everything else stays on the regular schedule.
+  - Fire in the chemistry lab → lab + adjacent hall show evacuate;
+    everyone else gets "use east stairwell only."
+
+The existing per-tenant `emergencyStatus` model ships ONE alert to
+every screen. That's wrong for situations where the right action
+depends on where you physically are.
+
+- **Floor plan model.** New `FloorPlan` row:
+  `{ id, tenantId, name, buildingLabel, floorLabel, imageUrl,
+     widthPx, heightPx, defaultZoneIds, createdAt }`. The image is a
+  PNG/PDF the operator uploads (their architectural floor plan or a
+  hand-drawn sketch — both are fine). We store dimensions so the
+  drag-drop coordinates stay consistent.
+- **Screen positioning.** Add `Screen.floorPlanId`, `Screen.floorX`,
+  `Screen.floorY` (px coords on the floor plan image). Optional —
+  if a screen isn't placed yet it just doesn't render on the floor
+  plan view. Multi-floor schools get one FloorPlan per floor.
+- **Zones.** New `FloorZone` row: `{ id, floorPlanId, name, color,
+   shape (polygon JSON: array of {x,y} px coords) }`. Operator draws
+  named zones on the floor plan ("Wing A", "Cafeteria", "Gym").
+  Screens inside a zone polygon are auto-grouped for triggers.
+- **Per-screen emergency override.** New `ScreenEmergencyOverride`:
+  `{ id, screenId, type (LOCKDOWN/EVACUATE/WEATHER/ALL_CLEAR),
+    severity, mediaUrl, textBlob, expiresAt, triggeredByUserId,
+    triggeredAt, scopeNote }`. The player checks this BEFORE
+  falling back to the tenant-wide override. Per-screen wins.
+- **Pre-cached scoped emergency assets.** The Sprint 7 emergency
+  cache tier already pre-fetches all 4 panic-type playlists for the
+  tenant. Extend it: also pre-fetch the per-zone scoped variants
+  (e.g. "lockdown - hold position" vs "lockdown - evacuate now")
+  if any are configured. Disk impact is small — emergency content
+  is text + a few images, not video. Cache tier still capped at
+  the 1GB hard floor.
+- **Trigger UX — three modes the operator picks before sending:**
+    1. **Whole tenant** — same as today, identical content everywhere.
+    2. **Pick zones** — click 1+ zones on the floor plan, pick a
+       different override per zone (or one for all selected). The
+       remaining screens default to the global override or stay on
+       schedule based on operator choice.
+    3. **Pick individual screens** — multi-select via checkbox or
+       lasso on the floor plan. Per-screen overrides.
+  Below the picker: per-scope content selector ("This zone shows:
+  [Lockdown - hold]" vs "[Lockdown - evacuate]"). Hold-to-trigger
+  3-second confirm still applies — UX safeguard is unchanged.
+- **Pre-saved scenarios.** "Active shooter — gym" can be a saved
+  template that pre-selects the gym zone with "lockdown - evacuate"
+  and pre-selects all other zones with "lockdown - hold position."
+  Operator picks the scenario, hits trigger, all the per-zone
+  routing happens in one signed pub/sub burst. Critical for the
+  drill scenario where seconds matter.
+- **Pub/sub scoping** — the existing signed Redis channels are
+  already per-scope (`tenant:X` / `group:X` / `device:X`). We just
+  start broadcasting on `device:<screenId>` channels for per-screen
+  overrides. Player already subscribes to its own device channel.
+  Zero protocol change.
+- **Audit log entry.** Includes the floor plan id + the zone /
+  screen list + the scenario id used. Forensics: "at 9:42:03 on
+  2026-04-19, Operator X triggered lockdown on screens
+  [list of 14 screen ids in zones [Gym, Hall-2A, Hall-2B] using
+  scenario 'Active shooter - gym wing'." Every detail captured
+  immutably for incident review.
+- **Drill mode.** Same UX, but writes a separate `DrillRun` row +
+  audits as a drill, doesn't actually flip emergencyStatus on the
+  player. Lets safety officers practice the routing without taking
+  down screens. Required for SROs / state safety audits.
+- **Upload pipeline.** Floor plans are uploaded just like assets
+  (Supabase storage). PDF inputs auto-convert to PNG via the same
+  Sprint 10 pipeline (libreoffice or pdf-lib). Multiple-page PDFs
+  produce one FloorPlan per page, named "Building - Floor 1",
+  "Building - Floor 2", etc.
+- **Mobile triggering.** The mobile panic page (already shipped) gets
+  a "scope" picker — default "whole tenant" but operator can
+  pick a saved scenario from the dropdown. Zone/screen picking on a
+  small touchscreen is hard, so phone defaults to scenario-based
+  triggering; floor-plan-driven triggering stays on the desktop
+  console where the precision actually exists.
+- **Privacy / FERPA.** Floor plans are sensitive (operational
+  security). They're tenant-scoped and only DISTRICT/SCHOOL_ADMIN
+  can view + edit. Image storage URLs are signed and short-TTL
+  (Sprint 7 pattern). Never indexed, never shared cross-tenant.
+- **Why this is a moat.** Per-screen scoped emergency content is
+  what enterprise / multi-building schools want and no signage
+  product offers it. Combined with our existing signed pub/sub +
+  immutable audit log + emergency-cache tier (offline-first),
+  Sprint 8b makes EduCMS the only K-12 signage product that can
+  credibly claim "we route the right alert to the right room
+  in 200ms even if WiFi is partially down."
+
+Implementation order:
+  1. FloorPlan model + upload UI + image hosting (cheapest piece).
+  2. Drag-drop screen positioning on the floor plan view.
+  3. Zone drawing tool (polygon editor).
+  4. Per-screen emergency override schema + player rendering
+     priority (per-screen > per-tenant).
+  5. Trigger UX with zone / screen / scenario picker.
+  6. Pre-saved scenarios + drill mode.
+  7. Mobile panic page scenario picker.
+
+Builds on Sprint 7 (offline cache for per-zone variants) and shares
+the geographic map view with Sprint 8 (toggle: outdoor map ↔ indoor
+floor plan).
+
+---
+
+**Sprint 9 — Auto-branding (paste your school's URL, we match it)**
+
+Every district wants the CMS to "look like our school." Instead of
+making them fight a color picker, let them paste their existing
+website URL — we scrape it, extract the brand, and theme the whole
+admin UI (and default template palette) to match in under 30 seconds.
+Friction killer for the pilot-sign-up conversation.
+
+- **Tenant branding model.** Add `TenantBranding` row:
+  `{ tenantId, logoUrl, faviconUrl, displayName, palette JSON,
+     fontHeading, fontBody, sourceUrl, scrapedAt, confidence }`.
+  `palette` is a structured object (`primary`, `primaryHover`,
+  `accent`, `ink`, `surface`, `surfaceAlt`, `success`, `warn`,
+  `danger`) so themes stay consistent even if the scraper only
+  finds two colors — we derive shades.
+- **Scraper microservice.** New `POST /api/v1/branding/scrape`
+  accepting `{ url }`. Server-side:
+    1. Fetch the homepage with a reasonable UA + 10s timeout.
+    2. Parse with cheerio. Pull logo from
+       `link[rel="icon"]`, `link[rel="apple-touch-icon"]`, OG image,
+       and `<img>` matching `/logo|brand|mark/i` in class/alt/src —
+       rank by size + position (top-left wins).
+    3. Extract colors: read every `<link rel="stylesheet">`, parse
+       with `postcss` + `postcss-value-parser`, collect every hex /
+       rgb(a) / hsl(a) value. Score by frequency + proximity to
+       brand-sounding selectors (`nav`, `header`, `button`,
+       `.btn-primary`, CSS custom props named `--primary` / `--brand`).
+       Top two wins: primary + accent.
+    4. Font detection: `font-family` declarations on `body`,
+       `h1`-`h3`, buttons. Match against Google Fonts catalog;
+       fall back to a system-safe stack.
+    5. Favicon: follow the existing favicon link; re-host in our
+       Supabase bucket so we don't hotlink.
+    6. Return a `BrandingPreview` DTO with everything found plus
+       **confidence scores per field** so the UI can flag "we're
+       not sure about this — pick one" fields.
+- **Security (this is a scraping endpoint — it's dangerous):**
+    - SSRF defense: resolve the URL's hostname, reject private/
+      link-local/loopback IP ranges before fetching. Block
+      `file://`, `ftp://`, `data:`, and non-80/443 ports.
+    - Rate limit: 5 scrapes per tenant per hour. Hard cap at
+      50/hour global to contain abuse.
+    - Sandbox the fetch in a short-lived worker; don't execute
+      any returned JS. Cheerio is static parse only — no headless
+      browser in v1. (If a customer needs a JS-heavy SPA brand,
+      v2 gets Playwright with a locked-down Chrome container.)
+    - Max response size 5MB per fetch; max 30 stylesheet fetches
+      per URL; total 10s budget end-to-end.
+    - All scrape requests logged to `AuditLog` with tenantId +
+      userId + URL + outcome.
+- **Onboarding UX.** First-run wizard (also accessible from
+  `/settings/branding`):
+    1. "Paste your school's website" → URL input.
+    2. Call scrape, show **live preview** of the admin UI with the
+      detected palette in the right half of the screen while the
+      form sits on the left (real-time: clicking a different
+      primary color repaints immediately).
+    3. "Name your CMS" — free-text `displayName` (defaults to
+      `"${Tenant.name} Signage"` but can be anything the operator
+      wants).
+    4. Logo picker — shows the scraped logo + upload override.
+    5. **Adopt** → persist to `TenantBranding`, invalidate CSS-
+      variable cache.
+- **Theme application — CSS custom properties, not a rebuild.**
+  The admin layout root renders
+  `<style>:root{--brand-primary:#xxx; --brand-ink:#yyy; ...}</style>`
+  from the tenant's branding at request time (SSR). Every Tailwind
+  utility we care about (buttons, headers, sidebar active state)
+  already reads from `var(--brand-*)`. No per-tenant build, no
+  dynamic className generation — one CSS var file, swap values,
+  done. Sub-second theme switch.
+- **Template palette overrides.** When a tenant has branding,
+  default-config generators for new templates pull from the
+  palette instead of the hard-coded indigo. Existing templates
+  stay untouched (editor decides whether to re-theme or keep
+  what's there).
+- **Scope notes:**
+    - v1: admin UI + default template palettes only.
+    - v1.5: player chrome (loading spinner, emergency overlay
+      border) picks up the palette too.
+    - v2: Playwright-based scraper for SPA-heavy sites that hide
+      colors in dynamic styles.
+    - v3: allow multi-school districts to theme each school
+      differently (TenantBranding is already scoped per tenant so
+      the data model is already right).
+- **Why this matters.** In demos, "paste URL → CMS looks like
+  your school in 10 seconds" is the single highest-delight moment
+  for a superintendent who was expecting 2 days of config hell.
+  It's the gap between "nice product" and "this is us."
+
+No third-party commitment; everything is free (cheerio, postcss,
+Google Fonts CDN is free at scale). Ship behind a feature flag
+(`AUTO_BRANDING`) so the pilot districts that hate surprises can
+leave it off.
+
+---
+
+**Sprint 10 — PDF / PPTX / Slides import → auto-slideshow**
+
+Closes the #1 conversion objection from prospects: "I already make
+my menus / flyers / morning announcements in Canva (or PowerPoint
+/ Google Slides) — can I just publish that?" Yes. Drag the file in,
+we render it to a playlist of images automatically.
+
+- **Schema additions** to `Asset`:
+  - `processingStatus` (`PENDING | PROCESSING | READY | FAILED`)
+  - `parentAssetId` — original PDF/PPTX, so each rendered page
+    points back to its source for re-render at higher DPI later
+  - `pageNumber` — 1-indexed position inside the source doc
+  - `sourceFormat` — `PDF | PPTX | KEYNOTE | DOCX | OTHER`
+- **New endpoint** `POST /api/v1/assets/import-deck` accepting a
+  PDF or PPTX upload. Returns the parent Asset row immediately
+  with `PENDING` status; conversion runs as a background BullMQ job
+  on the existing Redis. UI polls or websocket-subscribes for
+  `READY`.
+- **Conversion pipeline (free / self-hosted):**
+  - PDF → PNG: `pdfjs-dist` (Mozilla's renderer, pure JS, no
+    binary). Render at 2× target screen height (4K screens get
+    4320px-wide images). 1-3 MB per page.
+  - PPTX → PDF → PNG: shell out to
+    `libreoffice --headless --convert-to pdf`, then PDF→PNG above.
+    LibreOffice handles ~95% of decks, fonts preserved if
+    embedded.
+  - Bound: max 100 pages per upload, 50MB file cap, 60s job
+    timeout per page. Reject files > caps with a friendly
+    "split into smaller decks" error.
+- **Auto-create Playlist** on completion. Named after the source
+  file (`Menu Week of April 19`). Default per-slide duration 8s,
+  override per item afterward. User drops the playlist on a screen
+  / schedule like any other.
+- **Asset-library UI:**
+  - "Import deck" tile next to "Upload" — accepts .pdf, .pptx,
+    .ppt, .key (Keynote falls back to "open in Keynote, export
+    PDF" message — Apple doesn't license a converter we can self-
+    host).
+  - Per-page thumbnails grouped under the parent asset (collapsible
+    tree row).
+  - Per-page "use as image" lets them grab one slide for a single
+    IMAGE zone instead of the whole playlist.
+- **What customers get for free** because Playlist is the output:
+  audit log, role gates, schedules, per-slide duration tuning,
+  reorder/delete, drag onto any screen.
+- **Honest limitations** (document in the import dialog so support
+  tickets don't pile up):
+  - Slide animations + transitions flatten to stills.
+  - Embedded video is dropped (workaround: separate VIDEO widget
+    on a different zone).
+  - Live edits don't sync — re-export and re-upload (Sprint 11
+    Canva Connect fixes that).
+  - Hyperlinks flatten.
+- **Why now (post-launch).** Yodeck, Rise Vision, OptiSigns, and
+  ScreenCloud all ship this as table stakes for paid signage.
+  Customers expect it; the absence is a real objection in pilot
+  conversations. Defer for launch only because it's not life-
+  safety; ship in Sprint 10 as the first big "buyer convenience"
+  feature.
+
+---
+
+**Sprint 11 — Direct Canva Connect (and Slides / PowerPoint Online)**
+
+Builds on Sprint 10. Same UX outcome (Canva design appears on the
+screen) but via OAuth so edits in Canva auto-sync — no re-export
+ritual. Same architectural pattern works for Google Slides and
+Microsoft PowerPoint Online; ship Canva first because that's what
+prospects ask for by name.
+
+- **OAuth flow:** Canva
+  [Connect API](https://www.canva.dev/docs/connect/) — register
+  EduCMS as a Canva integration, redirect URI on our domain,
+  store the user's refresh token encrypted in a new
+  `IntegrationToken` table scoped per-user-per-tenant.
+- **"Connect Canva" button** in `/settings/integrations`. After
+  consent, the asset library gains an "Import from Canva" tile.
+- **Picker UX:** modal lists the user's Canva designs (paginated
+  via Canva's `/v1/designs` endpoint), with thumbnails. Pick one →
+  server fetches the export (PNG or PDF, our choice — PDF for
+  multi-page decks, PNG for single designs) → routes through the
+  same Sprint 10 conversion pipeline → produces an Asset (or a
+  Playlist for multi-page).
+- **Auto-resync:** opt-in per imported design. A nightly cron
+  re-fetches the export; if Canva's `updated_at` is newer than
+  our last sync, re-render and update the Asset in-place. Player
+  cache invalidates by SHA mismatch (already covered by Sprint 7
+  offline-first).
+- **Resync cadence:** default daily, opt-in to hourly for high-
+  change designs (cafeteria menus). Hard cap at 4× per hour to
+  respect Canva rate limits.
+- **Sister integrations** (same pattern, different OAuth scope):
+  - **Google Slides** — Drive API + Slides API. Export as PDF.
+  - **PowerPoint Online** — Microsoft Graph API.
+    `/me/drive/items/{id}/content?format=pdf`.
+  - **Figma** — REST API. Designers love this for kiosk hero
+    art that gets iterated weekly.
+- **Security review (this is OAuth, treat carefully):**
+  - Refresh tokens encrypted at rest with `DEVICE_SECRET_KEY`-
+    style envelope encryption.
+  - Per-tenant feature flag `EXTERNAL_INTEGRATIONS_ENABLED`
+    (district admins can disable for their schools).
+  - Audit log entry on every connect / disconnect / sync.
+  - Disconnect button purges the refresh token immediately.
+- **Why a separate sprint from Sprint 10:** Sprint 10 is "drag a
+  file in" — zero new external dependencies, ships in days,
+  closes the objection. Sprint 11 is "live two-way connection
+  with a third-party service" — needs OAuth security review,
+  rate-limit handling, and ongoing maintenance as Canva's API
+  evolves. Don't entangle them; Sprint 10 stands alone and Sprint
+  11 is a delight upgrade on top.
+
+---
+
+**Sprint 7 — Offline-first player (download-and-play architecture)**
+
+The player MUST download all content locally and play from local cache.
+Network is the control plane; local disk is the playback plane. This is
+non-negotiable for life-safety: an emergency trigger is a tiny WS
+message that flips a switch, not a content download.
+
+- **Two cache tiers:**
+  - `playlist-assets` — all assets in active playlists. LRU eviction
+    when manifest no longer references them.
+  - `emergency-assets` 🛡️ — every asset across all 4 panic-type
+    playlists per Tenant.emergency*PlaylistId. **NEVER evicted.**
+    Refreshed only when the tenant's emergency config changes.
+- **Implementation order:**
+  1. Service Worker + Cache API in apps/web/public/sw-player.js.
+     Works in both browser and Android System WebView 60+ (Android
+     7+ covered). Single codebase.
+  2. New endpoint `GET /api/v1/screens/:id/emergency-assets` returns
+     all 4 panic playlists' asset URLs + SHA hashes.
+  3. Player postMessages manifest + emergency list to SW on every
+     successful sync; SW pre-fetches into the right tier.
+  4. SHA integrity check; SW re-downloads if hash mismatches.
+  5. "Emergency content cached ✓ N assets / Mmb" indicator in info
+     overlay.
+  6. Admin sanity check in dashboard: per-screen "all emergency
+     assets cached" status.
+  7. (Later) Native Android download + embedded localhost server in
+     the APK as a hardening layer for sub-second cold-boot.
+
+- **Disk budget per screen — competitive landscape (researched
+  2026-04-17):**
+  | Vendor | Per-screen storage |
+  |---|---|
+  | Yodeck (Pi 4) | 8GB min / 16GB rec / ~24GB usable on 32GB card |
+  | Yodeck (Pi 5) | 16GB min / 32GB rec |
+  | Xibo Android | No hard cap; aggressively evicts when device free <10% |
+  | OptiSigns + BrightSign | No documented per-device cache cap |
+  | Rise Vision | Not documented |
+  Most competitors don't expose a hard cap; they evict on free-space
+  pressure. Recommendation:
+  - Default soft cap: **5GB** per screen (admin-configurable
+    1GB-50GB).
+  - Reserve **1GB hard floor** for `emergency-assets` tier (never
+    counts against the soft cap, never evicted).
+  - Surface usage in dashboard: "Screen X: 3.2 GB used / 5 GB cap
+    (emergency: 240 MB protected)".
+  - Warn admin when emergency assets exceed 80% of the reserved
+    floor so they tune media size before it overflows.
+- **Failure modes covered:** WiFi pulled mid-emergency; player power
+  cycle mid-emergency; CDN outage; new emergency asset uploaded but
+  player offline (asset stays uncached, server logs warning, falls
+  back to text-only emergency message which is always pre-cached as
+  default).
+
+- **USB sneakernet ingestion (zero-network deployment).** The player
+  must run completely offline if the customer never gives it
+  internet. Use cases: rural districts with no WiFi, schools on
+  isolated VLANs, content updates during a network outage, initial
+  provisioning before WiFi setup, safety officer pushing lockdown
+  drill content by hand.
+
+  - **Hardware path:** Android 7+ supports USB OTG host mode. APK
+    registers `USB_DEVICE_ATTACHED` intent filter; on attach,
+    scans the drive for the EduCMS manifest path.
+  - **Expected USB layout:**
+    ```
+    /edu-cms-content/
+      manifest.json          ← signed, declares assets + tenant + version
+      manifest.sig           ← HMAC-SHA256 signature
+      assets/
+        <sha256>.mp4
+        <sha256>.jpg
+        ...
+      emergency/
+        <sha256>.mp4         ← lockdown / evacuate / weather / all-clear media
+        ...
+    ```
+  - **Security model (this is critical — USB is an attack vector):**
+    1. Manifest must be signed with tenant-specific HMAC key
+       generated at pairing time. Tampered or unsigned drives
+       are rejected with an audit log entry, no content loaded.
+    2. Asset filenames are SHA-256 of content; player verifies
+       hash before accepting any file into local cache.
+    3. Operator confirmation prompt on first ingest from a new
+       USB device fingerprint ("Update content from USB stick?
+       [device serial X, Y assets]") — kiosk-mode dialog, requires
+       admin PIN.
+    4. **Emergency asset updates from USB require escalated
+       approval:** confirmation prompt warns "This will update
+       emergency content shown during lockdowns. Continue?"
+       and writes to immutable AuditLog with `source: USB`,
+       device serial, file hashes, operator user id.
+    5. Per-tenant feature flag: `usbIngestEnabled` (default false
+       for new tenants; admins must opt in). Disabled for
+       restaurant/retail tenants by default — they have WiFi.
+    6. Drive is read-only mounted; player never writes back to USB.
+  - **Workflow for fully offline deployment:**
+    1. Admin generates a signed bundle from dashboard (button:
+       "Export to USB"), downloads .zip with manifest + assets.
+    2. Operator copies to USB stick, walks to screen.
+    3. Player auto-detects on plug-in, prompts for admin PIN,
+       ingests, swaps to new content within seconds.
+    4. Audit log entry posted to server when next online.
+  - **Bonus:** same export bundle format works for "preload" during
+    initial APK provisioning — sysadmins can ship a USB with a
+    pre-paired template before any WiFi is configured.
+
+---
+
+**Version 2 — Safety-Centric Platform Pivot (Sprint 12+)**
+
+Strategic frame: stop selling "another digital signage CMS with
+alerts" — become a **school-and-district incident coordination
+platform that happens to own the screens natively**. The signage
+fleet becomes one endpoint of an orchestration layer that also
+handles incident workflow, accountability, responder context, and
+multi-modal delivery. Pricing shifts from $/screen to $/school +
+Command tier + Responder Bridge enterprise tier — collapses the
+"signage + separate safety tool" buying motion into one product
+that still comes in below the stitched-together alternative.
+
+**Core architectural correction (the load-bearing change):** keep
+the existing cloud stack as **system-of-record** (admin UX,
+tenancy, storage, reporting). Add a **campus-local edge service**
+as the **system-of-action** during outages or urgent triggers. WAN
+down does not mean alerts stop. This single change is what shifts
+us from "good signage app" toward "credible safety platform."
+
+### 7 core workstreams
+
+**WS-1 · Edge alert fabric.** Campus-local alert broker (simplest
+form: Android player APK becomes dual-role — one player on each
+LAN is "leader" via leader-elect, brokers alerts when WAN is
+down). Signed alert envelopes, player heartbeat service, local
+cache of takeover layouts, LAN trigger path, cloud-to-edge sync,
+dry-contact + webhook adapter for fire/access/door systems.
+**Acceptance:** A campus can trigger and display an alert with WAN
+down; online players return proof-of-display; normal content
+resumes correctly after all-clear.
+
+**WS-2 · Incident command engine.** Replaces the current single
+`Tenant.emergencyStatus` flag with a proper FSM:
+`OPEN → ACK → ACTIVE → RECOVERY → CLEARED`. Per-incident-type
+playbooks (lockdown / shelter / evacuate / medical / facilities /
+district advisory), severity levels, zone routing, role-based
+tasks, escalation paths, structured all-clear and recovery stages.
+Every transition immutably AuditLog'd.
+**Acceptance:** Admins can define response playbooks per incident
+type; an incident has a state, an owner, and required next steps.
+
+**WS-3 · Multi-modal endpoint layer.** Screen takeover ✓ already.
+Add: desktop takeover (Windows/Mac agent or browser tab claim),
+mobile push (APNs/FCM), email (Sendgrid), SMS + voice (Twilio),
+PA / IP-speaker hooks (Valcom / Atlas / SingleWire InformaCast
+Fusion — partner-gated, deferred), TTS, multilingual templates,
+public-view vs staff-view rendering split.
+**Acceptance:** One incident sends differentiated outputs to
+students, staff, admins, and responders from a single trigger.
+
+**WS-4 · Responder bridge — Raptor / RapidSOS connector.** We do
+NOT build 911 origination ourselves (liability + ECC alignment
+burden). Partner with **Raptor** (preferred — already covers PA /
+door-lock / drill management) and / or **RapidSOS** (open
+integration program) as the 911/ECC bridge. We build the facility
+profile (floor plans → covered by Sprint 8b!), aerial map, entry
+instructions, camera RTSP/HLS share-links, door/lock state, site
+contacts, event timeline, secure one-time responder link. Then a
+thin connector exports our incident packet into Raptor/RapidSOS
+format.
+**Acceptance:** First responders open one URL and see site
+context, incident type, location, live updates. **Commercial
+dependency: needs partnership pitch BEFORE the integration code.**
+
+**WS-5 · Accountability + reunification.** Teacher / staff roll
+call (mobile flow: "mark room safe / help / missing"), room
+rosters (fed by Clever SIS — Sprint 2), guardian verification +
+digital signatures, dismissal/release chain, after-action exports.
+Highest single net-new build but highest competitive moat — no
+signage product offers this and the safety-only products (Raptor,
+CrisisGo, Singlewire) all charge separately for it.
+**Acceptance:** Incident commander sees who is accounted for,
+which rooms still need response, and who has been released to
+whom — with auditable timestamps + signatures.
+
+**WS-6 · District command center.** Cross-school dashboard,
+inherited policies (district publishes playbook → schools inherit
+or override), school-level overrides, geofenced district alerts,
+mutual-aid views, district notices, policy versioning. Builds on
+the existing tenant hierarchy.
+**Acceptance:** District admin publishes once and enforces or
+customizes across every school without duplicating content / rules.
+
+**WS-7 · Open integration platform.** Inbound CAP (OASIS standard
+for all-hazard alerts) and IPAWS consumption (FEMA national
+alerting), RSS/Atom feeds, REST + webhook SDK, provider adapter
+framework, test simulator, sandbox tenant, schema docs, policy
+APIs. **Note:** outbound public IPAWS origination is OUT of scope
+unless we deliberately become a FEMA-authorized origination
+software provider — separate authorization model entirely.
+**Acceptance:** A new partner integrates without touching core
+orchestration code; customers can simulate incidents end-to-end
+before go-live.
+
+### 3 above-and-beyond bets (parity → leadership)
+
+**B-1 · Dynamic route intelligence.** Per-screen context-aware
+emergency rendering. Instead of one generic "lockdown" card on
+every display: hallway north of the incident shows "AVOID NORTH
+STAIRWELL," adjacent wings show "SHELTER IN CURRENT ROOM,"
+lobbies show "DO NOT ENTER," reunification screens pivot to
+parent instructions after all-clear. Sprint 8b indoor floor
+plans + per-screen overrides lays the data foundation; this is
+the routing logic on top. **Crown jewel — nobody else does this.**
+
+**B-2 · Proof + replay.** Capture which screens were online,
+what each rendered, when each acknowledgment arrived, what
+playbook step was completed, what responder packet was opened.
+Auto-generate incident replay + after-action PDF. AuditLog
+already captures most of this — just needs the UI + export.
+Cheap for us, expensive for competitors to retrofit.
+
+**B-3 · Controlled AI assistance.** Template-fill only. Summarize
+incoming context. Draft staff + parent follow-ups from verified
+fields. Generate after-action reports from logged data.
+**Never** let an LLM invent evacuation language, responder
+actions, or legal/medical instructions in real time. Scope
+narrowly; feature-flagged.
+
+### Pricing tiers (collapses 2-3 vendor purchases into one)
+
+| Tier | Posture | Includes | Why |
+|---|---|---|---|
+| **CMS Core** | $5–7/screen/mo, self-serve | Content, playlists, templates, orientation, health, standard takeover alerts | Undercuts ScreenCloud/Carousel materially |
+| **School Unlimited** | $1,499–1,999/school/yr | Unlimited displays, district/school tenancy, alert authoring, CAP/custom provider ingest, all-clear handling, district policies | Sits near Rise Enterprise but adds native safety value |
+| **Command** | +$1,000–2,000/school/yr | Incident workflows, accountability, drill reporting, reunification-lite, responder packet, staff views | Undercuts the "signage + separate safety tool" combo |
+| **District Ops** | Quote / annual contract | Cross-school command center, mutual-aid mesh, SSO, audit exports, premium support, policy governance | Districts buy predictability + governance |
+| **Responder Bridge** | Assisted sale only | 911/ECC integrations, structured responder data, testing support, partner onboarding | Real support burden = real margin |
+
+**Bonus tier — Free Pilot.** 1 school / ≤5 screens / 90 days /
+full Command features. Superintendents won't write a PO for
+software they haven't seen run in their hallways. Free pilot →
+Command upgrade is the funnel.
+
+### What we deliberately do NOT build (liability + market structure)
+
+- **Direct 911 call origination.** Raptor/RapidSOS handle this.
+  Building it ourselves means owning ECC alignment, configuration
+  testing, and policy workflow with every PSAP — see RapidSOS's
+  own docs warning that silent alarms only work when school + ECC
+  pre-align on testing/config/workflow.
+- **Outbound public IPAWS origination.** Requires FEMA
+  authorization as an alert-origination software provider.
+  Inbound IPAWS consumption is fine; origination is a different
+  authorization tier we'd take on deliberately or not at all.
+- **PA / IP-speaker proprietary protocols** (Valcom, Atlas,
+  SingleWire InformaCast Fusion). Defer; let Raptor cover.
+- **Weapon / anomaly detection** (gunshot detection, AI camera
+  scanning). Vendor-partner if customers ask.
+- **Anonymous tipline.** CrisisGo's territory; later adjacency.
+
+### Phase plan (no shortcuts — Phase 1 must precede everything)
+
+**Phase 1 — Foundation (must precede everything; freeze schemas
+before code).** Event-schema freeze (CAP v1.2-compatible from day
+one so CAP inbound is free later — incident type, severity,
+zones, signed envelope, proof-of-display ACK shape). Campus edge
+broker (extend offline-first work; player APK becomes dual-role
+leader-elect — no new hardware). Incident state machine
+(`Tenant.emergencyStatus` → proper FSM). Proof-of-display (extend
+existing heartbeat to include `lastRenderedIncidentId` +
+timestamp; we get incident replay data for free).
+**After Phase 1, we ship as a "credible edge-first emergency
+platform" — already above all cloud-only signage CMS competitors.**
+
+**Phase 2 — Differentiation (responder + accountability).**
+Facility profile (floor plans, contacts, cameras — overlaps
+Sprint 8b). Raptor SOS integration (commercial pitch first, then
+adapter code). Accountability — roll call (largest single UI
+build, highest customer value). Reunification-lite (guardian
+verification + release-chain audit; pairs with Clever SIS).
+
+**Phase 3 — District + openness.** District command center
+(formalize policy inheritance on existing tenant hierarchy).
+CAP/IPAWS inbound. Webhook + provider SDK.
+
+**Phase 4 — Leadership.** Dynamic route intelligence (B-1).
+Proof + replay (B-2). Controlled AI assistance (B-3).
+
+### Open questions that gate Phase 2
+
+1. **Green-light on pitching Raptor.** Need to draft partnership
+   email + one-pager spec before code. RapidSOS as fallback if
+   Raptor declines (more open integration program; same adapter
+   shape on our side).
+2. **Phase 1 ordering confirmation.** Schema freeze before
+   anything else is non-negotiable — parallelizing too early
+   without frozen event/policy schemas produces a lot of
+   convincing code that doesn't converge.
+3. **Accountability scope.** Full SIS-driven reunification ≈ 2-3
+   months. Roll-call only first ≈ 3 weeks. Lite-then-layer or
+   hold until full?
+4. **Free pilot policy.** 1 school / ≤5 screens / 90 days
+   confirmed?
+
+---
+
+**Future / multi-industry expansion (Sprint 7+, post-funding)**
+
+- **API integrations + real-time data feeds.** Generic "data source"
+  primitive (REST / GraphQL / webhook / DB / Google Sheet) that
+  widgets subscribe to by id. Updates flow through the existing
+  signed Redis pub/sub → emergency-grade fan-out to player fleet.
+  K-12 examples: lunch menus, district calendars, athletic
+  scoreboards (MaxPreps), bus tracker, weather/AQI. Beyond K-12 the
+  same primitive sells to:
+    - Restaurants — POS pushes price/availability to menu boards
+      across 100+ stores instantly (Square / Toast / Clover webhooks).
+    - Retail — inventory + promo signage updates on item changes.
+    - Healthcare — wait times, room status from EHR.
+    - Corporate lobbies — Workday / SharePoint event feeds.
+
+- **Licensing + billing (per-registered-player).** Billing meter is
+  the count of registered, paired Screens per Tenant. Architecture
+  needs:
+    - `License` model: per-tenant, with `seatLimit`, `currentSeats`,
+      `tier` (Pilot / Standard / Enterprise / industry-specific),
+      `billingMode` (CARD / INVOICE / PURCHASE_ORDER), `expiresAt`.
+    - Enforcement: `ScreenService.register()` checks
+      `currentSeats < seatLimit`; over-quota returns
+      `LICENSE_EXHAUSTED` with a friendly UX prompt to add seats.
+    - **In-app self-serve checkout** for credit-card customers
+      (Stripe Billing — usage-based subscription per active screen,
+      auto-prorate on add/remove).
+    - **Invoice / PO flow** for districts and large enterprises
+      (generate quote → mark paid → manual seat top-up by
+      `SUPER_ADMIN`). Stripe Invoicing covers this too without
+      needing a second processor.
+    - **Owner control panel** at `/super` (SUPER_ADMIN only) to
+      create tenants, apply licenses, comp seats, suspend, refund,
+      view MRR per industry vertical, export AR aging.
+    - **Industry verticals as fully separate accounts.** Tenants
+      already isolate data; a `Tenant.vertical` field
+      (`K12 | RESTAURANT | RETAIL | HEALTHCARE | CORPORATE`) and
+      vertical-aware default templates / widget palette / pricing
+      tier let one codebase serve multiple markets without
+      cross-contamination.
+    - **Per-vertical SKUs** so K-12 districts get FERPA add-on,
+      restaurants get POS-integration add-on, etc.
+    - **Compliance:** PCI-SAQ-A by keeping all card data in the
+      Stripe-hosted iframe; never touch PAN.
+    - **Audit hooks:** every license change writes to existing
+      `AuditLog` (immutable).
+  Treat as the first paid sprint once funding lands — without
+  metering, the business doesn't bill.
+
+No commercial vendors until we have funding. All free/open-source or self-hosted.
+
+---
+
+**Sprint 13 — VenueOS Sports (the all-in-one live-event venue system)**
+
+Strategic frame: VenueOS becomes the premiere all-in-one sports-venue
+system — real-time scoreboards, perimeter ribbon/fascia banners,
+celebration animation triggers, and game-day show control — scaling
+from a K-12 gym to a pro stadium. Ambition: #1 in the industry from
+K-12 sports → college → every major professional sport.
+
+This is NOT a new product built from scratch. It is a sports-mode
+layer pointed at an already-built real-time signage engine. The hard,
+expensive parts of a sports system are things VenueOS already ships
+(see "what we already have" below). Phases 1-2 are mostly assembly.
+
+Research basis (2026-05-16, two deep web-research passes — market +
+technical architecture). Key sources, recorded so the research is
+durable: Daktronics (Show Control / All Sport), ANC LiveSync,
+ScoreVision (HS-focused, software-first, sponsorship-subsidized),
+Nevco / Electro-Mech, Ross XPression Tessera (virtual-canvas LED),
+DELTAcast DELTA-stadium, Sportzcast / Scorebird (console tap-off),
+GameChanger, Genius Sports / Sportradar (league push feeds, 20-30s
+lag), NovaStar / Brompton / Megapixel (LED processors).
+
+Market reality: the industry is bifurcated. Pro/college is locked-up
+six-to-eight-figure capex (Daktronics, ANC) — a *later* play, not the
+beachhead. The **high-school + rec segment is the opening**, and
+ScoreVision has validated the software-first, sponsorship-subsidized
+playbook there — but ScoreVision still chains its software to its own
+hardware. VenueOS's structural edge over every incumbent: a
+hardware-agnostic Android player + template builder + signed
+real-time pub/sub it ALREADY ships.
+
+### What we already have (the unfair advantage)
+
+- **Signed WebSocket pub/sub** (built for emergency alerts) — instant
+  fleet-wide content takeover with HTTP-polling fallback and
+  per-screen scoping (Sprint 8b). A celebration cue IS an emergency
+  trigger; the fan-out engine already exists.
+- **Runs on NovaStar Taurus** — the player can BE the LED controller,
+  skipping the separate six-figure processor on smaller installs.
+- **Mobile hold-to-trigger panic page** — the exact control-surface
+  pattern for phone-driven game control ("Touchdown" vs "Lockdown").
+- **Template builder + brand shim** — scoreboard layouts and
+  celebration animations are templates; the brand shim auto-recolors
+  every animation to the school's colors.
+- **Immutable AuditLog** — becomes sponsor proof-of-play reporting
+  for free.
+- **Custom resolutions + EXTERNAL_HTML widget** — already in place.
+
+### 1. Hardware topology
+
+**Standard sports-vertical player: the Goodview EP6N** (eval +
+spec sheet in `docs/EP6N_HARDWARE_EVAL.md`). As of 2026-05-27 this
+is the canonical hardware target for every new sports-vertical
+install. It supersedes the ECBox3576 — same RK3576 SoC family +
+Android 14 so the Player APK ships unchanged, but adds the I/O ring
+that closes the integration gaps we've been working around: **dual
+native RS232**, **GPIO IN×2 / OUT×2**, **HDMI IN** (broadcast
+capture), **RJ45 in + out passthrough**, **12 V aux out**, 6 TOPS
+NPU, all-aluminum passive cooling, 24/7 duty rating. Every new
+sports quote, every new install playbook, every customer-facing
+"recommended hardware" spec should lead with EP6N. The ECBox3576
+stays in the catalog for legacy installs + as the budget option;
+the Taurus stays for LED-controller-native deployments.
+
+The EP6N also unlocks features the older boxes can't run:
+  - **GPIO-wired hardware panic button** → emergency trigger.
+  - **GPIO IN dry-contact** → fire-alarm panel integration.
+  - **GPIO OUT relay** → lobby status lamp, audible horn during
+    emergency states.
+  - **HDMI IN broadcast capture** → in-box streaming-overlay path
+    for NFHS Network / Hudl (collapses the $180–400 USB capture
+    card BOM line).
+  - **RS232 #1 → CTS Gen 6 + RS232 #2 → Stream Deck** on one box.
+  - **6 TOPS NPU** → on-device alt-text, auto-celebration via
+    crowd-audio classifier.
+
+Two deployment modes, both still supported as add-ons:
+  - **Taurus-native** — player runs ON the NovaStar Taurus LED
+    controller; player → LED, no separate processor. The cost-killer
+    for HS gyms with existing Taurus. Note Chromium 83 ceiling
+    (CLAUDE.md rule #10 — no `inset` shorthand, no flex `gap`).
+  - **Source mode** — player (EP6N preferred) outputs HDMI/SDI at
+    the wall's EXACT pixel resolution into a third-party processor
+    (NovaStar / Brompton / Megapixel) for big college/pro walls.
+
+A venue is a set of **surfaces**, each a screen or screen-group with
+a role: `VIDEO_BOARD`, `RIBBON`, `AUX` (end-zone/corner), `CONCOURSE`,
+`LOCKER_ROOM`, `STREAM` (broadcast overlay). Cues target roles, not
+devices.
+
+The `Screen.hardwareModel` column (Prisma, additive) carries the
+specific hardware ID — `goodview-ep6n`, `goodview-ecbox3576`,
+`novastar-taurus`, `pi5`, `generic-android`, `web`. The dashboard's
+per-screen settings panel surfaces hardware-specific I/O config
+ONLY for models that support it (the EP6N gets a "Wiring" subpanel
+with GPIO assignment + dual-RS232 routing + HDMI-IN source select;
+the ECBox only gets the single-RS232 routing; the Taurus / Pi /
+generic get neither).
+
+### 2. The Sport Engine — the abstraction that handles EVERY sport
+
+Never hardcode football vs basketball. A declarative `SportDefinition`
+drives the whole scoreboard + cue system:
+  - `clock`: countdown | countup | none
+  - `segments`: { name (Quarter/Period/Inning/Set/Half), count,
+    overtimeRule }
+  - `score`: { unit (points/runs/goals), increments[] }
+  - `statFields[]`: sport-specific (football down/distance/ball-on;
+    baseball balls/strikes/outs/baserunners; basketball team
+    fouls/bonus/possession arrow; volleyball sets/serve; …)
+  - `celebrations[]`: trigger events (TD, field goal, 3-pointer,
+    home run, goal, pin, ace, record, …)
+  - `mode`: HEAD_TO_HEAD | LEADERBOARD (meet sports are leaderboards,
+    not head-to-head — the one paradigm shift)
+
+Sports coverage, grouped by clock model:
+  - **Continuous-clock invasion** — football, basketball, soccer,
+    hockey, lacrosse, water polo, field hockey, rugby, futsal,
+    team handball.
+  - **Inning/turn** — baseball, softball, cricket.
+  - **Set/rally** — volleyball, tennis, badminton, pickleball,
+    table tennis.
+  - **Bout/match** — wrestling, boxing, MMA, fencing.
+  - **Meet/leaderboard** — track & field, swimming/diving, cross
+    country, gymnastics, cheer, golf, rowing.
+  - **E-sports** — maps/rounds (growing fast in HS).
+
+Ship ~6 flagship sports first (football, basketball, baseball/
+softball, soccer, volleyball, wrestling — ~90% of HS athletics);
+the schema makes the rest mostly config.
+
+### 3. Scoreboard builder
+
+The template builder gains a scoreboard widget set bound to the
+active `SportDefinition`: `ClockWidget`, `ScoreWidget`,
+`SegmentWidget`, sport-bound `StatWidget`s. Operator picks a sport →
+correct scoreboard template → recolors to school colors via the
+brand shim. Custom resolution = the actual board size.
+
+### 4. The Cue & Celebration engine
+
+A `CueDeck` per sport — a launchpad of cues:
+`Cue { name, animation, audio, targetSurfaces[], durationMs,
+autoRevert, sponsorSlot? }`. Trigger sources, all fanned out through
+the signed pub/sub:
+  - **Phone** — panic-page pattern: score ±, clock, celebration
+    buttons; hold-to-trigger on the big ones.
+  - **Launchpad UI** — a tablet grid.
+  - **Elgato Stream Deck** — support it as the physical cue panel.
+    $150 hardware vs a $3K Daktronics console.
+  - **AUTO** — a score feed reporting 14→21 fires the touchdown cue
+    itself.
+  - **Keyboard hotkeys** for the laptop operator.
+Fan-out is per-surface (full animation on the video board,
+score-flash on the ribbon, corner banner on concourse), auto-reverts
+after N seconds. Content-level sync lands every surface within
+~150ms — plenty for HS; hardware genlock stays a pro-tier add-on.
+Celebration animations are `EXTERNAL_HTML` templates → auto-rebrand
+via the shim. Pre-cache them like emergency assets so game
+presentation survives stadium WiFi failure.
+
+### 5. Surfaces — ribbon / video board / concourse
+
+A `RIBBON` surface uses a **virtual-canvas + pixel-map**: the operator
+describes the physical panel chain ("60 panels, 192×192, straight/
+curved run") → VenueOS computes the off-spec canvas (e.g.
+11520×192) and slices content across panels so a scroll wraps the
+bowl seamlessly. Reuses custom-resolution support; the pixel-map is
+the one net-new piece. Ribbon-native widgets: infinite-scroll
+sponsor banner, score-follow, rotation.
+
+### 6. Score-data ingestion — the "two clocks" rule
+
+Three tiers, shipped in order:
+  1. **Manual phone entry** (MVP — enough for most HS).
+  2. **Console tap-off** — a small box (Sportzcast/Scorebird-style,
+     or our own serial reader) reads the existing Daktronics All
+     Sport console and publishes to our cloud. THE LIVE GAME CLOCK
+     MUST COME FROM HERE — local and fast.
+  3. **League feeds** — Genius Sports / Sportradar for stats overlays
+     + college. These lag 20-30s. RULE: clock from local console,
+     stats from feed — never mix them.
+A `ScoreSource` abstraction makes all three interchangeable.
+
+### 7. Sponsorship — a first-class revenue system
+
+Sponsorship is the BUYING TRIGGER, not a feature (ScoreVision schools
+clear $50-130K/yr; that revenue is why they buy). Build it in from
+day one:
+  - **Ad inventory units**: ribbon rotations, full-board between-play,
+    co-branded celebration ("this touchdown brought to you by …"),
+    persistent scorebug bug, concourse loops.
+  - **Scheduling**: dayparting, frequency caps, flight dates,
+    makegoods.
+  - **Proof-of-play**: auto-generated from the immutable AuditLog —
+    "your logo: 14 touchdowns, ~47K impressions, 92% delivered."
+  - **Model**: school sells local ads + keeps the money; VenueOS
+    charges SaaS + optional rev-share. Later: a cross-district
+    sponsor marketplace.
+
+### 8. Game-day operations
+
+A `Game` object with a state machine (`SCHEDULED → PRE_GAME → LIVE →
+HALFTIME → FINAL`). A **rundown / game script** — a timeline of
+sponsor reads, hype videos, promos tied to stoppages. Operator
+tablet shows three panes: scoreboard control + cue launchpad +
+rundown. Two-person mode (scorekeeper + show caller) or
+solo-volunteer mode.
+
+### 9. Go-to-market — K-12 → college → pro
+
+  - **Beachhead: K-12 athletics.** Every school VenueOS already sells
+    has a gym and a field; the athletic director is down the hall
+    from the principal who already signed. A warm upsell, not a cold
+    sale — the structural advantage over ScoreVision.
+  - **The wedge / the pitch:** "You're not buying a scoreboard.
+    You're buying a screen that runs announcements, lunch menus, and
+    booster ads five days a week — and becomes a full
+    game-presentation system on Friday night." A gym scoreboard is
+    dark 95% of the time; no incumbent uses it as everyday signage.
+    That rewrites the capex math.
+  - **College:** same software, larger surfaces, real ribbon boards,
+    console tap-off + league feeds. Incumbents have capex lock-in —
+    enter via mid-major and Olympic-sport venues first.
+  - **Pro:** the architecture scales (source mode into pro
+    processors, multi-surface cue fan-out, genlock add-on). Pro is a
+    deliberate later play — it requires displacing entrenched
+    Daktronics/ANC relationships and a pro-grade support burden.
+    Sequence it; don't lead with it.
+
+### 10. God-tier (stretch)
+
+  - **Streaming overlay** — the scorebug renders as a transparent
+    browser-source overlay for NFHS Network / Hudl livestreams. One
+    scorebug, board + broadcast.
+  - **Instant replay** — pair a camera; replay to the board.
+  - **Fan engagement** — QR on the ribbon → phone polls, "make some
+    noise" meter, fan-cam, kiss-cam, t-shirt-toss prompts.
+  - **District command** — a district runs every school's boards
+    from one dashboard + a live "scores around the district" ticker.
+  - **Severe-weather safety** — a stadium is a mass-gathering venue;
+    the existing emergency system = lightning/evac alerts that
+    override the game. A genuine safety differentiator no scoreboard
+    company has.
+  - **Auto-celebration via ML** — detect the goal from crowd-audio.
+  - Walk-up music, record boards, senior night, rivalry mode.
+
+### 11. Data model (Prisma — additive)
+
+`SportDefinition` (seeded constant) · `Game` · `GameEvent` (score +
+cue log) · `Surface` · `CueDeck` / `Cue` · `Sponsor` ·
+`SponsorPlacement`. Proof-of-play reuses `AuditLog`. All additive —
+new tables + nullable pointers, safe to ship to live pilot tenants.
+
+### 12. Phasing
+
+  - **Phase 1 — MVP:** Game Mode toggle, phone control, manual
+    scoring, 6 flagship sports, scoreboard templates, celebration
+    pack, single surface. Mostly assembly of existing parts.
+  - **Phase 2 — Monetize:** sponsorship system + proof-of-play,
+    Stream Deck support, remaining sports.
+  - **Phase 3 — Multi-surface:** ribbon boards, pixel-map,
+    per-surface cue fan-out.
+  - **Phase 4 — Live data:** console tap-off, league feeds,
+    streaming overlay.
+  - **Phase 5 — God-tier:** auto-celebration, fan engagement,
+    district ops, replay.
+
