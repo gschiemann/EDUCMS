@@ -34,6 +34,54 @@ const EDIT_OVERRIDES = process.env.EDIT === '0' ? {} : {
   homeColor: '#16a34a', awayColor: '#7c3aed', accentColor: '#f59e0b',
 };
 
+// ELEMENTS=1 — stress grid of composed scoreboard ELEMENT widgets in small
+// zones with visible colored backgrounds + deliberately LONG/BIG values, so
+// the screenshot proves each element auto-fits its zone (the "numbers too big
+// they don't fit" fix). If any value spills past its colored zone box, the
+// fit is broken for that widget.
+const ELEMENT_SPECS: Array<[string, Record<string, unknown>, string]> = [
+  ['sb-team-name-home', { team: 'home', teamName: 'GOLDEN BEARS' }, '#1e3a8a'],
+  ['sb-team-name-away', { team: 'away', teamName: 'WARRIORS' }, '#7f1d1d'],
+  ['sb-team-abbr-home', { team: 'home', teamName: 'BEARS' }, '#1e3a8a'],
+  ['score-home', { team: 'home', placeholder: '188' }, '#7c2d12'],
+  ['score-away', { team: 'away', placeholder: '7' }, '#7c2d12'],
+  ['game-clock', { placeholder: '88:88.9' }, '#065f46'],
+  ['game-segment', { placeholder: 'OVERTIME 2' }, '#581c87'],
+  ['sb-down-distance', {}, '#334155'],
+  ['sb-shot-clock', {}, '#334155'],
+  ['sb-fouls-home', { team: 'home' }, '#334155'],
+  ['sb-timeouts-home', { team: 'home' }, '#334155'],
+  ['sb-possession-arrow', {}, '#334155'],
+  ['sb-set-scores', {}, '#334155'],
+  ['sb-penalty-home', { team: 'home' }, '#334155'],
+  ['sb-bonus-home', { team: 'home' }, '#334155'],
+  ['sb-status', {}, '#334155'],
+  ['sb-team-record-home', { team: 'home' }, '#334155'],
+  ['sb-count', {}, '#334155'],
+  ['sb-bases', {}, '#334155'],
+  ['sb-power-play', { team: 'home' }, '#334155'],
+  ['sb-riding-time', {}, '#334155'],
+  ['sb-sponsor', {}, '#1f2937'],
+  ['sb-weight-class', {}, '#334155'],
+  ['sb-pitch-speed', {}, '#334155'],
+];
+const ELEMENT_ZONES = ELEMENT_SPECS.map(([variant, extra, bg], i) => {
+  const cols = 6;
+  const col = i % cols;
+  const row = Math.floor(i / cols);
+  return {
+    id: `el-${i}`,
+    name: variant,
+    widgetType: 'SCOREBOARD',
+    x: 1.2 + col * 16.4,
+    y: 2 + row * 24.3,
+    width: 15,
+    height: 21,
+    zIndex: 1,
+    defaultConfig: { variant, color: '#ffffff', bgColor: bg, ...extra },
+  };
+});
+
 function manifest() {
   return {
     tenantId: FAKE_TENANT_ID,
@@ -60,6 +108,8 @@ function manifest() {
                 { id: 'z-name-wide', name: 'Name wide', widgetType: 'SCOREBOARD', x: 32, y: 40, width: 58, height: 16, zIndex: 1,
                   defaultConfig: { variant: 'sb-team-name-home', team: 'home', teamName: 'GOLDEN BEARS', fontSize: 90, color: '#ffffff', bgColor: '#7c3aed' } },
               ]
+            : process.env.ELEMENTS === '1'
+            ? ELEMENT_ZONES
             : [
                 {
                   id: 'z-board',
@@ -164,7 +214,7 @@ test(`scoreboard ${TIER} — screenshot at native 1920×1080`, async ({ page }) 
   await installApiMocks(page, counters);
   await installPlayerTestHarness(page);
   await page.goto('/player?fp=' + FAKE_FINGERPRINT);
-  const zone = page.locator(`[data-zone-id="${process.env.NAMEFIT === '1' ? 'z-name-narrow' : 'z-board'}"]`);
+  const zone = page.locator(`[data-zone-id="${process.env.NAMEFIT === '1' ? 'z-name-narrow' : process.env.ELEMENTS === '1' ? 'el-0' : 'z-board'}"]`);
   await zone.waitFor({ state: 'visible', timeout: 20_000 });
   // let fonts load + the scale-to-fit measure settle
   await page.waitForTimeout(1500);
@@ -184,7 +234,7 @@ test(`scoreboard ${TIER} — screenshot at native 1920×1080`, async ({ page }) 
   expect(painted, `scoreboard ${TIER} rendered empty / 0×0`).toBe(true);
 
   mkdirSync('/tmp/scoreboard-after', { recursive: true });
-  await page.screenshot({ path: `/tmp/scoreboard-after/${TIER}.png` });
+  await page.screenshot({ path: `/tmp/scoreboard-after/${process.env.ELEMENTS === '1' ? 'elements' : TIER}.png` });
 
   if (process.env.NAMEFIT === '1') {
     const dbg = await page.evaluate(() => {
