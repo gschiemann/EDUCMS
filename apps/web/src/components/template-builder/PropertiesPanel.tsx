@@ -668,13 +668,6 @@ export function PropertiesPanel() {
 
   return (
     <div className="p-5 space-y-6 text-xs" data-properties-panel="true">
-      {/* 2026-05-29 — operator: "highlight the area we are editing in the left
-          tool bar." Bold banner pinned to the panel top so the active zone is
-          unmistakable here, mirroring the bright canvas highlight. */}
-      <div className="-mx-5 -mt-5 mb-1 px-5 py-3 bg-indigo-600 text-white flex items-center gap-2 shadow">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Editing</span>
-        <span className="text-sm font-extrabold truncate flex-1">{zone.name || widgetLabel(zone.widgetType)}</span>
-      </div>
       <section className="space-y-3">
         <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Zone</h3>
 
