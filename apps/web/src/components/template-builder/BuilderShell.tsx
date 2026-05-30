@@ -817,6 +817,14 @@ function BuilderBottomBar() {
   // the visual hierarchy. PropertiesPanel already exposes per-field
   // controls for those widgets.
   const isTextStyle = isText || isTicker;
+  // Sport scoreboard elements (team name / score / clock / segment / stat)
+  // read zone-level cfg.fontSize / color / fontWeight / align, so the bottom
+  // bar's font + color controls DO apply to them — operator: "i select the
+  // team name, try to edit font size + color from the bottom tool bar but it
+  // doesnt do anything." They're whole-zone widgets (not [data-field]
+  // hotspots), so they use the zone-wide style block, not the per-field one.
+  const isSportEl = wt === 'SCOREBOARD' || wt === 'SCORE_HOME' || wt === 'SCORE_AWAY'
+    || wt === 'GAME_CLOCK' || wt === 'GAME_SEGMENT' || wt === 'GAME_STAT';
 
   // 2026-05-08 — per-field text styling for HS widgets and any other
   // widget that supports the existing `cfg._styles[fieldKey]` schema
@@ -890,7 +898,7 @@ function BuilderBottomBar() {
   // are top-level cfg props, not per-field overrides). Every OTHER
   // text-bearing widget (HS templates, MS templates, themed widgets,
   // animated widgets, etc.) gets the per-field path.
-  const supportsPerFieldStyles = !!selectedZone && !isImage && !isTextStyle;
+  const supportsPerFieldStyles = !!selectedZone && !isImage && !isTextStyle && !isSportEl;
   const isPerFieldText = supportsPerFieldStyles && !!activeFieldName;
   const fieldStyles = (cfg._styles && typeof cfg._styles === 'object' ? cfg._styles : {}) as Record<string, any>;
   const curFieldStyle = (activeFieldName && fieldStyles[activeFieldName]) || {};
@@ -1112,8 +1120,8 @@ function BuilderBottomBar() {
             </span>
           )}
 
-          {/* TEXT / RICH_TEXT / TICKER ─── font, size, B/I/U/S, color, align */}
-          {isTextStyle && (
+          {/* TEXT / RICH_TEXT / TICKER + sport elements ─── font, size, B/I/U/S, color, align */}
+          {(isTextStyle || isSportEl) && (
             <>
               <select
                 aria-label="Font family"
@@ -1176,15 +1184,16 @@ function BuilderBottomBar() {
               </label>
 
               {smallBtn(
-                `Align: ${cfg.textAlign || 'left'} (click to cycle)`,
+                `Align: ${cfg.textAlign || cfg.align || 'left'} (click to cycle)`,
                 () => {
-                  const cur = cfg.textAlign || 'left';
+                  const cur = cfg.textAlign || cfg.align || 'left';
                   const next = cur === 'left' ? 'center' : cur === 'center' ? 'right' : 'left';
-                  setCfg({ textAlign: next });
+                  // Write both keys: text widgets read textAlign, sport elements read align.
+                  setCfg({ textAlign: next, align: next });
                 },
-                cfg.textAlign === 'center'
+                (cfg.textAlign || cfg.align) === 'center'
                   ? <AlignCenter className="w-3.5 h-3.5" />
-                  : cfg.textAlign === 'right'
+                  : (cfg.textAlign || cfg.align) === 'right'
                     ? <AlignRight className="w-3.5 h-3.5" />
                     : <AlignLeft className="w-3.5 h-3.5" />,
               )}

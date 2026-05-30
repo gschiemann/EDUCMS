@@ -142,7 +142,7 @@ export function TeamNameWidget({ config }: { config: ElCfg }) {
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', position: 'relative', overflow: 'hidden' }}>
       <FitOneLine
-        maxFontPx={480}
+        maxFontPx={config.fontSize && config.fontSize > 0 ? config.fontSize : 480}
         align={align}
         style={{
           color: config.color ?? '#ffffff',
