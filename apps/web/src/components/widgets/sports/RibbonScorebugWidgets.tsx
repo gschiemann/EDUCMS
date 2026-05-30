@@ -29,6 +29,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { findSport } from '@cms/api-types';
 import { useGameState, fmtClock, fmtSegment, type GameSnapshot } from './GameStateContext';
+import { FitOneLine } from './FitOneLine';
 
 const STATUS_BG: Record<string, string> = {
   SCHEDULED: '#475569', PRE_GAME: '#d97706', LIVE: '#dc2626', HALFTIME: '#2563eb', FINAL: '#1e293b',
@@ -94,10 +95,16 @@ export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
 
   const TeamChip = ({ name, score, color, side }: { name: string; score: number; color: string; side: 'l' | 'r' }) => (
     <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-      {side === 'l' && <span style={{ width: px(0.5), height: px(0.5), borderRadius: '50%', background: color, marginRight: px(0.12), display: 'inline-block' }} />}
-      <span style={{ fontWeight: 900, fontSize: px(0.4), letterSpacing: 1 }}>{abbr(name)}</span>
-      <span style={{ fontWeight: 900, fontSize: px(0.62), marginLeft: px(0.12), marginRight: px(0.12), fontVariantNumeric: 'tabular-nums' }}>{score}</span>
-      {side === 'r' && <span style={{ width: px(0.5), height: px(0.5), borderRadius: '50%', background: color, marginLeft: px(0.12), display: 'inline-block' }} />}
+      {side === 'l' && <span style={{ width: px(0.5), height: px(0.5), borderRadius: '50%', background: color, marginRight: px(0.12), display: 'inline-block', flexShrink: 0 }} />}
+      {/* abbr — 3 chars max, no overflow concern at px(0.4) */}
+      <span style={{ fontWeight: 900, fontSize: px(0.4), letterSpacing: 1, flexShrink: 0 }}>{abbr(name)}</span>
+      {/* score — bounded slot so 3-digit values (e.g. 138) fit the ribbon chip */}
+      <div style={{ width: px(1.05), height: '100%', marginLeft: px(0.1), marginRight: px(0.1), flexShrink: 0 }}>
+        <FitOneLine maxFontPx={px(0.62)} style={{ fontWeight: 900, fontVariantNumeric: 'tabular-nums' }}>
+          {score}
+        </FitOneLine>
+      </div>
+      {side === 'r' && <span style={{ width: px(0.5), height: px(0.5), borderRadius: '50%', background: color, marginLeft: px(0.12), display: 'inline-block', flexShrink: 0 }} />}
     </div>
   );
 
@@ -107,8 +114,18 @@ export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
       {/* score-follow anchor */}
       <div style={{ display: 'flex', alignItems: 'center', height: '100%', padding: `0 ${px(0.3)}px`, background: '#05070d', flexShrink: 0 }}>
         <TeamChip name={snap.homeTeam} score={snap.homeScore} color={homeColor} side="l" />
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: `0 ${px(0.3)}px` }}>
-          {hasClock && <span style={{ fontWeight: 900, fontSize: px(0.46), color: snap.clockRunning ? '#fbbf24' : '#e2e8f0', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmtClock(clockMs)}</span>}
+        {/* center clock+period — bounded width so long clock strings ("90:00+02:13") fit the ribbon anchor */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: `0 ${px(0.3)}px`, width: px(1.6), flexShrink: 0 }}>
+          {hasClock && (
+            <div style={{ width: '100%', height: px(0.5) }}>
+              <FitOneLine
+                maxFontPx={px(0.46)}
+                style={{ fontWeight: 900, color: snap.clockRunning ? '#fbbf24' : '#e2e8f0', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}
+              >
+                {fmtClock(clockMs)}
+              </FitOneLine>
+            </div>
+          )}
           <span style={{ fontWeight: 700, fontSize: px(0.22), letterSpacing: 2, color: '#94a3b8', marginTop: px(0.04) }}>{def ? fmtSegment(snap.sport, snap.segment) : ''}</span>
         </div>
         <TeamChip name={snap.awayTeam} score={snap.awayScore} color={awayColor} side="r" />
