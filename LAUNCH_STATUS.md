@@ -1,5 +1,32 @@
 # VenueOS — Launch Status (2026-05-03)
 
+> **⚠️ POINT-IN-TIME SNAPSHOT — partially stale (banner added 2026-05-30).**
+> This is a 2026-05-03 launch-day checklist, preserved for its taxonomy (the
+> DIRECT / PARTNER / BRIDGE / CLOSED tiering is still the right mental model).
+> It is **not** the current source of truth. For code-verified current state
+> read **`docs/research/2026-05-28-opus48-audit/00-MASTER-SYNTHESIS.md`**, which
+> traced every claim to its callers.
+>
+> Specific lines below that the 2026-05-28 audit found **no longer match
+> reality** — do not trust them without re-checking:
+> - **"Custom Webhook" listed as a DIRECT self-serve POS** — the advertised
+>   `POST /api/v1/pos/webhook/:providerId` **404s** (audit P0-5). The BYO-POS
+>   path is a dead link until that route is built.
+> - **POS breadth** — only **Square** is wired end-to-end. Clover (marked
+>   ready) connects but never syncs; Toast/Lightspeed/Shopify/Stripe-Terminal/
+>   MINDBODY handlers are not-started (audit §8, P1-6).
+> - **Streaming breadth** — the YouTube/Twitch/HLS widget is real, but the
+>   provider catalog oversells; RTSP / NFHS overlay are not built (audit §6).
+> - **Daktronics/Nevco "wiring"** — the RS485 dropdown writes a field nothing
+>   reads (audit P0-6, pure costume).
+> - **WORSHIP vertical** — sold on the marketing page but ships **zero**
+>   templates (audit P0-7). Not mentioned in this doc at all.
+> - **Audit/forensics** — login, template, and sponsor mutations were found to
+>   write **no** AuditLog row, and the global interceptor was stdout-only
+>   (audit P0-4 — since fixed; see `SECURITY_BASELINE.md` §8).
+>
+> Treat the rest as "true as of 2026-05-03, verify before relying on it."
+
 Honest accounting of what's wired up vs. what needs vendor-side setup before
 it can do real work in production. Use this as the pre-launch checklist.
 

@@ -118,7 +118,7 @@ High = single-account / data exposure · Medium = degradation / nuisance.
 
 | Threat | Impact | Control (shipped) | Cite |
 |---|---|---|---|
-| Player tampering / token extraction | Medium | Kiosk mode + device-scoped token with no admin authority; USB ingest requires signed manifest + SHA verify + operator PIN (spec, Sprint 7) | `docs/KIOSK_HARDENING.md`; CLAUDE.md Sprint 7 |
+| Player tampering / token extraction | Medium | Kiosk mode + device-scoped token with no admin authority; USB ingest requires signed manifest + SHA verify + operator PIN (spec, Sprint 7) | `KIOSK_HARDENING.md` (repo root); CLAUDE.md Sprint 7 |
 | Offline screen goes blank on WAN loss | High (availability) | Service-worker cache tiers + never-evict emergency floor; falls back to pre-cached text-only emergency message | CLAUDE.md Sprint 7; `apps/web/public/sw-player.js` |
 
 ---

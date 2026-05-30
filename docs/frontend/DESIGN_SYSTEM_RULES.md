@@ -35,9 +35,29 @@ We utilize a modern, highly legible sans-serif font (e.g., Inter, Geist) leverag
 - Use `gap-2` for fine typography stacking.
 - Generous padding (`p-6`, `p-8`) inside cards and panels is mandatory to create breathing room.
 
+> **Taurus carve-out:** flex/grid `gap-*` is fine on the dashboard + standard
+> LCD, but **not on Taurus player/widget surfaces** — CSS `gap` on flex
+> containers is Chrome 84+ and silently no-ops on Chromium-83 Taurus units
+> (CLAUDE.md rule #10). On those paths use per-child `margin` instead. Padding
+> (`p-*`) is safe everywhere.
+
 ## Glassmorphism & Depth
 - Utilize subtle glassmorphism for Modals, Popovers, and Sticky Headers: `bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800`.
 - Shadows should be soft, voluminous, and deep: `shadow-lg shadow-slate-200/50 dark:shadow-none`.
+
+> **Taurus carve-out (do not skip — see CLAUDE.md rule #10).** The
+> `backdrop-blur-*` / `backdrop-filter` mandate above is for the **dashboard +
+> standard-LCD player surfaces only**. **Never ship `backdrop-blur` to a
+> NovaStar Taurus player/widget surface** (`apps/web/src/app/player`,
+> `apps/web/src/components/player`, `apps/web/src/components/widgets`, sports
+> `board`/`ribbon`/`scorebug`): Chromium 83–87 `backdrop-filter` is flaky on
+> older Android System WebView builds and the `taurus-safety` gate scans those
+> paths. On a Taurus surface, use a **solid (or semi-opaque solid) background**
+> instead of the blur. And on any branded surface, **brand CSS variables win**
+> — prefer `var(--brand-surface)` / `var(--brand-primary)` over the literal
+> `bg-white/80` etc., so a tenant's palette isn't overridden by a hard-coded
+> slate. The blur is a finish on top of the brand color, never a replacement
+> for honoring it.
 
 ## Polished Micro-Interactions
 - **Empty States:** Never render an empty table or blank list. Always provide a high-quality illustration or icon, a clear generic title, a helpful description, and a primary CTA (e.g., "Create your first playlist").

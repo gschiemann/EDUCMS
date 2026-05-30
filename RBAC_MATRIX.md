@@ -1,5 +1,27 @@
 # RBAC Matrix & Permission Boundaries
 
+> **Status: current / living. Last verified against code: 2026-05-30.** This is
+> the one 2026-04 design doc that still matches what shipped — verified, not
+> assumed. Anchor cites:
+> - The 5 roles are `AppRole` in `packages/database/index.ts:5-13`
+>   (SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN, CONTRIBUTOR, RESTRICTED_VIEWER).
+> - Enforcement is the **app-layer `RbacGuard`** (`apps/api/src/auth/rbac.guard.ts:78`
+>   — `requiredRoles.includes(role) || role === SUPER_ADMIN`), NOT Postgres
+>   RLS. Tenant scoping is per-query `where: { tenantId }`. See `THREAT_MODEL.md` §1.
+> - **Trigger / Clear Emergency** is gated to SUPER/DISTRICT/SCHOOL_ADMIN via
+>   `@RequireRoles(...)` on the emergency controller (`apps/api/src/emergency/emergency.controller.ts`),
+>   plus a per-scope ownership check ("SUPER_ADMIN may act on any tenant; everyone
+>   else is strictly scoped"), plus the `@AllowPanicBypass` decorator + per-user
+>   `canTriggerPanic` capability flag (CLAUDE.md emergency rules).
+> - **Create/Upload Assets → approval**: CONTRIBUTOR (and RESTRICTED_VIEWER)
+>   uploads land `PENDING_APPROVAL`; the three admin roles auto-`PUBLISHED`
+>   (`apps/api/src/assets/assets.controller.ts:218-225`). The reviewer/approval
+>   loop is the Sprint 1.5 submissions flow (`apps/api/src/submissions/`).
+>
+> Below the role columns is a *capability* on top of the role: `canTriggerPanic`
+> is a per-user flag, so an admin role does not automatically imply panic rights
+> unless the flag is set (and `@AllowPanicBypass` controls who may override it).
+
 | Permission / Action | Super Admin | District Admin | School Admin | Contributor (Teacher) | Restricted Viewer |
 |------------------|-------------|----------------|--------------|-----------------------|-------------------|
 | **Scope** | Platform | Entire District | Single School | Single School | Single School |
