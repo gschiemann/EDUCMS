@@ -152,6 +152,10 @@ const QSR_FULL_SERVICE_ALSO_RESTAURANT = [
   'qsr-pizza-shop-menu',
   'qsr-coffee-shop-menu',
   'qsr-daily-specials-promo',
+  // Cinematic EXTERNAL_HTML pizza board (Domino's-style v4 port) —
+  // a pizza menu reads as both a QSR drive-thru/carryout board AND a
+  // sit-down pizzeria menu, so it surfaces in both galleries.
+  'qsr-dominos-pizza-board',
   // Cuisine-themed boards that read as sit-down menus too
   'qsr-artisan-pizza',
   'qsr-ramen-fusion',

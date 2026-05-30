@@ -1369,4 +1369,56 @@ export const RESTAURANT_TEMPLATE_PRESETS: SystemPreset[] = [
       { name: 'By the bottle', widgetType: 'RESTAURANT_MENU_BOARD', x: 51, y: 23, width: 47, height: 70, zIndex: 2, sortOrder: 3, defaultConfig: { title: 'BY THE BOTTLE', subtitle: 'cellar selection · ask the sommelier', theme: 'charcoal', accentColor: '#e8b94a', columns: 1, posSync: true, posCategory: 'Wine — Bottle', maxItems: 12 } },
     ],
   },
+
+  // ════════════════════════════════════════════════════════════════
+  // Preset — Pizza Menu Board (Domino's-style, cinematic)
+  //
+  // APPROVED — ported from scratch/design/dominos/menu-board-v4.html
+  // (reviewed by user). Reviewed via the transform:scale pattern.
+  // DO NOT regress to vw/% units.
+  //
+  // Unlike the other RESTAURANT presets (which compose the editable
+  // RESTAURANT_* widget set), this one is a single full-bleed
+  // EXTERNAL_HTML scene because its visual identity — the glowing
+  // pizza-box logo tile, the hero pie with steam, the $6.99 Mix &
+  // Match ring disc, the glass photo cards, and the red scrolling
+  // ticker — cannot be expressed with the generic menu-board widget.
+  // It stays fully EDITABLE through the EXTERNAL_HTML path:
+  // ExternalHtmlTextEditor (PropertiesPanel) auto-discovers every
+  // [data-field] (all menu copy + prices + ticker) and every
+  // [data-widget="image-slot"] (the hero pie + 4 specialty photos),
+  // and the V2/V3 brand shim re-themes the 8 --brand-* tokens to the
+  // tenant's palette. The data-source / data-feed attributes on the
+  // menu sections make it feed-ready for the Toast/Square/Clover
+  // field-mapping layer (live POS price/86 sync is not inherited the
+  // way RESTAURANT_MENU_BOARD's posSync is — that's a follow-up).
+  //
+  // 3840×2160 self-contained HTML in
+  // /public/templates/signage/qsr/11-dominos-pizza-board.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'qsr-dominos-pizza-board',
+    name: 'Pizza Menu Board (Domino\'s-style)',
+    description:
+      'A cinematic pizza-shop menu board — glowing pizza-box logo, a hero pie with rising steam, a $6.99 "Mix & Match" ring, glass photo cards for the four specialty pizzas, a sides/drinks strip, and a red scrolling deals ticker. Deep-blue brand palette, pizzeria energy. Every word and price is editable, every pizza photo is swappable, and the whole scene re-themes to your brand colors.',
+    category: 'MENU',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#020a10',
+    bgGradient:
+      'radial-gradient(ellipse 70% 55% at 30% 22%, rgba(26,160,224,0.30), transparent 60%),' +
+      'radial-gradient(ellipse 50% 50% at 82% 80%, rgba(255,31,66,0.16), transparent 60%),' +
+      'linear-gradient(165deg, #07415f 0%, #012333 55%, #010d15 100%)',
+    zones: [
+      {
+        name: 'Scene',
+        widgetType: 'EXTERNAL_HTML',
+        x: 0, y: 0, width: 100, height: 100,
+        zIndex: 1,
+        sortOrder: 0,
+        defaultConfig: { url: '/templates/signage/qsr/11-dominos-pizza-board.html' },
+      },
+    ],
+  },
 ];

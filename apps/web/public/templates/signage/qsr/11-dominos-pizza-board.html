@@ -1,0 +1,349 @@
+<!doctype html>
+<!--
+  DOMINO'S-STYLE PIZZA MENU BOARD (v4 port)
+  3840×2160 · 65" 4K · viewed 8–15 ft.
+  Ported from scratch/design/dominos/menu-board-v4.html via the
+  transform:scale pattern (fixed 3840×2160 .scene, auto-fit JS).
+  All mockup pixel sizes ×2 from the 1920×1080 mockup so proportions
+  are identical at 4K.
+
+  EDITABLE (no PropertiesPanel changes needed):
+    • Every text node carries data-field="<key>" → discovered + made
+      editable by ExternalHtmlTextEditor (PropertiesPanel.tsx).
+    • The hero pie + 4 specialty cards are data-widget="image-slot"
+      → swappable photos via the panel's image picker; until a photo
+      is dropped, a tasteful CSS placeholder (radial-gradient "pie" /
+      mini camera glyph) shows so the gallery preview never looks empty.
+  REBRAND: 8 :root --brand-* tokens, applied by the V2/V3 shim.
+  FEED-READY: data-source / data-feed / data-field-path on the menu
+  sections (Toast / Square / Clover) — mirrors 01-drive-thru-flagship.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Domino's · Pizza Menu Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700;800;900&family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet" />
+<style>
+  /* ════════════════════════════════════════════════════════════════
+     REBRAND ZONE — change these to fit any pizza brand
+     (the shim maps the operator's brand kit onto these tokens)
+     ════════════════════════════════════════════════════════════════ */
+  :root{
+    --brand-canvas:  #020a10;            /* deepest backdrop */
+    --brand-primary: #0079b0;            /* Domino's blue   */
+    --brand-accent:  #1aa0e0;            /* blue glow       */
+    --brand-danger:  #ff1f42;            /* Domino's red    */
+    --brand-ink:     #012333;            /* blue ink        */
+    --brand-fg:      #ffffff;            /* paper / text    */
+    --brand-gold:    #ffd36b;            /* mote / price hi */
+    --font-display:  'Baloo 2', system-ui, sans-serif;
+    --font-body:     'Hanken Grotesk', system-ui, sans-serif;
+
+    /* derived (kept in sync with brand-* by the shim where possible) */
+    --blue:      var(--brand-primary);
+    --blue-deep: #004b6e;
+    --blue-ink:  var(--brand-ink);
+    --blue-glow: var(--brand-accent);
+    --red:       var(--brand-danger);
+    --red-deep:  #c30f2c;
+    --gold:      var(--brand-gold);
+    --paper:     var(--brand-fg);
+  }
+
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+  html,body{background:#000;overflow:hidden;height:100%;width:100%;}
+  body{font-family:var(--font-body);-webkit-font-smoothing:antialiased;}
+
+  /* fixed 3840×2160 stage, scaled to fit (transform:scale pattern) */
+  .scene{
+    position:absolute;left:50%;top:50%;
+    width:3840px;height:2160px;
+    transform:translate(-50%,-50%) scale(var(--scale,1));
+    transform-origin:center center;
+    overflow:hidden;color:var(--paper);font-family:var(--font-body);
+    background:
+      radial-gradient(ellipse 70% 55% at 30% 22%, rgba(26,160,224,.30), transparent 60%),
+      radial-gradient(ellipse 50% 50% at 82% 80%, rgba(255,31,66,.16), transparent 60%),
+      linear-gradient(165deg, #07415f 0%, var(--blue-ink) 55%, #010d15 100%);
+  }
+  .sheen{position:absolute;top:-30%;left:-12%;width:2400px;height:2400px;border-radius:50%;background:conic-gradient(from 0deg, transparent 0 70%, rgba(26,160,224,.10) 80%, transparent 92%);animation:spin 52s linear infinite;pointer-events:none;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .mote{position:absolute;bottom:-40px;width:16px;height:16px;border-radius:50%;background:rgba(255,211,107,.55);box-shadow:0 0 24px rgba(255,211,107,.7);animation:rise linear infinite;pointer-events:none;}
+  @keyframes rise{0%{transform:translateY(0);opacity:0;}10%{opacity:.9;}100%{transform:translateY(-2200px) translateX(92px);opacity:0;}}
+
+  /* ── HEADER ── */
+  .head{position:absolute;top:0;left:0;right:0;height:300px;display:flex;align-items:center;padding:0 128px;z-index:5;}
+  .tile{width:200px;height:200px;border-radius:40px;background:var(--paper);position:relative;flex:none;transform:rotate(-6deg);box-shadow:0 0 0 8px rgba(26,160,224,.5),0 32px 80px rgba(0,0,0,.6),0 0 80px rgba(26,160,224,.4);animation:tilepulse 3.2s ease-in-out infinite;}
+  @keyframes tilepulse{0%,100%{box-shadow:0 0 0 8px rgba(26,160,224,.45),0 32px 80px rgba(0,0,0,.6),0 0 72px rgba(26,160,224,.35);}50%{box-shadow:0 0 0 8px rgba(26,160,224,.7),0 32px 80px rgba(0,0,0,.6),0 0 120px rgba(26,160,224,.6);}}
+  .tile::before{content:"";position:absolute;left:18px;right:18px;top:50%;height:12px;background:#d2dde6;transform:translateY(-50%);}
+  .tile .d{position:absolute;width:52px;height:52px;border-radius:50%;left:74px;}
+  .tile .d.r{background:var(--red);top:36px;} .tile .d.b{background:var(--blue);bottom:36px;}
+  .word{margin-left:52px;}
+  .word .b{font-family:var(--font-display);font-weight:800;font-size:132px;letter-spacing:-2px;line-height:.9;background:linear-gradient(90deg,#fff 0%,#bfe6f7 25%,#fff 50%,#bfe6f7 75%,#fff 100%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shine 6s linear infinite;}
+  @keyframes shine{to{background-position:300% 0;}}
+  .word .b .ap{color:var(--red);-webkit-text-fill-color:var(--red);}
+  .word .t{font-weight:800;font-size:36px;letter-spacing:14px;color:#8fd3f1;margin-top:12px;}
+  .live{margin-left:auto;display:flex;align-items:center;background:rgba(255,255,255,.08);border:3px solid rgba(255,255,255,.18);border-radius:999px;padding:24px 48px;}
+  .live .dot{width:28px;height:28px;border-radius:50%;background:var(--red);margin-right:24px;box-shadow:0 0 0 0 rgba(255,31,66,.7);animation:ping 1.8s ease-out infinite;}
+  @keyframes ping{0%{box-shadow:0 0 0 0 rgba(255,31,66,.6);}100%{box-shadow:0 0 0 32px rgba(255,31,66,0);}}
+  .live b{font-weight:800;font-size:40px;letter-spacing:4px;color:#fff;}
+
+  /* ── MAIN ── */
+  .main{position:absolute;top:332px;left:128px;right:128px;bottom:184px;display:grid;grid-template-columns:1.02fr 1fr;gap:80px;z-index:4;}
+
+  /* HERO with pizza photo slot */
+  .hero{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .spot{position:absolute;top:38%;left:50%;width:1120px;height:1120px;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle, rgba(26,160,224,.38), transparent 62%);animation:breathe 5s ease-in-out infinite;}
+  @keyframes breathe{0%,100%{opacity:.55;transform:translate(-50%,-50%) scale(1);}50%{opacity:.95;transform:translate(-50%,-50%) scale(1.08);}}
+  .steam{position:absolute;top:2%;left:50%;width:440px;height:320px;transform:translateX(-50%);z-index:3;}
+  .steam span{position:absolute;bottom:0;width:32px;height:240px;border-radius:50%;background:linear-gradient(to top, rgba(255,255,255,0), rgba(255,255,255,.55));filter:blur(14px);opacity:0;animation:steam 4s ease-in infinite;}
+  .steam span:nth-child(1){left:132px;animation-delay:0s;} .steam span:nth-child(2){left:216px;animation-delay:1.2s;} .steam span:nth-child(3){left:300px;animation-delay:2.4s;}
+  @keyframes steam{0%{opacity:0;transform:translateY(40px) scaleX(1);}30%{opacity:.7;}100%{opacity:0;transform:translateY(-190px) scaleX(1.6);}}
+
+  /* hero photo slot: real photo replaces the CSS-pizza placeholder */
+  .heropie{
+    width:680px;height:680px;border-radius:50%;position:relative;z-index:2;
+    background-color:#3a1c10;background-size:cover;background-position:center;
+    box-shadow:0 60px 140px rgba(0,0,0,.6),0 0 180px rgba(255,150,40,.35),inset 0 0 0 12px rgba(255,255,255,.08);
+    animation:bob 6s ease-in-out infinite;overflow:hidden;
+    display:flex;align-items:center;justify-content:center;
+  }
+  @keyframes bob{0%,100%{transform:translateY(0) rotate(-1deg);}50%{transform:translateY(-28px) rotate(1deg);}}
+  /* CSS-pizza placeholder — a cheesy pepperoni pie so the gallery
+     preview reads as pizza even before a real photo is dropped. */
+  .pie-fallback{
+    position:absolute;top:0;right:0;bottom:0;left:0;border-radius:50%;
+    background:
+      radial-gradient(circle at 30% 28%, #c0392b 0 36px, transparent 38px),
+      radial-gradient(circle at 68% 32%, #c0392b 0 34px, transparent 36px),
+      radial-gradient(circle at 50% 55%, #c0392b 0 38px, transparent 40px),
+      radial-gradient(circle at 28% 70%, #c0392b 0 32px, transparent 34px),
+      radial-gradient(circle at 74% 68%, #c0392b 0 34px, transparent 36px),
+      radial-gradient(circle at 50% 50%, #f2c14e 0 78%, #e8a33d 78% 88%, #c9852b 88% 100%);
+  }
+  .heropie[data-has-image="true"] .pie-fallback{display:none;}
+
+  .heroband{position:relative;z-index:2;text-align:center;margin-top:48px;}
+  .heroband .eyebrow{font-family:var(--font-display);font-weight:800;font-size:60px;letter-spacing:8px;color:#bfe6f7;text-shadow:0 0 36px rgba(26,160,224,.6);}
+  .ringdisc{width:392px;height:392px;border-radius:50%;position:relative;margin:28px auto 12px;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle, transparent 0 40%, rgba(255,255,255,.3) 40% 43%, transparent 43% 53%, rgba(255,255,255,.2) 53% 56%, transparent 56%), radial-gradient(circle,var(--red) 0 70%, var(--red-deep) 71% 100%);
+    box-shadow:0 0 0 8px rgba(255,255,255,.12),0 0 100px rgba(255,31,66,.55);animation:glow 2.6s ease-in-out infinite;}
+  @keyframes glow{0%,100%{box-shadow:0 0 0 8px rgba(255,255,255,.12),0 0 72px rgba(255,31,66,.45);}50%{box-shadow:0 0 0 12px rgba(255,255,255,.22),0 0 140px rgba(255,31,66,.8);}}
+  .ringdisc .v{display:flex;flex-direction:column;align-items:center;line-height:.86;}
+  .ringdisc .v .pr{font-family:var(--font-display);font-weight:800;font-size:132px;color:#fff;text-shadow:0 4px 20px rgba(0,0,0,.4);}
+  .ringdisc .v .e{font-weight:800;font-size:36px;letter-spacing:6px;color:#ffe1e7;}
+  .heroband .sub{font-weight:700;font-size:38px;color:#dff1fb;max-width:760px;margin:12px auto 0;line-height:1.3;}
+
+  /* SPECIALTY — photo glass cards */
+  .menu{display:flex;flex-direction:column;justify-content:center;}
+  .mh{font-family:var(--font-display);font-weight:800;font-size:64px;color:#fff;letter-spacing:1px;margin-bottom:28px;display:flex;align-items:center;}
+  .mh::before{content:"";width:84px;height:16px;border-radius:8px;background:var(--red);margin-right:28px;box-shadow:0 0 32px rgba(255,31,66,.7);}
+  .cards{display:flex;flex-direction:column;}
+  .card{position:relative;background:rgba(8,40,60,.55);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);border:3px solid rgba(120,200,235,.24);border-radius:36px;padding:28px 36px;margin-bottom:26px;display:flex;align-items:center;box-shadow:0 28px 60px rgba(0,0,0,.45),inset 0 2px 0 rgba(255,255,255,.14);overflow:hidden;}
+  .card::after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;border-radius:36px;border:4px solid rgba(26,160,224,0);opacity:0;box-shadow:0 0 80px rgba(26,160,224,.5);animation:sweep 8s ease-in-out infinite;}
+  .card:nth-child(1)::after{animation-delay:0s;} .card:nth-child(2)::after{animation-delay:2s;} .card:nth-child(3)::after{animation-delay:4s;} .card:nth-child(4)::after{animation-delay:6s;}
+  @keyframes sweep{0%,18%{opacity:0;}6%,12%{opacity:1;border-color:rgba(26,160,224,.6);}}
+  /* card photo slot — real photo replaces the camera glyph */
+  .ph{width:168px;height:168px;border-radius:50%;flex:none;margin-right:32px;position:relative;overflow:hidden;
+    background-color:#0c2c40;background-size:cover;background-position:center;
+    box-shadow:0 0 0 6px rgba(255,255,255,.12),0 16px 36px rgba(0,0,0,.4);
+    display:flex;align-items:center;justify-content:center;}
+  .ph .ph-glyph{font-size:64px;line-height:1;opacity:.6;}
+  .ph[data-has-image="true"] .ph-glyph{display:none;}
+  .info{flex:1;min-width:0;}
+  .card h3{font-family:var(--font-display);font-weight:800;font-size:48px;color:#fff;line-height:1;}
+  .card p{font-size:25px;color:#9fc4d8;margin-top:8px;line-height:1.2;}
+  .prices{display:flex;margin-top:16px;}
+  .pz{margin-right:32px;text-align:center;}
+  .pz .s{display:block;font-weight:800;font-size:22px;letter-spacing:2px;color:#7fb4d0;}
+  .pz .p{font-family:var(--font-display);font-weight:800;font-size:38px;color:#fff;}
+  .pz.lg .p{color:var(--gold);}
+
+  /* SIDES + DRINKS strip */
+  .strip{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:8px;}
+  .sc{background:rgba(255,255,255,.06);border:3px solid rgba(255,255,255,.12);border-radius:28px;padding:24px 32px;}
+  .sc h4{font-family:var(--font-display);font-weight:800;font-size:34px;color:#bfe6f7;letter-spacing:2px;margin-bottom:12px;}
+  .sl{display:flex;align-items:baseline;gap:16px;padding:6px 0;font-size:28px;}
+  .sl .n{font-weight:700;color:#fff;} .sl .dots{flex:1;border-bottom:4px dotted rgba(255,255,255,.22);transform:translateY(-8px);}
+  .sl .p{font-family:var(--font-display);font-weight:800;color:#ffd1da;font-size:30px;}
+
+  /* TICKER */
+  .foot{position:absolute;left:0;right:0;bottom:0;height:160px;background:linear-gradient(90deg,var(--red-deep),var(--red),var(--red-deep));display:flex;align-items:center;overflow:hidden;z-index:5;box-shadow:0 -12px 60px rgba(255,31,66,.4);}
+  .marquee{display:flex;white-space:nowrap;animation:scroll 26s linear infinite;}
+  .marquee span{font-family:var(--font-display);font-weight:800;font-size:54px;color:#fff;letter-spacing:2px;padding:0 76px;text-shadow:0 2px 12px rgba(0,0,0,.3);}
+  @keyframes scroll{0%{transform:translateX(0);}100%{transform:translateX(-50%);}}
+</style>
+<script>/*EDUCMS-SHIM-V3*/(function(){try{
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas'],surface:['--paper','--brand-paper','--surface'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text'],muted:['--mute','--brand-mute','--text-muted'],
+primary:['--primary','--brand-primary','--color-primary','--blue'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--blue-glow'],
+fontDisplay:['--font-display','--font-headline'],fontBody:['--font-grotesk','--font-body','--font-sans']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k])BRAND_MAP[k].forEach(function(v){r.setProperty(v,b[k]);});});}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){if(el.children.length===0){el.textContent=text[k];}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=text[k];}else{el.insertBefore(document.createTextNode(text[k]),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string'||!v)return;var esc=k.replace(/"/g,'\\"');var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;var safe=v.replace(/["'()\s]/g,'');if(!safe)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+addEventListener('message',function(e){try{var d=e.data;if(d&&d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}}catch(_){}});
+}catch(e){}})();</script>
+</head>
+<body>
+  <div class="scene" id="scene">
+    <div class="sheen"></div>
+    <div class="mote" style="left:18%;animation-duration:9s;"></div>
+    <div class="mote" style="left:36%;animation-duration:12s;animation-delay:3s;"></div>
+    <div class="mote" style="left:64%;animation-duration:10s;animation-delay:1.5s;width:12px;height:12px;"></div>
+    <div class="mote" style="left:80%;animation-duration:13s;animation-delay:5s;"></div>
+
+    <header class="head">
+      <div class="tile" data-widget="logo"><span class="d r"></span><span class="d b"></span></div>
+      <div class="word">
+        <div class="b"><span data-field="brand.name">DOMINO</span><span class="ap">&rsquo;</span><span data-field="brand.name_suffix">S</span></div>
+        <div class="t" data-field="brand.tagline">FRESH &middot; FAST &middot; HOT</div>
+      </div>
+      <div class="live"><span class="dot"></span><b data-field="header.badge">LIVE MENU</b></div>
+    </header>
+
+    <div class="main">
+      <!-- ── HERO ── -->
+      <section class="hero" data-widget="featured-combo" data-source="toast" data-feed="/menu/featured" data-refresh="60s">
+        <div class="spot"></div>
+        <div class="steam"><span></span><span></span><span></span></div>
+        <div class="heropie"
+             data-widget="image-slot" data-slot="hero" data-aspect="1360x1360"
+             data-field="featured.photo_url">
+          <div class="pie-fallback"></div>
+        </div>
+        <div class="heroband">
+          <div class="eyebrow" data-field="featured.eyebrow">MIX &amp; MATCH</div>
+          <div class="ringdisc">
+            <div class="v">
+              <span class="pr" data-field="featured.price">$6.99</span>
+              <span class="e" data-field="featured.price_unit">EACH</span>
+            </div>
+          </div>
+          <div class="sub" data-field="featured.desc">Any 2 or more &mdash; pizzas, breads, pastas, wings &amp; more.</div>
+        </div>
+      </section>
+
+      <!-- ── SPECIALTY CARDS + STRIP ── -->
+      <section class="menu" data-widget="menu-list" data-source="toast" data-feed="/menu/specialty">
+        <div class="mh" data-field="specialty.title">Specialty Pizzas</div>
+        <div class="cards">
+
+          <div class="card">
+            <div class="ph" data-widget="image-slot" data-slot="item-1" data-aspect="336x336" data-field="items.0.photo_url"><span class="ph-glyph">🍕</span></div>
+            <div class="info">
+              <h3 data-field="items.0.name">ExtravaganZZa</h3>
+              <p data-field="items.0.desc">Pepperoni, ham, sausage, beef, onions, peppers, mushrooms, olives.</p>
+              <div class="prices">
+                <span class="pz"><span class="s">SM</span><span class="p" data-field="items.0.price_sm">$11.99</span></span>
+                <span class="pz"><span class="s">MED</span><span class="p" data-field="items.0.price_md">$13.99</span></span>
+                <span class="pz lg"><span class="s">LG</span><span class="p" data-field="items.0.price_lg">$15.99</span></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="ph" data-widget="image-slot" data-slot="item-2" data-aspect="336x336" data-field="items.1.photo_url"><span class="ph-glyph">🍕</span></div>
+            <div class="info">
+              <h3 data-field="items.1.name">MeatZZa</h3>
+              <p data-field="items.1.desc">Pepperoni, ham, Italian sausage, beef &amp; extra cheese.</p>
+              <div class="prices">
+                <span class="pz"><span class="s">SM</span><span class="p" data-field="items.1.price_sm">$11.99</span></span>
+                <span class="pz"><span class="s">MED</span><span class="p" data-field="items.1.price_md">$13.99</span></span>
+                <span class="pz lg"><span class="s">LG</span><span class="p" data-field="items.1.price_lg">$15.99</span></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="ph" data-widget="image-slot" data-slot="item-3" data-aspect="336x336" data-field="items.2.photo_url"><span class="ph-glyph">🥬</span></div>
+            <div class="info">
+              <h3 data-field="items.2.name">Pacific Veggie</h3>
+              <p data-field="items.2.desc">Roasted peppers, onions, mushrooms, tomatoes, spinach, feta.</p>
+              <div class="prices">
+                <span class="pz"><span class="s">SM</span><span class="p" data-field="items.2.price_sm">$11.99</span></span>
+                <span class="pz"><span class="s">MED</span><span class="p" data-field="items.2.price_md">$13.99</span></span>
+                <span class="pz lg"><span class="s">LG</span><span class="p" data-field="items.2.price_lg">$15.99</span></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="ph" data-widget="image-slot" data-slot="item-4" data-aspect="336x336" data-field="items.3.photo_url"><span class="ph-glyph">🍗</span></div>
+            <div class="info">
+              <h3 data-field="items.3.name">Buffalo Chicken</h3>
+              <p data-field="items.3.desc">Grilled chicken, buffalo sauce, onions, provolone &amp; cheddar.</p>
+              <div class="prices">
+                <span class="pz"><span class="s">SM</span><span class="p" data-field="items.3.price_sm">$11.99</span></span>
+                <span class="pz"><span class="s">MED</span><span class="p" data-field="items.3.price_md">$13.99</span></span>
+                <span class="pz lg"><span class="s">LG</span><span class="p" data-field="items.3.price_lg">$15.99</span></span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="strip">
+          <div class="sc">
+            <h4 data-field="sides.title">SIDES</h4>
+            <div class="sl"><span class="n" data-field="sides.0.name">Stuffed Cheesy Bread</span><span class="dots"></span><span class="p" data-field="sides.0.price">$5.99</span></div>
+            <div class="sl"><span class="n" data-field="sides.1.name">Boneless Chicken</span><span class="dots"></span><span class="p" data-field="sides.1.price">$5.99</span></div>
+            <div class="sl"><span class="n" data-field="sides.2.name">Wings (8 pc)</span><span class="dots"></span><span class="p" data-field="sides.2.price">$6.49</span></div>
+          </div>
+          <div class="sc">
+            <h4 data-field="drinks.title">DRINKS &amp; MORE</h4>
+            <div class="sl"><span class="n" data-field="drinks.0.name">Parmesan Bread Bites</span><span class="dots"></span><span class="p" data-field="drinks.0.price">$2.99</span></div>
+            <div class="sl"><span class="n" data-field="drinks.1.name">20 oz Coca-Cola</span><span class="dots"></span><span class="p" data-field="drinks.1.price">$1.79</span></div>
+            <div class="sl"><span class="n" data-field="drinks.2.name">2-Liter</span><span class="dots"></span><span class="p" data-field="drinks.2.price">$2.99</span></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <footer class="foot">
+      <div class="marquee">
+        <span data-field="ticker.0">🔥 NOW BAKING FRESH</span><span data-field="ticker.1">· CARRYOUT READY IN ~15 MIN</span><span data-field="ticker.2">· ORDER ON THE DOMINO&rsquo;S APP &amp; EARN REWARDS</span><span data-field="ticker.3">· MIX &amp; MATCH $6.99 EACH</span>
+        <span>🔥 NOW BAKING FRESH</span><span>· CARRYOUT READY IN ~15 MIN</span><span>· ORDER ON THE DOMINO&rsquo;S APP &amp; EARN REWARDS</span><span>· MIX &amp; MATCH $6.99 EACH</span>
+      </div>
+    </footer>
+  </div>
+
+  <script type="application/json" id="signage-feed-defaults">
+  {
+    "brand":   { "name": "DOMINO", "name_suffix": "S", "tagline": "FRESH · FAST · HOT" },
+    "header":  { "badge": "LIVE MENU" },
+    "featured": {
+      "eyebrow": "MIX & MATCH", "price": "$6.99", "price_unit": "EACH",
+      "desc": "Any 2 or more — pizzas, breads, pastas, wings & more.",
+      "photo_url": ""
+    },
+    "specialty": { "title": "Specialty Pizzas" },
+    "items": [
+      { "name": "ExtravaganZZa",  "price_sm": "$11.99", "price_md": "$13.99", "price_lg": "$15.99" },
+      { "name": "MeatZZa",        "price_sm": "$11.99", "price_md": "$13.99", "price_lg": "$15.99" },
+      { "name": "Pacific Veggie", "price_sm": "$11.99", "price_md": "$13.99", "price_lg": "$15.99" },
+      { "name": "Buffalo Chicken","price_sm": "$11.99", "price_md": "$13.99", "price_lg": "$15.99" }
+    ],
+    "sides":  { "title": "SIDES" },
+    "drinks": { "title": "DRINKS & MORE" }
+  }
+  </script>
+
+  <script>
+    (function(){
+      var stage=document.getElementById('scene');
+      function fit(){var k=Math.min(window.innerWidth/3840,window.innerHeight/2160);stage.style.setProperty('--scale',k);}
+      window.addEventListener('resize',fit);
+      window.addEventListener('orientationchange',fit);
+      fit();
+    })();
+  </script>
+</body>
+</html>
