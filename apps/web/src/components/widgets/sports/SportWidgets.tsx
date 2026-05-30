@@ -100,6 +100,7 @@ function FitValue({ config, children }: { config: BaseConfig; children: React.Re
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitOneLine
         maxFontPx={config.fontSize && config.fontSize > 0 ? config.fontSize : 800}
+        autoShrink={!(config.fontSize && config.fontSize > 0)}
         align={config.align ?? 'center'}
         style={{
           color: config.color ?? '#ffffff',

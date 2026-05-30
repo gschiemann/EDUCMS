@@ -2555,7 +2555,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
         fields.push(<ColorField key="accentColor" label="Accent color" value={cfg.accentColor || '#fbbf24'} onChange={(v) => setField({ accentColor: v })} />);
         fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
-        fields.push(<NumField key="fontSize" id="sb-fontSize" label="Font size (px)" value={typeof cfg.fontSize === 'number' ? cfg.fontSize : 48} onChange={(v) => setField({ fontSize: v })} min={8} max={480} step={2} />);
+        // Seed the unset value from the MEASURED rendered px (not a flat 48)
+        // so the first +/- grows/shrinks from the size it's actually showing —
+        // no collapse when an auto-fit element gets its first explicit size
+        // (operator: "when I hit the plus it should increase the size").
+        fields.push(<NumField key="fontSize" id="sb-fontSize" label="Font size (px)" value={typeof cfg.fontSize === 'number' ? cfg.fontSize : (measureZoneFontSize(zone.id) ?? 48)} onChange={(v) => setField({ fontSize: v })} min={8} max={480} step={2} />);
         fields.push(<SelectField key="fontWeight" label="Font weight" value={String(cfg.fontWeight ?? 800)} options={[['400', 'Regular'], ['600', 'Semibold'], ['700', 'Bold'], ['800', 'Extra-bold'], ['900', 'Black']]} onChange={(v) => setField({ fontWeight: parseInt(v) })} />);
         fields.push(<SelectField key="align" label="Align" value={String(cfg.align || 'center')} options={[['left', 'Left'], ['center', 'Center'], ['right', 'Right']]} onChange={(v) => setField({ align: v })} />);
         break;

@@ -25,11 +25,16 @@ export function FitOneLine({
   maxFontPx,
   align = 'center',
   style,
+  autoShrink = true,
 }: {
   children: React.ReactNode;
   maxFontPx: number;
   align?: 'left' | 'center' | 'right';
   style?: React.CSSProperties;
+  /** When false, render at exactly maxFontPx (no shrink-to-fit) — used when
+   *  the operator has set an explicit font size so +/- visibly changes the
+   *  rendered size; overflow is clipped by the zone. Default true (fill). */
+  autoShrink?: boolean;
 }) {
   const boxRef = React.useRef<HTMLDivElement>(null);
   const txtRef = React.useRef<HTMLSpanElement>(null);
@@ -44,7 +49,7 @@ export function FitOneLine({
       const tw = txt.scrollWidth;
       const th = txt.scrollHeight;
       if (!bw || !bh || !tw || !th) return;
-      setScale(Math.min(1, (bw * 0.96) / tw, (bh * 0.94) / th));
+      setScale(autoShrink ? Math.min(1, (bw * 0.96) / tw, (bh * 0.94) / th) : 1);
     };
     measure();
     const raf = requestAnimationFrame(measure);
@@ -59,7 +64,7 @@ export function FitOneLine({
       (document as { fonts: { ready: Promise<unknown> } }).fonts.ready.then(measure).catch(() => {});
     }
     return () => { cancelAnimationFrame(raf); ro.disconnect(); clearInterval(poll); };
-  }, [children, maxFontPx]);
+  }, [children, maxFontPx, autoShrink]);
   const justify = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
   const origin = align === 'left' ? 'left center' : align === 'right' ? 'right center' : 'center center';
   return (
@@ -95,11 +100,15 @@ export function FitBox({
   baseFontPx = 400,
   align = 'center',
   style,
+  autoShrink = true,
 }: {
   children: React.ReactNode;
   baseFontPx?: number;
   align?: 'left' | 'center' | 'right';
   style?: React.CSSProperties;
+  /** When false, render at baseFontPx (no shrink) so an explicit size grows
+   *  the block on +/- ; overflow clipped by the zone. Default true (fill). */
+  autoShrink?: boolean;
 }) {
   const boxRef = React.useRef<HTMLDivElement>(null);
   const innerRef = React.useRef<HTMLDivElement>(null);
@@ -114,7 +123,7 @@ export function FitBox({
       const cw = inner.scrollWidth;
       const ch = inner.scrollHeight;
       if (!bw || !bh || !cw || !ch) return;
-      setScale(Math.min(1, (bw * 0.96) / cw, (bh * 0.94) / ch));
+      setScale(autoShrink ? Math.min(1, (bw * 0.96) / cw, (bh * 0.94) / ch) : 1);
     };
     measure();
     const raf = requestAnimationFrame(measure);
@@ -129,7 +138,7 @@ export function FitBox({
       (document as { fonts: { ready: Promise<unknown> } }).fonts.ready.then(measure).catch(() => {});
     }
     return () => { cancelAnimationFrame(raf); ro.disconnect(); clearInterval(poll); };
-  }, [children, baseFontPx]);
+  }, [children, baseFontPx, autoShrink]);
   const justify = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
   const origin = align === 'left' ? 'left center' : align === 'right' ? 'right center' : 'center center';
   return (
