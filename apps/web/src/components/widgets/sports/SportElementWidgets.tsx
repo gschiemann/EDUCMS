@@ -143,7 +143,7 @@ export function TeamNameWidget({ config }: { config: ElCfg }) {
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', position: 'relative', overflow: 'hidden' }}>
       <FitOneLine
         maxFontPx={config.fontSize && config.fontSize > 0 ? config.fontSize : 480}
-        autoShrink={!(config.fontSize && config.fontSize > 0)}
+        autoShrink={true}
         align={align}
         style={{
           color: config.color ?? '#ffffff',
@@ -170,7 +170,7 @@ export function TeamAbbrWidget({ config }: { config: ElCfg }) {
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitOneLine
         maxFontPx={config.fontSize ?? 800}
-        autoShrink={!(config.fontSize && config.fontSize > 0)}
+        autoShrink={true}
         align={config.align ?? 'center'}
         style={{ color: config.color ?? '#ffffff', fontWeight: config.fontWeight ?? 900, fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif', letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined }}
       >
@@ -212,7 +212,7 @@ export function TeamRecordWidget({ config }: { config: ElCfg }) {
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitOneLine
         maxFontPx={config.fontSize ?? 800}
-        autoShrink={!(config.fontSize && config.fontSize > 0)}
+        autoShrink={true}
         align={config.align ?? 'center'}
         style={{ color: config.color ?? '#94a3b8', fontWeight: config.fontWeight ?? 700, fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif', letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined }}
       >
@@ -286,7 +286,7 @@ export function PossessionArrowWidget({ config }: { config: ElCfg }) {
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitOneLine
         maxFontPx={config.fontSize ?? 800}
-        autoShrink={!(config.fontSize && config.fontSize > 0)}
+        autoShrink={true}
         align={config.align ?? 'center'}
         style={{ color: accent, fontWeight: 900, fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif' }}
       >
@@ -306,7 +306,7 @@ export function PossessionBallWidget({ config }: { config: ElCfg }) {
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden', opacity: lit ? 1 : 0.12 }}>
       <FitOneLine
         maxFontPx={config.fontSize ?? 800}
-        autoShrink={!(config.fontSize && config.fontSize > 0)}
+        autoShrink={true}
         align={config.align ?? 'center'}
       >
         {'🏈'}
@@ -377,7 +377,7 @@ export function AddedTimeWidget({ config }: { config: ElCfg }) {
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'rgba(251,191,36,0.16)', overflow: 'hidden' }}>
       <FitOneLine
         maxFontPx={config.fontSize ?? 800}
-        autoShrink={!(config.fontSize && config.fontSize > 0)}
+        autoShrink={true}
         align={config.align ?? 'center'}
         style={{ color: config.color ?? '#fbbf24', fontWeight: 900, fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif', letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined }}
       >

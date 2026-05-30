@@ -94,13 +94,20 @@ function rootStyle(cfg: BaseConfig): React.CSSProperties {
  * fills the zone but never overflows. `config.fontSize`, when set, is the
  * base/target; FitOneLine still clamps it to fit, so even a huge pegged
  * value can't overflow. Unset → fills the zone (as large as fits).
+ *
+ * autoShrink is ALWAYS true — the value must NEVER overflow its zone.
+ * `config.fontSize` is the CEILING/target (it raises the base font, so + / −
+ * still visibly grows/shrinks within the fit), NOT a literal size: FitOneLine
+ * always scales ≤ 1 to fit. Do NOT gate autoShrink on fontSize — that
+ * reintroduces the blown-up-digits overflow (operator, 2026-05-29 AND
+ * 2026-05-30, twice now).
  */
 function FitValue({ config, children }: { config: BaseConfig; children: React.ReactNode }) {
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitOneLine
         maxFontPx={config.fontSize && config.fontSize > 0 ? config.fontSize : 800}
-        autoShrink={!(config.fontSize && config.fontSize > 0)}
+        autoShrink={true}
         align={config.align ?? 'center'}
         style={{
           color: config.color ?? '#ffffff',
