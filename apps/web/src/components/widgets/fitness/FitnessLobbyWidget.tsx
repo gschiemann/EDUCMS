@@ -22,6 +22,8 @@ import { HsStage } from '../hs/HsStage';
 import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 export interface FitnessLobbyConfig {
+  // Gym logo — optional image that replaces the text logo in the header
+  gymLogoUrl?: string;
   // Header
   'head.t1'?: string;
   'head.t2'?: string;
@@ -113,6 +115,8 @@ export interface FitnessLobbyConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Gym logo image upload (optional — falls back to text logo below)
+  'gymLogoUrl':   '',
   'head.t1':      'The ',
   'head.t2':      'Lounge.',
   'head.lab':     '★ TUESDAY · MARCH 18 · 6:14 AM',
@@ -260,8 +264,15 @@ export function FitnessLobbyWidget({ config }: { config?: FitnessLobbyConfig }) 
       {/* Header */}
       <div className="fb-head">
         <div className="fb-lg">
-          <span data-field="head.t1">{pick(config, 'head.t1')}</span>
-          <em data-field="head.t2">{pick(config, 'head.t2')}</em>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {pick(config, 'gymLogoUrl') ? (
+            <img src={pick(config, 'gymLogoUrl')} alt="Gym logo" className="fb-gym-logo" />
+          ) : (
+            <>
+              <span data-field="head.t1">{pick(config, 'head.t1')}</span>
+              <em data-field="head.t2">{pick(config, 'head.t2')}</em>
+            </>
+          )}
         </div>
         <div className="fb-head-r">
           <div className="fb-lab" data-field="head.lab">{pick(config, 'head.lab')}</div>
@@ -387,6 +398,7 @@ const CSS = `
   font-size: 160px; line-height: .85; letter-spacing: -.02em;
 }
 .fb-lg em { font-style: italic; color: #c89e54; }
+.fb-gym-logo { height: 120px; width: auto; object-fit: contain; object-position: left center; }
 .fb-head-r { text-align: right; }
 .fb-head-r .fb-lab {
   font-family: 'JetBrains Mono'; font-size: 24px; letter-spacing: .32em;

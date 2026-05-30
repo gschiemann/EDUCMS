@@ -31,6 +31,8 @@
 import { HsStage } from '../hs/HsStage';
 
 export interface FitnessCragConfig {
+  // Gym logo — optional image for the header
+  gymLogoUrl?: string;
   // Header
   'head.t1'?: string;
   'head.t2'?: string;
@@ -150,6 +152,8 @@ export interface FitnessCragConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Gym logo image upload (optional — falls back to text logo)
+  'gymLogoUrl':    '',
   'head.t1':       'The ',
   'head.t2':       'Crag.',
   'head.sub':      '▸ ROUTES · BOULDER · TOPROPE · LEAD · KIDS WALL',
@@ -316,6 +320,10 @@ export function FitnessCragWidget({ config }: { config?: FitnessCragConfig }) {
       {/* Header */}
       <div className="fg-head">
         <div className="fg-head-left">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {pick(config, 'gymLogoUrl') && (
+            <img src={pick(config, 'gymLogoUrl')} alt="Gym logo" className="fg-gym-logo" />
+          )}
           <div className="fg-title">
             <span data-field="head.t1">{pick(config, 'head.t1')}</span>
             <em data-field="head.t2">{pick(config, 'head.t2')}</em>
@@ -469,6 +477,7 @@ const CSS = `
   display: flex; justify-content: space-between; align-items: flex-start;
 }
 .fg-head-left { position: relative; }
+.fg-gym-logo { height: 80px; width: auto; object-fit: contain; object-position: left top; margin-bottom: 12px; display: block; }
 .fg-title {
   font-family: 'Archivo Black'; font-size: 340px;
   line-height: .82; letter-spacing: -.04em;

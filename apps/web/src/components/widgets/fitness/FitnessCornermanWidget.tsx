@@ -31,6 +31,11 @@
 import { HsStage } from '../hs/HsStage';
 
 export interface FitnessCornermanConfig {
+  // Fighter photos — optional images for the VS card portraits
+  fighterAPhotoUrl?: string;
+  fighterBPhotoUrl?: string;
+  // Gym logo image (optional)
+  gymLogoUrl?: string;
   // Top strap
   'strap.l'?: string;
   'strap.r'?: string;
@@ -87,6 +92,11 @@ export interface FitnessCornermanConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Fighter photo uploads (optional — corners render colored blocks when unset)
+  'fighterAPhotoUrl': '',
+  'fighterBPhotoUrl': '',
+  // Gym logo image upload (optional)
+  'gymLogoUrl':       '',
   'strap.l':    '★ NORTHGATE BOXING CLUB — EST. 1962',
   'strap.r':    'FIGHT NIGHT MARCH 22 — DOORS 6P',
 
@@ -201,6 +211,10 @@ export function FitnessCornermanWidget({ config }: { config?: FitnessCornermanCo
       {/* VS card */}
       <div className="fn-vs">
         <div className="fn-corner fn-corner-a">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {pick(config, 'fighterAPhotoUrl') && (
+            <img src={pick(config, 'fighterAPhotoUrl')} alt="Fighter A" className="fn-fighter-photo" />
+          )}
           <div className="fn-lab" data-field="vs.lab1">{pick(config, 'vs.lab1')}</div>
           <div className="fn-nm">
             <span data-field="vs.t1a">{pick(config, 'vs.t1a')}</span>
@@ -233,6 +247,10 @@ export function FitnessCornermanWidget({ config }: { config?: FitnessCornermanCo
         </div>
 
         <div className="fn-corner fn-corner-b">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {pick(config, 'fighterBPhotoUrl') && (
+            <img src={pick(config, 'fighterBPhotoUrl')} alt="Fighter B" className="fn-fighter-photo" />
+          )}
           <div className="fn-lab" data-field="vs.lab2">{pick(config, 'vs.lab2')}</div>
           <div className="fn-nm">
             <span data-field="vs.t1b">{pick(config, 'vs.t1b')}</span>
@@ -369,6 +387,7 @@ const CSS = `
 .fn-corner {
   display: flex; flex-direction: column; gap: 24px; padding: 0 30px;
 }
+.fn-fighter-photo { width: 100%; height: 280px; object-fit: cover; object-position: center top; border-radius: 8px; margin-bottom: 8px; }
 .fn-lab {
   font-family: 'JetBrains Mono'; font-size: 30px; letter-spacing: .28em;
   color: #c8202a;

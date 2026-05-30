@@ -35,6 +35,8 @@ import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
 
 export interface FitnessStadiumConfig {
+  // Gym logo — optional image for the TV pane mark area
+  gymLogoUrl?: string;
   // Scorebug
   'scorebug.live'?: string;
   'scorebug.channel'?: string;
@@ -85,6 +87,8 @@ export interface FitnessStadiumConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Gym logo image upload (optional — shown as the TV mark branding)
+  'gymLogoUrl':          '',
   'scorebug.live':       'LIVE',
   'scorebug.channel':    '12',
   'scorebug.network':    'ESPN',
@@ -174,7 +178,12 @@ export function FitnessStadiumWidget({ config }: { config?: FitnessStadiumConfig
       <div className="fs-tv">
         <div className="fs-crt" />
         <div className="fs-tv-center">
-          <div className="fs-tv-mark" data-field="tv.mark">{pick(config, 'tv.mark')}</div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {pick(config, 'gymLogoUrl') ? (
+            <img src={pick(config, 'gymLogoUrl')} alt="Gym logo" className="fs-gym-logo" />
+          ) : (
+            <div className="fs-tv-mark" data-field="tv.mark">{pick(config, 'tv.mark')}</div>
+          )}
           <div className="fs-tv-net" data-field="tv.show">{pick(config, 'tv.show')}</div>
         </div>
         <div className="fs-tv-lower">
@@ -323,6 +332,7 @@ const CSS = `
   font-family: 'Archivo Black'; font-size: 380px; line-height: .85; letter-spacing: -.04em;
   color: #f4f5f7; text-shadow: 0 14px 48px rgba(0,212,255,.35);
 }
+.fs-gym-logo { height: 180px; width: auto; object-fit: contain; object-position: center; margin-bottom: 20px; filter: drop-shadow(0 0 24px rgba(0,212,255,.5)); }
 .fs-tv-net {
   display: inline-block; font-family: 'JetBrains Mono'; font-size: 34px; letter-spacing: .34em;
   color: #00d4ff; border: 2px solid #00d4ff; padding: 10px 26px; margin-top: 28px;

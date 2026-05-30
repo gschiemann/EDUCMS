@@ -36,6 +36,8 @@ import { HsStage } from '../hs/HsStage';
 import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 export interface FitnessLockerConfig {
+  // Gym logo — optional image for the banner area
+  gymLogoUrl?: string;
   // Banner
   'banner.top'?: string;
   'banner.title'?: string;
@@ -82,6 +84,8 @@ export interface FitnessLockerConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Gym logo image upload (optional — shown above the banner title)
+  'gymLogoUrl':   '',
   'banner.top':   'EST. 1987 ★ MEMBERS ONLY ★ NORTH GATE',
   'banner.title': 'THE LOCKER.',
   'banner.sub':   '★ TUESDAY · MARCH 18 · 6:14 AM ★',
@@ -147,6 +151,10 @@ export function FitnessLockerWidget({ config }: { config?: FitnessLockerConfig }
 
         {/* Header banner */}
         <div className="fl-banner">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {pick(config, 'gymLogoUrl') && (
+            <img src={pick(config, 'gymLogoUrl')} alt="Gym logo" className="fl-gym-logo" />
+          )}
           <div className="fl-banner-top" data-field="banner.top">{pick(config, 'banner.top')}</div>
           <h1 className="fl-banner-title" data-field="banner.title">{pick(config, 'banner.title')}</h1>
           <div className="fl-banner-sub" data-field="banner.sub">{pick(config, 'banner.sub')}</div>
@@ -330,6 +338,7 @@ const CSS = `
   border: 6px double #f3ead4;
   position: relative;
 }
+.fl-gym-logo { height: 80px; width: auto; object-fit: contain; object-position: left center; margin-bottom: 16px; display: block; filter: brightness(10); }
 .fl-banner::before, .fl-banner::after {
   content: '\\2605';
   position: absolute;

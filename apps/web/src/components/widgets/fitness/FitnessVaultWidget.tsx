@@ -23,6 +23,8 @@ import { HsStage } from '../hs/HsStage';
 import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 export interface FitnessVaultConfig {
+  // Gym logo — optional image that replaces the text logo in the header
+  gymLogoUrl?: string;
   // Header
   'head.t1'?: string;
   'head.t2'?: string;
@@ -78,6 +80,8 @@ export interface FitnessVaultConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Gym logo image upload (optional — falls back to text logo)
+  'gymLogoUrl':     '',
   'head.t1':        'The ',
   'head.t2':        'Vault.',
   'head.num':       '▸ DAY 078 · CYCLE 04 · WK 11',
@@ -152,8 +156,15 @@ export function FitnessVaultWidget({ config }: { config?: FitnessVaultConfig }) 
       {/* Header */}
       <div className="fv-head">
         <div className="fv-lg">
-          <span data-field="head.t1">{pick(config, 'head.t1')}</span>
-          <em data-field="head.t2">{pick(config, 'head.t2')}</em>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {pick(config, 'gymLogoUrl') ? (
+            <img src={pick(config, 'gymLogoUrl')} alt="Gym logo" className="fv-gym-logo" />
+          ) : (
+            <>
+              <span data-field="head.t1">{pick(config, 'head.t1')}</span>
+              <em data-field="head.t2">{pick(config, 'head.t2')}</em>
+            </>
+          )}
         </div>
         <div className="fv-num" data-field="head.num" dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(headNum) }} />
       </div>
@@ -261,6 +272,7 @@ const CSS = `
   letter-spacing: -.04em; color: #f4f0e6;
 }
 .fv-lg em { font-style: normal; color: #ff6a1a; }
+.fv-gym-logo { height: 100px; width: auto; object-fit: contain; object-position: left center; }
 .fv-num {
   font-family: 'JetBrains Mono'; font-size: 36px; letter-spacing: .32em;
   color: #8a8a8a; border: 3px solid #ff6a1a; padding: 14px 24px;

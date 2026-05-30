@@ -30,6 +30,8 @@
 import { HsStage } from '../hs/HsStage';
 
 export interface FitnessRecessConfig {
+  // Gym logo — optional image for the header area
+  gymLogoUrl?: string;
   // Header
   'head.pre'?: string;
   'head.t1'?: string;
@@ -80,6 +82,8 @@ export interface FitnessRecessConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Gym logo image upload (optional — falls back to text heading)
+  'gymLogoUrl':     '',
   'head.pre':       '★ FAMILY GYM · DROP-IN OPEN ★',
   'head.t1':        'Recess ',
   'head.t2':        'Time!',
@@ -152,6 +156,10 @@ export function FitnessRecessWidget({ config }: { config?: FitnessRecessConfig }
 
       {/* Header */}
       <div className="fr-head">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {pick(config, 'gymLogoUrl') && (
+          <img src={pick(config, 'gymLogoUrl')} alt="Gym logo" className="fr-gym-logo" />
+        )}
         <div className="fr-preti" data-field="head.pre">{pick(config, 'head.pre')}</div>
         <h1 className="fr-h1">
           <span data-field="head.t1">{pick(config, 'head.t1')}</span>
@@ -270,6 +278,7 @@ const CSS = `
 .fr-head {
   position: absolute; top: 120px; left: 120px;
 }
+.fr-gym-logo { height: 100px; width: auto; object-fit: contain; object-position: left top; margin-bottom: 16px; display: block; }
 .fr-preti {
   font-family: 'Outfit'; font-weight: 900; font-size: 54px;
   letter-spacing: .18em; color: #1a1530;

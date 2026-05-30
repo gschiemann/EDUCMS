@@ -30,6 +30,10 @@
 import { HsStage } from '../hs/HsStage';
 
 export interface FitnessDiscothequeConfig {
+  // Instructor photo — optional image for the instructor avatar circle
+  instructorPhotoUrl?: string;
+  // Gym logo — optional image for the header area
+  gymLogoUrl?: string;
   // Headline
   'head.now'?: string;
   'head.t1'?: string;
@@ -60,6 +64,10 @@ export interface FitnessDiscothequeConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Instructor photo upload (optional — falls back to initials)
+  'instructorPhotoUrl': '',
+  // Gym logo image upload (optional)
+  'gymLogoUrl':         '',
   'head.now':       '▸ NOW LIVE · STUDIO B · 7:30 — 8:30 AM',
   'head.t1':        'Power ',
   'head.t2':        'Yoga.',
@@ -116,7 +124,12 @@ export function FitnessDiscothequeWidget({ config }: { config?: FitnessDiscotheq
           <div className="fd-instr-lab" data-field="instr.lab">{pick(config, 'instr.lab')}</div>
           <div className="fd-instr-row">
             <div className="fd-ph">
-              <div className="fd-init" data-field="instr.init">{pick(config, 'instr.init')}</div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {pick(config, 'instructorPhotoUrl') ? (
+                <img src={pick(config, 'instructorPhotoUrl')} alt="Instructor photo" className="fd-instr-photo" />
+              ) : (
+                <div className="fd-init" data-field="instr.init">{pick(config, 'instr.init')}</div>
+              )}
             </div>
             <div>
               <div className="fd-nm">
@@ -239,6 +252,7 @@ const CSS = `
   border: 6px solid #e8d5ff; position: relative; overflow: hidden;
   display: grid; place-items: center;
 }
+.fd-instr-photo { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
 .fd-init {
   font-family: 'Archivo Black'; font-size: 200px; color: #fff; line-height: 1;
 }

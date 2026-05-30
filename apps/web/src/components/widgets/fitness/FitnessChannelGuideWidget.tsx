@@ -34,6 +34,8 @@ import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
 
 export interface FitnessChannelGuideConfig {
+  // Gym logo — optional image for the top bar brand area
+  gymLogoUrl?: string;
   // Top bar
   'top.t1'?: string;
   'top.t2'?: string;
@@ -91,6 +93,8 @@ export interface FitnessChannelGuideConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Gym logo image upload (optional — falls back to text brand in top bar)
+  'gymLogoUrl':     '',
   'top.t1':         'Channel ',
   'top.t2':         'Guide',
   'top.pill':       '▸ 1 STICK · ONLINE',
@@ -231,8 +235,15 @@ export function FitnessChannelGuideWidget({ config }: { config?: FitnessChannelG
       {/* Top bar */}
       <div className="fc-top">
         <div className="fc-brand">
-          <span data-field="top.t1">{pick(config, 'top.t1')}</span>
-          <em data-field="top.t2">{pick(config, 'top.t2')}</em>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {pick(config, 'gymLogoUrl') ? (
+            <img src={pick(config, 'gymLogoUrl')} alt="Gym logo" className="fc-gym-logo" />
+          ) : (
+            <>
+              <span data-field="top.t1">{pick(config, 'top.t1')}</span>
+              <em data-field="top.t2">{pick(config, 'top.t2')}</em>
+            </>
+          )}
         </div>
         <div className="fc-pill" data-field="top.pill">{pick(config, 'top.pill')}</div>
         <div className="fc-spacer" />
@@ -343,6 +354,7 @@ const CSS = `
   border-bottom: 3px solid #00d4ff; padding-bottom: 28px;
 }
 .fc-brand { font-family: 'Archivo Black'; font-size: 90px; line-height: .85; letter-spacing: -.02em; color: #e8f0ff; }
+.fc-gym-logo { height: 70px; width: auto; object-fit: contain; object-position: left center; filter: brightness(10); }
 .fc-brand em { font-style: normal; color: #00d4ff; }
 .fc-pill {
   font-family: 'JetBrains Mono'; font-size: 30px; letter-spacing: .24em; color: #000;

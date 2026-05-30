@@ -29,6 +29,8 @@ import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
 
 export interface FitnessReformerConfig {
+  // Gym logo — optional image that replaces the text logo in the header
+  gymLogoUrl?: string;
   // Header
   'head.t1'?: string;
   'head.t2'?: string;
@@ -105,6 +107,8 @@ export interface FitnessReformerConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Gym logo image upload (optional — falls back to text logo)
+  'gymLogoUrl':        '',
   'head.t1':           'Reformer ',
   'head.t2':           '& Co.',
   'head.lab':          'TUESDAY · MARCH 18 · 6:14 AM',
@@ -219,8 +223,15 @@ export function FitnessReformerWidget({ config }: { config?: FitnessReformerConf
       {/* Header band */}
       <div className="fz-head">
         <div className="fz-lg">
-          <span data-field="head.t1">{pick(config, 'head.t1')}</span>
-          <em data-field="head.t2">{pick(config, 'head.t2')}</em>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {pick(config, 'gymLogoUrl') ? (
+            <img src={pick(config, 'gymLogoUrl')} alt="Gym logo" className="fz-gym-logo" />
+          ) : (
+            <>
+              <span data-field="head.t1">{pick(config, 'head.t1')}</span>
+              <em data-field="head.t2">{pick(config, 'head.t2')}</em>
+            </>
+          )}
         </div>
         <div className="fz-meta">
           <div className="fz-lab" data-field="head.lab">{liveOn ? headerLabel : pick(config, 'head.lab')}</div>
@@ -352,6 +363,7 @@ const CSS = `
   font-family: 'Cormorant Garamond'; font-size: 140px; line-height: .85; letter-spacing: -.02em;
 }
 .fz-lg em { font-style: italic; color: #5e6e51; }
+.fz-gym-logo { height: 100px; width: auto; object-fit: contain; object-position: left center; }
 .fz-meta { text-align: right; }
 .fz-lab {
   font-family: 'JetBrains Mono'; font-size: 24px; letter-spacing: .32em; color: #7a6e5c;

@@ -35,6 +35,10 @@ import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
 
 export interface FitnessIronConfig {
+  // Gym logo — optional image for the header stencil area
+  gymLogoUrl?: string;
+  // Tutorial video thumbnail — optional image for the tutorial pane
+  tutorialThumbnailUrl?: string;
   // Header / stencil
   'header.num'?: string;
   'header.t1'?: string;
@@ -72,6 +76,10 @@ export interface FitnessIronConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Gym logo image upload (optional — falls back to text stencil)
+  'gymLogoUrl':              '',
+  // Tutorial video thumbnail (optional — shown in the tutorial pane background)
+  'tutorialThumbnailUrl':    '',
   'header.num':         '02',
   'header.t1':          'Iron',
   'header.t2':          'floor.',
@@ -155,8 +163,15 @@ export function FitnessIronWidget({ config }: { config?: FitnessIronConfig }) {
       <div className="fi-stencil">
         <div className="fi-num" data-field="header.num">{pick(config, 'header.num')}</div>
         <div className="fi-label">
-          <span data-field="header.t1">{pick(config, 'header.t1')}</span>
-          <em data-field="header.t2">{pick(config, 'header.t2')}</em>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {pick(config, 'gymLogoUrl') ? (
+            <img src={pick(config, 'gymLogoUrl')} alt="Gym logo" className="fi-gym-logo" />
+          ) : (
+            <>
+              <span data-field="header.t1">{pick(config, 'header.t1')}</span>
+              <em data-field="header.t2">{pick(config, 'header.t2')}</em>
+            </>
+          )}
         </div>
         <div className="fi-meta">
           <div data-field="header.kicker">{pick(config, 'header.kicker')}</div>
@@ -169,6 +184,10 @@ export function FitnessIronWidget({ config }: { config?: FitnessIronConfig }) {
 
         {/* Tutorial pane */}
         <div className="fi-tutorial">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {pick(config, 'tutorialThumbnailUrl') && (
+            <img src={pick(config, 'tutorialThumbnailUrl')} alt="Tutorial thumbnail" className="fi-tutorial-img" />
+          )}
           <div className="fi-stamp" data-field="tutorial.stamp">{pick(config, 'tutorial.stamp')}</div>
           <div className="fi-play" />
           <div className="fi-lower">
@@ -283,6 +302,8 @@ const CSS = `
   letter-spacing: -.03em; flex: 1;
 }
 .fi-label em { font-style: normal; color: #ff2a4d; display: block; }
+.fi-gym-logo { height: 120px; width: auto; object-fit: contain; object-position: left center; }
+.fi-tutorial-img { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; opacity: 0.4; z-index: 0; }
 .fi-meta {
   font-family: 'JetBrains Mono'; font-size: 48px; letter-spacing: .18em;
   color: #8a8680; padding-bottom: 30px;

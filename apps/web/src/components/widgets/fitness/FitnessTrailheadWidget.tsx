@@ -28,6 +28,8 @@ import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
 
 export interface FitnessTrailheadConfig {
+  // Gym logo — optional image for the sign area
+  gymLogoUrl?: string;
   // Sign
   'sign.arrow'?: string;
   'sign.t1'?: string;
@@ -123,6 +125,8 @@ export interface FitnessTrailheadConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Gym logo image upload (optional — falls back to text logo in the sign)
+  'gymLogoUrl':        '',
   'sign.arrow':        '→',
   'sign.t1':           'Trail',
   'sign.t2':           'head.',
@@ -254,6 +258,10 @@ export function FitnessTrailheadWidget({ config }: { config?: FitnessTrailheadCo
 
       {/* National-park-style sign */}
       <div className="fh-sign">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {pick(config, 'gymLogoUrl') && (
+          <img src={pick(config, 'gymLogoUrl')} alt="Gym logo" className="fh-gym-logo" />
+        )}
         <div className="fh-sign-arrow" data-field="sign.arrow">{pick(config, 'sign.arrow')}</div>
         <div className="fh-sign-title">
           <span data-field="sign.t1">{pick(config, 'sign.t1')}</span>
@@ -406,6 +414,7 @@ const CSS = `
   display: flex; align-items: center; gap: 60px;
   box-shadow: 0 30px 80px rgba(0,0,0,.4), inset 0 0 0 8px #e9dfc6, inset 0 0 0 16px #2d5a3a;
 }
+.fh-gym-logo { height: 120px; width: auto; object-fit: contain; object-position: left center; flex-shrink: 0; }
 .fh-sign-arrow {
   font-family: 'Archivo Black'; font-size: 200px; color: #dba93f; line-height: 1; flex: none;
 }

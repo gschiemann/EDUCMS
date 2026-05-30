@@ -34,6 +34,8 @@
 import { HsStage } from '../hs/HsStage';
 
 export interface FitnessSplashConfig {
+  // Gym logo image — replaces the text logo circle in the header when set
+  gymLogoUrl?: string;
   // Header
   'head.lg'?: string;
   'head.t1'?: string;
@@ -73,6 +75,8 @@ export interface FitnessSplashConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Gym logo image upload (optional — replaces the text circle logo)
+  'gymLogoUrl': '',
   'head.lg':  '★',
   'head.t1':  'Splash ',
   'head.t2':  'City.',
@@ -146,7 +150,12 @@ export function FitnessSplashWidget({ config }: { config?: FitnessSplashConfig }
 
       {/* Header */}
       <div className="fp-head">
-        <div className="fp-lg" data-field="head.lg">{pick(config, 'head.lg')}</div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {pick(config, 'gymLogoUrl') ? (
+          <img src={pick(config, 'gymLogoUrl')} alt="Gym logo" className="fp-gym-logo" />
+        ) : (
+          <div className="fp-lg" data-field="head.lg">{pick(config, 'head.lg')}</div>
+        )}
         <div className="fp-ti">
           <span data-field="head.t1">{pick(config, 'head.t1')}</span>
           <em data-field="head.t2">{pick(config, 'head.t2')}</em>
@@ -302,6 +311,7 @@ const CSS = `
   border-bottom: 8px solid #fff;
   z-index: 2;
 }
+.fp-gym-logo { width: 160px; height: 160px; border-radius: 50%; object-fit: cover; object-position: center; flex: none; border: 8px solid #dc2626; box-shadow: 0 0 0 8px #fff; }
 .fp-lg {
   width: 160px; height: 160px; border-radius: 50%;
   background: #fff; color: #dc2626;

@@ -35,6 +35,8 @@ import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
 
 export interface FitnessMarqueeConfig {
+  // Gym logo — optional image for the marquee header
+  gymLogoUrl?: string;
   // Marquee header
   'marquee.pres'?: string;
   'marquee.t1'?: string;
@@ -77,6 +79,8 @@ export interface FitnessMarqueeConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Gym logo image upload (optional — shown above the marquee title)
+  'gymLogoUrl':         '',
   'marquee.pres':       "★  TONIGHT'S BILL  ★",
   'marquee.t1':         'Welcome ',
   'marquee.t2':         'in.',
@@ -187,6 +191,10 @@ export function FitnessMarqueeWidget({ config }: { config?: FitnessMarqueeConfig
 
       {/* Bulb-bordered marquee */}
       <div className="fm-marquee">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {pick(config, 'gymLogoUrl') && (
+          <img src={pick(config, 'gymLogoUrl')} alt="Gym logo" className="fm-gym-logo" />
+        )}
         <div className="fm-pres" data-field="marquee.pres">{pick(config, 'marquee.pres')}</div>
         <h1 className="fm-h1">
           <span data-field="marquee.t1">{pick(config, 'marquee.t1')}</span>
@@ -273,6 +281,7 @@ const CSS = `
   display: flex; flex-direction: column; justify-content: center; align-items: center;
   text-align: center; overflow: hidden;
 }
+.fm-gym-logo { height: 80px; width: auto; object-fit: contain; object-position: center; margin-bottom: 24px; filter: drop-shadow(0 0 16px rgba(255,216,107,.6)); }
 .fm-marquee::before,
 .fm-marquee::after {
   content: ''; position: absolute; left: 30px; right: 30px; height: 30px;

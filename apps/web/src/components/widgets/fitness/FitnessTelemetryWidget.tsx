@@ -31,6 +31,10 @@ import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
 
 export interface FitnessTelemetryConfig {
+  // Gym logo — optional image that replaces the text logo in the top bar
+  gymLogoUrl?: string;
+  // Athlete photo — optional image that fills the athlete photo placeholder
+  athletePhotoUrl?: string;
   // Top bar
   'top.t1'?: string;
   'top.t2'?: string;
@@ -115,6 +119,10 @@ export interface FitnessTelemetryConfig {
 
 /* eslint-disable @typescript-eslint/quotes */
 export const DEFAULTS: Record<string, string> = {
+  // Gym logo image upload (optional — falls back to text logo)
+  'gymLogoUrl':       '',
+  // Athlete photo upload (optional — falls back to initials)
+  'athletePhotoUrl':  '',
   'top.t1':       'tele',
   'top.t2':       '_metry',
   'top.crumbs':   '▸ LAB 04 · TEST VO2_MAX_RAMP · OPERATOR DR. OKAFOR',
@@ -232,8 +240,15 @@ export function FitnessTelemetryWidget({ config }: { config?: FitnessTelemetryCo
       {/* Top status bar */}
       <div className="ft-top">
         <div className="ft-lg">
-          <span data-field="top.t1">{pick(config, 'top.t1')}</span>
-          <em data-field="top.t2">{pick(config, 'top.t2')}</em>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {pick(config, 'gymLogoUrl') ? (
+            <img src={pick(config, 'gymLogoUrl')} alt="Gym logo" className="ft-gym-logo" />
+          ) : (
+            <>
+              <span data-field="top.t1">{pick(config, 'top.t1')}</span>
+              <em data-field="top.t2">{pick(config, 'top.t2')}</em>
+            </>
+          )}
         </div>
         <div className="ft-crumbs" data-field="top.crumbs">{pick(config, 'top.crumbs')}</div>
         <div className="ft-clk">
@@ -254,7 +269,12 @@ export function FitnessTelemetryWidget({ config }: { config?: FitnessTelemetryCo
             <span className="ft-corn ft-tr" />
             <span className="ft-corn ft-bl" />
             <span className="ft-corn ft-br" />
-            <span className="ft-ini" data-field="ath.ini">{pick(config, 'ath.ini')}</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {pick(config, 'athletePhotoUrl') ? (
+              <img src={pick(config, 'athletePhotoUrl')} alt="Athlete photo" className="ft-ath-photo" />
+            ) : (
+              <span className="ft-ini" data-field="ath.ini">{pick(config, 'ath.ini')}</span>
+            )}
           </div>
           <div className="ft-info">
             <div className="ft-nm">
@@ -441,6 +461,8 @@ const CSS = `
   color: #3effa3; letter-spacing: -.02em; line-height: 1;
 }
 .ft-lg em { font-style: normal; color: #9bff9b; }
+.ft-gym-logo { height: 80px; width: auto; object-fit: contain; object-position: left center; }
+.ft-ath-photo { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
 .ft-crumbs { font-size: 30px; letter-spacing: .18em; color: #3e7a52; }
 .ft-clk {
   margin-left: auto;
