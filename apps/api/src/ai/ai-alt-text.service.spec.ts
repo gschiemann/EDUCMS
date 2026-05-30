@@ -25,6 +25,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AiAltTextService, AiAltTextQuotaError } from './ai-alt-text.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../realtime/redis.service';
 import { sealAiKey } from './ai-key-cipher';
 
 // Mock global fetch — every provider call goes through it.
@@ -88,6 +89,10 @@ describe('AiAltTextService (P1-2)', () => {
       providers: [
         AiAltTextService,
         { provide: PrismaService, useValue: prismaMock },
+        // RedisService stub — publisher:null makes the shared 30/hr cap
+        // fail-open (skipped), so these specs exercise the provider
+        // paths exactly as before the cap was added.
+        { provide: RedisService, useValue: { publisher: null } },
       ],
     }).compile();
     service = module.get(AiAltTextService);

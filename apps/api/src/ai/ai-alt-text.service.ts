@@ -47,8 +47,10 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../realtime/redis.service';
 import { openAiKey } from './ai-key-cipher';
 import { mapProviderQuotaError, defaultModelFor } from './ai-providers';
+import { aiWindowCount, aiRecordEvent } from './ai-hourly-cap';
 
 /** Providers whose vision API alt-text supports. All three of the
  *  catalog providers are now covered (OpenAI + Anthropic via platform
@@ -76,6 +78,12 @@ const GOOGLE_EST_COST_USD = 0.001;
 // silently — a 1000-char rant from the model is useless to a screen
 // reader.
 const MAX_ALT_TEXT_CHARS = 160;
+
+// Shared per-tenant hourly AI cap (audit §3 P3, 2026-05-30). Alt-text
+// now counts against the SAME 30/hr ceiling as sparkle + touch-template
+// (one shared Redis sorted set, ai:rl:gen:<tenantId>). MUST match
+// AiService.HOURLY_CAP — both consume the same budget.
+const HOURLY_CAP = 30;
 
 // Hard fetch timeout. Alt-text generation runs fire-and-forget after
 // upload; we don't want a hung provider holding a connection.
@@ -155,7 +163,12 @@ export class AiAltTextQuotaError extends Error {
 export class AiAltTextService {
   private readonly logger = new Logger(AiAltTextService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // RedisService is @Global (RealtimeModule) — injected so alt-text
+    // can share the 30/hr sliding-window cap with the other AI surfaces.
+    private readonly redis: RedisService,
+  ) {}
 
   /**
    * Resolve which provider key to use. BYOK wins; we look at the
@@ -385,6 +398,26 @@ export class AiAltTextService {
       return null;
     }
 
+    // Guard 4: SHARED 30/hr hourly cap (audit §3 P3). Alt-text counts
+    // against the SAME per-tenant sliding window as sparkle + touch-
+    // template, so an operator can't blow past 30/hr by mixing the
+    // sparkle button with a bulk image upload. Applies to BOTH platform
+    // and BYOK tenants — it's a runaway/abuse guard, not a spend cap
+    // (mirrors AiService, which also checks the window for all sources).
+    // Fire-and-forget contract preserved: at cap we SKIP + audit, we
+    // never throw (an upload must not fail because the hour's AI budget
+    // is spent). Fails OPEN on Redis loss (helper returns 0).
+    if ((await aiWindowCount(this.redis.publisher, args.tenantId)) >= HOURLY_CAP) {
+      await this.auditLog({
+        tenantId: args.tenantId,
+        userId: args.userId,
+        assetId: args.assetId,
+        action: 'AI_ALT_TEXT_SKIPPED',
+        details: { reason: 'hourly_cap_reached', cap: HOURLY_CAP, provider: resolved.provider, source: resolved.source },
+      });
+      return null;
+    }
+
     // Encode image as base64 data URL once for both providers.
     const base64 = args.imageBuffer.toString('base64');
 
@@ -469,6 +502,13 @@ export class AiAltTextService {
     if (altText.length > MAX_ALT_TEXT_CHARS) {
       altText = altText.slice(0, MAX_ALT_TEXT_CHARS - 1).trimEnd() + '…';
     }
+
+    // Record one slot in the SHARED 30/hr window (audit §3 P3) — ONLY
+    // after a usable result, same leak-fix discipline as AiService
+    // (a failed / empty call must not burn the hourly cap). Counts for
+    // both platform and BYOK so the ceiling is one shared budget.
+    // Best-effort — the helper swallows Redis errors.
+    await aiRecordEvent(this.redis.publisher, args.tenantId);
 
     // Bump platform counter on a successful platform-paid call. BYOK
     // counts are untracked (their cost, their unlimited).
@@ -674,7 +714,20 @@ export class AiAltTextService {
       body: JSON.stringify({
         model,
         max_tokens: 300,
-        system: ALT_TEXT_SYSTEM_PROMPT,
+        // Anthropic ephemeral prompt cache (audit §3, 2026-05-30) — the
+        // ALT_TEXT_SYSTEM_PROMPT is identical on every call, so flag the
+        // system block as cacheable for the ~90% repeat-call discount on
+        // those input tokens. Bulk alt-text on an upload batch is exactly
+        // the steady-volume case this pays off on. The system field
+        // accepts the block-array form (string OR array); only the array
+        // form carries cache_control. Anthropic-only.
+        system: [
+          {
+            type: 'text',
+            text: ALT_TEXT_SYSTEM_PROMPT,
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
         messages: [
           {
             role: 'user',

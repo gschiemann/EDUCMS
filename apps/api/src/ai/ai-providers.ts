@@ -136,17 +136,29 @@ function estCost(inputPer1M: number, outputPer1M: number): number {
 //   • Premium  — top tier, use for AI-generated template layouts
 //                / complex prompts
 //
-// Why I left Opus 4 (not 4.5/4.7) as Anthropic Premium: model IDs
-// are wire-strings sent to the provider. A typo or speculative ID
-// returns 404 and the test-on-save flow refuses to persist the
-// operator's key. The catalog is a one-file edit with no migration —
-// when Anthropic / OpenAI / Google publish a confirmed-working
-// newer model id (Opus 4.5, GPT-5.5, Gemini 3.0, etc.), update the
-// `id:` field below and push; every operator's settings page picks
-// up the new option at next page-load via /ai/key/catalog.
+// Model IDs are wire-strings sent to the provider verbatim. A typo or
+// speculative ID returns 404 and the test-on-save flow refuses to
+// persist the operator's key, so EVERY id below must be a real,
+// currently-GA model. The catalog is a one-file edit with no migration —
+// every operator's settings page picks up a refreshed `id:` at next
+// page-load via /ai/key/catalog.
 //
-// REFRESH CADENCE: review this catalog roughly quarterly, or
-// whenever a provider's pricing page gets a refresh.
+// REFRESH CADENCE: review this catalog roughly quarterly, or whenever a
+// provider's pricing page gets a refresh.
+//
+// 2026-05-30 staleness refresh (audit §3) — bumped the two aging
+// Anthropic dated IDs to their current-GA successors:
+//   • Balanced: claude-3-5-sonnet-20241022 → claude-sonnet-4-5-20250929
+//     (Claude Sonnet 4.5, GA 2025-09).
+//   • Premium:  claude-opus-4-20250514     → claude-opus-4-1-20250805
+//     (Claude Opus 4.1, GA 2025-08).
+// Standard stays on claude-3-5-haiku-20241022 — it's still GA, is the
+// cheapest vision-capable Anthropic model, and is the exact id the
+// alt-text vision path (ai-alt-text.service.ts) pins; keeping them in
+// lock-step avoids a Standard-tier price surprise on the platform key.
+// OpenAI (gpt-4o-mini / gpt-4.1 / gpt-5) and Google
+// (gemini-2.5-flash / gemini-2.0-flash / gemini-2.5-pro) ids are all
+// current GA as of this refresh and left unchanged.
 export const AI_PROVIDERS: AiProviderInfo[] = [
   {
     id: 'anthropic',
@@ -163,15 +175,15 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
         default: true,
       },
       {
-        id: 'claude-3-5-sonnet-20241022',
-        label: 'Balanced — Claude 3.5 Sonnet',
+        id: 'claude-sonnet-4-5-20250929',
+        label: 'Balanced — Claude Sonnet 4.5',
         tagline: 'Better for longer copy.',
         inputPer1M: 3.00, outputPer1M: 15.00,
         estCostPerCallUsd: estCost(3.00, 15.00),
       },
       {
-        id: 'claude-opus-4-20250514',
-        label: 'Premium — Claude Opus 4',
+        id: 'claude-opus-4-1-20250805',
+        label: 'Premium — Claude Opus 4.1',
         tagline: 'Best for AI-generated template designs.',
         inputPer1M: 15.00, outputPer1M: 75.00,
         estCostPerCallUsd: estCost(15.00, 75.00),
@@ -346,7 +358,24 @@ export async function dispatchAi(
         model,
         max_tokens: input.maxTokens,
         temperature: TEMPERATURE,
-        system: input.system,
+        // Anthropic ephemeral prompt cache (audit §3, 2026-05-30) — our
+        // system prompts (SYSTEM_PROMPTS[intent], the touch-template
+        // schema prompt) are STATIC and re-sent verbatim on every call.
+        // Flagging the system block as cacheable lets Anthropic serve
+        // it from cache on repeat calls within the 5-min TTL — a ~90%
+        // discount on those (often large) system input tokens, which is
+        // pure savings on platform-paid generations where WE foot the
+        // bill. The system field accepts EITHER a plain string OR this
+        // block-array form; only the array form carries cache_control.
+        // Mirrors the bug-analyzer's already-shipped pattern. Anthropic-
+        // only — OpenAI/Google have no request-level cache_control knob.
+        system: [
+          {
+            type: 'text',
+            text: input.system,
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
         messages: [{ role: 'user', content: input.userPrompt }],
       }),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),

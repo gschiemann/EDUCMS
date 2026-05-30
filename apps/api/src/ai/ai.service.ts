@@ -30,6 +30,12 @@ import { Injectable, Logger, BadRequestException, ServiceUnavailableException, H
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { dispatchAi, mapProviderQuotaError, type AiProvider, coerceProvider } from './ai-providers';
+import {
+  aiWindowCount,
+  aiRecordEvent,
+  AI_RL_SUCCESS_PREFIX,
+  AI_HOURLY_WINDOW_MS,
+} from './ai-hourly-cap';
 import { openAiKey } from './ai-key-cipher';
 import { isVertical } from '@cms/api-types';
 // SECURITY (audit-B4 fix, 2026-05-25) — AI-generated touch actions
@@ -97,6 +103,64 @@ const SYSTEM_PROMPTS: Record<AiIntent, string> = {
     'You write scrolling-ticker lines for digital signage. ≤12 words per line. Information-dense. Multiple lines should each stand alone. No emoji.',
 };
 
+/**
+ * Per-vertical VOICE clauses (audit §3/§14, 2026-05-30).
+ *
+ * Previously the vertical was a one-line USER-prompt hint
+ * (`Vertical: gym`) — easy for the model to ignore, so a SPORTS
+ * scoreboard hype line read the same as a K-12 lobby notice. These
+ * clauses get PREPENDED to the intent system prompt (composeSystemPrompt
+ * below) so tone is anchored in the always-obeyed system role.
+ *
+ * Keyed by the canonical VERTICALS enum (packages/api-types). Kept to a
+ * single sentence each so the map stays maintainable and the cached
+ * system block stays small. Verticals without an entry fall through to
+ * a neutral default — never an error (the vertical is already validated
+ * against isVertical() upstream, so an unknown key here just means
+ * "no specialized voice yet", which is safe).
+ */
+const VERTICAL_VOICE: Record<string, string> = {
+  K12:
+    'AUDIENCE — a K-12 school: students, parents, teachers, staff. Voice: warm, encouraging, plainly informative; safe for all ages; never slangy or salesy.',
+  SPORTS:
+    'AUDIENCE — a live sports venue / athletic program: fans, players, a game-day crowd. Voice: high-energy, bold, hype; build crowd excitement; rally and celebrate without trash-talk or profanity.',
+  GYM:
+    'AUDIENCE — a gym / fitness club: members mid-workout. Voice: energizing and motivating, direct, action-oriented; nod to effort, progress, and consistency.',
+  RESTAURANT:
+    'AUDIENCE — a full-service restaurant: diners. Voice: appetizing and sensory, hospitable, a touch elevated; make the food and the experience the hero.',
+  QSR:
+    'AUDIENCE — a quick-service restaurant: fast-moving customers. Voice: fast, crave-able, value-forward; short and punchy; speed and tastiness over fine-dining prose.',
+  BAR:
+    'AUDIENCE — a bar / taproom / nightclub: an adult crowd (21+). Voice: lively, social, fun, a little cheeky; happy-hour and game-day energy; tasteful, never reckless about alcohol.',
+  RETAIL:
+    'AUDIENCE — a retail store: shoppers. Voice: clear and benefit-led, lightly promotional; drive footfall and highlight the offer without pressure.',
+  FASHION:
+    'AUDIENCE — a fashion / boutique brand: style-conscious shoppers. Voice: chic, aspirational, trend-aware, minimal; let the product feel premium.',
+  CORPORATE:
+    'AUDIENCE — a corporate lobby / internal comms: employees and visitors. Voice: polished, professional, concise, on-brand; informative over flashy.',
+  HEALTHCARE:
+    'AUDIENCE — a healthcare facility: patients, families, staff. Voice: calm, clear, reassuring, accessible; plain language; never alarmist or jokey.',
+  HOSPITALITY:
+    'AUDIENCE — a hotel / hospitality venue: guests. Voice: gracious, welcoming, refined, helpful; make guests feel looked-after.',
+  WORSHIP:
+    'AUDIENCE — a house of worship: a congregation. Voice: warm, sincere, inclusive, uplifting; respectful and community-minded; never commercial.',
+};
+
+/**
+ * Compose the final system prompt for a generation: prepend the
+ * vertical's voice clause (if any) to the intent's base prompt. The
+ * vertical arrives already validated against isVertical() in
+ * generateInner; we upper-case + look it up here. Unknown / absent
+ * verticals → the bare intent prompt (current behavior), so this is a
+ * pure additive enhancement with no regression for the default path.
+ */
+function composeSystemPrompt(intent: AiIntent, vertical?: string): string {
+  const base = SYSTEM_PROMPTS[intent];
+  const key = (vertical || '').trim().toUpperCase();
+  const voice = key ? VERTICAL_VOICE[key] : undefined;
+  return voice ? `${voice}\n\n${base}` : base;
+}
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
@@ -125,57 +189,33 @@ export class AiService {
   // but it can NOT let them exceed the monthly platform credit budget.
   private readonly HOURLY_CAP = 30;
   private readonly HOURLY_FAILURE_CAP = 200;
-  private readonly WINDOW_MS = 60 * 60 * 1000;
+  private readonly WINDOW_MS = AI_HOURLY_WINDOW_MS;
   // Redis key prefixes. Tenant id is appended. Kept distinct from any
   // realtime/pubsub keyspace so a tenant scan can't collide.
-  private readonly RL_SUCCESS_PREFIX = 'ai:rl:gen:';
+  //
+  // The SUCCESS prefix is the SHARED constant from ai-hourly-cap.ts —
+  // the 30/hr cap is one per-tenant ceiling across sparkle, touch-
+  // template, AND alt-text (audit §3 P3). The FAILURE prefix is local
+  // (abuse guard, not shared).
+  private readonly RL_SUCCESS_PREFIX = AI_RL_SUCCESS_PREFIX;
   private readonly RL_FAILURE_PREFIX = 'ai:rl:fail:';
 
   /**
-   * Count events in the trailing 1h window for a tenant, pruning expired
-   * members as a side effect. Returns the live count. Fails OPEN
-   * (returns 0) when Redis is unavailable — see the FAIL-OPEN note on
-   * the constants above.
+   * Count events in the trailing 1h window for a tenant. Delegates to the
+   * shared sliding-window helper (ai-hourly-cap.ts) so the success-cap
+   * window is byte-identical across every AI surface. Fails OPEN
+   * (returns 0) when Redis is unavailable.
    */
   private async windowCount(prefix: string, tenantId: string): Promise<number> {
-    const pub = this.redis.publisher;
-    if (!pub) return 0; // fail-open: no Redis → don't enforce the soft cap
-    const key = `${prefix}${tenantId}`;
-    const now = Date.now();
-    try {
-      // Prune anything older than the window, then count what's left.
-      await pub.zremrangebyscore(key, 0, now - this.WINDOW_MS);
-      const count = await pub.zcard(key);
-      return typeof count === 'number' ? count : 0;
-    } catch (e: any) {
-      this.logger.warn(`AI rate-limit windowCount failed (fail-open): ${e?.message}`);
-      return 0;
-    }
+    return aiWindowCount(this.redis.publisher, tenantId, prefix);
   }
 
   /**
-   * Record one event at `now` in the tenant's sliding window. ZADD with
-   * the timestamp as both score AND member (member must be unique —
-   * concurrent same-ms events would otherwise collapse to one entry, so
-   * we suffix a short random nonce). Sets a 2h PEXPIRE so an idle
-   * tenant's key self-evicts (window is 1h; double it for safety).
-   * Best-effort — a write failure just means the next check undercounts,
-   * never throws (the call already succeeded / failed for real reasons).
+   * Record one event in the tenant's sliding window. Delegates to the
+   * shared helper. Best-effort — never throws.
    */
   private async recordEvent(prefix: string, tenantId: string): Promise<void> {
-    const pub = this.redis.publisher;
-    if (!pub) return;
-    const key = `${prefix}${tenantId}`;
-    const now = Date.now();
-    // Unique member so two events in the same millisecond both count.
-    const member = `${now}-${Math.random().toString(36).slice(2, 8)}`;
-    try {
-      await pub.zadd(key, now, member);
-      // Self-evict idle keys. 2× the window is ample headroom.
-      await pub.pexpire(key, this.WINDOW_MS * 2);
-    } catch (e: any) {
-      this.logger.warn(`AI rate-limit recordEvent failed (best-effort): ${e?.message}`);
-    }
+    await aiRecordEvent(this.redis.publisher, tenantId, prefix);
   }
 
   /**
@@ -477,7 +517,11 @@ export class AiService {
       const out = await dispatchAi(resolved.provider, {
         apiKey: resolved.apiKey,
         model: resolved.model,
-        system: SYSTEM_PROMPTS[opts.intent],
+        // Vertical-aware system prompt (audit §3/§14) — composes the
+        // intent prompt with the vertical's voice clause so a SPORTS vs
+        // SCHOOL vs RESTAURANT announcement is tonally distinct, not
+        // just a one-line user-prompt hint the model can ignore.
+        system: composeSystemPrompt(opts.intent, opts.vertical),
         userPrompt,
         maxTokens: 300,
       });
@@ -713,7 +757,17 @@ export class AiService {
     // System prompt — strict, schema-anchored, no creative latitude on
     // the structure. The AI's job is content + arrangement, NOT to
     // invent new widget types or touch action shapes.
-    const system = TOUCH_TEMPLATE_SYSTEM_PROMPT;
+    //
+    // Vertical-aware (audit §3/§14) — prepend the vertical's voice clause
+    // so the PLACEHOLDER COPY the model fills into TEXT/ANNOUNCEMENT/QUOTE
+    // zones reads in the right tone (a SPORTS kiosk vs a HEALTHCARE
+    // check-in screen). The structural schema rules below are unchanged;
+    // unknown/absent verticals fall through to the bare schema prompt.
+    const voiceKey = (opts.vertical || '').trim().toUpperCase();
+    const voiceClause = voiceKey ? VERTICAL_VOICE[voiceKey] : undefined;
+    const system = voiceClause
+      ? `${voiceClause}\n\n${TOUCH_TEMPLATE_SYSTEM_PROMPT}`
+      : TOUCH_TEMPLATE_SYSTEM_PROMPT;
     const userPrompt = [
       `Operator description: ${prompt}`,
       `Vertical: ${opts.vertical || 'venue'}`,
