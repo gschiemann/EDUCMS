@@ -24,7 +24,7 @@ import type { HsBlueprintConfig } from './HsBlueprintWidget';
 
 type Cfg = HsBlueprintConfig;
 
-export const DEFAULTS: Required<Cfg> = {
+export const DEFAULTS: Omit<Required<Cfg>, '__styles'> = {
   schoolCode: 'WHS',
   schoolName: 'WESTRIDGE HIGH · EST 1956',
   brandLabel1: 'PROJECT · TITLE',
@@ -70,7 +70,6 @@ export const DEFAULTS: Required<Cfg> = {
   tickerTag: 'REVISION LOG',
   tickerMessage:
     'R3 · 2026-04-27 · SCHED REV · R2 · 2026-04-20 · LUNCH MENU · R1 · 2026-04-13 · BELL DEVIATION · RFI-2261 · BUS 14 DELAY 10M · RFI-2262 · RM-210 TONER · RFI-2263 · AP PSYCH STUDY HALL → LIBRARY · ',
-  _styles: {},
 };
 
 export function HsBlueprintPortraitWidget({
@@ -83,11 +82,11 @@ export function HsBlueprintPortraitWidget({
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
   const stageRef = useRef<HTMLDivElement | null>(null);
   // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
-  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // when their parent container would overflow. Manual `__styles[field].fontSize`
   // override always wins. BuilderZone's CSS injection paints the override
   // with !important so the auto-fit's inline fontSize loses cleanly.
-  useAutoFitText(stageRef, c._styles as any);
-  useTextStyleOverrides(stageRef, c._styles as any);
+  useAutoFitText(stageRef, c.__styles as any);
+  useTextStyleOverrides(stageRef, c.__styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');

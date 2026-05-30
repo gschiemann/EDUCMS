@@ -97,7 +97,7 @@ export interface HsTerminalConfig {
    * Schema: { fontSize, fontFamily, color, bold, italic, underline,
    *   strikethrough, bgColor }
    */
-  _styles?: Record<string, {
+  __styles?: Record<string, {
     fontSize?: number;
     fontFamily?: string;
     color?: string;
@@ -159,18 +159,18 @@ export const DEFAULTS: Required<HsTerminalConfig> = {
   event3Who: '@ms.park',
   tickerTag: '/var/log/syslog',
   tickerMessage: '[info] bus-14 delayed 10m · [warn] printer rm-210 out of toner · [info] lost-and-found: silver earbuds · [info] ap psych study hall moved to library · [info] sports photos tomorrow — bring jerseys · ',
-  _styles: {},
+  __styles: {},
 };
 
 export function HsTerminalWidget({ config, live }: { config?: HsTerminalConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsTerminalConfig>;
   const stageRef = useRef<HTMLDivElement | null>(null);
   // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
-  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // when their parent container would overflow. Manual `__styles[field].fontSize`
   // override always wins. BuilderZone's CSS injection paints the override
   // with !important so the auto-fit's inline fontSize loses cleanly.
-  useAutoFitText(stageRef, c._styles as any);
-  useTextStyleOverrides(stageRef, c._styles as any);
+  useAutoFitText(stageRef, c.__styles as any);
+  useTextStyleOverrides(stageRef, c.__styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');

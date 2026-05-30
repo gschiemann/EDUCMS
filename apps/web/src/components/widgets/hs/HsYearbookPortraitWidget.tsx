@@ -88,7 +88,7 @@ export interface HsYearbookConfig {
    * Schema: { fontSize, fontFamily, color, bold, italic, underline,
    *   strikethrough, bgColor }
    */
-  _styles?: Record<string, {
+  __styles?: Record<string, {
     fontSize?: number;
     fontFamily?: string;
     color?: string;
@@ -102,7 +102,7 @@ export interface HsYearbookConfig {
 
 type Cfg = HsYearbookConfig;
 
-export const DEFAULTS: Required<Cfg> = {
+export const DEFAULTS: Omit<Required<Cfg>, '__styles'> = {
   schoolName: 'Westridge Weekly',
   schoolIssue: 'VOL. LXIX · NO. 142 · TUESDAY, APRIL 21, 2026',
   schoolSection: 'CALENDAR · SECTION B',
@@ -142,18 +142,17 @@ export const DEFAULTS: Required<Cfg> = {
   event3Name: '"Into the Woods" opening night.',
   tickerTag: 'WIRE · LATE',
   tickerMessage: 'NEWS DESK ANNOUNCEMENT — BUS 14 RUNNING LATE, NEW DEPARTURE 7:58 AM · LUNCH TODAY: CHICKEN BOWL, SALAD BAR, VEGAN OPT · AP PSYCH STUDY HALL MOVED TO LIBRARY · LOST: SILVER EARBUDS — FRONT OFFICE · ',
-  _styles: {},
 };
 
 export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
   const stageRef = useRef<HTMLDivElement | null>(null);
   // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
-  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // when their parent container would overflow. Manual `__styles[field].fontSize`
   // override always wins. BuilderZone's CSS injection paints the override
   // with !important so the auto-fit's inline fontSize loses cleanly.
-  useAutoFitText(stageRef, c._styles as any);
-  useTextStyleOverrides(stageRef, c._styles as any);
+  useAutoFitText(stageRef, c.__styles as any);
+  useTextStyleOverrides(stageRef, c.__styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');

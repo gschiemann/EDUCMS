@@ -73,7 +73,7 @@ export interface HsBlueprintConfig {
    * Schema matches the Canva-style toolbar: { fontSize, fontFamily,
    *   color, bold, italic, underline, strikethrough, bgColor }
    */
-  _styles?: Record<string, {
+  __styles?: Record<string, {
     fontSize?: number;
     fontFamily?: string;
     color?: string;
@@ -127,7 +127,7 @@ export const DEFAULTS: Required<HsBlueprintConfig> = {
   announcementDate: 'SCHED · 14:15 — 15:00 · TODAY',
   tickerTag: 'REVISION LOG',
   tickerMessage: 'RFI-2261 · BUS 14 DELAY 10M · RFI-2262 · RM-210 TONER · RFI-2263 · AP PSYCH STUDY HALL → LIBRARY · RFI-2264 · LOST PROPERTY — SILVER EARBUDS · RFI-2265 · SPRING SPORTS PHOTOS TOMORROW · ',
-  _styles: {},
+  __styles: {},
 };
 
 export function HsBlueprintWidget({ config, live }: { config?: HsBlueprintConfig; live?: boolean }) {
@@ -135,12 +135,12 @@ export function HsBlueprintWidget({ config, live }: { config?: HsBlueprintConfig
   const stageRef = useRef<HTMLDivElement | null>(null);
   // 2026-05-08 — auto-fit fallback. Text fields with `data-fit` get
   // their fontSize bsearched to fill their container without
-  // overflowing. Manual `_styles[fieldName].fontSize` override (set via
+  // overflowing. Manual `__styles[fieldName].fontSize` override (set via
   // BuilderBottomBar) always wins; BuilderZone's CSS injection lays
   // the override down with `!important` so the auto-fit's inline
   // fontSize loses cleanly.
-  useAutoFitText(stageRef, c._styles as any);
-  useTextStyleOverrides(stageRef, c._styles as any);
+  useAutoFitText(stageRef, c.__styles as any);
+  useTextStyleOverrides(stageRef, c.__styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');

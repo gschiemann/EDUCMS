@@ -97,7 +97,7 @@ export interface HsVarsityConfig {
    * Schema: { fontSize, fontFamily, color, bold, italic, underline,
    *   strikethrough, bgColor }
    */
-  _styles?: Record<string, {
+  __styles?: Record<string, {
     fontSize?: number;
     fontFamily?: string;
     color?: string;
@@ -159,18 +159,18 @@ export const DEFAULTS: Required<HsVarsityConfig> = {
   event3Name: 'Senior Night — Volleyball',
   tickerTag: 'PA SYSTEM',
   tickerMessage: 'SENIORS — CAP & GOWN PICKUP THIS WEEK IN THE COUNSELING OFFICE  ●  BUS 14 RUNNING 10 MIN LATE  ●  MATHLETES PRACTICE MOVED TO ROOM 102  ●  SPRING SPORTS PHOTOS TOMORROW — WEAR YOUR JERSEY  ●  ',
-  _styles: {},
+  __styles: {},
 };
 
 export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsVarsityConfig>;
   const stageRef = useRef<HTMLDivElement | null>(null);
   // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
-  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // when their parent container would overflow. Manual `__styles[field].fontSize`
   // override always wins. BuilderZone's CSS injection paints the override
   // with !important so the auto-fit's inline fontSize loses cleanly.
-  useAutoFitText(stageRef, c._styles as any);
-  useTextStyleOverrides(stageRef, c._styles as any);
+  useAutoFitText(stageRef, c.__styles as any);
+  useTextStyleOverrides(stageRef, c.__styles as any);
   // 2026-05-07 — live clock. Replaces the hardcoded "7:53" /
   // "Tuesday · 1st period @ 8:05" placeholder so the demo wall
   // shows real time on every screen. Operator can still override

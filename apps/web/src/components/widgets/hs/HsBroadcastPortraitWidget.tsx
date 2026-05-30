@@ -33,7 +33,7 @@ import type { HsBroadcastConfig } from './HsBroadcastWidget';
 
 type Cfg = HsBroadcastConfig;
 
-export const DEFAULTS: Required<Cfg> = {
+export const DEFAULTS: Omit<Required<Cfg>, '__styles'> = {
   schoolChip: 'WHS',
   schoolName: 'WESTRIDGE HIGH',
   schoolSub: 'CAMPUS NEWS NETWORK',
@@ -68,18 +68,17 @@ export const DEFAULTS: Required<Cfg> = {
   countdownUnit: 'DAYS · SAVE THE DATE',
   tickerTag: 'LATEST',
   tickerMessage: 'LUNCH TODAY · CHICKEN BOWL · SALAD BAR · VEGAN OPTION AVAILABLE  ●  SAT PRACTICE SIGN-UPS CLOSE FRIDAY  ●  LOST: SILVER EARBUDS IN LIBRARY — SEE FRONT OFFICE  ●  DRAMA CLUB AUDITIONS MONDAY 3:30 IN THE AUDITORIUM  ●  ',
-  _styles: {},
 };
 
 export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
   const stageRef = useRef<HTMLDivElement | null>(null);
   // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
-  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // when their parent container would overflow. Manual `__styles[field].fontSize`
   // override always wins. BuilderZone's CSS injection paints the override
   // with !important so the auto-fit's inline fontSize loses cleanly.
-  useAutoFitText(stageRef, c._styles as any);
-  useTextStyleOverrides(stageRef, c._styles as any);
+  useAutoFitText(stageRef, c.__styles as any);
+  useTextStyleOverrides(stageRef, c.__styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');

@@ -101,7 +101,7 @@ export interface HsVarsityConfig {
    * Schema: { fontSize, fontFamily, color, bold, italic, underline,
    *   strikethrough, bgColor }
    */
-  _styles?: Record<string, {
+  __styles?: Record<string, {
     fontSize?: number;
     fontFamily?: string;
     color?: string;
@@ -115,7 +115,7 @@ export interface HsVarsityConfig {
 
 type Cfg = HsVarsityConfig;
 
-export const DEFAULTS: Required<Cfg> = {
+export const DEFAULTS: Omit<Required<Cfg>, '__styles'> = {
   schoolInitials: 'WHS',
   schoolEst: 'EST. 1956',
   schoolName: 'WILDCATS',
@@ -171,18 +171,17 @@ export const DEFAULTS: Required<Cfg> = {
   event5Name: 'Senior Night — Varsity BB',
   tickerTag: 'HIGHLIGHT REEL',
   tickerMessage: '🏈 FOOTBALL W 21-14 vs LIONS  ●  🏀 BOYS HOOPS L 58-62 @ EAST  ●  ⚽ SOCCER W 3-1 vs ROOSEVELT  ●  🏐 VOLLEYBALL W 3-0 vs CENTRAL  ●  🏊 SWIM 2ND OF 6 @ INVITATIONAL  ●  🏃 TRACK MIRA SET 800m SCHOOL RECORD  ●  ',
-  _styles: {},
 };
 
 export function HsVarsityPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
   const stageRef = useRef<HTMLDivElement | null>(null);
   // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
-  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // when their parent container would overflow. Manual `__styles[field].fontSize`
   // override always wins. BuilderZone's CSS injection paints the override
   // with !important so the auto-fit's inline fontSize loses cleanly.
-  useAutoFitText(stageRef, c._styles as any);
-  useTextStyleOverrides(stageRef, c._styles as any);
+  useAutoFitText(stageRef, c.__styles as any);
+  useTextStyleOverrides(stageRef, c.__styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
