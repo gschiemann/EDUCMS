@@ -4573,12 +4573,37 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         const contentKeys = Object.keys(defs).filter(
           (k) => k !== 'variant' && k !== 'style' && k !== 'tier',
         );
+        // 2026-05-29 — operator: "upload logos when needed or images." An
+        // image/logo/photo content field used to render as a plain URL
+        // TextField (paste-only). Detect image-ish keys so they render an
+        // AssetPickerField instead (upload from desktop + pick from Assets +
+        // URL paste). Excludes emoji / video / color keys, which are NOT
+        // images. Applies to single (string) and multi (array) image fields.
+        // Suffix-anchored so only true image fields match — "logoUrl",
+        // "heroImage", "productPhoto", "mascot", "photos" (array) → yes;
+        // "imageCaption", "photoCredit", "logoText" → no (end in text words).
+        const isImageKey = (k: string) =>
+          /(^|[a-z])(logo|image|img|photo|picture|avatar|headshot|mascot|crest|poster|thumbnail|backdrop|artwork)(url|uri|src|s)?$/i.test(k) &&
+          !/emoji|video|color/i.test(k);
         if (contentKeys.length > 0) {
           fields.push(SHv2('content', 'Content'));
           for (const key of contentKeys) {
             const dv = defs[key];
             const cur = cfg[key];
-            if (Array.isArray(dv)) {
+            if (Array.isArray(dv) && isImageKey(key)) {
+              // Multi-image field (gallery / logos / product photos) → upload
+              // + reorder + pick-from-Assets, not a comma-separated URL string.
+              const arr = Array.isArray(cur) ? (cur as unknown[]) : (dv as unknown[]);
+              fields.push(
+                <AssetListPickerField
+                  key={key}
+                  label={prettyFieldLabel(key)}
+                  kind="image"
+                  value={arr.map((s) => String(s))}
+                  onChange={(v) => setField({ [key]: v })}
+                />,
+              );
+            } else if (Array.isArray(dv)) {
               const val = Array.isArray(cur)
                 ? cur.join(', ')
                 : (dv as unknown[]).join(', ');
@@ -4612,6 +4637,18 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
                   onChange={(v) =>
                     setField({ [key]: v.trim() === '' ? 0 : Number(v) })
                   }
+                />,
+              );
+            } else if (isImageKey(key)) {
+              // Single image/logo content field → upload from desktop, pick
+              // from Assets, or paste a URL (operator's "upload logos" ask).
+              fields.push(
+                <AssetPickerField
+                  key={key}
+                  label={prettyFieldLabel(key)}
+                  kind="image"
+                  value={cur != null ? String(cur) : String(dv ?? '')}
+                  onChange={(v) => setField({ [key]: v })}
                 />,
               );
             } else {
