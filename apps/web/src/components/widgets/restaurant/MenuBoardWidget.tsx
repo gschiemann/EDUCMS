@@ -277,10 +277,12 @@ const CSS = `
   line-height: 1;
 }
 .rmb-item-thumb {
-  width: clamp(22px, 3.6cqh, 40px);
-  height: clamp(22px, 3.6cqh, 40px);
+  /* em-based (scales with item text), NOT cqh — Chromium-83/Taurus has no
+     container queries, and the taurus-safety gate only ratchets cq DOWN. */
+  width: clamp(22px, 2.2em, 40px);
+  height: clamp(22px, 2.2em, 40px);
   object-fit: cover;
-  border-radius: clamp(3px, 0.5cqh, 6px);
+  border-radius: clamp(3px, 0.3em, 6px);
   flex-shrink: 0;
 }
 .rmb-item-price {

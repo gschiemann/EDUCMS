@@ -4820,11 +4820,34 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         // what works.
         const isHsWidget = typeof zone.widgetType === 'string' && zone.widgetType.startsWith('HS_');
         const styleSetter = (s: FieldStyleMap) => setField({ __styles: s });
+        // 2026-05-29 — image/logo/photo keys in MS + Fitness widget DEFAULTS
+        // must render an UPLOAD picker, not a URL TextField (operator: "upload
+        // logos when needed or images"). Same suffix-anchored match as the v2
+        // path. Without this, the logoUrl / gymLogoUrl / photoUrl keys the
+        // MS + Fitness agents added would show as plain text boxes.
+        const isImageKey = (k: string) => {
+          const leaf = k.includes('.') ? k.split('.').pop()! : k;
+          return /(^|[a-z])(logo|image|img|photo|picture|avatar|headshot|mascot|crest|poster|thumbnail|backdrop|artwork)(url|uri|src|s)?$/i.test(leaf) &&
+            !/emoji|video|color/i.test(leaf);
+        };
         for (const [prefix, keys] of groups) {
           fields.push(SH(prefix, prettySectionLabel(prefix === '_root' ? 'general' : prefix)));
           for (const key of keys) {
             const defaultValue = msDefaults[key] || '';
             const currentValue = (cfg[key] ?? '') as string;
+            // Image/logo/photo key → upload picker (desktop + Assets + URL).
+            if (isImageKey(key)) {
+              fields.push(
+                <AssetPickerField
+                  key={key}
+                  label={prettyFieldLabel(key)}
+                  kind="image"
+                  value={currentValue}
+                  onChange={(v) => setField({ [key]: v })}
+                />,
+              );
+              continue;
+            }
             // Multi-line if the default has a newline OR is long. Most
             // ticker / lede fields trip this, which is what we want —
             // they need the bigger box for editing.
