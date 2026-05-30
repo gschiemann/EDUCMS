@@ -94,6 +94,34 @@ aren't editable. To make any element editable:
     so this is code-correct + tsc-clean but NOT visually confirmed by me —
     operator is the visual check this round.
 
+- **#5 Score / clock / segment numbers too big — overflow the zone** (this
+  commit). Operator screenshot: the SCORE_HOME "24", SCORE_AWAY "21",
+  GAME_CLOCK, GAME_SEGMENT digits rendered MUCH bigger than their zones and
+  blew past the board — "the numbers are so big, they dont fit in the
+  template." ROOT CAUSE: those widgets live in `SportWidgets.tsx`
+  (ScoreHome/Away, GameClock, GameSegment, GameStat) and rendered the value
+  in a plain `<div style={rootStyle(config)}>` at a FIXED `cfg.fontSize`
+  with NO auto-fit — independent of the zone size, so any big/pegged font
+  overflowed. The team name already got the FitOneLine treatment (#3); these
+  numeric widgets never did.
+  FIX: extracted FitOneLine into a SHARED module
+  `apps/web/src/components/widgets/sports/FitOneLine.tsx` (was a local fn in
+  SportElementWidgets) + added a `FitValue` helper in SportWidgets that
+  wraps the value in FitOneLine → renders at a large base and scales DOWN
+  to fill-but-fit the zone. `config.fontSize` (if set) is the base/target;
+  FitOneLine clamps it to fit so even a huge pegged value can't overflow.
+  Applied to all 5 widgets' bare-value returns. Taurus-safe (transform:
+  scale; no gap/inset/backdrop) + tsc clean + taurus gate green.
+  - LESSON (architecture): when the SAME visual rule (shrink-to-fit) is
+    needed in two widget files, EXTRACT the primitive to a shared module —
+    don't duplicate. FitOneLine is now the one auto-fit primitive for ALL
+    sport text/number elements across both files.
+  - NOTE: the score/stat COLUMN variants (showLogo/showName/label stacked)
+    still use em-relative sizing — not the reported bug, left as-is; revisit
+    if an operator hits overflow there.
+  - ⚠️ UNVERIFIED-IN-BUILDER (auth-gated, no browser this session) — operator
+    is the visual check.
+
 ## Standing rules learned
 - Verify against the REAL rendered zone variant (operator screenshot / live),
   never a same-named sibling widget. (`scoreboard-main` ≠ the composed

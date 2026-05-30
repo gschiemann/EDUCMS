@@ -31,6 +31,7 @@
 
 import React from 'react';
 import { useGameState, type GameSnapshot } from './GameStateContext';
+import { FitOneLine } from './FitOneLine';
 
 // ── tier-preset display fonts ────────────────────────────────────────
 // The HS / College / Pro scoreboard tiers each specify a distinct family
@@ -125,64 +126,9 @@ export function teamOf(snap: GameSnapshot | null | undefined, team: 'home' | 'aw
     : { name: snap.homeTeam, color: snap.homeColor, logo: snap.homeLogoUrl };
 }
 
-// ── Fill-the-zone one-liner ───────────────────────────────────────────
-// Renders text at a LARGE fixed base font (`maxFontPx`, nowrap) and scales
-// it with transform to FILL the zone — as large as fits its width AND
-// height (operator: "it should start as large as possible"). Because the
-// base is large, scale stays ≤1 (downscale only = crisp; no scale-up blur).
-// Deterministic: measured scrollWidth is stable (base font never changes),
-// so no binary-search / re-render feedback loop (FitText's failure mode).
-// Chromium-83 / Taurus safe (transform:scale universal; no gap/inset/backdrop).
-function FitOneLine({
-  children, maxFontPx, align = 'center', style,
-}: {
-  children: React.ReactNode;
-  maxFontPx: number;
-  align?: 'left' | 'center' | 'right';
-  style?: React.CSSProperties;
-}) {
-  const boxRef = React.useRef<HTMLDivElement>(null);
-  const txtRef = React.useRef<HTMLSpanElement>(null);
-  const [scale, setScale] = React.useState(1);
-  React.useLayoutEffect(() => {
-    const box = boxRef.current;
-    const txt = txtRef.current;
-    if (!box || !txt) return;
-    const measure = () => {
-      const bw = box.clientWidth;
-      const bh = box.clientHeight;
-      const tw = txt.scrollWidth;
-      const th = txt.scrollHeight;
-      if (!bw || !bh || !tw || !th) return;
-      setScale(Math.min(1, (bw * 0.96) / tw, (bh * 0.94) / th));
-    };
-    measure();
-    const raf = requestAnimationFrame(measure);
-    const ro = new ResizeObserver(measure);
-    ro.observe(box);
-    let lastW = 0, lastH = 0;
-    const poll = setInterval(() => {
-      const w = box.clientWidth, h = box.clientHeight;
-      if (w !== lastW || h !== lastH) { lastW = w; lastH = h; measure(); }
-    }, 500);
-    if (typeof document !== 'undefined' && (document as { fonts?: { ready?: Promise<unknown> } }).fonts?.ready) {
-      (document as { fonts: { ready: Promise<unknown> } }).fonts.ready.then(measure).catch(() => {});
-    }
-    return () => { cancelAnimationFrame(raf); ro.disconnect(); clearInterval(poll); };
-  }, [children, maxFontPx]);
-  const justify = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
-  const origin = align === 'left' ? 'left center' : align === 'right' ? 'right center' : 'center center';
-  return (
-    <div ref={boxRef} style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: justify, overflow: 'hidden' }}>
-      <span
-        ref={txtRef}
-        style={{ ...style, fontSize: maxFontPx, lineHeight: 1, whiteSpace: 'nowrap', display: 'inline-block', transform: `scale(${scale})`, transformOrigin: origin }}
-      >
-        {children}
-      </span>
-    </div>
-  );
-}
+// FitOneLine — the fill-the-zone auto-fit primitive — now lives in
+// ./FitOneLine.tsx so the SportWidgets digits (score / clock / segment)
+// share the EXACT same shrink-to-fit (imported above).
 
 // ── Team name ────────────────────────────────────────────────────────
 export function TeamNameWidget({ config }: { config: ElCfg }) {

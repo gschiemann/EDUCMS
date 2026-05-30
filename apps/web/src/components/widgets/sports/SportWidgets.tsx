@@ -24,6 +24,7 @@
  */
 
 import { useGameState, fmtClock, fmtSegment } from './GameStateContext';
+import { FitOneLine } from './FitOneLine';
 
 interface BaseConfig {
   // Visual.
@@ -82,6 +83,37 @@ function rootStyle(cfg: BaseConfig): React.CSSProperties {
   };
 }
 
+/**
+ * FitValue — render a single value (score / clock / segment / stat) that
+ * ALWAYS fits its zone. The bug this fixes: these widgets used to render
+ * the value at a fixed `fontSize` with no auto-fit, so a big number (or the
+ * size pegged on drop) blew straight past the zone — "the numbers are so
+ * big, they dont fit in the template" (operator, 2026-05-29). Now the value
+ * is sized by the SAME shrink-to-fit primitive the team name uses
+ * (FitOneLine): it renders at a large base and scales down so the digit
+ * fills the zone but never overflows. `config.fontSize`, when set, is the
+ * base/target; FitOneLine still clamps it to fit, so even a huge pegged
+ * value can't overflow. Unset → fills the zone (as large as fits).
+ */
+function FitValue({ config, children }: { config: BaseConfig; children: React.ReactNode }) {
+  return (
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitOneLine
+        maxFontPx={config.fontSize && config.fontSize > 0 ? config.fontSize : 800}
+        align={config.align ?? 'center'}
+        style={{
+          color: config.color ?? '#ffffff',
+          fontWeight: config.fontWeight ?? 900,
+          fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif',
+          letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined,
+        }}
+      >
+        {children}
+      </FitOneLine>
+    </div>
+  );
+}
+
 // ── Score widgets ────────────────────────────────────────────────────
 
 export function ScoreHomeWidget({ config }: { config: ScoreConfig }) {
@@ -110,7 +142,7 @@ export function ScoreHomeWidget({ config }: { config: ScoreConfig }) {
       </div>
     );
   }
-  return <div style={rootStyle(config)}>{display}</div>;
+  return <FitValue config={config}>{display}</FitValue>;
 }
 
 export function ScoreAwayWidget({ config }: { config: ScoreConfig }) {
@@ -139,7 +171,7 @@ export function ScoreAwayWidget({ config }: { config: ScoreConfig }) {
       </div>
     );
   }
-  return <div style={rootStyle(config)}>{display}</div>;
+  return <FitValue config={config}>{display}</FitValue>;
 }
 
 // ── Clock ────────────────────────────────────────────────────────────
@@ -147,9 +179,9 @@ export function ScoreAwayWidget({ config }: { config: ScoreConfig }) {
 export function GameClockWidget({ config }: { config: ClockConfig }) {
   const state = useGameState();
   if (!state?.snapshot) {
-    return <div style={rootStyle(config)}>{config.placeholder ?? '07:42'}</div>;
+    return <FitValue config={config}>{config.placeholder ?? '07:42'}</FitValue>;
   }
-  return <div style={rootStyle(config)}>{fmtClock(state.liveClockMs, !!config.showTenths)}</div>;
+  return <FitValue config={config}>{fmtClock(state.liveClockMs, !!config.showTenths)}</FitValue>;
 }
 
 // ── Segment ──────────────────────────────────────────────────────────
@@ -157,12 +189,12 @@ export function GameClockWidget({ config }: { config: ClockConfig }) {
 export function GameSegmentWidget({ config }: { config: SegmentConfig }) {
   const state = useGameState();
   if (!state?.snapshot) {
-    return <div style={rootStyle(config)}>{config.placeholder ?? 'Q3'}</div>;
+    return <FitValue config={config}>{config.placeholder ?? 'Q3'}</FitValue>;
   }
   return (
-    <div style={rootStyle(config)}>
+    <FitValue config={config}>
       {fmtSegment(state.snapshot.sport, state.snapshot.segment)}
-    </div>
+    </FitValue>
   );
 }
 
@@ -185,5 +217,5 @@ export function GameStatWidget({ config }: { config: StatConfig }) {
       </div>
     );
   }
-  return <div style={rootStyle(config)}>{display}</div>;
+  return <FitValue config={config}>{display}</FitValue>;
 }
