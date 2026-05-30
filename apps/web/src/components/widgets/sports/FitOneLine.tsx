@@ -73,3 +73,73 @@ export function FitOneLine({
     </div>
   );
 }
+
+/**
+ * FitBox — the COMPOSITE sibling of FitOneLine. Where FitOneLine fits a
+ * single line of text, FitBox scales an ARBITRARY block (a label+value
+ * stack, a lamp row, an icon+text combo) to fill-but-fit its zone.
+ *
+ * Use it for any sport element that stacks/combines pieces (e.g. a small
+ * "FOULS" label over a big number, "DOWN 2 · 7" play state, a timeout dot
+ * row). Set `baseFontPx` to the element's intended size — children that use
+ * `em` units scale with it, and the whole block is then transform-scaled
+ * down so it never overflows the zone. Single bare values should use
+ * FitOneLine instead (tighter line-height).
+ *
+ * Same guarantees as FitOneLine: deterministic (no feedback loop),
+ * downscale-only (crisp), Chromium-83 / Taurus safe (transform:scale only;
+ * no gap / inset / backdrop-filter).
+ */
+export function FitBox({
+  children,
+  baseFontPx = 400,
+  align = 'center',
+  style,
+}: {
+  children: React.ReactNode;
+  baseFontPx?: number;
+  align?: 'left' | 'center' | 'right';
+  style?: React.CSSProperties;
+}) {
+  const boxRef = React.useRef<HTMLDivElement>(null);
+  const innerRef = React.useRef<HTMLDivElement>(null);
+  const [scale, setScale] = React.useState(1);
+  React.useLayoutEffect(() => {
+    const box = boxRef.current;
+    const inner = innerRef.current;
+    if (!box || !inner) return;
+    const measure = () => {
+      const bw = box.clientWidth;
+      const bh = box.clientHeight;
+      const cw = inner.scrollWidth;
+      const ch = inner.scrollHeight;
+      if (!bw || !bh || !cw || !ch) return;
+      setScale(Math.min(1, (bw * 0.96) / cw, (bh * 0.94) / ch));
+    };
+    measure();
+    const raf = requestAnimationFrame(measure);
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    let lastW = 0, lastH = 0;
+    const poll = setInterval(() => {
+      const w = box.clientWidth, h = box.clientHeight;
+      if (w !== lastW || h !== lastH) { lastW = w; lastH = h; measure(); }
+    }, 500);
+    if (typeof document !== 'undefined' && (document as { fonts?: { ready?: Promise<unknown> } }).fonts?.ready) {
+      (document as { fonts: { ready: Promise<unknown> } }).fonts.ready.then(measure).catch(() => {});
+    }
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); clearInterval(poll); };
+  }, [children, baseFontPx]);
+  const justify = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
+  const origin = align === 'left' ? 'left center' : align === 'right' ? 'right center' : 'center center';
+  return (
+    <div ref={boxRef} style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: justify, overflow: 'hidden' }}>
+      <div
+        ref={innerRef}
+        style={{ ...style, fontSize: baseFontPx, lineHeight: 1.1, display: 'inline-block', transform: `scale(${scale})`, transformOrigin: origin }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
