@@ -404,7 +404,16 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
               ? '3px dashed var(--brand-primary, #7c3aed)'
               : (isTouchPoint
                   ? (selected ? '2px dashed var(--brand-primary, #7c3aed)' : 'none')
-                  : (selected ? `3px dashed ${color.accent}` : 'none'))),
+                  // 2026-05-30 — operator: "when I select the box it reduces the
+                  // font size." Cause: a border on the SELECTED zone shrinks the
+                  // content box (box-sizing: border-box → the absolutely-positioned
+                  // data-widget-content child insets by the border width), so
+                  // FitOneLine/FitBox re-measure a smaller area and scale the text
+                  // DOWN the moment you select. Content zones now carry NO border
+                  // in either state — the selection box is the `outline` below,
+                  // which has ZERO layout impact, so selecting never resizes the
+                  // widget.
+                  : 'none')),
         // No always-on glow — the clean selection outline below is the only
         // box affordance; unselected zones get nothing (hover excepted).
         boxShadow: undefined,
@@ -769,19 +778,14 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           )}
         </div>
       )}
-      {!previewMode && !isTouchPoint && (
-        <div
-          // 2026-05-30 — operator: no boxes/labels on every element. The
-          // widget-type badge is now hidden by default and only appears on
-          // hover (discoverability) or when the zone is selected — never as
-          // persistent canvas clutter.
-          className={`absolute top-1 left-1 z-30 pointer-events-none flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-          style={{ background: color.bg, color: color.text, border: `1px solid ${color.border}` }}
-        >
-          {createElement(icon, { className: 'w-2.5 h-2.5' })}
-          {label}
-        </div>
-      )}
+      {/* 2026-05-30 — operator: "I would dump those grey tag names all
+          together." The grey widget-type corner chip (CLOCK / SCOREBOARD /
+          SCORE_HOME …) is GONE — it cluttered the canvas, overlapped widget
+          content (a "SCOREBOARD" chip sat on top of the team name), and the
+          widgetType label didn't even match what the operator was editing.
+          What a zone is now lives ONLY in the Properties panel header. The
+          on-canvas selection affordance is the clean outline + resize handles
+          (no text label). */}
 
       {isDragOver && !previewMode && supportsUpload && (
         <div className="absolute inset-0 z-50 bg-indigo-500/20 backdrop-blur-[2px] flex items-center justify-center rounded-lg border-2 border-indigo-500 border-dashed transition-all">
