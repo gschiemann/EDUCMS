@@ -1,5 +1,18 @@
 'use client';
 
+// 2026-05-30 — POS sync: when `config.posSync` is true the widget
+// pulls the first item of the chosen category from the live POS feed
+// (name / price / emoji) instead of static config. Falls back to
+// static values when posSync is off, the feed hasn't loaded yet, or
+// the feed returns empty — the callout NEVER renders blank.
+//
+// Only wired where it genuinely makes sense — this widget IS an
+// item/price feed (a featured special). Wait-times, event schedules,
+// loyalty tickers, and allergy legends are NOT wired (they are not
+// price/item feeds).
+
+import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
+
 /**
  * SpecialsCalloutWidget — "TODAY ONLY" big-type promo card.
  *
@@ -32,6 +45,12 @@ export interface SpecialsCalloutConfig {
   emoji?: string;
   /** Background tone — 'red' / 'charcoal' / 'mustard'. Default red. */
   theme?: 'red' | 'charcoal' | 'mustard';
+  /** When true, pull the featured special from the connected POS
+   *  (posItems[0] of the chosen category). Falls back to static config
+   *  on error / before first load. */
+  posSync?: boolean;
+  /** Optional POS category filter when posSync is on (e.g. "Specials"). */
+  posCategory?: string;
 }
 
 export function SpecialsCalloutWidget({
@@ -42,13 +61,22 @@ export function SpecialsCalloutWidget({
   live?: boolean;
 }) {
   const c: SpecialsCalloutConfig = config || {};
+
+  // Live POS feed. When posSync is on, posItems[0] of the configured
+  // category drives the name / price / emoji — same pattern as
+  // MenuBoardWidget / TapListWidget / CocktailMenuWidget. Falls back to
+  // static config when the feed isn't loaded or posSync is off so the
+  // callout NEVER renders blank.
+  const posItems = usePosMenuItems(!!c.posSync, c.posCategory);
+  const liveItem = c.posSync && posItems && posItems.length > 0 ? posItems[0] : null;
+
   const headline = c.headline || 'TODAY ONLY';
   const subhead = c.subhead || 'while supplies last';
-  const itemName = c.itemName || 'Smash Burger Combo';
-  const itemDesc = c.itemDesc || '1/3 lb smash, fries & 22oz drink';
-  const price = c.price || '$5.99';
-  const originalPrice = c.originalPrice;
-  const emoji = c.emoji || '🍔';
+  const itemName = liveItem ? liveItem.name : (c.itemName || 'Smash Burger Combo');
+  const itemDesc = liveItem ? (liveItem.desc ?? '') : (c.itemDesc || '1/3 lb smash, fries & 22oz drink');
+  const price = liveItem ? liveItem.price : (c.price || '$5.99');
+  const originalPrice = liveItem ? undefined : c.originalPrice;
+  const emoji = liveItem ? (liveItem.emoji || '🍽️') : (c.emoji || '🍔');
   const theme = c.theme || 'red';
 
   const bg =

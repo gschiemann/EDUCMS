@@ -1,5 +1,19 @@
 'use client';
 
+// 2026-05-30 — POS sync: when `config.posSync` is true the carousel
+// is driven by the live POS feed instead of static combos. Each
+// PosMenuItem maps to a ComboItem (name, price, description → includes
+// split on " · " / " / " / "," for multi-item combos, emoji). Falls
+// back to static combos / DEMO_COMBOS when posSync is off or the feed
+// hasn't loaded yet so the widget NEVER renders blank.
+//
+// Only wired where it genuinely makes sense — combo carousels ARE
+// item/price feeds. Wait-times, event schedules, loyalty tickers,
+// allergy legends, and game-day schedules are NOT wired.
+
+import { useEffect, useRef, useState } from 'react';
+import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
+
 /**
  * ComboCarouselWidget — auto-rotating combo / value-meal carousel.
  *
@@ -15,8 +29,6 @@
  *
  * Widget type: RESTAURANT_COMBO_CAROUSEL
  */
-
-import { useEffect, useRef, useState } from 'react';
 
 export interface ComboItem {
   name: string;
@@ -42,6 +54,12 @@ export interface ComboCarouselConfig {
   title?: string;
   /** Mustard accent color. */
   accentColor?: string;
+  /** When true, pull live combos from the connected POS instead of the
+   *  static `combos` above (set by the template "Driven by: POS" picker).
+   *  Falls back to static combos on error / before first load. */
+  posSync?: boolean;
+  /** Optional POS category filter when posSync is on (e.g. "Combos"). */
+  posCategory?: string;
 }
 
 const DEMO_COMBOS: ComboItem[] = [
@@ -71,6 +89,24 @@ const DEMO_COMBOS: ComboItem[] = [
   },
 ];
 
+/** Map a PosMenuItem onto ComboItem for the live-POS path.
+ *  - name / price are 1:1.
+ *  - desc is treated as a multi-item description: split on " · ", " / ",
+ *    or "," so a POS description like "burger · fries · drink" renders
+ *    as the bullet list the carousel shows for includes.
+ *  - emoji / imageUrl pass through when the POS has them.
+ */
+function posItemToCombo(it: { name: string; desc?: string; price: string; emoji?: string; imageUrl?: string }): ComboItem {
+  const includesRaw = it.desc ? it.desc.split(/\s*[·\/,]\s*/).filter(Boolean) : undefined;
+  return {
+    name: it.name,
+    price: it.price,
+    includes: includesRaw && includesRaw.length > 1 ? includesRaw : undefined,
+    emoji: it.emoji,
+    imageUrl: it.imageUrl,
+  };
+}
+
 export function ComboCarouselWidget({
   config,
   live,
@@ -81,7 +117,19 @@ export function ComboCarouselWidget({
   const c: ComboCarouselConfig = config || {};
   const accent = c.accentColor || '#e8b94a';
   const rotationMs = c.rotationMs || 7000;
-  const combos = (Array.isArray(c.combos) && c.combos.length > 0) ? c.combos : DEMO_COMBOS;
+
+  // Live POS feed. When posSync is on, map each PosMenuItem to a
+  // ComboItem. The mapping/fallback pattern mirrors TapListWidget
+  // and CocktailMenuWidget exactly. Null before first load; array on
+  // success. We only switch away from the static list when we have
+  // live items so the widget NEVER renders blank.
+  const posItems = usePosMenuItems(!!c.posSync, c.posCategory);
+  const liveCombos: ComboItem[] | null =
+    c.posSync && posItems && posItems.length > 0
+      ? posItems.map(posItemToCombo)
+      : null;
+
+  const combos = liveCombos ?? ((Array.isArray(c.combos) && c.combos.length > 0) ? c.combos : DEMO_COMBOS);
   const title = c.title || 'COMBO MEALS';
 
   const [idx, setIdx] = useState(0);
