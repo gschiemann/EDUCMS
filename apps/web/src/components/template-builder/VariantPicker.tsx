@@ -178,6 +178,30 @@ const K12_ONLY_CATEGORIES: ReadonlySet<string> = new Set([
   'ATHLETICS', 'ARTS', 'STEM',
   'SAFETY',
 ]);
+// 2026-05-29 — operator: "all widgets showing up under the sports venue;
+// every business type should filter widgets to just what pertains to it."
+// Only BAR/GYM/SPORTS variants were ever explicitly `vertical`-tagged, so
+// the RESTAURANT_/RETAIL_/WORSHIP/HEALTHCARE/… packs were untagged → treated
+// as neutral → leaked into EVERY vertical. This derives the vertical a
+// widget TYPE is exclusive to from its type-name prefix, so those packs
+// scope correctly without hand-tagging all 386 untagged variants. Returns
+// null for universal signage types (CLOCK / TEXT / IMAGE / WEATHER / …),
+// which show in every vertical.
+export function verticalForWidgetType(wt: string): string | null {
+  if (/^RESTAURANT(_|$)/.test(wt)) return 'RESTAURANT';
+  if (/^BAR_/.test(wt)) return 'BAR';
+  if (/^RETAIL(_|$)/.test(wt)) return 'RETAIL';
+  if (/^FITNESS_/.test(wt)) return 'GYM';
+  if (wt === 'WORSHIP') return 'WORSHIP';
+  if (wt === 'HEALTHCARE') return 'HEALTHCARE';
+  if (wt === 'HOSPITALITY') return 'HOSPITALITY';
+  if (wt === 'CORPORATE') return 'CORPORATE';
+  if (/^(SCOREBOARD|SCORE_|GAME_)/.test(wt)) return 'SPORTS';
+  if (/^(HS_|MS_|BULLETIN_|SCRAPBOOK_|STORYBOOK_)/.test(wt)) return 'K12';
+  if (/^ANIMATED_(WELCOME|CAFETERIA|BELL|BUS|HALLWAY|MAIN_ENTRANCE|MORNING_NEWS|ACHIEVEMENT)/.test(wt)) return 'K12';
+  return null;
+}
+
 function variantVisibleForVertical(v: WidgetVariant, vertical: string): boolean {
   // Multi-vertical scoped widgets (cross-over: Lunch Menu → food-service
   // verticals, Staff Spotlight → people-org verticals, Transit →
@@ -192,6 +216,12 @@ function variantVisibleForVertical(v: WidgetVariant, vertical: string): boolean 
   // clutters a gym; a touchdown ribbon never lands in a restaurant's
   // gallery. Strict match — overrides the K-12 category logic below.
   if (v.vertical) return v.vertical === vertical;
+  // Type-name prefix → vertical (catches the per-vertical packs that were
+  // never explicitly tagged). A type exclusive to one vertical shows ONLY in
+  // that vertical's palette — RESTAURANT_MENU_BOARD never lands in a Sports
+  // venue, HS_VARSITY never lands in a restaurant.
+  const typeVertical = verticalForWidgetType(v.widgetType);
+  if (typeVertical) return typeVertical === vertical;
   if (vertical === 'K12') return true;
   if (!v.category) return true; // neutral / no metadata — keep
   return !K12_ONLY_CATEGORIES.has(v.category.toUpperCase());
@@ -234,7 +264,16 @@ export function VariantPicker() {
   // Reset the override the moment selection changes
   useEffect(() => { setBrowseAll(false); }, [selected?.id]);
 
-  const allTypes = useMemo(() => listVariantTypes(), []);
+  // Type chips filtered to the tenant's vertical: universal types (null) +
+  // the tenant's own vertical only. Without this the chip rail showed every
+  // vertical's types (RESTAURANT / BAR / RETAIL / WORSHIP) on a Sports venue.
+  const allTypes = useMemo(
+    () => listVariantTypes().filter((t) => {
+      const tv = verticalForWidgetType(t);
+      return tv === null || tv === tenantCopy.vertical;
+    }),
+    [tenantCopy.vertical],
+  );
   // Long-tail widget types — anything not covered by a Group chip.
   // Surfaced inside the "More widgets" overflow menu so a power user
   // can still type-jump to BELL_SCHEDULE / LUNCH_MENU / etc.

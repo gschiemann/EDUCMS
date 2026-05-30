@@ -30,7 +30,6 @@ import { ScenesPanel } from './ScenesPanel';
 import { PropertiesPanel, CanvasBackdropSection } from './PropertiesPanel';
 import { BrandKitPanel } from './BrandKitPanel';
 import { BackgroundPanel } from './BackgroundPanel';
-import { AddSidebarConnected } from './AddSidebar';
 import { TemplatePreviewModal } from './TemplatePreviewModal';
 import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate, useDeleteTemplate } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
@@ -600,12 +599,11 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
           <div className="absolute top-[60%] -right-[10%] w-[40%] h-[60%] rounded-full bg-sky-200/20 blur-[100px]" />
         </div>
 
-        {/* Canva-style "Add" rail — fast INSERT path (Text / Image / Video
-            / Webpage / QR / Shape). Sits left of the tabbed tools panel.
-            Operator (2026-05-28): "left side toolbar where I can add in
-            actual photos, URLs, things like that." */}
-        {!previewMode && <AddSidebarConnected />}
-
+        {/* 2026-05-29 — operator: "i was talking about this tool bar as well,
+            it doesnt even work and we have our widget picker to get all this
+            stuff." Removed the far-left ADD rail (Text/Image/Video/Webpage/QR/
+            Shape) — it duplicated the WIDGETS picker, which adds every one of
+            those. One add path now: the WIDGETS tab. */}
         {!previewMode && (
           <aside className="w-[420px] bg-white/70 backdrop-blur-2xl border-r border-slate-200/50 flex flex-col shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10" aria-label="Builder tools">
             <div className="flex p-2 gap-1 border-b border-slate-200/50 bg-white/40" role="tablist" aria-label="Panel">
