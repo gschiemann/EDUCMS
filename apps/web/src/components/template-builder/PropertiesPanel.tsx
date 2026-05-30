@@ -2639,11 +2639,17 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     case 'IMAGE':
       fields.push(<AssetPickerField key="assetUrl" label="Image" value={cfg.assetUrl || cfg.imageUrl || ''} kind="image" onChange={(v) => setField({ assetUrl: v, imageUrl: undefined })} />);
       fields.push(<SelectField key="fitMode" label="Fit" value={cfg.fitMode || 'cover'} options={[['cover','Fill (crop)'],['contain','Fit (no crop)']]} onChange={(v) => setField({ fitMode: v })} />);
+      // Opacity + corner radius (moved here from the removed floating pill —
+      // ImageWidget reads cfg.opacity + cfg.borderRadius).
+      fields.push(<NumField key="opacity" id="img-opacity" label="Opacity (0–1)" value={typeof cfg.opacity === 'number' ? cfg.opacity : 1} onChange={(v) => setField({ opacity: v })} min={0} max={1} step={0.05} />);
+      fields.push(<NumField key="borderRadius" id="img-radius" label="Corner radius (px)" value={typeof cfg.borderRadius === 'number' ? cfg.borderRadius : 0} onChange={(v) => setField({ borderRadius: v })} min={0} max={120} step={1} />);
       fields.push(<TextField key="assetName" label="Alt text (for screen readers)" value={cfg.assetName || ''} placeholder="School logo" onChange={(v) => setField({ assetName: v })} />);
       break;
     case 'VIDEO':
       fields.push(<AssetPickerField key="assetUrl" label="Video" value={cfg.assetUrl || cfg.url || ''} kind="video" onChange={(v) => setField({ assetUrl: v, url: undefined })} />);
       fields.push(<SelectField key="fitMode" label="Fit" value={cfg.fitMode || 'cover'} options={[['cover','Fill screen (crop)'],['contain','Fit (letterbox)']]} onChange={(v) => setField({ fitMode: v })} />);
+      fields.push(<NumField key="opacity" id="vid-opacity" label="Opacity (0–1)" value={typeof cfg.opacity === 'number' ? cfg.opacity : 1} onChange={(v) => setField({ opacity: v })} min={0} max={1} step={0.05} />);
+      fields.push(<NumField key="borderRadius" id="vid-radius" label="Corner radius (px)" value={typeof cfg.borderRadius === 'number' ? cfg.borderRadius : 0} onChange={(v) => setField({ borderRadius: v })} min={0} max={120} step={1} />);
       fields.push(<ToggleField key="autoplay" label="Autoplay" value={cfg.autoplay !== false} onChange={(v) => setField({ autoplay: v })} />);
       fields.push(<ToggleField key="loop" label="Loop" value={cfg.loop !== false} onChange={(v) => setField({ loop: v })} />);
       fields.push(<ToggleField key="muted" label="Muted" value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
@@ -5114,6 +5120,14 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
 
   return (
     <section className="space-y-3">
+      {/* Element header — names WHAT you're editing (operator 2026-05-29:
+          "it should have a header that says home score or something"). Shows
+          the element's layer name + a type badge so it's unmistakable which
+          element the fields below belong to. */}
+      <div className="flex items-center gap-2 pl-1 pb-2 mb-1 border-b border-slate-100">
+        <span className="text-sm font-bold text-slate-800 truncate" title={zone.name}>{zone.name ? (/^[A-Z0-9_]+$/.test(zone.name) ? prettyTitle(zone.name) : zone.name) : widgetLabel(zone.widgetType)}</span>
+        <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[9px] font-bold uppercase tracking-wide shrink-0">{widgetLabel(zone.widgetType)}</span>
+      </div>
       <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Content</h3>
       <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm space-y-3">
         {fields.map((field, i) => {

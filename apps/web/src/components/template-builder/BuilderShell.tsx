@@ -30,9 +30,7 @@ import { ScenesPanel } from './ScenesPanel';
 import { PropertiesPanel, CanvasBackdropSection } from './PropertiesPanel';
 import { BrandKitPanel } from './BrandKitPanel';
 import { BackgroundPanel } from './BackgroundPanel';
-import { TopContextToolbar } from './TopContextToolbar';
 import { AddSidebarConnected } from './AddSidebar';
-import { BottomToolbarConnected } from './BottomToolbar';
 import { TemplatePreviewModal } from './TemplatePreviewModal';
 import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate, useDeleteTemplate } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
@@ -660,14 +658,17 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
             entire viewport). Operator: "can you center the tool bar
             on the canvas an not on the entire page?" */}
         <div className="flex flex-col flex-1 min-w-0 relative">
-          <TopContextToolbar />
+          {/* 2026-05-29 — operator: "i see 4 fucking tool bars ... i want the
+              main edit area on the left and the bottom floating tool bar,
+              not the extra picker or the small floating one. merge that shit."
+              Removed the TopContextToolbar (top "Apply to" scope picker) AND
+              the BottomToolbarConnected quick-action pill. Both duplicated
+              controls that already live in the left Properties panel + this
+              ONE persistent BuilderBottomBar (font / size / color + layer /
+              duplicate / delete + zoom / grid / undo). Two surfaces now:
+              left panel + this bottom bar. */}
           <BuilderCanvas />
           {!previewMode && <BuilderBottomBar />}
-          {/* Canva-style on-selection quick-action pill — floats above the
-              BuilderBottomBar. Font / size / B / I / colour / align / layer
-              / duplicate / delete on the selected zone. New component;
-              PropertiesPanel untouched. */}
-          {!previewMode && <BottomToolbarConnected />}
         </div>
       </div>
 
