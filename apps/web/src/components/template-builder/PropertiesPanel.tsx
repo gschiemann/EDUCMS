@@ -881,6 +881,7 @@ function TemplateProperties() {
   const descId = useId();
   const widthId = useId();
   const heightId = useId();
+  const dataSource = meta.dataSource ?? 'NONE';
 
   return (
     <div className="p-5 space-y-6 text-xs">
@@ -950,6 +951,100 @@ function TemplateProperties() {
             </span>
           </span>
         </label>
+      </section>
+
+      {/* ── Phase 1: Field-mapping — template-level "Driven by" picker ──
+          Operator model (2026-05-29): "pick the MAIN integration for the
+          entire template — default to standard mapping fields — user can
+          update per-element if they want a different field."
+          Scope: Sports + CTS only. POS/generic (Phase 2/3) not shown here.
+          The value lives in meta.dataSource (persisted via BuilderShell
+          handleSave → template API). No new DB columns needed — stored as
+          part of the existing template payload via (as any) cast. */}
+      <section className="space-y-2">
+        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Live data</h3>
+        <div style={{
+          borderRadius: 10,
+          border: '1px solid',
+          borderColor: dataSource === 'CTS' ? '#166534' : '#e2e8f0',
+          background: dataSource === 'CTS' ? '#052e16' : '#f8fafc',
+          padding: '10px 12px',
+        }}>
+          {/* Status dot + label row */}
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{
+              display: 'inline-block',
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: dataSource === 'CTS' ? '#22c55e' : '#94a3b8',
+              marginRight: 8,
+              flexShrink: 0,
+            }} />
+            <span style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: dataSource === 'CTS' ? '#86efac' : '#64748b',
+              letterSpacing: 1,
+            }}>
+              {dataSource === 'CTS' ? 'CTS — LIVE SCORE & CLOCK FEED' : 'NOT CONNECTED'}
+            </span>
+          </div>
+
+          {/* The picker: "Driven by: [  ]" */}
+          <div style={{ marginBottom: dataSource === 'CTS' ? 10 : 0 }}>
+            <label style={{
+              display: 'block',
+              fontSize: 10,
+              fontWeight: 600,
+              color: dataSource === 'CTS' ? '#86efac' : '#64748b',
+              marginBottom: 4,
+            }}>
+              Driven by
+            </label>
+            <select
+              value={dataSource}
+              onChange={(e) => setMeta({ dataSource: e.target.value as 'NONE' | 'CTS' })}
+              style={{
+                width: '100%',
+                padding: '6px 8px',
+                borderRadius: 6,
+                border: '1px solid',
+                borderColor: dataSource === 'CTS' ? '#166534' : '#cbd5e1',
+                background: dataSource === 'CTS' ? '#14532d' : '#ffffff',
+                color: dataSource === 'CTS' ? '#bbf7d0' : '#334155',
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: 'pointer',
+                appearance: 'auto',
+              }}
+            >
+              <option value="NONE">Not connected</option>
+              <option value="CTS">CTS — live score &amp; clock feed</option>
+            </select>
+          </div>
+
+          {/* CTS-active: describe what is auto-mapped */}
+          {dataSource === 'CTS' && (
+            <div style={{
+              fontSize: 10,
+              color: '#86efac',
+              lineHeight: 1.6,
+              borderTop: '1px solid #166534',
+              paddingTop: 8,
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: 4, color: '#4ade80' }}>Auto-mapped defaults:</div>
+              <div>Score elements → home / away score</div>
+              <div>Clock element → game clock</div>
+              <div>Period element → segment (Q1–Q4, etc.)</div>
+              <div>Shot clock → shot clock timer</div>
+              <div>Fouls → team foul count</div>
+              <div style={{ marginTop: 6, color: '#6ee7b7', fontStyle: 'italic' }}>
+                Click any scoreboard element to review or override its mapping.
+              </div>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );
@@ -1541,6 +1636,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
   const setField = (patch: Record<string, any>) => {
     updateZone(zone.id, { defaultConfig: { ...cfg, ...patch } }, true);
   };
+  // Phase 1 field-mapping: read template-level data source so the SCOREBOARD
+  // isSportEl branch can render the LIVE DATA mapping chip vs the plain
+  // "not connected" note. Atomic selector — won't re-render ContentFields
+  // on unrelated meta changes (name / bg / resolution).
+  const templateDataSource = useBuilderStore((s) => s.meta.dataSource ?? 'NONE');
+  const setTemplateMeta = useBuilderStore((s) => s.setMeta);
 
   // Shape-based themes bake their own palette + typography and ignore
   // generic style knobs like text color, font size, and background.
@@ -2250,11 +2351,162 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           fields.push(<AssetPickerField key="awayLogoUrl" label="Away logo" value={cfg.awayLogoUrl || ''} kind="image" onChange={(v) => setField({ awayLogoUrl: v })} />);
           break;
         }
-        // Which side — shown for any element that carries a team.
-        if (cfg.team !== undefined) {
-          fields.push(<SelectField key="team" label="Team side" value={String(cfg.team || 'home')} options={[['home', 'Home'], ['away', 'Away']]} onChange={(v) => setField({ team: v })} />);
+        // ── Phase 1: LIVE DATA mapping section ──
+        // Operator model (2026-05-29): "pick the MAIN integration → default
+        // mappings auto-applied → user can override per-element."
+        // Placed ABOVE content fields. When CTS is active: green chip describing
+        // which CTS field this element reads + "Reads from feed" side picker
+        // (replaces the old bare "Team side" dropdown — same cfg.team key,
+        // relabeled so it reads as a mapping, not a mystery control).
+        // When NONE: subtle "static" note + one-click "Connect CTS" button.
+        {
+          const CTS_VARIANT_MAP: Record<string, string> = {
+            'sb-team-name-home': 'Home team name',
+            'sb-team-name-away': 'Away team name',
+            'sb-team-abbr-home': 'Home team abbreviation',
+            'sb-team-abbr-away': 'Away team abbreviation',
+            'sb-team-logo-home': 'Home team logo',
+            'sb-team-logo-away': 'Away team logo',
+            'sb-team-record-home': 'Home team record (W-L)',
+            'sb-team-record-away': 'Away team record (W-L)',
+            'sb-status': 'Game status (LIVE / FINAL / HALFTIME)',
+            'sb-timeouts-home': 'Home timeouts remaining',
+            'sb-timeouts-away': 'Away timeouts remaining',
+            'sb-possession-arrow': 'Alternating-possession arrow',
+            'sb-possession-ball-home': 'Possession ball — home side',
+            'sb-possession-ball-away': 'Possession ball — away side',
+            'sb-play-clock': 'Play clock (40/25s)',
+            'sb-shot-clock': 'Shot clock timer',
+            'sb-added-time': 'Added / stoppage time',
+            'sb-bonus-home': 'Home BONUS / DOUBLE-BONUS lamp',
+            'sb-bonus-away': 'Away BONUS / DOUBLE-BONUS lamp',
+            'sb-fouls-home': 'Home team fouls',
+            'sb-fouls-away': 'Away team fouls',
+            'sb-down-distance': 'Down & distance (football)',
+            'sb-ball-on': 'Ball-on / yard line',
+            'sb-flag': 'Penalty flag indicator',
+            'sb-count': 'Balls-strikes count',
+            'sb-bases': 'Base-runner diamond',
+            'sb-inning-half': 'Inning + top/bottom',
+            'sb-pitch-count-home': 'Home pitcher pitch count',
+            'sb-pitch-count-away': 'Away pitcher pitch count',
+            'sb-pitch-speed': 'Pitch speed (MPH)',
+            'sb-penalty-home': 'Home penalty box timers',
+            'sb-penalty-away': 'Away penalty box timers',
+            'sb-power-play': 'Power play / penalty-kill badge',
+            'sb-set-scores': 'Per-set scores',
+            'sb-serve': 'Serve indicator',
+            'sb-riding-time': 'Wrestling riding-time clock',
+            'sb-weight-class': 'Weight class',
+            'sb-team-score-home': 'Running dual-meet score — home',
+            'sb-team-score-away': 'Running dual-meet score — away',
+            'sb-sponsor': 'Sponsor slot (manual)',
+          };
+          const ctsLabel: string | null = CTS_VARIANT_MAP[sbVariant] ?? (sbVariant.startsWith('sb-') ? 'Sport stat (auto-detected)' : null);
+          const hasTeam = cfg.team !== undefined;
+          const hasStatKey = cfg.statKey !== undefined;
+
+          if (templateDataSource === 'CTS') {
+            // Render the green "LIVE DATA — CTS FEED" mapping card.
+            fields.push(
+              <div key="live-data-mapping" style={{
+                marginBottom: 12, padding: '10px 12px', borderRadius: 8,
+                background: '#052e16', border: '1px solid #166534',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{
+                    display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+                    background: '#22c55e', marginRight: 8, flexShrink: 0,
+                  }} />
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#4ade80', letterSpacing: 1 }}>
+                    LIVE DATA — CTS FEED
+                  </span>
+                </div>
+                {ctsLabel && (
+                  <div style={{
+                    display: 'inline-block', padding: '3px 8px', borderRadius: 4,
+                    background: '#14532d', color: '#86efac', fontSize: 10, fontWeight: 600,
+                    marginBottom: hasTeam || hasStatKey ? 10 : 0,
+                  }}>
+                    Maps to CTS · {ctsLabel}
+                  </div>
+                )}
+                {hasTeam && (
+                  <div style={{ marginTop: ctsLabel ? 0 : 4 }}>
+                    <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#86efac', marginBottom: 4 }}>
+                      Reads from feed
+                    </label>
+                    <select
+                      value={String(cfg.team || 'home')}
+                      onChange={(e) => setField({ team: e.target.value })}
+                      style={{
+                        width: '100%', padding: '6px 8px', borderRadius: 6,
+                        border: '1px solid #166534', background: '#14532d',
+                        color: '#bbf7d0', fontSize: 11, fontWeight: 600,
+                        cursor: 'pointer', appearance: 'auto',
+                      }}
+                    >
+                      <option value="home">Home team</option>
+                      <option value="away">Away team</option>
+                    </select>
+                  </div>
+                )}
+                {hasStatKey && (
+                  <div style={{ marginTop: 8 }}>
+                    <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#86efac', marginBottom: 4 }}>
+                      Feed stat key
+                    </label>
+                    <input
+                      type="text"
+                      value={cfg.statKey || ''}
+                      placeholder="down"
+                      onChange={(e) => setField({ statKey: e.target.value })}
+                      style={{
+                        width: '100%', padding: '6px 8px', boxSizing: 'border-box',
+                        borderRadius: 6, border: '1px solid #166534',
+                        background: '#14532d', color: '#bbf7d0', fontSize: 11, fontWeight: 500,
+                      }}
+                    />
+                    <span style={{ fontSize: 9, color: '#6ee7b7', display: 'block', marginTop: 3 }}>
+                      Key in Game.stats (e.g. &quot;down&quot;, &quot;balls&quot;, &quot;sets&quot;)
+                    </span>
+                  </div>
+                )}
+              </div>,
+            );
+          } else {
+            // NONE path — subtle "static value" note + one-click Connect CTS.
+            fields.push(
+              <div key="live-data-not-connected" style={{
+                marginBottom: 12, padding: '8px 12px', borderRadius: 8,
+                background: '#f8fafc', border: '1px solid #e2e8f0',
+                display: 'flex', alignItems: 'center',
+              }}>
+                <span style={{ flex: 1, fontSize: 10, color: '#64748b' }}>
+                  Not connected to a live feed — value below is static.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setTemplateMeta({ dataSource: 'CTS' })}
+                  style={{
+                    marginLeft: 8, padding: '4px 8px', borderRadius: 5,
+                    border: '1px solid #22c55e', background: '#f0fdf4',
+                    color: '#15803d', fontSize: 10, fontWeight: 700,
+                    cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >
+                  Connect CTS
+                </button>
+              </div>,
+            );
+            // NONE path: also show the bare "Team side" picker (static fallback context).
+            if (hasTeam) {
+              fields.push(<SelectField key="team" label="Team side" value={String(cfg.team || 'home')} options={[['home', 'Home'], ['away', 'Away']]} onChange={(v) => setField({ team: v })} />);
+            }
+          }
         }
-        // Editable copy.
+        // Editable copy fields (label / placeholder / statKey).
+        // statKey: only show outside CTS — inside CTS it's in the LIVE DATA card above.
         if (cfg.label !== undefined) {
           fields.push(
             <div key="label" data-field-section="label">
@@ -2265,8 +2517,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         if (cfg.placeholder !== undefined) {
           fields.push(<TextField key="placeholder" label="Sample / fallback text" value={cfg.placeholder || ''} placeholder="—" onChange={(v) => setField({ placeholder: v })} />);
         }
-        // Advanced: bind to a specific Game.stats key (down, balls, sets, …).
-        if (cfg.statKey !== undefined) {
+        if (cfg.statKey !== undefined && templateDataSource !== 'CTS') {
           fields.push(<TextField key="statKey" label="Stat key (advanced)" value={cfg.statKey || ''} placeholder="down" onChange={(v) => setField({ statKey: v })} />);
         }
         if (sbVariant === 'sb-sponsor') {

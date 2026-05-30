@@ -16,6 +16,12 @@ interface BuilderState {
     bgColor: string;
     bgGradient: string;
     bgImage: string;
+    /** Phase 1 — field-mapping data source. 'NONE' = static/no feed;
+     *  'CTS' = Colorado Time Systems live score & clock feed. Persisted
+     *  as part of the template meta so the player knows which live feed
+     *  to subscribe to. Stored in template.defaultConfig.dataSource via
+     *  the existing meta save path. */
+    dataSource?: 'NONE' | 'CTS';
   };
   // Sprint 4 — touch-mode settings. Not part of HistoryEntry (toggle-only UX).
   isTouchEnabled: boolean;
@@ -124,6 +130,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     bgColor: '',
     bgGradient: '',
     bgImage: '',
+    dataSource: 'NONE' as const,
   },
   isTouchEnabled: false,
   idleResetMs: 60000,

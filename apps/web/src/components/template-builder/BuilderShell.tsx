@@ -113,6 +113,9 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         bgColor: template.bgColor || '',
         bgGradient: template.bgGradient || '',
         bgImage: template.bgImage || '',
+        // Phase 1 field-mapping: dataSource persisted in template defaultConfig
+        // (no schema migration required — stored in existing JSONB column).
+        dataSource: ((template as any).dataSource || 'NONE') as 'NONE' | 'CTS',
       },
       // Phase D — thread the touch toggle + idle timer through init so
       // AI-generated templates (which ship isTouchEnabled=true) open
@@ -166,6 +169,10 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         // was silently discarded (Functional audit #2).
         isTouchEnabled: state.isTouchEnabled,
         idleResetMs: state.idleResetMs,
+        // Phase 1 field-mapping — persist the template-level data source.
+        // Stored in the template's top-level dataSource column (additive,
+        // no migration; the API cast already allows extra fields via (as any)).
+        dataSource: state.meta.dataSource || 'NONE',
       } as any);
       const result = await updateZonesApi.mutateAsync({
         id: template.id,
