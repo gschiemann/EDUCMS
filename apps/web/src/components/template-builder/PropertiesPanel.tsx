@@ -15,6 +15,13 @@ import { ALL_V2_WIDGETS } from '@/components/widgets/v2/registry';
 // Used by the SCOREBOARD case below to render the cue-deck reference
 // in the orchestrator's Properties editor.
 import { CTS_CUE_LABELS as CTS_CUE_LABELS_LOCAL } from '@/components/widgets/sports/CtsRibbonWidgets';
+import {
+  ctsFieldsByGroup,
+  ctsFieldLabel,
+  defaultCtsField,
+  ctsFieldEligible,
+  deriveCtsField,
+} from '@/components/widgets/sports/cts-fields';
 import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
 import { useCustomData } from '@/lib/data/use-custom-data';
@@ -2016,6 +2023,95 @@ function CustomColumnPicker({
 }
 
 // ─────────────────────────────────────────────────────────
+// CTS field picker — "Reads from CTS field" dropdown.
+// ─────────────────────────────────────────────────────────
+// Operator (2026-05-30): "i want the drop down to be picking what CTS
+// is giving us in the API so there is no question we are mapping the
+// correct thing." This REPLACES the old generic "Home team / Away team"
+// `cfg.team` side selector + free-text `cfg.statKey` input. The options
+// are the REAL CTS feed fields from the canonical catalog
+// (cts-fields.ts), grouped into optgroups, each labelled with its human
+// name AND its literal key ("Home Score · homeScore") so the mapping is
+// unambiguous. The selected real key is stored in `cfg.ctsField`; the
+// widget reads exactly that field via resolveCtsField().
+function CtsFieldPicker({
+  variantOrType,
+  cfg,
+  setField,
+}: {
+  variantOrType: string;
+  cfg: Record<string, any>;
+  setField: (patch: Record<string, any>) => void;
+}) {
+  // The effective bound field: explicit cfg.ctsField, else derived from
+  // legacy cfg.team / cfg.statKey, else the element's correct default.
+  const bound =
+    deriveCtsField(variantOrType, cfg) ?? (defaultCtsField(variantOrType) as string | undefined) ?? '';
+  return (
+    <div style={{ marginTop: 4 }}>
+      <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#86efac', marginBottom: 4 }}>
+        Reads from CTS field
+      </label>
+      <select
+        value={bound}
+        onChange={(e) => setField({ ctsField: e.target.value })}
+        style={{
+          width: '100%', padding: '6px 8px', borderRadius: 6,
+          border: '1px solid #166534', background: '#14532d',
+          color: '#bbf7d0', fontSize: 11, fontWeight: 600,
+          cursor: 'pointer', appearance: 'auto',
+        }}
+      >
+        {ctsFieldsByGroup().map((grp) => (
+          <optgroup key={grp.group} label={grp.group}>
+            {grp.fields.map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.label} · {f.key}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+      <span style={{ fontSize: 9, color: '#6ee7b7', display: 'block', marginTop: 3 }}>
+        This element renders the live <strong>{ctsFieldLabel(bound) || bound}</strong> value coming
+        off the CTS console.
+      </span>
+    </div>
+  );
+}
+
+/** The full green "LIVE DATA — CTS FEED" card wrapping a CtsFieldPicker —
+ *  used by the standalone SCORE_HOME / GAME_CLOCK / GAME_SEGMENT /
+ *  GAME_STAT cases (which aren't sb-* variants). */
+function CtsLiveCard({
+  variantOrType,
+  cfg,
+  setField,
+}: {
+  variantOrType: string;
+  cfg: Record<string, any>;
+  setField: (patch: Record<string, any>) => void;
+}) {
+  return (
+    <div style={{
+      marginBottom: 12, padding: '10px 12px', borderRadius: 8,
+      background: '#052e16', border: '1px solid #166534',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+        <span style={{
+          display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+          background: '#22c55e', marginRight: 8, flexShrink: 0,
+        }} />
+        <span style={{ fontSize: 10, fontWeight: 700, color: '#4ade80', letterSpacing: 1 }}>
+          LIVE DATA — CTS FEED
+        </span>
+      </div>
+      <CtsFieldPicker variantOrType={variantOrType} cfg={cfg} setField={setField} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
 // Content fields — friendly inputs based on widget type
 // ─────────────────────────────────────────────────────────
 // Exported for RTL tests (2026-05-28 §19 editability proof). ContentFields is
@@ -2957,11 +3053,17 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             'sb-sponsor': 'Sponsor slot (manual)',
           };
           const ctsLabel: string | null = CTS_VARIANT_MAP[sbVariant] ?? (sbVariant.startsWith('sb-') ? 'Sport stat (auto-detected)' : null);
+          // Is this element a single-CTS-field reader? Score/clock/period/
+          // team/timeouts/shot-clock/penalties get the real-field picker.
+          // Sponsor slots, possession arrows, etc. (no single field) don't.
+          const showCtsPicker = ctsFieldEligible(sbVariant);
           const hasTeam = cfg.team !== undefined;
-          const hasStatKey = cfg.statKey !== undefined;
 
-          if (templateDataSource === 'CTS') {
-            // Render the green "LIVE DATA — CTS FEED" mapping card.
+          if (templateDataSource === 'CTS' && showCtsPicker) {
+            // Render the green "LIVE DATA — CTS FEED" mapping card. The
+            // picker options are the REAL CTS feed fields (cts-fields.ts),
+            // not a generic Home/Away side selector — so the dropdown label
+            // IS the field coming off the console. (Operator, 2026-05-30.)
             fields.push(
               <div key="live-data-mapping" style={{
                 marginBottom: 12, padding: '10px 12px', borderRadius: 8,
@@ -2976,58 +3078,29 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
                     LIVE DATA — CTS FEED
                   </span>
                 </div>
-                {ctsLabel && (
-                  <div style={{
-                    display: 'inline-block', padding: '3px 8px', borderRadius: 4,
-                    background: '#14532d', color: '#86efac', fontSize: 10, fontWeight: 600,
-                    marginBottom: hasTeam || hasStatKey ? 10 : 0,
-                  }}>
-                    Maps to CTS · {ctsLabel}
-                  </div>
-                )}
-                {hasTeam && (
-                  <div style={{ marginTop: ctsLabel ? 0 : 4 }}>
-                    <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#86efac', marginBottom: 4 }}>
-                      Reads from feed
-                    </label>
-                    <select
-                      value={String(cfg.team || 'home')}
-                      onChange={(e) => setField({ team: e.target.value })}
-                      style={{
-                        width: '100%', padding: '6px 8px', borderRadius: 6,
-                        border: '1px solid #166534', background: '#14532d',
-                        color: '#bbf7d0', fontSize: 11, fontWeight: 600,
-                        cursor: 'pointer', appearance: 'auto',
-                      }}
-                    >
-                      <option value="home">Home team</option>
-                      <option value="away">Away team</option>
-                    </select>
-                  </div>
-                )}
-                {hasStatKey && (
-                  <div style={{ marginTop: 8 }}>
-                    <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#86efac', marginBottom: 4 }}>
-                      Feed stat key
-                    </label>
-                    <input
-                      type="text"
-                      value={cfg.statKey || ''}
-                      placeholder="down"
-                      onChange={(e) => setField({ statKey: e.target.value })}
-                      style={{
-                        width: '100%', padding: '6px 8px', boxSizing: 'border-box',
-                        borderRadius: 6, border: '1px solid #166534',
-                        background: '#14532d', color: '#bbf7d0', fontSize: 11, fontWeight: 500,
-                      }}
-                    />
-                    <span style={{ fontSize: 9, color: '#6ee7b7', display: 'block', marginTop: 3 }}>
-                      Key in Game.stats (e.g. &quot;down&quot;, &quot;balls&quot;, &quot;sets&quot;)
-                    </span>
-                  </div>
-                )}
+                <CtsFieldPicker variantOrType={sbVariant} cfg={cfg} setField={setField} />
               </div>,
             );
+          } else if (templateDataSource === 'CTS') {
+            // CTS is on, but THIS element is not something the CTS console
+            // transmits (down/distance, fouls, possession, cards, sets,
+            // riding time, …). Be honest — it stays operator-set. Don't
+            // claim a feed binding the console can't fulfill.
+            fields.push(
+              <div key="cts-manual-note" style={{
+                marginBottom: 12, padding: '8px 12px', borderRadius: 8,
+                background: '#f8fafc', border: '1px solid #e2e8f0',
+              }}>
+                <span style={{ fontSize: 10, color: '#64748b' }}>
+                  {ctsLabel ? <>This element (<strong>{ctsLabel}</strong>) isn&apos;t sent by the CTS
+                  console — set it manually below.</> : 'This element is set manually — the CTS console does not transmit it.'}
+                </span>
+              </div>,
+            );
+            // Manual side picker for the operator-set fallback.
+            if (hasTeam) {
+              fields.push(<SelectField key="team" label="Team side" value={String(cfg.team || 'home')} options={[['home', 'Home'], ['away', 'Away']]} onChange={(v) => setField({ team: v })} />);
+            }
           } else {
             // NONE path — subtle "static value" note + one-click Connect CTS.
             fields.push(
@@ -3053,14 +3126,18 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
                 </button>
               </div>,
             );
-            // NONE path: also show the bare "Team side" picker (static fallback context).
-            if (hasTeam) {
+            // NONE path: bare "Team side" picker for the static fallback —
+            // only for elements that are NOT single-CTS-field readers
+            // (the field-picker elements derive their side from the chosen
+            // field when CTS is on).
+            if (hasTeam && !showCtsPicker) {
               fields.push(<SelectField key="team" label="Team side" value={String(cfg.team || 'home')} options={[['home', 'Home'], ['away', 'Away']]} onChange={(v) => setField({ team: v })} />);
             }
           }
         }
         // Editable copy fields (label / placeholder / statKey).
-        // statKey: only show outside CTS — inside CTS it's in the LIVE DATA card above.
+        // statKey: only show outside CTS — inside CTS the field is bound via
+        // the real-field picker above (cfg.ctsField).
         if (cfg.label !== undefined) {
           fields.push(
             <div key="label" data-field-section="label">
@@ -4757,6 +4834,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     case 'SCORE_HOME':
     case 'SCORE_AWAY': {
       const team = zone.widgetType === 'SCORE_HOME' ? 'home' : 'away';
+      if (templateDataSource === 'CTS') fields.push(<CtsLiveCard key="cts" variantOrType={zone.widgetType} cfg={cfg} setField={setField} />);
       fields.push(<TextField key="placeholder" label={`Sample / fallback ${team} score`} value={cfg.placeholder || ''} placeholder="24" onChange={(v) => setField({ placeholder: v })} />);
       fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
       fields.push(<ColorField key="accentColor" label="Accent color (glow / underline)" value={cfg.accentColor || ''} onChange={(v) => setField({ accentColor: v })} allowTransparent />);
@@ -4767,6 +4845,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       break;
     }
     case 'GAME_CLOCK': {
+      if (templateDataSource === 'CTS') fields.push(<CtsLiveCard key="cts" variantOrType={zone.widgetType} cfg={cfg} setField={setField} />);
       fields.push(<TextField key="placeholder" label="Sample / fallback clock (no live game)" value={cfg.placeholder || ''} placeholder="07:42" onChange={(v) => setField({ placeholder: v })} />);
       fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
       fields.push(<ColorField key="accentColor" label="Accent color (low-time flash)" value={cfg.accentColor || ''} onChange={(v) => setField({ accentColor: v })} allowTransparent />);
@@ -4777,6 +4856,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       break;
     }
     case 'GAME_SEGMENT': {
+      if (templateDataSource === 'CTS') fields.push(<CtsLiveCard key="cts" variantOrType={zone.widgetType} cfg={cfg} setField={setField} />);
       fields.push(<TextField key="placeholder" label="Sample / fallback period" value={cfg.placeholder || ''} placeholder="Q3" onChange={(v) => setField({ placeholder: v })} />);
       fields.push(<TextField key="label" label="Label prefix (optional)" value={cfg.label || ''} placeholder="Period" onChange={(v) => setField({ label: v })} />);
       fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
@@ -4788,27 +4868,36 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       break;
     }
     case 'GAME_STAT': {
-      // Live-bind selector — matches SCOREBOARD-variant statKey field.
-      // Covers the common sport stats per the Sprint 13 Sport Engine
-      // spec (down, balls/strikes/outs, sets, fouls, etc.).
       fields.push(<TextField key="label" label="Label" value={cfg.label || ''} placeholder="Down" onChange={(v) => setField({ label: v })} />);
       fields.push(<TextField key="placeholder" label="Sample / fallback value" value={cfg.placeholder || ''} placeholder="2" onChange={(v) => setField({ placeholder: v })} />);
-      fields.push(<SelectField key="statKey" label="Stat key (live bind)" value={cfg.statKey || ''} options={[
-        ['','— pick a stat —'],
-        ['down','down (football)'],
-        ['distance','distance (football)'],
-        ['ballOn','ball on (football)'],
-        ['balls','balls (baseball/softball)'],
-        ['strikes','strikes (baseball/softball)'],
-        ['outs','outs (baseball/softball)'],
-        ['sets','sets (volleyball/tennis)'],
-        ['serve','serve (volleyball/tennis)'],
-        ['fouls','team fouls (basketball)'],
-        ['bonus','bonus (basketball)'],
-        ['possession','possession arrow (basketball)'],
-        ['timeoutsHome','timeouts — home'],
-        ['timeoutsAway','timeouts — away'],
-      ]} onChange={(v) => setField({ statKey: v })} />);
+      if (templateDataSource === 'CTS') {
+        // CTS on → bind to a REAL CTS feed field via the catalog picker
+        // (cfg.ctsField). The old free-list of sport keys (sets/serve/
+        // fouls/…) named values CTS doesn't transmit — gone for the live
+        // case so the operator can only pick what the console actually
+        // gives us.
+        fields.push(<CtsLiveCard key="cts" variantOrType={zone.widgetType} cfg={cfg} setField={setField} />);
+      } else {
+        // Manual / non-CTS bind — operator types the Game.stats key
+        // directly (these are operator-input stats, not CTS-driven).
+        fields.push(<SelectField key="statKey" label="Stat key (manual bind)" value={cfg.statKey || ''} options={[
+          ['','— pick a stat —'],
+          ['down','down (football)'],
+          ['distance','distance (football)'],
+          ['ballOn','ball on (football)'],
+          ['balls','balls (baseball/softball)'],
+          ['strikes','strikes (baseball/softball)'],
+          ['outs','outs (baseball/softball)'],
+          ['homeSets','home sets (volleyball/tennis)'],
+          ['awaySets','away sets (volleyball/tennis)'],
+          ['serving','serving (volleyball/tennis)'],
+          ['homeFouls','home team fouls (basketball)'],
+          ['awayFouls','away team fouls (basketball)'],
+          ['possession','possession (basketball/football)'],
+          ['homeTimeouts','timeouts — home'],
+          ['awayTimeouts','timeouts — away'],
+        ]} onChange={(v) => setField({ statKey: v })} />);
+      }
       fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#ffffff'} onChange={(v) => setField({ color: v })} />);
       fields.push(<ColorField key="accentColor" label="Accent color" value={cfg.accentColor || ''} onChange={(v) => setField({ accentColor: v })} allowTransparent />);
       fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);

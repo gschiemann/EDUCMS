@@ -32,6 +32,25 @@
 import React from 'react';
 import { useGameState, type GameSnapshot } from './GameStateContext';
 import { FitOneLine, FitBox } from './FitOneLine';
+import { deriveCtsField } from './cts-fields';
+
+/**
+ * Resolve which team side a CTS-bound element reads, honoring the
+ * operator-picked real field (cfg.ctsField, e.g. "awayScore" → 'away')
+ * over the legacy cfg.team side selector. `variantOrType` lets the
+ * derivation pick the element's correct default field. Returns the
+ * legacy team when no home/away field is bound.
+ */
+function ctsTeamOf(
+  variantOrType: string,
+  cfg: ElCfg,
+  fallback: 'home' | 'away',
+): 'home' | 'away' {
+  const field = deriveCtsField(variantOrType, cfg);
+  if (field && field.toLowerCase().startsWith('away')) return 'away';
+  if (field && field.toLowerCase().startsWith('home')) return 'home';
+  return cfg.team ?? fallback;
+}
 
 // ── tier-preset display fonts ────────────────────────────────────────
 // The HS / College / Pro scoreboard tiers each specify a distinct family
@@ -61,6 +80,12 @@ injectScoreboardFonts();
 // ── shared style ─────────────────────────────────────────────────────
 export interface ElCfg {
   team?: 'home' | 'away';
+  /** CTS feed-field binding — the REAL field the operator picked in the
+   *  Properties "Reads from CTS field" dropdown (cts-fields.ts). The
+   *  element reads exactly this field; for home/away-paired elements the
+   *  side is derived from it (homeScore→home, awayScore→away, …). Falls
+   *  back to the legacy cfg.team side selector for old templates. */
+  ctsField?: string;
   /** Operator-typed team name override. Wins over the live game name, so a
    *  scoreboard works hand-typed in the builder OR live when a game binds. */
   teamName?: string;
@@ -133,7 +158,9 @@ export function teamOf(snap: GameSnapshot | null | undefined, team: 'home' | 'aw
 // ── Team name ────────────────────────────────────────────────────────
 export function TeamNameWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
-  const team = config.team ?? 'home';
+  // Side follows the picked CTS field (homeTeam/awayTeam) → re-pointing
+  // the dropdown actually swaps which team's name renders.
+  const team = ctsTeamOf(config.team === 'away' ? 'sb-team-name-away' : 'sb-team-name-home', config, config.team ?? 'home');
   const t = teamOf(s?.snapshot, team);
   const override = typeof config.teamName === 'string' ? config.teamName.trim() : '';
   const name = override || t.name || (team === 'away' ? 'TIGERS' : 'EAGLES');
@@ -161,7 +188,7 @@ export function TeamNameWidget({ config }: { config: ElCfg }) {
 // ── Team abbreviation (first 3 letters, or full if short) ────────────
 export function TeamAbbrWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
-  const team = config.team ?? 'home';
+  const team = ctsTeamOf(config.team === 'away' ? 'sb-team-abbr-away' : 'sb-team-abbr-home', config, config.team ?? 'home');
   const t = teamOf(s?.snapshot, team);
   const override = typeof config.teamName === 'string' ? config.teamName.trim() : '';
   const name = override || t.name || (team === 'away' ? 'TIGERS' : 'EAGLES');
@@ -183,7 +210,7 @@ export function TeamAbbrWidget({ config }: { config: ElCfg }) {
 // ── Team logo (or color initial disc) ────────────────────────────────
 export function TeamLogoWidget({ config }: { config: ElCfg & { logoUrl?: string } }) {
   const s = useGameState();
-  const team = config.team ?? 'home';
+  const team = ctsTeamOf(config.team === 'away' ? 'sb-team-logo-away' : 'sb-team-logo-home', config, config.team ?? 'home');
   const t = teamOf(s?.snapshot, team);
   const color = (config as any).color || t.color || (team === 'away' ? '#dc2626' : '#4f46e5');
   // 2026-05-20 — operator wants to brand a board by pasting a logo URL
@@ -254,9 +281,17 @@ export function GameStatusWidget({ config, live = true }: { config: ElCfg; live?
 // ── Timeouts remaining (pips) ────────────────────────────────────────
 export function TimeoutsWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
-  const team = config.team ?? 'home';
-  const key = config.statKey ?? (team === 'away' ? 'awayTimeouts' : 'homeTimeouts');
-  const raw = s?.snapshot?.stats?.[key];
+  const team = ctsTeamOf(config.team === 'away' ? 'sb-timeouts-away' : 'sb-timeouts-home', config, config.team ?? 'home');
+  // CTS writes `home/awayTimeoutsRemaining` to stats; operator-input games
+  // use `home/awayTimeouts`. Read the CTS field first (the real feed
+  // value), then the operator key, then a legacy explicit statKey.
+  const ctsKey = team === 'away' ? 'awayTimeoutsRemaining' : 'homeTimeoutsRemaining';
+  const opKey = team === 'away' ? 'awayTimeouts' : 'homeTimeouts';
+  const stats = s?.snapshot?.stats as Record<string, unknown> | undefined;
+  const raw =
+    config.statKey != null
+      ? stats?.[config.statKey]
+      : (stats?.[ctsKey] ?? stats?.[opKey]);
   const left = raw != null ? Number(raw) : 3;
   const max = 3;
   const accent = config.accentColor ?? config.color ?? '#fbbf24';
@@ -342,10 +377,19 @@ export function PlayClockWidget({ config }: { config: ElCfg }) {
 // ── Shot clock (basketball/lacrosse/water polo — stats.shotClock) ────
 export function ShotClockWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
-  const raw = s?.snapshot?.stats?.shotClock as any;
+  // The operator can point this at the combined shot clock (default) or a
+  // per-side CTS shot clock (homeShotClock / awayShotClock). All three are
+  // anchor objects {ms,len,at,running} the sub-clock projects forward.
+  const field = deriveCtsField('sb-shot-clock', config) ?? 'shotClock';
+  const stats = s?.snapshot?.stats as Record<string, unknown> | undefined;
+  const raw = (stats?.[field] ?? stats?.shotClock) as any;
   const len = Number(raw?.len) || 0;
-  const ms = useSubClock(len > 0 ? raw : null, s?.snapshot?.serverTime);
-  if (len <= 0 && s?.snapshot) {
+  // Armed = has a configured length (operator/basketball one-clock) OR a
+  // per-side CTS anchor (homeShotClock/awayShotClock carry ms+at but no
+  // len). Without this, a fresh per-side CTS shot clock would be hidden.
+  const armed = len > 0 || !!(raw && raw.at && (Number(raw.ms) > 0 || raw.running));
+  const ms = useSubClock(armed ? raw : null, s?.snapshot?.serverTime);
+  if (!armed && s?.snapshot) {
     // sport has no shot clock right now — render nothing on a live board
     return <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent' }} />;
   }

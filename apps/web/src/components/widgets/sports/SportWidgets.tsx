@@ -23,8 +23,9 @@
  *                              cfg.statKey against snapshot.stats[]
  */
 
-import { useGameState, fmtClock, fmtSegment } from './GameStateContext';
+import { useGameState } from './GameStateContext';
 import { FitOneLine, FitBox } from './FitOneLine';
+import { resolveCtsField, deriveCtsField } from './cts-fields';
 
 interface BaseConfig {
   // Visual.
@@ -37,6 +38,14 @@ interface BaseConfig {
   letterSpacing?: number;
   // Builder-mode placeholder.
   placeholder?: string;
+  // CTS feed-field binding — the REAL field the operator picked in the
+  // Properties "Reads from CTS field" dropdown (cts-fields.ts catalog).
+  // When set, the widget renders exactly that field via resolveCtsField.
+  // Falls back to each widget's correct default key when unset, and to
+  // the legacy cfg.team/cfg.statKey for back-compat with old templates.
+  ctsField?: string;
+  team?: 'home' | 'away';
+  statKey?: string;
   // Common sizing: when the operator drops the widget in a zone we
   // size text to fill the zone via CSS; explicit fontSize is optional.
 }
@@ -126,8 +135,11 @@ function FitValue({ config, children }: { config: BaseConfig; children: React.Re
 
 export function ScoreHomeWidget({ config }: { config: ScoreConfig }) {
   const state = useGameState();
-  const score = state?.snapshot?.homeScore;
-  const display = score != null ? String(score) : (config.placeholder ?? '24');
+  // Bind to the operator-picked CTS field (default homeScore). Back-compat:
+  // derive from legacy cfg.team/cfg.statKey when cfg.ctsField is absent.
+  const key = deriveCtsField('SCORE_HOME', config) ?? 'homeScore';
+  const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key);
+  const display = resolved ?? (config.placeholder ?? '24');
 
   if (config.showLogo || config.showName) {
     const team = state?.snapshot?.homeTeam ?? 'HOME';
@@ -167,8 +179,9 @@ export function ScoreHomeWidget({ config }: { config: ScoreConfig }) {
 
 export function ScoreAwayWidget({ config }: { config: ScoreConfig }) {
   const state = useGameState();
-  const score = state?.snapshot?.awayScore;
-  const display = score != null ? String(score) : (config.placeholder ?? '21');
+  const key = deriveCtsField('SCORE_AWAY', config) ?? 'awayScore';
+  const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key);
+  const display = resolved ?? (config.placeholder ?? '21');
 
   if (config.showLogo || config.showName) {
     const team = state?.snapshot?.awayTeam ?? 'AWAY';
@@ -210,36 +223,48 @@ export function ScoreAwayWidget({ config }: { config: ScoreConfig }) {
 
 export function GameClockWidget({ config }: { config: ClockConfig }) {
   const state = useGameState();
-  if (!state?.snapshot) {
+  // Default field 'clock'; an operator who re-points this to e.g. a shot
+  // clock gets that value instead (the binding is real, not cosmetic).
+  const key = deriveCtsField('GAME_CLOCK', config) ?? 'clock';
+  const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key, {
+    showTenths: !!config.showTenths,
+  });
+  if (resolved == null) {
     return <FitValue config={config}>{config.placeholder ?? '07:42'}</FitValue>;
   }
-  return <FitValue config={config}>{fmtClock(state.liveClockMs, !!config.showTenths)}</FitValue>;
+  return <FitValue config={config}>{resolved}</FitValue>;
 }
 
 // ── Segment ──────────────────────────────────────────────────────────
 
 export function GameSegmentWidget({ config }: { config: SegmentConfig }) {
   const state = useGameState();
-  if (!state?.snapshot) {
+  const key = deriveCtsField('GAME_SEGMENT', config) ?? 'segment';
+  const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key);
+  if (resolved == null) {
     return <FitValue config={config}>{config.placeholder ?? 'Q3'}</FitValue>;
   }
-  return (
-    <FitValue config={config}>
-      {fmtSegment(state.snapshot.sport, state.snapshot.segment)}
-    </FitValue>
-  );
+  return <FitValue config={config}>{resolved}</FitValue>;
 }
 
 // ── Stat (sport-specific) ────────────────────────────────────────────
 
 export function GameStatWidget({ config }: { config: StatConfig }) {
   const state = useGameState();
-  const key = config.statKey ?? 'down';
-  const raw = state?.snapshot?.stats?.[key];
-  const display =
-    raw != null && raw !== ''
-      ? String(raw)
-      : (config.placeholder ?? '—');
+  // CTS binding wins: if the operator picked a real CTS field
+  // (cfg.ctsField, set by the "Reads from CTS field" picker), resolve it
+  // through the catalog so re-pointing actually changes the value. Else
+  // fall back to a manual Game.stats key (cfg.statKey) — operator-input
+  // stats (down/fouls/…) that CTS doesn't transmit.
+  let display: string;
+  if (config.ctsField) {
+    const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, config.ctsField);
+    display = resolved ?? (config.placeholder ?? '—');
+  } else {
+    const key = config.statKey ?? 'down';
+    const raw = state?.snapshot?.stats?.[key];
+    display = raw != null && raw !== '' ? String(raw) : (config.placeholder ?? '—');
+  }
 
   if (config.label) {
     return (
