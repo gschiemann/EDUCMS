@@ -706,11 +706,19 @@ const CSS_HS = `
   width: 20px; height: 20px;
   background: linear-gradient(135deg, transparent 50%, rgba(0,0,0,.2) 50%);
 }
+/* Taurus-safe square (was the aspect-ratio property, Chromium 88+; the
+   padding-top percent hack renders identically on modern engines and on
+   Chromium 83). Fill children are absolutely positioned (longhand sides,
+   not the inset shorthand). */
 .hs-photo {
-  width: 100%; aspect-ratio: 1;
+  width: 100%; height: 0; padding-top: 100%; box-sizing: border-box;
+  position: relative;
   background: linear-gradient(135deg, #06b6d4, #0e7490);
-  display: flex; align-items: center; justify-content: center;
   font-size: 110px; overflow: hidden;
+}
+.hs-photo > * {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+  display: flex; align-items: center; justify-content: center;
 }
 .hs-photoImg { width: 100%; height: 100%; object-fit: cover; }
 .hs-pageInfo { margin-top: 12px; text-align: center; }

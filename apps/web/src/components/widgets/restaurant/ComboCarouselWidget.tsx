@@ -276,15 +276,20 @@ const CSS = `
   padding: clamp(40px, 8cqh, 80px) clamp(18px, 3cqw, 36px) clamp(18px, 3cqh, 32px);
 }
 
+/* Taurus-safe square (was a Chromium-88-only ratio property). This is a
+   42%-wide flex-row item; padding-top:42% resolves against the SAME flex-row
+   content width as the 42% flex-basis, so height == width: a perfect square
+   on every engine including Chromium 83 (Taurus). The emoji/image fill an
+   absolutely-positioned layer (longhand sides, not the inset shorthand). */
 .rcc-tile {
   position: relative;
-  flex: 0 0 42%;
+  width: 42%; flex: 0 0 42%;
   align-self: center;
-  aspect-ratio: 1 / 1;
+  height: 0; padding-top: 42%;
+  box-sizing: border-box;
   max-height: 100%;
   border-radius: clamp(10px, 1.5cqh, 22px);
   overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
   box-shadow: 0 12px 40px rgba(0,0,0,0.45), inset 0 0 0 2px rgba(251,246,238,0.08);
 }
 .rcc-tile-img {
@@ -293,6 +298,8 @@ const CSS = `
   object-fit: cover;
 }
 .rcc-tile-emoji {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+  display: flex; align-items: center; justify-content: center;
   font-size: clamp(60px, 28cqh, 240px);
   line-height: 1;
   filter: drop-shadow(0 6px 18px rgba(0,0,0,0.35));

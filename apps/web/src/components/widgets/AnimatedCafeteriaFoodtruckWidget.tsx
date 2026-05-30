@@ -727,15 +727,23 @@ const CSS_FT = `
   0%, 100% { transform: rotate(-3deg) translateY(0); }
   50%      { transform: rotate(-1deg) translateY(-4px); }
 }
+/* Taurus-safe ratio box (was the aspect-ratio property, 1.1, Chromium 88+;
+   padding-top 90.91% = 100/1.1 renders identically on modern engines and on
+   Chromium 83). Children absolutely positioned (longhand sides, not the inset
+   shorthand). */
 .ft-chefFace {
-  width: 100%; aspect-ratio: 1.1;
+  width: 100%; height: 0; padding-top: 90.91%; box-sizing: border-box;
+  position: relative;
   background: radial-gradient(circle at 50% 40%, #fef3c7, #fbbf24 70%);
   border: 4px solid #1f2937;
   border-radius: 14px;
-  display: flex; align-items: center; justify-content: center;
   font-size: 140px; line-height: 1;
   box-shadow: inset 0 0 20px rgba(0,0,0,.15);
   overflow: hidden;
+}
+.ft-chefFace > * {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+  display: flex; align-items: center; justify-content: center;
 }
 .ft-chefPhoto { width: 100%; height: 100%; object-fit: cover; }
 .ft-chefName {

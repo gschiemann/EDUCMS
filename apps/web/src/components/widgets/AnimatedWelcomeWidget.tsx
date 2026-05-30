@@ -840,11 +840,20 @@ const CSS = `
   line-height: 1; text-align: center;
   margin-bottom: 10px;
 }
+/* Taurus-safe square (was the aspect-ratio property, Chromium 88+; the
+   padding-top percent hack renders identically on modern engines and on
+   Chromium 83). Fill children are absolutely positioned (longhand sides,
+   not the inset shorthand). */
 .aw-tFace {
-  width: 100%; aspect-ratio: 1;
+  width: 100%; height: 0; padding-top: 100%; box-sizing: border-box;
+  position: relative;
   background: linear-gradient(135deg, #fce7f3, #ddd6fe);
-  display: flex; align-items: center; justify-content: center; font-size: 120px;
+  font-size: 120px;
   overflow: hidden;
+}
+.aw-tFace > * {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+  display: flex; align-items: center; justify-content: center;
 }
 .aw-tPhoto {
   width: 100%; height: 100%; object-fit: cover;

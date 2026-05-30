@@ -201,13 +201,18 @@ const CSS = `
   display: flex; flex-direction: column;
   gap: clamp(4px, 1cqh, 10px);
 }
+/* Taurus-safe 4:5 box (was the aspect-ratio property, Chromium 88+). This is
+   a column-flex / grid-cell child, so it stretches to the card width and the
+   padding-top percent hack (height = 125% of width) renders identically on
+   modern engines and on Chromium 83. Fill children must be absolute. */
 .rpgw-image-wrap {
   position: relative;
-  aspect-ratio: 4 / 5;
+  width: 100%; height: 0; padding-top: 125%;
   overflow: hidden;
   background: #ece6dc;
 }
 .rpgw-image {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   width: 100%; height: 100%;
   object-fit: cover;
   display: block;

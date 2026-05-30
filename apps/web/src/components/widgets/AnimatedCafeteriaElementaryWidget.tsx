@@ -693,13 +693,21 @@ const CSS_CAFE = `
   animation: cafe-chefSway 6s ease-in-out infinite;
 }
 @keyframes cafe-chefSway { 0%, 100% { transform: rotate(-3deg) translateY(0); } 50% { transform: rotate(-1deg) translateY(-4px); } }
+/* Taurus-safe ratio box (was the aspect-ratio property, 1.15, Chromium 88+;
+   padding-top 86.96% = 100/1.15 renders identically on modern engines and on
+   Chromium 83). Children absolutely positioned (longhand sides, not the inset
+   shorthand). */
 .cafe-chefFace {
-  width: 100%; aspect-ratio: 1.15;
+  width: 100%; height: 0; padding-top: 86.96%; box-sizing: border-box;
+  position: relative;
   background: radial-gradient(circle at 50% 40%, #fef3c7, #fbbf24 70%);
   border: 4px solid #1f2937; border-radius: 12px;
-  display: flex; align-items: center; justify-content: center;
   font-size: 120px; line-height: 1;
   overflow: hidden;
+}
+.cafe-chefFace > * {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+  display: flex; align-items: center; justify-content: center;
 }
 .cafe-chefPhoto { width: 100%; height: 100%; object-fit: cover; }
 .cafe-chefName { font-family: 'Bungee', cursive; font-size: 24px; color: #7c2d12; margin-top: 8px; line-height: 1; text-align: center; }

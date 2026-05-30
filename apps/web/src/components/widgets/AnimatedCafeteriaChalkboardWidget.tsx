@@ -702,12 +702,20 @@ const CSS_CHALK = `
     #fbbf24;
   box-shadow: 0 2px 4px rgba(0,0,0,.3);
 }
+/* Taurus-safe square (was the aspect-ratio property, Chromium 88+; the
+   padding-top percent hack renders identically on modern engines and on
+   Chromium 83). Fill children are absolutely positioned (longhand sides,
+   not the inset shorthand). */
 .ch-photo {
-  width: 100%; aspect-ratio: 1;
+  width: 100%; height: 0; padding-top: 100%; box-sizing: border-box;
+  position: relative;
   background: linear-gradient(135deg, #fef3c7, #fbbf24);
-  display: flex; align-items: center; justify-content: center;
   font-size: 140px; line-height: 1;
   overflow: hidden;
+}
+.ch-photo > * {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+  display: flex; align-items: center; justify-content: center;
 }
 .ch-chefPhoto { width: 100%; height: 100%; object-fit: cover; }
 .ch-caption {

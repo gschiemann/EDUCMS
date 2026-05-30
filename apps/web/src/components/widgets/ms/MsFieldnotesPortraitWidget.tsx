@@ -1120,8 +1120,11 @@ const CSS = `
 .ms-fn-p-hero .ms-fn-p-h1 {
   font-family: 'DM Serif Display', serif; font-weight: 400;
   font-size: 240px; line-height: .86; letter-spacing: -.025em;
-  color: var(--ms-fn-p-ink); margin: 18px 0 0; text-wrap: balance;
+  color: var(--ms-fn-p-ink); margin: 18px 0 0;
   position: relative; z-index: 2;
+  /* (dropped the balanced-text-wrap hint — Chromium 114+; Chromium 83 /
+     Taurus already falls back to normal wrap, so removing it is
+     behavior-neutral there and a negligible change on modern engines.) */
 }
 .ms-fn-p-hero .ms-fn-p-h1 em {
   font-style: italic; color: var(--ms-fn-p-stamp);

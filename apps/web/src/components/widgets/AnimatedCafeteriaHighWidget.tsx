@@ -636,7 +636,12 @@ const CSS_HS = `
 .hs-yearbook { position: relative; width: 240px; padding: 12px; background: #fff; border: 4px solid #ec4899; box-shadow: 0 10px 24px rgba(0,0,0,.3); transform: rotate(-3deg); animation: hs-yearbook 9s ease-in-out infinite; }
 @keyframes hs-yearbook { 0%, 100% { transform: rotate(-3deg) translateX(-3px); } 50% { transform: rotate(-3deg) translateX(3px); } }
 .hs-yearbook::before { content: ''; position: absolute; bottom: 0; right: 0; width: 28px; height: 28px; background: linear-gradient(135deg, transparent 50%, #ec4899 50%); }
-.hs-photo { width: 100%; aspect-ratio: 1; background: linear-gradient(135deg, #06b6d4, #0e7490); display: flex; align-items: center; justify-content: center; font-size: 100px; line-height: 1; overflow: hidden; }
+/* Taurus-safe square (was the aspect-ratio property, Chromium 88+; the
+   padding-top percent hack renders identically on modern engines and on
+   Chromium 83). Fill children are absolutely positioned (longhand sides,
+   not the inset shorthand). */
+.hs-photo { width: 100%; height: 0; padding-top: 100%; box-sizing: border-box; position: relative; background: linear-gradient(135deg, #06b6d4, #0e7490); font-size: 100px; line-height: 1; overflow: hidden; }
+.hs-photo > * { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; }
 .hs-photoImg { width: 100%; height: 100%; object-fit: cover; }
 .hs-pageInfo { margin-top: 10px; text-align: center; }
 .hs-chefName { font-family: 'Anton', sans-serif; font-size: 22px; color: #1f2937; line-height: 1; letter-spacing: .02em; }

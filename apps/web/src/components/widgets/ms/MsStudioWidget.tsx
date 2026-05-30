@@ -1278,9 +1278,13 @@ const CSS = `
 
 .ms-st-tapes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-top: 20px; }
 
-/* Cassette tape card */
+/* Cassette tape card — Taurus-safe fixed height (was a Chromium-88-only ratio
+   property, which collapses the card on Chromium 83). Authored at a fixed
+   3840×2160 canvas: lineup panel 3840 − 2×64 = 3712 − 2×5 border − 2×44 pad =
+   3614 content; 4 cols − 3×24 gap → 885.5px track; 5:3.05 → 540px tall
+   (box-sizing: border-box, set on .ms-st-tape above). Same on every engine. */
 .ms-st-tape {
-  position: relative; aspect-ratio: 5 / 3.05;
+  position: relative; height: 540px;
   background: linear-gradient(180deg, #2a2024 0%, #1a1318 100%);
   border: 3px solid #0a0608; border-radius: 8px;
   box-shadow:

@@ -426,8 +426,14 @@ const CSS = `
 .fz-grid {
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;
 }
+/* Taurus-safe fixed height (was a Chromium-88-only ratio property, which
+   collapses the card to its text height on Chromium 83). Authored at a fixed
+   3840×2160 canvas: right column 1500 − 2×48 pad = 1404 grid width; 5 cols −
+   4×14 gap → 269.6px track; 4:5 → 337px tall (border-box). Same on every
+   engine. */
 .fz-r {
-  aspect-ratio: 4 / 5; border: 2px solid #2a2620; padding: 14px;
+  box-sizing: border-box; height: 337px;
+  border: 2px solid #2a2620; padding: 14px;
   position: relative; display: flex; flex-direction: column; justify-content: space-between;
 }
 .fz-r-n {

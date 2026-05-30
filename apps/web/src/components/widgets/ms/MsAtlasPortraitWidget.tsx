@@ -816,7 +816,9 @@ const CSS = `
   font-family: 'Work Sans', system-ui, sans-serif; font-weight: 900;
   font-size: 280px; line-height: .88; letter-spacing: -.035em;
   color: #0b1220; margin: 0;
-  text-wrap: balance;
+  /* (dropped the balanced-text-wrap hint — Chromium 114+; Chromium 83 /
+     Taurus already falls back to normal wrap, so removing it is
+     behavior-neutral there and a negligible change on modern engines.) */
 }
 .ms-atl-p-poster-h1 em {
   font-style: italic; color: #d64c34;

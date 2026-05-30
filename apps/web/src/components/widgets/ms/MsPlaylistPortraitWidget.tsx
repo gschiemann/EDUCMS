@@ -945,7 +945,10 @@ const CSS = `
 .ms-pl-p-now-h1 {
   font-family: 'Inter Tight', 'Inter', system-ui, sans-serif; font-weight: 900; font-size: 240px;
   line-height: .86; color: #f7f7fb; margin: 16px 0 0;
-  letter-spacing: -.04em; text-wrap: balance;
+  letter-spacing: -.04em;
+  /* (dropped the balanced-text-wrap hint — Chromium 114+; Chromium 83 /
+     Taurus already falls back to normal wrap, so removing it is
+     behavior-neutral there and a negligible change on modern engines.) */
 }
 .ms-pl-p-now-h1 em { font-style: normal; color: #1ed760; }
 .ms-pl-p-now-artist {

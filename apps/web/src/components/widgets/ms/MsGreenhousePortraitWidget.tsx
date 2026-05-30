@@ -1087,7 +1087,9 @@ const CSS = `
   font-family: 'Cormorant Garamond', serif; font-weight: 700;
   font-size: 280px; line-height: .85; letter-spacing: -.025em;
   color: #1f2a1c; margin: 0; position: relative; z-index: 2;
-  text-wrap: balance;
+  /* (dropped the balanced-text-wrap hint — Chromium 114+; Chromium 83 /
+     Taurus already falls back to normal wrap, so removing it is
+     behavior-neutral there and a negligible change on modern engines.) */
 }
 .ms-gh-p-h1 em {
   font-style: italic; color: #345e3a;
