@@ -20,6 +20,7 @@
 import React from 'react';
 import { useGameState } from './GameStateContext';
 import { elRoot, useSubClock, type ElCfg } from './SportElementWidgets';
+import { FitOneLine, FitBox } from './FitOneLine';
 
 function stat(s: ReturnType<typeof useGameState>, key: string): unknown {
   return s?.snapshot?.stats?.[key];
@@ -35,14 +36,34 @@ export function DownDistanceWidget({ config }: { config: ElCfg }) {
   const display = s?.snapshot
     ? (down ? `${ord(Number(down))} & ${dist ?? '—'}` : '—')
     : (config.placeholder ?? '2ND & 7');
-  return <div style={elRoot(config, { fontWeight: config.fontWeight ?? 900 })}>{display}</div>;
+  return (
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitOneLine
+        maxFontPx={config.fontSize ?? 800}
+        align={config.align ?? 'center'}
+        style={{ color: config.color ?? '#ffffff', fontWeight: config.fontWeight ?? 900, fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif', letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined }}
+      >
+        {display}
+      </FitOneLine>
+    </div>
+  );
 }
 
 export function BallOnWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const ballOn = stat(s, config.statKey ?? 'ballOn');
   const display = s?.snapshot ? (ballOn != null ? `BALL ON ${ballOn}` : '') : (config.placeholder ?? 'BALL ON 35');
-  return <div style={elRoot(config, { fontWeight: config.fontWeight ?? 700, color: config.color ?? '#94a3b8' })}>{display}</div>;
+  return (
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitOneLine
+        maxFontPx={config.fontSize ?? 800}
+        align={config.align ?? 'center'}
+        style={{ color: config.color ?? '#94a3b8', fontWeight: config.fontWeight ?? 700, fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif', letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined }}
+      >
+        {display}
+      </FitOneLine>
+    </div>
+  );
 }
 
 export function FlagIndicatorWidget({ config }: { config: ElCfg }) {
@@ -51,10 +72,14 @@ export function FlagIndicatorWidget({ config }: { config: ElCfg }) {
   const lit = s?.snapshot ? !!flag : true;
   if (s?.snapshot && !lit) return <div style={elRoot(config, { backgroundColor: 'transparent' })} />;
   return (
-    <div style={elRoot(config, { backgroundColor: 'transparent' })}>
-      <span style={{ background: config.accentColor ?? '#fbbf24', color: '#11131a', padding: '0.2em 0.55em', borderRadius: 5, fontWeight: 900, letterSpacing: 1, fontSize: config.fontSize }}>
+    <div style={{ width: '100%', height: '100%', background: 'transparent', overflow: 'hidden' }}>
+      <FitOneLine
+        maxFontPx={config.fontSize ?? 800}
+        align={config.align ?? 'center'}
+        style={{ background: config.accentColor ?? '#fbbf24', color: '#11131a', padding: '0.2em 0.55em', borderRadius: 5, fontWeight: 900, letterSpacing: 1, fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif' }}
+      >
         {config.label ?? '🚩 FLAG'}
-      </span>
+      </FitOneLine>
     </div>
   );
 }
@@ -70,17 +95,24 @@ export function CountWidget({ config }: { config: ElCfg }) {
     <span style={{ width: '0.5em', height: '0.5em', borderRadius: '50%', display: 'inline-block', marginLeft: '0.18em', background: on ? c : 'rgba(255,255,255,0.16)' }} />
   );
   return (
-    <div style={elRoot(config, { backgroundColor: 'transparent', flexDirection: 'column' })}>
-      <div style={{ fontWeight: 900, fontSize: '1em', color: config.color ?? '#fff' }}>{balls}-{strikes}</div>
-      <div style={{ marginTop: '0.2em', display: 'flex', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.34em', fontWeight: 800, letterSpacing: 2, color: '#64748b', marginRight: '0.3em' }}>OUT</span>
-        {dot(outs >= 1, config.accentColor ?? '#ef4444')}{dot(outs >= 2, config.accentColor ?? '#ef4444')}
-      </div>
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitBox
+        baseFontPx={config.fontSize ?? 400}
+        align={config.align ?? 'center'}
+        style={{ color: config.color ?? '#fff', fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif' }}
+      >
+        <div style={{ fontWeight: 900, fontSize: '1em', color: config.color ?? '#fff' }}>{balls}-{strikes}</div>
+        <div style={{ marginTop: '0.2em', display: 'flex', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.34em', fontWeight: 800, letterSpacing: 2, color: '#64748b', marginRight: '0.3em' }}>OUT</span>
+          {dot(outs >= 1, config.accentColor ?? '#ef4444')}{dot(outs >= 2, config.accentColor ?? '#ef4444')}
+        </div>
+      </FitBox>
     </div>
   );
 }
 
 export function BaseDiamondWidget({ config }: { config: ElCfg }) {
+  // Visual diamond graphic — percentage-based sizing, no text overflow risk. Left alone.
   const s = useGameState();
   const on1 = s?.snapshot ? !!Number(stat(s, 'on1B') ?? 0) : true;
   const on2 = s?.snapshot ? !!Number(stat(s, 'on2B') ?? 0) : false;
@@ -107,7 +139,17 @@ export function InningHalfWidget({ config }: { config: ElCfg }) {
   const half = String(stat(s, 'half') ?? (s?.snapshot ? 'top' : 'top')).toLowerCase();
   const ord = (n: number) => { const x = ['TH','ST','ND','RD']; const v = n % 100; return `${n}${x[(v-20)%10] || x[v] || x[0]}`; };
   const arrow = half.startsWith('b') ? '▼' : '▲';
-  return <div style={elRoot(config, { fontWeight: config.fontWeight ?? 800 })}>{arrow} {ord(seg)}</div>;
+  return (
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitOneLine
+        maxFontPx={config.fontSize ?? 800}
+        align={config.align ?? 'center'}
+        style={{ color: config.color ?? '#ffffff', fontWeight: config.fontWeight ?? 800, fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif', letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined }}
+      >
+        {arrow} {ord(seg)}
+      </FitOneLine>
+    </div>
+  );
 }
 
 export function PitchCountWidget({ config }: { config: ElCfg }) {
@@ -117,9 +159,15 @@ export function PitchCountWidget({ config }: { config: ElCfg }) {
   const pc = stat(s, key);
   const display = pc != null ? String(pc) : (s?.snapshot ? '0' : '87');
   return (
-    <div style={elRoot(config, { flexDirection: 'column', backgroundColor: 'transparent' })}>
-      {config.label !== '' && <div style={{ fontSize: '0.32em', fontWeight: 800, letterSpacing: 2, color: '#64748b' }}>{config.label ?? 'PITCHES'}</div>}
-      <div style={{ fontWeight: 900, color: config.color ?? '#fff' }}>{display}</div>
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitBox
+        baseFontPx={config.fontSize ?? 400}
+        align={config.align ?? 'center'}
+        style={{ color: config.color ?? '#fff', fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif' }}
+      >
+        {config.label !== '' && <div style={{ fontSize: '0.32em', fontWeight: 800, letterSpacing: 2, color: '#64748b' }}>{config.label ?? 'PITCHES'}</div>}
+        <div style={{ fontWeight: 900, color: config.color ?? '#fff' }}>{display}</div>
+      </FitBox>
     </div>
   );
 }
@@ -130,9 +178,15 @@ export function PitchSpeedWidget({ config }: { config: ElCfg }) {
   const display = v != null && v !== '' ? `${v}` : (s?.snapshot ? '' : '94');
   if (s?.snapshot && !display) return <div style={elRoot(config, { backgroundColor: 'transparent' })} />;
   return (
-    <div style={elRoot(config, { flexDirection: 'column', backgroundColor: 'transparent' })}>
-      <div style={{ fontWeight: 900, color: config.color ?? '#fbbf24' }}>{display}</div>
-      <div style={{ fontSize: '0.3em', fontWeight: 800, letterSpacing: 2, color: '#64748b' }}>{config.label ?? 'MPH'}</div>
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitBox
+        baseFontPx={config.fontSize ?? 400}
+        align={config.align ?? 'center'}
+        style={{ color: config.color ?? '#fbbf24', fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif' }}
+      >
+        <div style={{ fontWeight: 900, color: config.color ?? '#fbbf24' }}>{display}</div>
+        <div style={{ fontSize: '0.3em', fontWeight: 800, letterSpacing: 2, color: '#64748b' }}>{config.label ?? 'MPH'}</div>
+      </FitBox>
     </div>
   );
 }
@@ -152,11 +206,9 @@ function PenaltyRow({ p, serverTime, color }: { p: any; serverTime?: number; col
 }
 
 export function PenaltyBoxWidget({ config }: { config: ElCfg }) {
+  // Multi-row list with em sub-sizing — complex layout, not a simple text overflow case.
   const s = useGameState();
   const team = config.team ?? 'home';
-  // Penalties live in ONE stats.penalties[] array with a per-row `team`
-  // field (the console writes them there for hockey/lacrosse/water-polo
-  // exclusions). Filter to this side.
   const all = stat(s, 'penalties');
   const penalties: any[] = Array.isArray(all)
     ? all.filter((p) => (p?.team ?? 'home') === team)
@@ -172,7 +224,6 @@ export function PenaltyBoxWidget({ config }: { config: ElCfg }) {
 
 export function PowerPlayBadgeWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
-  // Count active penalties per side from the shared stats.penalties[].
   const all = Array.isArray(stat(s, 'penalties')) ? (stat(s, 'penalties') as any[]) : [];
   const homeP = all.filter((p) => (p?.team ?? 'home') === 'home').length;
   const awayP = all.filter((p) => (p?.team ?? 'home') === 'away').length;
@@ -185,8 +236,14 @@ export function PowerPlayBadgeWidget({ config }: { config: ElCfg }) {
   else if (myP > oppP) { label = 'PENALTY KILL'; bg = '#f59e0b'; }
   if (!label) return <div style={elRoot(config, { backgroundColor: 'transparent' })} />;
   return (
-    <div style={elRoot(config, { backgroundColor: 'transparent' })}>
-      <span style={{ background: config.accentColor ?? bg, color: '#11131a', padding: '0.2em 0.6em', borderRadius: 6, fontWeight: 900, letterSpacing: 1, fontSize: config.fontSize }}>{label}</span>
+    <div style={{ width: '100%', height: '100%', background: 'transparent', overflow: 'hidden' }}>
+      <FitOneLine
+        maxFontPx={config.fontSize ?? 800}
+        align={config.align ?? 'center'}
+        style={{ background: config.accentColor ?? bg, color: '#11131a', padding: '0.2em 0.6em', borderRadius: 6, fontWeight: 900, letterSpacing: 1, fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif' }}
+      >
+        {label}
+      </FitOneLine>
     </div>
   );
 }
@@ -194,19 +251,26 @@ export function PowerPlayBadgeWidget({ config }: { config: ElCfg }) {
 // ════════════════ VOLLEYBALL / TENNIS (set / rally) ════════════════
 
 export function SetScoresWidget({ config }: { config: ElCfg }) {
+  // Multi-column per-set scores: each set is a home/away pair — FitBox scales the whole row.
   const s = useGameState();
   const raw = stat(s, config.statKey ?? 'sets');
   const sets: Array<{ h?: number; a?: number }> = Array.isArray(raw) && raw.length
     ? (raw as any[])
     : [{ h: 25, a: 21 }, { h: 23, a: 25 }, { h: 25, a: 18 }];
   return (
-    <div style={elRoot(config, { backgroundColor: 'transparent' })}>
-      {sets.map((set, i) => (
-        <div key={i} style={{ marginLeft: i ? '0.5em' : 0, textAlign: 'center', lineHeight: 1.1 }}>
-          <div style={{ fontWeight: 900 }}>{set.h ?? '—'}</div>
-          <div style={{ fontWeight: 900, color: config.accentColor ?? '#94a3b8' }}>{set.a ?? '—'}</div>
-        </div>
-      ))}
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitBox
+        baseFontPx={config.fontSize ?? 400}
+        align={config.align ?? 'center'}
+        style={{ color: config.color ?? '#fff', fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif', display: 'flex', flexDirection: 'row', alignItems: 'center' }}
+      >
+        {sets.map((set, i) => (
+          <div key={i} style={{ marginLeft: i ? '0.5em' : 0, textAlign: 'center', lineHeight: 1.1 }}>
+            <div style={{ fontWeight: 900 }}>{set.h ?? '—'}</div>
+            <div style={{ fontWeight: 900, color: config.accentColor ?? '#94a3b8' }}>{set.a ?? '—'}</div>
+          </div>
+        ))}
+      </FitBox>
     </div>
   );
 }
@@ -217,8 +281,14 @@ export function ServeIndicatorWidget({ config }: { config: ElCfg }) {
   const serve = String(stat(s, config.statKey ?? 'serve') ?? (s?.snapshot ? 'home' : 'home')).toLowerCase();
   const lit = serve === team;
   return (
-    <div style={elRoot(config, { backgroundColor: 'transparent', opacity: lit ? 1 : 0.14, color: config.accentColor ?? config.color ?? '#fbbf24' })}>
-      <span style={{ fontSize: config.fontSize ?? '1em' }}>🏐</span>
+    <div style={{ width: '100%', height: '100%', background: 'transparent', overflow: 'hidden' }}>
+      <FitOneLine
+        maxFontPx={config.fontSize ?? 800}
+        align={config.align ?? 'center'}
+        style={{ opacity: lit ? 1 : 0.14, color: config.accentColor ?? config.color ?? '#fbbf24' }}
+      >
+        🏐
+      </FitOneLine>
     </div>
   );
 }
@@ -226,6 +296,7 @@ export function ServeIndicatorWidget({ config }: { config: ElCfg }) {
 // ════════════════ SOCCER ════════════════
 
 export function CardCountWidget({ config }: { config: ElCfg }) {
+  // Card icons + count numbers — visual indicator row, not text overflow. Left alone.
   const s = useGameState();
   const team = config.team ?? 'home';
   const yKey = config.statKey ?? (team === 'away' ? 'awayYellow' : 'homeYellow');
@@ -247,15 +318,20 @@ export function CardCountWidget({ config }: { config: ElCfg }) {
 }
 
 export function StatPairWidget({ config }: { config: ElCfg }) {
-  // Generic labelled stat (shots, corners, possession %, etc.) — bind a
-  // stat key in Properties. Covers the long tail of per-sport numbers.
+  // Generic labelled stat (shots, corners, possession %, etc.)
   const s = useGameState();
   const v = stat(s, config.statKey ?? 'shots');
   const display = v != null && v !== '' ? `${v}` : (s?.snapshot ? '0' : '12');
   return (
-    <div style={elRoot(config, { flexDirection: 'column', backgroundColor: 'transparent' })}>
-      {config.label !== '' && <div style={{ fontSize: '0.34em', fontWeight: 800, letterSpacing: 2, color: '#64748b' }}>{config.label ?? 'SHOTS'}</div>}
-      <div style={{ fontWeight: 900, color: config.color ?? '#fff' }}>{display}</div>
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitBox
+        baseFontPx={config.fontSize ?? 400}
+        align={config.align ?? 'center'}
+        style={{ color: config.color ?? '#fff', fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif' }}
+      >
+        {config.label !== '' && <div style={{ fontSize: '0.34em', fontWeight: 800, letterSpacing: 2, color: '#64748b' }}>{config.label ?? 'SHOTS'}</div>}
+        <div style={{ fontWeight: 900, color: config.color ?? '#fff' }}>{display}</div>
+      </FitBox>
     </div>
   );
 }
@@ -271,9 +347,15 @@ export function RidingTimeWidget({ config }: { config: ElCfg }) {
   const sec = Math.floor((shown % 60000) / 1000);
   const advantage = shown >= 60000;
   return (
-    <div style={elRoot(config, { flexDirection: 'column', backgroundColor: 'transparent' })}>
-      {config.label !== '' && <div style={{ fontSize: '0.3em', fontWeight: 800, letterSpacing: 2, color: '#64748b' }}>{config.label ?? 'RIDING TIME'}</div>}
-      <div style={{ fontWeight: 900, color: advantage ? (config.accentColor ?? '#22c55e') : (config.color ?? '#fff') }}>{m}:{String(sec).padStart(2, '0')}</div>
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitBox
+        baseFontPx={config.fontSize ?? 400}
+        align={config.align ?? 'center'}
+        style={{ fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif' }}
+      >
+        {config.label !== '' && <div style={{ fontSize: '0.3em', fontWeight: 800, letterSpacing: 2, color: '#64748b' }}>{config.label ?? 'RIDING TIME'}</div>}
+        <div style={{ fontWeight: 900, color: advantage ? (config.accentColor ?? '#22c55e') : (config.color ?? '#fff') }}>{m}:{String(sec).padStart(2, '0')}</div>
+      </FitBox>
     </div>
   );
 }
@@ -282,7 +364,17 @@ export function WeightClassWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const w = stat(s, config.statKey ?? 'weightClass');
   const display = w != null && w !== '' ? `${w}` : (s?.snapshot ? '' : '157 LBS');
-  return <div style={elRoot(config, { fontWeight: config.fontWeight ?? 800, color: config.color ?? '#94a3b8' })}>{display}</div>;
+  return (
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitOneLine
+        maxFontPx={config.fontSize ?? 800}
+        align={config.align ?? 'center'}
+        style={{ color: config.color ?? '#94a3b8', fontWeight: config.fontWeight ?? 800, fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif', letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined }}
+      >
+        {display}
+      </FitOneLine>
+    </div>
+  );
 }
 
 export function TeamScoreRunningWidget({ config }: { config: ElCfg }) {
@@ -292,9 +384,15 @@ export function TeamScoreRunningWidget({ config }: { config: ElCfg }) {
   const v = stat(s, key);
   const display = v != null ? String(v) : (s?.snapshot ? '0' : team === 'away' ? '18' : '24');
   return (
-    <div style={elRoot(config, { flexDirection: 'column', backgroundColor: 'transparent' })}>
-      {config.label !== '' && <div style={{ fontSize: '0.3em', fontWeight: 800, letterSpacing: 2, color: '#64748b' }}>{config.label ?? 'TEAM'}</div>}
-      <div style={{ fontWeight: 900, color: config.color ?? '#fff' }}>{display}</div>
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitBox
+        baseFontPx={config.fontSize ?? 400}
+        align={config.align ?? 'center'}
+        style={{ color: config.color ?? '#fff', fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif' }}
+      >
+        {config.label !== '' && <div style={{ fontSize: '0.3em', fontWeight: 800, letterSpacing: 2, color: '#64748b' }}>{config.label ?? 'TEAM'}</div>}
+        <div style={{ fontWeight: 900, color: config.color ?? '#fff' }}>{display}</div>
+      </FitBox>
     </div>
   );
 }
@@ -302,6 +400,8 @@ export function TeamScoreRunningWidget({ config }: { config: ElCfg }) {
 // ════════════════ TRACK / SWIM (leaderboard) ════════════════
 
 export function LeaderboardWidget({ config }: { config: ElCfg & { rows?: Array<{ place?: number | string; lane?: number | string; name?: string; time?: string }> } }) {
+  // Complex multi-row list with fixed proportional column layout — not a single text overflow.
+  // The font is elRoot-driven (zone-relative via em); rows self-scroll via overflow:hidden. Left alone.
   const rows = config.rows && config.rows.length ? config.rows : [
     { place: 1, lane: 4, name: 'J. CARTER', time: '10.42' },
     { place: 2, lane: 3, name: 'M. OKAFOR', time: '10.51' },
