@@ -4,9 +4,10 @@ import { OnboardingService } from './onboarding.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
+import { SampleDataModule } from '../sample-data/sample-data.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, EmailModule],
+  imports: [PrismaModule, AuthModule, EmailModule, SampleDataModule],
   controllers: [OnboardingController],
   providers: [OnboardingService],
   exports: [OnboardingService],

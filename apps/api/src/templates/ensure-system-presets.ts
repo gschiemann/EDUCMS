@@ -167,6 +167,32 @@ for (const id of QSR_FULL_SERVICE_ALSO_RESTAURANT) {
   PRESET_VERTICALS.set(id, ['QSR', 'RESTAURANT']);
 }
 
+// P3 fix (2026-05-30) — FASHION tenants should see the RETAIL preset
+// pack in addition to their own ~10 signature fashion templates.
+// The `preset-sig-fashion-*` boards are purely editorial/window-display
+// content designed for fashion boutiques; the RETAIL pack
+// (retail-storefront-welcome, retail-sale-bogo-promo, …) covers
+// the operational signage (wayfinding, loyalty, endcap promos) that
+// fashion stores equally need. Dual-tagging "FASHION|RETAIL" lets a
+// FASHION tenant see BOTH galleries without duplicating rows.
+//
+// Mirroring the QSR_FULL_SERVICE_ALSO_RESTAURANT pattern exactly:
+// a single pipe-joined string in Template.vertical; the gallery
+// query's `verticalMatchOr` picks it up in either vertical's gallery.
+const RETAIL_ALSO_FASHION = [
+  'retail-storefront-welcome',
+  'retail-sale-bogo-promo',
+  'retail-new-arrivals-lookbook',
+  'retail-aisle-wayfinding',
+  'retail-loyalty-spotlight',
+  'retail-window-display-portrait',
+  'retail-endcap-featured',
+  'retail-holiday-seasonal',
+];
+for (const id of RETAIL_ALSO_FASHION) {
+  PRESET_VERTICALS.set(id, ['RETAIL', 'FASHION']);
+}
+
 /**
  * Resolve the stored `Template.vertical` tag for a preset id. Returns a
  * single value (`"QSR"`) for single-vertical presets and a pipe-joined

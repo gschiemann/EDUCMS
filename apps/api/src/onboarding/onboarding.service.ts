@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { assertCallerCanAssignRole } from '../auth/role-assignment';
 import { EmailService } from '../email/email.service';
+import { SampleDataService } from '../sample-data/sample-data.service';
 import { AppRole } from '@cms/database';
 import { isVertical } from '@cms/api-types';
 
@@ -54,6 +55,7 @@ export class OnboardingService {
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
     private readonly emailService: EmailService,
+    private readonly sampleData: SampleDataService,
   ) {}
 
   /**
@@ -176,6 +178,13 @@ export class OnboardingService {
     });
 
     await this.emailService.sendWelcome({ to: user.email, districtName: tenant.name, tenantSlug: tenant.slug });
+
+    // Auto-seed vertical-appropriate sample data so new tenants land on
+    // a populated dashboard rather than a blank slate. Non-blocking:
+    // failures are swallowed inside seedForNewTenant — signup always
+    // completes. Idempotent: SampleDataService checks for existing
+    // connections before inserting, so a retry is always safe.
+    void this.sampleData.seedForNewTenant(tenant.id, user.id, requestedVertical);
 
     return this.authService.login(user);
   }
