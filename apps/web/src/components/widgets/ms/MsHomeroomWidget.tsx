@@ -31,6 +31,7 @@ import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsHomeroomConfig {
   // School / brand
+  'school.logoUrl'?: string;
   'school.team'?: string;
   'school.name'?: string;
   'school.year'?: string;
@@ -154,6 +155,7 @@ export interface MsHomeroomConfig {
 
 export const DEFAULTS: Required<MsHomeroomConfig> = {
   // School / brand
+  'school.logoUrl': '',
   'school.team': 'Home of the Otters',
   'school.name': 'Westridge Middle',
   'school.year': '2025–26 · Term 2',
@@ -347,11 +349,21 @@ export function MsHomeroomWidget({ config, live }: { config?: MsHomeroomConfig; 
       {/* ─── HUD ─────────────────────────────────────────── */}
       <header className="ms-hr-hud">
         <div className="ms-hr-brand" data-widget="school">
-          <div className="ms-hr-badge" aria-hidden="true">
-            <div className="ms-hr-face" />
-            <div className="ms-hr-lvl" data-field="school.team" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick('school.team')}
-            </div>
+          <div className="ms-hr-badge" data-field="school.logoUrl" aria-label="School logo">
+            {pick('school.logoUrl') ? (
+              <img
+                src={pick('school.logoUrl')}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
+            ) : (
+            <>
+              <div className="ms-hr-face" aria-hidden="true" />
+              <div className="ms-hr-lvl" data-field="school.team" style={{ whiteSpace: 'pre-wrap' }}>
+                {pick('school.team')}
+              </div>
+            </>
+            )}
           </div>
           <div className="ms-hr-info">
             <div className="ms-hr-eye">Welcome, Otters</div>

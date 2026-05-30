@@ -13,6 +13,7 @@ import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsGreenhousePortraitConfig {
   // Top band — conservatory lockup
+  'school.logoUrl'?: string;
   'school.eye'?: string;
   'school.name'?: string;
   'school.name2'?: string;
@@ -126,6 +127,7 @@ export interface MsGreenhousePortraitConfig {
 }
 
 export const DEFAULTS: Required<MsGreenhousePortraitConfig> = {
+  'school.logoUrl': '',
   'school.eye': 'The Lobby Conservatory',
   'school.name': 'Westridge ',
   'school.name2': 'Middle',
@@ -360,23 +362,33 @@ export function MsGreenhousePortraitWidget({
 
       {/* ─── SEAL+ID BAND ────────────────────────────────────── */}
       <header className="ms-gh-p-top">
-        <div className="ms-gh-p-seal" aria-hidden="true">
-          <span className="ms-gh-p-est">EST · 1924</span>
-          <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <path
-              d="M50 88 L50 50"
-              stroke="#345e3a"
-              strokeWidth="3.5"
-              strokeLinecap="round"
-              fill="none"
+        <div className="ms-gh-p-seal" data-field="school.logoUrl" aria-label="School logo">
+          {pick('school.logoUrl') ? (
+            <img
+              src={pick('school.logoUrl')}
+              alt=""
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
-            <path d="M50 50 Q35 42 30 28 Q42 30 50 44" fill="#4f8b48" />
-            <path d="M50 50 Q65 42 70 28 Q58 30 50 44" fill="#4f8b48" />
-            <path d="M50 60 Q40 56 34 48 Q44 52 50 58" fill="#6f9b78" />
-            <path d="M50 60 Q60 56 66 48 Q56 52 50 58" fill="#6f9b78" />
-            <circle cx="50" cy="34" r="6" fill="#e8a55c" />
-            <path d="M22 86 Q50 80 78 86 L78 92 Q50 95 22 92 Z" fill="#8c3f29" />
-          </svg>
+          ) : (
+          <>
+            <span className="ms-gh-p-est" aria-hidden="true">EST · 1924</span>
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path
+                d="M50 88 L50 50"
+                stroke="#345e3a"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                fill="none"
+              />
+              <path d="M50 50 Q35 42 30 28 Q42 30 50 44" fill="#4f8b48" />
+              <path d="M50 50 Q65 42 70 28 Q58 30 50 44" fill="#4f8b48" />
+              <path d="M50 60 Q40 56 34 48 Q44 52 50 58" fill="#6f9b78" />
+              <path d="M50 60 Q60 56 66 48 Q56 52 50 58" fill="#6f9b78" />
+              <circle cx="50" cy="34" r="6" fill="#e8a55c" />
+              <path d="M22 86 Q50 80 78 86 L78 92 Q50 95 22 92 Z" fill="#8c3f29" />
+            </svg>
+          </>
+          )}
         </div>
         <div className="ms-gh-p-ident" data-widget="school">
           <div className="ms-gh-p-eyebrow">

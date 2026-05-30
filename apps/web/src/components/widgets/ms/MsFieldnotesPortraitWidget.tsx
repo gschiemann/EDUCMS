@@ -13,6 +13,7 @@ import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsFieldnotesPortraitConfig {
   // Top masthead — school lockup
+  'school.logoUrl'?: string;
   'school.ey'?: string;
   'school.name'?: string;
   'school.amp'?: string;
@@ -48,6 +49,7 @@ export interface MsFieldnotesPortraitConfig {
   'specimen.common'?: string;
   'specimen.meta'?: string;
   // Polaroid spotlight
+  'spotlight.photoUrl'?: string;
   'spotlight.ey'?: string;
   'spotlight.name'?: string;
   'spotlight.note'?: string;
@@ -156,6 +158,7 @@ export interface MsFieldnotesPortraitConfig {
 
 export const DEFAULTS: Required<MsFieldnotesPortraitConfig> = {
   // Top masthead — school lockup
+  'school.logoUrl': '',
   'school.ey': 'Field Notebook · Volume 142',
   'school.name': 'Westridge',
   'school.amp': '&',
@@ -192,6 +195,7 @@ export const DEFAULTS: Required<MsFieldnotesPortraitConfig> = {
   'specimen.common': '"the everyday otter"',
   'specimen.meta': 'Pressed · 21 Apr · pg. 284',
   // Polaroid
+  'spotlight.photoUrl': '',
   'spotlight.ey': 'Specimen of the Day',
   'spotlight.name': 'Mr. Nguyen, P2 English',
   'spotlight.note': 'Room 108 · poetry workshop · birthdays today: 2',
@@ -372,12 +376,22 @@ export function MsFieldnotesPortraitWidget({
 
       {/* ─── 1. MASTHEAD ─────────────────────────────────────── */}
       <header className="ms-fn-p-panel ms-fn-p-mast">
-        <div className="ms-fn-p-compass" aria-hidden="true">
-          <span className="ms-fn-p-card ms-fn-p-n">N</span>
-          <span className="ms-fn-p-card ms-fn-p-s">S</span>
-          <span className="ms-fn-p-card ms-fn-p-e">E</span>
-          <span className="ms-fn-p-card ms-fn-p-w">W</span>
-          <span className="ms-fn-p-pivot" />
+        <div className="ms-fn-p-compass" data-field="school.logoUrl" aria-label="School logo">
+          {pick('school.logoUrl') ? (
+            <img
+              src={pick('school.logoUrl')}
+              alt=""
+              style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }}
+            />
+          ) : (
+          <>
+            <span className="ms-fn-p-card ms-fn-p-n" aria-hidden="true">N</span>
+            <span className="ms-fn-p-card ms-fn-p-s" aria-hidden="true">S</span>
+            <span className="ms-fn-p-card ms-fn-p-e" aria-hidden="true">E</span>
+            <span className="ms-fn-p-card ms-fn-p-w" aria-hidden="true">W</span>
+            <span className="ms-fn-p-pivot" aria-hidden="true" />
+          </>
+          )}
         </div>
         <div className="ms-fn-p-info" data-widget="school">
           <div className="ms-fn-p-ey">
@@ -547,30 +561,39 @@ export function MsFieldnotesPortraitWidget({
         </div>
 
         <div className="ms-fn-p-polaroid" data-widget="spotlight">
-          <div className="ms-fn-p-photo" aria-hidden="true">
-            <svg
-              viewBox="0 0 260 380"
-              xmlns="http://www.w3.org/2000/svg"
-              preserveAspectRatio="xMidYMid slice"
-            >
-              <rect width="260" height="380" fill="#dba66f" />
-              <circle cx="130" cy="200" r="150" fill="#e8c79a" opacity=".6" />
-              <ellipse cx="130" cy="160" rx="68" ry="78" fill="#5b3d20" />
-              <path d="M40 380 C 40 280, 90 240, 130 240 C 170 240, 220 280, 220 380 Z" fill="#2b3f6b" />
-              <path d="M100 280 L 130 320 L 160 280 L 160 380 L 100 380 Z" fill="#f6ecd2" />
-              <ellipse cx="105" cy="150" rx="20" ry="10" fill="#7a5530" opacity=".8" />
-              <ellipse cx="155" cy="150" rx="20" ry="10" fill="#7a5530" opacity=".8" />
-              <circle cx="108" cy="172" r="14" fill="none" stroke="#1e1a14" strokeWidth="3" />
-              <circle cx="152" cy="172" r="14" fill="none" stroke="#1e1a14" strokeWidth="3" />
-              <line x1="122" y1="172" x2="138" y2="172" stroke="#1e1a14" strokeWidth="3" />
-              <path
-                d="M112 200 Q 130 215 148 200"
-                stroke="#3a2410"
-                strokeWidth="3"
-                fill="none"
-                strokeLinecap="round"
+          <div className="ms-fn-p-photo" data-field="spotlight.photoUrl">
+            {pick('spotlight.photoUrl') ? (
+              <img
+                src={pick('spotlight.photoUrl')}
+                alt={pick('spotlight.name')}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
               />
-            </svg>
+            ) : (
+              <svg
+                viewBox="0 0 260 380"
+                xmlns="http://www.w3.org/2000/svg"
+                preserveAspectRatio="xMidYMid slice"
+                aria-hidden="true"
+              >
+                <rect width="260" height="380" fill="#dba66f" />
+                <circle cx="130" cy="200" r="150" fill="#e8c79a" opacity=".6" />
+                <ellipse cx="130" cy="160" rx="68" ry="78" fill="#5b3d20" />
+                <path d="M40 380 C 40 280, 90 240, 130 240 C 170 240, 220 280, 220 380 Z" fill="#2b3f6b" />
+                <path d="M100 280 L 130 320 L 160 280 L 160 380 L 100 380 Z" fill="#f6ecd2" />
+                <ellipse cx="105" cy="150" rx="20" ry="10" fill="#7a5530" opacity=".8" />
+                <ellipse cx="155" cy="150" rx="20" ry="10" fill="#7a5530" opacity=".8" />
+                <circle cx="108" cy="172" r="14" fill="none" stroke="#1e1a14" strokeWidth="3" />
+                <circle cx="152" cy="172" r="14" fill="none" stroke="#1e1a14" strokeWidth="3" />
+                <line x1="122" y1="172" x2="138" y2="172" stroke="#1e1a14" strokeWidth="3" />
+                <path
+                  d="M112 200 Q 130 215 148 200"
+                  stroke="#3a2410"
+                  strokeWidth="3"
+                  fill="none"
+                  strokeLinecap="round"
+                />
+              </svg>
+            )}
           </div>
           <div className="ms-fn-p-caption">
             <span className="ms-fn-p-cap-ey" data-field="spotlight.ey" style={{ whiteSpace: 'pre-wrap' }}>

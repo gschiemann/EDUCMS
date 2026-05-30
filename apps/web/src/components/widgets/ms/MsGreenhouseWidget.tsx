@@ -30,6 +30,7 @@ import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsGreenhouseConfig {
   // Top band — conservatory lockup
+  'school.logoUrl'?: string;
   'school.eye'?: string;
   'school.name'?: string;
   'school.name2'?: string;
@@ -144,6 +145,7 @@ export interface MsGreenhouseConfig {
 }
 
 export const DEFAULTS: Required<MsGreenhouseConfig> = {
+  'school.logoUrl': '',
   'school.eye': 'The Lobby Conservatory',
   'school.name': 'Westridge ',
   'school.name2': 'Middle',
@@ -375,9 +377,17 @@ export function MsGreenhouseWidget({ config, live }: { config?: MsGreenhouseConf
       {/* ─── TOP BAND ────────────────────────────────────── */}
       <header className="ms-gh-top">
         <div className="ms-gh-lockup" data-widget="school">
-          <div className="ms-gh-seal" aria-hidden="true">
-            <span className="ms-gh-est">EST · 1924</span>
-            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <div className="ms-gh-seal" data-field="school.logoUrl" aria-label="School logo">
+            {pick('school.logoUrl') ? (
+              <img
+                src={pick('school.logoUrl')}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
+            ) : (
+            <>
+            <span className="ms-gh-est" aria-hidden="true">EST · 1924</span>
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <path
                 d="M50 88 L50 50"
                 stroke="#345e3a"
@@ -407,6 +417,8 @@ export function MsGreenhouseWidget({ config, live }: { config?: MsGreenhouseConf
                 fill="#8c3f29"
               />
             </svg>
+            </>
+            )}
           </div>
           <div className="ms-gh-ident">
             <div className="ms-gh-eyebrow">

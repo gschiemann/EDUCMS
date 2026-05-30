@@ -25,6 +25,7 @@ import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsAtlasConfig {
   // Top band — brand
+  'brand.logoUrl'?: string;
   'brand.eye'?: string;
   'brand.name'?: string;
   'brand.sub'?: string;
@@ -123,6 +124,7 @@ export interface MsAtlasConfig {
 
 export const DEFAULTS: Required<MsAtlasConfig> = {
   // Top band — brand
+  'brand.logoUrl': '',
   'brand.eye': 'Middle School Atlas',
   'brand.name': 'WESTRIDGE.MS',
   'brand.sub': '42.3601° N · 71.0589° W · ',
@@ -349,12 +351,22 @@ export function MsAtlasWidget({ config, live }: { config?: MsAtlasConfig; live?:
       {/* ─── TOP BAND ────────────────────────────────────── */}
       <header className="ms-atl-top">
         <div className="ms-atl-brand" data-widget="brand">
-          <div className="ms-atl-compass" aria-hidden="true">
-            <div className="ms-atl-s-needle" />
-            <span className="ms-atl-cardinal ms-atl-n">N</span>
-            <span className="ms-atl-cardinal ms-atl-s">S</span>
-            <span className="ms-atl-cardinal ms-atl-e">E</span>
-            <span className="ms-atl-cardinal ms-atl-w">W</span>
+          <div className="ms-atl-compass" aria-label="School logo" data-field="brand.logoUrl">
+            {pick('brand.logoUrl') ? (
+              <img
+                src={pick('brand.logoUrl')}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }}
+              />
+            ) : (
+              <>
+                <div className="ms-atl-s-needle" aria-hidden="true" />
+                <span className="ms-atl-cardinal ms-atl-n" aria-hidden="true">N</span>
+                <span className="ms-atl-cardinal ms-atl-s" aria-hidden="true">S</span>
+                <span className="ms-atl-cardinal ms-atl-e" aria-hidden="true">E</span>
+                <span className="ms-atl-cardinal ms-atl-w" aria-hidden="true">W</span>
+              </>
+            )}
           </div>
           <div className="ms-atl-info">
             <div className="ms-atl-eye" data-field="brand.eye" style={{ whiteSpace: 'pre-wrap' }}>

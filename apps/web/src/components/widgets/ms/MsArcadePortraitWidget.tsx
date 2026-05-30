@@ -30,6 +30,7 @@ import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
 
 export interface MsArcadePortraitConfig {
   // HUD — school identity
+  'school.logoUrl'?: string;
   'school.name'?: string;
   'school.team'?: string;
   'school.lv'?: string;
@@ -115,6 +116,7 @@ export interface MsArcadePortraitConfig {
 }
 
 export const DEFAULTS: Required<MsArcadePortraitConfig> = {
+  'school.logoUrl': '',
   'school.name': 'WESTRIDGE.MS',
   'school.team': 'HOUSE: OTTERS',
   'school.lv': '7',
@@ -259,7 +261,15 @@ export function MsArcadePortraitWidget({
       {/* ─── Top HUD ───────────────────────────────────────────── */}
       <div className="ms-arc-p-hud">
         <div className="ms-arc-p-player" data-widget="school">
-          <div className="ms-arc-p-avatar" aria-hidden="true" />
+          <div className="ms-arc-p-avatar" aria-label="School logo">
+            {pick('school.logoUrl') ? (
+              <img
+                src={pick('school.logoUrl')}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : null}
+          </div>
           <div className="ms-arc-p-info">
             <div className="ms-arc-p-name" data-field="school.name" style={{ whiteSpace: 'pre-wrap' }}>
               {pick('school.name')}

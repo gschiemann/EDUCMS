@@ -28,6 +28,7 @@ import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsFieldnotesConfig {
   // Top masthead — school lockup
+  'school.logoUrl'?: string;
   'school.ey'?: string;
   'school.name'?: string;
   'school.amp'?: string;
@@ -64,6 +65,7 @@ export interface MsFieldnotesConfig {
   'greeting.scribble'?: string;
   'greeting.stampname'?: string;
   // Polaroid spotlight
+  'spotlight.photoUrl'?: string;
   'spotlight.ey'?: string;
   'spotlight.name'?: string;
   'spotlight.note'?: string;
@@ -172,6 +174,7 @@ export interface MsFieldnotesConfig {
 
 export const DEFAULTS: Required<MsFieldnotesConfig> = {
   // Top masthead — school lockup
+  'school.logoUrl': '',
   'school.ey': 'Field Notebook · Volume 142',
   'school.name': 'Westridge',
   'school.amp': '&',
@@ -209,6 +212,7 @@ export const DEFAULTS: Required<MsFieldnotesConfig> = {
   'greeting.scribble': '— Mrs. Calloway',
   'greeting.stampname': 'The Otter Council',
   // Polaroid
+  'spotlight.photoUrl': '',
   'spotlight.ey': 'Specimen of the Day',
   'spotlight.name': 'Mr. Nguyen, P2 English',
   'spotlight.note': 'Room 108 · poetry workshop · birthdays today: 2',
@@ -376,12 +380,22 @@ export function MsFieldnotesWidget({ config, live }: { config?: MsFieldnotesConf
       {/* ─── TOP MASTHEAD ──────────────────────────────────────── */}
       <header className="ms-fn-mast">
         <div className="ms-fn-lockup" data-widget="school">
-          <div className="ms-fn-compass" aria-hidden="true">
-            <span className="ms-fn-card ms-fn-n">N</span>
-            <span className="ms-fn-card ms-fn-s">S</span>
-            <span className="ms-fn-card ms-fn-e">E</span>
-            <span className="ms-fn-card ms-fn-w">W</span>
-            <span className="ms-fn-pivot" />
+          <div className="ms-fn-compass" data-field="school.logoUrl" aria-label="School logo">
+            {pick('school.logoUrl') ? (
+              <img
+                src={pick('school.logoUrl')}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }}
+              />
+            ) : (
+            <>
+              <span className="ms-fn-card ms-fn-n" aria-hidden="true">N</span>
+              <span className="ms-fn-card ms-fn-s" aria-hidden="true">S</span>
+              <span className="ms-fn-card ms-fn-e" aria-hidden="true">E</span>
+              <span className="ms-fn-card ms-fn-w" aria-hidden="true">W</span>
+              <span className="ms-fn-pivot" aria-hidden="true" />
+            </>
+            )}
           </div>
           <div className="ms-fn-info">
             <div className="ms-fn-ey">
@@ -522,20 +536,28 @@ export function MsFieldnotesWidget({ config, live }: { config?: MsFieldnotesConf
           <div className="ms-fn-inner-right">
             {/* Polaroid */}
             <div className="ms-fn-polaroid" data-widget="spotlight">
-              <div className="ms-fn-photo" aria-hidden="true">
-                <svg viewBox="0 0 260 380" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
-                  <rect width="260" height="380" fill="#dba66f" />
-                  <circle cx="130" cy="200" r="150" fill="#e8c79a" opacity=".6" />
-                  <ellipse cx="130" cy="160" rx="68" ry="78" fill="#5b3d20" />
-                  <path d="M40 380 C 40 280, 90 240, 130 240 C 170 240, 220 280, 220 380 Z" fill="#2b3f6b" />
-                  <path d="M100 280 L 130 320 L 160 280 L 160 380 L 100 380 Z" fill="#f6ecd2" />
-                  <ellipse cx="105" cy="150" rx="20" ry="10" fill="#7a5530" opacity=".8" />
-                  <ellipse cx="155" cy="150" rx="20" ry="10" fill="#7a5530" opacity=".8" />
-                  <circle cx="108" cy="172" r="14" fill="none" stroke="#1e1a14" strokeWidth="3" />
-                  <circle cx="152" cy="172" r="14" fill="none" stroke="#1e1a14" strokeWidth="3" />
-                  <line x1="122" y1="172" x2="138" y2="172" stroke="#1e1a14" strokeWidth="3" />
-                  <path d="M112 200 Q 130 215 148 200" stroke="#3a2410" strokeWidth="3" fill="none" strokeLinecap="round" />
-                </svg>
+              <div className="ms-fn-photo" data-field="spotlight.photoUrl">
+                {pick('spotlight.photoUrl') ? (
+                  <img
+                    src={pick('spotlight.photoUrl')}
+                    alt={pick('spotlight.name')}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                ) : (
+                  <svg viewBox="0 0 260 380" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                    <rect width="260" height="380" fill="#dba66f" />
+                    <circle cx="130" cy="200" r="150" fill="#e8c79a" opacity=".6" />
+                    <ellipse cx="130" cy="160" rx="68" ry="78" fill="#5b3d20" />
+                    <path d="M40 380 C 40 280, 90 240, 130 240 C 170 240, 220 280, 220 380 Z" fill="#2b3f6b" />
+                    <path d="M100 280 L 130 320 L 160 280 L 160 380 L 100 380 Z" fill="#f6ecd2" />
+                    <ellipse cx="105" cy="150" rx="20" ry="10" fill="#7a5530" opacity=".8" />
+                    <ellipse cx="155" cy="150" rx="20" ry="10" fill="#7a5530" opacity=".8" />
+                    <circle cx="108" cy="172" r="14" fill="none" stroke="#1e1a14" strokeWidth="3" />
+                    <circle cx="152" cy="172" r="14" fill="none" stroke="#1e1a14" strokeWidth="3" />
+                    <line x1="122" y1="172" x2="138" y2="172" stroke="#1e1a14" strokeWidth="3" />
+                    <path d="M112 200 Q 130 215 148 200" stroke="#3a2410" strokeWidth="3" fill="none" strokeLinecap="round" />
+                  </svg>
+                )}
               </div>
               <div className="ms-fn-caption">
                 <span className="ms-fn-cap-ey" data-field="spotlight.ey" style={{ whiteSpace: 'pre-wrap' }}>{pick('spotlight.ey')}</span>

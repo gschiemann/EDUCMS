@@ -30,6 +30,7 @@ export interface MsPaperConfig {
   'weather.sky_label'?: string;
   'weather.sky'?: string;
   // Masthead nameplate
+  'masthead.logoUrl'?: string;
   'masthead.kicker'?: string;
   'masthead.the'?: string;
   'masthead.mascot'?: string;
@@ -63,6 +64,7 @@ export interface MsPaperConfig {
   'greeting.pq_who'?: string;
   'greeting.col3a'?: string;
   // Photo
+  'photo.imageUrl'?: string;
   'photo.caption'?: string;
   // Sidebar agenda head
   'agenda.title'?: string;
@@ -175,6 +177,7 @@ export const DEFAULTS: Required<MsPaperConfig> = {
   'weather.low': '46',
   'weather.sky_label': "Today's Sky",
   'weather.sky': 'Clear & bright',
+  'masthead.logoUrl': '',
   'masthead.kicker': 'Westridge Middle · Morning Edition',
   'masthead.the': 'The',
   'masthead.mascot': 'Otter',
@@ -209,6 +212,7 @@ export const DEFAULTS: Required<MsPaperConfig> = {
   'greeting.pq_who': '— Mr. Nguyen, Eng. 7',
   'greeting.col3a':
     'Sign-ups for Field Day close this Friday at last bell. Two hundred and eighty-four otters are in. The remaining slots, the front office reports, will not last the week.',
+  'photo.imageUrl': '',
   'photo.caption': 'OTIS THE OTTER',
   'agenda.title': "Today's ",
   'agenda.title_em': 'Index.',
@@ -385,6 +389,14 @@ export function MsPaperWidget({ config, live }: { config: MsPaperConfig; live?: 
 
         {/* CENTER: nameplate */}
         <div className="ms-pp-nameplate" data-widget="masthead">
+          {pick('masthead.logoUrl') ? (
+            <img
+              src={pick('masthead.logoUrl')}
+              alt=""
+              data-field="masthead.logoUrl"
+              style={{ height: 120, width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 8px' }}
+            />
+          ) : null}
           <div className="ms-pp-ribbon" data-field="masthead.kicker" style={{ whiteSpace: 'pre-wrap' }}>{pick('masthead.kicker')}</div>
           <div className="ms-pp-title">
             <span className="ms-pp-the" data-field="masthead.the" style={{ whiteSpace: 'pre-wrap' }}>{pick('masthead.the')}</span>
@@ -471,7 +483,15 @@ export function MsPaperWidget({ config, live }: { config: MsPaperConfig; live?: 
               <p data-field="greeting.col3a" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.col3a')}</p>
 
               <div className="ms-pp-photo" data-widget="photo">
-                <div className="ms-pp-frame" aria-hidden="true" />
+                <div className="ms-pp-frame" aria-hidden={!pick('photo.imageUrl') || undefined} data-field="photo.imageUrl">
+                  {pick('photo.imageUrl') ? (
+                    <img
+                      src={pick('photo.imageUrl')}
+                      alt={pick('photo.caption')}
+                      style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : null}
+                </div>
                 <div className="ms-pp-caption" data-field="photo.caption" style={{ whiteSpace: 'pre-wrap' }}>
                   <b>{pick('photo.caption')}</b>
                   {', mascot, surveys the courtyard before first bell. '}

@@ -32,6 +32,7 @@ import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsHomeroomPortraitConfig {
   // School / brand
+  'school.logoUrl'?: string;
   'school.team'?: string;
   'school.name'?: string;
   'school.year'?: string;
@@ -155,6 +156,7 @@ export interface MsHomeroomPortraitConfig {
 
 export const DEFAULTS: Required<MsHomeroomPortraitConfig> = {
   // School / brand
+  'school.logoUrl': '',
   'school.team': 'Home of the Otters',
   'school.name': 'Westridge Middle',
   'school.year': '2025–26 · Term 2',
@@ -355,11 +357,21 @@ export function MsHomeroomPortraitWidget({
       {/* ─── HUD ─────────────────────────────────────────── */}
       <header className="ms-hr-p-hud">
         <div className="ms-hr-p-hud-top">
-          <div className="ms-hr-p-badge" data-widget="school" aria-hidden="true">
-            <div className="ms-hr-p-face" />
-            <div className="ms-hr-p-lvl" data-field="school.team" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick('school.team')}
-            </div>
+          <div className="ms-hr-p-badge" data-widget="school" data-field="school.logoUrl" aria-label="School logo">
+            {pick('school.logoUrl') ? (
+              <img
+                src={pick('school.logoUrl')}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
+            ) : (
+            <>
+              <div className="ms-hr-p-face" aria-hidden="true" />
+              <div className="ms-hr-p-lvl" data-field="school.team" style={{ whiteSpace: 'pre-wrap' }}>
+                {pick('school.team')}
+              </div>
+            </>
+            )}
           </div>
           <div className="ms-hr-p-hud-info">
             <div className="ms-hr-p-eye">Welcome, Otters</div>

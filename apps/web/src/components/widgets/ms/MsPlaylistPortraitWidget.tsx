@@ -27,6 +27,7 @@ import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsPlaylistPortraitConfig {
   // App bar — brand
+  'brand.logoUrl'?: string;
   'brand.eyebrow'?: string;
   'brand.suffix'?: string;
   'brand.day'?: string;
@@ -136,6 +137,7 @@ export interface MsPlaylistPortraitConfig {
 
 export const DEFAULTS: Required<MsPlaylistPortraitConfig> = {
   // Brand
+  'brand.logoUrl': '',
   'brand.eyebrow': 'Westridge MS · Lobby Display',
   'brand.suffix': 'FM',
   'brand.day': 'DAY B',
@@ -316,7 +318,15 @@ export function MsPlaylistPortraitWidget({ config, live }: { config?: MsPlaylist
 
         <div className="ms-pl-p-top">
           <div className="ms-pl-p-brand" data-widget="brand">
-            <div className="ms-pl-p-mark" aria-hidden="true" />
+            <div className="ms-pl-p-mark" data-field="brand.logoUrl" aria-label="School logo">
+              {pick('brand.logoUrl') ? (
+                <img
+                  src={pick('brand.logoUrl')}
+                  alt=""
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }}
+                />
+              ) : null}
+            </div>
             <div className="ms-pl-p-brand-info">
               <div className="ms-pl-p-eye" data-field="brand.eyebrow" style={{ whiteSpace: 'pre-wrap' }}>{pick('brand.eyebrow')}</div>
               <div className="ms-pl-p-name">

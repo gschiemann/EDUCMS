@@ -29,6 +29,7 @@ import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsArcadeConfig {
   // HUD — school identity
+  'school.logoUrl'?: string;
   'school.name'?: string;
   'school.team'?: string;
   'school.lv'?: string;
@@ -113,6 +114,7 @@ export interface MsArcadeConfig {
 }
 
 export const DEFAULTS: Required<MsArcadeConfig> = {
+  'school.logoUrl': '',
   'school.name': 'WESTRIDGE.MS',
   'school.team': 'HOUSE: OTTERS',
   'school.lv': '7',
@@ -277,7 +279,15 @@ export function MsArcadeWidget({
       {/* Top HUD */}
       <div className="ms-arc-hud">
         <div className="ms-arc-player" data-widget="school">
-          <div className="ms-arc-avatar" aria-hidden="true" />
+          <div className="ms-arc-avatar" aria-label="School logo">
+            {pick('school.logoUrl') ? (
+              <img
+                src={pick('school.logoUrl')}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : null}
+          </div>
           <div className="ms-arc-info">
             <div className="ms-arc-name" data-field="school.name" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.name')}</div>
             <div className="ms-arc-sub">

@@ -28,6 +28,7 @@ import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsAtlasPortraitConfig {
   // Top band — brand
+  'brand.logoUrl'?: string;
   'brand.eye'?: string;
   'brand.name'?: string;
   'brand.sub'?: string;
@@ -135,6 +136,7 @@ export interface MsAtlasPortraitConfig {
 
 export const DEFAULTS: Required<MsAtlasPortraitConfig> = {
   // Top band — brand
+  'brand.logoUrl': '',
   'brand.eye': 'Middle School Atlas',
   'brand.name': 'WESTRIDGE.MS',
   'brand.sub': '42.3601° N · 71.0589° W · ',
@@ -387,13 +389,23 @@ export function MsAtlasPortraitWidget({ config, live }: { config?: MsAtlasPortra
 
       {/* ─── TOP BAND — compass + school lockup ─────────────── */}
       <header className="ms-atl-p-panel ms-atl-p-top" data-widget="brand">
-        <div className="ms-atl-p-compass-wrap">
-          <div className="ms-atl-p-compass" aria-hidden="true">
-            <div className="ms-atl-p-s-needle" />
-            <span className="ms-atl-p-cardinal ms-atl-p-n">N</span>
-            <span className="ms-atl-p-cardinal ms-atl-p-s">S</span>
-            <span className="ms-atl-p-cardinal ms-atl-p-e">E</span>
-            <span className="ms-atl-p-cardinal ms-atl-p-w">W</span>
+        <div className="ms-atl-p-compass-wrap" data-field="brand.logoUrl">
+          <div className="ms-atl-p-compass" aria-label="School logo">
+            {pick('brand.logoUrl') ? (
+              <img
+                src={pick('brand.logoUrl')}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }}
+              />
+            ) : (
+              <>
+                <div className="ms-atl-p-s-needle" aria-hidden="true" />
+                <span className="ms-atl-p-cardinal ms-atl-p-n" aria-hidden="true">N</span>
+                <span className="ms-atl-p-cardinal ms-atl-p-s" aria-hidden="true">S</span>
+                <span className="ms-atl-p-cardinal ms-atl-p-e" aria-hidden="true">E</span>
+                <span className="ms-atl-p-cardinal ms-atl-p-w" aria-hidden="true">W</span>
+              </>
+            )}
           </div>
         </div>
         <div className="ms-atl-p-info">

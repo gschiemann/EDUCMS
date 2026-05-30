@@ -40,6 +40,7 @@ export interface MsStudioPortraitConfig {
   // HUD — ON AIR cabochon
   'status.label'?: string;
   // HUD — school lockup
+  'school.logoUrl'?: string;
   'school.eye'?: string;
   'school.name'?: string;
   'school.callsign'?: string;
@@ -127,6 +128,7 @@ export const DEFAULTS: Required<MsStudioPortraitConfig> = {
   // HUD — ON AIR cabochon
   'status.label': 'ON AIR',
   // HUD — school lockup
+  'school.logoUrl': '',
   'school.eye': '★ Otter Radio · Ep. 142',
   'school.name': 'WESTRIDGE',
   'school.callsign': '.MS',
@@ -295,6 +297,14 @@ export function MsStudioPortraitWidget({
           </div>
 
           <div className="ms-st-p-lockup" data-widget="school">
+            {pick('school.logoUrl') ? (
+              <img
+                src={pick('school.logoUrl')}
+                alt=""
+                data-field="school.logoUrl"
+                style={{ width: 120, height: 120, objectFit: 'contain', flexShrink: 0, marginRight: 24 }}
+              />
+            ) : null}
             <div className="ms-st-p-eye" data-field="school.eye" style={{ whiteSpace: 'pre-wrap' }}>
               {pick('school.eye')}
             </div>
