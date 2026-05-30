@@ -24,7 +24,7 @@
  */
 
 import { useGameState, fmtClock, fmtSegment } from './GameStateContext';
-import { FitOneLine } from './FitOneLine';
+import { FitOneLine, FitBox } from './FitOneLine';
 
 interface BaseConfig {
   // Visual.
@@ -125,21 +125,33 @@ export function ScoreHomeWidget({ config }: { config: ScoreConfig }) {
     const team = state?.snapshot?.homeTeam ?? 'HOME';
     const logo = state?.snapshot?.homeLogoUrl ?? null;
     return (
-      <div style={{ ...rootStyle(config), flexDirection: 'column' }}>
-        {config.showLogo && logo && (
-          <img
-            src={logo}
-            alt={team}
-            style={{ maxHeight: '40%', objectFit: 'contain', marginBottom: 8 }}
-          />
-        )}
-        {config.showName && (
-          <div style={{ fontSize: '0.4em', opacity: 0.8, marginBottom: 4 }}>
-            {team.toUpperCase()}
-          </div>
-        )}
-        <div>{display}</div>
-      </div>
+      <FitBox
+        baseFontPx={config.fontSize ?? 400}
+        align={config.align ?? 'center'}
+        style={{
+          color: config.color ?? '#ffffff',
+          fontWeight: config.fontWeight ?? 900,
+          fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif',
+          letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined,
+          backgroundColor: config.bgColor ?? 'transparent',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {config.showLogo && logo && (
+            <img
+              src={logo}
+              alt={team}
+              style={{ maxHeight: '40%', objectFit: 'contain', marginBottom: 8 }}
+            />
+          )}
+          {config.showName && (
+            <div style={{ fontSize: '0.4em', opacity: 0.8, marginBottom: 4 }}>
+              {team.toUpperCase()}
+            </div>
+          )}
+          <div>{display}</div>
+        </div>
+      </FitBox>
     );
   }
   return <FitValue config={config}>{display}</FitValue>;
@@ -154,21 +166,33 @@ export function ScoreAwayWidget({ config }: { config: ScoreConfig }) {
     const team = state?.snapshot?.awayTeam ?? 'AWAY';
     const logo = state?.snapshot?.awayLogoUrl ?? null;
     return (
-      <div style={{ ...rootStyle(config), flexDirection: 'column' }}>
-        {config.showLogo && logo && (
-          <img
-            src={logo}
-            alt={team}
-            style={{ maxHeight: '40%', objectFit: 'contain', marginBottom: 8 }}
-          />
-        )}
-        {config.showName && (
-          <div style={{ fontSize: '0.4em', opacity: 0.8, marginBottom: 4 }}>
-            {team.toUpperCase()}
-          </div>
-        )}
-        <div>{display}</div>
-      </div>
+      <FitBox
+        baseFontPx={config.fontSize ?? 400}
+        align={config.align ?? 'center'}
+        style={{
+          color: config.color ?? '#ffffff',
+          fontWeight: config.fontWeight ?? 900,
+          fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif',
+          letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined,
+          backgroundColor: config.bgColor ?? 'transparent',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {config.showLogo && logo && (
+            <img
+              src={logo}
+              alt={team}
+              style={{ maxHeight: '40%', objectFit: 'contain', marginBottom: 8 }}
+            />
+          )}
+          {config.showName && (
+            <div style={{ fontSize: '0.4em', opacity: 0.8, marginBottom: 4 }}>
+              {team.toUpperCase()}
+            </div>
+          )}
+          <div>{display}</div>
+        </div>
+      </FitBox>
     );
   }
   return <FitValue config={config}>{display}</FitValue>;
@@ -211,10 +235,22 @@ export function GameStatWidget({ config }: { config: StatConfig }) {
 
   if (config.label) {
     return (
-      <div style={{ ...rootStyle(config), flexDirection: 'column' }}>
-        <div style={{ fontSize: '0.4em', opacity: 0.7 }}>{config.label.toUpperCase()}</div>
-        <div>{display}</div>
-      </div>
+      <FitBox
+        baseFontPx={config.fontSize ?? 400}
+        align={config.align ?? 'center'}
+        style={{
+          color: config.color ?? '#ffffff',
+          fontWeight: config.fontWeight ?? 900,
+          fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif',
+          letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined,
+          backgroundColor: config.bgColor ?? 'transparent',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ fontSize: '0.4em', opacity: 0.7 }}>{config.label.toUpperCase()}</div>
+          <div>{display}</div>
+        </div>
+      </FitBox>
     );
   }
   return <FitValue config={config}>{display}</FitValue>;
