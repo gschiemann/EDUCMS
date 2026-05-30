@@ -19,6 +19,21 @@ auto-match-by-name**, **Segment required-first + live-output preview +
 coalesce fallback**. VenueOS edge: the editor already renders widgets live
 (free "test event") and already owns signed pub/sub (competitors poll).
 
+## ⭐ OPERATOR'S REFINED MODEL (2026-05-29 — this is the primary flow, supersedes per-field-first)
+Greg: *"the home/away drop down makes no sense ... the mapping should be very
+clear: i should be able to pick the MAIN integration for the entire template,
+then we default to the standard mapping fields that we think are correct, but
+the user can go update it if they want it mapped to a different field in the
+system we're integrating with."*
+
+So the flow is **template-level first, defaults auto-applied, per-field override**:
+1. **One template-level picker** at the top of the editor: **"Driven by: [ CTS · Score feed ▾ / POS — Toast / None ]."** Pick the integration for the WHOLE template once.
+2. On pick, **auto-apply the standard field mappings** we ship per widget (`bindableFields[].defaultSource`) — homeScore→home_score, clock→clock, homeName→home team, etc. The board is live immediately, zero per-field work.
+3. **Per-field override (optional):** each mapped field shows what it's bound to with a small "↪ home_score" chip; click it to repoint to a different field in that system. This is the "user can update it if they want a different field" path.
+4. **The home/away dropdown is REMOVED** — "which side" is decided by the standard mapping (the home-score element maps to the feed's home score). No manual side-picking.
+
+The per-field ⚡ affordance below is the OVERRIDE surface (step 3), not the primary entry. Primary entry = the one template-level integration picker.
+
 ## UX (fits the existing left Properties panel)
 - A per-field **⚡ data-plug icon** on the existing `StyleableField` (only on
   fields a widget declares **bindable** — a font-color field never shows it).

@@ -1022,26 +1022,52 @@ function NumField({ id, label, value, onChange, min, max, step = 1 }: {
     if (typeof max === 'number') clamped = Math.min(max, clamped);
     if (clamped !== value) onChange(clamped);
   };
+  // 2026-05-29 — operator: "the up arrows for font size are tiny and barely
+  // clickable." The native <input type=number> spinner is ~10px and unusable.
+  // Replaced with explicit big −/+ buttons (full-height, 40px wide) flanking
+  // the input; the native spinner is hidden via appearance:none.
+  const bump = (delta: number) => {
+    const base = Number.isFinite(value) ? value : (min ?? 0);
+    commit(String(base + delta));
+  };
   return (
     <div>
       <label htmlFor={id} className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
-      <input
-        id={id}
-        type="number"
-        value={displayed}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={(e) => commit(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            commit((e.target as HTMLInputElement).value);
-            (e.target as HTMLInputElement).blur();
-          }
-        }}
-        min={min}
-        max={max}
-        step={step}
-        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-[11px] font-mono text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm inset-shadow-sm"
-      />
+      <div className="flex items-stretch gap-1.5">
+        <button
+          type="button"
+          aria-label={`Decrease ${label}`}
+          onClick={() => bump(-step)}
+          className="shrink-0 w-10 rounded-lg border border-slate-200/60 bg-white text-slate-600 hover:bg-slate-50 active:bg-slate-200 shadow-sm flex items-center justify-center text-xl font-bold leading-none select-none transition-colors"
+        >
+          −
+        </button>
+        <input
+          id={id}
+          type="number"
+          value={displayed}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              commit((e.target as HTMLInputElement).value);
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          min={min}
+          max={max}
+          step={step}
+          className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-[11px] font-mono text-slate-700 text-center focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        />
+        <button
+          type="button"
+          aria-label={`Increase ${label}`}
+          onClick={() => bump(step)}
+          className="shrink-0 w-10 rounded-lg border border-slate-200/60 bg-white text-slate-600 hover:bg-slate-50 active:bg-slate-200 shadow-sm flex items-center justify-center text-xl font-bold leading-none select-none transition-colors"
+        >
+          +
+        </button>
+      </div>
     </div>
   );
 }
