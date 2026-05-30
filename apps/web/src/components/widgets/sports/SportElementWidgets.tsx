@@ -125,13 +125,14 @@ export function teamOf(snap: GameSnapshot | null | undefined, team: 'home' | 'aw
     : { name: snap.homeTeam, color: snap.homeColor, logo: snap.homeLogoUrl };
 }
 
-// ── Auto-shrink one-liner ─────────────────────────────────────────────
-// Renders text at a FIXED font (`maxFontPx`, nowrap) and geometrically
-// scales it DOWN with transform:scale to fit the zone. Deterministic — the
-// measured scrollWidth is stable (font never changes), so there's no
-// binary-search / re-render feedback loop (the failure mode FitText hit on
-// long team names: stuck at max, overflowing). Chromium-83 / Taurus safe
-// (transform:scale is universal; no flex gap / inset / backdrop).
+// ── Fill-the-zone one-liner ───────────────────────────────────────────
+// Renders text at a LARGE fixed base font (`maxFontPx`, nowrap) and scales
+// it with transform to FILL the zone — as large as fits its width AND
+// height (operator: "it should start as large as possible"). Because the
+// base is large, scale stays ≤1 (downscale only = crisp; no scale-up blur).
+// Deterministic: measured scrollWidth is stable (base font never changes),
+// so no binary-search / re-render feedback loop (FitText's failure mode).
+// Chromium-83 / Taurus safe (transform:scale universal; no gap/inset/backdrop).
 function FitOneLine({
   children, maxFontPx, align = 'center', style,
 }: {
@@ -175,7 +176,7 @@ function FitOneLine({
     <div ref={boxRef} style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: justify, overflow: 'hidden' }}>
       <span
         ref={txtRef}
-        style={{ ...style, fontSize: maxFontPx, whiteSpace: 'nowrap', display: 'inline-block', transform: `scale(${scale})`, transformOrigin: origin }}
+        style={{ ...style, fontSize: maxFontPx, lineHeight: 1, whiteSpace: 'nowrap', display: 'inline-block', transform: `scale(${scale})`, transformOrigin: origin }}
       >
         {children}
       </span>
@@ -195,7 +196,7 @@ export function TeamNameWidget({ config }: { config: ElCfg }) {
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', position: 'relative', overflow: 'hidden' }}>
       <FitOneLine
-        maxFontPx={typeof config.fontSize === 'number' ? config.fontSize : 54}
+        maxFontPx={480}
         align={align}
         style={{
           color: config.color ?? '#ffffff',
