@@ -18,12 +18,14 @@ type WeekMenu = {
 
 interface Cfg {
   logoEmoji?: string;
+  logoImageUrl?: string;         // upload replaces emoji in header circle
   title?: string;
   subtitle?: string;
   clockTimeZone?: string;
 
   // Today's special — big polaroid-style photo card
-  photoEmoji?: string;           // URL or emoji
+  photoEmoji?: string;           // URL or emoji (kept for backwards compat)
+  photoImageUrl?: string;        // upload takes precedence over photoEmoji
   photoCaption?: string;
   photoStamp?: string;
 
@@ -145,8 +147,11 @@ export function BulletinCafeteriaWidget({ config, live }: { config: Cfg; live?: 
     ];
   }, [c.tickerMessages]);
 
-  const photo = c.photoEmoji || '🍝';
+  // photoImageUrl wins over photoEmoji (supports URL or emoji in photoEmoji for backwards compat)
+  const photo = c.photoImageUrl || c.photoEmoji || '🍝';
   const isPhotoUrl = /^(https?:\/\/|\/|data:image\/)/.test(photo);
+  // logoImageUrl wins over logoEmoji
+  const logoSrc = c.logoImageUrl || '';
   const logo = c.logoEmoji || '🍎';
 
   return (
@@ -172,7 +177,9 @@ export function BulletinCafeteriaWidget({ config, live }: { config: Cfg; live?: 
         <div className="bc-frame" />
 
         <div className="bc-header">
-          <div className="bc-logoCircle">{logo}</div>
+          <div className="bc-logoCircle">
+            {logoSrc ? <img src={logoSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} /> : logo}
+          </div>
           <div className="bc-titleBlock">
             <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{(c.title || "TODAY'S MENU").toUpperCase()}</h1>
             <div className="bc-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || "~ what's cooking in the kitchen ~"}</div>

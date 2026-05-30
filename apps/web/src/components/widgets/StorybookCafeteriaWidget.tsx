@@ -18,6 +18,7 @@ type WeekMenu = {
 
 interface Cfg {
   logoEmoji?: string;
+  logoImageUrl?: string;         // upload replaces emoji in logo slot
   chapter?: string;
   title?: string;
   subtitle?: string;
@@ -146,6 +147,7 @@ export function StorybookCafeteriaWidget({ config, live }: { config: Cfg; live?:
 
   const heroEmoji = c.heroEmoji || '🍝';
   const isHeroUrl = /^(https?:\/\/|\/|data:image\/)/.test(heroEmoji);
+  const logoSrc = c.logoImageUrl || '';
   const logo = c.logoEmoji || '📖';
 
   return (
@@ -176,7 +178,9 @@ export function StorybookCafeteriaWidget({ config, live }: { config: Cfg; live?:
         <div className="book-corner br"><svg viewBox="0 0 70 70"><path d="M2 2 Q 35 2 35 35 M2 2 Q 2 35 35 35 M10 10 Q 26 10 26 26 M10 10 Q 10 26 26 26" /></svg></div>
 
         {/* Logo repositioned to avoid top-left book corner flourish overlap */}
-        <div className="book-logo">{logo}</div>
+        <div className="book-logo">
+          {logoSrc ? <img src={logoSrc} alt="" style={{ width: '80%', height: '80%', objectFit: 'contain' }} /> : logo}
+        </div>
         <div className="book-clock">
           <div>{hh}:{mm} {ampm}</div>
           <div className="book-clockLbl">~ noon hour ~</div>

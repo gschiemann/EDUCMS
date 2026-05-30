@@ -21,10 +21,12 @@ type MenuCard = { title?: string; desc?: string; badges?: { label?: string; kind
 
 interface Cfg {
   logoEmoji?: string;
+  logoImageUrl?: string;         // upload replaces emoji in header logo circle
   title?: string;
   subtitle?: string;
   clockTimeZone?: string;
-  polaroidEmoji?: string;
+  polaroidEmoji?: string;        // emoji fallback (backwards compat)
+  polaroidImageUrl?: string;     // upload takes precedence — renders as <img>
   polaroidCaption?: string;
   cards?: MenuCard[];
   specialLabel?: string;
@@ -139,7 +141,9 @@ export function ScrapbookCafeteriaPortraitWidget({ config, live }: { config?: Cf
       >
         {/* Header — title plate with washi-tape banner + tilted clock polaroid */}
         <div className="sbp-header">
-          <div className="sbp-logo">{c.logoEmoji || '🍎'}</div>
+          <div className="sbp-logo">
+            {c.logoImageUrl ? <img src={c.logoImageUrl} alt="" style={{ width: '80%', height: '80%', objectFit: 'contain', borderRadius: '50%' }} /> : (c.logoEmoji || '🍎')}
+          </div>
           <div className="sbp-titleWrap">
             <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || "Today's Menu"}</h1>
             <div className="sbp-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || "what's cooking in the kitchen"}</div>
@@ -155,7 +159,9 @@ export function ScrapbookCafeteriaPortraitWidget({ config, live }: { config?: Cf
           <div className="sbp-tapeTL" />
           <div className="sbp-tapeTR" />
           <div className="sbp-photo">
-            <span className="sbp-photoEmoji">{c.polaroidEmoji || '🍝'}</span>
+            {(c.polaroidImageUrl || /^(https?:\/\/|\/|data:image\/)/.test(c.polaroidEmoji || ''))
+              ? <img src={c.polaroidImageUrl || c.polaroidEmoji} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <span className="sbp-photoEmoji">{c.polaroidEmoji || '🍝'}</span>}
           </div>
           <div className="sbp-caption" data-field="polaroidCaption" style={{ whiteSpace: 'pre-wrap' }}>{c.polaroidCaption || '~ snapped this morning ~'}</div>
         </div>

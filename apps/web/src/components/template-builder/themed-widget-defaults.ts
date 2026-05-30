@@ -335,8 +335,11 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
   BULLETIN_CAFETERIA: [
     { key: 'title',          label: 'Title',          default: "TODAY'S MENU" },
     { key: 'subtitle',       label: 'Subtitle',       default: "~ what's cooking in the kitchen ~" },
-    // PRIMARY content — the food photo (reads cfg.photoEmoji; URL or emoji).
-    { key: 'photoEmoji',     label: 'Food photo',     default: '', kind: 'image' },
+    // Logo — upload your school / cafeteria logo.
+    { key: 'logoImageUrl',   label: 'Logo image',     default: '', kind: 'image' },
+    // PRIMARY content — the food photo (photoImageUrl takes precedence over photoEmoji).
+    { key: 'photoImageUrl',  label: 'Food photo',     default: '', kind: 'image' },
+    { key: 'photoEmoji',     label: 'Food emoji (fallback)', default: '🍝' },
     { key: 'photoStamp',     label: 'Photo stamp',    default: '~ TODAY IN THE KITCHEN ~' },
     { key: 'photoCaption',   label: 'Photo caption',  default: 'served fresh today' },
     // PRIMARY content — the menu itself (reads cfg.weekMenu / cfg.menuItems).
@@ -365,18 +368,20 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
   ],
 
   SCRAPBOOK_CAFETERIA: [
-    { key: 'title',           label: 'Title',           default: "Today's Menu" },
-    { key: 'subtitle',        label: 'Subtitle',        default: "what's cooking in the kitchen" },
-    // Polaroid is an emoji-only slot (cfg.polaroidEmoji renders as text, no
-    // <img> path) so it stays a plain text field rather than an asset picker.
-    { key: 'polaroidEmoji',   label: 'Polaroid emoji',  default: '🍝' },
-    { key: 'polaroidCaption', label: 'Polaroid caption', default: '~ snapped this morning ~' },
+    { key: 'title',            label: 'Title',            default: "Today's Menu" },
+    { key: 'subtitle',         label: 'Subtitle',         default: "what's cooking in the kitchen" },
+    // Logo — upload your school / cafeteria logo.
+    { key: 'logoImageUrl',     label: 'Logo image',       default: '', kind: 'image' },
+    // PRIMARY content — polaroid food photo (polaroidImageUrl takes precedence over emoji).
+    { key: 'polaroidImageUrl', label: 'Polaroid photo',   default: '', kind: 'image' },
+    { key: 'polaroidEmoji',    label: 'Polaroid emoji (fallback)', default: '🍝' },
+    { key: 'polaroidCaption',  label: 'Polaroid caption', default: '~ snapped this morning ~' },
     // PRIMARY content — the menu cards (reads cfg.cards {title,desc}[]).
-    { key: 'cards',           label: 'Menu cards',      default: '', kind: 'array-cards' },
-    { key: 'specialLabel',    label: 'Special label',   default: "Today's Special" },
-    { key: 'specialMsg',      label: 'Special message', default: 'Pizza Friday is BACK! 🍕 Cheese + pepperoni in line 2.', multiline: true },
-    { key: 'countdownLabel',  label: 'Countdown label', default: 'Next meal in' },
-    { key: 'tickerStamp',     label: 'Ticker stamp',    default: 'FROM THE KITCHEN' },
+    { key: 'cards',            label: 'Menu cards',       default: '', kind: 'array-cards' },
+    { key: 'specialLabel',     label: 'Special label',    default: "Today's Special" },
+    { key: 'specialMsg',       label: 'Special message',  default: 'Pizza Friday is BACK! 🍕 Cheese + pepperoni in line 2.', multiline: true },
+    { key: 'countdownLabel',   label: 'Countdown label',  default: 'Next meal in' },
+    { key: 'tickerStamp',      label: 'Ticker stamp',     default: 'FROM THE KITCHEN' },
   ],
 
   STORYBOOK_HALLWAY: [
@@ -406,6 +411,8 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
     { key: 'chapter',        label: 'Chapter',        default: 'Chapter Twelve' },
     { key: 'title',          label: 'Title',          default: "Today's Menu" },
     { key: 'subtitle',       label: 'Subtitle',       default: 'in which the kitchen serves a feast' },
+    // Logo — upload your school / cafeteria logo.
+    { key: 'logoImageUrl',   label: 'Logo image',     default: '', kind: 'image' },
     // PRIMARY content — the food photo (reads cfg.heroEmoji; URL or emoji).
     { key: 'heroEmoji',      label: 'Food photo',     default: '', kind: 'image' },
     { key: 'heroCaption',    label: 'Hero caption',   default: 'from the kitchen' },

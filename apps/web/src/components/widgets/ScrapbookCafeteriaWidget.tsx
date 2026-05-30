@@ -10,10 +10,12 @@ type MenuCard = { title?: string; desc?: string; badges?: { label?: string; kind
 
 interface Cfg {
   logoEmoji?: string;
+  logoImageUrl?: string;         // upload replaces emoji in logo circle
   title?: string;
   subtitle?: string;
   clockTimeZone?: string;
-  polaroidEmoji?: string;
+  polaroidEmoji?: string;        // emoji fallback (backwards compat)
+  polaroidImageUrl?: string;     // upload takes precedence — renders as <img>
   polaroidCaption?: string;
   cards?: MenuCard[];
   specialLabel?: string;
@@ -124,7 +126,9 @@ export function ScrapbookCafeteriaWidget({ config, live }: { config: Cfg; live?:
         }}
       >
         <div className="sbc-header">
-          <div className="sbc-logo">{c.logoEmoji || '🍎'}</div>
+          <div className="sbc-logo">
+            {c.logoImageUrl ? <img src={c.logoImageUrl} alt="" style={{ width: '80%', height: '80%', objectFit: 'contain', borderRadius: '50%' }} /> : (c.logoEmoji || '🍎')}
+          </div>
           <div className="sbc-titleWrap">
             <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || "Today's Menu"}</h1>
             <div className="sbc-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || "what's cooking in the kitchen"}</div>
@@ -134,7 +138,9 @@ export function ScrapbookCafeteriaWidget({ config, live }: { config: Cfg; live?:
 
         <div className="sbc-polaroid">
           <div className="sbc-photo" data-emoji={c.polaroidEmoji || '🍝'}>
-            <span className="sbc-photoEmoji">{c.polaroidEmoji || '🍝'}</span>
+            {(c.polaroidImageUrl || /^(https?:\/\/|\/|data:image\/)/.test(c.polaroidEmoji || ''))
+              ? <img src={c.polaroidImageUrl || c.polaroidEmoji} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <span className="sbc-photoEmoji">{c.polaroidEmoji || '🍝'}</span>}
           </div>
           <div className="sbc-caption" data-field="polaroidCaption" style={{ whiteSpace: 'pre-wrap' }}>{c.polaroidCaption || '~ snapped this morning ~'}</div>
         </div>

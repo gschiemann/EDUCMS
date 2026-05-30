@@ -31,6 +31,7 @@ type WeekMenu = {
 
 interface Cfg {
   logoEmoji?: string;
+  logoImageUrl?: string;         // upload replaces emoji in logo slot
   chapter?: string;
   title?: string;
   subtitle?: string;
@@ -193,6 +194,7 @@ export function StorybookCafeteriaPortraitWidget({ config, live }: { config?: Cf
     return 'Once upon a time, the kitchen opened   ·   Eat the rainbow — fruits & veggies every day   ·   Drink water, stay hydrated   ·   Free & reduced meals — ask the office   ·   Allergen key: 🌾 = gluten · 🥜 = nuts · 🧀 = dairy · 🥚 = egg';
   }, [c.tickerMessages]);
 
+  const logoSrc = c.logoImageUrl || '';
   const logo = c.logoEmoji || '📖';
 
   return (
@@ -247,7 +249,9 @@ export function StorybookCafeteriaPortraitWidget({ config, live }: { config?: Cf
               <path d="M420 35 L 440 25 M420 35 L 440 45" fill="none" stroke="#8b5a2b" strokeWidth="2" />
             </svg>
           </div>
-          <div className="bkp-logo">{logo}</div>
+          <div className="bkp-logo">
+            {logoSrc ? <img src={logoSrc} alt="" style={{ width: '80%', height: '80%', objectFit: 'contain' }} /> : logo}
+          </div>
           <div className="bkp-clock">
             <div className="bkp-clockTime">{hh}:{mm} {ampm}</div>
             <div className="bkp-clockLbl">~ noon hour ~</div>

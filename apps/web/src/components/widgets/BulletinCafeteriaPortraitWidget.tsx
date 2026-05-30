@@ -27,12 +27,14 @@ type WeekMenu = {
 
 interface Cfg {
   logoEmoji?: string;
+  logoImageUrl?: string;         // upload replaces emoji in header circle
   title?: string;
   subtitle?: string;
   clockTimeZone?: string;
 
   // Today's special — big polaroid-style photo card
-  photoEmoji?: string;           // URL or emoji
+  photoEmoji?: string;           // URL or emoji (kept for backwards compat)
+  photoImageUrl?: string;        // upload takes precedence over photoEmoji
   photoCaption?: string;
   photoStamp?: string;
 
@@ -153,8 +155,9 @@ export function BulletinCafeteriaPortraitWidget({ config, live }: { config?: Cfg
     ];
   }, [c.tickerMessages]);
 
-  const photo = c.photoEmoji || '🍝';
+  const photo = c.photoImageUrl || c.photoEmoji || '🍝';
   const isPhotoUrl = /^(https?:\/\/|\/|data:image\/)/.test(photo);
+  const logoSrc = c.logoImageUrl || '';
   const logo = c.logoEmoji || '🍎';
 
   return (
@@ -186,7 +189,9 @@ export function BulletinCafeteriaPortraitWidget({ config, live }: { config?: Cfg
           <div className="bcp-washi tr" />
 
           <div className="bcp-headerInner">
-            <div className="bcp-logoCircle">{logo}</div>
+            <div className="bcp-logoCircle">
+              {logoSrc ? <img src={logoSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} /> : logo}
+            </div>
 
             <div className="bcp-titleBlock">
               <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>
