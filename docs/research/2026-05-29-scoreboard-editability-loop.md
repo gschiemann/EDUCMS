@@ -122,6 +122,35 @@ aren't editable. To make any element editable:
   - ⚠️ UNVERIFIED-IN-BUILDER (auth-gated, no browser this session) — operator
     is the visual check.
 
+- **#6 Apply auto-fit to EVERY sport element (agent-fleet sweep)** (this
+  pass). Operator: "apply what we have done to every template that it makes
+  sense … use a ton of agents and just get it down quick." The fit lives in
+  the shared widget set, so fixing the WIDGETS fixes every scoreboard /
+  ribbon / scorebug template at once.
+  - Added a 2nd shared primitive **FitBox** (sibling of FitOneLine) for
+    COMPOSITE blocks (label+value stacks, pill/dot rows) — scales the whole
+    block to fill-but-fit. FitOneLine stays for single-line values.
+  - Dispatched 6 worktree-isolated agents, ONE per widget file (clean domain
+    separation → zero merge conflict): SportElementWidgets.tsx (universal:
+    5 FitOneLine + 7 FitBox), SportElementWidgets.sports.tsx (per-sport:
+    7 FitOneLine + 6 FitBox, 4 left as graphics/tables), SportWidgets.tsx
+    (3 column stacks → FitBox), RibbonScorebugWidgets.tsx (ribbon score +
+    clock → FitOneLine; scorebug untouched), CtsScoreboard.tsx (audit: no
+    change — whole surface scales), MainScoreboardWidget.tsx (audit: no
+    change — approved scene scales).
+  - Lead (me) owned the merge: reviewed each diff, cherry-picked the 4
+    commits with changes, combined tsc 0 + taurus green.
+  - **VERIFIED via Playwright** (not just claimed): added an `ELEMENTS=1`
+    stress-grid mode to scoreboard-shot.spec.ts (24 element widgets in small
+    zones with LONG/BIG values: GOLDEN BEARS / 188 / 88:88.9 / OVERTIME 2),
+    screenshotted at 1920×1080, eyeballed — every value fits its zone, incl.
+    the ones that used to overflow. THIS is the verify-before-claim gate the
+    builder couldn't give me (auth-gated).
+  - LESSON: when a proven fix must go broad, (1) extract the primitive to a
+    shared module, (2) fan out one agent per FILE (not per widget — same-file
+    = conflict), (3) build a screenshot harness so the lead VERIFIES the
+    merged result instead of trusting 6 agents' self-reports.
+
 ## Standing rules learned
 - Verify against the REAL rendered zone variant (operator screenshot / live),
   never a same-named sibling widget. (`scoreboard-main` ≠ the composed
