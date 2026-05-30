@@ -877,11 +877,18 @@ function TemplateProperties() {
   const setMeta = useBuilderStore((s) => s.setMeta);
   const isTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
   const setTouchEnabled = useBuilderStore((s) => s.setTouchEnabled);
+  const zones = useBuilderStore((s) => s.zones);
   const nameId = useId();
   const descId = useId();
   const widthId = useId();
   const heightId = useId();
   const dataSource = meta.dataSource ?? 'NONE';
+  // The "Driven by" live-data picker (CTS) only belongs on templates that
+  // actually contain scoreboard / sport elements — a restaurant or signage
+  // template should NOT show a sports CTS picker (operator: "did you add it
+  // to all templates or just certain ones?"). Gate on the template content.
+  // (Phase 2 adds a POS option, gated on menu elements.)
+  const hasSportElements = zones.some((z) => /^(SCOREBOARD|SCORE_|GAME_)/.test(z.widgetType));
 
   return (
     <div className="p-5 space-y-6 text-xs">
@@ -961,6 +968,7 @@ function TemplateProperties() {
           The value lives in meta.dataSource (persisted via BuilderShell
           handleSave → template API). No new DB columns needed — stored as
           part of the existing template payload via (as any) cast. */}
+      {hasSportElements && (
       <section className="space-y-2">
         <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Live data</h3>
         <div style={{
@@ -1046,6 +1054,7 @@ function TemplateProperties() {
           )}
         </div>
       </section>
+      )}
     </div>
   );
 }
