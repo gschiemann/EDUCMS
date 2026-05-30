@@ -17,6 +17,7 @@ import { ALL_V2_WIDGETS } from '@/components/widgets/v2/registry';
 import { CTS_CUE_LABELS as CTS_CUE_LABELS_LOCAL } from '@/components/widgets/sports/CtsRibbonWidgets';
 import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
+import { useCustomData } from '@/lib/data/use-custom-data';
 import { ColorPickerField } from '@/components/ui/color-picker';
 import { THEMED_WIDGET_FIELDS } from './themed-widget-defaults';
 import { AiGenerateButton } from '@/components/ai/AiGenerateButton';
@@ -887,6 +888,20 @@ const POS_LIVE_TYPES = new Set<string>([
   'BAR_COCKTAIL_MENU',
 ]);
 
+/**
+ * Phase 3 — generic widget types that can render rows from an external
+ * REST/JSON or Google-Sheet-CSV feed (config.customSync → useCustomData).
+ * The "Driven by: Custom data" picker only appears on templates that
+ * contain one of these, and the per-element Custom-data mapping card only
+ * renders for these — so the picker is never a costume on a widget that
+ * can't consume external rows. v1 ships the TICKER widget as the live
+ * consumer (it renders a feed column as scrolling items). Extend this set
+ * as more generic widgets gain external-row rendering.
+ */
+const DATA_CONSUMER_TYPES = new Set<string>([
+  'TICKER',
+]);
+
 function TemplateProperties() {
   // Atomic selectors — see PropertiesPanel above.
   const meta = useBuilderStore((s) => s.meta);
@@ -900,7 +915,12 @@ function TemplateProperties() {
   const widthId = useId();
   const heightId = useId();
   const posDrivenId = useId();
+  const customDrivenId = useId();
+  const customUrlId = useId();
+  const customFormatId = useId();
   const dataSource = meta.dataSource ?? 'NONE';
+  const dataUrl = meta.dataUrl ?? '';
+  const dataFormat = meta.dataFormat ?? 'json';
   // The "Driven by" live-data picker (CTS) only belongs on templates that
   // actually contain scoreboard / sport elements — a restaurant or signage
   // template should NOT show a sports CTS picker (operator: "did you add it
@@ -910,6 +930,9 @@ function TemplateProperties() {
   // Phase 2: menu/drink templates get a POS picker instead (gated on the
   // presence of a board that genuinely reads a live POS feed).
   const hasMenuElements = zones.some((z) => POS_LIVE_TYPES.has(z.widgetType));
+  // Phase 3: generic templates (e.g. a TICKER) get a "Custom data" picker —
+  // gated on a widget that can actually render external REST/CSV rows.
+  const hasDataConsumers = zones.some((z) => DATA_CONSUMER_TYPES.has(z.widgetType));
 
   return (
     <div className="p-5 space-y-6 text-xs">
@@ -1033,7 +1056,7 @@ function TemplateProperties() {
             </label>
             <select
               value={dataSource}
-              onChange={(e) => setMeta({ dataSource: e.target.value as 'NONE' | 'CTS' | 'POS' })}
+              onChange={(e) => setMeta({ dataSource: e.target.value as 'NONE' | 'CTS' | 'POS' | 'CUSTOM' })}
               style={{
                 width: '100%',
                 padding: '6px 8px',
@@ -1159,6 +1182,175 @@ function TemplateProperties() {
                 Click any menu board to set its category or override the mapping.
               </div>
             </div>
+          )}
+        </div>
+      </section>
+      )}
+
+      {/* ── Phase 3: Field-mapping — "Custom data" (REST/JSON + Google Sheet CSV) ──
+          Same operator model as Phase 1 (CTS) + Phase 2 (POS), pointed at a
+          generic feed the operator pastes a URL for. Indigo to distinguish
+          from CTS (green) + POS (amber). Only shown on templates that contain
+          a widget which can actually render external rows (DATA_CONSUMER_TYPES
+          — TICKER in v1). Picking "Custom data" + a URL flips customSync on
+          every such widget so they immediately read the feed; the operator
+          picks which column each one shows below.
+          The URL never leaves the browser to a third party directly — the
+          widget hook posts it to our SSRF-gated /data-source/fetch proxy. */}
+      {hasDataConsumers && !hasSportElements && !hasMenuElements && (
+      <section className="space-y-2">
+        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Live data</h3>
+        <div style={{
+          borderRadius: 10,
+          border: '1px solid',
+          borderColor: dataSource === 'CUSTOM' ? '#4338ca' : '#e2e8f0',
+          background: dataSource === 'CUSTOM' ? '#1e1b4b' : '#f8fafc',
+          padding: '10px 12px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{
+              display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+              background: dataSource === 'CUSTOM' ? '#818cf8' : '#94a3b8',
+              marginRight: 8, flexShrink: 0,
+            }} />
+            <span style={{
+              fontSize: 11, fontWeight: 700,
+              color: dataSource === 'CUSTOM' ? '#c7d2fe' : '#64748b',
+              letterSpacing: 1,
+            }}>
+              {dataSource === 'CUSTOM' ? 'CUSTOM DATA — LIVE FEED' : 'NOT CONNECTED'}
+            </span>
+          </div>
+
+          <div style={{ marginBottom: dataSource === 'CUSTOM' ? 10 : 0 }}>
+            <label htmlFor={customDrivenId} style={{
+              display: 'block', fontSize: 10, fontWeight: 600,
+              color: dataSource === 'CUSTOM' ? '#c7d2fe' : '#64748b', marginBottom: 4,
+            }}>
+              Driven by
+            </label>
+            <select
+              id={customDrivenId}
+              value={dataSource === 'CUSTOM' ? 'CUSTOM' : 'NONE'}
+              onChange={(e) => {
+                const next = e.target.value === 'CUSTOM' ? 'CUSTOM' : 'NONE';
+                setMeta({ dataSource: next });
+                // Auto-map: flip live sync on every data-consumer widget so
+                // they immediately read the custom feed, AND stamp the feed
+                // URL + format onto each zone's config. The zone config is
+                // what travels to the PLAYER (template meta does not), so the
+                // widget must be self-contained — same reason POS lives on
+                // the zone (config.posSync), just with a URL too. NONE → off.
+                const ids = zones.filter((z) => DATA_CONSUMER_TYPES.has(z.widgetType)).map((z) => z.id);
+                if (ids.length > 0) {
+                  updateZones(
+                    ids,
+                    (z) => ({ defaultConfig: {
+                      ...(z.defaultConfig || {}),
+                      customSync: next === 'CUSTOM',
+                      ...(next === 'CUSTOM' ? { customUrl: dataUrl, customFormat: dataFormat } : {}),
+                    } }),
+                    true,
+                  );
+                }
+              }}
+              style={{
+                width: '100%', padding: '6px 8px', borderRadius: 6,
+                border: '1px solid',
+                borderColor: dataSource === 'CUSTOM' ? '#4338ca' : '#cbd5e1',
+                background: dataSource === 'CUSTOM' ? '#312e81' : '#ffffff',
+                color: dataSource === 'CUSTOM' ? '#e0e7ff' : '#334155',
+                fontSize: 11, fontWeight: 600, cursor: 'pointer', appearance: 'auto',
+              }}
+            >
+              <option value="NONE">Not connected</option>
+              <option value="CUSTOM">Custom data — REST / Google Sheet</option>
+            </select>
+          </div>
+
+          {dataSource === 'CUSTOM' && (
+            <>
+              <div style={{ marginBottom: 10 }}>
+                <label htmlFor={customUrlId} style={{
+                  display: 'block', fontSize: 10, fontWeight: 600, color: '#c7d2fe', marginBottom: 4,
+                }}>
+                  Feed URL
+                </label>
+                <input
+                  id={customUrlId}
+                  type="url"
+                  value={dataUrl}
+                  placeholder="https://example.com/feed.json"
+                  onChange={(e) => {
+                    const url = e.target.value;
+                    setMeta({ dataUrl: url });
+                    // Keep every consumer zone's stamped URL in sync so the
+                    // player render stays self-contained (see picker above).
+                    const ids = zones.filter((z) => DATA_CONSUMER_TYPES.has(z.widgetType)).map((z) => z.id);
+                    if (ids.length > 0) {
+                      updateZones(
+                        ids,
+                        (z) => ({ defaultConfig: { ...(z.defaultConfig || {}), customUrl: url } }),
+                        false,
+                      );
+                    }
+                  }}
+                  style={{
+                    width: '100%', padding: '6px 8px', boxSizing: 'border-box', borderRadius: 6,
+                    border: '1px solid #4338ca', background: '#312e81', color: '#e0e7ff',
+                    fontSize: 11, fontWeight: 500,
+                  }}
+                />
+                <span style={{ fontSize: 9, color: '#a5b4fc', display: 'block', marginTop: 3 }}>
+                  A public REST/JSON endpoint or a Google Sheet &quot;Publish to web&quot; CSV link.
+                </span>
+              </div>
+
+              <div style={{ marginBottom: 10 }}>
+                <label htmlFor={customFormatId} style={{
+                  display: 'block', fontSize: 10, fontWeight: 600, color: '#c7d2fe', marginBottom: 4,
+                }}>
+                  Format
+                </label>
+                <select
+                  id={customFormatId}
+                  value={dataFormat}
+                  onChange={(e) => {
+                    const fmt = e.target.value === 'csv' ? 'csv' : 'json';
+                    setMeta({ dataFormat: fmt });
+                    const ids = zones.filter((z) => DATA_CONSUMER_TYPES.has(z.widgetType)).map((z) => z.id);
+                    if (ids.length > 0) {
+                      updateZones(
+                        ids,
+                        (z) => ({ defaultConfig: { ...(z.defaultConfig || {}), customFormat: fmt } }),
+                        false,
+                      );
+                    }
+                  }}
+                  style={{
+                    width: '100%', padding: '6px 8px', borderRadius: 6,
+                    border: '1px solid #4338ca', background: '#312e81', color: '#e0e7ff',
+                    fontSize: 11, fontWeight: 600, cursor: 'pointer', appearance: 'auto',
+                  }}
+                >
+                  <option value="json">JSON (REST API)</option>
+                  <option value="csv">CSV (Google Sheet)</option>
+                </select>
+              </div>
+
+              <div style={{
+                fontSize: 10, color: '#c7d2fe', lineHeight: 1.6,
+                borderTop: '1px solid #4338ca', paddingTop: 8,
+              }}>
+                <div style={{ fontWeight: 700, marginBottom: 4, color: '#a5b4fc' }}>Auto-mapped defaults:</div>
+                <div>Ticker &amp; list widgets → rows from your feed</div>
+                <div>First text column shown unless you pick another</div>
+                <div>Refreshes automatically every minute</div>
+                <div style={{ marginTop: 6, color: '#a5b4fc', fontStyle: 'italic' }}>
+                  Click a ticker to choose which column it shows.
+                </div>
+              </div>
+            </>
           )}
         </div>
       </section>
@@ -1740,6 +1932,84 @@ function MultiAlignButtons() {
   );
 }
 
+/**
+ * Phase 3 — column picker for the per-element Custom-data card. Reads the
+ * template's feed URL + format from the builder store and does ONE fetch
+ * (via the shared useCustomData hook) to detect the available columns, so
+ * the operator picks "which field shows" from a real dropdown instead of
+ * typing a column name blind. Falls back to a free-text input until the
+ * first fetch resolves (or if the feed can't be read) so the operator is
+ * never blocked. The fetch flows through the same SSRF-gated proxy the
+ * widget uses — no direct browser call to the operator's URL.
+ */
+function CustomColumnPicker({
+  zoneId,
+  value,
+  enabled,
+  url,
+  format,
+  onChange,
+}: {
+  zoneId: string;
+  value: string;
+  enabled: boolean;
+  url: string;
+  format: 'json' | 'csv';
+  onChange: (col: string) => void;
+}) {
+  const selectId = `custom-col-${zoneId}`;
+  // Read the URL/format from the zone config (the persisted, player-bound
+  // source of truth) so the column dropdown works even on a reloaded
+  // template where the session-only template meta has reset to NONE.
+  const feedUrl = (url || '').trim();
+  // Only fetch when the widget is actually live AND we have a URL.
+  const rows = useCustomData(enabled && feedUrl.length > 0, feedUrl, format);
+  const columns: string[] = rows && rows.length > 0 ? Object.keys(rows[0]) : [];
+
+  return (
+    <div>
+      <label htmlFor={selectId} style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#c7d2fe', marginBottom: 4 }}>
+        Show column
+      </label>
+      {columns.length > 0 ? (
+        <select
+          id={selectId}
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            width: '100%', padding: '6px 8px', borderRadius: 6,
+            border: '1px solid #4338ca', background: '#312e81', color: '#e0e7ff',
+            fontSize: 11, fontWeight: 600, cursor: 'pointer', appearance: 'auto',
+          }}
+        >
+          <option value="">First text column (auto)</option>
+          {columns.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          id={selectId}
+          type="text"
+          value={value || ''}
+          placeholder="First text column (auto)"
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            width: '100%', padding: '6px 8px', boxSizing: 'border-box', borderRadius: 6,
+            border: '1px solid #4338ca', background: '#312e81', color: '#e0e7ff',
+            fontSize: 11, fontWeight: 500,
+          }}
+        />
+      )}
+      <span style={{ fontSize: 9, color: '#a5b4fc', display: 'block', marginTop: 3 }}>
+        {columns.length > 0
+          ? 'Pick which feed column to scroll, or leave on auto.'
+          : 'Save the feed URL above, then reopen to pick a column. Auto uses the first text column.'}
+      </span>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────
 // Content fields — friendly inputs based on widget type
 // ─────────────────────────────────────────────────────────
@@ -1857,6 +2127,82 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             }}
           >
             Connect POS
+          </button>
+        </div>,
+      );
+    }
+  }
+
+  // ── Phase 3: per-element Custom-data mapping card (TICKER / list) ──
+  // Mirrors the Phase-2 POS card, pointed at the generic REST/CSV feed.
+  // Only widgets that GENUINELY render external rows (DATA_CONSUMER_TYPES)
+  // get it. The live chip reflects the widget's REAL state (config.customSync,
+  // exactly what the widget reads) so it never lies. Indigo to match the
+  // template-level Custom-data picker.
+  if (DATA_CONSUMER_TYPES.has(zone.widgetType)) {
+    const customLive = !!cfg.customSync;
+    if (templateDataSource === 'CUSTOM') {
+      fields.push(
+        <div key="custom-mapping" style={{
+          marginBottom: 12, padding: '10px 12px', borderRadius: 8,
+          background: '#1e1b4b', border: '1px solid #4338ca',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{
+              display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+              background: customLive ? '#818cf8' : '#94a3b8', marginRight: 8, flexShrink: 0,
+            }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#a5b4fc', letterSpacing: 1 }}>
+              {customLive ? 'LIVE DATA — CUSTOM FEED' : 'CUSTOM — THIS WIDGET IS STATIC'}
+            </span>
+          </div>
+          <div style={{
+            display: 'inline-block', padding: '3px 8px', borderRadius: 4,
+            background: '#312e81', color: '#e0e7ff', fontSize: 10, fontWeight: 600, marginBottom: 10,
+          }}>
+            Maps to your feed · one column per ticker item
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <CustomColumnPicker
+              zoneId={zone.id}
+              value={cfg.customColumn || ''}
+              enabled={customLive}
+              url={cfg.customUrl || ''}
+              format={cfg.customFormat === 'csv' ? 'csv' : 'json'}
+              onChange={(col) => setField({ customColumn: col })}
+            />
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', fontSize: 10, fontWeight: 600, color: '#c7d2fe', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={customLive}
+              onChange={(e) => setField({ customSync: e.target.checked })}
+              style={{ marginRight: 6 }}
+            />
+            Live from feed (uncheck to use the static messages below)
+          </label>
+        </div>,
+      );
+    } else {
+      fields.push(
+        <div key="custom-not-connected" style={{
+          marginBottom: 12, padding: '8px 12px', borderRadius: 8,
+          background: '#f8fafc', border: '1px solid #e2e8f0',
+          display: 'flex', alignItems: 'center',
+        }}>
+          <span style={{ flex: 1, fontSize: 10, color: '#64748b' }}>
+            Not connected to a feed — messages below are static.
+          </span>
+          <button
+            type="button"
+            onClick={() => { setTemplateMeta({ dataSource: 'CUSTOM' }); setField({ customSync: true }); }}
+            style={{
+              marginLeft: 8, padding: '4px 8px', borderRadius: 5,
+              border: '1px solid #6366f1', background: '#eef2ff', color: '#4338ca',
+              fontSize: 10, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            Connect feed
           </button>
         </div>,
       );

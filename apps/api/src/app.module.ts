@@ -39,6 +39,7 @@ import { LicenseModule } from './license/license.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { BrandingModule } from './branding/branding.module';
+import { DataSourceModule } from './data-source/data-source.module';
 import { UsbExportModule } from './usb-export/usb-export.module';
 import { PlayerOtaModule } from './player-ota/player-ota.module';
 import { PlayerLogsModule } from './player-logs/player-logs.module';
@@ -112,6 +113,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     ApiKeysModule,
     WebhooksModule,
     BrandingModule,
+    DataSourceModule,
     UsbExportModule,
     PlayerOtaModule,
     PlayerLogsModule,

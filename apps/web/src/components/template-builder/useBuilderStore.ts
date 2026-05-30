@@ -18,11 +18,18 @@ interface BuilderState {
     bgImage: string;
     /** Field-mapping data source. 'NONE' = static/no feed;
      *  'CTS' = Colorado Time Systems live score & clock feed (Phase 1, sports);
-     *  'POS' = connected point-of-sale live menu / prices (Phase 2, menu boards).
-     *  Persisted as part of the template meta so the player knows which live
-     *  feed to subscribe to. Stored in template.defaultConfig.dataSource via
-     *  the existing meta save path. */
-    dataSource?: 'NONE' | 'CTS' | 'POS';
+     *  'POS' = connected point-of-sale live menu / prices (Phase 2, menu boards);
+     *  'CUSTOM' = generic REST/JSON or Google-Sheet-CSV feed (Phase 3, generic
+     *  widgets like TICKER). Persisted as part of the template meta so the
+     *  player knows which live feed to subscribe to. Stored in
+     *  template.defaultConfig.dataSource via the existing meta save path. */
+    dataSource?: 'NONE' | 'CTS' | 'POS' | 'CUSTOM';
+    /** Phase 3 — the external feed URL for dataSource === 'CUSTOM'. The
+     *  widget hook (useCustomData) posts this to the SSRF-gated
+     *  /data-source/fetch proxy; never fetched directly from the browser. */
+    dataUrl?: string;
+    /** Phase 3 — how to parse the custom feed: REST/JSON or Google-Sheet CSV. */
+    dataFormat?: 'json' | 'csv';
   };
   // Sprint 4 — touch-mode settings. Not part of HistoryEntry (toggle-only UX).
   isTouchEnabled: boolean;

@@ -115,7 +115,11 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         bgImage: template.bgImage || '',
         // Phase 1 field-mapping: dataSource persisted in template defaultConfig
         // (no schema migration required — stored in existing JSONB column).
-        dataSource: ((template as any).dataSource || 'NONE') as 'NONE' | 'CTS' | 'POS',
+        dataSource: ((template as any).dataSource || 'NONE') as 'NONE' | 'CTS' | 'POS' | 'CUSTOM',
+        // Phase 3 — generic "Custom data" feed config, threaded the same way
+        // as dataSource (additive, no migration; the API cast allows extras).
+        dataUrl: (template as any).dataUrl || '',
+        dataFormat: (((template as any).dataFormat as 'json' | 'csv') || 'json'),
       },
       // Phase D — thread the touch toggle + idle timer through init so
       // AI-generated templates (which ship isTouchEnabled=true) open
@@ -173,6 +177,10 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         // Stored in the template's top-level dataSource column (additive,
         // no migration; the API cast already allows extra fields via (as any)).
         dataSource: state.meta.dataSource || 'NONE',
+        // Phase 3 — persist the generic Custom-data feed config alongside it
+        // (same additive path; only meaningful when dataSource === 'CUSTOM').
+        dataUrl: state.meta.dataUrl || null,
+        dataFormat: state.meta.dataFormat || 'json',
       } as any);
       const result = await updateZonesApi.mutateAsync({
         id: template.id,
