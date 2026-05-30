@@ -2178,24 +2178,16 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             Maps to POS · item name, price, description &amp; photo
           </div>
           <div style={{ marginBottom: 10 }}>
-            <label htmlFor={`pos-cat-${zone.id}`} style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#fcd34d', marginBottom: 4 }}>
-              Reads from category
-            </label>
-            <input
-              id={`pos-cat-${zone.id}`}
-              type="text"
+            {/* Real POS-category dropdown (GET /pos/categories) — the SAME
+                picker the content fields use, so the operator selects an
+                actual synced category ("Burgers (12)") instead of typing one
+                that may not match what the POS calls it. No more guessing. */}
+            <PosCategoryPickerField
+              tone="amber"
+              label="Reads from category"
               value={cfg.posCategory || ''}
-              placeholder="All items"
-              onChange={(e) => setField({ posCategory: e.target.value })}
-              style={{
-                width: '100%', padding: '6px 8px', boxSizing: 'border-box', borderRadius: 6,
-                border: '1px solid #b45309', background: '#7c2d12', color: '#fde68a',
-                fontSize: 11, fontWeight: 500,
-              }}
+              onChange={(v) => setField({ posCategory: v || undefined })}
             />
-            <span style={{ fontSize: 9, color: '#fdba74', display: 'block', marginTop: 3 }}>
-              Leave blank for every item, or match a POS category (e.g. &quot;Burgers&quot;, &quot;Drafts&quot;).
-            </span>
           </div>
           <label style={{ display: 'flex', alignItems: 'center', fontSize: 10, fontWeight: 600, color: '#fcd34d', cursor: 'pointer' }}>
             <input
@@ -8529,11 +8521,16 @@ function PosCategoryPickerField({
   label,
   value,
   onChange,
+  tone = 'light',
 }: {
   label: string;
   value: string;
   onChange: (categoryId: string) => void;
+  /** 'amber' = themed for the dark "Driven by POS" mapping card; 'light'
+   *  (default) = the standard slate content-field panel. */
+  tone?: 'light' | 'amber';
 }) {
+  const amber = tone === 'amber';
   // Cycle-2 BUG-005 fix (2026-05-03) — see StreamingChannelPickerField
   // above. Resolve schoolId from the dynamic route so the link to
   // settings/pos lands at /[schoolId]/settings/pos.
@@ -8553,11 +8550,13 @@ function PosCategoryPickerField({
 
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <label className={amber ? 'block text-[10px] font-semibold text-[#fcd34d] mb-1.5' : 'block text-[10px] font-semibold text-slate-500 mb-1.5'}>{label}</label>
       <select
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all shadow-sm cursor-pointer"
+        className={amber
+          ? 'w-full px-3 py-2 rounded-lg bg-[#7c2d12] border border-[#b45309] text-[#fde68a] text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 transition-all cursor-pointer'
+          : 'w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all shadow-sm cursor-pointer'}
       >
         <option value="">— All categories —</option>
         {(categories || []).map((cat) => (
@@ -8566,14 +8565,14 @@ function PosCategoryPickerField({
           </option>
         ))}
       </select>
-      {isLoading && <p className="text-[10px] text-slate-400 mt-1">Loading POS catalog…</p>}
+      {isLoading && <p className={amber ? 'text-[10px] text-[#fdba74] mt-1' : 'text-[10px] text-slate-400 mt-1'}>Loading POS catalog…</p>}
       {!isLoading && isError && (
         <p className="text-[10px] text-rose-600 mt-1">
           Couldn't load POS categories — try refresh.
         </p>
       )}
       {!isLoading && !isError && (!categories || categories.length === 0) && (
-        <p className="text-[10px] text-slate-400 mt-1">
+        <p className={amber ? 'text-[10px] text-[#fdba74] mt-1' : 'text-[10px] text-slate-400 mt-1'}>
           No POS connected yet —{' '}
           <a href={schoolId ? `/${schoolId}/settings/pos` : '/settings/pos'} className="underline text-indigo-600 inline-flex items-center gap-0.5">
             connect Square / Toast / Clover <ExternalLink className="w-2.5 h-2.5" />
