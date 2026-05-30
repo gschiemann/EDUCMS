@@ -25,6 +25,7 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { StripeService } from './stripe.service';
+import { LicenseService } from '../license/license.service';
 
 const BILLING_ROLES = [
   AppRole.SUPER_ADMIN,
@@ -35,7 +36,12 @@ const BILLING_ROLES = [
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('api/v1/billing')
 export class BillingController {
-  constructor(private readonly stripe: StripeService) {}
+  constructor(
+    private readonly stripe: StripeService,
+    // LicenseService is exported by the @Global LicenseModule, so it
+    // resolves here without listing it in BillingModule's providers.
+    private readonly license: LicenseService,
+  ) {}
 
   /** The dashboard's billing return path for this tenant. */
   private billingUrl(req: any): string {
@@ -121,21 +127,36 @@ export class BillingController {
   }
 
   /**
-   * One-click free-trial activation. No card required.
+   * Free-tier status. No card required, and — importantly — **no
+   * transaction is committed here**: the free pilot tier is the
+   * no-License *default* state, so there is nothing to "activate." This
+   * endpoint is informational; it reports the tenant's real effective
+   * tier + seat limit straight from LicenseService rather than the old
+   * hardcoded `trialDays:14, seatLimit:3` placeholders, which wrote
+   * nothing yet *looked* like a committed trial (§11 audit, 2026-05-30).
    *
-   * Unchanged stub — the trial-to-paid Setup Intent flow lands in a
-   * later pass; today the free pilot tier is the no-License default.
+   * When the real trial-to-paid Setup-Intent flow lands it can live in a
+   * dedicated `POST /billing/start-trial` that actually upserts a License
+   * row; this method intentionally stays a read-only status probe.
    */
   @Post('activate-trial')
   @RequireRoles(...BILLING_ROLES)
-  activateTrial() {
+  async activateTrial(@Request() req: any) {
+    const eff = await this.license.getEffective(req.user.tenantId);
     return {
       ok: true,
-      message:
-        'Free trial is the default — pair up to your pilot screen limit with no card. ' +
-        'Pick a paid plan above whenever you are ready.',
-      trialDays: 14,
-      seatLimit: 3,
+      // Honest: nothing was persisted. The free tier is already in effect
+      // by default, so there's no row to create on "activate".
+      committed: false,
+      tier: eff.tier,
+      seatLimit: eff.seatLimit,
+      isPilot: eff.isPilot,
+      // null expiry = perpetual (the pilot/free tier doesn't expire).
+      expiresAt: eff.expiresAt,
+      message: eff.isPilot
+        ? `You're already on the free ${eff.tier} tier — pair up to ${eff.seatLimit} screen(s) with no card. ` +
+          'Pick a paid plan above whenever you are ready.'
+        : `Your tenant is on the ${eff.tier} plan (${eff.seatLimit} seats). Manage it via the Customer Portal above.`,
     };
   }
 }

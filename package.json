@@ -13,6 +13,7 @@
     "db:push": "pnpm --filter @cms/database run db:push",
     "db:seed": "pnpm --filter @cms/database run db:seed",
     "db:setup": "pnpm run db:push && pnpm run db:seed",
+    "db:backfill-hashes": "pnpm --filter @cms/database exec tsx ../../scripts/backfill-asset-hashes.ts",
     "dev:api": "pnpm --filter api run start:dev",
     "dev:web": "pnpm --filter web run dev",
     "test:e2e": "playwright test",

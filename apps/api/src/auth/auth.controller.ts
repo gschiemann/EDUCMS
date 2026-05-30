@@ -7,11 +7,16 @@ import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SYSTEM_TENANT_ID, ensureSystemTenant } from '../security/system-tenant';
 import type { Request } from 'express';
 
 @Controller('api/v1/auth')
 export class AuthController {
   private readonly authLogger = new Logger('AuthController');
+  /** One-shot guard: the sentinel "system" tenant row only needs to be
+   *  ensured once per process. After the first successful upsert we skip
+   *  the round-trip on every subsequent unknown-email failed login. */
+  private systemTenantEnsured = false;
 
   constructor(
     private authService: AuthService,
@@ -69,10 +74,14 @@ export class AuthController {
    * 2026-05-21 safeguard-theater incident.
    *
    * `AuditLog.tenantId` is NOT NULL. On a FAILED attempt against a real
-   * account we look the tenant up so the row lands on the right tenant;
-   * on a failed attempt against an unknown email there is no tenant to
-   * attribute it to, so we log the miss to stdout (warn) and skip the
-   * row rather than fabricate a tenant and pollute someone else's trail.
+   * account we look the tenant up so the row lands on the right tenant.
+   * On a failed attempt against an **unknown email** there is no natural
+   * tenant — but credential-stuffing recon against non-existent accounts
+   * is exactly the signal a SOC wants queryable in the durable trail, so
+   * we attribute it to the dedicated sentinel `SYSTEM_TENANT_ID` (the row
+   * carries `unknownAccount: true` in `details` so it's unmistakable and
+   * never pollutes a real tenant's trail). The sentinel tenant row is
+   * ensured idempotently here so the FK insert always lands.
    */
   private async auditLoginAttempt(
     req: Request,
@@ -96,22 +105,32 @@ export class AuthController {
     // enough to correlate repeated attempts against the same account
     // across rows without persisting the address in cleartext.
     const emailHash = createHash('sha256').update(email.toLowerCase()).digest('hex').slice(0, 16);
-    const details = JSON.stringify({ ip, ua, emailHash, ...extra });
 
-    if (!resolvedTenantId) {
-      // No tenant to attribute the row to (unknown email on a failed
-      // login). Audit to stdout so the attempt is still recorded
-      // somewhere queryable in logs; can't write a NOT-NULL-tenant row.
-      this.authLogger.warn(
-        `AUTH_LOGIN_FAILED for unknown account — no tenant to attribute AuditLog row. ${details}`,
-      );
-      return;
-    }
+    // Unknown email on a failed login → no natural tenant. Attribute the
+    // row to the sentinel "system" tenant so the recon attempt IS in the
+    // durable, queryable trail (not just stdout, which doesn't survive a
+    // restart and isn't queryable per-account). `unknownAccount` flags it
+    // so forensics never confuse it with a real-tenant event.
+    const unknownAccount = !resolvedTenantId;
+    // After this, the tenant is always defined: a real tenant for a known
+    // account, or the sentinel for an unknown one. (`resolvedTenantId` stays
+    // `string | null` to TS, so pin the final value in a non-null const.)
+    const auditTenantId: string = unknownAccount ? SYSTEM_TENANT_ID : (resolvedTenantId as string);
+
+    const details = JSON.stringify({ ip, ua, emailHash, unknownAccount, ...extra });
 
     try {
+      // Ensure the sentinel tenant exists before the FK insert. One-shot
+      // per process for known-email rows it's never needed; for the
+      // unknown-email path it's a cheap idempotent upsert that becomes a
+      // no-op after the first call.
+      if (unknownAccount && !this.systemTenantEnsured) {
+        await ensureSystemTenant(this.prisma.client);
+        this.systemTenantEnsured = true;
+      }
       await this.prisma.client.auditLog.create({
         data: {
-          tenantId: resolvedTenantId,
+          tenantId: auditTenantId,
           userId: null, // not the actor's own action; identified via emailHash
           action,
           targetType: 'User',
@@ -120,6 +139,9 @@ export class AuthController {
         },
       });
     } catch (e: any) {
+      // Best-effort — a DB hiccup must never block or fail the login. NOT
+      // silent: warn so a broken audit path is visible (2026-05-21 lesson)
+      // instead of masquerading as success.
       this.authLogger.warn(`auditLoginAttempt(${action}) failed: ${e?.message ?? e}`);
     }
   }

@@ -9,6 +9,7 @@
  */
 import { UnauthorizedException } from '@nestjs/common';
 import { AuthController } from './auth.controller';
+import { SYSTEM_TENANT_ID } from '../security/system-tenant';
 
 function makeReq(overrides: Partial<any> = {}): any {
   return {
@@ -24,19 +25,22 @@ function setup(opts: {
   loginResult?: any;
 } = {}) {
   const auditCreate = jest.fn().mockResolvedValue({});
+  const tenantUpsert = jest.fn().mockResolvedValue({});
   const authService = {
     validateUser: jest.fn().mockResolvedValue(opts.validUser ?? null),
     tenantIdForEmail: jest.fn().mockResolvedValue(opts.tenantIdForEmail ?? null),
     login: jest.fn().mockResolvedValue(opts.loginResult ?? { access_token: 't', user: {} }),
   };
   const redisService = { publisher: null };
-  const prisma = { client: { auditLog: { create: auditCreate } } };
+  const prisma = {
+    client: { auditLog: { create: auditCreate }, tenant: { upsert: tenantUpsert } },
+  };
   const controller = new AuthController(
     authService as any,
     redisService as any,
     prisma as any,
   );
-  return { controller, authService, auditCreate };
+  return { controller, authService, auditCreate, tenantUpsert };
 }
 
 describe('AuthController — login audit (P0-4)', () => {
@@ -63,17 +67,65 @@ describe('AuthController — login audit (P0-4)', () => {
     expect(JSON.stringify(arg.data)).not.toContain('victim@school.edu');
   });
 
-  it('does NOT write a row for a failed login against an unknown account (no tenant to attribute)', async () => {
-    // Email maps to no user → no FK-valid tenant → cannot write a
-    // NOT-NULL-tenant row; logs to stdout instead. Asserting we do not
-    // fabricate a tenant and pollute someone else's audit trail.
-    const { controller, auditCreate } = setup({ validUser: null, tenantIdForEmail: null });
+  it('writes an AUTH_LOGIN_FAILED row attributed to the SYSTEM sentinel tenant for an unknown account', async () => {
+    // Email maps to no user → no natural tenant. §16 fix: instead of
+    // dropping the row (recon invisible in the durable trail), attribute
+    // it to the dedicated sentinel tenant, flagged unknownAccount:true so
+    // it never pollutes a real tenant's trail. The sentinel tenant row is
+    // ensured (idempotent upsert) before the FK insert.
+    const { controller, auditCreate, tenantUpsert } = setup({
+      validUser: null,
+      tenantIdForEmail: null,
+    });
 
     await expect(
       controller.login({ email: 'ghost@nowhere.test', password: 'x' } as any, makeReq()),
     ).rejects.toThrow(UnauthorizedException);
 
-    expect(auditCreate).not.toHaveBeenCalled();
+    // Sentinel tenant ensured idempotently before the insert.
+    expect(tenantUpsert).toHaveBeenCalledTimes(1);
+    expect(tenantUpsert.mock.calls[0][0].where.id).toBe(SYSTEM_TENANT_ID);
+
+    // Durable row now written (was previously dropped).
+    expect(auditCreate).toHaveBeenCalledTimes(1);
+    const arg = auditCreate.mock.calls[0][0];
+    expect(arg.data.action).toBe('AUTH_LOGIN_FAILED');
+    expect(arg.data.tenantId).toBe(SYSTEM_TENANT_ID);
+    expect(arg.data.userId).toBeNull();
+    const details = JSON.parse(arg.data.details);
+    expect(details.unknownAccount).toBe(true);
+    expect(details.emailHash).toMatch(/^[0-9a-f]{16}$/);
+    // PII never stored in cleartext.
+    expect(JSON.stringify(arg.data)).not.toContain('ghost@nowhere.test');
+  });
+
+  it('only ensures the sentinel tenant once per process (one-shot guard)', async () => {
+    const { controller, tenantUpsert } = setup({ validUser: null, tenantIdForEmail: null });
+
+    await expect(
+      controller.login({ email: 'a@nowhere.test', password: 'x' } as any, makeReq()),
+    ).rejects.toThrow(UnauthorizedException);
+    await expect(
+      controller.login({ email: 'b@nowhere.test', password: 'x' } as any, makeReq()),
+    ).rejects.toThrow(UnauthorizedException);
+
+    // Upserted on the first unknown-email failure only; skipped thereafter.
+    expect(tenantUpsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT touch the sentinel tenant when the failed account maps to a real tenant', async () => {
+    const { controller, auditCreate, tenantUpsert } = setup({
+      validUser: null,
+      tenantIdForEmail: 'tenant-7',
+    });
+
+    await expect(
+      controller.login({ email: 'victim@school.edu', password: 'wrong' } as any, makeReq()),
+    ).rejects.toThrow(UnauthorizedException);
+
+    expect(tenantUpsert).not.toHaveBeenCalled();
+    const details = JSON.parse(auditCreate.mock.calls[0][0].data.details);
+    expect(details.unknownAccount).toBe(false);
   });
 
   it('writes an AUTH_LOGIN_SUCCESS row on a successful credential check', async () => {
