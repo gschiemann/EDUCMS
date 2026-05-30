@@ -124,19 +124,20 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
           devFallback: 'dev_only_device_jwt_secret_CHANGE_ME',
         });
         decoded = jwt.verify(token, jwtSecret) as any;
-        // SECURITY (Lane-1 final-audit P1): JWT revocation check. Same
-        // fail-closed posture as jwt-auth.guard.ts:57-71 — production rejects
-        // tokens in jwt_revoked_list; transient Redis blip → reject too
+        // SECURITY (Lane-1 final-audit P1; F-2 2026-05-30): JWT revocation
+        // check. Same fail-closed posture as jwt-auth.guard.ts + sse.controller.ts —
+        // reject tokens in jwt_revoked_list; a transient Redis blip → reject too
         // (a revoked token outrunning Redis recovery is the bigger risk).
-        if (process.env.NODE_ENV === 'production') {
-          try {
-            if (await this.redisService.sismember('jwt_revoked_list', token)) {
-              throw new Error('Token revoked');
-            }
-          } catch (e) {
-            if ((e as Error)?.message === 'Token revoked') throw e;
-            throw new Error('Revocation check unavailable');
+        // F-2: the env wrapper (`if NODE_ENV === 'production'`) was dropped so
+        // revocation is enforced in EVERY environment, matching the now-
+        // unconditional checks in jwt-auth.guard.ts + sse.controller.ts.
+        try {
+          if (await this.redisService.sismember('jwt_revoked_list', token)) {
+            throw new Error('Token revoked');
           }
+        } catch (e) {
+          if ((e as Error)?.message === 'Token revoked') throw e;
+          throw new Error('Revocation check unavailable');
         }
         // SECURITY (Lane-1 re-audit P1): verify the screen still exists +
         // its tenant binding hasn't been swapped since the JWT was minted.

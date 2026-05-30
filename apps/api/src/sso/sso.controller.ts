@@ -167,7 +167,12 @@ export class SsoController {
     // Pass through the acting user id so the audit log row carries the
     // forensic attribution (2026-05-23 launch audit P1 #2).
     const actorUserId = (req as any)?.user?.userId ?? (req as any)?.user?.id ?? null;
-    const cfg = await this.sso.upsertConfig(tenant.id, dto, actorUserId);
+    // Pass through the acting role so the service can gate arming SAML
+    // (provider:'SAML' + enabled:true) behind SUPER_ADMIN — CVE-2025-54419
+    // interim control (Audit 04-comms-auth F-1). DISTRICT_ADMIN may still
+    // store SAML settings but cannot enable them.
+    const actorRole = (req as any)?.user?.role ?? null;
+    const cfg = await this.sso.upsertConfig(tenant.id, dto, actorUserId, actorRole);
     return this.sso.toSafeConfig(cfg);
   }
 

@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppRole } from '@cms/database';
@@ -67,7 +67,12 @@ export class SsoService {
     };
   }
 
-  async upsertConfig(tenantId: string, dto: SsoConfigDto, actorUserId?: string | null) {
+  async upsertConfig(
+    tenantId: string,
+    dto: SsoConfigDto,
+    actorUserId?: string | null,
+    actorRole?: string | null,
+  ) {
     if (dto.provider !== 'SAML' && dto.provider !== 'OIDC') {
       throw new BadRequestException('provider must be SAML or OIDC');
     }
@@ -83,6 +88,50 @@ export class SsoService {
       allowedEmailDomain: dto.allowedEmailDomain ?? null,
       autoProvision: !!dto.autoProvision,
     };
+
+    // SECURITY (Audit 04-comms-auth F-1, CVE-2025-54419 interim control):
+    // arming SAML (enabled:true on provider:'SAML') exposes the
+    // UNAUTHENTICATED validateSamlCallback → passport-saml@3
+    // `validatePostResponse` path, which carries the unpatched
+    // signature-wrapping CVE (no patched 3.x; the fix is the
+    // API-incompatible @node-saml/passport-saml v5 migration — task #199).
+    // Until that migration lands, only SUPER_ADMIN may flip a SAML config
+    // ON. A DISTRICT_ADMIN may still CREATE/STORE SAML settings (cert,
+    // metadataUrl, entityId, etc.) but cannot enable (arm) them. OIDC is
+    // unaffected — its callback uses openid-client, not passport-saml.
+    // Both the allowed and the denied enable attempt are audit-logged.
+    const isSamlEnableAttempt = data.provider === 'SAML' && data.enabled === true;
+    if (isSamlEnableAttempt && actorRole !== 'SUPER_ADMIN') {
+      // Forensic record of the denied arm attempt (best-effort; never let a
+      // logging failure mask the deny — the throw below is the security gate).
+      try {
+        await this.prisma.client.auditLog.create({
+          data: {
+            tenantId,
+            userId: actorUserId ?? null,
+            action: 'SSO_SAML_ENABLE_DENIED',
+            targetType: 'TenantSSOConfig',
+            targetId: tenantId,
+            details: JSON.stringify({
+              reason: 'SAML enable requires SUPER_ADMIN (CVE-2025-54419 interim control)',
+              actorRole: actorRole ?? null,
+              entityId: data.entityId,
+              acsUrl: data.acsUrl,
+              metadataUrl: data.metadataUrl,
+            }),
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Failed to write SSO_SAML_ENABLE_DENIED audit log: ${(err as Error).message}`,
+        );
+      }
+      throw new ForbiddenException(
+        'Enabling SAML SSO requires a SUPER_ADMIN. A pending security upgrade ' +
+          '(CVE-2025-54419) gates this; you may save the SAML configuration with ' +
+          'it disabled, then ask a platform admin to enable it.',
+      );
+    }
     // Only re-encrypt secrets when the caller explicitly sends a new value.
     const x509CertChanged = dto.x509Cert !== undefined;
     const oidcSecretChanged = dto.oidcClientSecret !== undefined;
@@ -127,6 +176,27 @@ export class SsoService {
           }),
         },
       });
+      // SECURITY (F-1): record the ALLOWED SAML arm separately so the
+      // gated enable attempt has a distinct, immutable forensic row
+      // (denied attempts log SSO_SAML_ENABLE_DENIED above). Only reached
+      // when a SUPER_ADMIN passes the gate.
+      if (isSamlEnableAttempt) {
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            userId: actorUserId ?? null,
+            action: 'SSO_SAML_ENABLE_ALLOWED',
+            targetType: 'TenantSSOConfig',
+            targetId: tenantId,
+            details: JSON.stringify({
+              actorRole: actorRole ?? null,
+              entityId: data.entityId,
+              acsUrl: data.acsUrl,
+              metadataUrl: data.metadataUrl,
+            }),
+          },
+        });
+      }
       return result;
     });
   }

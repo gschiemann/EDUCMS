@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { SsoService } from './sso.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { UnauthorizedException, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { encryptSecret, decryptSecret } from './sso.crypto';
 
 describe('SsoService', () => {
@@ -157,14 +157,72 @@ describe('SsoService', () => {
     });
 
     it('encrypts x509Cert before persisting', async () => {
-      await service.upsertConfig(tenant.id, {
-        provider: 'SAML',
-        enabled: true,
-        x509Cert: '-----BEGIN CERTIFICATE-----\nABC\n-----END CERTIFICATE-----',
-      });
+      await service.upsertConfig(
+        tenant.id,
+        {
+          provider: 'SAML',
+          enabled: true,
+          x509Cert: '-----BEGIN CERTIFICATE-----\nABC\n-----END CERTIFICATE-----',
+        },
+        'super-admin-id',
+        // SUPER_ADMIN required to ARM SAML (F-1 / CVE-2025-54419 interim
+        // control). This test exercises the persist+encrypt path, so it
+        // must pass the gate.
+        'SUPER_ADMIN',
+      );
       const args = prismaMock.client.tenantSSOConfig.upsert.mock.calls[0][0];
       expect(args.create.x509Cert).toBeTruthy();
       expect(args.create.x509Cert).not.toContain('BEGIN CERTIFICATE');
+    });
+
+    it('blocks a DISTRICT_ADMIN from arming SAML (enabled:true) — F-1 / CVE-2025-54419', async () => {
+      await expect(
+        service.upsertConfig(
+          tenant.id,
+          { provider: 'SAML', enabled: true },
+          'district-admin-id',
+          'DISTRICT_ADMIN',
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      // No config row was written — fail-closed.
+      expect(prismaMock.client.tenantSSOConfig.upsert).not.toHaveBeenCalled();
+      // The denied arm attempt is forensically logged.
+      const auditCalls = prismaMock.client.auditLog.create.mock.calls;
+      expect(
+        auditCalls.some(
+          (c: any[]) => c[0]?.data?.action === 'SSO_SAML_ENABLE_DENIED',
+        ),
+      ).toBe(true);
+    });
+
+    it('lets a DISTRICT_ADMIN store SAML config while DISABLED', async () => {
+      await service.upsertConfig(
+        tenant.id,
+        {
+          provider: 'SAML',
+          enabled: false,
+          x509Cert: '-----BEGIN CERTIFICATE-----\nABC\n-----END CERTIFICATE-----',
+        },
+        'district-admin-id',
+        'DISTRICT_ADMIN',
+      );
+      expect(prismaMock.client.tenantSSOConfig.upsert).toHaveBeenCalled();
+    });
+
+    it('lets a DISTRICT_ADMIN arm OIDC (provider:OIDC unaffected by the SAML gate)', async () => {
+      await service.upsertConfig(
+        tenant.id,
+        {
+          provider: 'OIDC',
+          enabled: true,
+          oidcIssuer: 'https://idp.example.com',
+          oidcClientId: 'client-abc',
+          oidcClientSecret: 'very-secret',
+        },
+        'district-admin-id',
+        'DISTRICT_ADMIN',
+      );
+      expect(prismaMock.client.tenantSSOConfig.upsert).toHaveBeenCalled();
     });
   });
 
