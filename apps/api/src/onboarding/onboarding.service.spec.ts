@@ -3,6 +3,7 @@ import { OnboardingService, hashToken, PASSWORD_RESET_TTL_MS } from './onboardin
 import { AuthService } from '../auth/auth.service';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SampleDataService } from '../sample-data/sample-data.service';
 import { JwtService } from '@nestjs/jwt';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 
@@ -131,6 +132,11 @@ describe('OnboardingService', () => {
         AuthService,
         { provide: PrismaService, useValue: { client: mem.client } },
         { provide: JwtService, useValue: { sign: jest.fn().mockReturnValue('signed.jwt') } },
+        // OnboardingService.signup() fire-and-forgets sampleData.seedForNewTenant
+        // (void, not awaited). A jest.fn() mock satisfies DI without affecting
+        // any signup assertions. (Was missing → "can't resolve SampleDataService
+        // at index [3]" failed the whole suite — added 2026-05-30.)
+        { provide: SampleDataService, useValue: { seedForNewTenant: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

@@ -21,6 +21,12 @@ describe('RealtimeGateway', () => {
       subscriber: {} as any,
       setGateway: jest.fn(),
       publish: jest.fn(),
+      // processHello now checks jwt_revoked_list via sismember (F-2 2026-05-30 —
+      // JWT revocation enforced in EVERY env). 0 = not revoked → auth proceeds.
+      // Without this stub the call threw ("Revocation check unavailable") and
+      // every valid-JWT auth test failed closed. Individual tests can override
+      // to mockResolvedValue(1) to exercise the revoked-token reject path.
+      sismember: jest.fn().mockResolvedValue(0),
     } as any;
 
     // Mock PrismaService — added in 769400b for the WS screen-existence
