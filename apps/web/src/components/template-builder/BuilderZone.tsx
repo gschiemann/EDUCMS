@@ -387,19 +387,27 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         //     widget paints its own button. Editor chrome stays
         //     minimal (transparent fill, selection-only border)
         //     so the touch-point visual isn't obscured.
+        // 2026-05-30 — operator: "only put a visible box around it when I
+        // select it." Unselected content zones now render CLEAN — no white
+        // fill, no border, no glow. The white interior is kept only for a
+        // SELECTED empty zone on a default (white) canvas so it's visible
+        // while editing. Hover reveals a subtle outline + the label badge
+        // (see the <style> + badge blocks) so zones stay findable.
         background: isHotspotVariant
           ? (previewMode ? 'transparent' : 'rgba(124, 58, 237, 0.06)')
           : (isTouchPoint
               ? 'transparent'
-              : (previewMode ? 'transparent' : (hasCanvasBg ? 'transparent' : '#ffffff'))),
+              : (previewMode ? 'transparent' : (!hasCanvasBg && selected ? '#ffffff' : 'transparent'))),
         border: previewMode
           ? 'none'
           : (isHotspotVariant
               ? '3px dashed var(--brand-primary, #7c3aed)'
               : (isTouchPoint
                   ? (selected ? '2px dashed var(--brand-primary, #7c3aed)' : 'none')
-                  : (selected ? `3px dashed ${color.accent}` : `3px solid ${color.accent}`))),
-        boxShadow: previewMode || isTouchPoint ? undefined : `0 4px 12px ${color.accent}33`,
+                  : (selected ? `3px dashed ${color.accent}` : 'none'))),
+        // No always-on glow — the clean selection outline below is the only
+        // box affordance; unselected zones get nothing (hover excepted).
+        boxShadow: undefined,
         // 2026-05-29 — operator wants a SIMPLE outline on the clicked element,
         // not a big glow/banner: a clean 2px indigo ring marks what's selected.
         outline: selected && !previewMode ? '2px solid #6366f1' : 'none',
@@ -763,7 +771,11 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       )}
       {!previewMode && !isTouchPoint && (
         <div
-          className="absolute top-1 left-1 z-30 pointer-events-none flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider opacity-70 group-hover:opacity-100 transition-opacity"
+          // 2026-05-30 — operator: no boxes/labels on every element. The
+          // widget-type badge is now hidden by default and only appears on
+          // hover (discoverability) or when the zone is selected — never as
+          // persistent canvas clutter.
+          className={`absolute top-1 left-1 z-30 pointer-events-none flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
           style={{ background: color.bg, color: color.text, border: `1px solid ${color.border}` }}
         >
           {createElement(icon, { className: 'w-2.5 h-2.5' })}
@@ -867,6 +879,16 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         // Unselected zones DON'T show hotspots — they'd visually compete
         // with the zone's own border and overwhelm the canvas.
         <style>{`
+          ${!selected ? `
+          /* 2026-05-30 — unselected zones have NO persistent box. A subtle
+             accent outline appears only on hover so the operator can still
+             find + click a zone. outline-offset:-2px keeps it inside the
+             zone edge (no layout shift, Chromium-83-safe — no inset/gap). */
+          [data-zone-id="${zone.id}"]:hover {
+            outline: 2px solid ${color.accent};
+            outline-offset: -2px;
+          }
+          ` : ''}
           [data-zone-id="${zone.id}"] [data-widget-content] [data-field] {
             cursor: text;
             transition: outline 0.12s, background 0.12s;
