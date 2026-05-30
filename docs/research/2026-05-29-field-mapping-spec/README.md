@@ -80,3 +80,45 @@ The per-field ⚡ affordance below is the OVERRIDE surface (step 3), not the pri
 - render-time resolver shared by widgets
 
 > Status: SPEC ONLY — not built yet. Awaiting operator go to build Phase 1.
+
+---
+
+## Build log (shipped)
+
+**Phase 1 — sports → CTS (commit `1e5e47f`, deployed 2026-05-30).**
+Shipped a simpler model than the `_bindings` design above (deferred — see
+below): a template-level **"Driven by"** picker in `TemplateProperties`
+writing `meta.dataSource` (`'NONE' | 'CTS'`), gated to templates that contain
+scoreboard/sport elements (`SCOREBOARD` / `SCORE_` / `GAME_`). Per-element
+green "LIVE DATA — CTS FEED" card reframes the old bare team-side dropdown as
+"Reads from feed". Live values already flow via `GameStateContext` /
+`edu:cts-game-state` — the picker just labels + scopes it. Picker gating
+landed in `ebd1ef9` (it had briefly shown on every template).
+
+**Phase 2 — menu/drink → POS (commit `fbdb681`, 2026-05-30).**
+Same operator model, pointed at the connected POS:
+- Template-level "Driven by: POS" picker (amber), gated to templates with a
+  board that GENUINELY reads a live POS feed: `POS_LIVE_TYPES` =
+  `RESTAURANT_MENU_BOARD`, `BAR_TAP_LIST`, `BAR_COCKTAIL_MENU`. Picking POS
+  auto-flips `posSync` on every such board (the standard mapping);
+  per-board override below.
+- Per-element POS card: live chip reflecting the board's REAL `posSync`
+  state (never lies), a "Reads from category" (`posCategory`) override, and
+  a per-board live toggle. Not-connected path → one-click "Connect POS".
+- Extracted the live-POS feed into a shared hook
+  `apps/web/src/lib/menu/use-pos-menu-items.ts` (was private in
+  MenuBoardWidget) and wired it into the tap list + cocktail menu so the
+  picker is honest across all three boards — not a costume.
+- `meta.dataSource` widened to `'NONE' | 'CTS' | 'POS'`. No schema migration
+  (stored in the existing template meta payload).
+
+**Deferred from the original spec (still open):**
+- True per-field `cfg._bindings` repointing (e.g. point the clock widget at a
+  *different* CTS field, or map a menu price to a non-default POS field).
+  Phases 1+2 ship template-level source + a category/team override, not
+  arbitrary field-to-field rebinding.
+- Live sample-value preview in the mapping chips.
+- `source-schemas.ts` cold-start field catalog + the generic Sheet / REST /
+  webhook source (Phase 3).
+- Live POS sync for the remaining menu/bar widgets (specials callout, combo
+  carousel, etc.) — they stay static until added to `POS_LIVE_TYPES`.
