@@ -343,28 +343,50 @@ export function ColorPickerBody({ value, onChange }: { value: string; onChange: 
   // OR no brand kit is configured — in either case the row is hidden
   // and we fall back to the existing 24-color standard palette only.
   const brand = useBranding();
-  const brandSwatches: { hex: string; label: string }[] = (() => {
-    const out: { hex: string; label: string }[] = [];
+  // Each brand swatch carries BOTH the resolved hex (for the swatch
+  // preview + to drive the SV/hue plane) AND the live CSS custom property
+  // (`cssVar`) that we emit to the consumer. Emitting the var — not the
+  // frozen hex — is the §19 G1 fix: a widget styled "Brand primary" then
+  // RE-THEMES automatically when the tenant changes their palette, instead
+  // of being baked to whatever hex the brand happened to be at click time.
+  // The var names match `paletteToCssVars()` / `cssVarsFromPalette()` in
+  // lib/branding.ts (the single source of truth for the :root injection),
+  // so `var(--brand-primary)` always resolves at render time (admin chrome,
+  // template canvas, AND the player route — BrandStyleInjector writes them
+  // to documentElement on every route, with globals.css :root defaults as
+  // the unbranded fallback).
+  const brandSwatches: { hex: string; label: string; cssVar: string }[] = (() => {
+    const out: { hex: string; label: string; cssVar: string }[] = [];
     const p = brand?.palette || {};
     // Order matters — primary first because that's the "the brand color".
-    const order: { key: string; label: string }[] = [
-      { key: 'primary', label: 'Brand primary' },
-      { key: 'accent', label: 'Brand accent' },
-      { key: 'ink', label: 'Brand text' },
-      { key: 'surface', label: 'Brand surface' },
-      { key: 'surfaceAlt', label: 'Brand surface alt' },
-      { key: 'primaryHover', label: 'Brand primary hover' },
-      { key: 'success', label: 'Brand success' },
-      { key: 'warn', label: 'Brand warn' },
-      { key: 'danger', label: 'Brand danger' },
+    const order: { key: string; label: string; cssVar: string }[] = [
+      { key: 'primary', label: 'Brand primary', cssVar: '--brand-primary' },
+      { key: 'accent', label: 'Brand accent', cssVar: '--brand-accent' },
+      { key: 'ink', label: 'Brand text', cssVar: '--brand-ink' },
+      { key: 'surface', label: 'Brand surface', cssVar: '--brand-surface' },
+      { key: 'surfaceAlt', label: 'Brand surface alt', cssVar: '--brand-surface-alt' },
+      { key: 'primaryHover', label: 'Brand primary hover', cssVar: '--brand-primary-hover' },
+      { key: 'success', label: 'Brand success', cssVar: '--brand-success' },
+      { key: 'warn', label: 'Brand warn', cssVar: '--brand-warn' },
+      { key: 'danger', label: 'Brand danger', cssVar: '--brand-danger' },
     ];
-    for (const { key, label } of order) {
+    for (const { key, label, cssVar } of order) {
       const v = (p as any)[key];
       if (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v)) {
-        out.push({ hex: v, label });
+        out.push({ hex: v, label, cssVar });
       }
     }
     return out;
+  })();
+
+  // Normalize a CSS var reference for comparison: `var(--brand-primary)`
+  // or a bare `--brand-primary` both → `--brand-primary`. Lets the swatch
+  // show its check-mark when the consumer's current value is the live var.
+  const currentVarRef = (() => {
+    const m = /^\s*var\(\s*(--[a-z-]+)\s*(?:,[^)]*)?\)\s*$/i.exec(value || '');
+    if (m) return m[1].toLowerCase();
+    if (/^\s*--[a-z-]+\s*$/i.test(value || '')) return value.trim().toLowerCase();
+    return null;
   })();
 
   return (
@@ -377,19 +399,32 @@ export function ColorPickerBody({ value, onChange }: { value: string; onChange: 
           </div>
           <div className="grid grid-cols-12 gap-1">
             {brandSwatches.map((s, i) => {
-              const selected = hexText.toLowerCase() === s.hex.toLowerCase();
+              // Selected when the consumer's value IS this live var, or
+              // (legacy) the resolved hex matches the current plane.
+              const selected = currentVarRef === s.cssVar.toLowerCase()
+                || hexText.toLowerCase() === s.hex.toLowerCase();
               return (
                 <button
-                  key={`brand-${i}-${s.hex}`}
+                  key={`brand-${i}-${s.cssVar}`}
                   type="button"
                   onClick={() => {
+                    // Move the SV/hue plane to the resolved hex so the picker
+                    // reflects the chosen color visually…
                     const next = hexToHsv(s.hex);
                     if (next) setHsv(next);
+                    // …but emit the LIVE CSS var (not the frozen hex) so the
+                    // styled element re-themes on a future palette change.
+                    // Guard lastEmittedRef with the ROUND-TRIPPED hex (HSV→hex
+                    // can differ from the source hex by a rounding step) so the
+                    // HSV→hex effect below sees a match and does NOT clobber the
+                    // var we just emitted with the resolved hex.
+                    if (next) lastEmittedRef.current = hsvToHex(next).toLowerCase();
+                    onChange(`var(${s.cssVar})`);
                   }}
                   className="w-full aspect-square rounded-md border border-violet-200 ring-1 ring-violet-100 hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-violet-400 flex items-center justify-center"
-                  style={{ background: s.hex }}
-                  aria-label={`${s.label}: ${s.hex}`}
-                  title={`${s.label}: ${s.hex}`}
+                  style={{ background: `var(${s.cssVar}, ${s.hex})` }}
+                  aria-label={`${s.label} (live brand color)`}
+                  title={`${s.label} — stays in sync if you re-theme`}
                   aria-pressed={selected}
                 >
                   {selected && (

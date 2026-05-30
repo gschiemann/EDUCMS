@@ -4738,14 +4738,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       }} />);
       fields.push(<ToggleField key="autoResume" label="Auto-resume on player reload" value={cfg.autoResume !== false} onChange={(v) => setField({ autoResume: v })} />);
       fields.push(<ToggleField key="pauseDuringEmergency" label="Silence during emergency (recommended)" value={cfg.pauseDuringEmergency !== false} onChange={(v) => setField({ pauseDuringEmergency: v })} />);
-      // Business-hours JSON editor — same as bell schedule / dayparts;
-      // we keep it as JSON so the operator can express overnight
-      // windows + per-day-of-week without a 14-field UI.
-      fields.push(<TextAreaField key="businessHoursJson" label='Business hours (JSON: { "start": "08:00", "end": "22:00", "daysOfWeek": [1,2,3,4,5] } — leave blank for 24/7)' value={cfg.businessHours == null ? '' : JSON.stringify(cfg.businessHours, null, 2)} rows={5} onChange={(v) => {
-        const trimmed = v.trim();
-        if (!trimmed) { setField({ businessHours: undefined }); return; }
-        try { setField({ businessHours: JSON.parse(trimmed) }); } catch { /* keep previous value; user is mid-typing */ }
-      }} />);
+      // Business-hours editor — structured start/end time + day-of-week
+      // toggles (no raw JSON; §19 P3). Blank = plays 24/7. Overnight
+      // windows (e.g. 22:00 → 02:00) and per-day selection are both
+      // expressible; the renderer (MusicPlayerWidget.isWithinBusinessHours)
+      // treats an empty daysOfWeek as "every day".
+      fields.push(<BusinessHoursField key="businessHours" value={cfg.businessHours} onChange={(v) => setField({ businessHours: v })} />);
       break;
     }
     // 2026-05-26 audit fix — sports composite widgets (SCORE_HOME,
@@ -7425,6 +7423,111 @@ function PeriodsEditor({ value, onChange }: { value: Period[]; onChange: (next: 
       <p className="mt-2 text-[10px] text-slate-400 leading-relaxed">
         The widget shows the time until the <strong>next upcoming period</strong>. Skips weekends if no day selected.
       </p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Business-hours editor (MUSIC_PLAYER) — structured start/end +
+// day-of-week toggles. Replaces the old raw-JSON textarea (§19 P3).
+// Blank/undefined = plays 24/7. Empty daysOfWeek = every day (matches
+// MusicPlayerWidget.isWithinBusinessHours). daysOfWeek uses 0=Sun..6=Sat,
+// the same numbering as the shared DOW constant above.
+// ─────────────────────────────────────────────────────────
+type BusinessHours = { start: string; end: string; daysOfWeek?: number[] };
+
+function BusinessHoursField({
+  value,
+  onChange,
+}: {
+  value: BusinessHours | null | undefined;
+  onChange: (v: BusinessHours | undefined) => void;
+}) {
+  const bh = value || null;
+
+  const toggleDay = (dow: number) => {
+    const cur = bh?.daysOfWeek || [];
+    const next = cur.includes(dow) ? cur.filter((d) => d !== dow) : [...cur, dow].sort((a, b) => a - b);
+    onChange({ start: bh?.start || '08:00', end: bh?.end || '22:00', daysOfWeek: next });
+  };
+
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Business hours</label>
+      {!bh ? (
+        <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm">
+          <p className="text-[11px] text-slate-500 mb-2">
+            Plays <strong>24/7</strong>. Set a window to silence the player outside open hours.
+          </p>
+          <button
+            type="button"
+            onClick={() => onChange({ start: '08:00', end: '22:00' })}
+            className="w-full py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-dashed border-indigo-200"
+          >
+            + Set business hours
+          </button>
+        </div>
+      ) : (
+        <div className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-2 shadow-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] text-slate-400 mb-0.5">Open</label>
+              <input
+                type="time"
+                value={bh.start || '08:00'}
+                onChange={(e) => onChange({ ...bh, start: e.target.value })}
+                className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-400 mb-0.5">Close</label>
+              <input
+                type="time"
+                value={bh.end || '22:00'}
+                onChange={(e) => onChange({ ...bh, end: e.target.value })}
+                className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            </div>
+          </div>
+          <div className="flex gap-1">
+            {DOW.map(({ n, l }) => {
+              const active = (bh.daysOfWeek || []).includes(n);
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => toggleDay(n)}
+                  aria-pressed={active}
+                  className={`flex-1 py-1 text-[10px] font-bold rounded transition-colors ${
+                    active ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  {l}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] text-slate-400 leading-tight">
+              {(bh.daysOfWeek || []).length === 0
+                ? 'Plays every day in this window.'
+                : 'Plays only on the selected days.'}
+              {(() => {
+                const [sh, sm] = (bh.start || '00:00').split(':').map(Number);
+                const [eh, em] = (bh.end || '23:59').split(':').map(Number);
+                return sh * 60 + sm > eh * 60 + em ? ' Overnight window (wraps midnight).' : '';
+              })()}
+            </p>
+            <button
+              type="button"
+              onClick={() => onChange(undefined)}
+              className="shrink-0 px-2 py-1 text-[10px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded"
+            >
+              Clear (24/7)
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

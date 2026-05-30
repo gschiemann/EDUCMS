@@ -221,8 +221,20 @@ export function EmergencyTriggerModal({ onClose }: Props) {
                     type="text"
                     value={confirmKey}
                     onChange={(e) => setConfirmKey(e.target.value.toUpperCase())}
+                    // Keyboard equivalence (a11y §18-1): Enter in the confirm
+                    // field fires the SAME guarded handleTrigger — it still
+                    // requires confirmKey === confirmWord, so this is purely an
+                    // added keyboard path, not a weakened safeguard. The fire
+                    // button (also keyboard-operable) remains the primary CTA.
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !isPending && selectedType && confirmKey === confirmWord) {
+                        e.preventDefault();
+                        handleTrigger();
+                      }
+                    }}
                     placeholder={confirmWord}
                     autoFocus
+                    aria-label={`Type ${confirmWord} to confirm, then press Enter or the Trigger Emergency button`}
                     className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono text-sm outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all uppercase tracking-wider"
                   />
                 </div>

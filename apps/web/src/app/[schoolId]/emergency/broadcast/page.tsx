@@ -88,8 +88,11 @@ export default function BroadcastPage() {
     progressTimerRef.current = null;
   };
 
-  const handleHoldStart = (e: React.PointerEvent) => {
-    e.preventDefault();
+  // Shared hold-start — driven by EITHER a pointer press or a keyboard
+  // Space/Enter hold. Same 3s timer, same dispatch path; keyboard is purely
+  // an ADDED input route into the identical safeguarded flow (a11y audit
+  // §18-1 — a keyboard-only operator could not previously trigger).
+  const handleHoldStart = () => {
     if (phase !== 'idle' && phase !== 'error') return;
     if (!text.trim()) { setErrorMsg('Message is required.'); setPhase('error'); announce('Cannot broadcast: a message is required.'); return; }
     setPhase('holding');
@@ -101,6 +104,28 @@ export default function BroadcastPage() {
       setProgress(Math.min(100, (elapsed / HOLD_MS) * 100));
     }, 50);
     holdTimerRef.current = setTimeout(() => { void submit(); }, HOLD_MS);
+  };
+
+  const handlePointerHoldStart = (e: React.PointerEvent) => {
+    e.preventDefault();
+    handleHoldStart();
+  };
+
+  // Keyboard hold — Space/Enter starts the countdown on the focused
+  // button; key-up before HOLD_MS cancels exactly like a pointer-release.
+  // `e.repeat` is squelched so holding the key doesn't restart the 3s timer
+  // ~30×/sec. Mirrors the mobile /panic page handler.
+  const handleKeyHoldStart = (e: React.KeyboardEvent) => {
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    if (e.repeat) return;
+    e.preventDefault();
+    handleHoldStart();
+  };
+
+  const handleKeyHoldEnd = (e: React.KeyboardEvent) => {
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    e.preventDefault();
+    handleHoldCancel();
   };
 
   const handleHoldCancel = () => {
@@ -312,11 +337,15 @@ export default function BroadcastPage() {
             {phase === 'sent' && <div className="p-3 rounded bg-emerald-900/40 border border-emerald-800 text-emerald-200 text-sm">Broadcast dispatched.</div>}
 
             <button
-              onPointerDown={handleHoldStart}
+              type="button"
+              onPointerDown={handlePointerHoldStart}
               onPointerUp={handleHoldCancel}
               onPointerLeave={handleHoldCancel}
+              onKeyDown={handleKeyHoldStart}
+              onKeyUp={handleKeyHoldEnd}
               onContextMenu={(e) => e.preventDefault()}
               disabled={phase === 'sending'}
+              aria-label="Broadcast emergency message. Press and hold (or hold Space/Enter) for 3 seconds to send."
               className={`relative w-full py-5 rounded-xl font-black uppercase tracking-widest text-lg overflow-hidden transition
                 ${phase === 'holding' ? 'bg-orange-700' : 'bg-orange-600 hover:bg-orange-500'}
                 ${phase === 'sending' ? 'opacity-60 cursor-not-allowed' : ''}`}
