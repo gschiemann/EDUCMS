@@ -47,6 +47,13 @@ export const TOOLBAR_FONTS = [
 ];
 
 const TEXT_WIDGET_TYPES = new Set(['TEXT', 'RICH_TEXT', 'TICKER', 'ANNOUNCEMENT']);
+// Image + video families. Their visual controls (Fit / Opacity / Corner
+// radius) live HERE in the bottom pill now — the old top "toolbar on a
+// toolbar" for media was removed (operator 2026-05-29: "i dont want a tool
+// bar on a tool bar ... integrate anything useful into the bottom tool bar
+// and dump the rest"). Keys match what ImageWidget + VideoWidget read
+// (config.fit/fitMode, config.opacity, config.borderRadius).
+const MEDIA_WIDGET_TYPES = new Set(['IMAGE', 'IMAGE_CAROUSEL', 'LOGO', 'STAFF_SPOTLIGHT', 'VIDEO', 'VIDEO_CAROUSEL']);
 
 export interface SelectedZoneLike {
   id: string;
@@ -85,6 +92,7 @@ export function BottomToolbar({
 
   const cfg = (zone.defaultConfig || {}) as Record<string, any>;
   const isText = TEXT_WIDGET_TYPES.has(zone.widgetType);
+  const isMedia = MEDIA_WIDGET_TYPES.has(zone.widgetType);
 
   const currentSize: number =
     typeof cfg.fontSize === 'number' ? cfg.fontSize : (measuredFontSize ?? 16);
@@ -210,6 +218,63 @@ export function BottomToolbar({
                 : <AlignLeft className="w-3.5 h-3.5" />,
           )}
 
+          <div className="w-px h-5 bg-slate-300 mx-1" />
+        </>
+      )}
+
+      {/* ── Media (image / video) controls — folded in from the old top
+            toolbar so there's ONE bar, not a toolbar-on-a-toolbar. ─────── */}
+      {isMedia && (
+        <>
+          {/* Fit: Fill (cover) / Fit (contain). Writes both fit + fitMode
+              so IMAGE (reads fit||fitMode) and VIDEO (reads fitMode) agree. */}
+          <div className="flex items-center rounded-md border border-slate-200 overflow-hidden">
+            {(['cover', 'contain'] as const).map((opt) => {
+              const active = (cfg.fit || cfg.fitMode || 'cover') === opt;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  title={opt === 'cover' ? 'Fill the zone (crop to fill)' : 'Fit inside (letterbox)'}
+                  aria-pressed={active}
+                  onClick={(e) => { e.stopPropagation(); onConfigChange({ fit: opt, fitMode: opt }); }}
+                  className={`h-8 px-2.5 text-[11px] font-bold transition-colors ${
+                    active ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {opt === 'cover' ? 'Fill' : 'Fit'}
+                </button>
+              );
+            })}
+          </div>
+          {/* Opacity */}
+          <label className="flex items-center gap-1.5 px-1.5" title="Opacity">
+            <span className="text-[10px] font-semibold text-slate-500">Opacity</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={typeof cfg.opacity === 'number' ? cfg.opacity : 1}
+              onChange={(e) => onConfigChange({ opacity: parseFloat(e.target.value) })}
+              aria-label="Opacity"
+              className="w-16 accent-indigo-600"
+            />
+          </label>
+          {/* Corner radius */}
+          <label className="flex items-center gap-1.5 px-1.5" title="Corner radius">
+            <span className="text-[10px] font-semibold text-slate-500">Radius</span>
+            <input
+              type="range"
+              min={0}
+              max={64}
+              step={1}
+              value={typeof cfg.borderRadius === 'number' ? cfg.borderRadius : 0}
+              onChange={(e) => onConfigChange({ borderRadius: parseInt(e.target.value, 10) })}
+              aria-label="Corner radius"
+              className="w-16 accent-indigo-600"
+            />
+          </label>
           <div className="w-px h-5 bg-slate-300 mx-1" />
         </>
       )}

@@ -1950,8 +1950,10 @@ function VideoWidget({ config, live }: { config: any; live?: boolean }) {
     const src = !live && baseUrl && !baseUrl.includes('#t=')
       ? `${baseUrl}#t=0.5`
       : baseUrl;
+    const vRadius = typeof config.borderRadius === 'number' && config.borderRadius > 0 ? config.borderRadius : undefined;
+    const vOpacity = typeof config.opacity === 'number' ? Math.max(0, Math.min(1, config.opacity)) : 1;
     return (
-      <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden bg-black">
+      <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden bg-black" style={{ borderRadius: vRadius }}>
         <video
           ref={videoRef}
           src={src}
@@ -1960,7 +1962,9 @@ function VideoWidget({ config, live }: { config: any; live?: boolean }) {
           // should go full screen"). 'contain' (letterbox) is opt-in via
           // the Fit control. A full-canvas VIDEO widget now fills the
           // screen edge-to-edge regardless of the clip's aspect.
-          style={{ objectFit: config.fitMode || 'cover' }}
+          // fit/opacity/borderRadius come from the bottom-toolbar media
+          // controls (same keys the IMAGE widget honors).
+          style={{ objectFit: config.fit || config.fitMode || 'cover', opacity: vOpacity }}
           autoPlay={shouldAutoplay}
           muted={shouldMute}
           loop={shouldLoop}

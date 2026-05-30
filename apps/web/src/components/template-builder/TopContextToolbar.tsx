@@ -38,6 +38,7 @@ export function TopContextToolbar() {
   const zone = selectedIds.length === 1 ? zones.find((z) => z.id === selectedIds[0]) : undefined;
   const isText  = zone?.widgetType === 'TEXT' || zone?.widgetType === 'RICH_TEXT';
   const isImage = zone?.widgetType === 'IMAGE' || zone?.widgetType === 'IMAGE_CAROUSEL' || zone?.widgetType === 'LOGO' || zone?.widgetType === 'STAFF_SPOTLIGHT';
+  const isVideo = zone?.widgetType === 'VIDEO' || zone?.widgetType === 'VIDEO_CAROUSEL';
   const isClock = zone?.widgetType === 'CLOCK';
   const isWeather = zone?.widgetType === 'WEATHER';
   const isAnnouncement = zone?.widgetType === 'ANNOUNCEMENT';
@@ -170,10 +171,14 @@ export function TopContextToolbar() {
   // override that inherits these into all text descendants.
   if (previewMode) return null;
   if (!zone) return null;
-  // Image-family widgets get their own row (Fit / Opacity / Radius)
-  // INSTEAD of the universal styling row — text styling on images
-  // makes no sense.
-  const showUniversalText = !isImage;
+  // 2026-05-29 — operator: "i dont want a tool bar on a tool bar ...
+  // integrate anything useful into the bottom tool bar and dump the rest."
+  // Image + VIDEO selections now render NOTHING here — their Fit / Opacity /
+  // Corner-radius controls live in the bottom floating pill (BottomToolbar).
+  // (Previously: images showed a redundant Fit/Opacity/Radius row up here,
+  // and VIDEO fell through to the text scope selector — useless on a video.)
+  if (isImage || isVideo) return null;
+  const showUniversalText = true;
 
   return (
     <div
@@ -207,64 +212,9 @@ export function TopContextToolbar() {
           />
         </div>
       )}
-      {isImage && (
-        <div className="flex items-end gap-3 flex-wrap">
-          {/* Fit toggles — match background-size CSS values. */}
-          <div className="min-w-[180px]">
-            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Fit</span>
-            <div className="flex gap-1">
-              {(['cover', 'contain'] as const).map((opt) => (
-                <button
-                  key={opt}
-                  type="button"
-                  onClick={() => setField({ fit: opt })}
-                  className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors border shadow-sm ${
-                    (cfg.fit || 'cover') === opt
-                      ? 'bg-indigo-600 border-indigo-600 text-white'
-                      : 'bg-white border-slate-200/60 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  {opt === 'cover' ? 'Fill' : 'Fit'}
-                </button>
-              ))}
-            </div>
-          </div>
-          {/* Opacity 0-100. */}
-          <div className="min-w-[180px]">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[10px] font-semibold text-slate-500">Opacity</label>
-              <span className="text-[10px] font-mono text-slate-500">{Math.round((cfg.opacity ?? 1) * 100)}%</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={cfg.opacity ?? 1}
-              onChange={(e) => setField({ opacity: parseFloat(e.target.value) })}
-              aria-label="Image opacity"
-              className="w-full accent-indigo-600"
-            />
-          </div>
-          {/* Corner radius slider — pure CSS, doesn't touch the asset. */}
-          <div className="min-w-[180px]">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[10px] font-semibold text-slate-500">Corner radius</label>
-              <span className="text-[10px] font-mono text-slate-500">{cfg.borderRadius ?? 0}px</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={64}
-              step={1}
-              value={cfg.borderRadius ?? 0}
-              onChange={(e) => setField({ borderRadius: parseInt(e.target.value, 10) })}
-              aria-label="Corner radius"
-              className="w-full accent-indigo-600"
-            />
-          </div>
-        </div>
-      )}
+      {/* Image/video Fit + Opacity + Corner-radius MOVED to the bottom
+          floating pill (BottomToolbar) — see the `isImage || isVideo`
+          early-return above. No media row here anymore. */}
       {isClock && (
         <div className="flex items-end gap-3 flex-wrap">
           {/* Format toggle: 12h / 24h */}
