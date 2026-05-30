@@ -346,7 +346,10 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         top: `${zone.y}%`,
         width: `${zone.width}%`,
         height: `${zone.height}%`,
-        zIndex: zone.zIndex,
+        // 2026-05-29 — selected zone jumps above overlapping zones so the
+        // operator sees the FULL zone they're editing (a composed scoreboard
+        // has 13 overlapping zones; the clicked one must come to the front).
+        zIndex: selected && !previewMode ? 9999 : zone.zIndex,
         // 2026-05-28 (§19) — zone rotation + opacity, edited in the
         // "Position & size" panel and stored under
         // defaultConfig._zoneRotation / _zoneOpacity. Applied identically
@@ -397,8 +400,16 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
               : (isTouchPoint
                   ? (selected ? '2px dashed var(--brand-primary, #7c3aed)' : 'none')
                   : (selected ? `3px dashed ${color.accent}` : `3px solid ${color.accent}`))),
-        boxShadow: previewMode || isTouchPoint ? undefined : `0 4px 12px ${color.accent}33`,
-        outline: 'none',
+        // Selected zone POPS with a bright indigo ring + glow (distinct from
+        // every zone's per-accent border) so among overlapping zones you
+        // instantly see the one you clicked. 2026-05-29 operator request.
+        boxShadow: previewMode
+          ? undefined
+          : selected
+            ? '0 0 0 4px rgba(99,102,241,0.40), 0 0 0 9px rgba(99,102,241,0.18), 0 14px 34px rgba(99,102,241,0.50)'
+            : (isTouchPoint ? undefined : `0 4px 12px ${color.accent}33`),
+        outline: selected && !previewMode ? '3px solid #6366f1' : 'none',
+        outlineOffset: selected && !previewMode ? 2 : 0,
         cursor: zone.locked || previewMode ? 'default' : 'move',
         userSelect: 'none',
         overflow: 'hidden',
