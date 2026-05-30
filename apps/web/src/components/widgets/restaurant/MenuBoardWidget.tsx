@@ -14,12 +14,7 @@
 // on a player, and falls back to the session `/pos/items` only for the
 // dashboard preview. It also re-renders on a poll instead of the old
 // one-shot useEffect, so a price change / 86 reaches the wall live.
-import { useEffect, useRef, useState } from 'react';
-import { apiFetch } from '@/lib/api-client';
-import {
-  fetchDeviceMenu,
-  MENU_POLL_INTERVAL_MS,
-} from '@/lib/menu/device-menu';
+import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
 
 /**
  * MenuBoardWidget — multi-column QSR / counter-service menu.
@@ -316,64 +311,7 @@ const CSS = `
 }
 `;
 
-// 2026-05-29 — POS-sync hook, rebuilt for the live multi-location menu
-// platform. When `enabled` (config.posSync) is true it fetches the
-// menu via `fetchDeviceMenu`:
-//   • On a real player (device token + screenId resolvable) → the
-//     device-authed `GET /screens/:id/menu`, which the server resolves
-//     to THIS screen's location (per-location prices + auto-86 applied
-//     server-side). This is the path that was 403-ing before.
-//   • On the dashboard preview (user session, no device token) → the
-//     legacy `/pos/items` so editing + preview stay unchanged.
-// It RE-RENDERS on a poll (every MENU_POLL_INTERVAL_MS) so a price edit
-// or an 86 reaches the wall without a manual refresh. On any error it
-// KEEPS the last good list (or null → caller falls back to static /
-// DEMO_ITEMS) so the board never flashes blank mid-service.
-function usePosMenuItems(enabled: boolean, category?: string): MenuBoardItem[] | null {
-  const [items, setItems] = useState<MenuBoardItem[] | null>(null);
-  // Tracks whether we've EVER loaded a real list this mount. Using a ref
-  // (not the `items` state) avoids a stale-closure trap inside the poll
-  // loop: every tick must see the live "have we loaded?" value, not the
-  // value captured when the effect first ran.
-  const hasLoadedRef = useRef(false);
-  useEffect(() => {
-    if (!enabled) { setItems(null); hasLoadedRef.current = false; return; }
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let controller: AbortController | null = null;
-
-    const tick = async () => {
-      controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const next = await fetchDeviceMenu(
-        { category, signal: controller?.signal },
-        // Session fallback for the dashboard preview path. `apiFetch`
-        // attaches the user JWT + CSRF; device-menu never uses it on a
-        // real player (no session there).
-        (path, init) => apiFetch<any[]>(path, init as any),
-      );
-      if (cancelled) return;
-      if (next && next.length > 0) {
-        // Got a real list → render it.
-        hasLoadedRef.current = true;
-        setItems(next);
-      } else if (!hasLoadedRef.current) {
-        // FIRST load failed → null so the caller uses static / DEMO items.
-        // (Once we've loaded once, a transient null is IGNORED — we keep
-        // the last good menu on screen instead of blanking mid-service.)
-        setItems(null);
-      }
-      if (!cancelled) {
-        timer = setTimeout(tick, MENU_POLL_INTERVAL_MS);
-      }
-    };
-
-    tick();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-      try { controller?.abort(); } catch { /* noop */ }
-    };
-  }, [enabled, category]);
-  return items;
-}
+// POS-sync feed lives in the shared `usePosMenuItems` hook
+// (@/lib/menu/use-pos-menu-items) — the SAME live feed the tap list +
+// cocktail menu now read. Extracted 2026-05-30 (Phase 2 field-mapping).
 

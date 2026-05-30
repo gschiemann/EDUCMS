@@ -115,7 +115,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         bgImage: template.bgImage || '',
         // Phase 1 field-mapping: dataSource persisted in template defaultConfig
         // (no schema migration required — stored in existing JSONB column).
-        dataSource: ((template as any).dataSource || 'NONE') as 'NONE' | 'CTS',
+        dataSource: ((template as any).dataSource || 'NONE') as 'NONE' | 'CTS' | 'POS',
       },
       // Phase D — thread the touch toggle + idle timer through init so
       // AI-generated templates (which ship isTouchEnabled=true) open

@@ -16,6 +16,8 @@
  * Widget type: BAR_TAP_LIST
  */
 
+import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
+
 export interface BarTap {
   /** Beer name — main billing on the tap. e.g. "Pliny the Elder" */
   name: string;
@@ -46,6 +48,12 @@ export interface TapListConfig {
   columns?: 1 | 2 | 3;
   /** Accent color (neon edge / handle ring). Default: amber #f59e0b */
   accentColor?: string;
+  /** When true, pull live taps from the connected POS instead of the
+   *  static `taps` above (set by the template "Driven by: POS" picker).
+   *  Falls back to static taps on error / before first load. */
+  posSync?: boolean;
+  /** Optional POS category filter when posSync is on (e.g. "Draft"). */
+  posCategory?: string;
 }
 
 // ── Demo data — realistic 12-tap craft list, used when config.taps is empty ──
@@ -83,7 +91,16 @@ export function TapListWidget({
   const subtitle = c.subtitle || 'CRAFT & IMPORTS';
   const columns = c.columns || 2;
 
-  const taps = (c.taps && c.taps.length > 0) ? c.taps : DEMO_TAPS;
+  // Live POS feed (shared hook). When the template is "Driven by: POS"
+  // (posSync on), map each POS item onto the tap shape — name + price are
+  // 1:1; the item description becomes the style line. Beer-specific
+  // metadata POS doesn't track (brewery / ABV / IBU) is simply omitted.
+  const posItems = usePosMenuItems(!!c.posSync, c.posCategory);
+  const liveTaps: BarTap[] | null =
+    c.posSync && posItems && posItems.length > 0
+      ? posItems.map((it) => ({ name: it.name, price: it.price, style: it.desc }))
+      : null;
+  const taps = liveTaps ?? ((c.taps && c.taps.length > 0) ? c.taps : DEMO_TAPS);
 
   return (
     <div

@@ -16,12 +16,13 @@ interface BuilderState {
     bgColor: string;
     bgGradient: string;
     bgImage: string;
-    /** Phase 1 — field-mapping data source. 'NONE' = static/no feed;
-     *  'CTS' = Colorado Time Systems live score & clock feed. Persisted
-     *  as part of the template meta so the player knows which live feed
-     *  to subscribe to. Stored in template.defaultConfig.dataSource via
+    /** Field-mapping data source. 'NONE' = static/no feed;
+     *  'CTS' = Colorado Time Systems live score & clock feed (Phase 1, sports);
+     *  'POS' = connected point-of-sale live menu / prices (Phase 2, menu boards).
+     *  Persisted as part of the template meta so the player knows which live
+     *  feed to subscribe to. Stored in template.defaultConfig.dataSource via
      *  the existing meta save path. */
-    dataSource?: 'NONE' | 'CTS';
+    dataSource?: 'NONE' | 'CTS' | 'POS';
   };
   // Sprint 4 — touch-mode settings. Not part of HistoryEntry (toggle-only UX).
   isTouchEnabled: boolean;

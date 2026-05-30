@@ -15,6 +15,8 @@
  * Widget type: BAR_COCKTAIL_MENU
  */
 
+import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
+
 export interface BarCocktail {
   /** Cocktail name — the "headline" line in the menu. */
   name: string;
@@ -40,6 +42,12 @@ export interface CocktailMenuConfig {
   footer?: string;
   /** Number of columns. 1 / 2. Default 2. */
   columns?: 1 | 2;
+  /** When true, pull live cocktails from the connected POS instead of the
+   *  static `cocktails` above (set by the template "Driven by: POS"
+   *  picker). Falls back to static on error / before first load. */
+  posSync?: boolean;
+  /** Optional POS category filter when posSync is on (e.g. "Cocktails"). */
+  posCategory?: string;
 }
 
 const DEMO_COCKTAILS: BarCocktail[] = [
@@ -65,7 +73,16 @@ export function CocktailMenuWidget({
   const subtitle = c.subtitle || 'House & Classics';
   const footer = c.footer || 'Ask your bartender.';
   const columns = c.columns ?? 2;
-  const cocktails = (c.cocktails && c.cocktails.length > 0) ? c.cocktails : DEMO_COCKTAILS;
+
+  // Live POS feed (shared hook). When the template is "Driven by: POS"
+  // (posSync on), map each POS item onto the cocktail shape — name + price
+  // are 1:1; the item description becomes the ingredients line.
+  const posItems = usePosMenuItems(!!c.posSync, c.posCategory);
+  const liveCocktails: BarCocktail[] | null =
+    c.posSync && posItems && posItems.length > 0
+      ? posItems.map((it) => ({ name: it.name, price: it.price, ingredients: it.desc }))
+      : null;
+  const cocktails = liveCocktails ?? ((c.cocktails && c.cocktails.length > 0) ? c.cocktails : DEMO_COCKTAILS);
 
   return (
     <div className="bcm-root" style={{ '--bcm-cols': String(columns) } as React.CSSProperties}>

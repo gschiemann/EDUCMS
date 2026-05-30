@@ -871,6 +871,22 @@ export function PropertiesPanel() {
   );
 }
 
+/**
+ * Phase 2 — menu/drink widget types that GENUINELY read a live POS feed
+ * (config.posSync → usePosMenuItems). The "Driven by: POS" picker only
+ * appears on templates containing one of these, and the per-element POS
+ * mapping card only renders for these — so the picker is never a costume
+ * on a widget that can't actually sync. (RESTAURANT_MENU_BOARD has synced
+ * since the menu-management work; BAR_TAP_LIST + BAR_COCKTAIL_MENU were
+ * wired to the same shared hook in this phase.) Extend this set as more
+ * boards gain live POS sync.
+ */
+const POS_LIVE_TYPES = new Set<string>([
+  'RESTAURANT_MENU_BOARD',
+  'BAR_TAP_LIST',
+  'BAR_COCKTAIL_MENU',
+]);
+
 function TemplateProperties() {
   // Atomic selectors — see PropertiesPanel above.
   const meta = useBuilderStore((s) => s.meta);
@@ -878,10 +894,12 @@ function TemplateProperties() {
   const isTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
   const setTouchEnabled = useBuilderStore((s) => s.setTouchEnabled);
   const zones = useBuilderStore((s) => s.zones);
+  const updateZones = useBuilderStore((s) => s.updateZones);
   const nameId = useId();
   const descId = useId();
   const widthId = useId();
   const heightId = useId();
+  const posDrivenId = useId();
   const dataSource = meta.dataSource ?? 'NONE';
   // The "Driven by" live-data picker (CTS) only belongs on templates that
   // actually contain scoreboard / sport elements — a restaurant or signage
@@ -889,6 +907,9 @@ function TemplateProperties() {
   // to all templates or just certain ones?"). Gate on the template content.
   // (Phase 2 adds a POS option, gated on menu elements.)
   const hasSportElements = zones.some((z) => /^(SCOREBOARD|SCORE_|GAME_)/.test(z.widgetType));
+  // Phase 2: menu/drink templates get a POS picker instead (gated on the
+  // presence of a board that genuinely reads a live POS feed).
+  const hasMenuElements = zones.some((z) => POS_LIVE_TYPES.has(z.widgetType));
 
   return (
     <div className="p-5 space-y-6 text-xs">
@@ -1012,7 +1033,7 @@ function TemplateProperties() {
             </label>
             <select
               value={dataSource}
-              onChange={(e) => setMeta({ dataSource: e.target.value as 'NONE' | 'CTS' })}
+              onChange={(e) => setMeta({ dataSource: e.target.value as 'NONE' | 'CTS' | 'POS' })}
               style={{
                 width: '100%',
                 padding: '6px 8px',
@@ -1049,6 +1070,93 @@ function TemplateProperties() {
               <div>Fouls → team foul count</div>
               <div style={{ marginTop: 6, color: '#6ee7b7', fontStyle: 'italic' }}>
                 Click any scoreboard element to review or override its mapping.
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+      )}
+
+      {/* ── Phase 2: Field-mapping — POS "Driven by" picker ──
+          Same operator model as Phase 1 (CTS), pointed at the connected
+          point-of-sale instead. Only shown on templates with a board that
+          GENUINELY reads a live POS feed (POS_LIVE_TYPES). Picking POS
+          auto-flips posSync on every such board (the "standard mapping we
+          think is correct"); the operator overrides per-board below. */}
+      {hasMenuElements && !hasSportElements && (
+      <section className="space-y-2">
+        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Live data</h3>
+        <div style={{
+          borderRadius: 10,
+          border: '1px solid',
+          borderColor: dataSource === 'POS' ? '#b45309' : '#e2e8f0',
+          background: dataSource === 'POS' ? '#431407' : '#f8fafc',
+          padding: '10px 12px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{
+              display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+              background: dataSource === 'POS' ? '#f59e0b' : '#94a3b8',
+              marginRight: 8, flexShrink: 0,
+            }} />
+            <span style={{
+              fontSize: 11, fontWeight: 700,
+              color: dataSource === 'POS' ? '#fcd34d' : '#64748b',
+              letterSpacing: 1,
+            }}>
+              {dataSource === 'POS' ? 'POS — LIVE MENU & PRICES' : 'NOT CONNECTED'}
+            </span>
+          </div>
+
+          <div style={{ marginBottom: dataSource === 'POS' ? 10 : 0 }}>
+            <label htmlFor={posDrivenId} style={{
+              display: 'block', fontSize: 10, fontWeight: 600,
+              color: dataSource === 'POS' ? '#fcd34d' : '#64748b', marginBottom: 4,
+            }}>
+              Driven by
+            </label>
+            <select
+              id={posDrivenId}
+              value={dataSource === 'POS' ? 'POS' : 'NONE'}
+              onChange={(e) => {
+                const next = e.target.value === 'POS' ? 'POS' : 'NONE';
+                setMeta({ dataSource: next });
+                // Auto-map: flip live sync on every POS-capable menu board so
+                // the boards immediately read the connected POS. NONE → off.
+                const menuIds = zones.filter((z) => POS_LIVE_TYPES.has(z.widgetType)).map((z) => z.id);
+                if (menuIds.length > 0) {
+                  updateZones(
+                    menuIds,
+                    (z) => ({ defaultConfig: { ...(z.defaultConfig || {}), posSync: next === 'POS' } }),
+                    true,
+                  );
+                }
+              }}
+              style={{
+                width: '100%', padding: '6px 8px', borderRadius: 6,
+                border: '1px solid',
+                borderColor: dataSource === 'POS' ? '#b45309' : '#cbd5e1',
+                background: dataSource === 'POS' ? '#7c2d12' : '#ffffff',
+                color: dataSource === 'POS' ? '#fde68a' : '#334155',
+                fontSize: 11, fontWeight: 600, cursor: 'pointer', appearance: 'auto',
+              }}
+            >
+              <option value="NONE">Not connected</option>
+              <option value="POS">POS — live menu &amp; prices</option>
+            </select>
+          </div>
+
+          {dataSource === 'POS' && (
+            <div style={{
+              fontSize: 10, color: '#fcd34d', lineHeight: 1.6,
+              borderTop: '1px solid #b45309', paddingTop: 8,
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: 4, color: '#fbbf24' }}>Auto-mapped defaults:</div>
+              <div>Menu &amp; drink boards → live items from your POS</div>
+              <div>Item name / price / description / photo → POS fields</div>
+              <div>Prices &amp; sold-out items update automatically</div>
+              <div style={{ marginTop: 6, color: '#fde68a', fontStyle: 'italic' }}>
+                Click any menu board to set its category or override the mapping.
               </div>
             </div>
           )}
@@ -1668,6 +1776,92 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
 
   // Build a list of editable fields based on widget type
   const fields: React.ReactNode[] = [];
+
+  // ── Phase 2: per-element POS mapping card (menu / drink boards) ──
+  // Mirrors the Phase-1 CTS card for scoreboard elements, pointed at the
+  // connected POS. Only boards that GENUINELY read a live POS feed
+  // (POS_LIVE_TYPES) get it, so the card never claims "live" on a widget
+  // that can't sync. The live chip reflects the board's REAL state
+  // (config.posSync — exactly what the widget reads) so it never lies.
+  if (POS_LIVE_TYPES.has(zone.widgetType)) {
+    const posLive = !!cfg.posSync;
+    if (templateDataSource === 'POS') {
+      fields.push(
+        <div key="pos-mapping" style={{
+          marginBottom: 12, padding: '10px 12px', borderRadius: 8,
+          background: '#431407', border: '1px solid #b45309',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{
+              display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+              background: posLive ? '#f59e0b' : '#94a3b8', marginRight: 8, flexShrink: 0,
+            }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#fbbf24', letterSpacing: 1 }}>
+              {posLive ? 'LIVE DATA — POS FEED' : 'POS — THIS BOARD IS STATIC'}
+            </span>
+          </div>
+          <div style={{
+            display: 'inline-block', padding: '3px 8px', borderRadius: 4,
+            background: '#7c2d12', color: '#fde68a', fontSize: 10, fontWeight: 600, marginBottom: 10,
+          }}>
+            Maps to POS · item name, price, description &amp; photo
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <label htmlFor={`pos-cat-${zone.id}`} style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#fcd34d', marginBottom: 4 }}>
+              Reads from category
+            </label>
+            <input
+              id={`pos-cat-${zone.id}`}
+              type="text"
+              value={cfg.posCategory || ''}
+              placeholder="All items"
+              onChange={(e) => setField({ posCategory: e.target.value })}
+              style={{
+                width: '100%', padding: '6px 8px', boxSizing: 'border-box', borderRadius: 6,
+                border: '1px solid #b45309', background: '#7c2d12', color: '#fde68a',
+                fontSize: 11, fontWeight: 500,
+              }}
+            />
+            <span style={{ fontSize: 9, color: '#fdba74', display: 'block', marginTop: 3 }}>
+              Leave blank for every item, or match a POS category (e.g. &quot;Burgers&quot;, &quot;Drafts&quot;).
+            </span>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', fontSize: 10, fontWeight: 600, color: '#fcd34d', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={posLive}
+              onChange={(e) => setField({ posSync: e.target.checked })}
+              style={{ marginRight: 6 }}
+            />
+            Live from POS (uncheck to use the static items below)
+          </label>
+        </div>,
+      );
+    } else {
+      fields.push(
+        <div key="pos-not-connected" style={{
+          marginBottom: 12, padding: '8px 12px', borderRadius: 8,
+          background: '#f8fafc', border: '1px solid #e2e8f0',
+          display: 'flex', alignItems: 'center',
+        }}>
+          <span style={{ flex: 1, fontSize: 10, color: '#64748b' }}>
+            Not connected to your POS — items below are static.
+          </span>
+          <button
+            type="button"
+            onClick={() => { setTemplateMeta({ dataSource: 'POS' }); setField({ posSync: true }); }}
+            style={{
+              marginLeft: 8, padding: '4px 8px', borderRadius: 5,
+              border: '1px solid #f59e0b', background: '#fff7ed', color: '#b45309',
+              fontSize: 10, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            Connect POS
+          </button>
+        </div>,
+      );
+    }
+  }
 
   switch (zone.widgetType) {
     // 2026-05-16 — EXTERNAL_HTML rebrand editor. The signage / HS
