@@ -3,10 +3,22 @@
  *
  * Sprint 6 — Automated accessibility audit.
  *
- * Boots a headless Chromium, visits the 5 flagship routes, runs @axe-core
- * against each, and fails (exit 1) on any error-level violation. Warnings
- * are reported but do not fail the build yet — see docs/ACCESSIBILITY.md
- * for the allowed-warnings policy and how to tighten this gate.
+ * Boots a headless Chromium, visits the 10 flagship routes, runs @axe-core
+ * against each, and fails (exit 1) on any error-level violation.
+ *
+ * WARNING RATCHET (§18-2 fix, 2026-05-30)
+ * ----------------------------------------
+ * Moderate + minor ("warning") violations are now counted and compared against
+ * a committed baseline stored in `scripts/a11y-warning-baseline.json`.
+ * The build fails if `totalWarnings > warningBaseline` — the backlog cannot
+ * grow silently. To lower the baseline after fixing warnings:
+ *   1. Run `pnpm a11y:ci` locally against the live app.
+ *   2. Note the reported warning count.
+ *   3. Update `scripts/a11y-warning-baseline.json` with the new (lower) value.
+ *   4. Commit alongside the fix.
+ * The baseline is intentionally DOWN-only: never raise it without an explicit
+ * justification comment in the JSON. If a new route is added to ROUTES, raise
+ * the baseline by the new route's expected warnings + document the delta.
  *
  * Usage:
  *   pnpm --filter web build
@@ -15,6 +27,8 @@
  */
 import { chromium, type Browser, type Page } from '@playwright/test';
 import { AxeBuilder } from '@axe-core/playwright';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const BASE_URL = process.env.A11Y_BASE_URL || 'http://localhost:3000';
 
@@ -78,6 +92,28 @@ async function auditRoute(page: Page, route: string): Promise<Violation[]> {
   }));
 }
 
+// ─── Warning ratchet baseline ────────────────────────────────────────────
+// Loaded from the committed baseline file so it travels with the code. If
+// the file is missing (e.g. a new checkout before first CI run), we fall
+// back to a permissive default of 999 and log a loud warning so the dev
+// knows to lock it down.
+const BASELINE_FILE = path.resolve(__dirname, 'a11y-warning-baseline.json');
+let warningBaseline = 999;
+try {
+  const raw = JSON.parse(fs.readFileSync(BASELINE_FILE, 'utf-8')) as {
+    warningBaseline: number;
+    lockedAt?: string;
+    note?: string;
+  };
+  warningBaseline = raw.warningBaseline;
+  console.log(`axe warning ratchet: baseline=${warningBaseline} (locked ${raw.lockedAt ?? 'unknown'})`);
+} catch {
+  console.warn(
+    `\n⚠ Could not read ${BASELINE_FILE} — warning ratchet using permissive default (${warningBaseline}).\n` +
+    `  Run \`pnpm a11y:ci\` once against the live app, note the warning count, and commit the baseline file.\n`,
+  );
+}
+
 async function main() {
   const browser: Browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
@@ -100,14 +136,34 @@ async function main() {
   await browser.close();
 
   console.log(`\n==============================`);
-  console.log(`axe-core results: ${totalErrors} error(s), ${totalWarnings} warning(s)`);
+  console.log(`axe-core results: ${totalErrors} error(s), ${totalWarnings} warning(s) (baseline: ${warningBaseline})`);
   console.log(`==============================`);
 
   if (totalErrors > 0) {
     console.error(`\n✗ Failing build: ${totalErrors} error-level a11y violation(s).`);
     process.exit(1);
   }
-  console.log('\n✓ No error-level violations. Warnings do not fail the build (yet).');
+
+  // §18-2 warning ratchet — baseline is down-only.
+  if (totalWarnings > warningBaseline) {
+    console.error(
+      `\n✗ Failing build: ${totalWarnings} moderate/minor warning(s) exceeds the committed baseline ` +
+      `of ${warningBaseline}. New warnings introduced. Fix them or intentionally update ` +
+      `scripts/a11y-warning-baseline.json with a justified comment.`,
+    );
+    process.exit(1);
+  }
+
+  if (totalWarnings < warningBaseline) {
+    console.log(
+      `\n✓ Warnings reduced (${totalWarnings} < baseline ${warningBaseline}). ` +
+      `Consider lowering the baseline in scripts/a11y-warning-baseline.json.`,
+    );
+  } else {
+    console.log(`\n✓ Warnings at baseline (${totalWarnings}/${warningBaseline}).`);
+  }
+
+  console.log('✓ axe check passed.');
 }
 
 main().catch((e) => {

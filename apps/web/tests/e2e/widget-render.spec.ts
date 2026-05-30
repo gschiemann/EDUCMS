@@ -81,9 +81,26 @@ const WIDGET_CASES: WidgetCase[] = [
   { id: 'z-fitness',    type: 'FITNESS_CLASS_SCHEDULE',    label: 'Fitness class schedule' },
   { id: 'z-bar',        type: 'BAR_TAP_LIST',              label: 'Bar tap list' },
   { id: 'z-welcome',    type: 'ANIMATED_WELCOME',          label: 'AnimatedWelcome (flagship)' },
+
+  // ── §15-4 additions (2026-05-30): 17 new widget families (Bulletin ×4,
+  // Scrapbook ×4, Storybook ×4, HS pack ×12, MS pack ×16) had ZERO WebKit
+  // smoke. Each family uses dangerouslySetInnerHTML for CSS keyframes / SVG
+  // — one malformed CSS string kills the widget silently in Safari (the
+  // 2026-05-09 class of bug). One landscape representative per family is
+  // enough to catch that class of failure; the portrait variants share the
+  // same dangerouslySetInnerHTML block so a landscape pass de-risks the
+  // portrait too. DO NOT batch-remove; each entry is a real canary.
+  { id: 'z-bulletin',   type: 'BULLETIN_HALLWAY',          label: 'Bulletin board (hallway, rep for ×4 Bulletin themes)' },
+  { id: 'z-scrapbook',  type: 'SCRAPBOOK_HALLWAY',         label: 'Scrapbook (hallway, rep for ×4 Scrapbook themes)' },
+  { id: 'z-storybook',  type: 'STORYBOOK_HALLWAY',         label: 'Storybook (hallway, rep for ×4 Storybook themes)' },
+  { id: 'z-hs-varsity', type: 'HS_VARSITY',                label: 'HS Varsity (rep for HS pack ×12 landscape types)' },
+  { id: 'z-ms-arcade',  type: 'MS_ARCADE',                 label: 'MS Arcade (rep for MS pack ×16 landscape types)' },
 ];
 
-// Build the zones array: a 4-column × 2-row grid, each cell 25%×50%.
+// Build the zones array: 4-column grid, each cell 25%×50%. The §15-4
+// additions bring the total to 13 cases (4 rows); rows beyond the first two
+// extend below the 1080-canvas floor but offsetWidth/offsetHeight still
+// resolve correctly — the test measures DOM layout, not viewport intersection.
 function buildZones() {
   return WIDGET_CASES.map((w, i) => {
     const col = i % 4;

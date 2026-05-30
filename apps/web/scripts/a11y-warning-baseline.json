@@ -1,0 +1,5 @@
+{
+  "warningBaseline": 999,
+  "lockedAt": "2026-05-30",
+  "note": "§18-2 ratchet bootstrap (2026-05-30). Warnings were never previously counted, so this initial value is a permissive ceiling. After the first `pnpm a11y:ci` run against the live app, replace 999 with the actual reported count. The ratchet is DOWN-only: never raise this without an explicit justification comment here. Raising it without fixing the new warnings defeats the ratchet."
+}
