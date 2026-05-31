@@ -7,7 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
-import { MonitorPlay, AlertTriangle, ShieldCheck, Wifi, WifiOff, Clock, Search, X, Crosshair, Map, List } from 'lucide-react';
+import { MonitorPlay, AlertTriangle, ShieldCheck, Wifi, WifiOff, Clock, Search, X, Crosshair, Map as MapIcon, List, ChevronRight, Building2 } from 'lucide-react';
 
 /**
  * Sprint 8 command-center fleet map — upgraded to sell the product.
@@ -77,6 +77,95 @@ function classifyScreen(s: ScreenForMap, emergencyActive: boolean): StatusKey {
   const emergencyCount = s.lastCacheReport?.emergency?.count || 0;
   if (emergencyCount === 0) return 'ONLINE_NO_CACHE';
   return 'ONLINE_READY';
+}
+
+// ── Store rollup ────────────────────────────────────────────────────────────
+// A "store" is one physical location (e.g. a single QSR address) that may run
+// several devices. Operators think in locations first, devices second — so we
+// group co-located screens into a Store and let them drill down to the devices.
+// The grouping key is the screen's address (normalized) when present, else a
+// rounded lat/lng (~11 m), so screens at the same address collapse into one
+// location with no schema/setup required.
+
+export type Store = {
+  key: string;
+  label: string; // street line, e.g. "12657 Alcosta Blvd"
+  city: string | null; // "San Ramon, CA"
+  lat: number; // centroid
+  lng: number;
+  devices: ScreenForMap[];
+  status: StatusKey; // worst status across devices (drives the rollup dot)
+  fromTenant: boolean; // true if these pins are the building fallback, not real per-screen pins
+};
+
+/** Normalize an address into a stable grouping key (drops unit noise + trailing country). */
+function normalizeAddrKey(addr?: string | null): string | null {
+  if (!addr) return null;
+  const k = addr
+    .toLowerCase()
+    .replace(/,?\s*(usa|united states)\.?$/i, '')
+    .replace(/\bste\b|\bsuite\b|\bunit\b|\bapt\b|#\s*\w+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return k || null;
+}
+
+/** Split a formatted address into a short street line + a "City, ST" line. */
+function storeLabel(addr?: string | null): { label: string; city: string | null } {
+  if (!addr) return { label: 'Pinned location', city: null };
+  const parts = addr
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .filter((p) => !/^(usa|united states)\.?$/i.test(p));
+  const label = parts[0] ?? addr;
+  // Prefer "City, ST" from the next two segments when they look like one.
+  const city =
+    parts.length >= 3 ? `${parts[1]}, ${parts[2].replace(/\s*\d{5}(-\d{4})?$/, '').trim()}` : parts[1] ?? null;
+  return { label, city: city || null };
+}
+
+/** Group located screens into stores, worst-status-first then most-devices. */
+function deriveStores(located: ScreenForMap[], emergencyActive: boolean): Store[] {
+  const groups = new Map<string, ScreenForMap[]>();
+  for (const s of located) {
+    if (s.latitude == null || s.longitude == null) continue;
+    const key =
+      normalizeAddrKey(s.address) ?? `${s.latitude.toFixed(4)},${s.longitude.toFixed(4)}`;
+    const arr = groups.get(key);
+    if (arr) arr.push(s);
+    else groups.set(key, [s]);
+  }
+  const stores: Store[] = [];
+  for (const [key, devices] of groups) {
+    const lat = devices.reduce((a, s) => a + (s.latitude as number), 0) / devices.length;
+    const lng = devices.reduce((a, s) => a + (s.longitude as number), 0) / devices.length;
+    let worst: StatusKey = 'ONLINE_READY';
+    let sev = -1;
+    for (const d of devices) {
+      const st = classifyScreen(d, emergencyActive);
+      if (STATUS_SEVERITY[st] > sev) {
+        sev = STATUS_SEVERITY[st];
+        worst = st;
+      }
+    }
+    const { label, city } = storeLabel(devices[0].address);
+    stores.push({
+      key,
+      label,
+      city,
+      lat,
+      lng,
+      devices,
+      status: worst,
+      fromTenant: devices.every((d) => d.geoSource === 'tenant'),
+    });
+  }
+  stores.sort(
+    (a, b) =>
+      STATUS_SEVERITY[b.status] - STATUS_SEVERITY[a.status] || b.devices.length - a.devices.length,
+  );
+  return stores;
 }
 
 // Inline SVG paths — same as Sprint 8 (verbatim lucide-react paths).
@@ -312,13 +401,16 @@ function MarkerClusterLayer({
   return null;
 }
 
-/** Fly to a single matched screen (search-box behavior). */
-function FlyToTarget({ target }: { target: [number, number] | null }) {
+/** Fly to a matched screen or a selected store. The `nonce` lets a repeat click
+ *  on the SAME location re-trigger the fly (changing only `target` to identical
+ *  coords would not). Zoom 16 is tight enough that a store's devices separate
+ *  out of the cluster as you arrive. */
+function FlyToTarget({ target, nonce }: { target: [number, number] | null; nonce?: number }) {
   const map = useMap();
   useEffect(() => {
     if (!target) return;
-    map.flyTo(target, 15, { animate: true, duration: 0.8 });
-  }, [map, target]);
+    map.flyTo(target, 16, { animate: true, duration: 0.8 });
+  }, [map, target, nonce]);
   return null;
 }
 
@@ -334,6 +426,8 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
   const [darkMap, setDarkMap] = useState(false);
   const [query, setQuery] = useState('');
   const [flyTarget, setFlyTarget] = useState<[number, number] | null>(null);
+  const [flyNonce, setFlyNonce] = useState(0);
+  const [openStoreKey, setOpenStoreKey] = useState<string | null>(null);
 
   const located = useMemo(
     () => screens.filter(s => s.latitude != null && s.longitude != null),
@@ -344,6 +438,11 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
 
   const defaultCenter: [number, number] = points[0] ?? [39.5, -98.35];
   const defaultZoom = points.length > 0 ? 12 : 4;
+
+  // Group located screens into STORES (one physical location = one store, many
+  // devices). The rail below lists stores; clicking one flies there + reveals
+  // its devices — "top-level location, drill down to devices".
+  const stores = useMemo(() => deriveStores(located, emergencyActive), [located, emergencyActive]);
 
   // Stats for the command-center strip.
   const stats = useMemo(() => {
@@ -368,10 +467,28 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
     );
     if (matches.length === 1 && matches[0].latitude != null && matches[0].longitude != null) {
       setFlyTarget([matches[0].latitude!, matches[0].longitude!]);
+      setFlyNonce(n => n + 1);
     } else {
       setFlyTarget(null);
     }
   }, [located]);
+
+  // Store-row click: fly to the location and toggle its device drill-down.
+  const handleStoreClick = useCallback((store: Store) => {
+    setOpenStoreKey(prev => (prev === store.key ? null : store.key));
+    setFlyTarget([store.lat, store.lng]);
+    setFlyNonce(n => n + 1);
+  }, []);
+
+  // Same search box filters the rail (by store label/city or any device name).
+  const filteredStores = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return stores;
+    return stores.filter(st =>
+      `${st.label} ${st.city ?? ''}`.toLowerCase().includes(q) ||
+      st.devices.some(d => `${d.name} ${d.address ?? ''}`.toLowerCase().includes(q)),
+    );
+  }, [stores, query]);
 
   // Legend counts (same keys as Sprint 8).
   const counts = stats.counts;
@@ -380,7 +497,7 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
     <div className="space-y-3">
       {/* ── Command-center stats strip ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatTile label="Total locations" value={stats.total} tone="neutral" />
+        <StatTile label="Locations" value={stores.length} tone="neutral" sub={`${stats.total} device${stats.total === 1 ? '' : 's'}`} />
         <StatTile label="Online" value={stats.online} tone={stats.online === stats.total && stats.total > 0 ? 'ok' : 'neutral'} />
         <StatTile label="Offline" value={stats.offline} tone={stats.offline > 0 ? 'warn' : 'neutral'} />
         <StatTile label="Emergency" value={stats.emergency} tone={stats.emergency > 0 ? 'alert' : 'neutral'} />
@@ -421,7 +538,7 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
           aria-label={darkMap ? 'Switch to light map' : 'Switch to dark map'}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white shadow-sm text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
         >
-          {darkMap ? <Map className="w-3.5 h-3.5" /> : <List className="w-3.5 h-3.5" />}
+          {darkMap ? <MapIcon className="w-3.5 h-3.5" /> : <List className="w-3.5 h-3.5" />}
           {darkMap ? 'Light' : 'Dark'}
         </button>
       </div>
@@ -446,35 +563,68 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
         })}
       </div>
 
-      {/* ── Map ── */}
-      <div className="relative h-[60dvh] max-h-[600px] sm:h-[600px] sm:max-h-none w-full rounded-xl overflow-hidden border border-slate-200 shadow-sm">
-        <MapContainer
-          center={defaultCenter}
-          zoom={defaultZoom}
-          scrollWheelZoom
-          className="h-full w-full"
-        >
-          <TileLayer
-            key={darkMap ? 'dark' : 'light'}
-            url={darkMap ? CARTO_DARK : CARTO_VOYAGER}
-            attribution={CARTO_ATTRIBUTION}
-            subdomains="abcd"
-            maxZoom={20}
-            // detectRetina: resolves {r} to '@2x' on HiDPI screens.
-            // CARTO Voyager + Dark Matter both serve retina tiles at {r}.
-            detectRetina
-          />
-          <FitBounds points={points} />
-          <FitAllControl points={points} />
-          <MarkerClusterLayer
-            screens={located}
-            emergencyActive={emergencyActive}
-            query={query}
-            onScreenClick={onScreenClick}
-          />
-          <FlyToTarget target={flyTarget} />
-          {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
-        </MapContainer>
+      {/* ── Locations rail + Map (side-by-side on desktop, stacked on mobile) ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-3">
+        {/* Locations rail — top-level stores; click to fly there + drill into devices */}
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col overflow-hidden max-h-[300px] lg:max-h-none lg:h-[600px]">
+          <div className="px-3 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              <Building2 className="w-3.5 h-3.5" aria-hidden /> Locations
+            </span>
+            <span className="text-[11px] font-mono text-slate-400">{filteredStores.length}</span>
+          </div>
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+            {filteredStores.length === 0 ? (
+              <div className="px-3 py-8 text-center text-xs text-slate-400">
+                {located.length === 0
+                  ? 'No screens have a location yet.'
+                  : 'No locations match your search.'}
+              </div>
+            ) : (
+              filteredStores.map(store => (
+                <StoreRow
+                  key={store.key}
+                  store={store}
+                  open={openStoreKey === store.key}
+                  emergencyActive={emergencyActive}
+                  onToggle={() => handleStoreClick(store)}
+                  onDeviceClick={onScreenClick}
+                />
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Map */}
+        <div className="relative h-[60dvh] max-h-[600px] sm:h-[600px] sm:max-h-none w-full rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+          <MapContainer
+            center={defaultCenter}
+            zoom={defaultZoom}
+            scrollWheelZoom
+            className="h-full w-full"
+          >
+            <TileLayer
+              key={darkMap ? 'dark' : 'light'}
+              url={darkMap ? CARTO_DARK : CARTO_VOYAGER}
+              attribution={CARTO_ATTRIBUTION}
+              subdomains="abcd"
+              maxZoom={20}
+              // detectRetina: resolves {r} to '@2x' on HiDPI screens.
+              // CARTO Voyager + Dark Matter both serve retina tiles at {r}.
+              detectRetina
+            />
+            <FitBounds points={points} />
+            <FitAllControl points={points} />
+            <MarkerClusterLayer
+              screens={located}
+              emergencyActive={emergencyActive}
+              query={query}
+              onScreenClick={onScreenClick}
+            />
+            <FlyToTarget target={flyTarget} nonce={flyNonce} />
+            {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
+          </MapContainer>
+        </div>
       </div>
 
       {/* ── Desktop legend (below map) ── */}
@@ -579,7 +729,7 @@ const TONE_STYLES: Record<Tone, { bg: string; ring: string; text: string; num: s
   neutral: { bg: 'bg-white',      ring: 'ring-slate-100',   text: 'text-slate-500',   num: 'text-slate-800' },
 };
 
-function StatTile({ label, value, tone }: { label: string; value: number; tone: Tone }) {
+function StatTile({ label, value, tone, sub }: { label: string; value: number; tone: Tone; sub?: string }) {
   const s = TONE_STYLES[tone];
   return (
     <div className={`${s.bg} ring-1 ${s.ring} rounded-2xl px-4 py-3.5 flex flex-col gap-1 shadow-sm`}>
@@ -593,6 +743,110 @@ function StatTile({ label, value, tone }: { label: string; value: number; tone: 
         <span className={`text-[10px] font-bold uppercase tracking-wider ${s.text}`}>{label}</span>
       </div>
       <span className={`text-3xl font-black ${s.num} leading-none`}>{value}</span>
+      {sub && <span className="text-[10px] font-medium text-slate-400 mt-0.5">{sub}</span>}
+    </div>
+  );
+}
+
+// ── Store row (Locations rail) ──────────────────────────────────────────────
+// A collapsible top-level location. Click flies the map there; expanding lists
+// the devices at that location, each clickable to open the screen.
+
+/** Short, human status word for a device sub-row. */
+function deviceStatusWord(st: StatusKey): string {
+  switch (st) {
+    case 'ONLINE_READY':
+    case 'ONLINE_NO_CACHE':
+      return 'online';
+    case 'OFFLINE':
+      return 'offline';
+    case 'STALE':
+      return 'stale';
+    case 'EMERGENCY':
+      return 'alert';
+    case 'PENDING':
+      return 'unpaired';
+  }
+}
+
+function StoreRow({
+  store,
+  open,
+  emergencyActive,
+  onToggle,
+  onDeviceClick,
+}: {
+  store: Store;
+  open: boolean;
+  emergencyActive: boolean;
+  onToggle: () => void;
+  onDeviceClick?: (id: string) => void;
+}) {
+  const meta = STATUS_META[store.status];
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={`w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-slate-50 transition-colors ${open ? 'bg-slate-50' : ''}`}
+      >
+        <span
+          className="inline-flex shrink-0 w-2.5 h-2.5 rounded-full ring-2 ring-white shadow"
+          style={{ background: meta.color }}
+          aria-label={meta.label}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span className="block text-xs font-semibold text-slate-700 truncate">{store.label}</span>
+            {store.fromTenant && (
+              <span
+                className="shrink-0 text-[8px] font-bold uppercase tracking-wide text-indigo-500 bg-indigo-50 rounded px-1 py-0.5"
+                title="No per-device pin yet — showing the building location."
+              >
+                building
+              </span>
+            )}
+          </span>
+          {store.city && <span className="block text-[10px] text-slate-400 truncate">{store.city}</span>}
+        </span>
+        <span className="shrink-0 text-[10px] font-mono text-slate-400">
+          {store.devices.length} {store.devices.length === 1 ? 'device' : 'devices'}
+        </span>
+        <ChevronRight
+          className={`shrink-0 w-3.5 h-3.5 text-slate-300 transition-transform ${open ? 'rotate-90' : ''}`}
+          aria-hidden
+        />
+      </button>
+      {open && (
+        <div className="bg-slate-50/60 pb-1.5">
+          {store.devices.map(d => {
+            const st = classifyScreen(d, emergencyActive);
+            const dm = STATUS_META[st];
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => onDeviceClick?.(d.id)}
+                className="w-full text-left pl-7 pr-3 py-1.5 flex items-center gap-2 hover:bg-white transition-colors"
+              >
+                <span
+                  className="inline-block w-2 h-2 rounded-full shrink-0"
+                  style={{ background: dm.color }}
+                  aria-hidden
+                />
+                <span className="min-w-0 flex-1 text-[11px] text-slate-600 truncate">{d.name}</span>
+                <span
+                  className="shrink-0 text-[9px] uppercase tracking-wide font-bold"
+                  style={{ color: dm.color }}
+                >
+                  {deviceStatusWord(st)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
