@@ -10,7 +10,11 @@ import { GeocodingService } from './geocoding.service';
  * so the (potentially paid) Google key stays server-only. Authed + rate-limited
  * because it proxies an external, metered service.
  */
-@Controller('geocode')
+// NOTE: this app has NO global prefix — every controller bakes in `api/v1`
+// (see health/screens/etc.). Must be 'api/v1/geocode', NOT 'geocode', or the
+// frontend's `${API_URL}/geocode` (API_URL already ends in /api/v1) 404s and
+// the picker silently falls back to street-level OSM. (regression 2026-05-31)
+@Controller('api/v1/geocode')
 @UseGuards(JwtAuthGuard)
 export class GeocodingController {
   constructor(private readonly geocoding: GeocodingService) {}
