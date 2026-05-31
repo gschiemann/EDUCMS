@@ -1851,10 +1851,16 @@ export default function PlaylistsPage() {
 
         {/* ─── Asset Picker Modal ─── */}
         {showPicker && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Choose Media">
-            <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => setShowPicker(false)} />
+          <div
+            className="fixed top-0 right-0 bottom-0 left-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            style={{ paddingTop: 'max(16px, env(safe-area-inset-top, 0px))' }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose Media"
+          >
+            <button className="absolute top-0 right-0 bottom-0 left-0 cursor-default" aria-label="Close dialog" onClick={() => setShowPicker(false)} />
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col relative z-10">
-              
+
               {/* Modal Header */}
               <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white z-10">
                 <div className="flex items-center gap-3">

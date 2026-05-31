@@ -144,7 +144,19 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             // pb-24 on mobile reserves room for MobileTabBar's 56px height
             // + safe-area-inset. md:pb-8 drops the extra padding once the
             // sidebar takes over and the tab bar is hidden.
-            "flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 pb-24 md:pb-8 transition-all duration-300 relative z-10",
+            //
+            // z-index intentionally NOT set here (was z-10). Setting a
+            // z-index on <main> creates a stacking context which traps
+            // every fixed/absolute modal inside it — those modals'
+            // z-index values are then compared only within main's context
+            // (z-10) against TopToolbar's z-20, so all in-page modals
+            // lose to the toolbar no matter how high their own z-index is.
+            // Removing z-10 lets fixed modals (z-50 picker, z-[10000]
+            // dialogs) compete at the parent stacking-context level where
+            // they correctly win over TopToolbar (z-20). The decorative
+            // blobs use -z-0 and still paint behind page content via DOM
+            // order (they precede main in the tree) so nothing regresses.
+            "flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 pb-24 md:pb-8 transition-all duration-300 relative",
             isEmergencyActive ? "pointer-events-none opacity-50 blur-sm" : ""
           )}
         >
