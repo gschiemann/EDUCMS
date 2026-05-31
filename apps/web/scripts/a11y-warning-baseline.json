@@ -1,5 +1,5 @@
 {
-  "warningBaseline": 999,
-  "lockedAt": "2026-05-30",
-  "note": "§18-2 ratchet bootstrap (2026-05-30). Warnings were never previously counted, so this initial value is a permissive ceiling. After the first `pnpm a11y:ci` run against the live app, replace 999 with the actual reported count. The ratchet is DOWN-only: never raise this without an explicit justification comment here. Raising it without fixing the new warnings defeats the ratchet."
+  "warningBaseline": 1,
+  "lockedAt": "2026-05-31",
+  "note": "Real count locked 2026-05-31 from the CI a11y run (audit §18 P0): 0 errors, 1 warning across all 10 audited routes. The 999 bootstrap ceiling is retired — the gate now actually blocks regressions (any new moderate/minor warning fails CI). DOWN-only: never raise without a justification comment here AND fixing the new warning(s). COVERAGE CAVEAT: the CI harness runs UNAUTHENTICATED (no DB seed / login), so authed tenant routes render their login/shell state — this count covers public renders. Auth-ing the harness + adding the builder route to ROUTES is the follow-up to widen coverage (audit §18 P1)."
 }
