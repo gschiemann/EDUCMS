@@ -2,7 +2,7 @@
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel } from '@/hooks/use-api';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
@@ -1330,6 +1330,7 @@ export default function ScreensPage() {
   };
   const createGroup = useCreateScreenGroup();
   const deleteGroup = useDeleteScreenGroup();
+  const updateGroup = useUpdateScreenGroup();
   const deleteScreen = useDeleteScreen();
   const updateScreen = useUpdateScreen();
   const forceApkUpdate = useForceApkUpdate();
@@ -1411,6 +1412,9 @@ export default function ScreensPage() {
   // manifest call, not typed by the operator at pair time.
   const [editingScreen, setEditingScreen] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  // Inline screen-GROUP rename (mirrors the per-screen click-to-rename below).
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editGroupName, setEditGroupName] = useState('');
   const [showQrForScan, setShowQrForScan] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
@@ -1754,7 +1758,38 @@ export default function ScreensPage() {
                       <MonitorPlay className="w-5 h-5" style={{ color: 'var(--brand-primary, #4f46e5)' }} />
                     </div>
                     <div>
-                      <h3 className="text-[15px] font-bold text-slate-800">{group.name}</h3>
+                      {editingGroupId === group.id ? (
+                        <input
+                          autoFocus
+                          value={editGroupName}
+                          onChange={(e) => setEditGroupName(e.target.value)}
+                          onBlur={() => {
+                            const n = editGroupName.trim();
+                            if (n && n !== group.name) updateGroup.mutate({ id: group.id, name: n });
+                            setEditingGroupId(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const n = editGroupName.trim();
+                              if (n && n !== group.name) updateGroup.mutate({ id: group.id, name: n });
+                              setEditingGroupId(null);
+                            } else if (e.key === 'Escape') {
+                              setEditingGroupId(null);
+                            }
+                          }}
+                          aria-label="Group name"
+                          className="text-[15px] font-bold text-slate-800 bg-white border border-indigo-300 rounded-lg px-2 py-0.5 outline-none focus:ring-2 focus:ring-indigo-400 max-w-[220px]"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { setEditingGroupId(group.id); setEditGroupName(group.name); }}
+                          title="Click to rename group"
+                          className="text-[15px] font-bold text-slate-800 text-left hover:text-indigo-600 transition-colors"
+                        >
+                          {group.name}
+                        </button>
+                      )}
                       <p className="text-xs font-medium text-slate-400 mt-0.5">
                         {screens.length} {screens.length === 1 ? 'screen' : 'screens'}
                         {online > 0 && <span className="text-emerald-500 ml-1.5">• {online} online</span>}

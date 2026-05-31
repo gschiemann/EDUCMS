@@ -71,6 +71,36 @@ export function useDeleteScreenGroup() {
   });
 }
 
+export function useUpdateScreenGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name, description }: { id: string; name?: string; description?: string }) =>
+      apiFetch(`/screen-groups/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name, description }),
+      }),
+    // Optimistic rename so the new name shows instantly (the operator is
+    // typing it — don't make them wait on the round-trip).
+    onMutate: async ({ id, name }) => {
+      await qc.cancelQueries({ queryKey: ['screen-groups'] });
+      const prev = qc.getQueryData<any>(['screen-groups']);
+      if (name !== undefined) {
+        qc.setQueryData<any>(['screen-groups'], (old: any) =>
+          Array.isArray(old) ? old.map((g: any) => (g?.id === id ? { ...g, name } : g)) : old,
+        );
+      }
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['screen-groups'], ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['screen-groups'] });
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+    },
+  });
+}
+
 export function useAssignScreens() {
   const qc = useQueryClient();
   return useMutation({
