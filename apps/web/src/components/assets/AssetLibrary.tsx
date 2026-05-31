@@ -2,6 +2,7 @@
 
 import { useAssets, useApproveAsset, useRejectAsset } from '@/hooks/use-api';
 import { FileImage, FileVideo, CheckCircle2, Clock, XCircle, Loader2 } from 'lucide-react';
+import { transformedImageUrl } from '@/lib/asset-image';
 
 const STATUS_STYLES: Record<string, { label: string; className: string }> = {
   PUBLISHED: { label: 'Published', className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' },
@@ -36,7 +37,9 @@ export function AssetLibrary() {
         const isVideo = asset.mimeType?.startsWith('video');
         const isImage = asset.mimeType?.startsWith('image');
         const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
-        const thumbUrl = isImage ? (asset.fileUrl?.startsWith('http') ? asset.fileUrl : `${apiBase}${asset.fileUrl}`) : null;
+        const rawThumbUrl = isImage ? (asset.fileUrl?.startsWith('http') ? asset.fileUrl : `${apiBase}${asset.fileUrl}`) : null;
+        // 2026-05-30 — EGRESS FIX: 48px thumbnail → 96px transform
+        const thumbUrl = rawThumbUrl ? transformedImageUrl(rawThumbUrl, { width: 96, quality: 60 }) : null;
 
         return (
           <div key={asset.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">

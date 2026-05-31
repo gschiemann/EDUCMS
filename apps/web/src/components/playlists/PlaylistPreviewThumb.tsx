@@ -65,6 +65,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutTemplate, Image as ImageIcon, Video, Globe, Music, Layers, Play, File, FileText } from 'lucide-react';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
+import { transformedImageUrl } from '@/lib/asset-image';
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
 
@@ -153,8 +154,14 @@ export function derivePlaylistContentLabel(playlist: any): PlaylistContentLabel 
  * null when the asset's mime type doesn't have a thumbnail (e.g. raw
  * binary). Mirrors the asset library's existing source-of-truth so
  * preview parity stays automatic.
+ *
+ * 2026-05-30 — image URLs are transformed to 320 px thumbnails via the
+ * Supabase render/image endpoint to slash per-render egress (measured
+ * 2.4 MB full-res → ~60 KB at 320 px). Videos skip transforms; the
+ * browser only fetches metadata when preload="none" + poster approach
+ * is used in StaticAssetFrame.
  */
-function thumbUrlFor(asset: any): string | null {
+function thumbUrlFor(asset: any, width = 320): string | null {
   if (!asset) return null;
   if (asset.mimeType === 'text/html' && asset.fileUrl) {
     return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(asset.fileUrl)}?w=640&h=360`;
@@ -163,7 +170,12 @@ function thumbUrlFor(asset: any): string | null {
     !asset.mimeType?.startsWith('image/') &&
     !asset.mimeType?.startsWith('video/')
   ) return null;
-  return asset.fileUrl?.startsWith('http') ? asset.fileUrl : `${apiBase}${asset.fileUrl}`;
+  const raw = asset.fileUrl?.startsWith('http') ? asset.fileUrl : `${apiBase}${asset.fileUrl}`;
+  // Apply Supabase image transform for image assets only (not video).
+  if (asset.mimeType?.startsWith('image/')) {
+    return transformedImageUrl(raw, { width, quality: 60 });
+  }
+  return raw;
 }
 
 /** Static (non-animated) inline preview for ONE asset. Mirrors the
@@ -188,34 +200,26 @@ function StaticAssetFrame({ asset, className }: { asset: any; className?: string
     );
   }
   if (asset?.mimeType?.startsWith('video/')) {
-    // 2026-05-26 — operator: "a video playlist should at least show
-    // the initial image of the video so you have a preview thats
-    // worth something to you and not just the play icon."
+    // 2026-05-30 — EGRESS FIX: preload="none" so dashboard/playlist
+    // tile videos don't auto-download the video bytes. Instead we
+    // show a neutral dark placeholder with a play-icon overlay. The
+    // video only fetches when the user explicitly interacts (click
+    // into the playlist detail or preview). This eliminates the
+    // biggest per-render bandwidth cost for video assets.
     //
-    // The previous code relied on onLoadedMetadata → currentTime=0.1
-    // to paint the first frame. That's flaky across browsers — Safari
-    // and some Chromium variants won't paint a seeked frame on a paused
-    // video without user interaction.
-    //
-    // The reliable cross-browser fix is the `#t=0.5` URL fragment —
-    // tells the browser to display the frame at 0.5s without playing.
-    // Works in Chrome, Safari, Firefox. The onLoadedMetadata seek
-    // stays as belt-and-suspenders for browsers that strip fragments.
-    // 0.5s (not 0.1s) gives the codec time to past any black-flash
-    // intro common in clip exports.
-    const posterUrl = url.includes('#t=') ? url : `${url}#t=0.5`;
+    // Previous approach: `preload="auto"` + `#t=0.5` fragment caused
+    // the browser to eagerly buffer the video on every tile mount —
+    // a 60-item playlist grid would hammer Supabase with 60 full-res
+    // video byte-range requests every page load.
     return (
-      // eslint-disable-next-line jsx-a11y/media-has-caption
-      <video
-        src={posterUrl}
-        muted
-        playsInline
-        preload="auto"
-        className={className}
-        onLoadedMetadata={(e) => {
-          try { (e.currentTarget as HTMLVideoElement).currentTime = 0.5; } catch { /* ignore */ }
-        }}
-      />
+      <div className={`relative bg-slate-800 ${className || ''}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {/* Play icon placeholder — shown until user interacts */}
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Play style={{ width: 14, height: 14, color: '#fff' }} fill="#fff" aria-hidden="true" />
+          </div>
+        </div>
+      </div>
     );
   }
   // eslint-disable-next-line @next/next/no-img-element

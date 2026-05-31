@@ -16,6 +16,7 @@ import { usePendingAssets, useApproveAsset, useRejectAsset } from '@/hooks/use-a
 import { useAppStore } from '@/lib/store';
 import { RoleGate } from '@/components/RoleGate';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { transformedImageUrl } from '@/lib/asset-image';
 
 function typeIcon(mime: string | undefined) {
   if (!mime) return FileText;
@@ -118,7 +119,8 @@ export default function ReviewQueuePage() {
                       <div className="flex-shrink-0 w-20 h-20 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden">
                         {isImage && a.fileUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={a.fileUrl} alt="" className="w-full h-full object-cover" />
+                          // 2026-05-30 — EGRESS FIX: 80px review thumb → 160px transform
+                          <img src={transformedImageUrl(a.fileUrl, { width: 160, quality: 60 })} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <Icon className="w-7 h-7 text-slate-400" />
                         )}

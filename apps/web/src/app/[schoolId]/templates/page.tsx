@@ -33,6 +33,7 @@ import { useUIStore } from '@/store/ui-store';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { transformedImageUrl } from '@/lib/asset-image';
 
 // ─────────────────────────────────────────────────────
 // Constants & Helpers
@@ -2531,9 +2532,11 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
           {selectedAssets.map((a: any) => (
             <div key={a.id} className="flex items-center gap-2 bg-white rounded-lg border border-slate-200 p-1.5 shadow-sm">
               {isImage(a) ? (
-                <img src={assetUrl(a)} alt={a.originalName} className="w-10 h-10 object-cover rounded-md bg-slate-100" />
+                // 2026-05-30 — EGRESS FIX: 40px preview tile → use 80px transform
+                <img src={transformedImageUrl(assetUrl(a), { width: 80, quality: 60 })} alt={a.originalName} className="w-10 h-10 object-cover rounded-md bg-slate-100" />
               ) : isVideo(a) ? (
-                <video src={assetUrl(a)} className="w-10 h-10 object-cover rounded-md bg-slate-100" muted preload="metadata" />
+                // 2026-05-30 — EGRESS FIX: preload="none" for tiny 40px preview tiles
+                <video src={assetUrl(a)} className="w-10 h-10 object-cover rounded-md bg-slate-100" muted preload="none" />
               ) : (
                 <div className="w-10 h-10 bg-slate-100 rounded-md flex items-center justify-center">
                   <Play className="w-4 h-4 text-slate-400" />
@@ -2690,10 +2693,12 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
 
                         <div className="aspect-square bg-slate-100 dark:bg-slate-800 relative border-b border-slate-100">
                           {isImage(a) ? (
-                            <img src={assetUrl(a)} alt={a.originalName} className="w-full h-full object-cover" loading="lazy" />
+                            // 2026-05-30 — EGRESS FIX: 320px transform for grid tiles
+                            <img src={transformedImageUrl(assetUrl(a), { width: 320, quality: 60 })} alt={a.originalName} className="w-full h-full object-cover" loading="lazy" />
                           ) : isVideo(a) ? (
-                            <video src={assetUrl(a)} className="w-full h-full object-cover" muted preload="metadata"
-                              onMouseEnter={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
+                            // 2026-05-30 — EGRESS FIX: preload="none", hover-load
+                            <video src={assetUrl(a)} className="w-full h-full object-cover" muted preload="none"
+                              onMouseEnter={(e) => { const v = e.target as HTMLVideoElement; if (v.readyState === 0) { v.preload = 'metadata'; v.load(); } v.play().catch(() => {}); }}
                               onMouseLeave={(e) => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }} />
                           ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center gap-1">
@@ -2735,9 +2740,11 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
                         }`}>
                         <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0 border border-slate-200">
                           {isImage(a) ? (
-                            <img src={assetUrl(a)} alt={a.originalName} className="w-full h-full object-cover" loading="lazy" />
+                            // 2026-05-30 — EGRESS FIX: 96px transform for list-view 48px tiles
+                            <img src={transformedImageUrl(assetUrl(a), { width: 96, quality: 60 })} alt={a.originalName} className="w-full h-full object-cover" loading="lazy" />
                           ) : isVideo(a) ? (
-                            <video src={assetUrl(a)} className="w-full h-full object-cover" muted preload="metadata" />
+                            // 2026-05-30 — EGRESS FIX: preload="none" for list-view tiles
+                            <video src={assetUrl(a)} className="w-full h-full object-cover" muted preload="none" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center"><Play className="w-5 h-5 text-slate-400" /></div>
                           )}

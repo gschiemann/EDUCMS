@@ -40,6 +40,7 @@ import { MobileDashboard } from '@/components/dashboard/MobileDashboard';
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
+import { transformedImageUrl } from '@/lib/asset-image';
 
 export default function DashboardPage() {
   const isMobile = useIsMobile();
@@ -798,7 +799,8 @@ export default function DashboardPage() {
                     <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
                       {a.fileUrl && /\.(png|jpg|jpeg|gif|webp)$/i.test(a.fileUrl) ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={a.fileUrl} alt="" className="w-full h-full object-cover" />
+                        // 2026-05-30 — EGRESS FIX: 40px pending-asset thumb → 80px transform
+                        <img src={transformedImageUrl(a.fileUrl, { width: 80, quality: 60 })} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <ImageIcon className="w-4 h-4 text-slate-400" />
                       )}

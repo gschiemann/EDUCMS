@@ -127,6 +127,7 @@ import { CSS as DndCss } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { transformedImageUrl } from '@/lib/asset-image';
 
 // ─── Shared constants ──────────────────────────────────────────────────
 
@@ -166,7 +167,7 @@ interface Props {
 
 // ─── Small helpers ─────────────────────────────────────────────────────
 
-function assetThumbUrl(asset: any): string | null {
+function assetThumbUrl(asset: any, width = 320): string | null {
   if (!asset) return null;
   if (asset.mimeType === 'text/html' && asset.fileUrl) {
     return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(asset.fileUrl)}?w=640&h=360`;
@@ -174,7 +175,13 @@ function assetThumbUrl(asset: any): string | null {
   if (!asset.mimeType?.startsWith('image/') && !asset.mimeType?.startsWith('video/')) {
     return null;
   }
-  return asset.fileUrl?.startsWith('http') ? asset.fileUrl : `${apiBase}${asset.fileUrl}`;
+  const raw = asset.fileUrl?.startsWith('http') ? asset.fileUrl : `${apiBase}${asset.fileUrl}`;
+  // 2026-05-30 — EGRESS FIX: transform image thumbnails to the requested
+  // width via Supabase's render/image endpoint. Video URLs pass through.
+  if (asset.mimeType?.startsWith('image/')) {
+    return transformedImageUrl(raw, { width, quality: 60 });
+  }
+  return raw;
 }
 
 function mimeIcon(mimeType?: string) {
@@ -222,26 +229,14 @@ function MiniAssetThumb({ asset }: { asset: any }) {
     );
   }
   if (asset?.mimeType?.startsWith('video/')) {
+    // 2026-05-30 — EGRESS FIX: preload="none" so wizard picker tiles
+    // don't auto-download video bytes. Show a dark box with play icon.
     return (
-      // eslint-disable-next-line jsx-a11y/media-has-caption
-      <video
-        src={url}
-        muted
-        playsInline
-        preload="metadata"
-        // 2026-05-26 — #t=0.5 hash makes the first-frame poster paint
-        // in every browser (Safari + Firefox honor the Media Fragments
-        // URI fragment, Chrome already showed it via the onLoadedMetadata
-        // currentTime hack). Belt + suspenders.
-        className="w-full h-full object-cover"
-        onLoadedMetadata={(e) => {
-          try {
-            (e.currentTarget as HTMLVideoElement).currentTime = 0.1;
-          } catch {
-            /* noop */
-          }
-        }}
-      />
+      <div className="w-full h-full bg-slate-800 flex items-center justify-center">
+        <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Play style={{ width: 12, height: 12, color: '#fff' }} fill="#fff" aria-hidden="true" />
+        </div>
+      </div>
     );
   }
   return (

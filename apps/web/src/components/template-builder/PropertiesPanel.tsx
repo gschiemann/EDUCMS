@@ -10,6 +10,7 @@ import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinat
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { useBuilderStore } from './useBuilderStore';
 import { widgetLabel } from './constants';
+import { transformedImageUrl } from '@/lib/asset-image';
 import { ALL_V2_WIDGETS } from '@/components/widgets/v2/registry';
 // 2026-05-26 — exported map of CTS celebration cue id → human label.
 // Used by the SCOREBOARD case below to render the cue-deck reference
@@ -7762,9 +7763,11 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
           <div className="relative w-14 h-14 rounded border border-slate-200 overflow-hidden bg-slate-100 shrink-0">
             {kind === 'image' ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={resolveAssetUrl(value)} alt="" className="w-full h-full object-cover" />
+              // 2026-05-30 — EGRESS FIX: 56px preview → 112px transform
+              <img src={transformedImageUrl(resolveAssetUrl(value), { width: 112, quality: 60 })} alt="" className="w-full h-full object-cover" />
             ) : (
-              <video src={resolveAssetUrl(value)} className="w-full h-full object-cover" muted />
+              // 2026-05-30 — EGRESS FIX: preload="none" for 56px video preview
+              <video src={resolveAssetUrl(value)} className="w-full h-full object-cover" muted preload="none" />
             )}
             <button
               type="button"
@@ -7935,9 +7938,11 @@ function SortableAssetRow({
       </button>
       {kind === 'image' ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={resolveAssetUrl(url)} alt="" className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" />
+        // 2026-05-30 — EGRESS FIX: 40px thumbnail → 80px transform
+        <img src={transformedImageUrl(resolveAssetUrl(url), { width: 80, quality: 60 })} alt="" className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" />
       ) : (
-        <video src={resolveAssetUrl(url)} className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" muted />
+        // 2026-05-30 — EGRESS FIX: preload="none" for 40px video thumbnail
+        <video src={resolveAssetUrl(url)} className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" muted preload="none" />
       )}
       <span className="flex-1 text-[10px] text-slate-500 truncate font-mono">{url.split('/').pop()}</span>
       <button type="button" onClick={onRemove} className="text-[12px] text-rose-500 hover:text-rose-700 px-1.5" aria-label="Remove">×</button>
@@ -7995,8 +8000,9 @@ function PhotosArrayField({ value, onChange }: { value: Array<{ url?: string; ca
               aria-label={photo.url ? 'Replace image' : 'Pick image'}
             >
               {photo.url ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={resolveAssetUrl(photo.url)} alt="" className="w-full h-full object-cover" />
+                // eslint-disable-next-line @next/next/no-img-element
+                // 2026-05-30 — EGRESS FIX: 48px photo thumb → 96px transform
+                <img src={transformedImageUrl(resolveAssetUrl(photo.url), { width: 96, quality: 60 })} alt="" className="w-full h-full object-cover" />
               ) : (
                 <span className="text-[18px] text-slate-400">+</span>
               )}
@@ -8301,9 +8307,11 @@ export function AssetLibraryModal({
                   >
                     {kind === 'image' ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={resolveAssetUrl(url)} alt={a.originalName || ''} className="w-full h-full object-cover" />
+                      // 2026-05-30 — EGRESS FIX: asset picker grid tiles → 320px transform
+                      <img src={transformedImageUrl(resolveAssetUrl(url), { width: 320, quality: 60 })} alt={a.originalName || ''} className="w-full h-full object-cover" />
                     ) : (
-                      <video src={resolveAssetUrl(url)} className="w-full h-full object-cover" muted />
+                      // 2026-05-30 — EGRESS FIX: preload="none" for video picker tiles
+                      <video src={resolveAssetUrl(url)} className="w-full h-full object-cover" muted preload="none" />
                     )}
                     {multi && (
                       <div className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-md border-2 flex items-center justify-center text-[12px] font-bold ${isPicked ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white/80 border-white text-transparent'}`}>
@@ -8974,7 +8982,8 @@ function LunchEmojiPicker({ value, onChange }: { value: string | undefined; onCh
         title="Pick emoji / upload"
       >
         {isUrl
-          ? <img src={current} alt="" className="w-full h-full object-contain" />
+          // 2026-05-30 — EGRESS FIX: 56px food icon preview → 112px transform
+          ? <img src={transformedImageUrl(current, { width: 112, quality: 60 })} alt="" className="w-full h-full object-contain" />
           : <span>{current || '🍽️'}</span>}
       </button>
       {open && (
@@ -9071,7 +9080,8 @@ function LunchEmojiPicker({ value, onChange }: { value: string | undefined; onCh
               />
               {isUrl && (
                 <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
-                  <img src={current} alt="" className="w-10 h-10 object-contain rounded border border-slate-200" />
+                  {/* 2026-05-30 — EGRESS FIX: 40px food icon current → 80px transform */}
+                  <img src={transformedImageUrl(current, { width: 80, quality: 60 })} alt="" className="w-10 h-10 object-contain rounded border border-slate-200" />
                   <button
                     type="button"
                     onClick={() => { onChange('🍽️'); setOpen(false); }}

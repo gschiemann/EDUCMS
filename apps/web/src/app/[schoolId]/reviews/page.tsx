@@ -20,6 +20,7 @@ import { Check, X, Inbox, ArrowLeft, Loader2 } from 'lucide-react';
 import { useSubmissions, useSubmission, useDecideSubmission, type SubmissionRow } from '@/hooks/use-api';
 import { appAlert } from '@/components/ui/app-dialog';
 import { useUIStore } from '@/store/ui-store';
+import { transformedImageUrl } from '@/lib/asset-image';
 
 export default function ReviewsPage({ params }: { params: Promise<{ schoolId: string }> }) {
   const { schoolId } = use(params);
@@ -222,7 +223,8 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
               <div key={a.id} className="bg-white rounded-lg border border-slate-200 p-2">
                 {a.mimeType?.startsWith('image/') ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.fileUrl} alt={a.originalName || ''} className="w-full h-24 object-cover rounded" />
+                  // 2026-05-30 — EGRESS FIX: reviews grid ~320px wide → 320px transform
+                  <img src={transformedImageUrl(a.fileUrl, { width: 320, quality: 60 })} alt={a.originalName || ''} className="w-full h-24 object-cover rounded" />
                 ) : (
                   <div className="w-full h-24 bg-slate-100 rounded flex items-center justify-center text-[10px] text-slate-500 uppercase font-bold">
                     {a.mimeType?.split('/')[0] || 'file'}

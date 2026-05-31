@@ -10,6 +10,7 @@ import { clog } from '@/lib/client-logger';
 import { FolderPicker } from '@/components/assets/FolderPicker';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { transformedImageUrl } from '@/lib/asset-image';
 
 // Match the server limit (apps/api/src/assets/assets.controller.ts).
 // 200MB was rejecting any reasonably-sized video before it even tried to
@@ -515,7 +516,14 @@ export default function AssetsPage() {
       return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(a.fileUrl)}?w=640&h=360`;
     }
     if (!a.mimeType?.startsWith('image/') && !a.mimeType?.startsWith('video/')) return null;
-    return a.fileUrl?.startsWith('http') ? a.fileUrl : `${apiBase}${a.fileUrl}`;
+    const raw = a.fileUrl?.startsWith('http') ? a.fileUrl : `${apiBase}${a.fileUrl}`;
+    // 2026-05-30 — EGRESS FIX: use Supabase render/image transform for
+    // image thumbnails (~320 px tiles) to avoid downloading full-res
+    // assets for every grid cell. Video thumbnails skip transforms.
+    if (a.mimeType?.startsWith('image/')) {
+      return transformedImageUrl(raw, { width: 320, quality: 60 });
+    }
+    return raw;
   };
   const isVideo = (a: any) => a.mimeType?.startsWith('video/');
   const isUrl = (a: any) => a.mimeType === 'text/html';
@@ -1014,24 +1022,27 @@ export default function AssetsPage() {
                 >
                 <div className="aspect-video bg-slate-50 flex items-center justify-center relative overflow-hidden">
                   {thumb && isVideo(a) ? (
+                    // 2026-05-30 — EGRESS FIX: preload="none" so video tiles
+                    // don't auto-download bytes on page mount. Show a dark
+                    // placeholder with play icon; preload metadata + seek on
+                    // hover so a real first frame appears without autoplay.
                     <video
                       src={thumb}
                       muted
                       playsInline
-                      preload="metadata"
+                      preload="none"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      // 2026-05-13 — seek-to-frame-1 hack so a freshly-
-                      // uploaded video shows a real preview without
-                      // requiring a hover or page reload. Without
-                      // this the browser leaves a black/empty <video>
-                      // box until the user mouses over and triggers
-                      // .play(). Operator: "when i upload a video
-                      // asset it doesnt show the preview until i
-                      // refesh the page and then it shows."
-                      onLoadedMetadata={(e) => {
-                        try { (e.currentTarget as HTMLVideoElement).currentTime = 0.1; } catch { /* ignore */ }
+                      onMouseEnter={(e) => {
+                        const v = e.currentTarget;
+                        if (v.readyState === 0) {
+                          v.preload = 'metadata';
+                          v.load();
+                          v.addEventListener('loadedmetadata', () => {
+                            try { v.currentTime = 0.1; } catch { /* ignore */ }
+                          }, { once: true });
+                        }
+                        try { v.play(); } catch { /* ignore */ }
                       }}
-                      onMouseEnter={(e) => { try { e.currentTarget.play(); } catch {} }}
                       onMouseLeave={(e) => { try { e.currentTarget.pause(); e.currentTarget.currentTime = 0.1; } catch {} }}
                     />
                   ) : thumb ? (
@@ -1123,15 +1134,14 @@ export default function AssetsPage() {
                 >
                   <div className="w-12 h-12 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
                     {thumb && isVideo(a) ? (
+                      // 2026-05-30 — EGRESS FIX: preload="none" for list-view
+                      // video thumbnails to avoid fetching video bytes.
                       <video
                         src={thumb}
                         muted
                         playsInline
-                        preload="metadata"
+                        preload="none"
                         className="w-full h-full object-cover"
-                        onLoadedMetadata={(e) => {
-                          try { (e.currentTarget as HTMLVideoElement).currentTime = 0.1; } catch { /* ignore */ }
-                        }}
                       />
                     ) : thumb ? (
                       // eslint-disable-next-line @next/next/no-img-element

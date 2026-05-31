@@ -24,6 +24,7 @@ import {
 } from '@/hooks/use-api';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { transformedImageUrl } from '@/lib/asset-image';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
@@ -74,7 +75,13 @@ function thumbUrl(asset: any) {
     !asset.mimeType?.startsWith('image/') &&
     !asset.mimeType?.startsWith('video/')
   ) return null;
-  return asset.fileUrl?.startsWith('http') ? asset.fileUrl : `${apiBase}${asset.fileUrl}`;
+  const raw = asset.fileUrl?.startsWith('http') ? asset.fileUrl : `${apiBase}${asset.fileUrl}`;
+  // 2026-05-30 — EGRESS FIX: transform image thumbnails to 320 px via
+  // Supabase render/image endpoint. Video URLs pass through unchanged.
+  if (asset.mimeType?.startsWith('image/')) {
+    return transformedImageUrl(raw, { width: 320, quality: 60 });
+  }
+  return raw;
 }
 
 /**
@@ -91,21 +98,26 @@ function AssetThumb({ asset, className }: { asset: any; className?: string }) {
   const url = thumbUrl(asset);
   if (!url) return null;
   if (asset?.mimeType?.startsWith('video/')) {
+    // 2026-05-30 — EGRESS FIX: preload="none" so playlist-editor video
+    // thumbnails don't auto-download bytes on mount. Hover-load on
+    // demand if the operator mouses over.
     return (
       // eslint-disable-next-line jsx-a11y/media-has-caption
       <video
         src={url}
         muted
         playsInline
-        preload="metadata"
+        preload="none"
         className={className}
-        onLoadedMetadata={(e) => {
-          // Seek to a tiny offset so the browser DECODES and paints a
-          // real frame. Without this, Chromium/Safari often leave a
-          // black rectangle until the video is played. 0.1s is past
-          // any leading I-frame oddities and short enough to feel
-          // instant.
-          try { (e.currentTarget as HTMLVideoElement).currentTime = 0.1; } catch { /* ignore */ }
+        onMouseEnter={(e) => {
+          const v = e.currentTarget;
+          if (v.readyState === 0) {
+            v.preload = 'metadata';
+            v.load();
+            v.addEventListener('loadedmetadata', () => {
+              try { v.currentTime = 0.1; } catch { /* ignore */ }
+            }, { once: true });
+          }
         }}
       />
     );

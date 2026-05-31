@@ -25,6 +25,7 @@ import { X, Upload, Loader2, ImageIcon, FolderOpen } from 'lucide-react';
 import { useAssets, useAssetFolders } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { transformedImageUrl } from '@/lib/asset-image';
 
 export type AssetKind = 'image' | 'video' | 'all';
 
@@ -255,11 +256,15 @@ export function AssetPicker({
                     className="group relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-100 hover:border-indigo-400 hover:ring-2 hover:ring-indigo-200 cursor-pointer transition-all"
                   >
                     {isVideo ? (
-                      <video src={abs} muted className="w-full h-full object-cover" />
+                      // 2026-05-30 — EGRESS FIX: preload="none" so picker
+                      // grid tiles don't auto-download video bytes.
+                      <video src={abs} muted preload="none" className="w-full h-full object-cover" />
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={abs}
+                        // 2026-05-30 — EGRESS FIX: use Supabase 320 px transform
+                        // for image picker tiles to avoid full-res fetches.
+                        src={transformedImageUrl(abs, { width: 320, quality: 60 })}
                         alt=""
                         className="w-full h-full object-cover"
                         onError={(e) => {
