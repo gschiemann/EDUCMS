@@ -80,6 +80,10 @@ import { GpioModule } from './screens/gpio.module';
 // packages/api-types/src/bugs.ts.
 import { BugsModule } from './bugs/bugs.module';
 import { BugsController } from './bugs/bugs.controller';
+// 2026-05-30 — Real-time efficiency observability: per-route bytes/latency,
+// slow-query logging, egress budget alerting, /super/efficiency endpoint.
+import { EfficiencyModule } from './efficiency/efficiency.module';
+import { EfficiencyInterceptor } from './efficiency/efficiency.interceptor';
 import { ScreenWedgeDetectorCron } from './screens/screen-wedge-detector.cron';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
@@ -131,6 +135,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     AnalyticsModule,
     GpioModule,
     BugsModule,
+    EfficiencyModule,
     // 2026-05-06 — operator: kiosk wedged on "429 trying to
     // reconnect" right after fresh APK install. Cause: a fresh kiosk
     // boot fires a flurry of API hits in the first 60 s — manifest
@@ -215,6 +220,13 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
       // written by each route's domain code (P0-4, 2026-05-28).
       provide: APP_INTERCEPTOR,
       useClass: RequestLogInterceptor,
+    },
+    {
+      // Efficiency observability — records per-route bytes/latency and
+      // asset egress for the /super/efficiency dashboard. Zero overhead
+      // on the hot path (fire-and-forget Redis, in-memory ring only).
+      provide: APP_INTERCEPTOR,
+      useClass: EfficiencyInterceptor,
     },
   ],
 })
