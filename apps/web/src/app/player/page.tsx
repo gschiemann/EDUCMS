@@ -24,6 +24,7 @@ import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 import { isFlexGapSupported, applyFlexGapPolyfill } from '@/lib/flex-gap-polyfill';
 import { isCqUnitSupported, applyCqUnitPolyfill } from '@/lib/cq-unit-polyfill';
+import { resolveAssetUrl } from '@/lib/asset-cdn';
 import {
   registerOfflineCache,
   precachePlaylist,
@@ -5189,7 +5190,17 @@ function PlayerPage() {
   const currentItem = sorted.length && isItemValid(sorted[currentIndex % sorted.length]) ? sorted[currentIndex % sorted.length] : null;
   const isVideo = currentItem?.asset?.mimeType?.startsWith('video/');
   const fileUrl = currentItem?.asset?.fileUrl || '';
-  const resolvedUrl = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
+  const rawResolvedUrl = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
+  // audit §2 P0-4 — route IMAGES through the asset CDN edge proxy so repeat
+  // cross-kiosk/cross-load fetches hit the edge instead of Supabase origin.
+  // resolveAssetUrl is a no-op until NEXT_PUBLIC_ASSET_CDN is set, so this is
+  // inert today. IMAGES ONLY: video stays on the raw Supabase URL because the
+  // service-worker range cache is keyed on it — proxying video would change
+  // the key and re-download every loop. (full-resolution preserved; the proxy
+  // changes the host, not the bytes — safe for 1080p/4K unlike transforms.)
+  const resolvedUrl = currentItem?.asset?.mimeType?.startsWith('image/')
+    ? resolveAssetUrl(rawResolvedUrl)
+    : rawResolvedUrl;
 
   // Template rendering
   // Gated on !playbackStopped — when paused, fall through to the
@@ -5831,7 +5842,11 @@ function PlayerPage() {
             // every other signage CMS does too.
             const isWeb = mime === 'text/html' || mime === 'application/pdf';
             const fileUrl = item.asset?.fileUrl || '';
-            const resUrl = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
+            const rawResUrl = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
+            // audit §2 P0-4 — images go through the CDN edge proxy (no-op until
+            // NEXT_PUBLIC_ASSET_CDN set). Video/web/pdf stay raw: video for the
+            // SW range cache, iframe assets for Range support. (preload path)
+            const resUrl = mime.startsWith('image/') ? resolveAssetUrl(rawResUrl) : rawResUrl;
 
             // 2026-05-04 — Video transition smoothing.
             // Operator: "when i push two videos and they loop, i get
