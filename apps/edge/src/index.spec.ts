@@ -77,5 +77,40 @@ check('GET /api/v1/screens → no cache rule (null)', cacheTtl('/api/v1/screens'
 check('anon GET /api/v1/health → cache enabled', !shouldNeverCache('GET', '/api/v1/health', {}));
 check('anon GET /api/v1/health ttl=10', cacheTtl('/api/v1/health') === 10);
 
+// Asset CDN path prefix checks.
+const CDN_PREFIX = '/cdn/assets/';
+check('/cdn/assets/foo.jpg starts with prefix', '/cdn/assets/foo.jpg'.startsWith(CDN_PREFIX));
+check('/cdn/assets/ root matches', '/cdn/assets/'.startsWith(CDN_PREFIX));
+check('/api/v1/health does NOT match CDN prefix', !'/api/v1/health'.startsWith(CDN_PREFIX));
+check('/cdn/other/ does NOT match CDN prefix', !'/cdn/other/'.startsWith(CDN_PREFIX));
+
+// Cache key normalization: strip CDN_PREFIX to get the asset path.
+const stripPrefix = (path: string) => path.slice(CDN_PREFIX.length);
+check('strip prefix from /cdn/assets/tenant/photo.jpg', stripPrefix('/cdn/assets/tenant/photo.jpg') === 'tenant/photo.jpg');
+check('strip prefix from /cdn/assets/a/b/c.png', stripPrefix('/cdn/assets/a/b/c.png') === 'a/b/c.png');
+
+// buildUpstreamUrl logic (mirrored from index.ts).
+const buildUpstreamUrl = (path: string, assetOrigin: string): string => {
+  const rest = path.slice(CDN_PREFIX.length);
+  const base = assetOrigin.replace(/\/+$/, '');
+  return `${base}/${rest}`;
+};
+const ORIGIN = 'https://proj.supabase.co/storage/v1/object/public/assets';
+check(
+  'buildUpstreamUrl basic path',
+  buildUpstreamUrl('/cdn/assets/tid/photo.jpg', ORIGIN) ===
+    'https://proj.supabase.co/storage/v1/object/public/assets/tid/photo.jpg',
+);
+check(
+  'buildUpstreamUrl strips trailing slash from origin',
+  buildUpstreamUrl('/cdn/assets/a/b.png', ORIGIN + '/') ===
+    'https://proj.supabase.co/storage/v1/object/public/assets/a/b.png',
+);
+check(
+  'buildUpstreamUrl deep path',
+  buildUpstreamUrl('/cdn/assets/a/b/c/d.mp4', ORIGIN) ===
+    'https://proj.supabase.co/storage/v1/object/public/assets/a/b/c/d.mp4',
+);
+
 console.log(`${ok}/${ok + fail} pass`);
 if (fail > 0) process.exit(1);

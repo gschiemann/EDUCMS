@@ -99,3 +99,145 @@ coverage (300+ cities). Vercel Edge Functions are good but pricier at
 fleet scale, and their pricing model penalizes the kiosk's high request
 count. Netlify Edge has narrower coverage. Cloudflare is the right
 tool for the "lots of small kiosks, low payload, global" profile.
+
+---
+
+## Asset CDN deploy runbook (added 2026-05-30)
+
+**Context:** Supabase Storage serves every asset with `cache-control: no-cache`.
+Cloudflare never caches no-cache responses, so every asset load round-trips
+back to Supabase origin (observed: 98 MB stored → 5.79 GB egress). The worker
+now proxies `/cdn/assets/<path>` and overrides the header with a 1-year
+immutable directive so Cloudflare serves all repeat fetches from its edge.
+
+### Prerequisites
+
+- Cloudflare account (free tier is sufficient for this use case)
+- Your Supabase project URL (visible in Supabase Dashboard → Settings → API)
+- Access to Vercel project settings for the web app
+
+### Step 1 — Install and authenticate
+
+```bash
+cd apps/edge
+pnpm install          # installs wrangler locally
+npx wrangler login    # opens browser → authorize your Cloudflare account
+```
+
+### Step 2 — Set the ASSET_ORIGIN variable
+
+The worker needs to know your Supabase Storage base URL. **Do not commit this
+value** — set it via wrangler's secret mechanism instead:
+
+```bash
+# Format: https://<your-supabase-project>.supabase.co/storage/v1/object/public/assets
+npx wrangler secret put ASSET_ORIGIN
+# Paste the URL when prompted. Enter to confirm.
+```
+
+Alternatively, set it directly in the Cloudflare Dashboard:
+Workers → edu-cms-edge → Settings → Environment Variables → Add variable.
+
+### Step 3 — Deploy the worker
+
+```bash
+# Staging (workers.dev subdomain, no DNS changes required):
+pnpm deploy:staging
+# → deploys as: edu-cms-edge-staging.<your-handle>.workers.dev
+
+# Production (same command, default env):
+pnpm deploy
+# → deploys as: edu-cms-edge.<your-handle>.workers.dev
+```
+
+Wrangler will print the worker URL after a successful deploy. Copy it.
+
+### Step 4 — Smoke-test the asset proxy
+
+Replace `<worker-url>` with your actual workers.dev URL and
+`<supabase-asset-path>` with any known asset path (e.g. a tenant UUID /
+filename you can see in the Supabase Storage dashboard):
+
+```bash
+# First fetch — should be MISS (origin fetch + cache write)
+curl -sI "https://<worker-url>/cdn/assets/<supabase-asset-path>" \
+  | grep -i "x-edu-asset-cache\|cache-control\|cf-cache-status"
+
+# Expected output (first fetch):
+# x-edu-asset-cache: MISS
+# cache-control: public, max-age=31536000, stale-while-revalidate=86400, immutable
+# cf-cache-status: MISS  (Cloudflare's own layer; may show EXPIRED on very first fetch)
+
+# Second fetch — should be HIT from Cloudflare edge (no Supabase round-trip)
+curl -sI "https://<worker-url>/cdn/assets/<supabase-asset-path>" \
+  | grep -i "x-edu-asset-cache\|cache-control\|cf-cache-status"
+
+# Expected output (repeat fetch):
+# x-edu-asset-cache: HIT
+# cache-control: public, max-age=31536000, stale-while-revalidate=86400, immutable
+# cf-cache-status: HIT
+```
+
+If `cf-cache-status: HIT` appears on the second curl, the edge cache is
+working and Supabase is not being hit.
+
+### Step 5 — Enable in the Next.js web app
+
+In your Vercel project → Settings → Environment Variables, add:
+
+```
+NEXT_PUBLIC_ASSET_CDN = https://<worker-url>
+```
+
+(Use the same URL you confirmed above. No trailing slash.)
+
+Redeploy the web app (Vercel → Deployments → Redeploy, or `git push`).
+After the redeploy, the `resolveAssetUrl()` helper in
+`apps/web/src/lib/asset-cdn.ts` rewrites Supabase asset URLs to flow
+through the CDN automatically.
+
+### Step 6 — Verify end-to-end in the browser
+
+1. Open the VenueOS dashboard → Assets page.
+2. Open DevTools → Network tab.
+3. Click on any image asset to expand the preview.
+4. In the Network tab, find the request for that asset file.
+5. Check the Response Headers:
+   - `x-edu-asset-cache: HIT` on the second load confirms edge cache hit.
+   - `cache-control: public, max-age=31536000, ... immutable` confirms
+     the browser will also cache the asset locally for up to 1 year.
+6. Open the Cloudflare Dashboard → Workers → edu-cms-edge → Analytics.
+   You should see requests increasing as kiosks start loading assets.
+
+### Rollback
+
+If anything misbehaves, clear the Vercel env var `NEXT_PUBLIC_ASSET_CDN`
+and redeploy the web app. Assets immediately fall back to direct Supabase
+URLs — no data loss, no Supabase change required.
+
+To purge the Cloudflare edge cache for a specific asset (e.g. after
+replacing it in Supabase Storage):
+
+```bash
+# Via Cloudflare API — replace <zone_id>, <cf_api_token>, and the URL:
+curl -X POST "https://api.cloudflare.com/client/v4/zones/<zone_id>/purge_cache" \
+  -H "Authorization: Bearer <cf_api_token>" \
+  -H "Content-Type: application/json" \
+  --data '{"files":["https://<worker-url>/cdn/assets/<path>"]}'
+```
+
+Or use Dashboard → Caching → Purge Cache → Custom Purge → enter the
+worker CDN URL of the asset.
+
+### Video / audio seeking (Range requests)
+
+The worker handles HTTP Range requests correctly:
+1. On the first request (cache miss), it fetches the full object from
+   Supabase, caches it with the immutable header, then slices the
+   requested byte range and returns 206.
+2. On subsequent range requests (cache hit), it slices the cached full
+   body — no Supabase contact at all.
+
+This means video widgets with `<video>` elements that issue Range requests
+for scrubbing will work correctly and entirely from edge cache after the
+first player load.

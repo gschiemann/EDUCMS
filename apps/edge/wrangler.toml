@@ -30,8 +30,19 @@ workers_dev = true
 
 # Origin URL — Railway API. Worker proxies everything that isn't
 # explicitly cached/served-at-edge straight through.
+#
+# ASSET_ORIGIN — Supabase Storage base URL for the asset CDN proxy.
+# The worker intercepts /cdn/assets/<path> and fetches from this origin,
+# overriding the upstream no-cache header with a 1-year immutable directive.
+# Set to: https://<supabase-project>.supabase.co/storage/v1/object/public/assets
+# Leave empty to disable the asset proxy (returns 503 for /cdn/assets/* requests).
+#
+# To set via wrangler CLI (preferred over committing the value):
+#   npx wrangler secret put ASSET_ORIGIN
+# Or set it in the Cloudflare Dashboard → Workers → your worker → Settings → Variables.
 [vars]
 ORIGIN_URL = "https://api-production-39a1.up.railway.app"
+ASSET_ORIGIN = ""
 
 # Production environment — bound to the prod hostname once cut over.
 # [env.production]
@@ -44,6 +55,7 @@ workers_dev = true
 
 [env.staging.vars]
 ORIGIN_URL = "https://api-production-39a1.up.railway.app"
+ASSET_ORIGIN = ""
 
 # Cloudflare Cache API binding (built in, no config needed).
 # Each route in src/index.ts decides its own cache key + TTL.
