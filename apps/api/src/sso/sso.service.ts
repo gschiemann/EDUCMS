@@ -376,6 +376,17 @@ export class SsoService {
     if (!config || config.provider !== 'OIDC') {
       throw new BadRequestException('OIDC SSO is not configured');
     }
+    // CSRF / code-injection hardening (audit 2026-05-31, §10 F-2): the callback
+    // MUST carry the state+nonce we stored at login-initiation (persisted in the
+    // session). If they're missing — session lost, cookie dropped on the IdP
+    // round-trip, or a forged/replayed callback — we cannot bind the response to
+    // this browser, so fail CLOSED rather than let openid-client proceed with
+    // undefined checks (which would skip state verification).
+    if (!expected?.state || !expected?.nonce) {
+      throw new UnauthorizedException(
+        'OIDC callback rejected: missing state/nonce (expired session or possible CSRF). Please restart sign-in.',
+      );
+    }
     const { oidcRedirectUri } = this.buildServiceProviderMetadata(tenantSlug, baseUrl);
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
