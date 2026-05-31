@@ -44,37 +44,49 @@ export class EfficiencyInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap({
+        // 2026-05-30 (lead hardening) — the ENTIRE body is wrapped in
+        // try/catch. This interceptor runs on EVERY request; a throw inside
+        // a tap() callback would surface as a stream error and could break a
+        // real response. Observability must never take down the request path.
         next: () => {
-          const durationMs = Date.now() - start;
-          const statusCode = res.statusCode;
-          const wasNotModified = statusCode === 304;
+          try {
+            const durationMs = Date.now() - start;
+            const statusCode = res.statusCode;
+            const wasNotModified = statusCode === 304;
 
-          // Prefer Content-Length header; fall back to 0 (safe – never fabricates bytes)
-          const cl = res.getHeader('content-length');
-          const bytes = cl ? parseInt(String(cl), 10) || 0 : 0;
+            // Prefer Content-Length header; fall back to 0 (safe – never fabricates bytes)
+            const cl = res.getHeader('content-length');
+            const bytes = cl ? parseInt(String(cl), 10) || 0 : 0;
 
-          this.metrics.recordRequest({
-            route,
-            statusCode,
-            bytes,
-            durationMs,
-            isAsset,
-            hadConditionalHeaders,
-            wasNotModified,
-          });
+            this.metrics.recordRequest({
+              route,
+              statusCode,
+              bytes,
+              durationMs,
+              isAsset,
+              hadConditionalHeaders,
+              wasNotModified,
+            });
+          } catch {
+            /* observability must never break a real request */
+          }
         },
         error: () => {
-          // Record errors too (bytes=0 for errors is safe — we have no body)
-          const durationMs = Date.now() - start;
-          this.metrics.recordRequest({
-            route,
-            statusCode: res.statusCode || 500,
-            bytes: 0,
-            durationMs,
-            isAsset,
-            hadConditionalHeaders,
-            wasNotModified: false,
-          });
+          try {
+            // Record errors too (bytes=0 for errors is safe — we have no body)
+            const durationMs = Date.now() - start;
+            this.metrics.recordRequest({
+              route,
+              statusCode: res.statusCode || 500,
+              bytes: 0,
+              durationMs,
+              isAsset,
+              hadConditionalHeaders,
+              wasNotModified: false,
+            });
+          } catch {
+            /* swallow — never mask the real request error */
+          }
         },
       }),
     );

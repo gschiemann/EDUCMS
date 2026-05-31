@@ -42,15 +42,22 @@ export class SlowQueryMiddleware implements OnModuleInit {
     this.prisma.client.$use(async (params, next) => {
       const start = Date.now();
       const result = await next(params);
-      const duration = Date.now() - start;
-
-      if (duration >= this.thresholdMs) {
-        const model = params.model ?? 'unknown';
-        const action = params.action ?? 'unknown';
-        this.logger.warn(
-          `[slow-query] ${model}.${action} took ${duration}ms (threshold: ${this.thresholdMs}ms)`,
-        );
-        this.metrics.recordSlowQuery(model, action, duration);
+      // 2026-05-30 (lead hardening) — slow-query LOGGING is wrapped so a
+      // failure in the metrics path can never throw between the resolved
+      // query and `return result`, which would lose the row and surface as a
+      // query error. The query itself (next(params)) already ran above.
+      try {
+        const duration = Date.now() - start;
+        if (duration >= this.thresholdMs) {
+          const model = params.model ?? 'unknown';
+          const action = params.action ?? 'unknown';
+          this.logger.warn(
+            `[slow-query] ${model}.${action} took ${duration}ms (threshold: ${this.thresholdMs}ms)`,
+          );
+          this.metrics.recordSlowQuery(model, action, duration);
+        }
+      } catch {
+        /* observability must never break a real query */
       }
 
       return result;
