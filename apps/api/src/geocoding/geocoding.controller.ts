@@ -27,4 +27,16 @@ export class GeocodingController {
     const results = await this.geocoding.search(q ?? '', { bias });
     return { results, provider: this.geocoding.googleEnabled() ? 'google' : 'osm' };
   }
+
+  /** `GET /api/v1/geocode/reverse?lat=&lng=` — lat/lng → nearest address.
+   *  Powers "drop a pin on the fleet map → auto-fill the address". */
+  @Get('reverse')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  async reverse(@Query('lat') lat?: string, @Query('lng') lng?: string) {
+    const la = lat != null ? Number(lat) : NaN;
+    const ln = lng != null ? Number(lng) : NaN;
+    if (!Number.isFinite(la) || !Number.isFinite(ln)) return { result: null };
+    const result = await this.geocoding.reverse(la, ln);
+    return { result, provider: this.geocoding.googleEnabled() ? 'google' : 'osm' };
+  }
 }

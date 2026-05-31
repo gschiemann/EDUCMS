@@ -77,3 +77,23 @@ export async function geocodeViaApi(
     return [];
   }
 }
+
+/**
+ * Reverse geocode (lat/lng → nearest address) via `GET /api/v1/geocode/reverse`.
+ * Powers "drop a pin on the fleet map → auto-fill the address". Returns null on
+ * any failure (caller can still let the operator type the address).
+ */
+export async function reverseGeocodeViaApi(
+  lat: number,
+  lng: number,
+): Promise<GeoHit | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  try {
+    const res = await apiFetch<{ result?: GeoHit | null }>(
+      `/geocode/reverse?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`,
+    );
+    return res?.result ?? null;
+  } catch {
+    return null;
+  }
+}

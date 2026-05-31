@@ -76,6 +76,63 @@ export class GeocodingService {
     return this.nominatim(q, limit, bias);
   }
 
+  /**
+   * Reverse geocode (lat/lng → nearest address). Powers "drop a pin on the
+   * fleet map → auto-fill the address". Google first (rooftop), Nominatim
+   * fallback. Returns null when nothing resolves.
+   */
+  async reverse(lat: number, lng: number): Promise<GeocodeResult | null> {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+
+    if (this.googleKey) {
+      try {
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${encodeURIComponent(this.googleKey)}`;
+        const r = await safeFetch(url, {
+          timeoutMs: 5000,
+          maxBytes: 256 * 1024,
+          accept: 'application/json',
+          userAgent: 'VenueOS-Geocoder/1.0',
+        });
+        if (r.status >= 200 && r.status < 300) {
+          const data = JSON.parse(r.body.toString('utf8')) as {
+            status: string;
+            results?: Array<{ formatted_address?: string }>;
+          };
+          if (data.status === 'OK' && data.results?.[0]?.formatted_address) {
+            return {
+              display_name: data.results[0].formatted_address,
+              lat: String(lat),
+              lon: String(lng),
+              source: 'google',
+            };
+          }
+        }
+      } catch (e) {
+        this.logger.warn(`Google reverse-geocode failed, falling back to OSM: ${(e as Error).message}`);
+      }
+    }
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`;
+      const r = await safeFetch(url, {
+        timeoutMs: 5000,
+        maxBytes: 256 * 1024,
+        accept: 'application/json',
+        userAgent: 'VenueOS-Geocoder/1.0 (+https://venue-os.app)',
+      });
+      if (r.status >= 200 && r.status < 300) {
+        const data = JSON.parse(r.body.toString('utf8')) as { display_name?: string };
+        if (data?.display_name) {
+          return { display_name: data.display_name, lat: String(lat), lon: String(lng), source: 'nominatim' };
+        }
+      }
+    } catch {
+      /* ignore — caller handles null (operator can still type the address) */
+    }
+    return null;
+  }
+
   private validBias(b?: GeocodeBias): GeocodeBias | undefined {
     if (!b) return undefined;
     if (!Number.isFinite(b.lat) || !Number.isFinite(b.lng)) return undefined;
