@@ -22,7 +22,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { MapPin, Loader2, X } from 'lucide-react';
-import { geocodeViaApi } from '@/lib/geocode';
+import { geocodeViaApi, primeLocationBias } from '@/lib/geocode';
 
 interface PhotonFeature {
   geometry: { coordinates: [number, number] };
@@ -140,6 +140,10 @@ export function AddressAutocomplete({
   const debounceRef = useRef<any>(null);
   const lastQueryRef = useRef('');
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Prime the operator's coarse location once so geocodes bias to their region
+  // (an ambiguous street resolves to the nearby one, not another state).
+  useEffect(() => { primeLocationBias(); }, []);
 
   // Close dropdown on click outside.
   useEffect(() => {

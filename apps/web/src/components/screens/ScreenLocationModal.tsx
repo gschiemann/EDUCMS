@@ -31,7 +31,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, MapPin, X, Loader2, CheckCircle2 } from 'lucide-react';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
-import { geocodeViaApi } from '@/lib/geocode';
+import { geocodeViaApi, primeLocationBias } from '@/lib/geocode';
 
 interface PhotonFeature {
   geometry: { coordinates: [number, number] };
@@ -133,6 +133,7 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
 
   useEffect(() => {
     inputRef.current?.focus();
+    primeLocationBias(); // request operator's coarse location to region-bias geocodes
     inputRef.current?.select();
   }, []);
 

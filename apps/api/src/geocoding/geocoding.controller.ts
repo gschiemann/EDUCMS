@@ -17,8 +17,14 @@ export class GeocodingController {
 
   @Get()
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  async search(@Query('q') q?: string) {
-    const results = await this.geocoding.search(q ?? '');
+  async search(@Query('q') q?: string, @Query('lat') lat?: string, @Query('lng') lng?: string) {
+    // Optional region bias (operator's coarse location) so an ambiguous street
+    // name resolves to the one NEAR them, not a same-named street in another state.
+    const blat = lat != null ? Number(lat) : NaN;
+    const blng = lng != null ? Number(lng) : NaN;
+    const bias =
+      Number.isFinite(blat) && Number.isFinite(blng) ? { lat: blat, lng: blng } : undefined;
+    const results = await this.geocoding.search(q ?? '', { bias });
     return { results, provider: this.geocoding.googleEnabled() ? 'google' : 'osm' };
   }
 }
