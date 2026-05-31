@@ -11,6 +11,11 @@ _Agent a14bdeaabbb0e2d53 · read-only, file:line-traced · 2026-05-30_
 | §5 AI competitive | N/A | N/A | C |
 
 ## §2 Storage / Egress
+
+> **LIVE VERIFICATION 2026-05-31 (lead, curl against the live CDN) — supersedes the "no-cache" premise.**
+> Curled two real objects from the `assets` bucket: the **oldest** (2026-04-17 `…/a4993d3f….png`) and a **recent** jpeg. Both now serve `cache-control: public, max-age=31536000[, immutable]`, and Supabase's CDN returns `cf-cache-status: HIT` on the 2nd fetch. The earlier "Supabase serves no-cache regardless of upload cacheControl" finding is **no longer reproducible** — Pro's Smart CDN + the upload-header fix (`supabase-storage.service.ts`) + the backfill resolved it. Browsers/kiosks now cache for a year (kills the 59× re-download multiplier that caused the 5.79 GB blowout). **The egress root cause is fixed at the source, verified live — not just in code.**
+> Consequence for **P0-4 below:** downgraded. The player's raw Supabase URLs are ALREADY cacheable + CDN-cached, so the player does not bleed repeat-egress. The CDN-proxy wiring (now shipped, `05946ee`, images-only, inert until `NEXT_PUBLIC_ASSET_CDN` set) is belt-and-suspenders for cross-kiosk edge dedup, NOT urgent. Real remaining risk at scale = **large video** (no transcode + caches less effectively) — that's P1 below.
+
 **Correct + in place:** image egress 3-layer (upload `cache-control: max-age=31536000` `supabase-storage.service.ts:224` + render/image transforms `asset-image.ts` wired into 9 dashboard surfaces + Vercel edge proxy `cdn/assets/[...path]/route.ts`); video `preload="none"` on all dashboard tiles; sharp image-optimization at ingest (`media-optimization.service.ts`, 1920px cap q85 EXIF-strip); real self-verifying backfill (`super-license.controller.ts:262`); SW two-tier cache (EMERGENCY never-evict 1GB floor + PLAYLIST LRU 5GB, range-aware `rangeResponseFromCached`, stable query-stripped keys).
 
 **Findings:**
