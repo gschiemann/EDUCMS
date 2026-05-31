@@ -672,8 +672,12 @@ export class IntegrationsHealthController {
 
   private async probeCommunications(checkedAt: string): Promise<IntegrationRow[]> {
     const emailConfigured = this.email.isConfigured();
-    const twilioConfigured = !!process.env.TWILIO_ACCOUNT_SID && !!process.env.TWILIO_AUTH_TOKEN;
-    const slackConfigured = !!process.env.SLACK_WEBHOOK_URL;
+    // Twilio + Slack have NO send code yet (audit 2026-05-31, §9 Communications).
+    // They are reported COMING_SOON regardless of env so that setting
+    // TWILIO_ACCOUNT_SID / SLACK_WEBHOOK_URL never implies "ready, just
+    // misconfigured" (DEGRADED) — a district expecting SMS emergency alerts
+    // would otherwise get silence. Flip back to an env-gated probe only when
+    // the dispatch path actually ships.
     return [
       {
         id: 'comms-email',
@@ -691,10 +695,9 @@ export class IntegrationsHealthController {
         id: 'comms-twilio',
         name: 'Twilio (SMS / voice)',
         category: 'communications',
-        status: twilioConfigured ? 'DEGRADED' : 'COMING_SOON',
-        message: twilioConfigured
-          ? 'TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN set, but the V2 multi-modal emergency dispatch is not wired up yet.'
-          : 'Coming in V2 — SMS + voice fan-out on an emergency trigger. No code path today.',
+        status: 'COMING_SOON',
+        message:
+          'Coming in V2 — SMS + voice fan-out on an emergency trigger. No send code exists yet, so setting TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN does NOT enable SMS. Stays "coming soon" until the dispatch path ships.',
         latencyMs: null,
         checkedAt,
         docsUrl: 'https://www.twilio.com/docs',
@@ -703,10 +706,9 @@ export class IntegrationsHealthController {
         id: 'comms-slack',
         name: 'Slack / Teams (webhook)',
         category: 'communications',
-        status: slackConfigured ? 'DEGRADED' : 'COMING_SOON',
-        message: slackConfigured
-          ? 'SLACK_WEBHOOK_URL set, but the outbound notification dispatch is not wired up yet.'
-          : 'Coming in V2 — outbound emergency / status notifications to ops channels.',
+        status: 'COMING_SOON',
+        message:
+          'Coming in V2 — outbound emergency / status notifications to ops channels. No send code exists yet, so setting SLACK_WEBHOOK_URL does NOT enable notifications. Stays "coming soon" until the dispatch path ships.',
         latencyMs: null,
         checkedAt,
         docsUrl: 'https://api.slack.com/messaging/webhooks',

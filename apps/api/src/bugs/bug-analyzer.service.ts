@@ -71,10 +71,11 @@ import { PrismaService } from '../prisma/prisma.service';
 
 // ─── Constants ──────────────────────────────────────────────────
 
-const ANALYZER_MODEL = 'claude-3-5-sonnet-20241022';
+const ANALYZER_MODEL = 'claude-sonnet-4-5-20250929';
 const ANALYZER_PROVIDER = 'anthropic';
 
-// Sonnet 3.5 list pricing (USD per 1M tokens) — current as of 2026-05-27.
+// Sonnet 4.5 list pricing (USD per 1M tokens) — same $3 / $15 as 3.5 Sonnet,
+// so the cost math below is unchanged by the model bump. Current as of 2026-05-31.
 const COST_INPUT_PER_1M = 3.0;
 const COST_OUTPUT_PER_1M = 15.0;
 

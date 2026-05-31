@@ -126,9 +126,10 @@ jobs:
         run: pnpm --filter api build
 
       - name: Run API tests (Jest)
-        # Gated continue-on-error for one commit while we stabilize the
-        # suite in CI. Remove this flag once the suite is green end-to-end.
-        continue-on-error: true
+        # Blocking as of 2026-05-31 — suite is green end-to-end (55 suites /
+        # 719 tests). A failing API unit test now blocks the merge, as it
+        # should (audit §17 G2). If a leak/flake ever forces a temporary
+        # un-block, re-add `continue-on-error: true` with a dated reason.
         run: pnpm --filter api run test
 
   web-build:
