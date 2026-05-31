@@ -130,7 +130,25 @@ export class BrandingController {
       );
     }
 
-    if (chosenSvg && chosenSvgValid) {
+    // (0) Operator-uploaded logo (data URL) wins over any scraped candidate —
+    // the explicit choice + the escape hatch for sites that block our scraper
+    // (Cloudflare-protected dominos.com returns "Not Found" for its own logo).
+    if (body.logoDataUrl) {
+      try {
+        logoUrl = await this.uploadLogoDataUrl(tenantId, body.logoDataUrl);
+        // SVG uploads also kept inline for crisp sidebar render.
+        if (/^data:image\/svg\+xml/i.test(body.logoDataUrl)) {
+          try {
+            const svg = Buffer.from(body.logoDataUrl.split(',')[1] || '', 'base64').toString('utf8');
+            if (svg.includes('<svg')) logoSvgInline = sanitizeLogoSvg(svg);
+          } catch { /* best-effort inline */ }
+        }
+      } catch (e: any) {
+        this.logger.warn(`[adopt] uploaded logo failed for tenant ${tenantId}: ${e?.message}`);
+      }
+    }
+
+    if (!logoUrl && chosenSvg && chosenSvgValid) {
       // Two storage paths with different trust models:
       //
       // 1) logoSvgInline — rendered by admins via dangerouslySetInnerHTML
@@ -171,8 +189,12 @@ export class BrandingController {
       try {
         logoUrl = await this.rehostUrl(chosenLogo, `branding/${tenantId}/logo`);
       } catch (e: any) {
-        this.logger.warn(`Logo rehost failed, storing source URL directly: ${e?.message}`);
-        logoUrl = chosenLogo;
+        // Do NOT fall back to storing the raw source URL: if we couldn't
+        // fetch it as an image server-side (404 / bot-block / non-image),
+        // it won't render in the browser either — storing it just recreates
+        // the broken-logo bug. Leave logoUrl unset; the candidate loop below
+        // (or manual upload) takes over.
+        this.logger.warn(`Primary logo rehost failed for tenant ${tenantId}: ${e?.message}`);
       }
     }
 
@@ -515,10 +537,16 @@ export class BrandingController {
       // (2) Pasted URL — rehost so we don't hotlink.
       try {
         const r = await safeFetch(body.logoUrl, { maxBytes: 2 * 1024 * 1024, timeoutMs: 8000 });
-        const ext = (r.contentType || '').split('/')[1]?.split(';')[0]?.replace(/[^a-z0-9]/gi, '') || 'png';
+        if (r.status < 200 || r.status >= 300) {
+          throw new Error(`image URL returned HTTP ${r.status}`);
+        }
         if (/\.(ico|icns)(\?|#|$)/i.test(body.logoUrl)) {
           throw new Error('favicon URLs are too small to use as logos — paste a full-size image URL');
         }
+        if (!looksLikeImage(r.body, r.contentType)) {
+          throw new Error('that URL did not return an image — paste a direct link to a PNG/JPG/SVG');
+        }
+        const ext = extFromContentType(r.contentType) || extFromUrl(body.logoUrl) || 'png';
         const hash = createHash('sha256').update(r.body).digest('hex').slice(0, 12);
         const path = `branding/${tenantId}/manual-${hash}.${ext}`;
         logoUrl = await this.storage.upload(path, r.body, r.contentType || 'application/octet-stream');
@@ -824,10 +852,39 @@ export class BrandingController {
    */
   private async rehostUrl(sourceUrl: string, keyPrefix: string): Promise<string> {
     const r = await safeFetch(sourceUrl, { maxBytes: 2 * 1024 * 1024, timeoutMs: 6000 });
+    // Never mirror an error body or a non-image as an asset. dominos.com (and
+    // any bot-protected site) returns a 404 / challenge page when we fetch its
+    // logo server-side; storing that recreates the broken-<img> bug. Throw so
+    // the caller falls through to the next candidate or the "no logo" UX.
+    if (r.status < 200 || r.status >= 300) {
+      throw new Error(`rehost: ${sourceUrl.slice(0, 80)} returned HTTP ${r.status}`);
+    }
+    if (!looksLikeImage(r.body, r.contentType)) {
+      throw new Error(
+        `rehost: ${sourceUrl.slice(0, 80)} is not an image (content-type=${r.contentType || '?'}, ${r.body.length}B)`,
+      );
+    }
     const ext = extFromContentType(r.contentType) || extFromUrl(sourceUrl) || 'bin';
     const hash = createHash('sha256').update(r.body).digest('hex').slice(0, 12);
     const path = `${keyPrefix}-${hash}.${ext}`;
     return this.storage.upload(path, r.body, r.contentType || 'application/octet-stream');
+  }
+
+  /** Decode a `data:image/...;base64,...` logo (the wizard's "upload your own
+   *  logo" escape hatch) and store it in Supabase. Shares the 2MB cap +
+   *  image-sniff guard; throws on malformed / oversized / non-image input. */
+  private async uploadLogoDataUrl(tenantId: string, dataUrl: string): Promise<string> {
+    const m = /^data:(image\/[a-z0-9+.-]+);base64,(.+)$/i.exec(dataUrl || '');
+    if (!m) throw new Error('not a base64 image data URL');
+    const mimeType = m[1];
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.byteLength === 0) throw new Error('empty image');
+    if (buf.byteLength > 2 * 1024 * 1024) throw new Error('logo too large (max 2MB)');
+    if (!looksLikeImage(buf, mimeType)) throw new Error('decoded bytes are not an image');
+    const ext = (mimeType.split('/')[1] || 'png').split('+')[0].replace(/[^a-z0-9]/gi, '') || 'png';
+    const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
+    const path = `branding/${tenantId}/logo-upload-${hash}.${ext}`;
+    return this.storage.upload(path, buf, mimeType);
   }
 
   private async rehost(content: string, path: string, contentType: string): Promise<string> {
@@ -990,6 +1047,32 @@ function enforcePaletteContrast(palette: any, target: number = 4.5): any {
   return out;
 }
 
+/**
+ * Sniff whether fetched/decoded bytes are actually an image. The branding
+ * pipeline re-hosts remote logo URLs into our bucket; without this guard an
+ * upstream 404 page or a Cloudflare bot-challenge body gets stored AS the
+ * "logo" and the <img> renders broken forever. (Domino's, 2026-05-31 — the
+ * scrape mirrored a 9-byte text/plain "Not Found" as the logo.)
+ *
+ * Trust the content-type when it says image/*, else fall back to magic-byte
+ * sniffing (servers mislabel images as octet-stream) + an <svg>/<?xml> head
+ * check for text-based SVGs.
+ */
+function looksLikeImage(buf: Buffer, contentType?: string | null): boolean {
+  if (contentType && /^image\//i.test(contentType)) return true;
+  if (!buf || buf.length < 4) return false;
+  const b = buf;
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return true; // PNG
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return true; // JPEG
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return true; // GIF
+  if (b[0] === 0x42 && b[1] === 0x4d) return true; // BMP
+  if (b.length >= 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP') return true; // WEBP
+  if (b[0] === 0x00 && b[1] === 0x00 && (b[2] === 0x01 || b[2] === 0x02) && b[3] === 0x00) return true; // ICO/CUR
+  const head = b.toString('utf8', 0, Math.min(b.length, 512)).trim().toLowerCase();
+  if (head.startsWith('<?xml') || head.includes('<svg')) return true; // SVG / XML
+  return false;
+}
+
 function extFromContentType(ct: string): string | null {
   const lower = ct.toLowerCase();
   if (lower.includes('svg')) return 'svg';
@@ -1010,4 +1093,7 @@ function extFromUrl(u: string): string | null {
 // the same preview it received, possibly with user overrides.
 type AdoptBody = Partial<BrandingPreview> & {
   logoOverride?: { url?: string; svgInline?: string };
+  /** Operator-uploaded logo (data:image/...;base64,...). Wins over any
+   *  scraped candidate — the escape hatch for sites that block our scraper. */
+  logoDataUrl?: string;
 };

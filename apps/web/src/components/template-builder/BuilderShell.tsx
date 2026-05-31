@@ -9,7 +9,7 @@ import {
   AlignLeft, AlignCenter, AlignRight,
   Bold, Italic, Underline, Strikethrough,
   RefreshCw, Maximize2, Clock, Thermometer, Gauge, Calendar, Globe, MousePointer,
-  Layers3,
+  Layers3, Sparkles,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { AssetLibraryModal, measureZoneFontSize } from './PropertiesPanel';
@@ -214,10 +214,12 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     }
   }, [template.id, updateTemplate, updateZonesApi, markClean, onSaved]);
 
-  const handleSaveAs = useCallback(async () => {
+  const handleSaveAs = useCallback(async (autoName?: string) => {
     const state = useBuilderStore.getState();
     const defaultName = `${state.meta.name || 'Untitled template'} copy`;
-    const name = await appPrompt({
+    // `autoName` skips the prompt — used by the one-click "Save to my
+    // templates" fork on starter/system templates.
+    const name = autoName ?? await appPrompt({
       title: 'Save as copy',
       message: 'What should we call this copy?',
       defaultValue: defaultName,
@@ -329,6 +331,17 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       setSaveError(err instanceof Error ? err.message : String(err));
     }
   }, [createTemplate, updateTemplate, updateZonesApi, router, routeParams]);
+
+  // Starter/system templates can't be overwritten — editing them forks the
+  // operator's OWN editable copy (carrying every in-progress edit from the
+  // store), auto-named so it's one click, then the builder reopens on the
+  // copy where Save works. This is the fix for "I edited a template and
+  // couldn't update anything": system templates have no plain Save, so the
+  // path to keep changes must be obvious + frictionless.
+  const handleCustomize = useCallback(() => {
+    const base = useBuilderStore.getState().meta.name || 'My template';
+    void handleSaveAs(base);
+  }, [handleSaveAs]);
 
   const handleSaveRef = useRef(handleSave);
   const saveStatusRef = useRef(saveStatus);
@@ -599,13 +612,37 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       <BuilderToolbar
         onBack={handleBack}
         onSave={handleSave}
-        onSaveAs={handleSaveAs}
+        onSaveAs={() => handleSaveAs()}
+        onCustomize={handleCustomize}
         onDiscard={template.isSystem ? undefined : handleDiscard}
         onPreview={() => setPreviewOpen(true)}
         saveStatus={saveStatus}
         saveError={saveError}
         lastSavedAt={lastSavedAt}
       />
+
+      {/* Starter-template explainer. System presets can't be overwritten;
+          editing forks the operator's own copy. Without this banner the
+          operator edits, sees no Save button, and thinks "I can't update
+          anything" (Domino's pilot, 2026-05-31). */}
+      {template.isSystem && (
+        <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 bg-amber-50 border-b border-amber-200">
+          <Sparkles className="w-4 h-4 shrink-0 text-amber-500" aria-hidden />
+          <p className="text-xs font-medium text-amber-900 flex-1 min-w-0">
+            This is a <strong>starter template</strong>. Edit anything you like — then click{' '}
+            <strong>Save to my templates</strong> to keep your changes as your own editable copy.
+          </p>
+          <button
+            type="button"
+            onClick={handleCustomize}
+            disabled={saveStatus === 'saving'}
+            className="shrink-0 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-amber-400"
+          >
+            <Copy className="w-3.5 h-3.5" aria-hidden />
+            Save to my templates
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden relative">
         {/* Abstract background blobs for premium feel */}

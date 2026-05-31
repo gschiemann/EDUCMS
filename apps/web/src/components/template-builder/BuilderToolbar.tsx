@@ -12,6 +12,9 @@ interface Props {
   onBack: () => void;
   onSave: () => void;
   onSaveAs?: () => void;
+  /** One-click fork for starter/system templates → the operator's own
+   *  editable copy. BuilderShell passes this; shown only when isSystem. */
+  onCustomize?: () => void;
   /** Discard in-progress work and delete the template. BuilderShell
    *  passes this only for non-system templates; a missing handler hides
    *  the button. Clicking prompts for confirmation in BuilderShell. */
@@ -24,7 +27,7 @@ interface Props {
   lastSavedAt?: number | null;
 }
 
-export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, onPreview, saveStatus, saveError, lastSavedAt }: Props) {
+export function BuilderToolbar({ onBack, onSave, onSaveAs, onCustomize, onDiscard, onPreview, saveStatus, saveError, lastSavedAt }: Props) {
   // Atomic selectors — one subscription per key lets Zustand skip this
   // toolbar's re-render when only zone geometry (BuilderCanvas concern)
   // or property fields (PropertiesPanel concern) changed.
@@ -63,6 +66,11 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, onPreview,
           <div className="text-sm font-bold text-slate-800 truncate">{meta.name || 'Untitled template'}</div>
           <div className="text-[10px] text-slate-400">{zones.length} {zones.length === 1 ? 'zone' : 'zones'} &middot; v2 builder</div>
         </div>
+        {isSystem && (
+          <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold uppercase tracking-wide">
+            Starter
+          </span>
+        )}
       </div>
 
       <div className="flex items-center gap-1">
@@ -140,7 +148,10 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, onPreview,
           </button>
         )}
 
-        {onSaveAs && (
+        {/* Custom templates keep the secondary "Save as copy". Hidden on
+            starter/system templates — there the PRIMARY action below IS the
+            copy (you can't overwrite a shared starter). */}
+        {onSaveAs && !isSystem && (
           <button
             type="button"
             onClick={onSaveAs}
@@ -150,6 +161,25 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, onPreview,
           >
             <Copy className="w-3.5 h-3.5" aria-hidden />
             Save as copy
+          </button>
+        )}
+
+        {/* Starter/system templates: the primary action is the one-click fork
+            into the operator's own editable copy. Always enabled (forking is
+            valid even before edits) so the path to "make this mine" is never
+            hidden — the fix for "I couldn't update anything." */}
+        {isSystem && onCustomize && (
+          <button
+            type="button"
+            onClick={onCustomize}
+            disabled={saveStatus === 'saving'}
+            title="Save an editable copy to your templates"
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          >
+            {saveStatus === 'saving'
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+              : <Copy className="w-3.5 h-3.5" aria-hidden />}
+            Save to my templates
           </button>
         )}
 

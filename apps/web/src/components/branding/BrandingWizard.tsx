@@ -38,7 +38,7 @@ import { useLogoTone } from './useLogoTone';
 // and INTO the wizard as a compact inline row above the Re-scan /
 // Adopt toolbar. Wand2 = "magic auto-paint" (non-AI automation),
 // matches the icon used previously in BrandingSettingsCard.
-import { Search, Palette, Check, Loader2, ExternalLink, AlertTriangle, RefreshCw, Monitor, Eye, Wand2 } from 'lucide-react';
+import { Search, Palette, Check, Loader2, ExternalLink, AlertTriangle, RefreshCw, Monitor, Eye, Wand2, Upload, Link2, X } from 'lucide-react';
 
 // Scraped SVGs come from arbitrary third-party URLs — treat every one
 // as hostile until proven otherwise. Server also sanitizes on adopt,
@@ -276,6 +276,11 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
   });
   const [error, setError] = useState<string | null>(null);
   const [selectedLogoIdx, setSelectedLogoIdx] = useState(0);
+  // Manual logo escape hatch — for sites that block our scraper (e.g.
+  // Cloudflare-protected dominos.com). `uploadedLogo` is a data URL from a
+  // file picker (wins); `manualLogoUrl` is a pasted direct image URL.
+  const [uploadedLogo, setUploadedLogo] = useState<string | null>(null);
+  const [manualLogoUrl, setManualLogoUrl] = useState('');
   const [displayName, setDisplayName] = useState(initial?.displayName || '');
   const [tagline, setTagline] = useState(initial?.tagline || '');
   const [primary, setPrimary] = useState<string>((initial as any)?.palette?.primary || '#4f46e5');
@@ -369,19 +374,45 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [primary, accent, preview, mode]);
 
+  // ── Manual logo (upload) — escape hatch when the scraper is blocked
+  // (Cloudflare) or returns no usable logo. dominos.com, 2026-05-31. ──
+  const handleLogoFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-picking the same file
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { setError('Please choose an image file (PNG, JPG, SVG, or WebP).'); return; }
+    if (file.size > 2 * 1024 * 1024) { setError('That logo is too large — max 2MB.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setError(null);
+      setManualLogoUrl('');
+      setUploadedLogo(typeof reader.result === 'string' ? reader.result : null);
+    };
+    reader.onerror = () => setError('Could not read that file — try another.');
+    reader.readAsDataURL(file);
+  }, []);
+
   // ── Adopt ──────────────────────────────────────────────────────
   const adopt = useCallback(async () => {
     if (!preview || !derivedPalette) return;
     setAdopting(true);
     try {
       const chosen = preview.logos[selectedLogoIdx];
-      const payload = {
+      const manualUrl = manualLogoUrl.trim();
+      const payload: Record<string, unknown> = {
         ...preview,
         displayName: displayName || preview.displayName,
         tagline: tagline || preview.tagline,
         palette: derivedPalette,
-        logoOverride: chosen ? { url: chosen.url, svgInline: chosen.svgInline } : undefined,
       };
+      // Logo precedence: uploaded file → pasted URL → scraped candidate.
+      if (uploadedLogo) {
+        payload.logoDataUrl = uploadedLogo;
+      } else if (manualUrl) {
+        payload.logoOverride = { url: manualUrl };
+      } else if (chosen) {
+        payload.logoOverride = { url: chosen.url, svgInline: chosen.svgInline };
+      }
       const res = await apiFetch<any>('/branding/adopt', {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -414,7 +445,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
     } finally {
       setAdopting(false);
     }
-  }, [preview, derivedPalette, selectedLogoIdx, displayName, tagline, onAdopted, invalidateBranding, user?.tenantId]);
+  }, [preview, derivedPalette, selectedLogoIdx, displayName, tagline, uploadedLogo, manualLogoUrl, onAdopted, invalidateBranding, user?.tenantId]);
 
   // 2026-05-26 — Apply-to-templates: repaint every template the tenant
   // owns with the current palette + fonts. Fill-blanks (default) only
@@ -577,17 +608,74 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                 colorful logos without per-logo logic. */}
             <Card className="p-4 space-y-3">
               <div className="text-sm font-medium">Logos found <span className="text-slate-400">({preview.logos.length})</span></div>
-              <div className="grid grid-cols-3 gap-2">
-                {preview.logos.map((l, i) => (
-                  <LogoGalleryTile
-                    key={i}
-                    logo={l}
-                    selected={selectedLogoIdx === i}
-                    onSelect={() => setSelectedLogoIdx(i)}
-                    index={i}
+              {preview.logos.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {preview.logos.map((l, i) => (
+                    <LogoGalleryTile
+                      key={i}
+                      logo={l}
+                      selected={!uploadedLogo && !manualLogoUrl.trim() && selectedLogoIdx === i}
+                      onSelect={() => { setUploadedLogo(null); setManualLogoUrl(''); setSelectedLogoIdx(i); }}
+                      index={i}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Manual logo escape hatch. Always available — and the ONLY
+                  path when a site blocks our scraper (Cloudflare returns a
+                  404/challenge for the logo, e.g. dominos.com). Uploaded /
+                  pasted logo wins over any scraped candidate. */}
+              {(uploadedLogo || manualLogoUrl.trim()) && (
+                <div className="flex items-center gap-2 rounded-lg border-2 border-indigo-400 bg-indigo-50/60 p-2">
+                  <div className="h-10 w-10 shrink-0 rounded bg-white border border-slate-200 flex items-center justify-center overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={uploadedLogo || manualLogoUrl.trim()}
+                      alt="your logo"
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
+                  <div className="text-xs font-semibold text-indigo-700 flex-1 min-w-0">
+                    Using your {uploadedLogo ? 'uploaded' : 'pasted'} logo
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setUploadedLogo(null); setManualLogoUrl(''); }}
+                    className="text-slate-400 hover:text-slate-700"
+                    aria-label="Remove your logo"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors">
+                  <Upload className="h-3.5 w-3.5" /> Upload your logo
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif"
+                    className="hidden"
+                    onChange={handleLogoFile}
                   />
-                ))}
+                </label>
+                <div className="relative flex-1 min-w-[180px]">
+                  <Link2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                  <Input
+                    value={manualLogoUrl}
+                    onChange={(e) => { setManualLogoUrl(e.target.value); if (e.target.value) setUploadedLogo(null); }}
+                    placeholder="…or paste a direct image URL"
+                    className="pl-8 h-9 text-xs"
+                  />
+                </div>
               </div>
+              {preview.logos.length === 0 && !uploadedLogo && !manualLogoUrl.trim() && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                  We couldn&rsquo;t pull a logo from this site — some sites (like dominos.com)
+                  block automated access. Upload your logo or paste a direct image link above.
+                </p>
+              )}
             </Card>
 
             {/* Colors */}
