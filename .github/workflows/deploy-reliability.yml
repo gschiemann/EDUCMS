@@ -126,10 +126,16 @@ jobs:
         run: pnpm --filter api build
 
       - name: Run API tests (Jest)
-        # Blocking as of 2026-05-31 — suite is green end-to-end (55 suites /
-        # 719 tests). A failing API unit test now blocks the merge, as it
-        # should (audit §17 G2). If a leak/flake ever forces a temporary
-        # un-block, re-add `continue-on-error: true` with a dated reason.
+        # continue-on-error RESTORED 2026-05-31. The suite is green LOCALLY
+        # (55 suites / 719) and in the Docker/prod build, but 5 suites FAIL
+        # TO LOAD on the raw ubuntu runner: argon2's native binding
+        # (argon2.node) isn't built by `pnpm install --frozen-lockfile` here
+        # (the Dockerfile builds it via apk + node-gyp; local has it cached).
+        # Flipping this to blocking off a local-green run was premature — CI
+        # caught it immediately. To make it blocking for real: add an argon2
+        # rebuild step (or pnpm build-script allowlist) so the binding exists,
+        # verify CI green, THEN drop this flag. Tracked: audit §17 G2.
+        continue-on-error: true
         run: pnpm --filter api run test
 
   web-build:
