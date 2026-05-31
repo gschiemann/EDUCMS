@@ -802,7 +802,6 @@ function ScreenSettingsMenu({
     bottom: number | null;
     right: number;
     maxHeight: number;
-    mobileSheet: boolean;
   } | null>(null);
 
   const MENU_WIDTH = 256; // matches w-64 on the menu div
@@ -815,26 +814,12 @@ function ScreenSettingsMenu({
     const GAP = 8;
     const MARGIN = 12; // keep the menu this far off the viewport edge
 
-    // On narrow mobile viewports switch to a bottom-sheet so the panel
-    // is always fully on-screen regardless of the gear button's x
-    // position. The threshold matches Tailwind's sm breakpoint (640px)
-    // but we use 480px to keep the popover behaviour for tablets/large
-    // phones in landscape while fixing portrait phones.
-    if (vw < 480) {
-      const sheetMaxH = Math.max(200, window.innerHeight * 0.88);
-      setAnchor({
-        top: null,
-        bottom: 0,
-        right: 0,
-        maxHeight: sheetMaxH,
-        mobileSheet: true,
-      });
-      return;
-    }
-
-    // Desktop / large-screen popover: right-align with the gear button,
-    // but clamp so the left edge never goes past the viewport margin.
-    // right is measured from the viewport's RIGHT edge (CSS `right` px).
+    // Right-align the menu with the gear button, but CLAMP so the panel is
+    // ALWAYS fully on-screen — at any width, regardless of where the gear sits
+    // in the row (fixes the off-the-left-edge bug on phones, 2026-05-31). We
+    // keep the floating popover on mobile too — a full-width bottom sheet read
+    // worse and had no clear close; clamping is all the popover needed.
+    // `right` is measured from the viewport's RIGHT edge (CSS `right` px).
     let right = vw - r.right;
     // Clamp: ensure left edge = vw - right - MENU_WIDTH >= MARGIN
     const maxRight = vw - MENU_WIDTH - MARGIN;
@@ -849,14 +834,13 @@ function ScreenSettingsMenu({
     // past the cap). Fixes the gear menu dropping off the bottom of
     // the page when the screen row sits near the viewport's lower edge.
     if (spaceBelow >= spaceAbove) {
-      setAnchor({ top: r.bottom + GAP, bottom: null, right, maxHeight: Math.max(180, spaceBelow), mobileSheet: false });
+      setAnchor({ top: r.bottom + GAP, bottom: null, right, maxHeight: Math.max(180, spaceBelow) });
     } else {
       setAnchor({
         top: null,
         bottom: window.innerHeight - r.top + GAP,
         right,
         maxHeight: Math.max(180, spaceAbove),
-        mobileSheet: false,
       });
     }
   };
@@ -864,7 +848,7 @@ function ScreenSettingsMenu({
   useEffect(() => {
     if (!open) return;
     updateAnchor();
-    const handleDoc = (e: MouseEvent) => {
+    const handleDoc = (e: Event) => {
       const btn = buttonRef.current;
       const menu = menuRef.current;
       if (!menu) return;
@@ -875,11 +859,15 @@ function ScreenSettingsMenu({
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     const handleReflow = () => updateAnchor();
     document.addEventListener('mousedown', handleDoc);
+    // pointerdown too: iOS Safari doesn't reliably fire mousedown on a tap on
+    // empty (non-interactive) background, so tap-outside-to-close needs this.
+    document.addEventListener('pointerdown', handleDoc);
     document.addEventListener('keydown', handleKey);
     window.addEventListener('scroll', handleReflow, true); // capture so we catch scroll inside ancestors
     window.addEventListener('resize', handleReflow);
     return () => {
       document.removeEventListener('mousedown', handleDoc);
+      document.removeEventListener('pointerdown', handleDoc);
       document.removeEventListener('keydown', handleKey);
       window.removeEventListener('scroll', handleReflow, true);
       window.removeEventListener('resize', handleReflow);
@@ -973,27 +961,31 @@ function ScreenSettingsMenu({
     // portal boundary.
     <div
       ref={menuRef}
-      className={`fixed bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.18)] overflow-y-auto overflow-x-hidden z-[9999] ${
-        anchor?.mobileSheet
-          ? 'left-0 right-0 rounded-t-2xl rounded-b-none w-auto'
-          : 'w-64 rounded-xl'
-      }`}
+      className="fixed w-64 rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.18)] overflow-y-auto overflow-x-hidden z-[9999]"
       style={
         anchor
-          ? anchor.mobileSheet
-            ? {
-                bottom: 0,
-                maxHeight: anchor.maxHeight,
-              }
-            : {
-                ...(anchor.top != null ? { top: anchor.top } : {}),
-                ...(anchor.bottom != null ? { bottom: anchor.bottom } : {}),
-                right: anchor.right,
-                maxHeight: anchor.maxHeight,
-              }
+          ? {
+              ...(anchor.top != null ? { top: anchor.top } : {}),
+              ...(anchor.bottom != null ? { bottom: anchor.bottom } : {}),
+              right: anchor.right,
+              maxHeight: anchor.maxHeight,
+            }
           : { top: -9999, right: 0 }
       }
     >
+          {/* Sticky close button — guarantees the popover is dismissable on
+              touch (iOS tap-outside via document events is unreliable) without
+              re-adding a chunky header. Stays pinned while the menu scrolls. */}
+          <div className="sticky top-0 z-10 flex justify-end bg-white/95 backdrop-blur-sm px-1.5 pt-1.5 -mb-1">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close settings"
+              className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:bg-slate-200"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
           {/* Menu — action rows only, no chunky header. The old
               header repeated the screen name + version that's
               already visible on the row; the Integration Lead
@@ -1236,20 +1228,9 @@ function ScreenSettingsMenu({
           divide-y wrapper, etc.) can clip the menu. Previous version
           used a normal absolute child — it was getting trimmed by the
           group card's bottom edge on every row except the last.
-          On mobile (anchor.mobileSheet) we add a dark backdrop behind
-          the sheet so tapping outside it is a distinct affordance. */}
-      {open && typeof document !== 'undefined' && createPortal(
-        anchor?.mobileSheet ? (
-          <>
-            <div
-              className="fixed top-0 right-0 bottom-0 left-0 z-[9998] bg-black/40"
-              onMouseDown={() => setOpen(false)}
-            />
-            {menu}
-          </>
-        ) : menu,
-        document.body,
-      )}
+          The popover floats anchored to the gear (clamped on-screen at any
+          width); tap-outside / Esc / the in-menu X all dismiss it. */}
+      {open && typeof document !== 'undefined' && createPortal(menu, document.body)}
     </div>
   );
 }
