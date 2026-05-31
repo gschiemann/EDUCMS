@@ -364,6 +364,36 @@ non-Docker checks the CI does (lockfile + workspace builds + API + web)
 in under 90 seconds. The Docker check is CI-only because spinning up
 Docker locally is slow.
 
+### Post-push: WATCH CI TO GREEN — do not declare "done" before it resolves (2026-05-31)
+
+`pnpm preflight` is NOT proof CI will pass. It skips Docker AND it runs on
+*your* machine, where native modules (argon2, bcrypt) are already built and
+cached. The raw GitHub runner is a fresh `pnpm install --frozen-lockfile`
+that does **not** rebuild those bindings for the Jest job — so a suite that's
+green locally can have 5 suites *fail to load* in CI (`Cannot find module
+.../argon2.node`). On 2026-05-31 the lead flipped the API Jest gate to
+blocking off a local-green run and turned Deploy Reliability red on every
+subsequent push — the *operator* caught it, not the lead. That is the failure
+mode this rule kills.
+
+**Standing rule:** after EVERY `git push`, watch the run to completion and
+react to red BEFORE telling the user anything shipped. The agent has `gh` —
+there is no excuse to make the user your CI monitor. One-liner (backgroundable
+so the harness re-invokes you on completion):
+
+```bash
+sha=$(git rev-parse HEAD)
+for i in $(seq 1 24); do rid=$(gh run list --limit 40 --json databaseId,headSha,workflowName \
+  -q "[.[]|select(.headSha==\"$sha\" and .workflowName==\"Deploy Reliability\")][0].databaseId"); \
+  [ -n "$rid" ] && [ "$rid" != null ] && break; sleep 5; done
+gh run watch "$rid" --exit-status   # exits non-zero if CI failed
+gh run list --limit 40 --json headSha,workflowName,conclusion \
+  -q "[.[]|select(.headSha==\"$sha\")]|.[]|\"\(.conclusion) \(.workflowName)\""
+```
+
+"Pushed, CI watch running" is honest. "Done / shipped" before CI is green is
+the exact over-claim the operator has banned repeatedly.
+
 ### Pre-commit hook (husky)
 
 `.husky/pre-commit` blocks any commit that would drift `pnpm-lock.yaml`.
