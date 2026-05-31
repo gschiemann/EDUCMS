@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Req, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
 
 // HIGH-2 audit fix: enums for the License columns. Whitelisting these
 // catches malformed admin payloads (`{ status: "PIZZA" }` would have
@@ -260,60 +260,87 @@ export class SuperLicenseController {
    * Safe to re-run; the WHERE clause skips rows already marked immutable.
    */
   @Post('storage/backfill-cache-control')
-  async backfillStorageCacheControl(@Req() req: any) {
-    // Update the metadata.cacheControl on every object in the `assets`
-    // bucket that doesn't already carry the immutable header. The
-    // jsonb_set with create_missing=true also covers the case where the
-    // JSONB key is missing entirely.
+  async backfillStorageCacheControl(
+    @Req() req: any,
+    @Query('probe') probe?: string,
+    @Query('limit') limitStr?: string,
+    @Query('offset') offsetStr?: string,
+  ) {
+    // 2026-05-30 REWRITE — the original backfill patched the
+    // `storage.objects.metadata` JSONB column, which Supabase Storage does
+    // NOT serve the Cache-Control header from. Verified: every object's DB
+    // metadata read `immutable` while the LIVE served header was `no-cache`
+    // (curl), so Cloudflare `MISS`'d every request and the full file was
+    // re-pulled from origin on every load — the 98 MB-stored → 5.79 GB-egress
+    // incident. The ONLY way to change the SERVED header is to re-write the
+    // object through the Storage API (resetCacheControl downloads + re-POSTs
+    // with `cache-control: max-age=31536000`).
     //
-    // Match the value used at upload time in supabase-storage.service.ts:212
-    // and on every client PUT (see assets/page.tsx, AssetPicker.tsx,
-    // PropertiesPanel.tsx, all updated 2026-05-23).
-    const IMMUTABLE = 'public, max-age=31536000, immutable';
-
-    // executeRaw returns the count of affected rows.
-    const updated: number = await this.prisma.client.$executeRawUnsafe(
-      `
-      UPDATE storage.objects
-         SET metadata = jsonb_set(
-           COALESCE(metadata, '{}'::jsonb),
-           '{cacheControl}',
-           to_jsonb($1::text),
-           true
-         )
-       WHERE bucket_id = 'assets'
-         AND COALESCE(metadata->>'cacheControl', '') NOT LIKE '%immutable%'
-      `,
-      IMMUTABLE,
+    // This endpoint is self-verifying: it HEADs each object before AND after
+    // the re-set and returns the served Cache-Control, so we can PROVE the
+    // wire header flipped instead of trusting the DB again.
+    //   ?probe=1            → re-set only the first object (fast sanity check)
+    //   ?limit=N&offset=M   → batch (avoids request timeouts on large catalogs)
+    //   (no params)         → re-set every object in the assets bucket
+    const rows: Array<{ name: string }> = await this.prisma.client.$queryRawUnsafe(
+      `SELECT name FROM storage.objects WHERE bucket_id = 'assets' ORDER BY created_at DESC NULLS LAST`,
     );
+    const allPaths = rows.map((r) => r.name).filter(Boolean);
 
-    // Forensic trail. tenantId is null because this is a fleet-wide
-    // owner action that touches every tenant's assets.
+    const isProbe = probe === '1' || probe === 'true';
+    const offset = offsetStr ? Math.max(0, parseInt(offsetStr, 10) || 0) : 0;
+    const limit = isProbe ? 1 : (limitStr ? Math.max(0, parseInt(limitStr, 10) || 0) : allPaths.length);
+    const paths = allPaths.slice(offset, offset + limit);
+
+    let reset = 0;
+    let skipped = 0;
+    let failed = 0;
+    const samples: Array<{ path: string; before: string | null; after: string | null; ok: boolean; error?: string }> = [];
+    const failures: Array<{ path: string; error?: string }> = [];
+
+    for (const p of paths) {
+      const before = await this.storage.servedCacheControl(p);
+      const beforeCC = before.cacheControl || '';
+      const alreadyCacheable = beforeCC.includes('max-age=') && !beforeCC.includes('no-cache');
+      if (alreadyCacheable && !isProbe) {
+        skipped++;
+        continue;
+      }
+      const r = await this.storage.resetCacheControl(p);
+      if (r.ok) {
+        reset++;
+        const after = await this.storage.servedCacheControl(p);
+        if (samples.length < 5) samples.push({ path: p, before: before.cacheControl, after: after.cacheControl, ok: true });
+      } else {
+        failed++;
+        if (failures.length < 10) failures.push({ path: p, error: r.error });
+        if (samples.length < 5) samples.push({ path: p, before: before.cacheControl, after: null, ok: false, error: r.error });
+      }
+    }
+
     await this.prisma.client.auditLog.create({
       data: {
         tenantId: null as any,
         userId: req?.user?.userId ?? null,
-        action: 'STORAGE_CACHE_CONTROL_BACKFILL',
+        action: 'STORAGE_CACHE_CONTROL_RESET',
         targetType: 'Storage',
         targetId: 'assets',
-        details: JSON.stringify({
-          immutable: IMMUTABLE,
-          rowsUpdated: updated,
-          bucket: 'assets',
-        }),
+        details: JSON.stringify({ totalObjects: allPaths.length, attempted: paths.length, reset, skipped, failed, probe: isProbe, offset, limit }),
       },
     });
 
     return {
       ok: true,
-      rowsUpdated: updated,
-      bucket: 'assets',
-      cacheControl: IMMUTABLE,
-      note:
-        'Existing Cloudflare-cached responses with no-cache will be replaced ' +
-        'on the next origin fetch. Browsers/players already holding the old ' +
-        'no-cache directive will revalidate next request and pick up the new ' +
-        'immutable header.',
+      totalObjects: allPaths.length,
+      attempted: paths.length,
+      reset,
+      skipped,
+      failed,
+      samples,
+      failures,
+      note: isProbe
+        ? 'PROBE: re-set 1 object. If samples[0].after shows "max-age=31536000" the fix works — re-run with no params (or ?limit=&offset= batches) to re-set the whole catalog.'
+        : 'Re-set complete. samples[].after should read "max-age=31536000"; Cloudflare will return cf-cache-status: HIT on the next repeat fetch, collapsing egress.',
     };
   }
 

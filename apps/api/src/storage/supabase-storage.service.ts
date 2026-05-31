@@ -212,10 +212,18 @@ export class SupabaseStorageService implements OnModuleInit {
         // place, so they are safe to cache forever. Without this, Supabase
         // Storage serves `cache-control: no-cache`, which forces Cloudflare
         // and every browser/player/CI run to re-download the full file on
-        // every request — the cause of the 12GB egress overage on 256MB of
-        // stored assets (each served ~46×). One year + immutable collapses
-        // that to one origin fetch per asset per edge PoP.
-        'Cache-Control': 'public, max-age=31536000, immutable',
+        // every request — the cause of the egress overages (98 MB stored →
+        // 5.79 GB egress, each served ~59×).
+        //
+        // 2026-05-30 — MUST be the bare `max-age=N` form. Verified: the
+        // previous full string `public, max-age=31536000, immutable` was
+        // silently dropped by Supabase Storage to `no-cache` on the SERVED
+        // header (it stored the string in the metadata JSONB but never served
+        // it — which is why curling the live header showed no-cache while the
+        // DB showed immutable). `max-age=31536000` is the form storage-js
+        // sends and Supabase honors → CDN caches → one origin fetch per asset
+        // per edge PoP per year.
+        'cache-control': 'max-age=31536000',
       },
       body: new Blob([ab]),
     });
@@ -289,6 +297,69 @@ export class SupabaseStorageService implements OnModuleInit {
     } catch (e: any) {
       this.logger.warn(`createSignedUrl threw for ${filePath}: ${e?.message ?? e}`);
       return null;
+    }
+  }
+
+  /**
+   * Re-set the SERVED Cache-Control on an existing object (2026-05-30 egress
+   * incident). Verified root cause: every object was served
+   * `cache-control: no-cache` → Cloudflare `MISS` → the full file re-pulled
+   * from origin on EVERY load (98 MB stored → 5.79 GB egress). The earlier
+   * "backfill" only patched the `storage.objects.metadata` JSONB column —
+   * which Supabase does NOT serve from — so the served header never changed
+   * (DB said `immutable`, the wire said `no-cache`).
+   *
+   * The ONLY way to change the served header is to re-write the object
+   * through the Storage API. We download the bytes (service-role GET) and
+   * re-POST with `cache-control: max-age=31536000` (the bare `max-age=N`
+   * form Supabase honors — the full `public, …, immutable` string is
+   * silently dropped to no-cache). One-time ~stored-size egress; permanent
+   * fix (CDN then serves every repeat from edge).
+   */
+  async resetCacheControl(filePath: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const { url, key } = this.supabaseConfig();
+      const getRes = await fetch(`${url}/storage/v1/object/${BUCKET}/${filePath}`, {
+        headers: { Authorization: `Bearer ${key}`, apikey: key },
+      });
+      if (!getRes.ok) return { ok: false, error: `download ${getRes.status}` };
+      const contentType = getRes.headers.get('content-type') || 'application/octet-stream';
+      const ab = await getRes.arrayBuffer();
+      const putRes = await fetch(`${url}/storage/v1/object/${BUCKET}/${filePath}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${key}`,
+          apikey: key,
+          'Content-Type': contentType,
+          'Content-Length': String(ab.byteLength),
+          'x-upsert': 'true',
+          'cache-control': 'max-age=31536000',
+        },
+        body: new Blob([ab]),
+      });
+      if (!putRes.ok) {
+        const b = await putRes.text();
+        return { ok: false, error: `reupload ${putRes.status}: ${b.slice(0, 160)}` };
+      }
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? String(e) };
+    }
+  }
+
+  /** Fetch the LIVE served Cache-Control header for a public object (used to
+   *  VERIFY a reset actually changed the wire header, not just the DB). */
+  async servedCacheControl(filePath: string): Promise<{ cacheControl: string | null; cfCacheStatus: string | null; status: number }> {
+    try {
+      const { url } = this.supabaseConfig();
+      const res = await fetch(`${url}/storage/v1/object/public/${BUCKET}/${filePath}`, { method: 'HEAD' });
+      return {
+        cacheControl: res.headers.get('cache-control'),
+        cfCacheStatus: res.headers.get('cf-cache-status'),
+        status: res.status,
+      };
+    } catch (e: any) {
+      return { cacheControl: null, cfCacheStatus: null, status: 0 };
     }
   }
 
