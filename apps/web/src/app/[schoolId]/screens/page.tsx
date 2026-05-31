@@ -793,22 +793,55 @@ function ScreenSettingsMenu({
   // Viewport-anchored position for the portalled popover. Recomputed
   // on open + scroll + resize so the menu stays glued to the gear even
   // if the list scrolls behind it.
+  //
+  // On mobile (viewport < 480px) we switch to a centred bottom-sheet so
+  // the menu is never partially off the left edge regardless of where the
+  // gear button sits horizontally in the action row.
   const [anchor, setAnchor] = useState<{
     top: number | null;
     bottom: number | null;
     right: number;
     maxHeight: number;
+    mobileSheet: boolean;
   } | null>(null);
+
+  const MENU_WIDTH = 256; // matches w-64 on the menu div
 
   const updateAnchor = () => {
     const btn = buttonRef.current;
     if (!btn) return;
     const r = btn.getBoundingClientRect();
-    // Right-align the menu with the button's right edge. `right` is
-    // measured from the viewport's right edge so CSS `right` px works.
-    const right = window.innerWidth - r.right;
+    const vw = window.innerWidth;
     const GAP = 8;
     const MARGIN = 12; // keep the menu this far off the viewport edge
+
+    // On narrow mobile viewports switch to a bottom-sheet so the panel
+    // is always fully on-screen regardless of the gear button's x
+    // position. The threshold matches Tailwind's sm breakpoint (640px)
+    // but we use 480px to keep the popover behaviour for tablets/large
+    // phones in landscape while fixing portrait phones.
+    if (vw < 480) {
+      const sheetMaxH = Math.max(200, window.innerHeight * 0.88);
+      setAnchor({
+        top: null,
+        bottom: 0,
+        right: 0,
+        maxHeight: sheetMaxH,
+        mobileSheet: true,
+      });
+      return;
+    }
+
+    // Desktop / large-screen popover: right-align with the gear button,
+    // but clamp so the left edge never goes past the viewport margin.
+    // right is measured from the viewport's RIGHT edge (CSS `right` px).
+    let right = vw - r.right;
+    // Clamp: ensure left edge = vw - right - MENU_WIDTH >= MARGIN
+    const maxRight = vw - MENU_WIDTH - MARGIN;
+    if (right > maxRight) right = maxRight;
+    // Also keep the right edge at least MARGIN from the viewport right.
+    if (right < MARGIN) right = MARGIN;
+
     const spaceBelow = window.innerHeight - r.bottom - GAP - MARGIN;
     const spaceAbove = r.top - GAP - MARGIN;
     // Open on whichever side has more room, and cap the height to that
@@ -816,13 +849,14 @@ function ScreenSettingsMenu({
     // past the cap). Fixes the gear menu dropping off the bottom of
     // the page when the screen row sits near the viewport's lower edge.
     if (spaceBelow >= spaceAbove) {
-      setAnchor({ top: r.bottom + GAP, bottom: null, right, maxHeight: Math.max(180, spaceBelow) });
+      setAnchor({ top: r.bottom + GAP, bottom: null, right, maxHeight: Math.max(180, spaceBelow), mobileSheet: false });
     } else {
       setAnchor({
         top: null,
         bottom: window.innerHeight - r.top + GAP,
         right,
         maxHeight: Math.max(180, spaceAbove),
+        mobileSheet: false,
       });
     }
   };
@@ -939,15 +973,24 @@ function ScreenSettingsMenu({
     // portal boundary.
     <div
       ref={menuRef}
-      className="fixed w-64 rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.18)] overflow-y-auto overflow-x-hidden z-[9999]"
+      className={`fixed bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.18)] overflow-y-auto overflow-x-hidden z-[9999] ${
+        anchor?.mobileSheet
+          ? 'left-0 right-0 rounded-t-2xl rounded-b-none w-auto'
+          : 'w-64 rounded-xl'
+      }`}
       style={
         anchor
-          ? {
-              ...(anchor.top != null ? { top: anchor.top } : {}),
-              ...(anchor.bottom != null ? { bottom: anchor.bottom } : {}),
-              right: anchor.right,
-              maxHeight: anchor.maxHeight,
-            }
+          ? anchor.mobileSheet
+            ? {
+                bottom: 0,
+                maxHeight: anchor.maxHeight,
+              }
+            : {
+                ...(anchor.top != null ? { top: anchor.top } : {}),
+                ...(anchor.bottom != null ? { bottom: anchor.bottom } : {}),
+                right: anchor.right,
+                maxHeight: anchor.maxHeight,
+              }
           : { top: -9999, right: 0 }
       }
     >
@@ -1192,8 +1235,21 @@ function ScreenSettingsMenu({
           overflow:hidden (the group card's rounded-corner clip, the
           divide-y wrapper, etc.) can clip the menu. Previous version
           used a normal absolute child — it was getting trimmed by the
-          group card's bottom edge on every row except the last. */}
-      {open && typeof document !== 'undefined' && createPortal(menu, document.body)}
+          group card's bottom edge on every row except the last.
+          On mobile (anchor.mobileSheet) we add a dark backdrop behind
+          the sheet so tapping outside it is a distinct affordance. */}
+      {open && typeof document !== 'undefined' && createPortal(
+        anchor?.mobileSheet ? (
+          <>
+            <div
+              className="fixed top-0 right-0 bottom-0 left-0 z-[9998] bg-black/40"
+              onMouseDown={() => setOpen(false)}
+            />
+            {menu}
+          </>
+        ) : menu,
+        document.body,
+      )}
     </div>
   );
 }
