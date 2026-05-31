@@ -20,6 +20,8 @@ import { ProxyController } from './proxy/proxy.controller';
 import { RendererService } from './proxy/renderer.service';
 import { HealthController } from './health/health.controller';
 import { IntegrationsHealthController } from './health/integrations-health.controller';
+import { GeocodingController } from './geocoding/geocoding.controller';
+import { GeocodingService } from './geocoding/geocoding.service';
 import { FloorPlansController } from './floor-plans/floor-plans.controller';
 // 2026-05-27 — read-only player-hardware catalog endpoint
 // (GET /api/v1/hardware/catalog). Backs the dashboard's per-screen
@@ -181,9 +183,11 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     HardwareController,
     CsrfController,
     BugsController,
+    GeocodingController,
   ],
   providers: [
     AppService,
+    GeocodingService,
     WebsocketSignerService,
     // 2026-05-27 — Auto-recovery for the "alive but content-frozen"
     // failure mode (operator: "is that a bug? it should keep itself

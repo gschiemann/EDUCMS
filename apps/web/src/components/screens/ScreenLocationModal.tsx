@@ -31,6 +31,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, MapPin, X, Loader2, CheckCircle2 } from 'lucide-react';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { geocodeViaApi } from '@/lib/geocode';
 
 interface PhotonFeature {
   geometry: { coordinates: [number, number] };
@@ -163,6 +164,31 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
       lastQueryRef.current = q;
       setSearching(true);
       setNoMatch(false);
+
+      // Server-side geocode FIRST: GET /api/v1/geocode uses Google when the
+      // API has GOOGLE_MAPS_API_KEY (authoritative US house numbers — finds
+      // addresses Photon/Nominatim/Census miss, e.g. "2748 Emory Oak Court").
+      // The Google key stays server-side. If it returns nothing (unconfigured /
+      // ZERO_RESULTS / error) we fall through to the client-side merge below.
+      try {
+        const apiHits = await geocodeViaApi(q);
+        if (lastQueryRef.current !== q) return; // stale
+        if (apiHits.length) {
+          setResults(
+            apiHits.map((h, i) => ({
+              id: `api-${i}-${h.lat}-${h.lon}`,
+              display_name: h.display_name,
+              lat: h.lat,
+              lon: h.lon,
+            })),
+          );
+          setNoMatch(false);
+          setSearching(false);
+          return;
+        }
+      } catch {
+        /* fall through to client-side Photon/Nominatim */
+      }
 
       // Photon (autocomplete-strong, US-biased via bbox) and Nominatim
       // (whole-address strong, hard-pinned to US via countrycodes).

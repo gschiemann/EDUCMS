@@ -22,6 +22,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { MapPin, Loader2, X } from 'lucide-react';
+import { geocodeViaApi } from '@/lib/geocode';
 
 interface PhotonFeature {
   geometry: { coordinates: [number, number] };
@@ -169,6 +170,30 @@ export function AddressAutocomplete({
     debounceRef.current = setTimeout(async () => {
       lastQueryRef.current = q;
       setSearching(true);
+      // Server-side geocode FIRST: GET /api/v1/geocode uses Google when the API
+      // has GOOGLE_MAPS_API_KEY (authoritative US house numbers). Key stays
+      // server-side. Falls through to the client-side Photon/Nominatim merge
+      // below when it returns nothing (unconfigured / ZERO_RESULTS / error).
+      try {
+        const apiHits = await geocodeViaApi(q);
+        if (lastQueryRef.current !== q) return; // stale
+        const mapped = apiHits
+          .map((h, i) => ({
+            id: `api-${i}-${h.lat}-${h.lon}`,
+            displayName: h.display_name,
+            lat: parseFloat(h.lat),
+            lon: parseFloat(h.lon),
+          }))
+          .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon));
+        if (mapped.length) {
+          setResults(mapped);
+          setOpen(true);
+          setSearching(false);
+          return;
+        }
+      } catch {
+        /* fall through to client-side Photon/Nominatim */
+      }
       const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=en&bbox=-125,24,-66,49`;
       const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=0&countrycodes=us&limit=5&q=${encodeURIComponent(q)}`;
       const photonP = fetch(photonUrl, { headers: { Accept: 'application/json' } })
