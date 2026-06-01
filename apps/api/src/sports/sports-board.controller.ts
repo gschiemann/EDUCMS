@@ -160,7 +160,12 @@ export class SportsBoardController {
     this.feedHits.set(key, recent);
 
     const token = headerToken || queryToken;
-    if (!verifyFeedToken(id, token)) {
+    // Game-scoped HMAC, verified against the game's CURRENT feed-token version
+    // (incrementing Game.feedTokenVersion revokes all outstanding tokens).
+    // The version read happens AFTER the rate-limit gate so a bad-token flood
+    // can't drive DB reads. Legacy bare tokens still verify at version 0.
+    const ctsVersion = await this.sports.getFeedTokenVersion(id);
+    if (!verifyFeedToken(id, token, ctsVersion)) {
       throw new HttpException('Invalid or missing feed token', HttpStatus.UNAUTHORIZED);
     }
 
@@ -197,9 +202,14 @@ export class SportsBoardController {
     this.feedHits.set(id, recent);
 
     // Token in the X-Feed-Token header (preferred) or ?token= (for systems
-    // that can only configure a URL). Constant-time, game-scoped verification.
+    // that can only configure a URL). Constant-time, game-scoped verification
+    // against the game's CURRENT feed-token version — incrementing
+    // Game.feedTokenVersion revokes every outstanding token for the game.
+    // The version read happens AFTER the rate-limit gate so a bad-token flood
+    // can't drive DB reads. Legacy bare tokens still verify at version 0.
     const token = headerToken || queryToken;
-    if (!verifyFeedToken(id, token)) {
+    const feedVersion = await this.sports.getFeedTokenVersion(id);
+    if (!verifyFeedToken(id, token, feedVersion)) {
       throw new HttpException('Invalid or missing feed token', HttpStatus.UNAUTHORIZED);
     }
 

@@ -1,0 +1,24 @@
+-- 2026-05-31 — Sprint 13: per-game feed-token REVOCATION (additive).
+--
+-- The external score-feed credential (apps/api/src/sports/sports-feed-token.ts)
+-- is a stateless, game-scoped HMAC handed to a Sportzcast/Scorebird/console-
+-- bridge vendor so they can push live score/clock machine-to-machine without
+-- a dashboard session. Until now it was PERMANENT and UNREVOCABLE — a leaked
+-- token could write score/clock to a game forever.
+--
+-- This column is a monotonically-incrementing version counter folded into the
+-- token's MAC ("feedv:<gameId>:<ver>:<iat>:<ttl>"). Incrementing it
+-- (SportsService.revokeFeedToken / POST /sports/games/:id/revoke-feed-token)
+-- instantly invalidates EVERY outstanding token for that game — the per-game
+-- kill-switch for a leaked or rotated credential.
+--
+-- BACKWARD COMPATIBLE — no harm to a live bridge:
+--   - DEFAULT 0, NOT NULL. Every existing Game row becomes version 0.
+--   - verifyFeedToken() treats version 0 as the LEGACY bare "feed:<id>" HMAC
+--     (it does NOT switch to the versioned payload until version >= 1), so a
+--     token already deployed in the field keeps verifying unchanged.
+--   - Only an explicit revoke (version -> 1) ever changes a token's validity.
+--
+-- Additive-only. Safe to apply on the live pilot tenant with zero downtime.
+ALTER TABLE "games"
+  ADD COLUMN "feed_token_version" INTEGER NOT NULL DEFAULT 0;

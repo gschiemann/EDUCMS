@@ -11,16 +11,40 @@ import { requireSecret } from '../security/required-secret';
  * have). The operator copies a feed URL + token from the console and hands it
  * to their feed vendor.
  *
- * Token = HMAC-SHA256("feed:<gameId>", SPORTS_FEED_SECRET) truncated to 32 hex.
+ * ── Token shapes (verify accepts BOTH) ─────────────────────────
+ *   1. BARE (legacy + version 0, non-expiring):
+ *        `HMAC-SHA256("feed:<gameId>", SECRET)` truncated to 32 hex.
+ *      Byte-for-byte the ORIGINAL token format — every token already handed
+ *      to a feed vendor keeps verifying unchanged. A fresh Game starts at
+ *      feedTokenVersion 0, and v0 deliberately reuses the legacy
+ *      "feed:<id>" MAC input (NOT "feed:<id>:v0"), so the HMAC is identical.
+ *      DO NO HARM to the live bridge.
+ *
+ *   2. STRUCTURED (versioned and/or expiring):
+ *        `<ver>.<iatSec>.<ttlSec>.<mac>` where mac =
+ *        HMAC-SHA256("feedv:<gameId>:<ver>:<iatSec>:<ttlSec>", SECRET)[:32].
+ *      - `ver`  — integer ≥ 0; folds the per-game feedTokenVersion into the
+ *                 MAC so incrementing Game.feedTokenVersion REVOKES every
+ *                 outstanding token for that game (the token's baked-in ver no
+ *                 longer matches the live ver passed to verify).
+ *      - `ttl`  — 0 means non-expiring; >0 is seconds-from-iat after which
+ *                 verify rejects the token.
+ *      The structured MAC uses a DISTINCT "feedv:" prefix so a structured
+ *      token can never collide with / be replayed as a bare token, and the
+ *      version + iat + ttl are all inside the MAC (an attacker can't edit the
+ *      cleartext ver/ttl to dodge revocation or expiry).
+ *
+ * Properties:
  *  - Unguessable (keyed HMAC) and game-scoped (a token for game A can't drive
  *    game B — the gameId is in the MAC input).
- *  - Stateless → no DB table, no migration, no boot risk.
+ *  - Revocable per-game via Game.feedTokenVersion (a stored counter; see the
+ *    additive migration). Optionally time-boxed via the embedded iat+ttl.
+ *  - Still essentially stateless at verify-time: the ONLY state is the small
+ *    integer version, read off the game row the controller already loads.
  *  - Secret: a dedicated SPORTS_FEED_SECRET if set, else DEVICE_SECRET_KEY
  *    (always present in prod via required-secret boot validation). Rotating the
- *    secret is the global kill-switch; per-game revocation is a later add (it
- *    needs a stored per-game version, i.e. a migration we deliberately avoid
- *    here). Low stakes: a leaked token only lets someone push scores to ONE
- *    transient game; the ingest service clamps all values to safe ranges.
+ *    secret remains the GLOBAL kill-switch; bumping feedTokenVersion is the
+ *    PER-GAME kill-switch.
  */
 
 function feedSecret(): string {
@@ -38,23 +62,133 @@ function feedSecret(): string {
   });
 }
 
-export function makeFeedToken(gameId: string): string {
+const MAC_HEX_LEN = 32; // 128-bit truncation — matches the original token width.
+
+/** Coerce any stored/passed version into a clean non-negative integer. */
+function normVersion(version: unknown): number {
+  const n = typeof version === 'number' ? version : Number(version);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.floor(n);
+}
+
+/** Bare legacy/v0 MAC — `HMAC("feed:<id>")`. Unchanged from the original. */
+function bareMac(gameId: string): string {
   return crypto
     .createHmac('sha256', feedSecret())
     .update(`feed:${gameId}`)
     .digest('hex')
-    .slice(0, 32);
+    .slice(0, MAC_HEX_LEN);
 }
 
-export function verifyFeedToken(gameId: string, token: unknown): boolean {
-  if (typeof token !== 'string' || token.length !== 32 || !gameId) return false;
-  const expected = makeFeedToken(gameId);
+/** Structured MAC over (gameId, version, iat, ttl) — distinct "feedv:" prefix. */
+function structuredMac(gameId: string, ver: number, iatSec: number, ttlSec: number): string {
+  return crypto
+    .createHmac('sha256', feedSecret())
+    .update(`feedv:${gameId}:${ver}:${iatSec}:${ttlSec}`)
+    .digest('hex')
+    .slice(0, MAC_HEX_LEN);
+}
+
+/** Constant-time compare of two equal-purpose hex strings. */
+function safeEqHex(expected: string, actual: string): boolean {
   const a = Buffer.from(expected, 'utf8');
-  const b = Buffer.from(token, 'utf8');
+  const b = Buffer.from(actual, 'utf8');
   if (a.length !== b.length) return false;
   try {
     return crypto.timingSafeEqual(a, b);
   } catch {
     return false;
   }
+}
+
+export interface MintFeedTokenOpts {
+  /** Per-game feed-token version (Game.feedTokenVersion). Defaults to 0. */
+  version?: number;
+  /**
+   * Time-to-live in SECONDS. Omit or 0 → non-expiring. When set (>0), a
+   * STRUCTURED token is minted that verify rejects after iat+ttl.
+   */
+  ttlSeconds?: number;
+}
+
+/**
+ * Mint a feed token for a game.
+ *
+ * - `makeFeedToken(id)` with NO opts (or version 0 + no ttl) returns the BARE
+ *   legacy token, byte-for-byte identical to the pre-revocation token. So a
+ *   game that has never been revoked keeps minting the exact same token a
+ *   vendor may already hold — re-copying credentials is a no-op, not a break.
+ * - Any version ≥ 1 OR any ttl > 0 produces a STRUCTURED token.
+ */
+export function makeFeedToken(gameId: string, opts: MintFeedTokenOpts = {}): string {
+  const ver = normVersion(opts.version);
+  const ttlSec =
+    typeof opts.ttlSeconds === 'number' && Number.isFinite(opts.ttlSeconds) && opts.ttlSeconds > 0
+      ? Math.floor(opts.ttlSeconds)
+      : 0;
+
+  // Backward-compatible fast path: version 0 + no expiry == the original token.
+  if (ver === 0 && ttlSec === 0) {
+    return bareMac(gameId);
+  }
+
+  const iatSec = Math.floor(Date.now() / 1000);
+  const mac = structuredMac(gameId, ver, iatSec, ttlSec);
+  return `${ver}.${iatSec}.${ttlSec}.${mac}`;
+}
+
+/**
+ * Verify a feed token against a game's CURRENT version.
+ *
+ * @param gameId         the game the token must be scoped to
+ * @param token          the presented token (bare or structured)
+ * @param currentVersion the game's live Game.feedTokenVersion (default 0).
+ *                       Tokens minted under a DIFFERENT version fail → bumping
+ *                       the column revokes every outstanding token for the game.
+ *
+ * Accepts BOTH shapes:
+ *   - A bare 32-hex token verifies ONLY when currentVersion is 0 (i.e. the game
+ *     has never been revoked). Once the game is bumped to v≥1, the original
+ *     bare token no longer verifies — that is the revocation.
+ *   - A structured token verifies when its embedded version matches
+ *     currentVersion, its MAC is valid, and (if ttl>0) it has not expired.
+ */
+export function verifyFeedToken(
+  gameId: string,
+  token: unknown,
+  currentVersion: number = 0,
+): boolean {
+  if (typeof token !== 'string' || !gameId) return false;
+  const ver = normVersion(currentVersion);
+
+  // ── Structured token: "<ver>.<iat>.<ttl>.<mac>" ──
+  if (token.includes('.')) {
+    const parts = token.split('.');
+    if (parts.length !== 4) return false;
+    const [vStr, iatStr, ttlStr, mac] = parts;
+    if (!/^\d+$/.test(vStr) || !/^\d+$/.test(iatStr) || !/^\d+$/.test(ttlStr)) return false;
+    if (mac.length !== MAC_HEX_LEN) return false;
+
+    const tokVer = Number(vStr);
+    // The token's version must match the game's CURRENT version. A token
+    // minted before a revocation (lower ver) — or somehow ahead of it — fails.
+    if (tokVer !== ver) return false;
+
+    const iatSec = Number(iatStr);
+    const ttlSec = Number(ttlStr);
+    if (ttlSec > 0) {
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (nowSec > iatSec + ttlSec) return false;
+    }
+
+    return safeEqHex(structuredMac(gameId, tokVer, iatSec, ttlSec), mac);
+  }
+
+  // ── Bare legacy/v0 token: 32 hex, non-expiring ──
+  // Only honored while the game is still at version 0. After a revocation
+  // (version ≥ 1) the legacy token is dead and the operator must re-copy the
+  // freshly-minted (structured) token.
+  if (token.length !== MAC_HEX_LEN) return false;
+  if (ver !== 0) return false;
+  return safeEqHex(bareMac(gameId), token);
 }

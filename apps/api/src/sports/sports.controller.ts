@@ -466,7 +466,12 @@ export class SportsController {
   async feedCredentials(@Request() req: any, @Param('id') id: string) {
     // Ownership check (throws NotFound if the game isn't this tenant's).
     await this.sports.assertGameOwned(req.user.tenantId, id);
-    const token = makeFeedToken(id);
+    // Mint at the game's CURRENT feed-token version so re-copying credentials
+    // after a revocation hands the vendor the live token, not the dead one.
+    // Version 0 (never revoked) yields the byte-for-byte LEGACY bare token, so
+    // games that have never been revoked are unaffected.
+    const feedTokenVersion = await this.sports.getFeedTokenVersion(id);
+    const token = makeFeedToken(id, { version: feedTokenVersion });
     const host = req.get?.('host') || process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost';
     const proto = (req.headers?.['x-forwarded-proto'] as string) || req.protocol || 'https';
     const ingestUrl = `${proto}://${host}/api/v1/sports/board/${id}/feed`;
@@ -475,6 +480,9 @@ export class SportsController {
       ingestUrl,
       tokenHeader: 'x-feed-token',
       token,
+      // The current feed-token version. POST games/:id/revoke-feed-token bumps
+      // it, instantly invalidating every previously-issued token for this game.
+      feedTokenVersion,
       // Copy-paste example for the vendor / a quick test.
       curlExample:
         `curl -X POST "${ingestUrl}" ` +
@@ -483,6 +491,29 @@ export class SportsController {
       accepts: ['homeScore', 'awayScore', 'clockMs', 'clockRunning', 'segment'],
       note: 'Any subset of fields may be sent; omitted fields are unchanged. Rate limit: 40 requests / 10s per game.',
     };
+  }
+
+  /**
+   * Revoke the game's feed credential. Increments Game.feedTokenVersion,
+   * which is folded into the feed-token HMAC — so EVERY previously-issued
+   * token for this game stops verifying immediately (the per-game kill-switch
+   * for a leaked or rotated vendor credential). Returns the freshly-minted
+   * CURRENT token so the operator can re-copy working credentials to their
+   * vendor in one step. Writes an immutable AuditLog row.
+   *
+   * Same role set as feed-credentials (anyone who can hand out the token can
+   * revoke it). The PUBLIC board controller's /feed + /cts-snapshot re-verify
+   * against the new version on the very next request.
+   */
+  @Post('games/:id/revoke-feed-token')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async revokeFeedToken(@Request() req: any, @Param('id') id: string) {
+    return this.sports.revokeFeedToken(req.user.tenantId, id, req.user.id);
   }
 
   /**

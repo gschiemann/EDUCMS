@@ -2068,6 +2068,17 @@ model Game {
   // backward compat when this column is null.
   possession   String?   // 'home' | 'away' | null
 
+  // 2026-05-31 — Sprint 13 feed-token REVOCATION. The external score-feed
+  // credential (sports-feed-token.ts) is a stateless game-scoped HMAC handed
+  // to a Sportzcast/Scorebird/console-bridge vendor. This counter is folded
+  // into the token MAC so bumping it (SportsService.revokeFeedToken / the
+  // POST games/:id/revoke-feed-token endpoint) instantly invalidates every
+  // outstanding token for the game — the per-game kill-switch for a leaked or
+  // rotated credential. Defaults to 0; verify treats version 0 as the LEGACY
+  // bare "feed:<id>" MAC, so every token already deployed in the field keeps
+  // verifying unchanged (additive-only migration, no break to a live bridge).
+  feedTokenVersion Int @default(0) @map("feed_token_version")
+
   // 2026-05-19 — Sprint 13 scoreboard builder. Each game can pick an
   // operator-customized Template for its three surfaces:
   //   * scoreboardTemplate → /board/[gameId]  (the big LED video wall)

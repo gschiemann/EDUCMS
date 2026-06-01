@@ -28,6 +28,7 @@ import {
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
+import { makeFeedToken } from './sports-feed-token';
 
 /**
  * VenueOS Sports — Sprint 13. The game engine service.
@@ -158,6 +159,73 @@ export class SportsService {
    *  ownership without otherwise touching the game, e.g. feed-credentials). */
   async assertGameOwned(tenantId: string, id: string): Promise<void> {
     await this.owned(tenantId, id);
+  }
+
+  // ── feed-token revocation (Sprint 13) ─────────────────────────
+  //
+  // The external score-feed token (sports-feed-token.ts) is a stateless
+  // game-scoped HMAC. Game.feedTokenVersion is folded into the MAC so bumping
+  // it instantly invalidates every outstanding token for the game. These two
+  // methods are the read + increment paths.
+
+  /**
+   * The game's current feed-token version. UN-guarded (the PUBLIC board
+   * controller calls this from the feed/cts-snapshot ingest, which has no
+   * dashboard session). A missing game returns 0 — the caller's HMAC compare
+   * fails anyway, and a non-existent game has no valid token. Selects only the
+   * one integer column to keep this off the hot ingest path's cost.
+   */
+  async getFeedTokenVersion(gameId: string): Promise<number> {
+    if (!gameId) return 0;
+    const row = await this.prisma.client.game.findUnique({
+      where: { id: gameId },
+      select: { feedTokenVersion: true },
+    });
+    return row?.feedTokenVersion ?? 0;
+  }
+
+  /**
+   * Revoke all outstanding feed tokens for a game by incrementing
+   * Game.feedTokenVersion. Tenant-scoped (404 if the game isn't the caller's).
+   * Returns the freshly-minted CURRENT token so the operator can immediately
+   * re-copy working credentials to their vendor. Writes an immutable AuditLog
+   * row (privileged action — Standard Audit Surface §16).
+   */
+  async revokeFeedToken(
+    tenantId: string,
+    gameId: string,
+    actorUserId?: string,
+  ): Promise<{ success: true; feedTokenVersion: number; token: string }> {
+    // Ownership gate (throws NotFound if the game isn't this tenant's).
+    await this.owned(tenantId, gameId);
+
+    const updated = await this.prisma.client.game.update({
+      where: { id: gameId },
+      data: { feedTokenVersion: { increment: 1 } },
+      select: { feedTokenVersion: true },
+    });
+    const version = updated.feedTokenVersion;
+
+    // Immutable AuditLog row — who revoked the feed credential, and the new
+    // version. Best-effort to match the rest of this service's audit writes.
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId || null,
+          action: 'SPORTS_FEED_TOKEN_REVOKED',
+          targetType: 'Game',
+          targetId: gameId,
+          details: JSON.stringify({ feedTokenVersion: version }),
+        },
+      });
+    } catch { /* best-effort */ }
+
+    return {
+      success: true,
+      feedTokenVersion: version,
+      token: makeFeedToken(gameId, { version }),
+    };
   }
 
   // ── reads ────────────────────────────────────────────────────
