@@ -747,6 +747,32 @@ export default function PlaylistsPage() {
   // screens → publish → review). When it returns onCreated, we drop
   // straight into the new playlist's editor.
   const [showCreate, setShowCreate] = useState(false);
+  // Assets → "Create playlist" handoff: the Assets page stashes the
+  // selected asset ids in sessionStorage + navigates here with
+  // ?newPlaylist=1. On mount we open the wizard pre-seeded with them,
+  // then clear both so a manual "New Playlist" later starts blank.
+  const [pendingAssetIds, setPendingAssetIds] = useState<string[] | undefined>(undefined);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const wants = params.get('newPlaylist') === '1';
+      const raw = sessionStorage.getItem('edu_new_playlist_assets');
+      if (!wants && !raw) return;
+      let ids: string[] = [];
+      if (raw) {
+        try { const p = JSON.parse(raw); if (Array.isArray(p)) ids = p.filter((x) => typeof x === 'string'); } catch { /* ignore */ }
+      }
+      sessionStorage.removeItem('edu_new_playlist_assets');
+      if (wants) {
+        params.delete('newPlaylist');
+        const qs = params.toString();
+        window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
+      }
+      if (ids.length > 0) setPendingAssetIds(ids);
+      setShowCreate(true);
+    } catch { /* ignore */ }
+  }, []);
   const [showPicker, setShowPicker] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
   // Submit-for-review (Sprint 1.5). CONTRIBUTOR role can submit a
@@ -2603,9 +2629,11 @@ export default function PlaylistsPage() {
           is in the showCreate-state comment block above. */}
       <PlaylistCreateWizard
         open={showCreate}
-        onClose={() => setShowCreate(false)}
+        initialAssetIds={pendingAssetIds}
+        onClose={() => { setShowCreate(false); setPendingAssetIds(undefined); }}
         onCreated={(created) => {
           setShowCreate(false);
+          setPendingAssetIds(undefined);
           // 2026-05-26 — operator: "when i hit create playlist, it
           // showed blank, its saving it but not refreshing the
           // window." Was passing `items: []` here which clobbered

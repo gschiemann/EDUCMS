@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { appConfirm } from '@/components/ui/app-dialog';
-import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, FolderInput, ChevronRight, Pencil, Home, MoreVertical, Check, Trash, AlertCircle, RefreshCw, ChevronDown, ChevronUp, Sparkles, Loader2 } from 'lucide-react';
+import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, FolderInput, ChevronRight, Pencil, Home, MoreVertical, Check, Trash, AlertCircle, RefreshCw, ChevronDown, ChevronUp, Sparkles, Loader2, ListPlus } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder, useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset, useGenerateAltText, useUpdateAltText } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
@@ -126,6 +127,19 @@ export default function AssetsPage() {
   const [webUrl, setWebUrl] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const router = useRouter();
+
+  // "Create playlist" from the current selection: stash the ids in
+  // sessionStorage, then jump to Playlists with ?newPlaylist=1 — the
+  // playlists page opens the wizard pre-seeded with these files (Step 2),
+  // saving the operator the re-pick step.
+  const handleCreatePlaylistFromSelection = () => {
+    if (selectedIds.length === 0) return;
+    try { sessionStorage.setItem('edu_new_playlist_assets', JSON.stringify(selectedIds)); } catch { /* ignore */ }
+    const base = window.location.pathname.replace(/\/assets(?:\/.*)?$/, '');
+    router.push(`${base}/playlists?newPlaylist=1`);
+    setSelectedIds([]);
+  };
   const [dragOver, setDragOver] = useState(false);
   // The asset detail slide-over is a full-viewport overlay with its own
   // action footer; hide the mobile tab bar while it's open. (FolderPicker
@@ -582,6 +596,17 @@ export default function AssetsPage() {
               {/* 2026-05-29 (mobile P1) — bulk actions surface on touch
                   (tiles get a tap-to-select affordance below), so bump
                   these to the 44px touch minimum too; compact on ≥sm. */}
+              {/* Primary action: build a playlist straight from the
+                  selected files (jumps to the pre-seeded wizard). */}
+              <button
+                type="button"
+                onClick={handleCreatePlaylistFromSelection}
+                disabled={isViewer}
+                title={isViewer ? 'Read-only — viewer role' : 'Create a playlist from the selected files'}
+                className="min-h-11 sm:min-h-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ListPlus className="w-4 h-4" /> Create playlist ({selectedIds.length})
+              </button>
               <button
                 type="button"
                 onClick={() => setShowFolderPicker('bulk-move')}

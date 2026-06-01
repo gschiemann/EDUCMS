@@ -163,6 +163,11 @@ interface Props {
     templateId?: string | null;
     items?: PlaylistCreatedItem[];
   }) => void;
+  /** Pre-seed Step 2 with these asset IDs (in order) and jump straight to
+   *  the "Pick content" step as a Media playlist. Powers "select assets →
+   *  Create playlist" from the Assets page. Items resolve once the asset
+   *  library loads; unknown IDs are skipped. */
+  initialAssetIds?: string[];
 }
 
 // ─── Small helpers ─────────────────────────────────────────────────────
@@ -325,7 +330,7 @@ function StepIndicator({
 
 // ─── Main component ────────────────────────────────────────────────────
 
-export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
+export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds }: Props) {
   // Hide the mobile tab bar while the wizard is open so its footer
   // (Back / Next / Create — bottom row) isn't occluded by the tab bar.
   // Gate on `open` since this component stays mounted across open/close.
@@ -389,10 +394,13 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
   const qc = useQueryClient();
 
   const nameInputRef = useRef<HTMLInputElement>(null);
+  // Seed-once guard for the "create playlist from selected assets" handoff.
+  const seededRef = useRef(false);
 
   // Reset state whenever the modal opens — operator expects a clean slate.
   useEffect(() => {
-    if (!open) return;
+    if (!open) { seededRef.current = false; return; }
+    seededRef.current = false;
     setStep(1);
     setHighestVisited(1);
     setName('');
@@ -417,6 +425,33 @@ export function PlaylistCreateWizard({ open, onClose, onCreated }: Props) {
     setEnterAnim(false);
     requestAnimationFrame(() => setEnterAnim(true));
   }, [open]);
+
+  // ── "Create playlist from selected assets" seed ──────────────────
+  // Opened with initialAssetIds (Assets page → Create playlist): build
+  // the Step-2 media list from the asset library once it's loaded, mark
+  // it a Media playlist, and jump straight to the content step. Unknown
+  // ids are skipped; seeds once per open (runs after the reset effect).
+  useEffect(() => {
+    if (!open || seededRef.current) return;
+    if (!initialAssetIds || initialAssetIds.length === 0) return;
+    const lib = (assets as any[]) || [];
+    if (lib.length === 0) return; // wait for the library to load
+    const byId = new Map<string, any>(lib.map((a) => [a.id, a]));
+    const seeded: WizardItem[] = [];
+    for (const id of initialAssetIds) {
+      const a = byId.get(id);
+      if (!a) continue;
+      const mime = typeof a.mimeType === 'string' ? a.mimeType : '';
+      const isAV = mime.startsWith('video/') || mime.startsWith('audio/');
+      seeded.push({ assetId: id, durationMs: isAV ? 30000 : 10000 });
+    }
+    if (seeded.length === 0) return;
+    seededRef.current = true;
+    setKind('media');
+    setSelectedAssetItems(seeded);
+    setStep(2);
+    setHighestVisited((h) => Math.max(h, 2));
+  }, [open, assets, initialAssetIds]);
 
   // Focus the name field on Step 1
   useEffect(() => {
