@@ -79,7 +79,7 @@ export function SchoolSwitcher() {
           )}
           {tenants.map((t) => {
             const isActive = t.slug === activeTenant || t.id === activeTenant;
-            const isDistrict = !t.parentId;
+            const isOrgRoot = !t.parentId;
             const isSwitching = switchingId === t.id;
             return (
               <button
@@ -88,10 +88,13 @@ export function SchoolSwitcher() {
                 disabled={!!switchingId}
                 className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors disabled:opacity-60 disabled:cursor-wait ${
                   isActive ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700 hover:bg-slate-50'
-                } ${isDistrict ? 'border-b border-slate-100' : ''}`}
+                } ${isOrgRoot ? 'border-b border-slate-100' : ''}`}
               >
                 <span className="truncate flex items-center gap-2">
-                  {isDistrict && <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">District</span>}
+                  {/* Parent (org-root) badge — vertical-aware: "District" for
+                      K-12, "Brand" for QSR, "League" for Sports, "Region" for
+                      Retail, "Ministry" for Worship, etc. (VERTICAL_GROUP_NOUN). */}
+                  {isOrgRoot && <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{copy.orgSingular}</span>}
                   {t.name}
                 </span>
                 {isSwitching ? (

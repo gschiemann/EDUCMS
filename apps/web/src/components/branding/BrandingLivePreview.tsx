@@ -70,7 +70,10 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
     '--bp-font-body': branding?.fontBody ? `"${branding.fontBody}", ui-sans-serif, system-ui, sans-serif` : 'ui-sans-serif, system-ui, sans-serif',
   };
 
-  const name = branding?.displayName || 'Your District Signage';
+  // Vertical-neutral default — "District" only fits K-12. Real tenants set
+  // branding.displayName; this placeholder shows before they do, so it must
+  // read right for a gym / restaurant / arena too.
+  const name = branding?.displayName || 'Your Venue Signage';
 
   // Detect whether the picked logo is light-toned (e.g., the white
   // Dodgers wordmark). When it is, wrap it in a brand-color chip so
