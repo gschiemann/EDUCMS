@@ -25,10 +25,12 @@ import type { Response } from 'express';
  * Subscription model:
  *
  *   - Each connected SSE client subscribes to ONE tenant scope
- *     (tenant:<id>) and OPTIONALLY one device scope (device:<screenId>).
- *   - When a Redis pmessage arrives on `tenant:X` or `device:Y`, the
- *     RedisService calls `broadcastToScope` which we re-fan to every
- *     matching SSE client.
+ *     (tenant:<id>), OPTIONALLY one group scope (group:<screenGroupId>),
+ *     and OPTIONALLY one device scope (device:<screenId>). This mirrors
+ *     the WS gateway's three-scope ClientContext (tenant/group/device).
+ *   - When a Redis pmessage arrives on `tenant:X`, `group:Y`, or
+ *     `device:Z`, the RedisService calls `broadcastToScope` which we
+ *     re-fan to every matching SSE client.
  *   - On disconnect (res.on('close')), the entry is removed; if the
  *     last subscriber to a tenant departs, the scope key is deleted
  *     so we don't accumulate empty buckets.
@@ -41,6 +43,7 @@ import type { Response } from 'express';
 interface SseClient {
   id: string;
   tenantId: string | null;
+  groupId: string | null;
   deviceId: string | null;
   res: Response;
   /** When this client connected (ms epoch) — useful for telemetry. */
@@ -70,6 +73,12 @@ export class SseService {
   /** Register a new SSE client. Returns its id for later removal. */
   register(opts: {
     tenantId: string | null;
+    // Optional group scope (group:<screenGroupId>). When the caller can
+    // resolve the client's screen group it is passed here so group-scoped
+    // broadcasts (e.g. a hallway-group lockdown) reach this stream in
+    // real-time instead of only via the 5-10s manifest poll. Mirrors the
+    // WS gateway's optional ClientContext.groupId.
+    groupId?: string | null;
     deviceId: string | null;
     res: Response;
   }): string {
@@ -77,6 +86,7 @@ export class SseService {
     const client: SseClient = {
       id,
       tenantId: opts.tenantId,
+      groupId: opts.groupId ?? null,
       deviceId: opts.deviceId,
       res: opts.res,
       connectedAt: Date.now(),
@@ -92,6 +102,7 @@ export class SseService {
 
     this.logger.log(
       `[SSE] connect id=${id} tenant=${opts.tenantId || '-'} ` +
+      `group=${opts.groupId || '-'} ` +
       `device=${opts.deviceId || '-'} total=${this.clients.size}`,
     );
 
@@ -111,8 +122,12 @@ export class SseService {
     if (this.clients.size === 0) return;
     let matched = 0;
     for (const client of this.clients.values()) {
+      // Mirror the WS gateway's three-scope match (tenant/group/device)
+      // so a group-scoped emergency (hallway-group lockdown) is pushed in
+      // real-time over SSE instead of being dropped to the manifest poll.
       const match =
         (type === 'tenant' && client.tenantId === id) ||
+        (type === 'group' && client.groupId === id) ||
         (type === 'device' && client.deviceId === id);
       if (!match) continue;
       matched += this.writeEvent(client, payload?.type || 'MESSAGE', payload) ? 1 : 0;
