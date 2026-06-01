@@ -60,6 +60,42 @@ export interface HeroCandidate {
   score: number;
 }
 
+/**
+ * Pull a brand name out of a multi-segment SEO <title>.
+ *
+ * Many homepages have NO og:site_name and a <title> like
+ *   "Pizza Delivery & Carryout, Pasta, Wings & More | Domino's"
+ * where the real brand is the short trailing segment. The earlier
+ * suffix-stripper (cleanTitleString) only removes GENERIC suffixes
+ * ("| Home", "| Official Site"), so a real brand after the pipe survived
+ * and the long SEO phrase got stored as the display name (the recurring
+ * "can't brand Domino's" bug — verified 2026-06-01 against the live row).
+ *
+ * Deliberately conservative — a bad guess is worse than the raw title:
+ * split on separators, keep "brand-like" segments (no comma, ≤4 words,
+ * not a domain, not a generic word, 2–30 chars). If og:site_name matches a
+ * segment use it; else if there are brand-like segments return the SHORTEST;
+ * otherwise return the input unchanged (single-segment names are untouched).
+ */
+export function pickBrandSegment(name: string | null | undefined, ogSiteName?: string | null): string | null {
+  if (!name) return name ?? null;
+  const parts = name.split(/\s*[|•·–—]\s*|\s+-\s+/).map((s) => s.trim()).filter(Boolean);
+  if (parts.length < 2) return name; // no separator → leave it alone
+  const looksDomain = (s: string) => /^www\./i.test(s) || /\.(com|net|org|io|app|co|gov|edu|biz|us)\b/i.test(s);
+  const isGeneric = (s: string) =>
+    /^(home|welcome|official site|official website|home page|menu|order online|the official site|official)$/i.test(s);
+  const wordCount = (s: string) => s.split(/\s+/).filter(Boolean).length;
+  const brandLike = parts.filter(
+    (p) => !p.includes(',') && wordCount(p) <= 4 && !looksDomain(p) && !isGeneric(p) && p.length >= 2 && p.length <= 30,
+  );
+  if (brandLike.length === 0) return name; // nothing clearly a brand → unchanged
+  if (ogSiteName) {
+    const match = brandLike.find((p) => p.toLowerCase() === ogSiteName.trim().toLowerCase());
+    if (match) return match;
+  }
+  return brandLike.slice().sort((a, b) => a.length - b.length)[0];
+}
+
 export interface BrandingPreview {
   sourceUrl: string;
   finalUrl: string;
@@ -396,9 +432,15 @@ export class BrandingScraperService {
         return stripped.length > 0 && stripped !== '';
       } catch { return false; }
     })();
-    const displayName = hasSubpath
+    const rawDisplayName = hasSubpath
       ? (cleanedOgTitle || cleanedTwitterTitle || cleanedTitle || ogSiteName || hostDerivedName || null)
       : (ogSiteName || cleanedOgTitle || cleanedTwitterTitle || cleanedTitle || hostDerivedName || null);
+    // 2026-06-01 — final pass: when the chosen name is still a multi-segment
+    // SEO title (dominos.com has no og:site_name, so this lands as "Pizza
+    // Delivery & Carryout, Pasta, Wings & More | Domino's"), pull out the
+    // brand segment ("Domino's"). Conservative — only overrides when exactly
+    // one separated segment is clearly brand-like; otherwise untouched.
+    const displayName = pickBrandSegment(rawDisplayName, ogSiteName);
 
     // 2026-05-07 — operator: "you ask for the name and tagline, and
     // it always just picks up the name twice".
