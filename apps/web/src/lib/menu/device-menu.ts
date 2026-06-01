@@ -59,6 +59,9 @@ interface RawMenuItem {
   emoji?: string;
   imageUrl?: string;
   available?: boolean;
+  /** Size / option price variants from the resolved feed. priceCents is
+   *  canonical; price (pre-formatted) accepted as a fallback. */
+  variants?: { label?: string; priceCents?: number; price?: string }[];
 }
 
 function getQueryParam(name: string): string | null {
@@ -122,12 +125,15 @@ function getApiRoot(): string {
   return root.replace(/\/$/, '');
 }
 
-function mapRawItems(rows: RawMenuItem[]): MenuBoardItem[] {
+function mapRawItems(rows: RawMenuItem[], opts?: { keepUnavailable?: boolean }): MenuBoardItem[] {
+  const keepUnavailable = opts?.keepUnavailable === true;
+  const fmtCents = (c: number) => `$${(c / 100).toFixed(2)}`;
   return rows
     .filter((r) => r && (r.name ?? '').toString().trim().length > 0)
-    // The endpoint already drops 86'd items, but defend against a source
-    // that sends `available:false` rows anyway.
-    .filter((r) => r.available !== false)
+    // Normally drop 86'd items (the endpoint already does). When the caller
+    // asked for them (includeUnavailable) keep them so the board can grey
+    // them out — they carry `available:false`.
+    .filter((r) => keepUnavailable || r.available !== false)
     .map((r) => {
       // Price: prefer the server's pre-formatted string; else format
       // cents (sale price wins when present + lower).
@@ -136,16 +142,30 @@ function mapRawItems(rows: RawMenuItem[]): MenuBoardItem[] {
         price = r.price.trim();
       } else if (typeof r.salePriceCents === 'number' && r.salePriceCents >= 0 &&
                  (typeof r.priceCents !== 'number' || r.salePriceCents < r.priceCents)) {
-        price = `$${(r.salePriceCents / 100).toFixed(2)}`;
+        price = fmtCents(r.salePriceCents);
       } else if (typeof r.priceCents === 'number' && r.priceCents >= 0) {
-        price = `$${(r.priceCents / 100).toFixed(2)}`;
+        price = fmtCents(r.priceCents);
       }
+      // Size/option variants → pre-formatted price strings.
+      const variants = Array.isArray(r.variants)
+        ? r.variants
+            .map((v) => {
+              const label = String(v?.label ?? '').trim();
+              let vp = '';
+              if (typeof v?.price === 'string' && v.price.trim()) vp = v.price.trim();
+              else if (typeof v?.priceCents === 'number' && v.priceCents >= 0) vp = fmtCents(v.priceCents);
+              return label && vp ? { label, price: vp } : null;
+            })
+            .filter((x): x is { label: string; price: string } => x != null)
+        : undefined;
       return {
         name: String(r.name),
         desc: r.description ?? r.desc ?? undefined,
         price,
         dietary: Array.isArray(r.badges) ? r.badges : (Array.isArray(r.dietary) ? r.dietary : undefined),
         emoji: r.emoji ?? undefined,
+        available: r.available,
+        ...(variants && variants.length ? { variants } : {}),
       } as MenuBoardItem;
     });
 }
@@ -155,6 +175,9 @@ export interface FetchMenuOptions {
   category?: string;
   /** Abort signal so the polling loop can cancel an in-flight request. */
   signal?: AbortSignal;
+  /** Include 86'd / sold-out items (flagged available:false) instead of
+   *  dropping them — used by fixed-slot HTML boards that grey them out. */
+  includeUnavailable?: boolean;
 }
 
 /**
@@ -179,7 +202,10 @@ export async function fetchDeviceMenu(
   // ── Player path: device-authed /screens/:id/menu ──
   if (screenId && deviceToken) {
     try {
-      const qs = opts.category ? `?category=${encodeURIComponent(opts.category)}` : '';
+      const params = new URLSearchParams();
+      if (opts.category) params.set('category', opts.category);
+      if (opts.includeUnavailable) params.set('includeUnavailable', '1');
+      const qs = params.toString() ? `?${params.toString()}` : '';
       const url = `${getApiRoot()}/api/v1/screens/${encodeURIComponent(screenId)}/menu${qs}`;
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${deviceToken}` },
@@ -195,7 +221,7 @@ export async function fetchDeviceMenu(
           : Array.isArray(body?.items)
             ? body.items
             : [];
-        const mapped = mapRawItems(rows);
+        const mapped = mapRawItems(rows, { keepUnavailable: !!opts.includeUnavailable });
         return mapped.length > 0 ? mapped : null;
       }
       // 404 = endpoint not deployed yet (API agent's work not merged) OR

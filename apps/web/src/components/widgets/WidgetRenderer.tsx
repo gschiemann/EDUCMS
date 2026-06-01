@@ -2832,7 +2832,9 @@ function ExternalHtmlWidget({ config }: { config: any }) {
   // returns null) and respects an explicit config.posSync / dataSource.
   const isMenuBoard = /\/signage\/(qsr|menus-pos|bar)\//.test(url);
   const menuDriven = isMenuBoard || config?.posSync === true || config?.dataSource === 'POS';
-  const liveMenu = usePosMenuItems(menuDriven, config?.posCategory);
+  // includeUnavailable: the fixed-slot HTML boards grey out 86'd items
+  // (the shim's applyMenu styles them) rather than dropping them.
+  const liveMenu = usePosMenuItems(menuDriven, config?.posCategory, { includeUnavailable: true });
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const postMenu = useCallback(() => {
     const win = frameRef.current?.contentWindow;

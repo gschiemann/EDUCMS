@@ -47,6 +47,12 @@ export interface MenuBoardItem {
   /** Asset URL for a dish photo. When set, shown as a small thumbnail
    *  left of the name (replaces the emoji glyph). */
   imageUrl?: string;
+  /** Live availability from the POS feed. false = 86'd / sold out today.
+   *  Only populated when the menu was fetched with includeUnavailable. */
+  available?: boolean;
+  /** Size / option price variants, pre-formatted (e.g.
+   *  [{label:'Small',price:'$11.99'}, …]) — lets a board fill SM/MED/LG. */
+  variants?: { label: string; price: string }[];
 }
 
 export interface MenuBoardConfig {
