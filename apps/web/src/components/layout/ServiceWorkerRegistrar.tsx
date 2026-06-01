@@ -21,6 +21,43 @@ import { usePathname } from 'next/navigation';
 export function ServiceWorkerRegistrar() {
   const pathname = usePathname() || '';
 
+  // 2026-06-01 — auto-recover from deploy/chunk skew. After a deploy the JS
+  // chunk filenames change; a page already open in the browser still points
+  // at the OLD chunk URLs, so a client navigation that lazy-loads a route
+  // (e.g. opening the template builder) throws ChunkLoadError and lands on
+  // the route error boundary ("This page couldn't load"). A full reload pulls
+  // the current build's HTML + chunk references and fixes it — so do that
+  // automatically. Guarded to one reload per 30s so a genuinely-missing chunk
+  // can't cause an infinite reload loop (it falls through to the boundary).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isChunkError = (msg?: string | null) =>
+      !!msg && /ChunkLoadError|Loading chunk [^ ]+ failed|Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i.test(msg);
+    const reloadOnce = () => {
+      try {
+        const KEY = '__educms_chunk_reload_at';
+        const last = Number(sessionStorage.getItem(KEY) || '0');
+        if (Date.now() - last < 30_000) return; // already tried recently → give up, show boundary
+        sessionStorage.setItem(KEY, String(Date.now()));
+      } catch { /* sessionStorage blocked — still reload once */ }
+      window.location.reload();
+    };
+    const onError = (e: ErrorEvent) => {
+      if (isChunkError(e?.message) || isChunkError((e?.error as Error | undefined)?.message) || isChunkError((e?.error as Error | undefined)?.name)) reloadOnce();
+    };
+    const onRejection = (e: PromiseRejectionEvent) => {
+      const r = e?.reason as (Error & { name?: string }) | string | undefined;
+      const msg = typeof r === 'string' ? r : (r?.message || r?.name);
+      if (isChunkError(msg)) reloadOnce();
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!('serviceWorker' in navigator)) return;

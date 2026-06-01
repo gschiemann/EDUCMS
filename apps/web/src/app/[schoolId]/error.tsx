@@ -10,7 +10,6 @@ import { useEffect } from 'react';
  */
 export default function TenantError({
   error,
-  reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
@@ -18,6 +17,18 @@ export default function TenantError({
   useEffect(() => {
     Sentry.captureException(error);
   }, [error]);
+
+  // 2026-06-01 — "Try again" does a FULL reload, not React's reset().
+  // The common cause of this boundary in production is deploy/chunk skew:
+  // a new build renamed the JS chunks, but the page in the browser still
+  // references the old ones, so loading a route (e.g. opening the builder)
+  // throws ChunkLoadError. reset() just re-renders the SAME stale module
+  // and crashes again (operator: "still crashing" after Try again). A
+  // hard reload re-fetches the current build's HTML + chunks, which is
+  // what actually recovers.
+  const handleRetry = () => {
+    try { window.location.reload(); } catch { /* no-op */ }
+  };
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-8">
@@ -35,7 +46,7 @@ export default function TenantError({
         )}
         <div className="flex gap-3 justify-center">
           <button
-            onClick={() => reset()}
+            onClick={handleRetry}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
           >
             Try again

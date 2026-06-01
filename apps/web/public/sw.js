@@ -25,7 +25,14 @@
 // stale Next chunks since the SW first shipped). Bump again any time
 // a deploy needs to force a clean cache for already-installed clients
 // — the dashboard SW will purge on its next activate.
-const CACHE_VERSION = 'edu-shell-v2';
+// 2026-06-01 — v2 → v3. Operators hit "This page couldn't load" opening
+// the builder after a deploy: the cache-first static handler had hoarded
+// old Next chunks, and the route boundary's "Try again" only did a React
+// reset() (re-rendered the same stale module), so it never recovered.
+// Fixes shipped alongside: error boundary now does a full reload, and a
+// global ChunkLoadError handler auto-reloads once. Bumping the version
+// purges any stale chunk cache on the next activate.
+const CACHE_VERSION = 'edu-shell-v3';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const HTML_CACHE = `${CACHE_VERSION}-html`;
 
