@@ -902,6 +902,26 @@ const POS_LIVE_TYPES = new Set<string>([
 ]);
 
 /**
+ * An EXTERNAL_HTML signage board that reads the live POS menu feed — the
+ * QSR / menus-pos / bar packs (e.g. the Domino's pizza board). These aren't a
+ * fixed widget TYPE (every packaged signage template is EXTERNAL_HTML), so we
+ * detect them by an already-set posSync / dataSource flag OR a menu-board url.
+ * This lets the SAME top-level "Driven by: POS" picker + auto-map that drives
+ * the native RESTAURANT_* widgets also drive the packaged HTML menu boards —
+ * no separate per-field wiring (operator 2026-06-01: "use the same UI we
+ * built, stop reinventing the wheel").
+ */
+function isPosCapableZone(z: { widgetType: string; defaultConfig?: Record<string, unknown> | null }): boolean {
+  if (POS_LIVE_TYPES.has(z.widgetType)) return true;
+  if (z.widgetType === 'EXTERNAL_HTML') {
+    const cfg = (z.defaultConfig || {}) as Record<string, unknown>;
+    const url = typeof cfg.url === 'string' ? cfg.url : '';
+    return cfg.posSync === true || cfg.dataSource === 'POS' || /\/signage\/(qsr|menus-pos|bar)\//.test(url);
+  }
+  return false;
+}
+
+/**
  * Phase 3 — generic widget types that can render rows from an external
  * REST/JSON or Google-Sheet-CSV feed (config.customSync → useCustomData).
  * The "Driven by: Custom data" picker only appears on templates that
@@ -942,7 +962,13 @@ function TemplateProperties() {
   const hasSportElements = zones.some((z) => /^(SCOREBOARD|SCORE_|GAME_)/.test(z.widgetType));
   // Phase 2: menu/drink templates get a POS picker instead (gated on the
   // presence of a board that genuinely reads a live POS feed).
-  const hasMenuElements = zones.some((z) => POS_LIVE_TYPES.has(z.widgetType));
+  const hasMenuElements = zones.some(isPosCapableZone);
+  // POS is "connected" when the template picker says POS OR any POS-capable
+  // board already has live sync on. The packaged menu boards ship
+  // posSync:true, so the panel reads CONNECTED out of the box instead of
+  // depending on meta.dataSource (which a preset may never set).
+  const posConnected = dataSource === 'POS'
+    || zones.some((z) => isPosCapableZone(z) && !!((z.defaultConfig as Record<string, unknown> | null)?.posSync));
   // Phase 3: generic templates (e.g. a TICKER) get a "Custom data" picker —
   // gated on a widget that can actually render external REST/CSV rows.
   const hasDataConsumers = zones.some((z) => DATA_CONSUMER_TYPES.has(z.widgetType));
@@ -1125,41 +1151,43 @@ function TemplateProperties() {
         <div style={{
           borderRadius: 10,
           border: '1px solid',
-          borderColor: dataSource === 'POS' ? '#b45309' : '#e2e8f0',
-          background: dataSource === 'POS' ? '#431407' : '#f8fafc',
+          borderColor: posConnected ? '#b45309' : '#e2e8f0',
+          background: posConnected ? '#431407' : '#f8fafc',
           padding: '10px 12px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
             <span style={{
               display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
-              background: dataSource === 'POS' ? '#f59e0b' : '#94a3b8',
+              background: posConnected ? '#f59e0b' : '#94a3b8',
               marginRight: 8, flexShrink: 0,
             }} />
             <span style={{
               fontSize: 11, fontWeight: 700,
-              color: dataSource === 'POS' ? '#fcd34d' : '#64748b',
+              color: posConnected ? '#fcd34d' : '#64748b',
               letterSpacing: 1,
             }}>
-              {dataSource === 'POS' ? 'POS — LIVE MENU & PRICES' : 'NOT CONNECTED'}
+              {posConnected ? 'POS — LIVE MENU & PRICES' : 'NOT CONNECTED'}
             </span>
           </div>
 
-          <div style={{ marginBottom: dataSource === 'POS' ? 10 : 0 }}>
+          <div style={{ marginBottom: posConnected ? 10 : 0 }}>
             <label htmlFor={posDrivenId} style={{
               display: 'block', fontSize: 10, fontWeight: 600,
-              color: dataSource === 'POS' ? '#fcd34d' : '#64748b', marginBottom: 4,
+              color: posConnected ? '#fcd34d' : '#64748b', marginBottom: 4,
             }}>
               Driven by
             </label>
             <select
               id={posDrivenId}
-              value={dataSource === 'POS' ? 'POS' : 'NONE'}
+              value={posConnected ? 'POS' : 'NONE'}
               onChange={(e) => {
                 const next = e.target.value === 'POS' ? 'POS' : 'NONE';
                 setMeta({ dataSource: next });
                 // Auto-map: flip live sync on every POS-capable menu board so
                 // the boards immediately read the connected POS. NONE → off.
-                const menuIds = zones.filter((z) => POS_LIVE_TYPES.has(z.widgetType)).map((z) => z.id);
+                // Covers BOTH the native RESTAURANT_* widgets AND the packaged
+                // EXTERNAL_HTML menu boards (Domino's etc.) via isPosCapableZone.
+                const menuIds = zones.filter(isPosCapableZone).map((z) => z.id);
                 if (menuIds.length > 0) {
                   updateZones(
                     menuIds,
@@ -1171,9 +1199,9 @@ function TemplateProperties() {
               style={{
                 width: '100%', padding: '6px 8px', borderRadius: 6,
                 border: '1px solid',
-                borderColor: dataSource === 'POS' ? '#b45309' : '#cbd5e1',
-                background: dataSource === 'POS' ? '#7c2d12' : '#ffffff',
-                color: dataSource === 'POS' ? '#fde68a' : '#334155',
+                borderColor: posConnected ? '#b45309' : '#cbd5e1',
+                background: posConnected ? '#7c2d12' : '#ffffff',
+                color: posConnected ? '#fde68a' : '#334155',
                 fontSize: 11, fontWeight: 600, cursor: 'pointer', appearance: 'auto',
               }}
             >
@@ -1182,7 +1210,7 @@ function TemplateProperties() {
             </select>
           </div>
 
-          {dataSource === 'POS' && (
+          {posConnected && (
             <div style={{
               fontSize: 10, color: '#fcd34d', lineHeight: 1.6,
               borderTop: '1px solid #b45309', paddingTop: 8,
@@ -6614,6 +6642,13 @@ function ExternalHtmlTextEditor({
   // the token string in textOverrides[fieldKey] so it rides the EXISTING
   // `?text=` transport to the server + player unchanged — the server
   // resolves the token per the screen's location at render time.
+  // POS "connected" for THIS board — the per-field bind control is an
+  // OVERRIDE that only appears once the top-level "Driven by: POS" toggle is on
+  // (cfg.posSync). Mirrors the CTS model (auto-map first; override only if the
+  // name-match is wrong) instead of cluttering every field with a bind control
+  // even when no POS is connected (operator: "stop reinventing the wheel").
+  const posSyncOn = (cfg as Record<string, unknown> | null)?.posSync === true
+    || (cfg as Record<string, unknown> | null)?.dataSource === 'POS';
   const posBindings: Record<string, { externalId: string; field: 'price' | 'name' | 'available' }> =
     (cfg?.posItemBindings && typeof cfg.posItemBindings === 'object') ? cfg.posItemBindings : {};
   const setPosBinding = (
@@ -6797,10 +6832,12 @@ function ExternalHtmlTextEditor({
                     onChange={(v) => setOverride(f.key, v, f.defaultText)}
                   />
                 )}
-                {/* BYO binding affordance — bind this field to a live POS
-                    item so it auto-fills per location. Only on short
-                    fields (a price/name/availability, not a paragraph). */}
-                {f.isShortish && (
+                {/* BYO binding OVERRIDE — bind this field to a specific live
+                    POS item when the auto name-match is wrong. Only on short
+                    fields (price/name/availability) AND only once POS is
+                    connected at the top level, so it reads as an override of
+                    the auto-map, not a primary action. */}
+                {f.isShortish && posSyncOn && (
                   <PosItemBindField
                     label={label}
                     binding={undefined}
