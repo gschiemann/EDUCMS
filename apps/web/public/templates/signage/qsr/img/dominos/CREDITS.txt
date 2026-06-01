@@ -1,7 +1,7 @@
 Domino's pizza-board default photos (swap for official Domino's product shots).
 
 hero.jpg | Domino's pepperoni pizza (product photo) | (c) Domino's IP Holder LLC — used for the Domino's PILOT DEMO only; swap/remove for the generic public template | https://cache.dominos.com/olo/.../market/US/_en/images/img/products/larges/S_PIZZA.jpg
-item-1.jpg | supreme pizza | CC0 | Random photos 1989 | https://commons.wikimedia.org/wiki/File:Budapest,_B%C3%A9k%C3%A1smegyer,_Self_Store_Pl%C3%A1za,_Pizza_Hut,_Super_Supreme_pizza.jpg
-item-2.jpg | pepperoni pizza | CC BY 2.0 | Dale Cruse from San Francisco, CA, USA | https://commons.wikimedia.org/wiki/File:All_Good_pizza_(38501728345).jpg
-item-3.jpg | vegetarian pizza | CC BY 4.0 | Waran R Samay | https://commons.wikimedia.org/wiki/File:Vegetable_pizza_food.jpg
-item-4.jpg | bbq chicken pizza | CC BY 2.0 | Prayitno / Thank you for (12 millions +) view from Los Angel | https://commons.wikimedia.org/wiki/File:B.B.Q._Chicken_Pizza_(26679384893).jpg
+item-1.jpg | Domino's ExtravaganZZa (product photo S_ZZ)   | (c) Domino's IP Holder LLC — pilot DEMO only; swap/remove for the generic public template | https://cache.dominos.com/olo/.../market/US/_en/images/img/products/larges/S_ZZ.jpg
+item-2.jpg | Domino's MeatZZa (product photo S_MX)         | (c) Domino's IP Holder LLC — pilot DEMO only | https://cache.dominos.com/olo/.../products/larges/S_MX.jpg
+item-3.jpg | Domino's Pacific Veggie (product photo S_PIZPV) | (c) Domino's IP Holder LLC — pilot DEMO only | https://cache.dominos.com/olo/.../products/larges/S_PIZPV.jpg
+item-4.jpg | Domino's Buffalo Chicken (product photo S_BUFC) | (c) Domino's IP Holder LLC — pilot DEMO only | https://cache.dominos.com/olo/.../products/larges/S_BUFC.jpg
