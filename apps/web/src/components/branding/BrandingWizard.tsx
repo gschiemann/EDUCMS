@@ -523,7 +523,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
             </h1>
           </div>
           <p className="text-sm text-slate-600">
-            Paste your school or district website. In about 10 seconds we&apos;ll pull your logo,
+            Paste your website. In about 10 seconds we&apos;ll pull your logo,
             colors, and fonts so the CMS looks like yours — not ours.
           </p>
 

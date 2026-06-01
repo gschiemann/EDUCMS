@@ -26,8 +26,7 @@ export default function TenantError({
           This page couldn&apos;t load
         </h1>
         <p className="text-slate-600 dark:text-slate-400 mb-5">
-          We hit an error loading this school&apos;s data. The team has been
-          notified.
+          We hit an error loading this page. The team has been notified.
         </p>
         {error?.digest && (
           <p className="text-xs font-mono text-slate-400 mb-5">

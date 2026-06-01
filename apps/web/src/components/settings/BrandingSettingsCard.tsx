@@ -405,7 +405,7 @@ function ApplyBrandToTemplatesRow() {
         <div className="flex-1">
           <div className="text-sm font-bold text-slate-700">Apply brand to all templates</div>
           <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-            Repaint every template you own with your school&apos;s palette and fonts.
+            Repaint every template you own with your brand palette and fonts.
             <span className="font-semibold"> Fill blanks</span> only touches zones still using stock colors;{' '}
             <span className="font-semibold">override</span> force-repaints everything.
           </p>

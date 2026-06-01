@@ -542,7 +542,7 @@ function AiGenerateModal({
               {usage?.resetAt
                 ? ` Resets ${new Date(usage.resetAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.`
                 : ''}
-              {' '}Connect your school's own Anthropic or OpenAI key in Settings to continue without limits.
+              {' '}Connect your own Anthropic or OpenAI key in Settings to continue without limits.
             </p>
             <div className="flex gap-2">
               <a

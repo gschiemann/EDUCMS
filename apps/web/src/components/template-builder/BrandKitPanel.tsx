@@ -325,7 +325,7 @@ export function BrandKitPanel() {
       });
 
       if (!preview || (!preview.palette && !preview.colors?.length && !preview.logos?.length)) {
-        throw new Error("We couldn't find a logo or palette on that site. Try the school's main homepage URL.");
+        throw new Error("We couldn't find a logo or palette on that site. Try your main homepage URL.");
       }
 
       setScrapePhase('applying');
@@ -504,7 +504,7 @@ export function BrandKitPanel() {
             No brand kit on this template
           </div>
           <div className="text-[11px] text-slate-500 leading-relaxed">
-            Paste your school's website URL to auto-detect colors, logo,
+            Paste your website URL to auto-detect colors, logo,
             and fonts to use <em>inside this template</em>. Your global
             CMS theme is separate.
           </div>
