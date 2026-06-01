@@ -97,7 +97,7 @@ export class BrandingController {
     let ogImageUrl: string | null = null;
 
     const chosenLogo = body.logoOverride?.url ?? body.logos?.[0]?.url ?? null;
-    const chosenSvg = body.logoOverride?.svgInline ?? body.logos?.[0]?.svgInline ?? null;
+    let chosenSvg = body.logoOverride?.svgInline ?? body.logos?.[0]?.svgInline ?? null;
 
     // Diagnostic — so we can see exactly what the client is sending.
     // Enough signal to tell apart "body corrupted in transit" from
@@ -123,11 +123,37 @@ export class BrandingController {
       if (!s || s.length < 200) return false;
       return /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(s);
     };
-    const chosenSvgValid = isRealSvg(chosenSvg);
+    let chosenSvgValid = isRealSvg(chosenSvg);
     if (chosenSvg && !chosenSvgValid) {
       this.logger.warn(
-        `Branding SVG rejected for tenant ${tenantId} — no shape primitives (len=${chosenSvg.length}). Falling back to logoUrl.`,
+        `Branding SVG rejected for tenant ${tenantId} — invalid markup (len=${chosenSvg.length}). Attempting re-scrape recovery.`,
       );
+      // 2026-06-01 — the wizard sometimes ships a CORRUPTED svgInline: on
+      // dominos.com it sent a 1-char "®" instead of the <svg> markup (a
+      // frontend state/cache mangle between scrape → adopt; verified in the
+      // [adopt] log: chosenSvgLen=1). The scraper's server-side $.html(el)
+      // always yields the FULL markup, so when the chosen SVG is invalid but
+      // we know the source URL, re-scrape and recover the real logo. Gated to
+      // the failure case — a normal adopt with a valid SVG never re-scrapes.
+      if (body.sourceUrl && /^https?:\/\//i.test(body.sourceUrl)) {
+        try {
+          const fresh = await this.scraper.scrape(body.sourceUrl);
+          const recovered = (fresh.logos || []).find(
+            (l: any) => l?.kind === 'svg-inline' && isRealSvg(l.svgInline),
+          );
+          if (recovered?.svgInline) {
+            chosenSvg = recovered.svgInline;
+            chosenSvgValid = true;
+            this.logger.log(
+              `[adopt] recovered a valid inline SVG via re-scrape of ${body.sourceUrl} for tenant ${tenantId} (len=${chosenSvg.length})`,
+            );
+          } else {
+            this.logger.warn(`[adopt] re-scrape of ${body.sourceUrl} produced no valid SVG candidate — falling back to logoUrl.`);
+          }
+        } catch (e: any) {
+          this.logger.warn(`[adopt] SVG-recovery re-scrape failed for tenant ${tenantId}: ${e?.message}`);
+        }
+      }
     }
 
     // (0) Operator-uploaded logo (data URL) wins over any scraped candidate —
