@@ -18,7 +18,6 @@
 import { useUIStore } from '@/store/ui-store';
 import {
   VERTICAL_LABELS,
-  VERTICAL_GROUP_NOUN,
   VERTICAL_DEFAULT_BRAND,
   VERTICAL_TEMPLATE_CATEGORIES,
   VERTICAL_ROLE_LABELS,
@@ -29,13 +28,13 @@ import {
 
 export interface TenantCopy {
   vertical: Vertical;
-  /** Singular noun for the tenant entity itself ("School" / "Gym" / "Store") */
+  /** Universal noun for an account/site — "Location" for every vertical. */
   orgSingular: string;
-  /** Plural variant ("Schools" / "Gyms" / "Stores") */
+  /** Plural — "Locations". */
   orgPlural: string;
-  /** Group noun ("District" / "Region" / "Brand") for parent grouping */
+  /** Top-level (org-root) account label — "Primary" for every vertical. */
   groupSingular: string;
-  /** Plural group noun */
+  /** Plural of the top-level label. */
   groupPlural: string;
   /** Industry tagline — "K-12 districts, schools, campuses" / "Gyms..." */
   tagline: string;
@@ -59,18 +58,24 @@ export function useTenantCopy(): TenantCopy {
   const tenantVertical = useUIStore((s) => (s as any).user?.tenantVertical);
   const v: Vertical = isVertical(tenantVertical) ? tenantVertical : DEFAULT_VERTICAL;
   const labels = VERTICAL_LABELS[v];
-  const group = VERTICAL_GROUP_NOUN[v];
 
   return {
     vertical: v,
-    orgSingular: labels.singular,
-    orgPlural: labels.plural,
-    groupSingular: group.singular,
-    groupPlural: group.plural,
+    // 2026-06-01 — universal account-hierarchy nouns (Greg): every account is
+    // a "Location" regardless of vertical, and the top-level (org-root) account
+    // is flagged "Primary". Replaces the old per-vertical entity noun
+    // (School/Store/Gym) + group noun (District/Brand/League), which read as
+    // fussy and inconsistent across industries. The per-vertical INDUSTRY
+    // identity (tagline / emoji / template categories / role labels) stays
+    // vertical-aware below — only the hierarchy nouns are unified.
+    orgSingular: 'Location',
+    orgPlural: 'Locations',
+    groupSingular: 'Primary',
+    groupPlural: 'Primary',
     tagline: labels.tagline,
     emoji: labels.emoji,
-    dashboardSublineNoun: labels.singular,
-    settingsSectionTitle: `${labels.singular} settings`,
+    dashboardSublineNoun: 'Location',
+    settingsSectionTitle: 'Location settings',
     defaultBrandName: VERTICAL_DEFAULT_BRAND[v],
     templateCategories: VERTICAL_TEMPLATE_CATEGORIES[v],
     roleLabel: (role: string) => VERTICAL_ROLE_LABELS[v]?.[role] || role,

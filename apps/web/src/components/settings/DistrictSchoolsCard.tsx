@@ -102,13 +102,17 @@ const COPY: Record<Vertical, Copy> = {
     emptyState: 'No offices yet. Click + Office to add your first location.',
     inheritanceNote: 'Each office gets its own lobby boards and event calendars — but inherits your company branding.',
   },
+  // 2026-06-01 — UNIVERSAL copy (Greg): every account is a "Location" and the
+  // top-level (parent) account is the "Primary", across every vertical.
+  // copyFor() returns THIS for all verticals now; the per-vertical entries
+  // below are retained for reference but no longer surfaced.
   OTHER: {
-    parentNoun: 'group', childNoun: 'location', childNounPlural: 'locations',
-    cardHeading: 'Locations in this group',
+    parentNoun: 'primary account', childNoun: 'location', childNounPlural: 'locations',
+    cardHeading: 'Locations',
     addButton: 'Location',
-    exampleName: 'New Location', exampleSlug: 'new-location',
-    emptyState: 'No locations yet. Click + Location to get started.',
-    inheritanceNote: 'Each location gets its own screens, playlists, and users — but inherits your group branding.',
+    exampleName: 'Downtown', exampleSlug: 'downtown',
+    emptyState: 'No locations yet. Click + Location to add your first one.',
+    inheritanceNote: 'Each location gets its own screens, playlists, users, and emergency settings — but inherits your primary account branding.',
   },
   // 2026-05-03 — VenueOS launch additions. GYM mirrors FITNESS, QSR
   // mirrors RESTAURANT semantically; FASHION is its own boutique-y
@@ -178,9 +182,11 @@ const COPY: Record<Vertical, Copy> = {
     inheritanceNote: 'Each church gets its own service times, sermon cards, and giving signage — but inherits your ministry branding.',
   },
 };
-function copyFor(v?: string): Copy {
-  const key = ((v || 'K12').toUpperCase()) as Vertical;
-  return COPY[key] || COPY.OTHER;
+// Universal across verticals (2026-06-01) — see COPY.OTHER. The vertical arg
+// is ignored now that the account-hierarchy nouns are unified to
+// Location (each account) + Primary (the top-level account).
+function copyFor(_v?: string): Copy {
+  return COPY.OTHER;
 }
 
 export function DistrictSchoolsCard() {

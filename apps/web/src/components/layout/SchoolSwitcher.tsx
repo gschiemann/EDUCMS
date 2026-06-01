@@ -91,10 +91,10 @@ export function SchoolSwitcher() {
                 } ${isOrgRoot ? 'border-b border-slate-100' : ''}`}
               >
                 <span className="truncate flex items-center gap-2">
-                  {/* Parent (org-root) badge — vertical-aware: "District" for
-                      K-12, "Brand" for QSR, "League" for Sports, "Region" for
-                      Retail, "Ministry" for Worship, etc. (VERTICAL_GROUP_NOUN). */}
-                  {isOrgRoot && <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{copy.orgSingular}</span>}
+                  {/* Org-root (top-level account) badge — universal "Primary"
+                      across every vertical (copy.groupSingular). Everything
+                      under it is a "Location". */}
+                  {isOrgRoot && <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{copy.groupSingular}</span>}
                   {t.name}
                 </span>
                 {isSwitching ? (
