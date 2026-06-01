@@ -6663,6 +6663,62 @@ function ExternalHtmlTextEditor({
     } catch { /* no-op */ }
   };
 
+  // 2026-06-01 — board → panel "hot zones" (the operator's actual ask:
+  // "click a section and have it jump to the editable area"). The board
+  // lives in a sandboxed null-origin iframe, so clicks can't bubble to
+  // React — instead the in-board shim posts {type:'educms-field-click',
+  // key, kind} out when an editable element is clicked, and we scroll +
+  // focus the matching field row here. We also flip the iframe into edit
+  // mode (enables its hover hot-zones + click reporting) the moment this
+  // editor mounts, and re-arm it whenever the iframe announces it
+  // (re)loaded via {type:'educms-ready'} — covering the remount-on-edit
+  // race. Edit mode is NEVER sent on the player, so a live sign stays
+  // non-interactive.
+  useEffect(() => {
+    const base = url.split('?')[0];
+    const sendEditMode = () => {
+      try {
+        document.querySelectorAll('iframe[title="Signage template"]').forEach((f) => {
+          const fr = f as HTMLIFrameElement;
+          try {
+            if (base && fr.src && !fr.src.includes(base)) return;
+            fr.contentWindow?.postMessage({ type: 'educms-edit-mode', on: true }, '*');
+          } catch { /* detached — ignore */ }
+        });
+      } catch { /* no-op */ }
+    };
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { type?: string; key?: string; kind?: string } | null;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'educms-ready') {
+        try { (e.source as Window | null)?.postMessage({ type: 'educms-edit-mode', on: true }, '*'); } catch { /* ignore */ }
+        return;
+      }
+      if (d.type === 'educms-field-click' && typeof d.key === 'string') {
+        const sel = d.kind === 'img'
+          ? `[data-edit-img="${d.key.replace(/"/g, '')}"]`
+          : `[data-edit-field="${d.key.replace(/"/g, '')}"]`;
+        let row: HTMLElement | null = null;
+        try { row = document.querySelector(sel); } catch { row = null; }
+        if (!row) return;
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        const input = row.querySelector('input,textarea,select,button') as HTMLElement | null;
+        if (input) { try { input.focus({ preventScroll: true }); } catch { input.focus(); } }
+        const el = row;
+        const prev = el.style.outline;
+        el.style.outline = '2px solid #06b6d4';
+        el.style.outlineOffset = '2px';
+        el.style.borderRadius = '8px';
+        window.setTimeout(() => { el.style.outline = prev; el.style.outlineOffset = ''; }, 1500);
+      }
+    };
+    window.addEventListener('message', onMsg);
+    sendEditMode();
+    const t1 = window.setTimeout(sendEditMode, 400);
+    const t2 = window.setTimeout(sendEditMode, 1200);
+    return () => { window.removeEventListener('message', onMsg); window.clearTimeout(t1); window.clearTimeout(t2); };
+  }, [url]);
+
   return (
     <div className="space-y-3">
       {/* G3 — image slots. Rendered first so a hero photo is the operator's
@@ -6677,6 +6733,7 @@ function ExternalHtmlTextEditor({
           {discoveredImages.map((img) => (
             <div
               key={`img:${img.key}`}
+              data-edit-img={img.key}
               onFocusCapture={() => pingHighlight(img.key)}
               onClickCapture={() => pingHighlight(img.key)}
             >
@@ -6717,7 +6774,7 @@ function ExternalHtmlTextEditor({
             // titles (short), descriptions (medium), and copy blocks
             // (long, multi-line).
             return (
-              <div key={f.key} className="space-y-1" onFocusCapture={() => pingHighlight(f.key)}>
+              <div key={f.key} className="space-y-1" data-edit-field={f.key} onFocusCapture={() => pingHighlight(f.key)}>
                 {f.isShortish ? (
                   <StyleableField
                     fieldName={f.key}
