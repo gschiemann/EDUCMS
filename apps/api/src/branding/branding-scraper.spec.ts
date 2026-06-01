@@ -37,6 +37,23 @@ describe('pickBrandSegment', () => {
     expect(pickBrandSegment(t)).toBe(t);
   });
 
+  // Real titles observed in a 2026-06-01 sweep of live brand sites.
+  it('splits on colon+space and takes the brand (McDonald\'s)', () => {
+    expect(pickBrandSegment("McDonald's: Burgers, Fries & More. Quality Ingredients.")).toBe("McDonald's");
+  });
+
+  it('handles "Target : Expect More. Pay Less." → "Target"', () => {
+    expect(pickBrandSegment('Target : Expect More. Pay Less.')).toBe('Target');
+  });
+
+  it('strips a bare-domain TLD (Nike.com → Nike)', () => {
+    expect(pickBrandSegment('Nike.com')).toBe('Nike');
+  });
+
+  it('does NOT split a time-like "10:30 Diner" (no space after colon)', () => {
+    expect(pickBrandSegment('10:30 Diner')).toBe('10:30 Diner');
+  });
+
   it('handles null safely', () => {
     expect(pickBrandSegment(null)).toBeNull();
     expect(pickBrandSegment(undefined)).toBeNull();

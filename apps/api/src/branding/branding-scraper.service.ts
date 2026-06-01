@@ -79,7 +79,14 @@ export interface HeroCandidate {
  */
 export function pickBrandSegment(name: string | null | undefined, ogSiteName?: string | null): string | null {
   if (!name) return name ?? null;
-  const parts = name.split(/\s*[|•·–—]\s*|\s+-\s+/).map((s) => s.trim()).filter(Boolean);
+  // Bare-domain names (an og:site_name like "Nike.com") → drop the TLD → "Nike".
+  const bare = name.trim().match(/^([A-Za-z0-9][A-Za-z0-9-]*)\.(com|net|org|io|co|app|us|biz|store|shop)$/i);
+  if (bare) return bare[1];
+  // Separators: pipe / bullet / en-em dash, a spaced hyphen " - ", and a
+  // colon+space ": " — so "McDonald's: Burgers…" and "Target : Expect…" split
+  // to the brand, while a time like "10:30 Diner" (no space after the colon)
+  // does NOT split.
+  const parts = name.split(/\s*[|•·–—]\s*|\s+-\s+|:\s+/).map((s) => s.trim()).filter(Boolean);
   if (parts.length < 2) return name; // no separator → leave it alone
   const looksDomain = (s: string) => /^www\./i.test(s) || /\.(com|net|org|io|app|co|gov|edu|biz|us)\b/i.test(s);
   const isGeneric = (s: string) =>
