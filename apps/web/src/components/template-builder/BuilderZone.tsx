@@ -120,6 +120,21 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
   const isTouchPoint = isTouchPointType(zone.widgetType);
   const isHotspotVariant = isInvisibleTouchVariant(zone);
 
+  // 2026-06-01 — a full-bleed EXTERNAL_HTML zone (a self-contained signage
+  // template that IS the whole board, e.g. the Domino's pizza board) needs
+  // NO zone chrome. There's no sibling to select, so the 2px selection ring
+  // (offset +2, just OUTSIDE the canvas edge) merely doubles the canvas
+  // frame border — exactly the operator's "your highlights are double
+  // circling areas" report. Resize handles on a 100%×100% zone are equally
+  // meaningless. Editing happens entirely through the Properties panel's
+  // field list (click a field row → it flashes in the iframe via the
+  // educms-highlight bridge), so suppressing the ring + handles here removes
+  // the redundant double-outline without losing any affordance.
+  const isFullCanvasExternal =
+    zone.widgetType === 'EXTERNAL_HTML' &&
+    (zone.x ?? 0) <= 0.5 && (zone.y ?? 0) <= 0.5 &&
+    (zone.width ?? 0) >= 99.5 && (zone.height ?? 0) >= 99.5;
+
   // 2026-04-28 — operator: 'same white background with color
   // selected'. Cause: every zone hardcoded background:'#ffffff' in
   // edit mode (line ~209), so when the operator paints a canvas
@@ -419,8 +434,8 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         boxShadow: undefined,
         // 2026-05-29 — operator wants a SIMPLE outline on the clicked element,
         // not a big glow/banner: a clean 2px indigo ring marks what's selected.
-        outline: selected && !previewMode ? '2px solid #6366f1' : 'none',
-        outlineOffset: selected && !previewMode ? 2 : 0,
+        outline: selected && !previewMode && !isFullCanvasExternal ? '2px solid #6366f1' : 'none',
+        outlineOffset: selected && !previewMode && !isFullCanvasExternal ? 2 : 0,
         cursor: zone.locked || previewMode ? 'default' : 'move',
         userSelect: 'none',
         overflow: 'hidden',
@@ -860,7 +875,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         );
       })()}
 
-      {selected && !previewMode && !zone.locked && HANDLES.map((h) => (
+      {selected && !previewMode && !zone.locked && !isFullCanvasExternal && HANDLES.map((h) => (
         <button
           key={h}
           type="button"

@@ -2350,12 +2350,17 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           </select>
         </div>
       );
-      // Template picker — which of the 78 signage / HS templates this
-      // EXTERNAL_HTML zone shows. Grouped by industry. Sets cfg.url.
-      fields.push(SH('ext-template', 'Template'));
-      fields.push(
-        <div key="ext-url" className="space-y-1">
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Industry template</label>
+      // Template picker — which signage template this EXTERNAL_HTML zone
+      // shows. Sets cfg.url. 2026-06-01 — operator: "why pick an industry
+      // drop down?" When a template is ALREADY chosen (the common case — they
+      // dropped a specific board like the Domino's pizza menu), don't lead the
+      // panel with a big "pick an industry template" select. Collapse it into
+      // a one-line "Template: <name> · Change" disclosure so editing (text /
+      // images / brand, below) is the first thing they see. An UNset zone
+      // still shows the picker open.
+      {
+        const currentTpl = SIGNAGE_TEMPLATES.find((t) => t.url === cfg.url);
+        const picker = (
           <select
             value={cfg.url || ''}
             onChange={(e) => setField({ url: e.target.value })}
@@ -2370,8 +2375,33 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
               </optgroup>
             ))}
           </select>
-        </div>,
-      );
+        );
+        if (cfg.url) {
+          fields.push(
+            <details key="ext-url" className="rounded-md border border-slate-200 bg-white">
+              <summary className="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden text-sm">
+                <span className="truncate">
+                  <span className="text-slate-400">Template:&nbsp;</span>
+                  <span className="font-medium text-slate-700">{currentTpl?.name || 'Custom template'}</span>
+                </span>
+                <span className="shrink-0 text-[11px] font-semibold text-indigo-600">Change</span>
+              </summary>
+              <div className="px-3 pb-3 pt-1 space-y-1">
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Switch template</label>
+                {picker}
+              </div>
+            </details>,
+          );
+        } else {
+          fields.push(SH('ext-template', 'Template'));
+          fields.push(
+            <div key="ext-url" className="space-y-1">
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Pick a template</label>
+              {picker}
+            </div>,
+          );
+        }
+      }
 
       // 2026-05-25 — Editable text fields. Until now, dropping a
       // restaurant / QSR / signage template gave the operator color +
@@ -6611,6 +6641,28 @@ function ExternalHtmlTextEditor({
     });
   };
 
+  // 2026-06-01 — click-to-locate ("hot zones"). Operator: "there are no hot
+  // zones on the template so it doesnt move to the area i click to edit."
+  // When a field/image row gets focus, postMessage the field key into the
+  // template iframe (matched by src) where the shim's highlightField()
+  // scrolls to + flashes that exact element. Sandboxed allow-scripts frames
+  // still receive postMessage (null origin), so this works in the editor
+  // preview AND on any player. No-op for templates whose shim predates the
+  // educms-highlight handler — safe to call unconditionally.
+  const pingHighlight = (key: string) => {
+    if (!key) return;
+    const base = url.split('?')[0];
+    try {
+      document.querySelectorAll('iframe[title="Signage template"]').forEach((f) => {
+        const fr = f as HTMLIFrameElement;
+        try {
+          if (base && fr.src && !fr.src.includes(base)) return;
+          fr.contentWindow?.postMessage({ type: 'educms-highlight', key }, '*');
+        } catch { /* detached / cross-origin — ignore */ }
+      });
+    } catch { /* no-op */ }
+  };
+
   return (
     <div className="space-y-3">
       {/* G3 — image slots. Rendered first so a hero photo is the operator's
@@ -6623,13 +6675,18 @@ function ExternalHtmlTextEditor({
             Images
           </div>
           {discoveredImages.map((img) => (
-            <AssetPickerField
+            <div
               key={`img:${img.key}`}
-              label={img.aspect ? `${img.label} (${img.aspect})` : img.label}
-              kind="image"
-              value={imageOverrides[img.key] || ''}
-              onChange={(v) => setImageOverride(img.key, v)}
-            />
+              onFocusCapture={() => pingHighlight(img.key)}
+              onClickCapture={() => pingHighlight(img.key)}
+            >
+              <AssetPickerField
+                label={img.aspect ? `${img.label} (${img.aspect})` : img.label}
+                kind="image"
+                value={imageOverrides[img.key] || ''}
+                onChange={(v) => setImageOverride(img.key, v)}
+              />
+            </div>
           ))}
         </div>
       )}
@@ -6660,7 +6717,7 @@ function ExternalHtmlTextEditor({
             // titles (short), descriptions (medium), and copy blocks
             // (long, multi-line).
             return (
-              <div key={f.key} className="space-y-1">
+              <div key={f.key} className="space-y-1" onFocusCapture={() => pingHighlight(f.key)}>
                 {f.isShortish ? (
                   <StyleableField
                     fieldName={f.key}
