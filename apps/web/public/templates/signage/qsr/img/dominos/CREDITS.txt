@@ -1,7 +1,33 @@
-Domino's pizza-board default photos (swap for official Domino's product shots).
+Domino's pizza-board photos — pilot DEMO only.
 
-hero.jpg | Domino's pepperoni pizza (product photo) | (c) Domino's IP Holder LLC — used for the Domino's PILOT DEMO only; swap/remove for the generic public template | https://cache.dominos.com/olo/.../market/US/_en/images/img/products/larges/S_PIZZA.jpg
-item-1.jpg | Domino's ExtravaganZZa (product photo S_ZZ)   | (c) Domino's IP Holder LLC — pilot DEMO only; swap/remove for the generic public template | https://cache.dominos.com/olo/.../market/US/_en/images/img/products/larges/S_ZZ.jpg
-item-2.jpg | Domino's MeatZZa (product photo S_MX)         | (c) Domino's IP Holder LLC — pilot DEMO only | https://cache.dominos.com/olo/.../products/larges/S_MX.jpg
-item-3.jpg | Domino's Pacific Veggie (product photo S_PIZPV) | (c) Domino's IP Holder LLC — pilot DEMO only | https://cache.dominos.com/olo/.../products/larges/S_PIZPV.jpg
-item-4.jpg | Domino's Buffalo Chicken (product photo S_BUFC) | (c) Domino's IP Holder LLC — pilot DEMO only | https://cache.dominos.com/olo/.../products/larges/S_BUFC.jpg
+(c) Domino's IP Holder LLC. Pulled from Domino's public product image CDN
+(cache.dominos.com/.../products/larges/<code>.jpg) for the Domino's PILOT
+DEMO only. Swap/remove these for the generic public QSR template.
+
+file        | item                                   | Domino's product code
+------------+----------------------------------------+----------------------
+hero.jpg    | Pepperoni pizza (hero)                 | S_PIZZA
+
+# Page 1 — Specialty Pizzas
+item-1.jpg  | ExtravaganZZa                          | S_ZZ
+item-2.jpg  | MeatZZa                                | S_MX
+item-3.jpg  | Pacific Veggie                         | S_PIZPV
+item-4.jpg  | Ultimate Pepperoni                     | S_PIZPX
+
+# Page 2 — Oven-Baked Sandwiches
+sand-1.jpg  | Philly Cheese Steak (sandwich)         | S_PHIL
+sand-2.jpg  | Chicken Bacon Ranch (sandwich)         | S_CHIKK
+sand-3.jpg  | Italian (sandwich)                     | S_ITALIAN
+sand-4.jpg  | Buffalo Chicken (sandwich)             | S_BUFC
+
+# Page 3 — Wings & Chicken
+wing-1.jpg  | Hot Buffalo Wings                      | S_HOTWINGS
+wing-2.jpg  | Honey BBQ Wings                        | S_BBQW
+wing-3.jpg  | Sweet Mango Habanero Wings             | S_SMANG
+wing-4.jpg  | Boneless Chicken                       | S_BONELESS
+
+# Page 4 — Breads & Sides
+bread-1.jpg | Stuffed Cheesy Bread                   | F_SCBRD
+bread-2.jpg | Parmesan Bread Bites                   | F_PBITES
+bread-3.jpg | Garlic Bread Bites                     | F_GBITES
+bread-4.jpg | Pepperoni Stuffed Cheesy Bread         | F_SPBRD
