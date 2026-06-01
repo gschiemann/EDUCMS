@@ -184,6 +184,62 @@ export class EmergencyController {
   }
 
   /**
+   * Build per-screen ScreenEmergencyOverride upserts for a group/device-scoped
+   * emergency so the HTTP-poll manifest backstop reflects it (not only the
+   * realtime WS/SSE fan-out). The manifest's emergency check is
+   * `!!activeScreenOverride || tenant.emergencyStatus !== 'INACTIVE'`, and
+   * group/device triggers never touch Tenant.emergencyStatus — so without a
+   * per-screen row, a poll-only kiosk (WS AND SSE both blocked) sees nothing.
+   *
+   * Content precedence mirrors the tenant location-based path: the admin's
+   * explicit playlist > the screen's configured per-type emergency content >
+   * the tenant's panic-playlist fallback (orientation-aware); a media URL is
+   * used only when no playlist resolves.
+   */
+  private buildScreenEmergencyUpserts(
+    screens: any[],
+    opts: {
+      tenantId: string;
+      severity: string;
+      overridePayload: any;
+      panicLandscape: string | null;
+      panicPortrait: string | null;
+      triggeredByUserId: string;
+    },
+  ): any[] {
+    const typeKey = this.emergencyTypeKey(opts.overridePayload.type);
+    const explicitPlaylistId = opts.overridePayload.playlistId || null;
+    return screens.map((screen) => {
+      const screenContent = this.pickScreenEmergencyContent(screen, typeKey);
+      const isPortrait = this.isPortraitScreen(screen);
+      const tenantFallbackPlaylistId = isPortrait
+        ? (opts.panicPortrait || opts.panicLandscape || null)
+        : (opts.panicLandscape || opts.panicPortrait || null);
+      const playlistId =
+        explicitPlaylistId
+        || screenContent.playlistId
+        || (screenContent.mediaUrl ? null : tenantFallbackPlaylistId);
+      const mediaUrl = playlistId
+        ? null
+        : (screenContent.mediaUrl || opts.overridePayload.mediaUrl || null);
+      const data = {
+        type: typeKey || 'CUSTOM',
+        severity: opts.severity,
+        playlistId,
+        mediaUrl,
+        textBlob: opts.overridePayload.textBlob || null,
+        expiresAt: this.emergencyExpiresAt(opts.overridePayload.expiresAt),
+        triggeredByUserId: opts.triggeredByUserId,
+      };
+      return (this.prisma.client as any).screenEmergencyOverride.upsert({
+        where: { screenId: screen.id },
+        create: { screenId: screen.id, tenantId: opts.tenantId, ...data },
+        update: { ...data, triggeredAt: new Date() },
+      });
+    });
+  }
+
+  /**
    * SECURITY: Resolve the tenantId that OWNS the given scope and verify the
    * requesting user is allowed to act on it.
    *
@@ -460,19 +516,52 @@ export class EmergencyController {
         ...locationBasedOverrides,
       ]);
     } else {
-      // Non-tenant scope (group / device) — still need an audit row but
-      // no Tenant.update is involved so a single insert is fine.
-      // ownedTenantId already verified above — no redundant DB lookup.
-      await this.prisma.client.auditLog.create({
-        data: {
-          action: 'TRIGGER_EMERGENCY',
-          targetType: scopeType,
-          targetId: scopeId,
-          tenantId: ownedTenantId,
-          userId: req.user?.id,
-          details: JSON.stringify({ overrideId, severity, triggeredByTenant: req.user?.tenantId }),
-        },
+      // Non-tenant scope (group / device). Persist per-screen
+      // ScreenEmergencyOverride rows so the HTTP-poll manifest backstop ALSO
+      // reflects this emergency — not just the realtime WS/SSE fan-out.
+      // Previously this branch wrote only an audit row, so the manifest
+      // (Tenant.emergencyStatus — untouched here — plus per-screen overrides)
+      // showed nothing for a group/device lockdown: a poll-only kiosk (WS AND
+      // SSE both blocked) missed it entirely. The most degraded screen must
+      // not be the one that misses the lockdown. (2026-06-01.)
+      const affectedScreens = scopeType === 'device'
+        ? await this.prisma.client.screen.findMany({ where: { id: scopeId } })
+        : await this.prisma.client.screen.findMany({ where: { screenGroupId: scopeId } });
+
+      const tenantForFallback = await this.prisma.client.tenant.findUnique({ where: { id: ownedTenantId } });
+      const panic = this.pickTenantPanicPlaylists(tenantForFallback as any, overridePayload.type);
+
+      const overrideUpserts = this.buildScreenEmergencyUpserts(affectedScreens, {
+        tenantId: ownedTenantId,
+        severity,
+        overridePayload,
+        panicLandscape: panic.landscape,
+        panicPortrait: panic.portrait,
+        triggeredByUserId: req.user?.id || 'admin_system',
       });
+
+      // ownedTenantId already verified above. Override rows + audit in one
+      // transaction so a concurrent all-clear can't leave half the group's
+      // screens locked down with no audit trail (or vice versa).
+      await this.prisma.client.$transaction([
+        this.prisma.client.auditLog.create({
+          data: {
+            action: 'TRIGGER_EMERGENCY',
+            targetType: scopeType,
+            targetId: scopeId,
+            tenantId: ownedTenantId,
+            userId: req.user?.id,
+            details: JSON.stringify({
+              overrideId,
+              severity,
+              scopeType,
+              affectedScreenCount: affectedScreens.length,
+              triggeredByTenant: req.user?.tenantId,
+            }),
+          },
+        }),
+        ...overrideUpserts,
+      ]);
     }
 
     // Create WSSP envelope before transmission (Mitigates RT-01)
@@ -627,18 +716,35 @@ export class EmergencyController {
         }),
       ]);
     } else {
-      // group scope (or any future scope) — audit only, no per-screen
-      // override row to clean up at this layer.
-      await this.prisma.client.auditLog.create({
-        data: {
-          action: 'CLEAR_EMERGENCY',
-          targetType: scopeType,
-          targetId: scopeId,
-          tenantId: ownedTenantId,
-          userId: req.user?.id,
-          details: JSON.stringify({ overrideId, triggeredByTenant: req.user?.tenantId }),
-        },
+      // group scope — delete the per-screen ScreenEmergencyOverride rows we
+      // created for this group's screens on trigger (symmetry with the device
+      // branch above) so a poll-only kiosk drops the lockdown on all-clear
+      // too. Without this a rebooted screen would re-read its override row and
+      // stay locked down after all-clear — the emergency-003 bug, group-scope
+      // variant. (2026-06-01.)
+      const groupScreens = await this.prisma.client.screen.findMany({
+        where: { screenGroupId: scopeId },
+        select: { id: true },
       });
+      await this.prisma.client.$transaction([
+        (this.prisma.client as any).screenEmergencyOverride.deleteMany({
+          where: { screenId: { in: groupScreens.map((s) => s.id) } },
+        }),
+        this.prisma.client.auditLog.create({
+          data: {
+            action: 'CLEAR_EMERGENCY',
+            targetType: scopeType,
+            targetId: scopeId,
+            tenantId: ownedTenantId,
+            userId: req.user?.id,
+            details: JSON.stringify({
+              overrideId,
+              clearedScreenCount: groupScreens.length,
+              triggeredByTenant: req.user?.tenantId,
+            }),
+          },
+        }),
+      ]);
     }
 
     // Hot-path cache invalidation so the next manifest poll from any

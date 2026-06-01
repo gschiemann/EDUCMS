@@ -39,6 +39,11 @@ describe('EmergencyController', () => {
           upsert: jest.fn().mockResolvedValue({}),
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
+        // Playlist-ownership validation on /trigger (Lane-1 P0): the override's
+        // playlistId must belong to the scope's tenant. Default: found/owned.
+        playlist: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'pl-ok' }),
+        },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
         emergencyMessage: {
           create: jest.fn().mockImplementation(({ data }) => Promise.resolve(data)),
@@ -204,6 +209,96 @@ describe('EmergencyController', () => {
         }),
       }),
     );
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Group/device-scoped emergencies must reach the HTTP-poll manifest backstop
+  // too (2026-06-01, task #222). Before this, the else branch wrote only an
+  // audit row — so the manifest (Tenant.emergencyStatus, untouched for
+  // group/device, + per-screen ScreenEmergencyOverride, not created) showed
+  // nothing. A poll-only kiosk (WS AND SSE both blocked) missed a group/device
+  // lockdown entirely. These pin: trigger materializes per-screen override rows
+  // for every affected screen; group all-clear deletes them again.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  it('group trigger materializes per-screen overrides so the poll backstop reflects the lockdown', async () => {
+    prismaService.client.screenGroup.findUnique.mockResolvedValueOnce({ tenantId: 't1' });
+    prismaService.client.screen.findMany.mockResolvedValueOnce([
+      { id: 'gym', tenantId: 't1', resolution: '1920x1080' },
+      { id: 'hall', tenantId: 't1', resolution: '1080x1920' },
+    ]);
+    const req = { user: { id: 'admin1', role: 'SCHOOL_ADMIN', tenantId: 't1' } };
+    const payload = {
+      scopeType: 'group' as const,
+      scopeId: 'g1',
+      overridePayload: { overrideId: 'o-grp', type: 'lockdown' as const, severity: 'CRITICAL' as const, playlistId: 'lock-pl' },
+    };
+
+    const res = await controller.triggerEmergency(payload, req);
+    expect(res.success).toBe(true);
+
+    // realtime path (already worked before this fix)
+    expect(redisService.publish).toHaveBeenCalledWith('group:g1', expect.objectContaining({ type: 'OVERRIDE' }));
+    // Tenant-wide status must NOT be touched by a group-scoped trigger.
+    expect(prismaService.client.tenant.update).not.toHaveBeenCalled();
+
+    // NEW: poll backstop — one per-screen override per group member screen.
+    expect(prismaService.client.screenEmergencyOverride.upsert).toHaveBeenCalledTimes(2);
+    expect(prismaService.client.screenEmergencyOverride.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { screenId: 'gym' },
+        create: expect.objectContaining({ screenId: 'gym', tenantId: 't1', type: 'LOCKDOWN', severity: 'CRITICAL', playlistId: 'lock-pl' }),
+      }),
+    );
+    expect(prismaService.client.screenEmergencyOverride.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { screenId: 'hall' } }),
+    );
+  });
+
+  it('device trigger writes a per-screen override (poll backstop) for the targeted screen', async () => {
+    prismaService.client.screen.findMany.mockResolvedValueOnce([
+      { id: 'dev1', tenantId: 't1', resolution: '1920x1080' },
+    ]);
+    const req = { user: { id: 'admin1', role: 'SCHOOL_ADMIN', tenantId: 't1' } };
+    const payload = {
+      scopeType: 'device' as const,
+      scopeId: 'dev1',
+      overridePayload: {
+        overrideId: 'o-dev',
+        type: 'lockdown' as const,
+        severity: 'CRITICAL' as const,
+        mediaUrl: 'https://proj.supabase.co/storage/v1/object/public/media/lock.png',
+      },
+    };
+
+    const res = await controller.triggerEmergency(payload, req);
+    expect(res.success).toBe(true);
+    expect(redisService.publish).toHaveBeenCalledWith('device:dev1', expect.objectContaining({ type: 'OVERRIDE' }));
+    expect(prismaService.client.screenEmergencyOverride.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { screenId: 'dev1' },
+        create: expect.objectContaining({
+          screenId: 'dev1',
+          tenantId: 't1',
+          type: 'LOCKDOWN',
+          mediaUrl: 'https://proj.supabase.co/storage/v1/object/public/media/lock.png',
+          playlistId: null,
+        }),
+      }),
+    );
+  });
+
+  it('group all-clear deletes the per-screen overrides for the group (poll backstop clears too)', async () => {
+    prismaService.client.screenGroup.findUnique.mockResolvedValueOnce({ tenantId: 't1' });
+    prismaService.client.screen.findMany.mockResolvedValueOnce([{ id: 'gym' }, { id: 'hall' }]);
+    const req = { user: { id: 'admin1', role: 'SCHOOL_ADMIN', tenantId: 't1' } };
+
+    const res = await controller.clearEmergency('o-grp', { scopeType: 'group', scopeId: 'g1' }, req);
+    expect(res.success).toBe(true);
+    expect(prismaService.client.screenEmergencyOverride.deleteMany).toHaveBeenCalledWith({
+      where: { screenId: { in: ['gym', 'hall'] } },
+    });
+    expect(redisService.publish).toHaveBeenCalledWith('group:g1', expect.objectContaining({ type: 'ALL_CLEAR' }));
   });
 
   it('should publish SIGNED ALL_CLEAR to redis (life-safety regression)', async () => {
