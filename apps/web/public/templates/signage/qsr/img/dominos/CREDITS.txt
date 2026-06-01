@@ -1,6 +1,6 @@
 Domino's pizza-board default photos (swap for official Domino's product shots).
 
-hero.jpg | whole pepperoni pizza | CC0 | Missvain | https://commons.wikimedia.org/wiki/File:Gabacool_Provisions_-_July_2024_-_Sarah_Stierch_07.jpg
+hero.jpg | Domino's pepperoni pizza (product photo) | (c) Domino's IP Holder LLC — used for the Domino's PILOT DEMO only; swap/remove for the generic public template | https://cache.dominos.com/olo/.../market/US/_en/images/img/products/larges/S_PIZZA.jpg
 item-1.jpg | supreme pizza | CC0 | Random photos 1989 | https://commons.wikimedia.org/wiki/File:Budapest,_B%C3%A9k%C3%A1smegyer,_Self_Store_Pl%C3%A1za,_Pizza_Hut,_Super_Supreme_pizza.jpg
 item-2.jpg | pepperoni pizza | CC BY 2.0 | Dale Cruse from San Francisco, CA, USA | https://commons.wikimedia.org/wiki/File:All_Good_pizza_(38501728345).jpg
 item-3.jpg | vegetarian pizza | CC BY 4.0 | Waran R Samay | https://commons.wikimedia.org/wiki/File:Vegetable_pizza_food.jpg
