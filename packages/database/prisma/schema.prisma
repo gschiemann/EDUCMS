@@ -1814,6 +1814,12 @@ model MenuItem {
   allergens        String[] @default([])
   // Free-form merchandising tags ("popular" / "new" / "spicy").
   tags             String[] @default([])
+  // Optional size / option price variants, catalog-level (v1). A JSON
+  // array of { label: string, priceCents: number } — e.g. Small/Med/Large
+  // or "12oz" / "16oz". Null/absent = single-price item. Per-location
+  // overrides adjust the base defaultPriceCents only; variant prices are
+  // not (yet) location-overridable.
+  variants         Json?    @map("variants")
   sortOrder        Int      @default(0) @map("sort_order")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")

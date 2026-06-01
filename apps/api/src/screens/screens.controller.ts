@@ -3502,11 +3502,21 @@ export class ScreensController {
   //   This lets a 50-store chain design ONE catalog on the parent tenant
   //   and have every store screen resolve its own per-location prices.
   @Get(':id/menu')
-  async getMenu(@Param('id') id: string, @Req() req: ExpressReq) {
+  async getMenu(
+    @Param('id') id: string,
+    @Req() req: ExpressReq,
+    @Query('includeUnavailable') includeUnavailable?: string,
+  ) {
     const authResult = verifyDeviceForScreen(req, id);
     if (!authResult.ok) {
       throw new HttpException(`Device auth required (${authResult.reason})`, HttpStatus.UNAUTHORIZED);
     }
+
+    // When set (?includeUnavailable=1|true), 86'd / sold-out items are
+    // INCLUDED in the feed flagged `available:false` so a menu board can
+    // grey them out instead of dropping them. Default (absent) keeps the
+    // existing behavior: unavailable items are omitted entirely.
+    const wantUnavailable = includeUnavailable === '1' || includeUnavailable === 'true';
 
     // Single round-trip: the screen + its POS-location mapping + the
     // location-tenant's parent (chain) id.
@@ -3536,6 +3546,7 @@ export class ScreensController {
 
     const resolved = await this.menu.resolveMenuForLocation(locationTenantId, {
       catalogTenantId,
+      includeUnavailable: wantUnavailable,
     });
 
     // Shape compatible with what MenuBoardWidget maps (name / description
@@ -3560,7 +3571,13 @@ export class ScreensController {
         badges: [...it.allergens, ...it.tags],
         allergens: it.allergens,
         tags: it.tags,
-        available: true, // resolveMenuForLocation already drops 86'd items
+        // Pass through the resolver's flags. When includeUnavailable is
+        // off, every item is available:true (86'd items were dropped);
+        // when on, 86'd items appear flagged available:false so the board
+        // can grey them out. soldOut distinguishes a timed temp-86.
+        available: it.available,
+        soldOut: it.soldOut,
+        ...(it.variants ? { variants: it.variants } : {}),
       })),
     };
   }

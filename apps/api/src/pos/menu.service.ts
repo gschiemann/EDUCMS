@@ -57,6 +57,18 @@ export interface ResolvedMenuItem {
   category: string | null;
   categoryId: string | null;
   sortOrder: number;
+  /** Always present. true normally; false when 86'd / sold-out / temp-86
+   *  is active. Only surfaced as `false` when the caller passes
+   *  `includeUnavailable` (default resolve drops unavailable items, so
+   *  every item it returns is `available: true`). */
+  available: boolean;
+  /** true when a temp-86 (soldOutUntil in the future) is active; else
+   *  false. Lets a menu board grey-out with a "sold out today" treatment
+   *  distinct from a hard 86. */
+  soldOut: boolean;
+  /** Catalog-level size / option price variants, present only when the
+   *  item carries a non-empty, well-formed array; omitted otherwise. */
+  variants?: { label: string; priceCents: number }[];
 }
 
 export interface ResolvedMenuCategory {
@@ -98,6 +110,12 @@ export class MenuService {
    * @param opts.includeHidden when true, returns hidden/86'd items too
    *   (with a flag) — for an admin price-book console preview. Defaults
    *   false (player path → only visible items).
+   * @param opts.includeUnavailable when true, ALSO includes non-hidden
+   *   items that are 86'd / temp-86 (each flagged `available:false`,
+   *   `soldOut:` whether a temp-86 window is active) so a menu board can
+   *   grey them out instead of dropping them. `isHidden` items are still
+   *   excluded. Defaults false — the existing player path keeps dropping
+   *   unavailable items and every returned item is `available:true`.
    */
   async resolveMenuForLocation(
     locationTenantId: string,
@@ -106,6 +124,7 @@ export class MenuService {
       catalogId?: string;
       now?: Date;
       includeHidden?: boolean;
+      includeUnavailable?: boolean;
     },
   ): Promise<ResolvedMenu> {
     const now = opts?.now ?? new Date();
@@ -177,11 +196,21 @@ export class MenuService {
         continue;
       }
       const ov = overrideByItem.get(item.id);
-      const visible = this.isItemVisible(ov, now);
-      if (!visible && !opts?.includeHidden) continue;
+
+      // An operator-hidden item is ALWAYS excluded (the existing rule).
+      const hidden = ov?.isHidden === true;
+      if (hidden && !opts?.includeHidden) continue;
+
+      // Availability split out from hidden so we can EITHER drop 86'd
+      // items (default / existing player behavior) OR include them flagged
+      // available:false (includeUnavailable — menu boards grey them out).
+      const soldOut = this.isItemSoldOut(ov, now);
+      const available = this.isItemAvailable(ov, now);
+      if (!available && !opts?.includeUnavailable && !opts?.includeHidden) continue;
 
       const priceOverridden = ov?.priceCents != null;
       const priceCents = priceOverridden ? ov.priceCents : item.defaultPriceCents;
+      const variants = this.coerceVariants(item.variants);
       resolvedItems.push({
         id: item.id,
         externalId: item.externalId ?? null,
@@ -195,6 +224,9 @@ export class MenuService {
         category: item.categoryId ? categoryNameById.get(item.categoryId) ?? null : null,
         categoryId: item.categoryId ?? null,
         sortOrder: item.sortOrder,
+        available,
+        soldOut,
+        ...(variants ? { variants } : {}),
       });
     }
 
@@ -221,6 +253,65 @@ export class MenuService {
       return false;
     }
     return true;
+  }
+
+  /**
+   * Is a menu-location override currently AVAILABLE to order? This is the
+   * 86 check WITHOUT the operator-hidden gate (hidden is handled
+   * separately so a menu board can grey-out 86'd items while never
+   * surfacing explicitly hidden ones). No override row → available.
+   *   available = isAvailable !== false
+   *             && (soldOutUntil == null || soldOutUntil <= now)
+   */
+  isItemAvailable(override: any | undefined | null, now: Date = new Date()): boolean {
+    if (!override) return true;
+    if (override.isAvailable === false) return false;
+    if (override.soldOutUntil && new Date(override.soldOutUntil).getTime() > now.getTime()) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Is a temporary 86 (soldOutUntil in the future) currently active for
+   * this override? Distinguishes a timed "sold out today" from a hard 86
+   * (isAvailable=false with no timer). No override / no timer → false.
+   */
+  isItemSoldOut(override: any | undefined | null, now: Date = new Date()): boolean {
+    if (!override) return false;
+    return !!override.soldOutUntil && new Date(override.soldOutUntil).getTime() > now.getTime();
+  }
+
+  /**
+   * Coerce a MenuItem.variants JSON value into a clean
+   * `{ label, priceCents }[]`. Accepts only well-formed entries (a
+   * non-empty `label` string + a finite non-negative integer `priceCents`,
+   * or a major-unit `price` number/`"$x.yz"` string we convert to cents).
+   * Returns null when the value is absent / not an array / has no valid
+   * entries, so callers can omit the field entirely.
+   */
+  private coerceVariants(
+    raw: unknown,
+  ): { label: string; priceCents: number }[] | null {
+    if (!Array.isArray(raw) || raw.length === 0) return null;
+    const out: { label: string; priceCents: number }[] = [];
+    for (const v of raw) {
+      if (!v || typeof v !== 'object') continue;
+      const label = String((v as any).label ?? '').trim();
+      if (!label) continue;
+      // `price` may arrive as a money string like "$7.99" or "$1,299.00";
+      // strip the currency symbol + thousands separators so the shared
+      // major-unit parser sees a plain number (it uses Number(), which
+      // rejects a leading "$"). `priceCents` is left untouched (integer).
+      const rawPrice = (v as any).price;
+      const price =
+        typeof rawPrice === 'string' ? rawPrice.replace(/[$,\s]/g, '') : rawPrice;
+      const priceCents = this.coercePriceCentsOrNull((v as any).priceCents, price);
+      if (priceCents == null) continue;
+      out.push({ label, priceCents });
+      if (out.length >= 32) break; // cap pathological payloads
+    }
+    return out.length > 0 ? out : null;
   }
 
   /**
@@ -363,6 +454,10 @@ export class MenuService {
           tags: norm.tags,
           sortOrder: norm.sortOrder,
           ...(categoryId ? { categoryId } : {}),
+          // Only write variants when this push actually carried a valid
+          // array — a sync that omits variants must NOT wipe an existing
+          // value (same conditional-spread pattern as categoryId above).
+          ...(norm.variants ? { variants: norm.variants } : {}),
         },
         create: {
           tenantId,
@@ -376,6 +471,8 @@ export class MenuService {
           allergens: norm.allergens,
           tags: norm.tags,
           sortOrder: norm.sortOrder,
+          // null when none supplied → single-price item.
+          variants: norm.variants,
         },
       });
       itemsUpserted++;
@@ -488,6 +585,9 @@ export class MenuService {
           tags: norm.tags,
           sortOrder: norm.sortOrder,
           ...(categoryId ? { categoryId } : {}),
+          // Only write variants when the paste carried a valid array — an
+          // edit that omits variants must NOT wipe an existing value.
+          ...(norm.variants ? { variants: norm.variants } : {}),
         },
         create: {
           tenantId,
@@ -501,6 +601,8 @@ export class MenuService {
           allergens: norm.allergens,
           tags: norm.tags,
           sortOrder: norm.sortOrder,
+          // null when none supplied → single-price item.
+          variants: norm.variants,
         },
       });
       itemsUpserted++;
@@ -856,6 +958,8 @@ export class MenuService {
     tags: string[];
     sortOrder: number;
     category: string | null;
+    /** Catalog-level size/option variants, or null when none supplied. */
+    variants: { label: string; priceCents: number }[] | null;
     locations: Array<{
       locationTenantId: string;
       priceCents: number | null;
@@ -877,6 +981,11 @@ export class MenuService {
     const allergens = this.coerceStringArray(raw.allergens).slice(0, 24);
     const tags = this.coerceStringArray(raw.tags).slice(0, 24);
     const sortOrder = Number.isFinite(Number(raw.sortOrder)) ? Math.trunc(Number(raw.sortOrder)) : 0;
+
+    // Size/option variants: accept { label, priceCents } or { label, price }
+    // (major-unit number or "$x.yz" string). Malformed entries are dropped;
+    // null when none parse so the column stays NULL for single-price items.
+    const variants = this.coerceVariants(raw.variants);
 
     const rawLocations = Array.isArray(raw.locations) ? raw.locations : [];
     const locations: Array<{
@@ -916,6 +1025,7 @@ export class MenuService {
       tags,
       sortOrder,
       category: raw.category != null ? String(raw.category) : null,
+      variants,
       locations,
     };
   }
