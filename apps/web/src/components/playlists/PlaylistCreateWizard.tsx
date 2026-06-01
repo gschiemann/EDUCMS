@@ -163,10 +163,11 @@ interface Props {
     templateId?: string | null;
     items?: PlaylistCreatedItem[];
   }) => void;
-  /** Pre-seed Step 2 with these asset IDs (in order) and jump straight to
-   *  the "Pick content" step as a Media playlist. Powers "select assets →
-   *  Create playlist" from the Assets page. Items resolve once the asset
-   *  library loads; unknown IDs are skipped. */
+  /** Pre-seed the content step with these asset IDs (in order) as a Media
+   *  playlist, then land on Step 1 so the operator names it first (the
+   *  content step is already filled — naming is the only thing left).
+   *  Powers "select assets → Create playlist" from the Assets page. Items
+   *  resolve once the asset library loads; unknown IDs are skipped. */
   initialAssetIds?: string[];
 }
 
@@ -427,10 +428,13 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   }, [open]);
 
   // ── "Create playlist from selected assets" seed ──────────────────
-  // Opened with initialAssetIds (Assets page → Create playlist): build
-  // the Step-2 media list from the asset library once it's loaded, mark
-  // it a Media playlist, and jump straight to the content step. Unknown
-  // ids are skipped; seeds once per open (runs after the reset effect).
+  // Opened with initialAssetIds (Assets page → Create playlist): pre-fill
+  // the content step from the asset library once it's loaded and mark it a
+  // Media playlist, but LAND ON STEP 1 so the operator can NAME it first.
+  // (Jumping straight to step 2 skipped the only name field and produced
+  // unnamed playlists — reported 2026-06-01.) The content step is already
+  // populated, so naming is the only thing left before Next. Unknown ids
+  // are skipped; seeds once per open (runs after the reset effect).
   useEffect(() => {
     if (!open || seededRef.current) return;
     if (!initialAssetIds || initialAssetIds.length === 0) return;
@@ -449,8 +453,11 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
     seededRef.current = true;
     setKind('media');
     setSelectedAssetItems(seeded);
-    setStep(2);
-    setHighestVisited((h) => Math.max(h, 2));
+    setStep(1);
+    // Stay at step 1 (don't bump highestVisited) so the operator can't skip
+    // past the name step via the stepper — they name it, then Next advances
+    // to the already-populated content step.
+    setHighestVisited(1);
   }, [open, assets, initialAssetIds]);
 
   // Focus the name field on Step 1
