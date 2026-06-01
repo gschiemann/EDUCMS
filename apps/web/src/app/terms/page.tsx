@@ -6,7 +6,7 @@ export default function TermsPage() {
   return (
     <LegalPage
       title="Terms of service"
-      subtitle="The agreement between VenueOS and the schools and districts that use our service."
+      subtitle="The agreement between VenueOS and the venues, businesses, and organizations that use our service."
       updated="April 16, 2026"
     >
       <p>
@@ -18,14 +18,14 @@ export default function TermsPage() {
       <h2>1. The service</h2>
       <p>
         VenueOS provides cloud-hosted software for managing digital signage, emergency alerts, and
-        interactive displays across K-12 schools. The service is delivered on a subscription basis at the
-        pricing tier agreed to by your district.
+        interactive displays across your locations. The service is delivered on a subscription basis at the
+        pricing tier agreed to by your organization.
       </p>
 
       <h2>2. Account eligibility</h2>
       <ul>
         <li>You must be 18 or older and authorized to bind your organization to these Terms.</li>
-        <li>Your use must comply with your school or district&apos;s acceptable-use policies.</li>
+        <li>Your use must comply with your organization&apos;s acceptable-use policies.</li>
         <li>Each named user is responsible for safeguarding their login credentials.</li>
       </ul>
 
@@ -50,7 +50,7 @@ export default function TermsPage() {
       <p>
         VenueOS&apos;s emergency alert system is designed to be highly reliable but is not a substitute
         for calling 911 or your local emergency services. You remain responsible for following applicable
-        laws, district policies, and state drill requirements. We are not liable for any harm resulting
+        laws, your organization&apos;s policies, and applicable regulations. We are not liable for any harm resulting
         from failure to follow established emergency protocols.
       </p>
 
@@ -72,7 +72,7 @@ export default function TermsPage() {
       <h2>8. Service-level commitments</h2>
       <p>
         We target 99.9% uptime measured monthly for the core service. Scheduled maintenance is announced
-        at least 72 hours in advance and, where possible, scheduled outside the school day. Credits may be
+        at least 72 hours in advance and, where possible, scheduled outside business hours. Credits may be
         available for sustained outages under your subscription agreement.
       </p>
 
@@ -102,7 +102,7 @@ export default function TermsPage() {
 
       <h2>12. Governing law and disputes</h2>
       <p>
-        These Terms are governed by the laws of the state in which your district is located, without
+        These Terms are governed by the laws of the state in which your organization is located, without
         regard to conflict-of-law principles. Disputes will first be attempted through good-faith
         negotiation and, if unresolved, through binding arbitration or in the courts of the applicable
         jurisdiction.
@@ -110,7 +110,7 @@ export default function TermsPage() {
 
       <h2>13. Changes</h2>
       <p>
-        We may update these Terms. Material changes will be posted here and emailed to district
+        We may update these Terms. Material changes will be posted here and emailed to your organization&apos;s
         administrators at least 30 days in advance.
       </p>
 
