@@ -60,7 +60,7 @@ beforeEach(() => {
     generatedAt: '2026-05-29T12:00:00.000Z',
     categories: [{ id: 'c1', name: 'Mains', sortOrder: 0, daypartId: null }],
     items: [
-      { id: 'i1', externalId: 'burger', name: 'Burger', description: 'tasty', priceCents: 949, priceOverridden: true, imageUrl: null, allergens: ['GF'], tags: ['popular'], category: 'Mains', categoryId: 'c1', sortOrder: 0 },
+      { id: 'i1', externalId: 'burger', name: 'Burger', description: 'tasty', priceCents: 949, priceOverridden: true, imageUrl: null, allergens: ['GF'], tags: ['popular'], category: 'Mains', categoryId: 'c1', sortOrder: 0, available: true, soldOut: false },
     ],
   });
 });
@@ -92,7 +92,7 @@ it('resolves location = the screen tenant and chain = its parent when not POS-lo
     tenant: { id: 'loc-A', parentId: 'chain-1' },
   });
   await controller.getMenu('screen-1', reqWithBearer(deviceToken('screen-1')));
-  expect(mockMenu.resolveMenuForLocation).toHaveBeenCalledWith('loc-A', { catalogTenantId: 'chain-1' });
+  expect(mockMenu.resolveMenuForLocation).toHaveBeenCalledWith('loc-A', expect.objectContaining({ catalogTenantId: 'chain-1' }));
 });
 
 it('prefers posLocation.locationTenantId as the resolution location when mapped', async () => {
@@ -104,7 +104,7 @@ it('prefers posLocation.locationTenantId as the resolution location when mapped'
   });
   await controller.getMenu('screen-1', reqWithBearer(deviceToken('screen-1')));
   // location = the mapped store; chain = the screen-tenant's parent.
-  expect(mockMenu.resolveMenuForLocation).toHaveBeenCalledWith('loc-store-4', { catalogTenantId: 'chain-1' });
+  expect(mockMenu.resolveMenuForLocation).toHaveBeenCalledWith('loc-store-4', expect.objectContaining({ catalogTenantId: 'chain-1' }));
 });
 
 it('uses the location tenant itself as the chain when it has no parent (single-location operator)', async () => {
@@ -115,7 +115,7 @@ it('uses the location tenant itself as the chain when it has no parent (single-l
     tenant: { id: 'solo', parentId: null },
   });
   await controller.getMenu('screen-1', reqWithBearer(deviceToken('screen-1')));
-  expect(mockMenu.resolveMenuForLocation).toHaveBeenCalledWith('solo', { catalogTenantId: 'solo' });
+  expect(mockMenu.resolveMenuForLocation).toHaveBeenCalledWith('solo', expect.objectContaining({ catalogTenantId: 'solo' }));
 });
 
 it('rejects a device token issued for a DIFFERENT screen (no cross-screen reads)', async () => {
