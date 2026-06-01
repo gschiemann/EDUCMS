@@ -323,8 +323,17 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     id: 'soundtrack',
     name: 'Soundtrack Your Brand',
     category: 'music',
-    integrationTier: 'DIRECT',
-    blurb: 'Licensed background music for businesses (Spotify-backed).',
+    // PARTNER, not DIRECT: the OAuth connect flow is NOT built yet.
+    // `auth: 'oauth2'` means createConnection() in the streaming service
+    // rejects every connect attempt with HTTP 400 ("OAuth flow not yet
+    // implemented — contact sales"), so a DIRECT tier showed a green
+    // "Self-serve" badge + a Connect button that dead-ends at a 400.
+    // Same fix already applied to the sibling oauth2 provider `vimeo-live`
+    // above. Marked PARTNER (amber "Partnership" badge, "coming soon —
+    // contact sales" modal) until the Soundtrack OAuth flow ships, so the
+    // tile honestly reflects that it is NOT connectable yet.
+    integrationTier: 'PARTNER',
+    blurb: 'Licensed background music for businesses (Spotify-backed). OAuth connect coming soon — contact sales to activate.',
     iconEmoji: '🎵',
     auth: 'oauth2',
     playback: 'iframe',
@@ -334,7 +343,7 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     docsUrl: 'https://developer.soundtrackyourbrand.com/',
     websiteUrl: 'https://www.soundtrackyourbrand.com',
     bestFor: ['BAR', 'RESTAURANT', 'RETAIL', 'GYM'],
-    tierReason: 'Public GraphQL API + OAuth at developer.soundtrackyourbrand.com. Self-serve.',
+    tierReason: 'Soundtrack has a public GraphQL API + OAuth, but our direct OAuth connect is not built yet (contact sales to activate). The connect flow would otherwise dead-end at a 400.',
   },
   {
     id: 'iheart-business',
