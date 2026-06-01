@@ -46,6 +46,7 @@ export class SseController {
     // accept anonymous subscribers. Same secret as the WS auth path.
     let tenantId: string | null = null;
     let deviceId: string | null = null;
+    let groupId: string | null = null;
     if (!token) {
       res.status(401).json({ error: 'token required' });
       return;
@@ -79,13 +80,19 @@ export class SseController {
       // is the source of truth.)
       const screen = await this.prisma.client.screen.findUnique({
         where: { id: deviceId! },
-        select: { tenantId: true },
+        select: { tenantId: true, screenGroupId: true },
       });
       if (!screen?.tenantId) {
         res.status(404).json({ error: 'screen not found / unpaired' });
         return;
       }
       tenantId = screen.tenantId;
+      // Group scope from the LIVE screen row (not the JWT — see
+      // realtime.gateway.ts processHello for the rationale: avoids a stale
+      // group claim and works for already-paired devices). Lets a
+      // group-scoped emergency (e.g. hallway-group lockdown) reach this
+      // SSE stream in real time instead of only via the manifest poll.
+      groupId = screen.screenGroupId ?? null;
     } catch (e) {
       this.logger.warn(`[SSE] auth failed: ${(e as Error)?.message}`);
       res.status(401).json({ error: 'invalid token' });
@@ -118,7 +125,7 @@ export class SseController {
 
     // Hand off to the SSE service. It tracks the client, fires keepalives,
     // and writes broadcast events when Redis fan-out arrives.
-    this.sse.register({ tenantId, deviceId, res });
+    this.sse.register({ tenantId, groupId, deviceId, res });
 
     // Don't return — let the stream stay open until the client
     // disconnects. The `close` event in SseService.register handles

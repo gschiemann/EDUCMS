@@ -122,6 +122,53 @@ describe('RealtimeGateway', () => {
       expect(redisService.publisher!.sadd).toHaveBeenCalledWith('tenant:tenant_1:devices', 'dev_123');
     });
 
+    /**
+     * Group-scoped realtime delivery (2026-06-01). The WS gateway already
+     * matched type==='group' && ctx.groupId===id in broadcastToScope, and
+     * redis already psubscribes group:* — but ctx.groupId was only ever set
+     * from decoded.groupId (the JWT), which the device token never carried,
+     * so group-scoped emergencies (e.g. a hallway-group lockdown) never
+     * reached a connected device over WS/SSE. The fix sources the group from
+     * the LIVE screen row (not the JWT) so it works for the whole already-
+     * paired fleet and never goes stale when a screen is moved between groups.
+     */
+    it('group scope: populates ctx.groupId from the LIVE screen row (ignoring any JWT claim) and delivers group broadcasts', async () => {
+      const mockWs = { send: jest.fn(), close: jest.fn(), on: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
+      const secret = 'test_device_jwt_secret_at_least_32_chars_long_xx';
+      process.env.DEVICE_JWT_SECRET = secret;
+
+      // DB is the source of truth: this screen currently lives in 'grp-hallway'.
+      // The JWT below carries a STALE group claim that MUST be ignored.
+      (gateway as any).prisma.client.screen.findUnique.mockResolvedValueOnce({
+        id: 'dev_123', tenantId: 'tenant_1', screenGroupId: 'grp-hallway',
+      });
+
+      const token = jwt.sign(
+        { deviceId: 'dev_123', tenantId: 'tenant_1', groupId: 'STALE-do-not-use' },
+        secret,
+        { expiresIn: '1h' },
+      );
+
+      gateway.handleConnection(mockWs);
+      await (gateway as any).processHello(mockWs, { token });
+
+      const ctx = (gateway as any).clients.get(mockWs);
+      expect(ctx.isAuthenticated).toBe(true);
+      // Live row wins over the stale JWT claim (no canTriggerPanic-style staleness).
+      expect(ctx.groupId).toBe('grp-hallway');
+      // Group-membership set registered (metrics).
+      expect(redisService.publisher!.sadd).toHaveBeenCalledWith('group:grp-hallway:devices', 'dev_123');
+
+      // A group-scoped emergency now actually reaches this connected device.
+      (mockWs.send as jest.Mock).mockClear();
+      gateway.broadcastToScope('group', 'grp-hallway', {
+        type: 'EMERGENCY_OVERRIDE',
+        payload: { type: 'LOCKDOWN', severity: 'CRITICAL' },
+      });
+      expect(mockWs.send).toHaveBeenCalledTimes(1);
+      expect(JSON.parse((mockWs.send as jest.Mock).mock.calls[0][0]).type).toBe('EMERGENCY_OVERRIDE');
+    });
+
     it('should reject invalid JWT and close connection', async () => {
       const mockWs = { send: jest.fn(), close: jest.fn(), on: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
 

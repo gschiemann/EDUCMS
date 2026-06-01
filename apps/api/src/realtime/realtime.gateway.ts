@@ -148,7 +148,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         if (!screenId) throw new Error('Device JWT missing deviceId/sub');
         const screen = await this.prisma.client.screen.findUnique({
           where: { id: screenId },
-          select: { id: true, tenantId: true },
+          select: { id: true, tenantId: true, screenGroupId: true },
         });
         if (!screen) {
           throw new Error('Screen not found / unpaired');
@@ -159,6 +159,16 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         }
         // Trust the DB tenant binding over the JWT claim.
         decoded.tenantId = screen.tenantId;
+        // Group identity for group-scoped realtime (e.g. a hallway-group
+        // lockdown). The device JWT deliberately does NOT carry the group:
+        // a token minted before a screen was moved between groups would be
+        // stale, and already-paired devices would never get group delivery
+        // until re-pair. Source it from the LIVE screen row instead (the
+        // same row we just fetched for the tenant check) so it is always
+        // current and works for the entire existing fleet with no re-mint.
+        // ctx.groupId (below) picks this up; redis psubscribes group:* and
+        // broadcastToScope() matches type==='group' && ctx.groupId===id.
+        decoded.groupId = screen.screenGroupId ?? undefined;
       }
 
       ctx.deviceId = decoded.deviceId;
