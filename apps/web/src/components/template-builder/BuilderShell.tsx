@@ -812,6 +812,7 @@ function BuilderBottomBar() {
   const removeSelected = useBuilderStore((s) => s.removeSelected);
   const toggleLock     = useBuilderStore((s) => s.toggleLock);
   const moveLayer      = useBuilderStore((s) => s.moveLayer);
+  const select         = useBuilderStore((s) => s.select);
 
   const [backdropOpen, setBackdropOpen] = useState(false);
   const [urlOpen,      setUrlOpen]      = useState(false);
@@ -830,6 +831,22 @@ function BuilderBottomBar() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [backdropOpen, urlOpen, dateOpen, assetOpen]);
+
+  // 2026-06-01 — operator: "none of the fields are editable." Every
+  // EXTERNAL_HTML signage / menu board is a single full-bleed "Scene" zone,
+  // and the builder opens on the template-level Properties view — so the
+  // per-zone editor ("Edit text", photo swaps, Brand, Live POS) was hidden
+  // until the operator happened to click the zone. Auto-select the sole zone
+  // ONCE on load so that editor is visible immediately. The ref guards it so
+  // deselecting (clicking empty canvas) still works without snapping back.
+  const didAutoSelectSoleZone = useRef(false);
+  useEffect(() => {
+    if (didAutoSelectSoleZone.current) return;
+    if (zones.length === 1 && selectedIds.length === 0) {
+      didAutoSelectSoleZone.current = true;
+      select(zones[0].id);
+    }
+  }, [zones, selectedIds, select]);
 
   const canUndo = past.length > 0;
   const canRedo = future.length > 0;

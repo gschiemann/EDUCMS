@@ -1417,7 +1417,12 @@ export const RESTAURANT_TEMPLATE_PRESETS: SystemPreset[] = [
         x: 0, y: 0, width: 100, height: 100,
         zIndex: 1,
         sortOrder: 0,
-        defaultConfig: { url: '/templates/signage/qsr/11-dominos-pizza-board.html' },
+        // posSync:true turns on the live POS menu feed — ExternalHtmlWidget
+        // (WidgetRenderer) polls the tenant's resolved menu and postMessages
+        // it into the board, where the applyMenu() shim overlays real prices /
+        // size-variants / SOLD-OUT onto the item cards by name. Degrades to the
+        // static built-in copy when no POS is connected. (2026-06-01, task #198.)
+        defaultConfig: { url: '/templates/signage/qsr/11-dominos-pizza-board.html', posSync: true },
       },
     ],
   },
