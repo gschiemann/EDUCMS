@@ -396,13 +396,8 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
               </div>
             </>
           )}
-          {provider.auth === 'oauth2' && provider.id === 'square' && (
-            <SquareOAuthPanel onStart={onClose} />
-          )}
-          {provider.auth === 'oauth2' && provider.id !== 'square' && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-              OAuth flow not yet implemented for {provider.name}. Save the row now — the sync handler will activate once the OAuth callback ships in a follow-up release.
-            </div>
+          {provider.auth === 'oauth2' && provider.integrationTier === 'DIRECT' && (
+            <OAuthConnectPanel provider={provider} onStart={onClose} />
           )}
           </>
           )}
@@ -435,19 +430,26 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
 }
 
 /**
- * Square OAuth entry button. Fetches the authorize URL from the API
- * (which mints CSRF state server-side) then redirects the operator to
- * Square. After approval Square redirects back to
- * /api/v1/pos/oauth/square/callback which redirects to
- * /connect/square/done with a ?status flag.
+ * Generic OAuth connect button for any DIRECT-tier OAuth POS provider
+ * (Square / Clover / Lightspeed / Shopify). Fetches the authorize URL from
+ * `/pos/oauth/{id}/authorize` (which mints CSRF state server-side + resolves
+ * the right connector) then redirects the operator to the provider. After
+ * approval the provider redirects back to `/api/v1/pos/oauth/{id}/callback`,
+ * which lands on `/connect/{id}/done?status=...`.
+ *
+ * Shopify needs the shop domain BEFORE the redirect (its authorize URL is
+ * per-shop), so for that provider we collect it here and pass `?shop=`.
  */
-function SquareOAuthPanel({ onStart }: { onStart: () => void }) {
+function OAuthConnectPanel({ provider, onStart }: { provider: { id: string; name: string }; onStart: () => void }) {
+  const needsShop = provider.id === 'shopify-pos';
+  const [shop, setShop] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const start = async () => {
     setLoading(true); setErr(null);
     try {
-      const r = await apiFetch<{ url: string }>('/pos/oauth/square/authorize');
+      const qs = needsShop ? `?shop=${encodeURIComponent(shop.trim())}` : '';
+      const r = await apiFetch<{ url: string }>(`/pos/oauth/${provider.id}/authorize${qs}`);
       onStart();
       window.location.href = r.url;
     } catch (e) {
@@ -457,15 +459,27 @@ function SquareOAuthPanel({ onStart }: { onStart: () => void }) {
   };
   return (
     <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800 space-y-2">
-      <p className="font-bold">Connect with Square</p>
-      <p>You&rsquo;ll be redirected to Square to authorize VenueOS to read your catalog. After approval Square sends you back here automatically and the first sync runs in the background.</p>
+      <p className="font-bold">Connect with {provider.name}</p>
+      <p>You&rsquo;ll be redirected to {provider.name} to authorize VenueOS to read your catalog. After approval you&rsquo;re sent back here automatically and the first sync runs in the background.</p>
+      {needsShop && (
+        <label className="block">
+          <span className="font-bold">Your store domain</span>
+          <input
+            type="text"
+            value={shop}
+            onChange={(e) => setShop(e.target.value)}
+            placeholder="your-store.myshopify.com"
+            className="mt-1 w-full px-2 py-1.5 rounded-md border border-emerald-300 text-emerald-900 placeholder:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          />
+        </label>
+      )}
       <button
         onClick={start}
-        disabled={loading}
+        disabled={loading || (needsShop && !shop.trim())}
         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50"
       >
         {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
-        Sign in with Square
+        Sign in with {provider.name}
       </button>
       {err && <p className="text-rose-700 text-[11px]">{err}</p>}
     </div>

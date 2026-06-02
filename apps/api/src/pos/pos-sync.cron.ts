@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PosService } from './pos.service';
+import { getConnector } from './providers/registry';
 
 /**
  * POS delta-sync cron. Hourly polls every ACTIVE Square connection
@@ -53,14 +54,18 @@ export class PosSyncCron implements OnModuleInit, OnModuleDestroy {
 
   /** Public so admins can invoke via scripts. */
   async runAll(): Promise<void> {
-    const conns = await (this.prisma.client as any).posProviderConnection.findMany({
-      where: { providerId: 'square', status: 'ACTIVE' },
+    const all = await (this.prisma.client as any).posProviderConnection.findMany({
+      where: { status: 'ACTIVE' },
     });
+    // Only poll providers with a registered connector (square, clover,
+    // shopify, lightspeed). custom-webhook connections push their own
+    // catalog and have no poll handler — skip them.
+    const conns = all.filter((c: any) => getConnector(c.providerId));
     if (conns.length === 0) return;
-    this.logger.log(`POS hourly delta starting for ${conns.length} Square connection(s).`);
+    this.logger.log(`POS hourly delta starting for ${conns.length} connection(s).`);
     for (const conn of conns) {
       try {
-        await this.svc.syncSquare(conn.tenantId, conn, null);
+        await this.svc.syncConnection(conn.tenantId, conn, null);
       } catch (err: any) {
         this.logger.warn(`POS sync failed conn=${conn.id}: ${err?.message ?? err}`);
       }

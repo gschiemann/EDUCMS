@@ -48,27 +48,46 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { PosService } from './pos.service';
 import { MenuService } from './menu.service';
-import {
-  newOAuthStateToken,
-  squareAuthorizeUrl,
-  squareExchangeCode,
-  verifySquareSignature,
-} from './providers/square';
+import { newOAuthStateToken, verifySquareSignature } from './providers/square';
+import { getConnector } from './providers/registry';
+import { getPosProvider } from '@cms/api-types';
 
-/** Where Square redirects the operator after they approve. Derived from
- *  the public web origin so dev + staging + prod all work without per-
- *  env config beyond the existing WEB_PUBLIC_URL / origin headers. */
-function resolveRedirectUri(req: Request): string {
+/** Where the provider redirects the operator after they approve. Derived
+ *  from the public API origin so dev + staging + prod all work without per-
+ *  env config beyond the existing PUBLIC_API_BASE_URL / origin headers. The
+ *  `provider` segment must match what's registered in that provider's
+ *  developer dashboard (e.g. Square → `.../oauth/square/callback`). */
+function resolveRedirectUri(req: Request, provider: string): string {
   // Prefer the explicit env var if set; otherwise reconstruct from the
   // incoming Host header (covers dev + Railway's tunnel hostnames).
   const apiBase =
     process.env.PUBLIC_API_BASE_URL ||
     `${req.protocol || 'https'}://${req.headers.host}`;
-  return `${apiBase.replace(/\/$/, '')}/api/v1/pos/oauth/square/callback`;
+  return `${apiBase.replace(/\/$/, '')}/api/v1/pos/oauth/${provider}/callback`;
 }
 
 function resolveWebReturnUrl(): string {
   return (process.env.WEB_PUBLIC_URL || 'http://localhost:3000').replace(/\/$/, '');
+}
+
+/** Each provider module reads `{PREFIX}_CLIENT_ID` / `{PREFIX}_CLIENT_SECRET`
+ *  (SQUARE_ / CLOVER_ / SHOPIFY_ / LIGHTSPEED_ — the connector's envPrefix,
+ *  which differs from the provider id). True when both are set. */
+function providerOAuthConfigured(envPrefix: string): boolean {
+  return !!(process.env[`${envPrefix}_CLIENT_ID`] && process.env[`${envPrefix}_CLIENT_SECRET`]);
+}
+
+/** Normalize a Shopify shop domain. Accepts "acme", "acme.myshopify.com", or
+ *  a full URL; returns the canonical "acme.myshopify.com" or null if invalid.
+ *  Only the *.myshopify.com admin host is allowed (no arbitrary domains). */
+function sanitizeShopDomain(raw?: string): string | null {
+  if (!raw) return null;
+  let s = String(raw).trim().toLowerCase();
+  s = s.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  if (!s) return null;
+  if (!s.includes('.')) s = `${s}.myshopify.com`;
+  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(s)) return null;
+  return s;
 }
 
 /** CSRF state lifetime — the operator has 10 min to complete the Square
@@ -76,7 +95,7 @@ function resolveWebReturnUrl(): string {
  *  key TTL and the in-process fallback's expiry stamp. */
 const STATE_TTL_MS = 10 * 60 * 1000;
 /** Redis key prefix for the per-handshake CSRF state nonce. */
-const STATE_REDIS_PREFIX = 'pos:square:oauth_state:';
+const STATE_REDIS_PREFIX = 'pos:oauth_state:';
 
 @Controller('api/v1/pos')
 export class PosOAuthController {
@@ -90,7 +109,7 @@ export class PosOAuthController {
   // (shared across replicas); see putState/takeState below. We mirror the
   // app's Redis-optional convention so a no-Redis deploy still works (worst
   // case on a multi-pod no-Redis deploy: the operator re-clicks "Connect").
-  private readonly stateCache = new Map<string, { tenantId: string; userId: string; expiresAt: number }>();
+  private readonly stateCache = new Map<string, { tenantId: string; userId: string; provider: string; storeId?: string; expiresAt: number }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -101,45 +120,86 @@ export class PosOAuthController {
 
   // ─── OAuth: kick off ───────────────────────────────────────────────
 
-  @Get('oauth/square/authorize')
+  @Get('oauth/:provider/authorize')
   @UseGuards(JwtAuthGuard, RbacGuard)
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async authorize(@Req() req: any) {
-    if (!process.env.SQUARE_CLIENT_ID) {
+  async authorize(
+    @Req() req: any,
+    @Param('provider') provider: string,
+    @Query('shop') shop?: string,
+  ) {
+    const connector = getConnector(provider);
+    const meta = getPosProvider(provider);
+    // Only DIRECT-tier OAuth providers with a registered connector can be
+    // self-serve connected (square / clover / shopify / lightspeed). Anything
+    // else — unknown id, custom-webhook (no connector), or a PARTNER provider
+    // not yet live — is rejected here.
+    if (!connector || !meta || meta.integrationTier !== 'DIRECT') {
       throw new HttpException(
-        'Square OAuth not configured for this deploy. Set SQUARE_CLIENT_ID / SQUARE_CLIENT_SECRET.',
+        `${meta?.name || provider} is not available for self-serve OAuth connect.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (!providerOAuthConfigured(connector.envPrefix)) {
+      throw new HttpException(
+        `${meta.name} OAuth not configured for this deploy. Set ${connector.envPrefix}_CLIENT_ID / ${connector.envPrefix}_CLIENT_SECRET.`,
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
+
+    // Shopify's authorize URL is per-shop, so the shop domain must be known
+    // BEFORE we redirect. Other providers learn the store id on the callback
+    // (Clover merchant_id, Lightspeed domain_prefix) or token (Square).
+    let storeId: string | undefined;
+    if (connector.needsStoreIdAtAuthorize) {
+      const shopDomain = sanitizeShopDomain(shop);
+      if (!shopDomain) {
+        throw new HttpException(
+          `${meta.name} requires a store domain — pass ?shop=your-store.myshopify.com`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      storeId = shopDomain;
+    }
+
     const state = newOAuthStateToken();
     await this.putState(state, {
       tenantId: req.user.tenantId,
       userId: req.user.id,
+      provider,
+      storeId,
     });
-    const redirectUri = resolveRedirectUri(req);
-    const url = squareAuthorizeUrl({ state, redirectUri });
+    const redirectUri = resolveRedirectUri(req, provider);
+    const url = connector.authorizeUrl({ state, redirectUri, storeId });
     return { url };
   }
 
   // ─── OAuth: callback ──────────────────────────────────────────────
 
-  @Get('oauth/square/callback')
+  @Get('oauth/:provider/callback')
   async callback(
     @Req() req: Request,
     @Res() res: Response,
-    @Query('code') code?: string,
-    @Query('state') state?: string,
-    @Query('error') errorParam?: string,
+    @Param('provider') provider: string,
+    @Query() query: Record<string, string>,
   ) {
+    const code = query.code;
+    const state = query.state;
+    const errorParam = query.error;
     const webReturn = resolveWebReturnUrl();
+    // The provider is part of the redirect URL — sanitize so a junk path
+    // segment can't be reflected into the Location header.
+    const safeProvider = /^[a-z0-9-]+$/.test(provider) ? provider : 'unknown';
     const failRedirect = (reason: string) => {
-      const u = new URL(`${webReturn}/connect/square/done`);
+      const u = new URL(`${webReturn}/connect/${safeProvider}/done`);
       u.searchParams.set('status', 'error');
       u.searchParams.set('reason', reason.slice(0, 200));
       return res.redirect(u.toString());
     };
 
-    if (errorParam) return failRedirect(`square-error:${errorParam}`);
+    const connector = getConnector(provider);
+    if (!connector) return failRedirect('unknown-provider');
+    if (errorParam) return failRedirect(`oauth-error:${errorParam}`);
     if (!code || !state) return failRedirect('missing-code-or-state');
 
     // CSRF check: the `state` nonce must match one we issued in /authorize
@@ -152,36 +212,56 @@ export class PosOAuthController {
     if (!entry) {
       return failRedirect('expired-state-token');
     }
+    // Defense-in-depth: the nonce was minted for a specific provider; the
+    // callback path's provider must match (a clover nonce can't be replayed
+    // against the square callback).
+    if (entry.provider && entry.provider !== provider) {
+      return failRedirect('provider-mismatch');
+    }
 
-    const redirectUri = resolveRedirectUri(req);
+    // Resolve the store id: known at authorize-time (Shopify shop), carried on
+    // the provider's callback query (Clover merchant_id / Lightspeed
+    // domain_prefix), or only on the token response (Square — stays empty
+    // here and is filled from `tokens.storeId` below).
+    let storeId = entry.storeId || '';
+    if (connector.callbackStoreIdParam) {
+      const fromQuery = String(query[connector.callbackStoreIdParam] || '');
+      if (fromQuery) storeId = fromQuery;
+    }
+
+    const redirectUri = resolveRedirectUri(req, provider);
     let tokens;
     try {
-      tokens = await squareExchangeCode({ code, redirectUri });
+      tokens = await connector.exchangeCode({ code, redirectUri, storeId });
     } catch (err: any) {
-      this.logger.warn(`Square token exchange failed: ${err?.message || err}`);
+      this.logger.warn(`${provider} token exchange failed: ${err?.message || err}`);
       return failRedirect('token-exchange-failed');
     }
 
+    // Square returns the merchant id on the token; prefer it when present.
+    const finalStoreId = tokens.storeId || storeId;
+
     try {
-      const conn = await this.svc.upsertSquareConnection({
+      const conn = await this.svc.upsertConnection({
         tenantId: entry.tenantId,
         userId: entry.userId,
+        providerId: provider,
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         expiresAt: tokens.expiresAt,
-        merchantId: tokens.merchantId,
+        storeId: finalStoreId,
         scope: tokens.scope,
       });
       // Fire an initial sync — fire-and-forget so the redirect snaps back fast.
-      void this.svc.syncSquare(entry.tenantId, conn, entry.userId).catch((err) => {
-        this.logger.warn(`initial Square sync failed: ${err?.message || err}`);
+      void this.svc.syncConnection(entry.tenantId, conn, entry.userId).catch((err) => {
+        this.logger.warn(`initial ${provider} sync failed: ${err?.message || err}`);
       });
 
-      const u = new URL(`${webReturn}/connect/square/done`);
+      const u = new URL(`${webReturn}/connect/${safeProvider}/done`);
       u.searchParams.set('status', 'ok');
       return res.redirect(u.toString());
     } catch (err: any) {
-      this.logger.error(`Square upsertConnection failed: ${err?.message || err}`);
+      this.logger.error(`${provider} upsertConnection failed: ${err?.message || err}`);
       return failRedirect('persist-failed');
     }
   }
@@ -294,7 +374,7 @@ export class PosOAuthController {
       eventType === 'item.updated'
     ) {
       void this.svc
-        .syncSquare(conn.tenantId, conn, null)
+        .syncConnection(conn.tenantId, conn, null)
         .catch((err) =>
           this.logger.warn(`webhook-triggered Square sync failed: ${err?.message || err}`),
         );
@@ -466,17 +546,22 @@ export class PosOAuthController {
    *  in one pod's Map while the callback lands on another. */
   private async putState(
     state: string,
-    entry: { tenantId: string; userId: string },
+    entry: { tenantId: string; userId: string; provider: string; storeId?: string },
   ): Promise<void> {
     const pub = this.redis?.publisher;
     if (pub) {
       try {
         // PX = TTL in ms; the key expires itself, so no GC pass is needed
-        // on the Redis path. Value is the (tenantId, userId) we trust on
-        // callback — never read from the request.
+        // on the Redis path. Value is the (tenantId, userId, provider,
+        // storeId) we trust on callback — never read from the request.
         await pub.set(
           `${STATE_REDIS_PREFIX}${state}`,
-          JSON.stringify({ tenantId: entry.tenantId, userId: entry.userId }),
+          JSON.stringify({
+            tenantId: entry.tenantId,
+            userId: entry.userId,
+            provider: entry.provider,
+            storeId: entry.storeId || '',
+          }),
           'PX',
           STATE_TTL_MS,
         );
@@ -492,6 +577,8 @@ export class PosOAuthController {
     this.stateCache.set(state, {
       tenantId: entry.tenantId,
       userId: entry.userId,
+      provider: entry.provider,
+      storeId: entry.storeId,
       expiresAt: Date.now() + STATE_TTL_MS,
     });
   }
@@ -503,7 +590,7 @@ export class PosOAuthController {
    *  nonce across replicas), then the in-process Map. */
   private async takeState(
     state: string,
-  ): Promise<{ tenantId: string; userId: string } | null> {
+  ): Promise<{ tenantId: string; userId: string; provider: string; storeId?: string } | null> {
     const pub = this.redis?.publisher;
     if (pub) {
       try {
@@ -519,7 +606,12 @@ export class PosOAuthController {
           try {
             const parsed = JSON.parse(raw);
             if (parsed && typeof parsed.tenantId === 'string' && typeof parsed.userId === 'string') {
-              return { tenantId: parsed.tenantId, userId: parsed.userId };
+              return {
+                tenantId: parsed.tenantId,
+                userId: parsed.userId,
+                provider: String(parsed.provider || ''),
+                storeId: parsed.storeId ? String(parsed.storeId) : undefined,
+              };
             }
           } catch {
             // Corrupt value — treat as a miss (reject).
@@ -547,7 +639,7 @@ export class PosOAuthController {
       return null;
     }
     this.stateCache.delete(state);
-    return { tenantId: local.tenantId, userId: local.userId };
+    return { tenantId: local.tenantId, userId: local.userId, provider: local.provider, storeId: local.storeId };
   }
 
   // ─── helpers ───────────────────────────────────────────────────────

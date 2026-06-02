@@ -124,26 +124,26 @@ export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
   {
     id: 'clover',
     name: 'Clover',
-    // 2026-05-28 audit P1-6: was DIRECT (`apiKey`) but had NO sync
-    // handler — `triggerSync` returned "not yet implemented" forever, so
-    // an operator could connect, see a PENDING row, hit "Sync now," and
-    // dead-end indefinitely. Clover's catalog API is real and free, but
-    // the connector is not built yet. Downgraded to PARTNER so the tile
-    // shows an honest "on the roadmap / contact us" state instead of a
-    // ready-looking self-serve connector. Re-promote to DIRECT (with
-    // `auth: 'apiKey'`) the moment a `providers/clover.ts` handler ships
-    // and `triggerSync` routes to it.
+    // 2026-06-02: PROMOTED PARTNER → DIRECT. The OAuth + catalog-sync
+    // connector now ships in providers/clover.ts (OAuth v2 authorize →
+    // token → refresh; /v3/merchants/{mId}/items + /categories) and
+    // triggerSync routes to it via the connector registry. `auth` flips
+    // apiKey → oauth2 to match the real Connect flow (the Connect button
+    // launches Clover's OAuth, not an API-key paste). Self-serve once
+    // CLOVER_CLIENT_ID / CLOVER_CLIENT_SECRET are set (free sandbox at
+    // sandbox.dev.clover.com). realtimeUpdates stays false — webhook push
+    // isn't wired yet; the hourly cron + manual Sync keep the catalog fresh.
     scope: 'restaurant-qsr',
-    integrationTier: 'PARTNER',
+    integrationTier: 'DIRECT',
     blurb: 'Clover Inventory + Menu API — small-business POS, broad reach.',
     iconEmoji: '🍀',
-    auth: 'apiKey',
+    auth: 'oauth2',
     docsUrl: 'https://docs.clover.com/docs/inventory-overview',
     websiteUrl: 'https://www.clover.com',
-    pricingNote: 'Connector in development',
+    pricingNote: 'Self-serve — free sandbox',
     bestFor: ['QSR', 'RETAIL', 'BAR'],
     capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: false },
-    tierReason: 'Clover ships a real, free catalog API (docs.clover.com) — but our connector is still in development. Tell us you need it and we\'ll prioritize it; until then the live sync handler is not wired.',
+    tierReason: 'Clover ships a real, free catalog API (docs.clover.com). Self-serve OAuth — connect with a free Clover sandbox, then go live with production credentials. Catalog syncs hourly + on demand.',
   },
   {
     id: 'aloha-ncr',
@@ -170,38 +170,48 @@ export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
   {
     id: 'lightspeed-retail',
     name: 'Lightspeed Retail',
-    // 2026-05-28 audit P1-6: was DIRECT but no OAuth + no sync handler.
-    // The oauth2 path already rejects connect attempts ("OAuth flow not
-    // yet implemented"), so this was a green "Self-serve" badge on a
-    // connector that can't connect. Downgraded to PARTNER for honesty.
+    // 2026-06-02: PROMOTED PARTNER → DIRECT. providers/lightspeed.ts now
+    // ships the X-Series OAuth (authorize on the fixed host, token/refresh
+    // per-retailer {domainPrefix}.retail.lightspeed.app) + catalog sync
+    // (/api/2.0/products + /product_categories, version-cursor paged), wired
+    // through the connector registry. Self-serve once LIGHTSPEED_CLIENT_ID /
+    // LIGHTSPEED_CLIENT_SECRET are set (free sandbox at retail.lightspeed.app).
     scope: 'retail',
-    integrationTier: 'PARTNER',
-    blurb: 'Lightspeed R-Series Items API — multi-location retail.',
+    integrationTier: 'DIRECT',
+    blurb: 'Lightspeed X-Series Items API — multi-location retail.',
     iconEmoji: '⚡',
     auth: 'oauth2',
-    docsUrl: 'https://developers.lightspeedhq.com/retail/',
+    docsUrl: 'https://x-series-api.lightspeedhq.com/',
     websiteUrl: 'https://www.lightspeedhq.com/pos/retail/',
-    pricingNote: 'Connector in development',
+    pricingNote: 'Self-serve — free sandbox',
     bestFor: ['RETAIL', 'FASHION'],
     capabilities: { menuSync: true, categorySync: true, locationsSync: true },
-    tierReason: 'Lightspeed\'s R-Series Items API is real (free sandbox + OAuth) — but our OAuth flow and sync handler are still in development. Re-promotes to DIRECT once the connector ships.',
+    tierReason: 'Lightspeed\'s X-Series (Retail) API is real (free sandbox + OAuth). Self-serve — connect a sandbox retailer, go live with production credentials. Catalog syncs hourly + on demand.',
   },
   {
     id: 'shopify-pos',
     name: 'Shopify POS',
-    // 2026-05-28 audit P1-6: was DIRECT but no OAuth + no sync handler.
-    // Same costume as Lightspeed — downgraded to PARTNER.
+    // 2026-06-02: PROMOTED PARTNER → DIRECT. providers/shopify.ts now ships
+    // the Admin OAuth (/admin/oauth/authorize → /admin/oauth/access_token,
+    // offline token) + catalog sync (/admin/api/<ver>/products.json,
+    // Link-header cursor paged, $ → cents), wired through the connector
+    // registry. The shop domain is collected at connect time (?shop=).
+    // Self-serve once SHOPIFY_CLIENT_ID / SHOPIFY_CLIENT_SECRET are set (free
+    // Partner account + dev store). realtimeUpdates stays true (Shopify
+    // webhooks exist) but webhook receive isn't wired yet — cron + manual
+    // sync keep it fresh; flip on the webhook later. REST Admin API is
+    // Shopify-"legacy" as of 2024-10 — GraphQL migration tracked separately.
     scope: 'retail',
-    integrationTier: 'PARTNER',
+    integrationTier: 'DIRECT',
     blurb: 'Shopify Admin API — products, variants, inventory, locations.',
     iconEmoji: '🛍',
     auth: 'oauth2',
-    docsUrl: 'https://shopify.dev/docs/api/admin-rest/2024-04/resources/product',
+    docsUrl: 'https://shopify.dev/docs/api/admin-rest',
     websiteUrl: 'https://www.shopify.com/pos',
-    pricingNote: 'Connector in development',
+    pricingNote: 'Self-serve — free dev store',
     bestFor: ['RETAIL', 'FASHION'],
     capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: true },
-    tierReason: 'Shopify\'s Admin API is real (free Partner account + dev store) — but our OAuth flow and sync handler are still in development. Re-promotes to DIRECT once the connector ships.',
+    tierReason: 'Shopify\'s Admin API is real (free Partner account + dev store). Self-serve OAuth — enter your shop domain, connect, go live with production credentials. Catalog syncs hourly + on demand.',
   },
 
   // ─── TIER 3 — UNIVERSAL ────────────────────────────────────────────

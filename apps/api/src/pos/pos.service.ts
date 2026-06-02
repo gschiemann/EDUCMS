@@ -18,11 +18,8 @@ import { timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { POS_PROVIDERS, getPosProvider, type PosConnectionDto } from '@cms/api-types';
 import { sealCredentials, openCredentials } from '../streaming/creds-cipher';
-import {
-  squareFetchCatalog,
-  squareRefreshAccessToken,
-  type CatalogSnapshot,
-} from './providers/square';
+import { type CatalogSnapshot } from './providers/square';
+import { getConnector } from './providers/registry';
 
 @Injectable()
 export class PosService {
@@ -107,14 +104,14 @@ export class PosService {
     // double-check at the API boundary so a curl/Postman call cannot
     // create empty PENDING rows that pollute the connections list.
     //
-    // 2026-05-25: Square OAuth is now wired (see pos-oauth.controller.ts).
-    // Square connections are created via the OAuth callback path, not via
-    // this generic credential-bag endpoint — so the oauth2 guard stays.
+    // 2026-05-25: Square OAuth is wired; 2026-06-02: Clover / Shopify /
+    // Lightspeed too (see pos-oauth.controller.ts + providers/registry.ts).
+    // OAuth connections are created via the `/pos/oauth/:provider/callback`
+    // path, not via this generic credential-bag endpoint — so the oauth2
+    // guard stays and just points the caller at the Connect button.
     if (provider.auth === 'oauth2') {
       throw new BadRequestException(
-        opts.providerId === 'square'
-          ? 'Use the Connect-with-Square button — Square uses OAuth, not direct credentials.'
-          : 'OAuth flow not yet implemented for this provider. Contact sales for activation.',
+        `Use the Connect-with-${provider.name} button — ${provider.name} uses OAuth, not direct credentials.`,
       );
     }
     if (provider.auth === 'apiKey' && !(creds as any).apiKey) {
@@ -241,8 +238,12 @@ export class PosService {
     });
     if (!conn) throw new NotFoundException('POS connection not found.');
 
-    if (conn.providerId === 'square') {
-      return this.syncSquare(tenantId, conn, actorUserId ?? null);
+    // Any provider with a registered connector (square, clover, shopify,
+    // lightspeed, …) syncs through the same generic path. Providers without
+    // one (custom-webhook push, or a PARTNER provider not yet built) fall
+    // through to the honest "not yet implemented" status.
+    if (getConnector(conn.providerId)) {
+      return this.syncConnection(tenantId, conn, actorUserId ?? null);
     }
 
     return {
@@ -252,36 +253,44 @@ export class PosService {
   }
 
   /**
-   * Persist a Square OAuth result as a PosProviderConnection. Called by
-   * PosOAuthController after the callback succeeds. Bypasses the
-   * `auth === 'oauth2'` guard in `createConnection` because we control
-   * the credential shape end-to-end — this is the trusted server-side
-   * path, not a user-supplied creds blob.
+   * Persist an OAuth result as a PosProviderConnection. Called by
+   * PosOAuthController after any provider's callback succeeds. Bypasses the
+   * `auth === 'oauth2'` guard in `createConnection` because we control the
+   * credential shape end-to-end — this is the trusted server-side path, not
+   * a user-supplied creds blob.
+   *
+   * `storeId` is the provider's per-merchant identifier (Square/Clover
+   * merchantId, Lightspeed domainPrefix, Shopify shop). We persist it under
+   * BOTH `storeId` (the generic key syncConnection reads) and `merchantId`
+   * (Square's legacy key — keeps `findConnectionByMerchantId` + any existing
+   * encrypted Square creds working unchanged).
    */
-  async upsertSquareConnection(opts: {
+  async upsertConnection(opts: {
     tenantId: string;
     userId: string;
+    providerId: string;
     displayName?: string;
     accessToken: string;
     refreshToken: string;
-    expiresAt: string;
-    merchantId: string;
+    expiresAt: string | null;
+    storeId: string;
     scope: string[];
   }) {
-    const provider = getPosProvider('square');
-    if (!provider) throw new BadRequestException('Square provider missing from catalog');
+    const provider = getPosProvider(opts.providerId);
+    if (!provider) throw new BadRequestException(`${opts.providerId} provider missing from catalog`);
     const creds = {
       accessToken: opts.accessToken,
       refreshToken: opts.refreshToken,
-      merchantId: opts.merchantId,
+      storeId: opts.storeId,
+      merchantId: opts.storeId, // legacy key — Square readers + findConnectionByMerchantId
     };
     const sealed = sealCredentials(creds);
     const expiresAt = opts.expiresAt ? new Date(opts.expiresAt) : null;
     const scope = opts.scope?.join(' ') || null;
 
-    // Same row per (tenant, square) so re-authorize updates in place.
+    // Same row per (tenant, provider) so re-authorize updates in place.
     const existing = await (this.prisma.client as any).posProviderConnection.findFirst({
-      where: { tenantId: opts.tenantId, providerId: 'square' },
+      where: { tenantId: opts.tenantId, providerId: opts.providerId },
     });
     if (existing) {
       const updated = await (this.prisma.client as any).posProviderConnection.update({
@@ -297,8 +306,8 @@ export class PosService {
         },
       });
       await this.audit(opts.tenantId, opts.userId, 'POS_CONNECTION_REAUTH', updated.id, {
-        providerId: 'square',
-        merchantId: opts.merchantId,
+        providerId: opts.providerId,
+        storeId: opts.storeId,
       });
       return updated;
     }
@@ -306,7 +315,7 @@ export class PosService {
     const created = await (this.prisma.client as any).posProviderConnection.create({
       data: {
         tenantId: opts.tenantId,
-        providerId: 'square',
+        providerId: opts.providerId,
         displayName: opts.displayName,
         encryptedCreds: sealed.encryptedCreds,
         encryptedDataKey: sealed.encryptedDataKey,
@@ -317,8 +326,8 @@ export class PosService {
       },
     });
     await this.audit(opts.tenantId, opts.userId, 'POS_CONNECTION_CREATED', created.id, {
-      providerId: 'square',
-      merchantId: opts.merchantId,
+      providerId: opts.providerId,
+      storeId: opts.storeId,
     });
     return created;
   }
@@ -331,11 +340,19 @@ export class PosService {
    * Refreshes the OAuth token transparently if it's within 1h of
    * expiry. Persists the refreshed token back to the connection.
    */
-  async syncSquare(
+  async syncConnection(
     tenantId: string,
     conn: any,
     actorUserId: string | null,
   ): Promise<{ status: 'ok' | 'error'; itemCount: number; categoryCount: number; message: string }> {
+    const providerName = getPosProvider(conn.providerId)?.name || conn.providerId;
+    const connector = getConnector(conn.providerId);
+    if (!connector) {
+      const msg = `No sync handler registered for ${providerName}.`;
+      await this.markConnectionError(conn.id, msg);
+      return { status: 'error', itemCount: 0, categoryCount: 0, message: msg };
+    }
+
     let creds: Record<string, any>;
     try {
       creds = openCredentials({
@@ -350,20 +367,28 @@ export class PosService {
 
     let accessToken = String(creds.accessToken || '');
     let refreshToken = String(creds.refreshToken || '');
+    // storeId = the provider's per-merchant id (Square/Clover merchantId,
+    // Lightspeed domainPrefix, Shopify shop). Square persisted it as
+    // `merchantId` historically; new providers use `storeId`. Read both so
+    // existing Square connection rows keep working unchanged.
+    const storeId = String(creds.storeId || creds.merchantId || '');
 
-    // Refresh proactively if we're within 1h of expiry. Square access
-    // tokens currently last 30 days, refresh tokens 90 days.
+    // Refresh proactively if we're within 1h of expiry — but only for
+    // providers whose tokens expire (Shopify offline tokens never do, so
+    // connector.refreshable is false and we skip).
     const expiresAtMs = conn.expiresAt ? new Date(conn.expiresAt).getTime() : 0;
     const refreshWindowMs = 60 * 60 * 1000;
-    if (expiresAtMs && expiresAtMs - Date.now() < refreshWindowMs && refreshToken) {
+    if (connector.refreshable && expiresAtMs && expiresAtMs - Date.now() < refreshWindowMs && refreshToken) {
       try {
-        const refreshed = await squareRefreshAccessToken(refreshToken);
+        const refreshed = await connector.refreshAccessToken(refreshToken, storeId);
         accessToken = refreshed.accessToken;
         refreshToken = refreshed.refreshToken;
+        const nextStoreId = refreshed.storeId || storeId;
         const newCreds = {
           accessToken,
           refreshToken,
-          merchantId: refreshed.merchantId || creds.merchantId,
+          storeId: nextStoreId,
+          merchantId: nextStoreId, // legacy key
         };
         const sealed = sealCredentials(newCreds);
         await (this.prisma.client as any).posProviderConnection.update({
@@ -375,16 +400,16 @@ export class PosService {
           },
         });
       } catch (err: any) {
-        this.logger.warn(`Square token refresh failed for conn=${conn.id}: ${err?.message || err}`);
+        this.logger.warn(`${providerName} token refresh failed for conn=${conn.id}: ${err?.message || err}`);
         // Continue with the old token — it might still be valid.
       }
     }
 
     let snapshot: CatalogSnapshot;
     try {
-      snapshot = await squareFetchCatalog(accessToken);
+      snapshot = await connector.fetchCatalog(accessToken, { storeId });
     } catch (err: any) {
-      const msg = `Square catalog fetch failed: ${err?.message || err}`;
+      const msg = `${providerName} catalog fetch failed: ${err?.message || err}`;
       await this.markConnectionError(conn.id, msg);
       return { status: 'error', itemCount: 0, categoryCount: 0, message: msg };
     }
@@ -441,7 +466,7 @@ export class PosService {
     });
 
     await this.audit(tenantId, actorUserId, 'POS_SYNC_COMPLETED', conn.id, {
-      providerId: 'square',
+      providerId: conn.providerId,
       itemCount: snapshot.items.length,
       categoryCount: snapshot.categories.length,
     });
@@ -450,7 +475,7 @@ export class PosService {
       status: 'ok',
       itemCount: snapshot.items.length,
       categoryCount: snapshot.categories.length,
-      message: `Square sync complete: ${snapshot.items.length} items, ${snapshot.categories.length} categories.`,
+      message: `${providerName} sync complete: ${snapshot.items.length} items, ${snapshot.categories.length} categories.`,
     };
   }
 
@@ -543,8 +568,8 @@ export class PosService {
    * (already resolved from the secret) determines the tenant — the caller
    * NEVER passes a client-supplied tenantId. Reuses the same
    * `posMenuItem.upsert` keyed on `connectionId_externalId` that
-   * `syncSquare` uses, so pushed items reach the MenuBoardWidget the same
-   * way Square's do.
+   * `syncConnection` uses, so pushed items reach the MenuBoardWidget the
+   * same way the OAuth providers' synced items do.
    *
    * Documented payload shape (matches the UI's published spec):
    *   { items: [ { id|externalId, name, priceCents|price, description?,
