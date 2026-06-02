@@ -201,7 +201,13 @@ export class TenantsController {
 
     const target = await this.prisma.client.tenant.findUnique({
       where: { id: targetId },
-      select: { id: true, name: true, slug: true, parentId: true },
+      // `vertical` is REQUIRED here: the returned user object carries
+      // tenantVertical, which the dashboard's useTenantCopy reads to pick
+      // the industry-aware UI. Omitting it (the pre-2026-06-01 bug) made
+      // EVERY account switch reset the displayed industry to the K12
+      // ("school") default, because the client stored a user with no
+      // vertical. Mirror the login response shape exactly.
+      select: { id: true, name: true, slug: true, parentId: true, vertical: true },
     });
     if (!target) throw new HttpException('Target tenant not found', HttpStatus.NOT_FOUND);
 
@@ -257,6 +263,13 @@ export class TenantsController {
       user: {
         id: user.id, email: user.email, role: user.role,
         tenantId: target.id, tenantSlug: target.slug,
+        // 2026-06-01 — carry the TARGET tenant's industry + name so a
+        // switch keeps the vertical-aware UI on the account you switched
+        // INTO (was missing → every switch fell back to K12/"school").
+        // Raw value; the client (useTenantCopy → normalizeVertical) maps
+        // legacy aliases + falls back to K12 only for unknown.
+        tenantVertical: (target as any).vertical || 'K12',
+        tenantName: target.name ?? null,
         canTriggerPanic: user.canTriggerPanic,
       },
       tenant: target,

@@ -124,24 +124,29 @@ export class UsersController {
         id: true, email: true, role: true,
         firstName: true, lastName: true,
         canTriggerPanic: true, tenantId: true, createdAt: true,
-        // 2026-06-01 — include the live tenant identity so the dashboard's
-        // ProfileHydrator can self-heal a stale cached session (the
-        // `edu_cms_user` blob can predate the vertical field OR an admin's
-        // industry change → the UI would otherwise show "school" for a
-        // gym until a manual logout). The flattened tenantVertical /
-        // tenantName / tenantSlug mirror the login-response shape the
-        // store already stores.
-        tenant: { select: { vertical: true, name: true, slug: true } },
       } as any,
     });
     if (!me) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
-    const tenant = (me as any).tenant;
+    // 2026-06-01 — resolve the ACTIVE tenant from the JWT claim
+    // (req.user.tenantId), NOT the user's home tenant relation. For a
+    // multi-tenant user who switched accounts, this is the tenant they're
+    // VIEWING. The flattened tenantVertical / tenantName / tenantSlug
+    // mirror the login + switch response shapes so the dashboard's
+    // ProfileHydrator can self-heal a stale cached session to the right
+    // industry (else the UI would show "school" for a gym until logout).
+    const activeTenantId: string = (req.user?.tenantId as string) || (me as any).tenantId;
+    const tenant = activeTenantId
+      ? await this.prisma.client.tenant.findUnique({
+          where: { id: activeTenantId },
+          select: { vertical: true, name: true, slug: true } as any,
+        })
+      : null;
     return {
       ...me,
-      tenant: undefined,
-      tenantVertical: tenant?.vertical || 'K12',
-      tenantName: tenant?.name ?? null,
-      tenantSlug: tenant?.slug ?? (me as any).tenantId,
+      tenantId: activeTenantId,
+      tenantVertical: (tenant as any)?.vertical || 'K12',
+      tenantName: (tenant as any)?.name ?? null,
+      tenantSlug: (tenant as any)?.slug ?? activeTenantId,
     };
   }
 
