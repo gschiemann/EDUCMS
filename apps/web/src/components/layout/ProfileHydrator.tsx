@@ -1,26 +1,29 @@
 "use client";
 
 /**
- * ProfileHydrator — self-heals stale auth-store user data.
+ * ProfileHydrator — self-heals a stale cached auth-store user.
  *
- * Operator (2026-05-12): hard-refreshed onto the new bundle and STILL
- * saw "gschiemann" in the dashboard greeting. Root cause: their
- * sessionStorage `edu_cms_user` blob was written by the pre-fix
- * code (when the require() bug silently failed); the new bundle
- * hydrates the store FROM that stale JSON, so firstName/lastName
- * are missing in memory even though the DB row has them.
+ * The store hydrates the logged-in `user` from a sessionStorage blob
+ * (`edu_cms_user`) written at login. That blob can go STALE in two ways:
  *
- * Fix: on every dashboard mount, if the store has a user object but
- * EITHER firstName or lastName is null/undefined, fire one GET
- * /users/me. If the API returns names the store doesn't have, patch
- * the store + sessionStorage in one shot. Subsequent renders show
- * the right greeting; refresh keeps the names.
+ *   1. It was written by an older bundle that didn't carry a field yet
+ *      (the 2026-05-12 case: firstName/lastName missing → greeting showed
+ *      the email prefix).
+ *   2. It carries an out-of-date `tenantVertical` — either written before
+ *      the vertical field existed, or before an admin changed the
+ *      tenant's industry. Result: the dashboard renders the WRONG
+ *      industry (a gym shows as "school") until the user manually logs
+ *      out and back in. (2026-06-01 — operator hit exactly this.)
  *
- * Fires exactly once per session per logged-in user — the missing-
- * field check fails for users with names already, so the API call
- * is a no-op for healthy sessions. Total cost: one /users/me per
- * dashboard tab boot, AND only for accounts that haven't been
- * hydrated yet.
+ * Fix: once per session per user, reconcile the cached blob against the
+ * server (`GET /users/me`, which now returns the live tenant identity).
+ * Patch the store + sessionStorage for any field the server has that the
+ * cache got wrong — names AND tenant vertical / name / slug. No manual
+ * re-login required; the UI corrects itself on the next dashboard mount.
+ *
+ * Cost: exactly one `/users/me` per session boot per user (guarded by a
+ * sessionStorage sentinel so remounts don't refire). On a transient
+ * failure the sentinel isn't set, so it retries on the next mount.
  */
 
 import { useEffect } from 'react';
@@ -30,34 +33,39 @@ import { apiFetch } from '@/lib/api-client';
 export function ProfileHydrator() {
   const user = useAppStore((s) => s.user);
   const userId = user?.id;
-  // We check for "name field is null AND not the empty string we
-  // intentionally set." Specifically: if firstName + lastName are
-  // BOTH undefined on the store but the user is logged in, we
-  // assume a stale-session and call /users/me to reconcile.
-  const needsHydration = !!user &&
-    (user.firstName === undefined || user.firstName === null) &&
-    (user.lastName === undefined || user.lastName === null);
 
   useEffect(() => {
-    if (!needsHydration || !userId) return;
+    if (!userId) return;
+
+    const sentinelKey = `edu_cms_hydrated:${userId}`;
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage?.getItem(sentinelKey)) return;
+    } catch { /* sessionStorage unavailable — proceed without the guard */ }
 
     let cancelled = false;
     (async () => {
       try {
         const me: any = await apiFetch('/users/me');
         if (cancelled) return;
-        // Only patch if the API actually has names (otherwise we'd
-        // just keep firing /users/me forever for accounts that
-        // genuinely haven't set their name yet).
-        if (!me?.firstName && !me?.lastName) return;
-
         const cur = useAppStore.getState().user;
-        if (!cur || cur.id !== me.id) return;
-        const nextUser = {
-          ...cur,
-          firstName: me.firstName ?? null,
-          lastName: me.lastName ?? null,
-        };
+        if (!cur || cur.id !== me?.id) return;
+
+        // Mark reconciled FIRST (on a successful fetch) so we don't refire
+        // this session even when nothing needed patching. A thrown fetch
+        // skips this and retries next mount.
+        try { window.sessionStorage?.setItem(sentinelKey, '1'); } catch { /* non-fatal */ }
+
+        // Patch ONLY fields the server actually has AND that differ from
+        // the cache — never clobber a present value with a server null.
+        const patch: Record<string, unknown> = {};
+        if (me.firstName != null && me.firstName !== cur.firstName) patch.firstName = me.firstName;
+        if (me.lastName != null && me.lastName !== cur.lastName) patch.lastName = me.lastName;
+        if (me.tenantVertical && me.tenantVertical !== (cur as any).tenantVertical) patch.tenantVertical = me.tenantVertical;
+        if (me.tenantName != null && me.tenantName !== (cur as any).tenantName) patch.tenantName = me.tenantName;
+        if (me.tenantSlug && me.tenantSlug !== cur.tenantSlug) patch.tenantSlug = me.tenantSlug;
+        if (Object.keys(patch).length === 0) return;
+
+        const nextUser = { ...cur, ...patch };
         useAppStore.setState({ user: nextUser });
         try {
           if (typeof window !== 'undefined') {
@@ -67,18 +75,15 @@ export function ProfileHydrator() {
             }
           }
         } catch { /* sessionStorage unavailable — non-fatal */ }
-        console.log('[profile-hydrate] reconciled store with /users/me — names now present');
+        // eslint-disable-next-line no-console
+        console.log('[profile-hydrate] reconciled cached session with /users/me:', Object.keys(patch).join(', '));
       } catch {
-        // Tolerated — a transient 401/500 just means we try next
-        // time the layout mounts. Better than blocking the
-        // dashboard on a profile reconcile.
+        // Tolerated — a transient 401/500 just means we try again on the
+        // next layout mount (the sentinel was not set on the throw path).
       }
     })();
     return () => { cancelled = true; };
-    // userId in the dep array means we re-run if the user changes
-    // (e.g. account switch). needsHydration is the actual gate.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, needsHydration]);
+  }, [userId]);
 
   return null;
 }

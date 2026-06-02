@@ -200,6 +200,35 @@ export function isVertical(v: unknown): v is Vertical {
 export const DEFAULT_VERTICAL: Vertical = 'K12';
 
 /**
+ * Legacy / alias vertical values → their canonical replacement. Some
+ * tenants (and a few older UI lists) carry pre-rename values that aren't
+ * in VERTICALS, so isVertical() rejects them and the UI falls back to the
+ * K12 default — showing e.g. a gym as "school". Map those aliases here so
+ * the DISPLAY resolves correctly without rewriting the stored value.
+ *
+ *   FITNESS → GYM   (renamed 2026-05 — "GYM ⊂ FITNESS")
+ */
+export const VERTICAL_ALIASES: Record<string, Vertical> = {
+  FITNESS: 'GYM',
+};
+
+/**
+ * Resolve ANY raw vertical string (canonical, lowercase, legacy alias,
+ * null, or garbage) to a canonical Vertical. Unknown → DEFAULT_VERTICAL.
+ * Use this anywhere a stored/transmitted vertical drives UI, so a stray
+ * legacy value never silently shows as "school".
+ */
+export function normalizeVertical(v: unknown): Vertical {
+  if (isVertical(v)) return v;
+  if (typeof v === 'string') {
+    const up = v.toUpperCase();
+    if (isVertical(up)) return up as Vertical;
+    if (VERTICAL_ALIASES[up]) return VERTICAL_ALIASES[up];
+  }
+  return DEFAULT_VERTICAL;
+}
+
+/**
  * Per-vertical role display labels. The DB enum values stay constant
  * (DISTRICT_ADMIN / SCHOOL_ADMIN / SUPER_ADMIN / CONTRIBUTOR /
  * RESTRICTED_VIEWER) but the human labels change so a gym admin

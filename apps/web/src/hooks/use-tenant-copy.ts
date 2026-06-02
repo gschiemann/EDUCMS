@@ -21,8 +21,7 @@ import {
   VERTICAL_DEFAULT_BRAND,
   VERTICAL_TEMPLATE_CATEGORIES,
   VERTICAL_ROLE_LABELS,
-  DEFAULT_VERTICAL,
-  isVertical,
+  normalizeVertical,
   type Vertical,
 } from '@cms/api-types';
 
@@ -56,7 +55,11 @@ export interface TenantCopy {
 
 export function useTenantCopy(): TenantCopy {
   const tenantVertical = useUIStore((s) => (s as any).user?.tenantVertical);
-  const v: Vertical = isVertical(tenantVertical) ? tenantVertical : DEFAULT_VERTICAL;
+  // normalizeVertical maps canonical AND legacy-alias values (e.g. the
+  // pre-rename FITNESS → GYM) to a canonical Vertical, falling back to
+  // K12 only for genuinely-missing/unknown values — so a stray legacy
+  // industry never silently renders as "school".
+  const v: Vertical = normalizeVertical(tenantVertical);
   const labels = VERTICAL_LABELS[v];
 
   return {
