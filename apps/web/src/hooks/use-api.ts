@@ -367,6 +367,59 @@ export function useSetScreenHardwareModel() {
   });
 }
 
+/**
+ * 2026-06-01 — set which scoreboard console drives a screen. Persists to
+ * `Screen.config.consoleProfile` (allow-listed server-side); the manifest
+ * surfaces it and CtsBridge picks the serial settings + default tty +
+ * decoder. `null` clears it (back to the 'cts-gen6' default). Mirrors
+ * useSetScreenHardwareModel's optimistic-update + invalidate pattern, but
+ * writes the nested config key (so we merge `config.consoleProfile`
+ * optimistically without clobbering sibling config like `wiring`).
+ */
+export function useSetScreenConsoleProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, consoleProfile }: { id: string; consoleProfile: string | null }) =>
+      apiFetch(`/screens/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ config: { consoleProfile } }),
+      }),
+    onMutate: async ({ id, consoleProfile }) => {
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ['screens'] }),
+        qc.cancelQueries({ queryKey: ['screen-groups'] }),
+      ]);
+      const prevScreens = qc.getQueryData<any>(['screens']);
+      const prevGroups = qc.getQueryData<any>(['screen-groups']);
+      const apply = (s: any) =>
+        s?.id === id
+          ? { ...s, config: { ...(s.config && typeof s.config === 'object' ? s.config : {}), consoleProfile } }
+          : s;
+      qc.setQueryData<any>(['screens'], (old: any) => {
+        if (Array.isArray(old)) return old.map(apply);
+        if (Array.isArray(old?.screens)) return { ...old, screens: old.screens.map(apply) };
+        return old;
+      });
+      qc.setQueryData<any>(['screen-groups'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((g: any) => ({
+          ...g,
+          screens: Array.isArray(g?.screens) ? g.screens.map(apply) : g?.screens,
+        }));
+      });
+      return { prevScreens, prevGroups };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prevScreens !== undefined) qc.setQueryData(['screens'], ctx.prevScreens);
+      if (ctx?.prevGroups !== undefined) qc.setQueryData(['screen-groups'], ctx.prevGroups);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['screens'] });
+      qc.invalidateQueries({ queryKey: ['screen-groups'] });
+    },
+  });
+}
+
 export function useUpdateScreen() {
   const qc = useQueryClient();
   return useMutation({

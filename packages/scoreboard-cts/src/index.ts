@@ -72,5 +72,8 @@ export type {
   ConsoleProfile,
   ConsoleProfileId,
   ConsoleDecoder,
+  ConsoleTransport,
+  ConsoleStatus,
+  CtsSport,
   SerialSettings,
 } from './console-profiles';

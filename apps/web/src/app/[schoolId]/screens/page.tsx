@@ -2,7 +2,7 @@
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel } from '@/hooks/use-api';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
@@ -594,6 +594,20 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
 function ScreenHardwarePanel({ screen }: { screen: any }) {
   const catalogQ = useHardwareCatalog();
   const setHardware = useSetScreenHardwareModel();
+  const setConsole = useSetScreenConsoleProfile();
+  // 2026-06-01 — which scoreboard console feeds this screen (water polo
+  // pilot). Options kept in sync with the package's ConsoleProfileId +
+  // the manifest allow-list; inlined here so the dashboard route doesn't
+  // pull the player-oriented @cms/scoreboard-cts runtime into its bundle.
+  const CONSOLE_OPTIONS: Array<{ id: string; label: string; help: string }> = [
+    { id: 'cts-gen6', label: 'CTS Gen 6 / System 6', help: 'Wired RS-232 (1/4" jack) → native serial port.' },
+    { id: 'cts-wttc', label: 'CTS Wireless Tabletop (WTTC)', help: 'USB-B → FTDI USB-serial adapter (/dev/ttyUSB0). Byte format pending a live capture.' },
+    { id: 'daktronics-allsport', label: 'Daktronics All Sport 5000', help: 'Enhanced RTD over RS-232.' },
+  ];
+  const currentConsole: string =
+    (screen?.config && typeof screen.config === 'object' && typeof screen.config.consoleProfile === 'string')
+      ? screen.config.consoleProfile
+      : '';
   const currentModelId: string = screen?.hardwareModel ?? 'unknown';
   const catalogModels = catalogQ.data?.models ?? [];
   const current = catalogModels.find((m) => m.id === currentModelId)
@@ -674,6 +688,50 @@ function ScreenHardwarePanel({ screen }: { screen: any }) {
                 {b.label}
               </span>
             ))}
+          </div>
+        )}
+
+        {/* 2026-06-01 — scoreboard console picker (water-polo pilot).
+            Shows for any known hardware model; persists
+            Screen.config.consoleProfile → manifest → CtsBridge, which
+            picks the serial settings + default tty + decoder. Gen 6 stays
+            the default (unchanged for every existing install); WTTC
+            selects the USB-serial (/dev/ttyUSB0) path. */}
+        {current && current.id !== 'unknown' && (
+          <div className="flex flex-col min-w-0 border-t border-slate-100 pt-2 mt-0.5">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
+              Scoreboard console
+            </div>
+            <select
+              value={currentConsole || '__none__'}
+              disabled={setConsole.isPending}
+              onChange={(e) => {
+                const next = e.target.value;
+                const payload = next === '__none__' ? null : next;
+                if ((payload ?? '') === currentConsole) return;
+                setConsole.mutate({ id: screen.id, consoleProfile: payload });
+              }}
+              className="text-[11px] font-medium text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Which scoreboard timing console feeds this screen. Drives the serial settings + the port the player opens."
+            >
+              <option value="__none__">Not set (defaults to CTS Gen 6)</option>
+              {CONSOLE_OPTIONS.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </select>
+            {(() => {
+              const sel = CONSOLE_OPTIONS.find((o) => o.id === currentConsole);
+              return sel ? (
+                <div className="text-[10px] text-slate-500 mt-1">
+                  {sel.help}
+                  {currentConsole === 'cts-wttc' && (
+                    <span className="ml-1 inline-block rounded bg-amber-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700">
+                      capture pending
+                    </span>
+                  )}
+                </div>
+              ) : null;
+            })()}
           </div>
         )}
 

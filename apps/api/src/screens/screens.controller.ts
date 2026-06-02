@@ -1329,6 +1329,10 @@ export class ScreensController {
     // intentions for upcoming hardware features (NOT wired yet).
     const CONFIG_ALLOW_LIST = new Set([
       'wiring',          // EP6N RS232 + RS485 + GPIO routing (Agent B)
+      'consoleProfile',  // which scoreboard console drives this screen
+                         //   ('cts-gen6' | 'cts-wttc' | 'daktronics-allsport').
+                         //   CtsBridge reads it (via the manifest) to pick
+                         //   the serial settings + default tty + decoder.
       'gpioState',       // GPIO OUT live state (Agent C) — server-driven
                          //                                  but allowed
                          //                                  here for
@@ -3067,6 +3071,17 @@ export class ScreensController {
         && (screen as any).config.wiring
         && typeof (screen as any).config.wiring === 'object')
         ? (screen as any).config.wiring
+        : null,
+      // 2026-06-01 — which scoreboard console drives this screen, from
+      // Screen.config.consoleProfile. CtsBridge reads it to pick the
+      // serial settings + default tty (Gen 6/Daktronics → native ttyS1;
+      // WTTC → USB-serial ttyUSB0) + decoder. Null = CtsBridge default
+      // ('cts-gen6'), so existing installs are unchanged. Older APKs
+      // ignore unknown manifest keys.
+      consoleProfile: ((screen as any).config && typeof (screen as any).config === 'object'
+        && !Array.isArray((screen as any).config)
+        && typeof (screen as any).config.consoleProfile === 'string')
+        ? (screen as any).config.consoleProfile
         : null,
       // 2026-05-27 — surface the chosen hardware model so the player /
       // KioskSplash can gate hardware-specific UI:

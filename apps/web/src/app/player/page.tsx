@@ -1533,6 +1533,18 @@ function PlayerPage() {
     rs232_2?: 'cts' | 'streamdeck' | 'aux' | 'off';
   } | null>(null);
 
+  // 2026-06-01 — which scoreboard console drives this screen, from
+  // `Screen.config.consoleProfile` (surfaced on the manifest). Selects
+  // BOTH the serial settings AND the default tty: Gen 6 / Daktronics →
+  // native /dev/ttyS1; WTTC → USB-serial /dev/ttyUSB0. Passed to
+  // CtsBridge; undefined = its built-in default ('cts-gen6'), so every
+  // existing install is unchanged. The literal union mirrors the
+  // package's ConsoleProfileId (kept in sync with the manifest allow-list
+  // below) so we avoid importing the package into the player bundle.
+  const [manifestConsoleProfile, setManifestConsoleProfile] = useState<
+    'cts-gen6' | 'cts-wttc' | 'daktronics-allsport' | undefined
+  >(undefined);
+
   // Tag <body> with data-player-route so the debug pill in globals.css
   // ONLY appears on the kiosk player, NEVER on the dashboard. Operator
   // (2026-05-04): "your dumb fucking pill is in the app no too not just
@@ -2930,6 +2942,19 @@ function PlayerPage() {
         }
       } else {
         setManifestWiring(null);
+      }
+      // 2026-06-01 — which scoreboard console this screen is wired to,
+      // from `Screen.config.consoleProfile`. Validated against the known
+      // ids (keep in sync with the package's ConsoleProfileId + the API
+      // manifest allow-list). Unknown / absent → undefined (CtsBridge
+      // uses its 'cts-gen6' default, so existing installs are unchanged).
+      {
+        const cpRaw = typeof manifest.consoleProfile === 'string' ? manifest.consoleProfile : '';
+        const cpAllowed = new Set(['cts-gen6', 'cts-wttc', 'daktronics-allsport']);
+        const cp = cpAllowed.has(cpRaw)
+          ? (cpRaw as 'cts-gen6' | 'cts-wttc' | 'daktronics-allsport')
+          : undefined;
+        if (cp !== manifestConsoleProfile) setManifestConsoleProfile(cp);
       }
       if (cw && ch && typeof document !== 'undefined') {
         try {
@@ -7148,6 +7173,7 @@ function PlayerPage() {
           gameId={qp('game') || null}
           feedToken={qp('feedToken') || null}
           wiring={manifestWiring || undefined}
+          consoleProfile={manifestConsoleProfile}
         />
       )}
     </div>

@@ -412,6 +412,15 @@ export function CtsBridge({
   // profile-object identity churn. The values are install-constant.
   const serialBaseRef = useRef<SerialSettings>(profile.serial);
   serialBaseRef.current = profile.serial;
+  // 2026-06-01 — the tty the native bridge opens by default now comes
+  // from the profile (`uart` → /dev/ttyS1; `usb-serial` → /dev/ttyUSB0).
+  // The WTTC profile feeds via an FTDI USB-serial adapter on a USB host
+  // port (/dev/ttyUSB0); Gen 6 / Daktronics stay on the native UART
+  // (/dev/ttyS1). `?ctsTty=` still overrides on-site. Held in a ref so
+  // the connection-lifecycle effects read the install-constant value
+  // without taking a dep on the new-every-render profile object.
+  const defaultTtyRef = useRef<string>(profile.defaultTty);
+  defaultTtyRef.current = profile.defaultTty;
   // Sport for the Daktronics decoder (prop > query param > 'football').
   const dakSport: DaktronicsSport =
     daktronicsSport ??
@@ -718,13 +727,14 @@ export function CtsBridge({
     const n = window.EduCmsNative;
     if (!n?.ctsSerialConnect) return;
     const opts = readSerialOptsFromQuery(serialBaseRef.current);
-    // tty path comes from URL query (?ctsTty=/dev/ttyS2) or defaults
-    // to /dev/ttyS1 — the Phoenix Terminal 1 RS232 RX on the
-    // ECBox3576. APK settings UI (Phase 3) will let the operator pick
+    // tty path comes from URL query (?ctsTty=/dev/ttyUSB0) or defaults
+    // to the selected profile's tty — /dev/ttyS1 for native-UART consoles
+    // (Gen 6 / Daktronics) or /dev/ttyUSB0 for the WTTC's USB-serial
+    // (FTDI) feed. APK settings UI (Phase 3) will let the operator pick
     // this from a list of probed devices.
     const tty = typeof window !== 'undefined'
-      ? (new URLSearchParams(window.location.search).get('ctsTty') || '/dev/ttyS1')
-      : '/dev/ttyS1';
+      ? (new URLSearchParams(window.location.search).get('ctsTty') || defaultTtyRef.current)
+      : defaultTtyRef.current;
     setStatus('connecting');
     setError(null);
     try {
@@ -807,7 +817,7 @@ export function CtsBridge({
             const n = window.EduCmsNative;
             if (!n?.ctsSerialConnect) return;
             const opts = readSerialOptsFromQuery(serialBaseRef.current);
-            const tty = new URLSearchParams(window.location.search).get('ctsTty') || '/dev/ttyS1';
+            const tty = new URLSearchParams(window.location.search).get('ctsTty') || defaultTtyRef.current;
             try {
               const resp = n.ctsSerialConnect(tty, opts.baudRate, opts.dataBits, opts.stopBits, opts.parity);
               const reparsed = JSON.parse(resp || '{}');

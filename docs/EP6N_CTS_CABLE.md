@@ -191,3 +191,36 @@ If the operator gets stuck (rare):
 - Settings → Apps → Default apps → Home app → pick "Goodview" (or the
   OEM launcher).
 - Or: Settings → Apps → VenueOS Player → Force stop.
+
+---
+
+## Variant: CTS **Wireless Tabletop Controller (WTTC)** — 2026-06-01
+
+The page above is the **Gen 6 / System 6** path (wired RS-232 1/4" jack →
+native UART → `/dev/ttyS1`). The WTTC is a different unit and connects a
+different way — pick the **"CTS Wireless Tabletop (WTTC)"** console in the
+dashboard (Screen → Diagnostics drawer → Hardware → **Scoreboard console**),
+which switches the player to the USB-serial path:
+
+```
+WTTC USB-B data port → [USB-A-female ↔ USB-B-male adapter]
+                     → [FTDI USB↔RS-232 adapter]   (the kit CTS recommends for a PC)
+                     → EP6N USB host port  →  /dev/ttyUSB0
+                     → Player APK → CtsParser → ribbon
+```
+
+- **No Phoenix cable to build** for this path — it's off-the-shelf USB parts
+  (FTDI USB-serial + a USB-A-f→USB-B-m adapter). The EP6N is a Linux box with
+  USB host ports, so it reads the FTDI adapter exactly as a PC would.
+- **The APK needs no change**: `SerialPortBridge.connect()` already accepts any
+  `/dev/tty*` path, and `/dev/ttyUSB0` is configured via the profile's
+  `defaultTty` (override on-site with `?ctsTty=`). Permissions: same Device
+  Owner `chmod 0666 /dev/ttyUSB*` model as the native ports.
+- **⚠ Protocol not yet confirmed.** The WTTC is a WA-2/WA-3-generation unit, so
+  its byte format may be **Gen7/WA-2** rather than the legacy CTS protocol our
+  `CtsParser` decodes. The profile ships `status: 'provisional'` for this reason.
+  **Before the live event, capture real bytes** (open `/dev/ttyUSB0` / the PC COM
+  port in a terminal, press each control) and reconcile the parser. Full detail:
+  `docs/research/2026-06-01-wttc-water-polo/01-wttc-integration-findings.md`.
+- **Safety net unchanged:** the operator phone console + auto-celebration runs
+  with zero serial connection, so the event isn't gated on the auto-decode.
