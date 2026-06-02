@@ -22,6 +22,15 @@ two questions after the self-serve POS connectors landed (`c08614f`):
    data-model decision: recommend a first-class **Location** entity)
    → operator-facing workflow written up in **`docs/MULTI_LOCATION_GUIDE.md`**.
 
+4. **"At the top level I should see every store's screens + map, control
+   everything, drill down to a location, set fleet-wide offline alerting;
+   local users optional. Vet it — does it help or hurt?"**
+   → `04-fleet-rollup-current-state.md` (code reality: parent sees 0 child
+   screens today — confirmed gap + change surface)
+   → `05-fleet-management-best-practice.md` (12-platform research: the model
+   is the industry-standard "single pane of glass" — VALIDATED — plus the
+   alert-fatigue + bulk-guardrail refinements the best products add).
+
 ## TL;DR
 
 | Question | Verdict |
