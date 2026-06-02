@@ -321,6 +321,28 @@ test.describe('Widget render — WebKit + Chromium smoke (P1-12)', () => {
   let counters: { manifestCalls: number };
   const pageErrors: string[] = [];
 
+  // The e2e webServer runs `pnpm dev` (Next dev), so /player is COMPILED on
+  // the first request. Under CI load that cold compile can blow past the
+  // per-test boot budget → intermittent "Player never fetched the manifest —
+  // boot got stuck" failures (flaked twice 2026-06-02, green on no-change
+  // re-run). Warm the route ONCE here so the compile happens OUTSIDE the timed
+  // test. Fail-soft: a warm-up hiccup must never red the suite (the test's own
+  // waits + the 2 CI retries still cover a cold route).
+  test.beforeAll(async ({ browser }) => {
+    const warm = await browser.newPage();
+    try {
+      await warm.goto('http://localhost:3000/player?fp=warmup', {
+        waitUntil: 'domcontentloaded',
+        timeout: 90_000,
+      });
+      await warm.waitForTimeout(1500);
+    } catch {
+      /* best-effort warm-up only */
+    } finally {
+      await warm.close();
+    }
+  });
+
   test.beforeEach(async ({ page }) => {
     counters = { manifestCalls: 0 };
     pageErrors.length = 0;
@@ -342,13 +364,18 @@ test.describe('Widget render — WebKit + Chromium smoke (P1-12)', () => {
   });
 
   test('all representative widgets render with non-zero box + no errors', async ({ page }, testInfo) => {
-    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    // Boot-heavy test against a dev server (compile-on-first-request). Give it
+    // real headroom beyond the 20s default so a cold/contended CI run can't
+    // flake on slow boot — the route is pre-warmed in beforeAll, the 2 CI
+    // retries are the final backstop.
+    test.setTimeout(60_000);
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT, { waitUntil: 'domcontentloaded' });
 
     // Wait for the manifest to land (player reached connecting→playing).
     await expect
       .poll(() => counters.manifestCalls, {
         message: 'Player never fetched the manifest — boot got stuck',
-        timeout: 15_000,
+        timeout: 30_000,
       })
       .toBeGreaterThanOrEqual(1);
 
