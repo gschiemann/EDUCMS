@@ -2378,6 +2378,19 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           </select>
         </div>
       );
+      // Top-level POS picker — only for menu boards (qsr / menus-pos / bar URL,
+      // or a board already POS-driven). Operator: "where is the top level POS
+      // picker? I should be able to pick which POS system I am using." It was
+      // only on the template-level (no-selection) Properties view, which the
+      // auto-select-the-sole-zone behavior hides — so surface it here too.
+      {
+        const posUrl = typeof cfg.url === 'string' ? cfg.url : '';
+        if (/\/signage\/(qsr|menus-pos|bar)\//.test(posUrl) || cfg.posSync === true || cfg.dataSource === 'POS') {
+          fields.push(SH('ext-pos', 'Live menu'));
+          fields.push(<PosDriverPicker key="ext-pos-picker" cfg={cfg} setField={setField} />);
+        }
+      }
+
       // Template picker — which signage template this EXTERNAL_HTML zone
       // shows. Sets cfg.url. 2026-06-01 — operator: "why pick an industry
       // drop down?" When a template is ALREADY chosen (the common case — they
@@ -6361,7 +6374,12 @@ function StyleableField({
     }
   };
   return (
-    <div className={`relative rounded-lg transition-all ${isActive ? 'ring-2 ring-indigo-400 ring-offset-1' : ''}`}>
+    // 2026-06-01 — single highlight only: the inner input already shows a
+    // focus ring, so the wrapper must NOT add a second ring-2 (operator:
+    // "double purple outline … just highlight the field i am editing"). The
+    // active state is still tracked (drives the bottom-bar styling controls +
+    // the override dot) — it just no longer paints a redundant outer ring.
+    <div className="relative rounded-lg transition-all">
       {hasOverride && !isActive && (
         <span
           className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-indigo-500 z-10"
@@ -6415,7 +6433,9 @@ function StyleableAreaField({
     }
   };
   return (
-    <div className={`relative rounded-lg transition-all ${isActive ? 'ring-2 ring-indigo-400 ring-offset-1' : ''}`}>
+    // 2026-06-01 — single highlight only (see StyleableField): no wrapper ring;
+    // the inner textarea's own focus ring is the one highlight.
+    <div className="relative rounded-lg transition-all">
       {hasOverride && !isActive && (
         <span
           className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-indigo-500 z-10"
@@ -6430,6 +6450,86 @@ function StyleableAreaField({
         rows={rows}
         onFocus={handleFocus}
       />
+    </div>
+  );
+}
+
+/**
+ * PosDriverPicker — the top-level "which POS system drives this menu board"
+ * picker (operator 2026-06-01: "I should be able to pick which POS system I am
+ * using and then it gets applied to the correct fields automatically but I can
+ * still edit them"). Shown at the TOP of the EXTERNAL_HTML editor for menu
+ * boards. Picking a system flips the board to live POS (config.posSync) and
+ * records the intended provider (config.posProvider). The actual catalog comes
+ * from whatever POS the tenant connected in Settings → POS — the live feed
+ * (usePosMenuItems) name-matches it onto the board's items, and any field stays
+ * editable below as an override. CLOSED-tier providers are hidden. Defensive:
+ * falls back to the known provider list if the /pos/providers call hasn't
+ * resolved, so the picker is never empty.
+ */
+interface PosProviderLite { id: string; name: string; integrationTier: 'DIRECT' | 'PARTNER' | 'CLOSED'; iconEmoji?: string }
+interface PosConnectionLite { providerId: string; status: string }
+const POS_FALLBACK: PosProviderLite[] = [
+  { id: 'square', name: 'Square', integrationTier: 'DIRECT', iconEmoji: '⬛' },
+  { id: 'toast', name: 'Toast', integrationTier: 'PARTNER', iconEmoji: '🍞' },
+  { id: 'clover', name: 'Clover', integrationTier: 'PARTNER', iconEmoji: '🍀' },
+  { id: 'lightspeed', name: 'Lightspeed', integrationTier: 'PARTNER', iconEmoji: '⚡' },
+  { id: 'shopify', name: 'Shopify', integrationTier: 'PARTNER', iconEmoji: '🛍' },
+  { id: 'custom-webhook', name: 'Custom Webhook', integrationTier: 'DIRECT', iconEmoji: '🔗' },
+];
+function PosDriverPicker({ cfg, setField }: { cfg: Record<string, unknown>; setField: (patch: Record<string, unknown>) => void }) {
+  const params = useParams<{ schoolId: string }>();
+  const schoolId = params?.schoolId || '';
+  const providersQ = useQuery<PosProviderLite[]>({ queryKey: ['pos-providers'], queryFn: () => apiFetch<PosProviderLite[]>('/pos/providers'), staleTime: 300_000, retry: false });
+  const connsQ = useQuery<PosConnectionLite[]>({ queryKey: ['pos-connections'], queryFn: () => apiFetch<PosConnectionLite[]>('/pos/connections'), staleTime: 60_000, retry: false });
+
+  const list = ((providersQ.data && providersQ.data.length ? providersQ.data : POS_FALLBACK)).filter((p) => p.integrationTier !== 'CLOSED');
+  const connectedIds = new Set((connsQ.data || []).filter((c) => c.status === 'ACTIVE').map((c) => c.providerId));
+  const posOn = cfg?.posSync === true || cfg?.dataSource === 'POS';
+  const selected = posOn ? (typeof cfg?.posProvider === 'string' ? (cfg.posProvider as string) : '__any') : '';
+  const chosen = list.find((p) => p.id === selected);
+  const chosenConnected = chosen ? connectedIds.has(chosen.id) : connectedIds.size > 0;
+
+  const onPick = (val: string) => {
+    if (!val) { setField({ posSync: false, posProvider: undefined, dataSource: 'NONE' }); return; }
+    setField({ posSync: true, posProvider: val === '__any' ? undefined : val, dataSource: 'POS' });
+  };
+
+  return (
+    <div style={{ borderRadius: 10, border: '1px solid', borderColor: posOn ? '#b45309' : '#e2e8f0', background: posOn ? '#431407' : '#f8fafc', padding: '10px 12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: posOn ? (chosenConnected ? '#22c55e' : '#f59e0b') : '#94a3b8', marginRight: 8, flexShrink: 0 }} />
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: posOn ? '#fcd34d' : '#64748b' }}>
+          {posOn ? (chosenConnected ? 'LIVE FROM YOUR POS' : 'POS SELECTED — NOT CONNECTED YET') : 'STATIC MENU (NO POS)'}
+        </span>
+      </div>
+      <label className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: posOn ? '#fcd34d' : '#64748b', marginBottom: 4 }}>
+        Driven by your POS
+      </label>
+      <select
+        value={selected}
+        onChange={(e) => onPick(e.target.value)}
+        style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid', borderColor: posOn ? '#b45309' : '#cbd5e1', background: posOn ? '#7c2d12' : '#ffffff', color: posOn ? '#fde68a' : '#334155', fontSize: 11, fontWeight: 600, cursor: 'pointer', appearance: 'auto' }}
+      >
+        <option value="">Static menu — type prices yourself</option>
+        <option value="__any">POS — any connected system</option>
+        {list.map((p) => (
+          <option key={p.id} value={p.id}>{(p.iconEmoji ? `${p.iconEmoji} ` : '') + p.name}{connectedIds.has(p.id) ? ' ✓ connected' : ''}</option>
+        ))}
+      </select>
+      {posOn && (
+        <div className="text-[10px] mt-2 leading-relaxed" style={{ color: posOn ? '#fde68a' : '#64748b' }}>
+          Item names, prices, descriptions &amp; photos auto-fill from your POS (matched by item name). Edit any field below to override.
+          {!chosenConnected && (
+            <>
+              {' '}<a href={`/${schoolId}/settings/pos`} className="underline font-semibold">Connect {chosen ? chosen.name : 'your POS'} →</a>
+            </>
+          )}
+        </div>
+      )}
+      <a href={`/${schoolId}/settings/pos`} className="text-[10px] underline mt-1 inline-block" style={{ color: posOn ? '#fbbf24' : '#6366f1' }}>
+        Manage POS connections
+      </a>
     </div>
   );
 }
