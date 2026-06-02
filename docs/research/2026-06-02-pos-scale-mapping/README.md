@@ -31,6 +31,16 @@ two questions after the self-serve POS connectors landed (`c08614f`):
    is the industry-standard "single pane of glass" — VALIDATED — plus the
    alert-fatigue + bulk-guardrail refinements the best products add).
 
+5. **"Hybrid: roll up all child screens into one top-level map, but clicking
+   one to ACT flips me into that location (keeps isolation). How does everyone
+   else do it — maybe they don't use child accounts?"**
+   → `06-fleet-overview-hybrid-manager-console.md` (VERDICT: this is the
+   gold-standard manager-account/MSP-console pattern — Google MCC, AWS Orgs,
+   Stripe Connect, NinjaOne. Signage single-pane apps are mostly flat; the one
+   like us (Rise Vision) uses asymmetric parent-read. Our hybrid = asymmetric
+   read roll-up + switch-to-act = best of both. + 8 "build it better"
+   refinements + a 3-phase build plan).
+
 ## TL;DR
 
 | Question | Verdict |
