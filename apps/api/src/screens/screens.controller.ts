@@ -1045,6 +1045,92 @@ export class ScreensController {
     });
   }
 
+  // ─── ADMIN: Fleet roll-up — HQ sees every store's screens (read-only) ───
+  //
+  // Manager-console pattern (Google MCC / AWS Orgs / NinjaOne): the parent
+  // ("Corporate") reads ALL of its child locations' screens into ONE map +
+  // list. ASYMMETRIC + READ-ONLY: a parent reads across its DIRECT children
+  // (children stay sealed from each other); this endpoint NEVER mutates — any
+  // action is taken by switching into the owning store (the frontend
+  // deep-links into /[storeSlug]/screens). Isolation + blast-radius stay
+  // intact; only the overview spans the chain. A leaf location (no children)
+  // resolves to just its own screens — no cross-tenant read.
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Get('fleet')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
+  async fleet(@Request() req: any, @Res({ passthrough: true }) res?: any) {
+    if (res?.setHeader) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+    }
+    const rootId = req.user.tenantId as string;
+    const sel = { id: true, name: true, slug: true, latitude: true, longitude: true, address: true } as const;
+    const self = await this.prisma.client.tenant.findUnique({ where: { id: rootId }, select: sel });
+    const children = await this.prisma.client.tenant.findMany({
+      where: { parentId: rootId },
+      select: sel,
+      orderBy: { name: 'asc' },
+    });
+    const tenants = [self, ...children].filter(Boolean) as Array<{
+      id: string; name: string; slug: string;
+      latitude: number | null; longitude: number | null; address: string | null;
+    }>;
+    const tenantIds = tenants.map((t) => t.id);
+    const geoByTenant = new Map(tenants.map((t) => [t.id, { latitude: t.latitude, longitude: t.longitude, address: t.address }]));
+    const metaByTenant = new Map(tenants.map((t) => [t.id, { id: t.id, name: t.name, slug: t.slug }]));
+
+    const rows = await this.prisma.client.screen.findMany({
+      where: { tenantId: { in: tenantIds } },
+      include: { screenGroup: { select: { id: true, name: true } } },
+      orderBy: [{ tenantId: 'asc' }, { name: 'asc' }],
+    });
+
+    // Live status from lastPingAt recency — MUST mirror list()'s rule
+    // (35s = 30s heartbeat + grace). Keep in sync with the GET / mapper.
+    const STALE_MS = 35 * 1000;
+    const now = Date.now();
+    const screens = rows.map((s) => {
+      let liveStatus: string = s.status;
+      if (s.status !== 'REVOKED') {
+        const last = s.lastPingAt ? new Date(s.lastPingAt).getTime() : 0;
+        const isAlive = last && (now - last) < STALE_MS;
+        if (isAlive && s.tenantId) liveStatus = 'ONLINE';
+        else if (s.status === 'ONLINE' || s.tenantId) liveStatus = 'OFFLINE';
+      }
+      const tg = geoByTenant.get(s.tenantId as string) ?? null;
+      const hasScreenCoords = s.latitude != null && s.longitude != null;
+      const hasTenantCoords = tg?.latitude != null && tg?.longitude != null;
+      const effectiveLatitude = hasScreenCoords ? s.latitude : (hasTenantCoords ? tg!.latitude : null);
+      const effectiveLongitude = hasScreenCoords ? s.longitude : (hasTenantCoords ? tg!.longitude : null);
+      const effectiveAddress = hasScreenCoords ? ((s as any).address ?? null) : (hasTenantCoords ? (tg!.address ?? null) : null);
+      const geoSource: 'screen' | 'tenant' | 'none' = hasScreenCoords ? 'screen' : (hasTenantCoords ? 'tenant' : 'none');
+      return {
+        id: s.id,
+        name: s.name,
+        status: liveStatus,
+        screenGroup: (s as any).screenGroup ?? null,
+        lastPingAt: s.lastPingAt,
+        lastCacheReport: (s as any).lastCacheReport ?? null,
+        effectiveLatitude,
+        effectiveLongitude,
+        effectiveAddress,
+        geoSource,
+        // Which store this screen belongs to — drives the map cluster label
+        // + the click→switch deep-link (frontend routes to its slug).
+        sourceTenant: metaByTenant.get(s.tenantId as string) ?? null,
+      };
+    });
+
+    const online = screens.filter((s) => s.status === 'ONLINE').length;
+    const offline = screens.filter((s) => s.status === 'OFFLINE').length;
+    return {
+      root: metaByTenant.get(rootId) ?? null,
+      locations: tenants.map((t) => ({ id: t.id, name: t.name, slug: t.slug })),
+      stats: { total: screens.length, online, offline, locationCount: tenants.length },
+      screens,
+    };
+  }
+
   // ─── ADMIN: Pair a screen by code ───
   // NOTE: this endpoint also handles re-pairing an existing tenant's
   // screen (e.g. the operator regenerates a code and another admin in
