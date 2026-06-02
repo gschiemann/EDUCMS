@@ -1,0 +1,25 @@
+{
+  "_help": "Edit any value below and SAVE. The watcher (feed.mjs) pushes it to the live board within ~200ms and the scoreboard + ribbon react. Bump awayScore by 1 to fire a GOAL celebration. See README.md for the field-by-field reference.",
+
+  "homeScore": 4,
+  "awayScore": 3,
+
+  "clock": "5:30",
+  "clockRunning": true,
+  "period": 2,
+
+  "homeShotClock": "30",
+  "homeShotClockRunning": false,
+  "awayShotClock": "",
+  "awayShotClockRunning": false,
+
+  "homeExclusions": [
+    { "playerJersey": 7, "secondsRemaining": 18 }
+  ],
+  "awayExclusions": [],
+
+  "homeTimeoutsRemaining": 2,
+  "awayTimeoutsRemaining": 1,
+
+  "horn": false
+}
