@@ -64,7 +64,7 @@ export type CtsSport = 'water-polo' | 'swimming';
 export type ConsoleStatus = 'stable' | 'provisional';
 
 /** A console profile id. Extend as new consoles are supported. */
-export type ConsoleProfileId = 'cts-gen6' | 'cts-wttc' | 'daktronics-allsport';
+export type ConsoleProfileId = 'cts-gen6' | 'cts-gen7' | 'cts-wttc' | 'daktronics-allsport';
 
 export interface ConsoleProfile {
   id: ConsoleProfileId;
@@ -121,6 +121,23 @@ export const CONSOLE_PROFILES: Record<ConsoleProfileId, ConsoleProfile> = {
     sports: ['water-polo'],
     status: 'stable',
     notes: 'Wired RS-232 (1/4" jack) into the box’s native UART.',
+  },
+  'cts-gen7': {
+    id: 'cts-gen7',
+    label: 'Colorado Time Systems (Gen 7 — RS-232 output)',
+    decoder: 'cts',
+    // Gen 7 exposes TWO scoreboard outputs: RS-232 (the legacy "CTS"
+    // protocol — what CtsParser decodes, identical bytes to Gen 6) and
+    // RS-485 ("Gen7/WA-2" — a DIFFERENT protocol we do NOT decode yet).
+    // This profile = the RS-232 output, so it works today exactly like
+    // Gen 6. If a venue only exposes the RS-485 output, that's a separate
+    // future profile once the Gen7/WA-2 decoder lands.
+    serial: { baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'even' },
+    transport: 'uart',
+    defaultTty: '/dev/ttyS1',
+    sports: ['water-polo'],
+    status: 'stable',
+    notes: 'Tap the Gen 7 RS-232 scoreboard output (legacy CTS protocol). Its RS-485 "Gen7/WA-2" output is a different protocol, not yet decoded.',
   },
   'cts-wttc': {
     id: 'cts-wttc',

@@ -1542,7 +1542,7 @@ function PlayerPage() {
   // package's ConsoleProfileId (kept in sync with the manifest allow-list
   // below) so we avoid importing the package into the player bundle.
   const [manifestConsoleProfile, setManifestConsoleProfile] = useState<
-    'cts-gen6' | 'cts-wttc' | 'daktronics-allsport' | undefined
+    'cts-gen6' | 'cts-gen7' | 'cts-wttc' | 'daktronics-allsport' | undefined
   >(undefined);
 
   // Tag <body> with data-player-route so the debug pill in globals.css
@@ -2950,9 +2950,9 @@ function PlayerPage() {
       // uses its 'cts-gen6' default, so existing installs are unchanged).
       {
         const cpRaw = typeof manifest.consoleProfile === 'string' ? manifest.consoleProfile : '';
-        const cpAllowed = new Set(['cts-gen6', 'cts-wttc', 'daktronics-allsport']);
+        const cpAllowed = new Set(['cts-gen6', 'cts-gen7', 'cts-wttc', 'daktronics-allsport']);
         const cp = cpAllowed.has(cpRaw)
-          ? (cpRaw as 'cts-gen6' | 'cts-wttc' | 'daktronics-allsport')
+          ? (cpRaw as 'cts-gen6' | 'cts-gen7' | 'cts-wttc' | 'daktronics-allsport')
           : undefined;
         if (cp !== manifestConsoleProfile) setManifestConsoleProfile(cp);
       }

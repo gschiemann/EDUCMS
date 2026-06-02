@@ -42,6 +42,19 @@ describe('console-profiles registry', () => {
     expect(p.sports).not.toContain('swimming');
   });
 
+  it('adds the Gen 7 profile (RS-232 output = legacy CTS protocol, native UART)', () => {
+    const p = CONSOLE_PROFILES['cts-gen7'];
+    expect(p).toBeDefined();
+    // Gen 7's RS-232 output speaks the legacy CTS protocol, so it uses the
+    // same decoder + native UART as Gen 6 (the RS-485 "Gen7/WA-2" output is
+    // a separate, not-yet-decoded protocol — out of scope for this profile).
+    expect(p.decoder).toBe('cts');
+    expect(p.transport).toBe('uart');
+    expect(p.defaultTty).toBe('/dev/ttyS1');
+    expect(p.status).toBe('stable');
+    expect(p.sports).toContain('water-polo');
+  });
+
   it('keeps Daktronics on the native UART', () => {
     const p = CONSOLE_PROFILES['daktronics-allsport'];
     expect(p.decoder).toBe('daktronics');

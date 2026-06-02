@@ -599,11 +599,13 @@ function ScreenHardwarePanel({ screen }: { screen: any }) {
   // pilot). Options kept in sync with the package's ConsoleProfileId +
   // the manifest allow-list; inlined here so the dashboard route doesn't
   // pull the player-oriented @cms/scoreboard-cts runtime into its bundle.
-  const CONSOLE_OPTIONS: Array<{ id: string; label: string; help: string }> = [
-    { id: 'cts-gen6', label: 'CTS Gen 6 / System 6', help: 'Wired RS-232 (1/4" jack) → native serial port.' },
-    { id: 'cts-wttc', label: 'CTS Wireless Tabletop (WTTC)', help: 'USB-B → FTDI USB-serial adapter (/dev/ttyUSB0). Byte format pending a live capture.' },
-    { id: 'daktronics-allsport', label: 'Daktronics All Sport 5000', help: 'Enhanced RTD over RS-232.' },
+  const CONSOLE_OPTIONS: Array<{ id: string; label: string; group: string; help: string; provisional?: boolean }> = [
+    { id: 'cts-gen6', label: 'CTS Gen 6 / System 6', group: 'Colorado Time Systems', help: 'Wired RS-232 (1/4" jack) → native serial port.' },
+    { id: 'cts-gen7', label: 'CTS Gen 7 (RS-232 output)', group: 'Colorado Time Systems', help: 'Gen 7 via its RS-232 output (legacy CTS protocol — same as Gen 6). Its RS-485 "Gen7/WA-2" output is a different protocol, not decoded yet.' },
+    { id: 'cts-wttc', label: 'CTS Wireless Tabletop (WTTC)', group: 'Colorado Time Systems', help: 'USB-B → FTDI USB-serial adapter (/dev/ttyUSB0). Byte format pending a live capture.', provisional: true },
+    { id: 'daktronics-allsport', label: 'Daktronics All Sport 5000', group: 'Daktronics', help: 'Enhanced RTD over RS-232.' },
   ];
+  const CONSOLE_GROUPS = Array.from(new Set(CONSOLE_OPTIONS.map((o) => o.group)));
   const currentConsole: string =
     (screen?.config && typeof screen.config === 'object' && typeof screen.config.consoleProfile === 'string')
       ? screen.config.consoleProfile
@@ -715,8 +717,12 @@ function ScreenHardwarePanel({ screen }: { screen: any }) {
               title="Which scoreboard timing console feeds this screen. Drives the serial settings + the port the player opens."
             >
               <option value="__none__">Not set (defaults to CTS Gen 6)</option>
-              {CONSOLE_OPTIONS.map((o) => (
-                <option key={o.id} value={o.id}>{o.label}</option>
+              {CONSOLE_GROUPS.map((g) => (
+                <optgroup key={g} label={g}>
+                  {CONSOLE_OPTIONS.filter((o) => o.group === g).map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
             {(() => {
@@ -724,7 +730,7 @@ function ScreenHardwarePanel({ screen }: { screen: any }) {
               return sel ? (
                 <div className="text-[10px] text-slate-500 mt-1">
                   {sel.help}
-                  {currentConsole === 'cts-wttc' && (
+                  {sel.provisional && (
                     <span className="ml-1 inline-block rounded bg-amber-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700">
                       capture pending
                     </span>
