@@ -19,13 +19,17 @@ import { PrismaService } from '../prisma/prisma.service';
 import { POS_PROVIDERS, getPosProvider, type PosConnectionDto } from '@cms/api-types';
 import { sealCredentials, openCredentials } from '../streaming/creds-cipher';
 import { type CatalogSnapshot } from './providers/square';
-import { getConnector } from './providers/registry';
+import { getConnector, type PosConnector } from './providers/registry';
+import { MenuService } from './menu.service';
 
 @Injectable()
 export class PosService {
   private readonly logger = new Logger(PosService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly menu: MenuService,
+  ) {}
 
   // ─── Catalog ──────────────────────────────────────────────────────
   listProviders() {
@@ -252,6 +256,74 @@ export class PosService {
     };
   }
 
+  // ─── Multi-location: POS stores → our location tenants ─────────────
+
+  /** List the synced POS locations for a connection, with each store's
+   *  current mapping to one of our location tenants (null = unmapped). */
+  async listConnectionLocations(tenantId: string, connectionId: string) {
+    const conn = await (this.prisma.client as any).posProviderConnection.findFirst({
+      where: { id: connectionId, tenantId },
+      select: { id: true },
+    });
+    if (!conn) throw new NotFoundException('POS connection not found.');
+    return (this.prisma.client as any).posLocation.findMany({
+      where: { connectionId, tenantId },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        externalId: true,
+        name: true,
+        address: true,
+        locationTenantId: true,
+        isActive: true,
+      },
+    });
+  }
+
+  /**
+   * Map a synced POS store to one of our (child) location tenants — the key
+   * wiring that lets the POS drive that store's per-location pricing. Pass
+   * `null` to unmap. The target tenant MUST be the caller's tenant or a child
+   * of it (prevents writing another customer's store mapping).
+   */
+  async mapConnectionLocation(
+    tenantId: string,
+    connectionId: string,
+    locationId: string,
+    locationTenantId: string | null,
+    actorUserId: string | null,
+  ) {
+    const loc = await (this.prisma.client as any).posLocation.findFirst({
+      where: { id: locationId, connectionId, tenantId },
+      select: { id: true },
+    });
+    if (!loc) throw new NotFoundException('POS location not found.');
+
+    if (locationTenantId) {
+      const target = await (this.prisma.client as any).tenant.findUnique({
+        where: { id: locationTenantId },
+        select: { id: true, parentId: true },
+      });
+      const ok = !!target && (target.id === tenantId || target.parentId === tenantId);
+      if (!ok) {
+        throw new ForbiddenException(
+          'Target location must be your tenant or one of its locations.',
+        );
+      }
+    }
+
+    const updated = await (this.prisma.client as any).posLocation.update({
+      where: { id: locationId },
+      data: { locationTenantId },
+      select: { id: true, externalId: true, name: true, locationTenantId: true },
+    });
+    await this.audit(tenantId, actorUserId, 'POS_LOCATION_MAPPED', locationId, {
+      connectionId,
+      locationTenantId,
+    });
+    return updated;
+  }
+
   /**
    * Persist an OAuth result as a PosProviderConnection. Called by
    * PosOAuthController after any provider's callback succeeds. Bypasses the
@@ -405,6 +477,15 @@ export class PosService {
       }
     }
 
+    // Sync provider locations (multi-location chains) so the operator can
+    // map each store → one of our location tenants. Fail-soft: a location
+    // API hiccup must never block the core catalog sync below.
+    try {
+      await this.syncLocations(conn, connector, accessToken);
+    } catch (err: any) {
+      this.logger.warn(`${providerName} location sync failed for conn=${conn.id}: ${err?.message || err}`);
+    }
+
     let snapshot: CatalogSnapshot;
     try {
       snapshot = await connector.fetchCatalog(accessToken, { storeId });
@@ -465,6 +546,19 @@ export class PosService {
       },
     });
 
+    // Bridge the synced catalog into the design-once menu platform so the
+    // POS DRIVES per-location pricing (MenuItem + per-location overrides that
+    // resolveMenuForLocation serves). Fail-soft: a bridge error must never
+    // fail the core PosMenuItem catalog sync the live pilot depends on.
+    try {
+      await this.menu.ingestPosCatalog(
+        { id: conn.id, tenantId, providerId: conn.providerId },
+        snapshot,
+      );
+    } catch (err: any) {
+      this.logger.warn(`${providerName} menu-platform bridge failed for conn=${conn.id}: ${err?.message || err}`);
+    }
+
     await this.audit(tenantId, actorUserId, 'POS_SYNC_COMPLETED', conn.id, {
       providerId: conn.providerId,
       itemCount: snapshot.items.length,
@@ -477,6 +571,42 @@ export class PosService {
       categoryCount: snapshot.categories.length,
       message: `${providerName} sync complete: ${snapshot.items.length} items, ${snapshot.categories.length} categories.`,
     };
+  }
+
+  /**
+   * Upsert a provider's locations/stores into PosLocation rows (multi-
+   * location chains). Idempotent on (connectionId, externalId); the update
+   * path deliberately does NOT touch `locationTenantId` so an operator's
+   * store→location mapping is preserved across syncs. No-op for providers
+   * without a `fetchLocations` connector (single-location). Returns the
+   * count synced.
+   */
+  async syncLocations(conn: any, connector: PosConnector, accessToken: string): Promise<number> {
+    if (!connector.fetchLocations) return 0;
+    const locations = await connector.fetchLocations(accessToken);
+    for (const loc of locations) {
+      if (!loc.externalId) continue;
+      const isActive = loc.status ? loc.status.toUpperCase() === 'ACTIVE' : true;
+      await (this.prisma.client as any).posLocation.upsert({
+        where: { connectionId_externalId: { connectionId: conn.id, externalId: loc.externalId } },
+        update: {
+          name: loc.name,
+          address: loc.address ?? null,
+          isActive,
+          // NB: locationTenantId intentionally NOT updated — preserve the
+          // operator's store→location mapping.
+        },
+        create: {
+          tenantId: conn.tenantId,
+          connectionId: conn.id,
+          externalId: loc.externalId,
+          name: loc.name,
+          address: loc.address ?? null,
+          isActive,
+        },
+      });
+    }
+    return locations.length;
   }
 
   /** Persist a sync-failure on the connection so the UI shows a useful

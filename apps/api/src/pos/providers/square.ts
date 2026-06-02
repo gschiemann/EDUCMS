@@ -154,6 +154,16 @@ export async function squareRefreshAccessToken(refreshToken: string): Promise<Sq
 
 // ─── Catalog poll ───────────────────────────────────────────────────────
 
+/** Per-location price / availability for one item, keyed by the provider's
+ *  own location id. `priceCents` undefined = inherit the base price;
+ *  `available` undefined = inherit (present everywhere). Consumed by the
+ *  menu bridge to write MenuLocationOverride rows per mapped location. */
+export interface NormalizedLocationPrice {
+  externalLocationId: string;
+  priceCents?: number;
+  available?: boolean;
+}
+
 export interface NormalizedItem {
   externalId: string;
   name: string;
@@ -164,6 +174,8 @@ export interface NormalizedItem {
   available: boolean;
   externalUpdatedAt?: Date;
   category?: string;
+  /** Per-location price/availability overrides (multi-location chains). */
+  locationPrices?: NormalizedLocationPrice[];
 }
 
 export interface NormalizedCategory {
@@ -172,9 +184,92 @@ export interface NormalizedCategory {
   sortOrder: number;
 }
 
+/** A provider-side location/store/outlet (Square location_id, Shopify
+ *  location, Lightspeed outlet). Upserted into PosLocation; the operator
+ *  maps each to one of our (child) location tenants. */
+export interface NormalizedLocation {
+  externalId: string;
+  name: string;
+  address?: string;
+  timezone?: string;
+  status?: string;
+}
+
 export interface CatalogSnapshot {
   items: NormalizedItem[];
   categories: NormalizedCategory[];
+}
+
+// ─── Locations ──────────────────────────────────────────────────────────
+
+/**
+ * List the merchant's Square locations (stores). A multi-location chain has
+ * one per store; the operator maps each to one of our location tenants so a
+ * screen at that store shows its store's live prices. `GET /v2/locations`.
+ * docs: developer.squareup.com/reference/square/locations-api/list-locations
+ */
+export async function squareFetchLocations(accessToken: string): Promise<NormalizedLocation[]> {
+  const res = await fetch(`${squareApiBase()}/v2/locations`, {
+    headers: { Authorization: `Bearer ${accessToken}`, 'Square-Version': '2024-05-15' },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Square locations fetch failed: ${res.status} ${text.slice(0, 300)}`);
+  }
+  const json: any = await res.json();
+  const locs: any[] = Array.isArray(json.locations) ? json.locations : [];
+  return locs
+    .map((l) => {
+      const a = l.address || {};
+      const address = [a.address_line_1, a.locality, a.administrative_district_level_1, a.postal_code]
+        .filter(Boolean)
+        .join(', ') || undefined;
+      return {
+        externalId: String(l.id || ''),
+        name: String(l.name || l.id || 'Location'),
+        address,
+        timezone: l.timezone ? String(l.timezone) : undefined,
+        status: l.status ? String(l.status) : undefined,
+      } as NormalizedLocation;
+    })
+    .filter((l) => l.externalId);
+}
+
+/**
+ * Compute per-location price/availability for one Square item variation.
+ * Price comes from the variation's `location_overrides[]` (per location_id);
+ * availability from the item object's present/absent location lists. Only
+ * locations explicitly mentioned are emitted — others inherit base price +
+ * availability. (Edge: an item with present_at_all_locations=false at an
+ * unlisted location can't be enumerated here without the full location list;
+ * the common case — price overrides on a present-everywhere item — is exact.)
+ */
+function buildLocationPrices(obj: any, vData: any): NormalizedLocationPrice[] | undefined {
+  const byLoc = new Map<string, NormalizedLocationPrice>();
+  for (const ov of Array.isArray(vData.location_overrides) ? vData.location_overrides : []) {
+    const lid = String(ov.location_id || '');
+    if (!lid) continue;
+    const entry = byLoc.get(lid) || { externalLocationId: lid };
+    const amt = ov.price_money?.amount;
+    if (amt != null) entry.priceCents = Number(amt);
+    byLoc.set(lid, entry);
+  }
+  const presentAll = obj.present_at_all_locations !== false; // Square defaults true
+  for (const lid of Array.isArray(obj.absent_at_location_ids) ? obj.absent_at_location_ids : []) {
+    const k = String(lid);
+    const entry = byLoc.get(k) || { externalLocationId: k };
+    entry.available = false;
+    byLoc.set(k, entry);
+  }
+  if (!presentAll) {
+    for (const lid of Array.isArray(obj.present_at_location_ids) ? obj.present_at_location_ids : []) {
+      const k = String(lid);
+      const entry = byLoc.get(k) || { externalLocationId: k };
+      if (entry.available !== false) entry.available = true;
+      byLoc.set(k, entry);
+    }
+  }
+  return byLoc.size ? [...byLoc.values()] : undefined;
 }
 
 /**
@@ -257,6 +352,7 @@ export async function squareFetchCatalog(accessToken: string): Promise<CatalogSn
             externalUpdatedAt: (v.updated_at || obj.updated_at)
               ? new Date(v.updated_at || obj.updated_at)
               : undefined,
+            locationPrices: buildLocationPrices(obj, vData),
           });
         }
       }

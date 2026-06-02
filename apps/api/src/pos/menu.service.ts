@@ -37,6 +37,7 @@
  */
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import type { CatalogSnapshot } from './providers/square';
 
 /** A single resolved menu item as a location's screen should render it.
  *  Shape is intentionally compatible with what MenuBoardWidget maps
@@ -516,6 +517,126 @@ export class MenuService {
     });
 
     return { itemsUpserted, overridesUpserted, skipped, catalogId: catalog.id };
+  }
+
+  // ─── POS catalog → menu platform bridge (2026-06-02) ───────────────
+
+  /**
+   * Bridge a synced POS catalog (CatalogSnapshot from a connector) into the
+   * design-once menu platform so the POS actually DRIVES per-location pricing.
+   * For each item: upsert MenuItem (keyed by externalId, defaultPriceCents =
+   * the base price). For each per-location price the connector captured
+   * (Square `location_overrides`), if that POS location is mapped to one of
+   * our location tenants, upsert a MenuLocationOverride(source = providerId).
+   * `resolveMenuForLocation` then serves each store its own price.
+   *
+   * GUARANTEE — operator edits win: an existing override with source 'manual'
+   * is NEVER clobbered by a POS sync (the "manually update any field" promise).
+   *
+   * Called FAIL-SOFT from pos.service.syncConnection — a throw here must never
+   * break the core PosMenuItem catalog sync the live pilot depends on.
+   */
+  async ingestPosCatalog(
+    conn: { id: string; tenantId: string; providerId: string },
+    snapshot: CatalogSnapshot,
+  ): Promise<{
+    itemsUpserted: number;
+    overridesUpserted: number;
+    overridesSkippedManual: number;
+    locationsMapped: number;
+    catalogId: string;
+  }> {
+    const tenantId = conn.tenantId;
+    const catalog = await this.resolveOrCreateCatalog(tenantId, conn.id);
+
+    // externalLocationId → our location tenant, for MAPPED PosLocations only.
+    const posLocations = await (this.prisma.client as any).posLocation.findMany({
+      where: { connectionId: conn.id, locationTenantId: { not: null } },
+      select: { externalId: true, locationTenantId: true },
+    });
+    const locByExternal = new Map<string, string>();
+    for (const pl of posLocations) locByExternal.set(String(pl.externalId), String(pl.locationTenantId));
+
+    const categoryIdByName = new Map<string, string>();
+    let itemsUpserted = 0;
+    let overridesUpserted = 0;
+    let overridesSkippedManual = 0;
+
+    for (const it of snapshot.items) {
+      if (!it.externalId || !it.name) continue;
+
+      let categoryId: string | null = null;
+      if (it.category) {
+        categoryId = await this.resolveOrCreateCategory(tenantId, catalog.id, it.category, categoryIdByName);
+      }
+
+      const item = await (this.prisma.client as any).menuItem.upsert({
+        where: { catalogId_externalId: { catalogId: catalog.id, externalId: it.externalId } },
+        update: {
+          name: it.name,
+          description: it.description ?? null,
+          defaultPriceCents: it.priceCents,
+          imageUrl: it.imageUrl ?? null,
+          ...(categoryId ? { categoryId } : {}),
+        },
+        create: {
+          tenantId,
+          catalogId: catalog.id,
+          categoryId,
+          externalId: it.externalId,
+          name: it.name,
+          description: it.description ?? null,
+          defaultPriceCents: it.priceCents,
+          imageUrl: it.imageUrl ?? null,
+        },
+        select: { id: true },
+      });
+      itemsUpserted++;
+
+      // Per-location price/availability — only for operator-mapped locations.
+      for (const lp of it.locationPrices || []) {
+        const locationTenantId = locByExternal.get(lp.externalLocationId);
+        if (!locationTenantId) continue; // unmapped POS location → skip
+
+        const existing = await (this.prisma.client as any).menuLocationOverride.findUnique({
+          where: { locationTenantId_menuItemId: { locationTenantId, menuItemId: item.id } },
+          select: { source: true },
+        });
+        if (existing && existing.source === 'manual') {
+          overridesSkippedManual++; // operator edit wins — never clobber
+          continue;
+        }
+
+        const data = {
+          priceCents: lp.priceCents != null ? lp.priceCents : null, // null = inherit base
+          isAvailable: lp.available !== false,
+          source: conn.providerId,
+        };
+        await (this.prisma.client as any).menuLocationOverride.upsert({
+          where: { locationTenantId_menuItemId: { locationTenantId, menuItemId: item.id } },
+          update: data,
+          create: { tenantId, locationTenantId, menuItemId: item.id, ...data },
+        });
+        overridesUpserted++;
+      }
+    }
+
+    await this.audit(tenantId, null, 'MENU_INGEST_POS_SYNC', catalog.id, {
+      connectionId: conn.id,
+      providerId: conn.providerId,
+      itemsUpserted,
+      overridesUpserted,
+      overridesSkippedManual,
+      locationsMapped: locByExternal.size,
+    });
+
+    return {
+      itemsUpserted,
+      overridesUpserted,
+      overridesSkippedManual,
+      locationsMapped: locByExternal.size,
+      catalogId: catalog.id,
+    };
   }
 
   // ─── Operator-authed self-serve import ("paste your menu") ─────────

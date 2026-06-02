@@ -20,7 +20,7 @@
  * Adding a provider = drop a providers/<name>.ts module + one entry here +
  * flip its tier to DIRECT in @cms/api-types. No service/controller edits.
  */
-import type { CatalogSnapshot } from './square';
+import type { CatalogSnapshot, NormalizedLocation } from './square';
 import * as square from './square';
 import * as clover from './clover';
 import * as shopify from './shopify';
@@ -41,6 +41,10 @@ export interface PosConnector {
   exchangeCode(opts: { code: string; redirectUri: string; storeId?: string }): Promise<ProviderToken>;
   refreshAccessToken(refreshToken: string, storeId?: string): Promise<ProviderToken>;
   fetchCatalog(accessToken: string, ctx: { storeId?: string }): Promise<CatalogSnapshot>;
+  /** List the provider's locations/stores/outlets (multi-location chains).
+   *  Optional — only providers with a location hierarchy implement it
+   *  (Square today; Shopify/Lightspeed later). Undefined → single-location. */
+  fetchLocations?(accessToken: string, ctx?: { storeId?: string }): Promise<NormalizedLocation[]>;
   /** Env-var prefix the provider module reads ({PREFIX}_CLIENT_ID / _SECRET).
    *  Distinct from the provider id (id `lightspeed-retail` → prefix
    *  `LIGHTSPEED`, id `shopify-pos` → prefix `SHOPIFY`). */
@@ -62,6 +66,7 @@ export const POS_CONNECTORS: Record<string, PosConnector> = {
     exchangeCode: async (o) => { const t = await square.squareExchangeCode(o); return { ...t, storeId: t.merchantId }; },
     refreshAccessToken: async (rt) => { const t = await square.squareRefreshAccessToken(rt); return { ...t, storeId: t.merchantId }; },
     fetchCatalog: (at) => square.squareFetchCatalog(at),
+    fetchLocations: (at) => square.squareFetchLocations(at),
     envPrefix: 'SQUARE',
     callbackStoreIdParam: null,
     needsStoreIdAtAuthorize: false,
