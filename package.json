@@ -12,6 +12,8 @@
     "db:generate": "pnpm --filter @cms/database run db:generate",
     "db:push": "pnpm --filter @cms/database run db:push",
     "db:seed": "pnpm --filter @cms/database run db:seed",
+    "db:seed:demo": "node packages/database/prisma/seed-multilocation-demo.mjs",
+    "db:seed:demo:clean": "node packages/database/prisma/seed-multilocation-demo.mjs --clean",
     "db:setup": "pnpm run db:push && pnpm run db:seed",
     "db:backfill-hashes": "pnpm --filter @cms/database exec tsx ../../scripts/backfill-asset-hashes.ts",
     "dev:api": "pnpm --filter api run start:dev",
