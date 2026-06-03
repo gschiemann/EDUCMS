@@ -139,10 +139,6 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
           <Stat label="Screens" value={total} sub="across the fleet" />
           <Stat label="Online" value={onlineCount} sub={`${offlineCount} offline`} tone={offlineCount > 0 ? 'warn' : 'ok'} />
         </div>
-        <p className="text-xs text-slate-500 mt-3">
-          Read-only HQ view across every location. <strong className="text-slate-700">Click a store to manage its screens</strong> — you&rsquo;ll
-          switch into that location&rsquo;s own dashboard, where every action stays scoped to that store.
-        </p>
       </div>
 
       {/* Search + status filter (drives map + list) */}
