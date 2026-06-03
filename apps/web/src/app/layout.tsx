@@ -58,9 +58,11 @@ export const metadata: Metadata = {
   // root for legacy clients (also written by the generator).
   icons: {
     icon: [
-      { url: '/icons/venue-os.svg', type: 'image/svg+xml' },
-      { url: '/icons/venue-os-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icons/venue-os-512.png', sizes: '512x512', type: 'image/png' },
+      // Browser tab / bookmark — the transparent VenueOS hex mark (BrandMark),
+      // which stays legible at 16px. The filled navy tile lives on apple-touch
+      // / PWA below, where a solid background is what you want on a home screen.
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icons/venueos-mark.svg', type: 'image/svg+xml' },
     ],
     apple: [
       { url: '/icons/venue-os-180.png', sizes: '180x180' },
