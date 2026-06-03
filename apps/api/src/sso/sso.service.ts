@@ -9,11 +9,17 @@ import { encryptSecret, decryptSecret } from './sso.crypto';
  * SSO Service — SAML 2.0 + OIDC scaffold.
  *
  * This module is deliberately minimal and defensive:
- * - Real SAML validation is delegated to `passport-saml` (SAML.validatePostResponse).
+ * - SAML validation would delegate to a SAML lib (SAML.validatePostResponse), but
+ *   `passport-saml` is INTENTIONALLY NOT INSTALLED — its 3.x line carries the
+ *   unpatched signature-wrapping CVE-2025-54419 and has no patched release. The
+ *   `require('passport-saml')` calls below therefore always fall through to the
+ *   stub path (SAML is also hard-gated off: 0 enabled tenants). When SAML is
+ *   productionized (task #199), install the maintained `@node-saml/passport-saml`
+ *   (v5+) and update those require sites.
  * - Real OIDC flow uses `openid-client` Issuer discovery + code exchange.
- * - Both libraries are loaded via `require()` at call time so unit tests can
- *   mock them cleanly and so the module compiles even if a caller wants to
- *   run without one of the providers installed.
+ * - Provider libs are loaded via `require()` at call time so unit tests can
+ *   mock them cleanly and so the module compiles/runs even with a provider lib
+ *   absent (the absent path returns a safe stub, never a crash).
  *
  * On successful callback the service mints the same JWT shape as AuthService
  * (sub, email, tenantId, role, canTriggerPanic) and returns { access_token, user }.
