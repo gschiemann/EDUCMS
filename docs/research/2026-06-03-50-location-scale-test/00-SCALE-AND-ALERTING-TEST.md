@@ -89,12 +89,36 @@ out before the image build (the Trivy step is already `continue-on-error`). Fix
 retry/backoff so the build reads it from local cache. **CI & Security now green.**
 
 ## 5. Email — "E-arc has never received an email ever" (#236 ⚠️ root-caused, fix is DNS/IT)
-Sending is correctly authenticated: **DKIM + SPF verified** on venue-os.app; a tracked
-test to greg.schiemann@e-arc.com returned Resend `last_event: **delivered**` — i.e.
-**e-arc's mail server ACCEPTED it at SMTP. It is NOT bouncing.** It's being
-**quarantined/junked by e-arc's corporate filter** (a 2-week-old external sender with
-**no DMARC record** is auto-quarantined by Mimecast/Proofpoint/M365). The `notify()`
-path is DB-only (no email) — this is purely outbound transactional mail.
+
+**`email_logs` evidence (whole history): 12 emails ever, ALL `status=SENT`, 0 FAILED**
+— WELCOME×6, BUG_FILED×2, BUG_FILED_OWNER×2, INVITE×1, PASSWORD_RESET×1 — including
+**5 to e-arc.com** (gschiemann@ 4/20 + 5/7, selvin.castellanos@ 5/20, greg.schiemann@
+×2 5/28). **The trap (exactly the one CLAUDE.md warns about): `status=SENT` means
+"successfully dispatched to Resend's API," NOT "delivered to a human's inbox."** The
+log has no delivery-state column (delivered/bounced/complained) — those come from
+Resend webhooks, which aren't wired. So "12 SENT" proves the app did its job; it says
+nothing about whether anyone at e-arc saw them.
+
+Cross-referenced with live Resend tracking, there are **two distinct historical
+failure modes**, both ending in "no human at e-arc saw it":
+
+1. **Early sends (pre-domain-verification):** if `EMAIL_FROM` was still the default
+   `onboarding@resend.dev`, **Resend only delivers resend.dev mail to the address that
+   OWNS the Resend account** — every other recipient (all e-arc addresses) is silently
+   dropped. Dispatched (logged SENT) → dropped by Resend → never reached e-arc.
+2. **Recent sends (from noreply@venue-os.app, DKIM+SPF verified):** a tracked 5/28 test
+   to greg.schiemann@e-arc.com returned Resend `last_event: **delivered**` — **e-arc's
+   mail server ACCEPTED it at SMTP. NOT bouncing.** It's **quarantined/junked by e-arc's
+   corporate filter** (young external domain + **no DMARC record** → auto-quarantine by
+   Mimecast/Proofpoint/M365).
+
+The offline-scanner `notify()` path is DB-only (no email) — this section is purely
+outbound transactional mail.
+
+**Recommend (addresses the "stop the UI lying about delivery" theme):** wire a Resend
+delivery webhook → update `email_logs.status` to the real delivered/bounced/complained
+state, so the log reflects reality instead of "dispatched." (Needs Resend dashboard
+config — user-side.)
 
 **Fixes (require access I don't have — no Vercel DNS, no ARC IT):**
 1. Add a **DMARC** record at Vercel DNS: `_dmarc.venue-os.app TXT
