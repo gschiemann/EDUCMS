@@ -28,6 +28,20 @@ if [ -z "$input" ]; then
   exit 0
 fi
 
+# Ambient workspace-hygiene warning (NON-BLOCKING). Surfaces the cruft
+# classes that bit us on 2026-06-02 (leftover agent worktrees / 83 GB,
+# never-gc'd .git, stale branches) BEFORE they pile up. Prints ⚠️ lines
+# only; it NEVER blocks a push. Full report any time: `pnpm hygiene`.
+if [ -f scripts/hygiene-check.sh ]; then
+  HY=$(sh scripts/hygiene-check.sh 2>/dev/null | grep '⚠️' || true)
+  if [ -n "$HY" ]; then
+    echo ""
+    echo "⚠️  workspace hygiene — heads up (not blocking; run 'pnpm hygiene' for detail):"
+    echo "$HY" | sed 's/^/   /'
+    echo ""
+  fi
+fi
+
 echo ""
 echo "→ Running pnpm preflight (api + web TS builds, ~90s)..."
 echo "  Bypass with 'git push --no-verify' if this is a real emergency."
