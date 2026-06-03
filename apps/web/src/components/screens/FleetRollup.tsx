@@ -1,20 +1,21 @@
 "use client";
 
 /**
- * FleetRollup — the HQ ("Corporate") top-level roll-up of every child
- * location's screens onto ONE map + a per-store list. Consumes
+ * FleetRollup — the HQ ("Corporate") top-level command center: every child
+ * location's screens on ONE map next to a State → Location tree. Consumes
  * GET /screens/fleet (self + direct children, read-only).
  *
  * Manager-console pattern (Google MCC / AWS Orgs / NinjaOne): the overview
  * spans the whole chain, but every ACTION happens in the owning store's
- * isolated context. Clicking a store (or any of its screens) switches the
- * active tenant INTO that store via useTenantSwitch and deep-links to its
- * /screens page — children stay sealed from each other; only the read spans.
+ * isolated context. "Manage this location" switches the active tenant INTO
+ * that store via useTenantSwitch and deep-links to its /screens page.
  *
- * Phase 2a: cross-store search + status filter + offline-first triage sort,
- * so an HQ admin scanning 150 screens can instantly answer "what's down and
- * where?". Filtering is client-side over the already-fetched fleet and drives
- * BOTH the map and the list.
+ * 2026-06-03 — rolled the flat 50-location list up into a State → Location
+ * tree (operator: "the location list is crazy long … roll these up to State,
+ * then location chevrons"). One list (the tree), not a list + a duplicate
+ * "Manage" cards strip. Click a location to expand it inline: its screen
+ * statuses + a Manage button, right there — no separate cards section. The map
+ * renders beside the tree with its own rail hidden (renderSidebar={false}).
  *
  * Rendered only for a parent tenant (locations.length > 1). A leaf location
  * never mounts this — its normal Screens page is unchanged.
@@ -23,7 +24,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Wifi, WifiOff, ChevronRight, Building2, MapPin, Loader2, Monitor, Search, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, Building2, Loader2, Search, X } from 'lucide-react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
 import type { FleetResponse } from '@/hooks/use-api';
@@ -38,6 +39,18 @@ function Stat({ label, value, sub, tone }: { label: string; value: number; sub?:
   );
 }
 
+/** Best-effort US state from a "Street, City, ST ZIP" address. Falls back to
+ *  "Other" so unparseable rows still group somewhere. */
+function parseState(addr?: string | null): string {
+  if (!addr) return 'Other';
+  const parts = addr.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length < 2) return 'Other';
+  const last = parts[parts.length - 1]; // "NY" or "NY 10001"
+  const tok = last.split(/\s+/)[0] || '';
+  if (tok.length === 2 && /^[A-Za-z]{2}$/.test(tok)) return tok.toUpperCase();
+  return last || 'Other';
+}
+
 type StatusFilter = 'all' | 'online' | 'offline';
 
 export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
@@ -46,6 +59,8 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
 
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [expandedStates, setExpandedStates] = useState<Set<string>>(new Set());
+  const [expandedLoc, setExpandedLoc] = useState<string | null>(null);
   const norm = q.trim().toLowerCase();
   const filtering = statusFilter !== 'all' || norm.length > 0;
 
@@ -53,7 +68,7 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
   const onlineCount = useMemo(() => fleet.screens.filter((s) => s.status === 'ONLINE').length, [fleet.screens]);
   const offlineCount = total - onlineCount;
 
-  // Cross-store search + status filter — drives both the map and the list.
+  // Cross-store search + status filter — drives both the map and the tree.
   const filtered = useMemo(() => {
     return fleet.screens.filter((s) => {
       const isOnline = s.status === 'ONLINE';
@@ -61,7 +76,8 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
       if (statusFilter === 'offline' && isOnline) return false;
       if (!norm) return true;
       const store = s.sourceTenant?.name?.toLowerCase() || '';
-      return s.name.toLowerCase().includes(norm) || store.includes(norm);
+      const addr = s.effectiveAddress?.toLowerCase() || '';
+      return s.name.toLowerCase().includes(norm) || store.includes(norm) || addr.includes(norm);
     });
   }, [fleet.screens, statusFilter, norm]);
 
@@ -81,37 +97,52 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
     [filtered],
   );
 
-  // Group filtered screens under each store. When NOT filtering, seed every
-  // location so 0-screen stores still show; when filtering, only stores with
-  // matching screens appear. Sort: HQ first, then most-offline first (triage),
-  // then alphabetical.
+  // Group filtered screens under each store (location). Skip HQ itself (root,
+  // no direct screens). Each entry carries a representative address for the
+  // State roll-up + the per-location detail.
   const byStore = useMemo(() => {
-    const m = new Map<string, { meta: { id: string; name: string; slug: string }; screens: FleetResponse['screens'] }>();
-    if (!filtering) for (const loc of fleet.locations) m.set(loc.id, { meta: loc, screens: [] });
+    const m = new Map<string, { meta: { id: string; name: string; slug: string }; address: string | null; screens: FleetResponse['screens'] }>();
+    if (!filtering) for (const loc of fleet.locations) if (loc.id !== rootId) m.set(loc.id, { meta: loc, address: null, screens: [] });
     for (const s of filtered) {
-      if (!s.sourceTenant) continue;
-      if (!m.has(s.sourceTenant.id)) m.set(s.sourceTenant.id, { meta: s.sourceTenant, screens: [] });
-      m.get(s.sourceTenant.id)!.screens.push(s);
+      if (!s.sourceTenant || s.sourceTenant.id === rootId) continue;
+      if (!m.has(s.sourceTenant.id)) m.set(s.sourceTenant.id, { meta: s.sourceTenant, address: null, screens: [] });
+      const e = m.get(s.sourceTenant.id)!;
+      e.screens.push(s);
+      if (!e.address && s.effectiveAddress) e.address = s.effectiveAddress;
     }
-    return Array.from(m.values())
-      .filter((e) => e.meta.id !== rootId || e.screens.length > 0)
-      .sort((a, b) => {
-        if (a.meta.id === rootId) return -1;
-        if (b.meta.id === rootId) return 1;
-        const aOff = a.screens.filter((s) => s.status !== 'ONLINE').length;
-        const bOff = b.screens.filter((s) => s.status !== 'ONLINE').length;
-        if (bOff !== aOff) return bOff - aOff;
-        return a.meta.name.localeCompare(b.meta.name);
-      });
+    return Array.from(m.values());
   }, [filtered, fleet.locations, rootId, filtering]);
+
+  // Roll up into State → Location.
+  const tree = useMemo(() => {
+    const byState = new Map<string, typeof byStore>();
+    for (const e of byStore) {
+      const st = parseState(e.address);
+      if (!byState.has(st)) byState.set(st, []);
+      byState.get(st)!.push(e);
+    }
+    return Array.from(byState.entries())
+      .map(([state, stores]) => ({
+        state,
+        stores: stores.slice().sort((a, b) => a.meta.name.localeCompare(b.meta.name)),
+        off: stores.reduce((n, s) => n + s.screens.filter((x) => x.status !== 'ONLINE').length, 0),
+      }))
+      .sort((a, b) => (a.state === 'Other' ? 1 : b.state === 'Other' ? -1 : a.state.localeCompare(b.state)));
+  }, [byStore]);
 
   const enter = (store: { id: string; slug: string }) =>
     switchToTenant({ id: store.id, slug: store.slug }, `/${store.slug}/screens`);
+  const toggleState = (s: string) =>
+    setExpandedStates((prev) => {
+      const n = new Set(prev);
+      if (n.has(s)) n.delete(s);
+      else n.add(s);
+      return n;
+    });
 
   const storeCount = fleet.stats.locationCount > 1 ? fleet.stats.locationCount - 1 : fleet.stats.locationCount;
 
-  const chipBase =
-    'px-3 py-1.5 text-xs font-bold rounded-lg border inline-flex items-center gap-1.5 transition-colors';
+  const chipBase = 'px-3 py-1.5 text-xs font-bold rounded-lg border inline-flex items-center gap-1.5 transition-colors';
   const Chip = ({ k, label, count }: { k: StatusFilter; label: string; count: number }) => {
     const active = statusFilter === k;
     return (
@@ -141,14 +172,14 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
         </div>
       </div>
 
-      {/* Search + status filter (drives map + list) */}
+      {/* Search + status filter (drives tree + map) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 flex flex-col sm:flex-row gap-2 sm:items-center">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search screens or stores…"
+            placeholder="Filter by location, address, or screen…"
             className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-slate-200 outline-none focus:border-slate-400 bg-white"
           />
           {q && (
@@ -163,100 +194,108 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
           <Chip k="offline" label="Offline" count={offlineCount} />
         </div>
       </div>
-      {filtering && (
-        <div className="text-xs text-slate-500 -mt-1 px-1">
-          Showing {filtered.length} of {total} screens{norm ? ` matching “${q.trim()}”` : ''}
-          {statusFilter !== 'all' ? ` · ${statusFilter}` : ''}.
-        </div>
-      )}
 
-      {/* All locations on the map (filtered) */}
-      <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-5 space-y-3">
-        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-          <MapPin className="w-4 h-4" style={{ color: 'var(--brand-primary, #6366f1)' }} /> All locations on the map
-        </h3>
-        <ScreenMapClient screens={mapScreens} />
-      </div>
-
-      {/* Per-store list (filtered + triage-sorted) */}
-      {byStore.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
-          No screens match{norm ? ` “${q.trim()}”` : ''}{statusFilter !== 'all' ? ` in “${statusFilter}”` : ''}. Try a different search or filter.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {byStore.map(({ meta, screens }) => {
-            const on = screens.filter((s) => s.status === 'ONLINE').length;
-            const off = screens.length - on;
-            const isRoot = meta.id === rootId;
-            const switching = switchingId === meta.id;
-            return (
-              <div key={meta.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <button
-                  onClick={() => enter(meta)}
-                  disabled={switching}
-                  className="w-full flex items-center gap-3 p-4 hover:bg-slate-50 transition-colors text-left disabled:opacity-60"
-                >
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black shrink-0"
-                    style={{ background: 'var(--brand-primary, #4f46e5)' }}
-                  >
-                    {meta.name.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-slate-800 truncate">
-                      {meta.name}
-                      {isRoot && <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">HQ</span>}
-                    </div>
-                    <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
-                      <Monitor className="w-3 h-3" /> {screens.length} screen{screens.length === 1 ? '' : 's'}
-                      {screens.length > 0 && (
-                        <>
-                          <span className="text-slate-300">·</span>
-                          <span className="text-emerald-600 inline-flex items-center gap-0.5">
-                            <Wifi className="w-3 h-3" />
-                            {on}
-                          </span>
-                          {off > 0 && (
-                            <span className="text-rose-500 inline-flex items-center gap-0.5">
-                              <WifiOff className="w-3 h-3" />
-                              {off}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  {switching ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-                  ) : (
-                    <span className="text-xs font-bold text-slate-400 inline-flex items-center gap-1 shrink-0">
-                      Manage <ChevronRight className="w-4 h-4" />
-                    </span>
-                  )}
-                </button>
-                {screens.length > 0 && (
-                  <div className="px-4 pb-3 flex flex-wrap gap-1.5">
-                    {screens.map((s) => (
-                      <span
-                        key={s.id}
-                        className={`text-[11px] px-2 py-0.5 rounded-full border inline-flex items-center gap-1 ${
-                          s.status === 'ONLINE'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-slate-200 bg-slate-50 text-slate-500'
-                        }`}
+      {/* Command center: State → Location tree (left) + map (right) */}
+      <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-4 sm:p-5">
+        <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-4">
+          {/* Tree */}
+          <div className="rounded-2xl border border-slate-200 flex flex-col overflow-hidden max-h-[440px] lg:max-h-none lg:h-[600px]">
+            <div className="px-3 py-2.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between shrink-0">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <Building2 className="w-3.5 h-3.5" aria-hidden /> Locations
+              </span>
+              <span className="text-[11px] font-mono text-slate-400">{filtering ? `${byStore.length}/${storeCount}` : storeCount}</span>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {tree.length === 0 ? (
+                <div className="px-3 py-10 text-center text-sm text-slate-400">
+                  No locations match{norm ? ` “${q.trim()}”` : ''}{statusFilter !== 'all' ? ` in “${statusFilter}”` : ''}.
+                </div>
+              ) : (
+                tree.map((grp) => {
+                  const open = expandedStates.has(grp.state) || filtering;
+                  return (
+                    <div key={grp.state} className="border-b border-slate-100 last:border-b-0">
+                      {/* State row */}
+                      <button
+                        onClick={() => toggleState(grp.state)}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-slate-50 transition-colors"
                       >
-                        <span className={`w-1.5 h-1.5 rounded-full ${s.status === 'ONLINE' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                        {s.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                        {open ? <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
+                        <span className="font-bold text-slate-700 text-sm">{grp.state}</span>
+                        <span className="ml-auto flex items-center gap-2 shrink-0">
+                          {grp.off > 0 && <span className="text-[10px] font-bold text-rose-500">{grp.off} down</span>}
+                          <span className="text-[11px] font-medium text-slate-400">{grp.stores.length}</span>
+                        </span>
+                      </button>
+                      {/* Locations under the state */}
+                      {open &&
+                        grp.stores.map((st) => {
+                          const on = st.screens.filter((s) => s.status === 'ONLINE').length;
+                          const off = st.screens.length - on;
+                          const exp = expandedLoc === st.meta.id;
+                          const switching = switchingId === st.meta.id;
+                          return (
+                            <div key={st.meta.id} className="border-t border-slate-50 bg-slate-50/30">
+                              <button
+                                onClick={() => setExpandedLoc((cur) => (cur === st.meta.id ? null : st.meta.id))}
+                                className={`w-full flex items-center gap-2 pl-8 pr-3 py-2 text-left transition-colors ${exp ? 'bg-indigo-50/60' : 'hover:bg-white'}`}
+                              >
+                                {exp ? <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${off > 0 ? 'bg-rose-400' : 'bg-emerald-500'}`} />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block text-xs font-semibold text-slate-700 truncate">{st.meta.name}</span>
+                                  {st.address && <span className="block text-[10px] text-slate-400 truncate">{st.address}</span>}
+                                </span>
+                                <span className="text-[10px] font-mono text-slate-400 shrink-0">{on}/{st.screens.length}</span>
+                              </button>
+                              {/* Inline detail — screens + Manage, right here */}
+                              {exp && (
+                                <div className="pl-8 pr-3 pb-3 space-y-2.5">
+                                  {st.screens.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {st.screens.map((s) => (
+                                        <span
+                                          key={s.id}
+                                          className={`text-[11px] px-2 py-0.5 rounded-full border inline-flex items-center gap-1 ${
+                                            s.status === 'ONLINE' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'
+                                          }`}
+                                        >
+                                          <span className={`w-1.5 h-1.5 rounded-full ${s.status === 'ONLINE' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                          {s.name}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="text-[11px] text-slate-400">No screens paired yet.</div>
+                                  )}
+                                  <button
+                                    onClick={() => enter(st.meta)}
+                                    disabled={!!switchingId}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-bold shadow-sm disabled:opacity-60 disabled:cursor-wait transition-opacity"
+                                    style={{ background: 'var(--brand-primary, #4f46e5)' }}
+                                  >
+                                    {switching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                                    Manage this location <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Map (rail hidden — the tree is the list) */}
+          <div className="rounded-2xl overflow-hidden border border-slate-200 min-h-[300px]">
+            <ScreenMapClient screens={mapScreens} renderSidebar={false} />
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

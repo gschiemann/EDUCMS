@@ -459,9 +459,12 @@ interface Props {
   onScreenClick?: (screenId: string) => void;
   /** Optional hook for the "drop a pin to add a location" flow (lead builds later). */
   onMapClick?: (lat: number, lng: number) => void;
+  /** Hide the internal Locations rail — FleetRollup supplies its own
+   *  State→Location tree, so the map renders full-width beside it. */
+  renderSidebar?: boolean;
 }
 
-export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onMapClick }: Props) {
+export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onMapClick, renderSidebar = true }: Props) {
   const [query, setQuery] = useState('');
   const [flyTarget, setFlyTarget] = useState<[number, number] | null>(null);
   const [flyNonce, setFlyNonce] = useState(0);
@@ -533,6 +536,9 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
 
   return (
     <div className="space-y-3">
+      {/* Stats + search are hidden when embedded (renderSidebar=false): the
+          host (FleetRollup) already supplies its own stats + search + tree. */}
+      {renderSidebar && (<>
       {/* ── Command-center stats strip ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatTile label="Locations" value={stores.length} tone="neutral" sub={`${stats.total} device${stats.total === 1 ? '' : 's'}`} />
@@ -569,6 +575,7 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
         </div>
 
       </div>
+      </>)}
 
       {/* ── Mobile legend (above map) ── */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs sm:hidden">
@@ -591,8 +598,10 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
       </div>
 
       {/* ── Locations rail + Map (side-by-side on desktop, stacked on mobile) ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-3">
-        {/* Locations rail — top-level stores; click to fly there + drill into devices */}
+      <div className={`grid grid-cols-1 gap-3 ${renderSidebar ? 'lg:grid-cols-[320px_minmax(0,1fr)]' : ''}`}>
+        {/* Locations rail — top-level stores; click to fly there + drill into
+            devices. Hidden when the host supplies its own location tree. */}
+        {renderSidebar && (
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col overflow-hidden max-h-[300px] lg:max-h-none lg:h-[600px]">
           <div className="px-3 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
@@ -621,6 +630,7 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
             )}
           </div>
         </div>
+        )}
 
         {/* Map */}
         <div className="relative h-[60dvh] max-h-[600px] sm:h-[600px] sm:max-h-none w-full rounded-xl overflow-hidden border border-slate-200 shadow-sm">
