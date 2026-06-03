@@ -211,6 +211,22 @@ export class NotificationsService {
       if (row.tenantId) fleetSize.set(row.tenantId, row._count?._all ?? 0);
     }
 
+    // Phase 2b — fleet roll-up alerting. Look up each affected tenant's name +
+    // parent so an offline CHILD screen also notifies its HQ ("Corporate").
+    // The parent gets a store-labelled copy scoped to the parent tenant, so it
+    // surfaces in HQ's notification bell + fleet view. Leaf tenants (no parent)
+    // behave exactly as before.
+    const tenantMetaRows = affectedTenantIds.length
+      ? await this.prisma.client.tenant.findMany({
+          where: { id: { in: affectedTenantIds as any } },
+          select: { id: true, name: true, parentId: true },
+        })
+      : [];
+    const tenantMeta = new Map<string, { name: string; parentId: string | null }>();
+    for (const t of tenantMetaRows as any[]) {
+      tenantMeta.set(t.id, { name: t.name, parentId: t.parentId ?? null });
+    }
+
     // Per-tenant: how many of the offline screens crossed the
     // threshold inside the cohort window?
     const recentlyDroppedByTenant = new Map<string, typeof offlineScreens>();
@@ -244,19 +260,35 @@ export class NotificationsService {
     // collapse that to a single createMany({ skipDuplicates }): the DB drops
     // the already-seen buckets, so behavior (one row per dedupeKey) is
     // identical — just one round-trip instead of N.
-    const offlineRows = offlineScreens
-      .filter((s) => s.tenantId && !infraEventTenants.has(s.tenantId))
-      .map((screen) => {
-        const bucket = Math.floor((screen.lastPingAt?.getTime() ?? now) / (60 * 60 * 1000));
-        return {
-          tenantId: screen.tenantId as string,
-          kind: 'SCREEN_OFFLINE',
-          title: `Screen offline: ${screen.name}`,
-          body: `No heartbeat since ${screen.lastPingAt?.toISOString() ?? 'unknown'}.`,
-          link: `/screens`,
-          dedupeKey: `screen-offline:${screen.id}:${bucket}`,
-        };
+    const offlineRows: any[] = [];
+    for (const screen of offlineScreens) {
+      if (!screen.tenantId || infraEventTenants.has(screen.tenantId)) continue;
+      const bucket = Math.floor((screen.lastPingAt?.getTime() ?? now) / (60 * 60 * 1000));
+      const since = screen.lastPingAt?.toISOString() ?? 'unknown';
+      // Store-scoped notification (the local operator) — unchanged.
+      offlineRows.push({
+        tenantId: screen.tenantId as string,
+        kind: 'SCREEN_OFFLINE',
+        title: `Screen offline: ${screen.name}`,
+        body: `No heartbeat since ${since}.`,
+        link: `/screens`,
+        dedupeKey: `screen-offline:${screen.id}:${bucket}`,
       });
+      // HQ roll-up — the parent ("Corporate") sees its child's outage too,
+      // labelled with the store name. Distinct dedupeKey → one row per
+      // child-screen per hour bucket in the parent's feed.
+      const meta = tenantMeta.get(screen.tenantId);
+      if (meta?.parentId) {
+        offlineRows.push({
+          tenantId: meta.parentId,
+          kind: 'SCREEN_OFFLINE',
+          title: `${meta.name} · Screen offline: ${screen.name}`,
+          body: `${meta.name}: no heartbeat from "${screen.name}" since ${since}.`,
+          link: `/screens`,
+          dedupeKey: `screen-offline-hq:${screen.id}:${bucket}`,
+        });
+      }
+    }
     let notified = 0;
     if (offlineRows.length) {
       try {
@@ -291,6 +323,22 @@ export class NotificationsService {
         dedupeKey,
       });
       if (result) infraEvents++;
+
+      // HQ roll-up — surface the store's infra event to its parent too.
+      const meta = tenantMeta.get(tenantId);
+      if (meta?.parentId) {
+        const hqResult = await this.notify({
+          tenantId: meta.parentId,
+          kind: 'INFRA_EVENT',
+          title: `${meta.name} · Possible infrastructure event — ${dropped.length}/${total} screens dropped`,
+          body:
+            `${meta.name}: ${dropped.length} screens went offline within ${COHORT_WINDOW_S} s ` +
+            `(>${Math.round(COHORT_PCT * 100)}% of that location's fleet). Likely WAN, ISP, or power.`,
+          link: `/screens`,
+          dedupeKey: `infra-event-hq:${tenantId}:${fiveMinBucket}`,
+        });
+        if (hqResult) infraEvents++;
+      }
     }
 
     if (infraEventTenants.size > 0) {

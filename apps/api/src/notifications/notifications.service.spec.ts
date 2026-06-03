@@ -6,6 +6,7 @@ describe('NotificationsService', () => {
   let service: NotificationsService;
   let notification: any;
   let screen: any;
+  let tenant: any;
 
   beforeEach(async () => {
     notification = {
@@ -23,11 +24,15 @@ describe('NotificationsService', () => {
       updateMany: jest.fn(),
     };
     screen = { findMany: jest.fn(), groupBy: jest.fn().mockResolvedValue([]) };
+    // Phase 2b — scanOfflineScreens looks up tenant name+parentId to roll
+    // offline alerts up to HQ. Default: no parent (leaf) so the existing
+    // per-screen assertions below are unchanged.
+    tenant = { findMany: jest.fn().mockResolvedValue([]) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         NotificationsService,
-        { provide: PrismaService, useValue: { client: { notification, screen } } },
+        { provide: PrismaService, useValue: { client: { notification, screen, tenant } } },
       ],
     }).compile();
 
@@ -134,6 +139,29 @@ describe('NotificationsService', () => {
     const batch = notification.createMany.mock.calls[0][0].data;
     expect(batch.map((r: any) => r.kind)).toEqual(['SCREEN_OFFLINE', 'SCREEN_OFFLINE']);
     expect(notification.createMany.mock.calls[0][0].skipDuplicates).toBe(true);
+  });
+
+  it('scanOfflineScreens ALSO rolls an offline child screen up to its parent (HQ)', async () => {
+    const now = Date.now();
+    screen.findMany.mockResolvedValue([
+      { id: 's1', name: 'Lobby', tenantId: 'austin', lastPingAt: new Date(now - 10 * 60 * 1000) },
+    ]);
+    screen.groupBy.mockResolvedValue([{ tenantId: 'austin', _count: { _all: 10 } }]);
+    // Austin is a child of Corporate → expect a parent-scoped copy.
+    tenant.findMany.mockResolvedValue([{ id: 'austin', name: 'Acme — Austin', parentId: 'corp' }]);
+    notification.createMany.mockResolvedValue({ count: 2 });
+
+    const res = await service.scanOfflineScreens(5);
+    expect(res.found).toBe(1);
+    const batch = notification.createMany.mock.calls[0][0].data;
+    expect(batch).toHaveLength(2); // one for the store, one rolled up to HQ
+    const storeRow = batch.find((r: any) => r.tenantId === 'austin');
+    const hqRow = batch.find((r: any) => r.tenantId === 'corp');
+    expect(storeRow?.dedupeKey).toMatch(/^screen-offline:s1:/);
+    expect(hqRow).toBeTruthy();
+    expect(hqRow.kind).toBe('SCREEN_OFFLINE');
+    expect(hqRow.title).toContain('Acme — Austin');
+    expect(hqRow.dedupeKey).toMatch(/^screen-offline-hq:s1:/);
   });
 
   it('scanOfflineScreens emits INFRA_EVENT and suppresses per-screen when >50% drop in 90s', async () => {
