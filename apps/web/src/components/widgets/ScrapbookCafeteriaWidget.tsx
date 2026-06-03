@@ -151,11 +151,10 @@ export function ScrapbookCafeteriaWidget({ config, live }: { config: Cfg; live?:
               key={i}
               className="sbc-card"
               style={{
-                // @ts-ignore css vars
-                ['--accent' as any]: card.accent || '#f472b6',
-                ['--rot' as any]: card.rot || '-1deg',
-                ['--tape' as any]: card.tape || '#fcd34d',
-              }}
+                '--accent': card.accent || '#f472b6',
+                '--rot': card.rot || '-1deg',
+                '--tape': card.tape || '#fcd34d',
+              } as React.CSSProperties}
             >
               <h3>{card.title || ''}</h3>
               <p>{card.desc || ''}</p>

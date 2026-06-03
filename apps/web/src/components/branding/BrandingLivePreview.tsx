@@ -51,9 +51,10 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
     () => (branding?.logoSvgInline ? sanitizeSvg(branding.logoSvgInline) : ''),
     [branding?.logoSvgInline],
   );
-  const style: React.CSSProperties = {
+  // CSS custom properties aren't part of React.CSSProperties; widen the type
+  // to allow `--*` keys instead of suppressing the whole object with @ts-ignore.
+  const style: React.CSSProperties & Record<`--${string}`, string> = {
     // Scope all brand tokens to just this preview
-    // @ts-ignore
     '--bp-primary': p.primary || '#4f46e5',
     '--bp-primary-hover': p.primaryHover || '#4338ca',
     '--bp-primary-soft': p.primarySoft || '#e0e7ff',
