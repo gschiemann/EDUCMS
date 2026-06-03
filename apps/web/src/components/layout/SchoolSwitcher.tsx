@@ -84,7 +84,7 @@ export function SchoolSwitcher() {
     return (
       <div className="flex items-center gap-2 px-3 h-9 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-semibold">
         <Building2 className="w-3.5 h-3.5 text-slate-400" />
-        <span className="truncate max-w-[180px]">{label}</span>
+        <span className="truncate max-w-[100px] sm:max-w-[180px]">{label}</span>
       </div>
     );
   }
@@ -96,7 +96,7 @@ export function SchoolSwitcher() {
         className="flex items-center gap-2 px-3 h-9 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold"
       >
         <Building2 className="w-3.5 h-3.5 text-slate-400" />
-        <span className="truncate max-w-[180px]">{current?.name ?? `Select ${copy.orgSingular.toLowerCase()}`}</span>
+        <span className="truncate max-w-[100px] sm:max-w-[180px]">{current?.name ?? `Select ${copy.orgSingular.toLowerCase()}`}</span>
         <ChevronsUpDown className="w-3.5 h-3.5 text-slate-400" />
       </button>
       {open && (

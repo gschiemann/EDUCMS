@@ -78,8 +78,9 @@ export function TopToolbar() {
           </button>
         </div>
 
-        {/* Right Side */}
-        <div className="flex items-center gap-3">
+        {/* Right Side. Tighter gap on phones so the switcher + bell +
+            emergency + avatar all fit once the emergency control is added. */}
+        <div className="flex items-center gap-2 sm:gap-3">
           <SchoolSwitcher />
           <NotificationsBell />
           {/* Emergency control — TOP-RIGHT on MOBILE. Operator 2026-06-03:
@@ -122,8 +123,13 @@ export function TopToolbar() {
             </div>
           </RoleGate>
 
-          {/* In-app help drawer */}
-          <HelpDrawer />
+          {/* In-app help drawer — desktop only. On a phone we keep the header
+              compact (hamburger + switcher + bell + emergency + avatar) so the
+              new top-right emergency control fits without pushing the avatar
+              off-screen; help stays reachable on tablet/desktop. */}
+          <div className="hidden sm:block">
+            <HelpDrawer />
+          </div>
 
           {/* User avatar + menu */}
           <div className="relative">
