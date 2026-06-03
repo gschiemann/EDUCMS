@@ -1523,6 +1523,41 @@ export function useAccessibleTenants() {
   });
 }
 
+// ─── Fleet roll-up (HQ → all child locations' screens) ─────────
+// GET /screens/fleet — parent ("Corporate") reads self + direct children's
+// screens into one map + list (read-only; actions happen by switching into
+// the owning store). Gated to SUPER_ADMIN / DISTRICT_ADMIN server-side, so
+// only enable the query for those roles (others would 403).
+export interface FleetScreen {
+  id: string;
+  name: string;
+  status: string;
+  screenGroup: { id: string; name: string } | null;
+  lastPingAt: string | null;
+  lastCacheReport: any;
+  effectiveLatitude: number | null;
+  effectiveLongitude: number | null;
+  effectiveAddress: string | null;
+  geoSource: 'screen' | 'tenant' | 'none';
+  sourceTenant: { id: string; name: string; slug: string } | null;
+}
+export interface FleetResponse {
+  root: { id: string; name: string; slug: string } | null;
+  locations: Array<{ id: string; name: string; slug: string }>;
+  stats: { total: number; online: number; offline: number; locationCount: number };
+  screens: FleetScreen[];
+}
+export function useFleet(opts?: { enabled?: boolean }) {
+  return useQuery<FleetResponse>({
+    queryKey: ['screens', 'fleet'],
+    queryFn: () => apiFetch('/screens/fleet'),
+    enabled: opts?.enabled ?? true,
+    // Near-real-time, same cadence as the per-tenant screen list.
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  });
+}
+
 // ─── Notifications ────────────────────────────────────────────
 export function useNotifications() {
   return useQuery<{ items: Array<any>; unreadCount: number }>({
