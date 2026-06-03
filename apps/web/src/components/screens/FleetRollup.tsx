@@ -23,7 +23,7 @@
  * Dashboard surface (not player/widget) → CSS `inset`/`gap` are fine here.
  */
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown, Building2, Loader2, Search, X } from 'lucide-react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
@@ -140,6 +140,24 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
       return n;
     });
 
+  // Click a pin on the map → expand that location in the tree picker and
+  // scroll it into view ("find it on the map, it takes me right to it").
+  // We resolve the state via `tree` so it matches the tree's own grouping
+  // exactly (a screen's per-device geocode could differ from the store addr).
+  const focusStore = useCallback(
+    (screenId: string) => {
+      const storeId = fleet.screens.find((s) => s.id === screenId)?.sourceTenant?.id;
+      if (!storeId) return;
+      const grp = tree.find((g) => g.stores.some((s) => s.meta.id === storeId));
+      if (grp) setExpandedStates((prev) => new Set(prev).add(grp.state));
+      setExpandedLoc(storeId);
+      setTimeout(() => {
+        document.getElementById(`fleet-loc-${storeId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 90);
+    },
+    [fleet.screens, tree],
+  );
+
   const storeCount = fleet.stats.locationCount > 1 ? fleet.stats.locationCount - 1 : fleet.stats.locationCount;
 
   const chipBase = 'px-3 py-1.5 text-xs font-bold rounded-lg border inline-flex items-center gap-1.5 transition-colors';
@@ -236,7 +254,7 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
                           const exp = expandedLoc === st.meta.id;
                           const switching = switchingId === st.meta.id;
                           return (
-                            <div key={st.meta.id} className="border-t border-slate-50 bg-slate-50/30">
+                            <div key={st.meta.id} id={`fleet-loc-${st.meta.id}`} className="border-t border-slate-50 bg-slate-50/30">
                               <button
                                 onClick={() => setExpandedLoc((cur) => (cur === st.meta.id ? null : st.meta.id))}
                                 className={`w-full flex items-center gap-2 pl-8 pr-3 py-2 text-left transition-colors ${exp ? 'bg-indigo-50/60' : 'hover:bg-white'}`}
@@ -292,7 +310,7 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
 
           {/* Map (rail hidden — the tree is the list) */}
           <div className="rounded-2xl overflow-hidden border border-slate-200 min-h-[300px]">
-            <ScreenMapClient screens={mapScreens} renderSidebar={false} />
+            <ScreenMapClient screens={mapScreens} renderSidebar={false} onScreenClick={focusStore} />
           </div>
         </div>
       </div>
