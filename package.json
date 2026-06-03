@@ -18,6 +18,8 @@
     "db:backfill-hashes": "pnpm --filter @cms/database exec tsx ../../scripts/backfill-asset-hashes.ts",
     "worktrees:status": "bash scripts/cleanup-worktrees.sh",
     "worktrees:clean": "bash scripts/cleanup-worktrees.sh --execute --branches",
+    "hygiene": "bash scripts/hygiene-check.sh",
+    "hygiene:deps": "bash scripts/hygiene-check.sh --deps",
     "dev:api": "pnpm --filter api run start:dev",
     "dev:web": "pnpm --filter web run dev",
     "test:e2e": "playwright test",

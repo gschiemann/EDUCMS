@@ -868,6 +868,22 @@ behind is the "lazy development" that built an 83 GB invisible mess. Run
 `pnpm worktrees:status` at the end of every agent batch; if it's not 0, clean it
 before you tell the user the work shipped.
 
+### Workspace hygiene — `pnpm hygiene` (2026-06-02)
+
+The 83 GB worktree pileup wasn't the only accumulating-cruft failure; a process
+audit that day also found a **408 MB never-gc'd `.git`** (210 MB of garbage
+`tmp_obj_*` + 27,862 loose, 0 packed → `git gc` brought it to 22 MB), **8 stale
+merged remote branches**, **90 stale `backup/*` tags**, and **unscanned
+dependency CVEs** (passport-saml critical + tar/undici highs). Root cause was
+always the same: *accumulating state with no monitor.*
+
+**`pnpm hygiene`** (read-only; `pnpm hygiene:deps` adds the network vuln pass) is
+the standing early-warning — it reports leftover worktrees, `.git` object/garbage
+health, dirty tree, stale local/remote branches, backup-tag clutter, and
+dependency CVEs, each with the fix command. Run it periodically and as part of
+the pre-dispatch checklist. If `.git` ever shows thousands of loose objects or
+any garbage, run `git gc`. Full audit: `docs/research/2026-06-02-dev-process-audit/`.
+
 ### Things that look like "agents stomping me" but aren't
 
 - **File modified timestamps in the main tree.** Pre-existing uncommitted work from previous sessions. Run `git stash list` — if there are entries, those are the culprits, not the agents.
