@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings, Upload, AlertCircle, Download, Usb, Check, RefreshCw } from 'lucide-react';
+import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings, Upload, AlertCircle, Download, Usb, Check, RefreshCw, Building2 } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { PlaylistPreviewThumb, derivePlaylistContentLabel, type TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import { PlaylistCreateWizard, ScheduleWindowFields } from '@/components/playlists/PlaylistCreateWizard';
+import { PublishToLocationsModal } from '@/components/playlists/PublishToLocationsModal';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   DndContext, closestCenter, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, DragEndEvent
@@ -20,7 +21,7 @@ import {
   useReorderPlaylistItems, useScreenGroups, useCreateSchedule,
   useSchedules, useDeleteSchedule, useToggleSchedule, useUpdateSchedule, useScreens,
   useTemplates, useAssetFolders, useSetPlaylistActive,
-  useUsers, useCreateSubmission,
+  useUsers, useCreateSubmission, useFleet,
 } from '@/hooks/use-api';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
@@ -814,6 +815,12 @@ export default function PlaylistsPage() {
   const currentUser = useUIStore((s) => s.user);
   const isContributor = currentUser?.role === 'CONTRIBUTOR';
   const isViewer = currentUser?.role === 'RESTRICTED_VIEWER';
+  // Phase 2c — HQ "publish to locations". Only a parent tenant (corporate with
+  // child locations) sees the button; useFleet returns >1 location for those.
+  const canFleetPublish = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'DISTRICT_ADMIN';
+  const fleetForPublish = useFleet({ enabled: canFleetPublish });
+  const isHQ = (fleetForPublish.data?.locations?.length ?? 0) > 1;
+  const [showPublishToLocations, setShowPublishToLocations] = useState(false);
   const { data: tenantUsers } = useUsers();
   const tenantAdmins = (tenantUsers as any[] | undefined)?.filter((u) => u.role === 'SUPER_ADMIN' || u.role === 'DISTRICT_ADMIN' || u.role === 'SCHOOL_ADMIN') || [];
   const createSubmission = useCreateSubmission();
@@ -2509,6 +2516,16 @@ export default function PlaylistsPage() {
               Line
             </button>
           </div>
+          {isHQ && !isViewer && (
+            <button
+              onClick={() => setShowPublishToLocations(true)}
+              title="Copy this content to screens across all your locations"
+              className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5"
+              style={{ background: 'var(--brand-primary, #4f46e5)' }}
+            >
+              <Building2 className="w-4 h-4" /> Publish to locations
+            </button>
+          )}
           <button
             onClick={() => setShowCreate(true)}
             disabled={isViewer}
@@ -2627,6 +2644,10 @@ export default function PlaylistsPage() {
           modal wizard. See <PlaylistCreateWizard /> mount at the
           bottom of this component. Operator quote driving the change
           is in the showCreate-state comment block above. */}
+      <PublishToLocationsModal
+        open={showPublishToLocations}
+        onClose={() => setShowPublishToLocations(false)}
+      />
       <PlaylistCreateWizard
         open={showCreate}
         initialAssetIds={pendingAssetIds}

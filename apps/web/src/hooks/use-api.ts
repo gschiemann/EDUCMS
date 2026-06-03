@@ -1558,6 +1558,25 @@ export function useFleet(opts?: { enabled?: boolean }) {
   });
 }
 
+// ─── Phase 2c — publish a playlist to screens across child locations ───
+// POST /playlists/:id/publish-to-fleet — copies the playlist (+ assets) down
+// into each target child and schedules it live there. Parent/corporate only.
+export interface PublishToFleetResult {
+  sourcePlaylistId: string;
+  totalScreens: number;
+  totalLocations: number;
+  perLocation: Array<{ tenantId: string; tenantName: string; playlistId: string; screensScheduled: number; isParent: boolean }>;
+}
+export function usePublishToFleet() {
+  return useMutation<PublishToFleetResult, Error, { playlistId: string; screenIds: string[] }>({
+    mutationFn: ({ playlistId, screenIds }) =>
+      apiFetch(`/playlists/${playlistId}/publish-to-fleet`, {
+        method: 'POST',
+        body: JSON.stringify({ screenIds }),
+      }),
+  });
+}
+
 // ─── Notifications ────────────────────────────────────────────
 export function useNotifications() {
   return useQuery<{ items: Array<any>; unreadCount: number }>({
