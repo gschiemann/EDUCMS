@@ -10,6 +10,7 @@ import { StatsController } from './stats/stats.controller';
 import { AuditController } from './audit/audit.controller';
 import { UsersController } from './users/users.controller';
 import { PlaylistsController } from './playlists/playlists.controller';
+import { PlaylistDistributionService } from './playlists/playlist-distribution.service';
 import { ScreenGroupsController } from './screen-groups/screen-groups.controller';
 import { SchedulesController } from './schedules/schedules.controller';
 import { AssetsController } from './assets/assets.controller';
@@ -188,6 +189,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
   providers: [
     AppService,
     GeocodingService,
+    PlaylistDistributionService,
     WebsocketSignerService,
     // 2026-05-27 — Auto-recovery for the "alive but content-frozen"
     // failure mode (operator: "is that a bug? it should keep itself

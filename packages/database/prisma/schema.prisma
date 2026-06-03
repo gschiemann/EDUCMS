@@ -967,6 +967,10 @@ model Playlist {
   tenantId        String         @map("tenant_id")
   name            String
   templateId      String?        @map("template_id")
+  // Set on a playlist COPY distributed from a parent (corporate) playlist down
+  // to a child location. Enables idempotent re-publish (update the existing
+  // copy instead of duplicating) + a "from HQ" badge. Null on originals.
+  sourcePlaylistId String?       @map("source_playlist_id")
   createdByUserId String?        @map("created_by_user_id")
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @default(now()) @updatedAt @map("updated_at")
@@ -988,6 +992,7 @@ model Playlist {
   @@index([tenantId, updatedAt])
   @@index([tenantId, createdAt])
   @@index([createdByUserId])
+  @@index([tenantId, sourcePlaylistId])
   @@map("playlists")
 }
 

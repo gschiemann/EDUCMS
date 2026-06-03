@@ -7,6 +7,7 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import { PlaylistDistributionService } from './playlist-distribution.service';
 import {
   PlaylistCreateSchema, type PlaylistCreateInput,
   PlaylistUpdateSchema, type PlaylistUpdateInput,
@@ -20,7 +21,8 @@ export class PlaylistsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
-    private readonly signer: WebsocketSignerService
+    private readonly signer: WebsocketSignerService,
+    private readonly distribution: PlaylistDistributionService,
   ) {}
 
   private async notifySync(tenantId: string) {
@@ -28,6 +30,30 @@ export class PlaylistsController {
       const message = this.signer.signMessage('SYNC', { source: 'playlist_update' });
       await this.redisService.publish(`tenant:${tenantId}`, message);
     } catch (e) {}
+  }
+
+  // ─── Phase 2c — publish (distribute) this playlist to screens across child
+  //     locations. Copies the playlist + its assets down into each child and
+  //     schedules it live there (idempotent re-publish via sourcePlaylistId).
+  //     Parent/corporate admins only; targets must be the caller's tenant or
+  //     its direct children (enforced in the service).
+  @Post(':id/publish-to-fleet')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
+  async publishToFleet(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { screenIds?: string[] },
+  ) {
+    const result = await this.distribution.publishToFleet({
+      parentTenantId: req.user.tenantId,
+      actorUserId: req.user.id,
+      sourcePlaylistId: id,
+      screenIds: Array.isArray(body?.screenIds) ? body.screenIds : [],
+    });
+    // Nudge each affected location's players to re-sync now (they'd otherwise
+    // pick it up on the next 5-10s manifest poll).
+    for (const loc of result.perLocation) this.notifySync(loc.tenantId);
+    return result;
   }
 
   @Get()
