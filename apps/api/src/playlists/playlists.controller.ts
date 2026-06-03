@@ -61,7 +61,7 @@ export class PlaylistsController {
   async list(@Request() req: any) {
     await this.prisma.ensurePlaylistMetadataColumns();
     const tenantId = req.user.tenantId;
-    return this.prisma.client.playlist.findMany({
+    const playlists = await this.prisma.client.playlist.findMany({
       // Hide protected (emergency) playlists from the regular /playlists
       // list so they can't be accidentally deleted. They surface only
       // through the panic-content settings card.
@@ -77,6 +77,43 @@ export class PlaylistsController {
       },
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     });
+
+    // Phase 2c — fleet-publish decoration. For each playlist that was published
+    // to locations, how many child locations got a copy + how many of those
+    // copies' schedules are active. Lets the card show "published to N
+    // locations" and keep its on/off toggle working even when the SOURCE has
+    // zero own schedules (the copies hold them). Best-effort; never blocks list.
+    try {
+      const ids = playlists.map((p) => p.id);
+      const copies = ids.length
+        ? await this.prisma.client.playlist.findMany({
+            where: { sourcePlaylistId: { in: ids }, tenant: { parentId: tenantId } },
+            select: { id: true, sourcePlaylistId: true, tenantId: true },
+          })
+        : [];
+      if (copies.length) {
+        const activeRows = await this.prisma.client.schedule.groupBy({
+          by: ['playlistId'],
+          where: { playlistId: { in: copies.map((c) => c.id) }, isActive: true },
+          _count: { _all: true },
+        });
+        const activeByCopy = new Map<string, number>();
+        for (const r of activeRows as any[]) activeByCopy.set(r.playlistId, r._count?._all ?? 0);
+        const locsBySource = new Map<string, Set<string>>();
+        const activeBySource = new Map<string, number>();
+        for (const c of copies) {
+          const src = c.sourcePlaylistId as string;
+          (locsBySource.get(src) ?? locsBySource.set(src, new Set()).get(src)!).add(c.tenantId);
+          activeBySource.set(src, (activeBySource.get(src) ?? 0) + (activeByCopy.get(c.id) ?? 0));
+        }
+        for (const p of playlists as any[]) {
+          p.fleetLocations = locsBySource.get(p.id)?.size ?? 0;
+          p.fleetActiveSchedules = activeBySource.get(p.id) ?? 0;
+        }
+      }
+    } catch { /* fleet decoration is best-effort */ }
+
+    return playlists;
   }
 
   @Get(':id')

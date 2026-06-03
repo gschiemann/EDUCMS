@@ -429,8 +429,14 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
   const hasScreens = screenMap.screens.length > 0 || screenMap.groups.length > 0;
   const onlineScreens = screenMap.screens.filter((s: any) => s.status === 'ONLINE');
   const hasSchedules = screenMap.scheduleCount > 0;
-  // A playlist is "on" when at least one of its schedules is active.
-  const isLive = screenMap.activeCount > 0;
+  // Fleet-publish state (Phase 2c): this playlist may have copies scheduled in
+  // child locations. The card must reflect + control those even when the source
+  // itself has zero own schedules.
+  const fleetLocations = (playlist as any).fleetLocations ?? 0;
+  const hasFleet = fleetLocations > 0;
+  const fleetActive = ((playlist as any).fleetActiveSchedules ?? 0) > 0;
+  // A playlist is "on" when at least one of its OWN or its fleet copies' schedules is active.
+  const isLive = screenMap.activeCount > 0 || fleetActive;
   // Content-type label — replaces the old binary "Media" vs "Layout".
   // Operator (2026-05-25): "the words on the playlist descriptions
   // that say media and layout dont make sense ... maybe just say
@@ -444,7 +450,9 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
   ].filter(Boolean);
   const assignmentSummary = assignedNames.length > 0
     ? assignedNames.slice(0, 2).join(', ') + (assignedNames.length > 2 ? ` +${assignedNames.length - 2}` : '')
-    : 'Unassigned';
+    : hasFleet
+      ? `${fleetLocations} location${fleetLocations === 1 ? '' : 's'}`
+      : 'Unassigned';
   const creator = creatorLabel(playlist);
 
   // Click handler for the toggle button. If the playlist has no
@@ -452,7 +460,7 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
   // we can't flip "active" on a playlist that has nothing to flip.
   const handleToggleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!hasSchedules) { onOpen(); return; }
+    if (!hasSchedules && !hasFleet) { onOpen(); return; }
     onToggleActive(!isLive);
   };
 
