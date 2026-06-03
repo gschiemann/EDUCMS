@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Building2, ChevronsUpDown, Check, Loader2 } from 'lucide-react';
+import { Building2, ChevronsUpDown, Check, Loader2, ChevronRight, ChevronDown } from 'lucide-react';
 import { useAccessibleTenants } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
@@ -25,10 +25,12 @@ export function SchoolSwitcher() {
   const copy = useTenantCopy();
 
   // Group child Locations under their Primary parent so the switcher reads as
-  // a hierarchy (Primary → its Locations) instead of a flat jumble. Roots =
-  // accounts with no parentId (true org-roots) OR a child whose parent isn't
-  // in the accessible set (orphan — shown standalone so it's never hidden).
-  const orderedTenants = useMemo(() => {
+  // a hierarchy. Children stay COLLAPSED under a per-company expand toggle so a
+  // super-admin with dozens of locations under one brand doesn't have to scroll
+  // past all of them to reach the next company (operator 2026-06-03). Roots =
+  // accounts with no parentId (true org-roots) OR a child whose parent isn't in
+  // the accessible set (orphan — shown standalone so it's never hidden).
+  const { roots, childrenByParent } = useMemo(() => {
     const known = new Set(tenants.map((t) => t.id));
     const childrenByParent = new Map<string, typeof tenants>();
     for (const t of tenants) {
@@ -38,20 +40,41 @@ export function SchoolSwitcher() {
         childrenByParent.set(t.parentId, arr);
       }
     }
+    for (const arr of childrenByParent.values()) arr.sort((a, b) => a.name.localeCompare(b.name));
     const roots = tenants
       .filter((t) => !t.parentId || !known.has(t.parentId))
       .slice()
       .sort((a, b) => a.name.localeCompare(b.name));
-    const out: Array<{ t: (typeof tenants)[number]; depth: number }> = [];
-    for (const r of roots) {
-      out.push({ t: r, depth: 0 });
-      const kids = (childrenByParent.get(r.id) || [])
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name));
-      for (const k of kids) out.push({ t: k, depth: 1 });
-    }
-    return out;
+    return { roots, childrenByParent };
   }, [tenants]);
+
+  // Which company (root) contains the active tenant — auto-expanded when the
+  // menu opens so the operator sees where they currently are without hunting.
+  const activeRootId = useMemo(() => {
+    const act = tenants.find((t) => t.slug === activeTenant || t.id === activeTenant);
+    if (!act) return null;
+    return act.parentId && tenants.some((t) => t.id === act.parentId) ? act.parentId : act.id;
+  }, [tenants, activeTenant]);
+
+  // Expanded companies. Collapsed by default; auto-expand the active company
+  // (and the only company, when there's just one) each time the menu opens.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!open) return;
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (activeRootId) next.add(activeRootId);
+      if (roots.length === 1) next.add(roots[0].id);
+      return next;
+    });
+  }, [open, activeRootId, roots]);
+  const toggleExpand = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   useEffect(() => {
     if (!open) return;
@@ -106,37 +129,84 @@ export function SchoolSwitcher() {
               {switchError}
             </div>
           )}
-          {orderedTenants.map(({ t, depth }) => {
-            const isActive = t.slug === activeTenant || t.id === activeTenant;
-            const isOrgRoot = !t.parentId;
-            const isChild = depth > 0;
-            const isSwitching = switchingId === t.id;
+          {roots.map((root) => {
+            const kids = childrenByParent.get(root.id) || [];
+            const hasKids = kids.length > 0;
+            const isExpanded = expanded.has(root.id);
+            const rootActive = root.slug === activeTenant || root.id === activeTenant;
+            const rootSwitching = switchingId === root.id;
+            const isTrueRoot = !root.parentId;
             return (
-              <button
-                key={t.id}
-                onClick={() => switchTo(t.slug)}
-                disabled={!!switchingId}
-                className={`w-full flex items-center justify-between gap-2 py-2 pr-3 text-left text-xs transition-colors disabled:opacity-60 disabled:cursor-wait ${
-                  isChild ? 'pl-8' : 'pl-3'
-                } ${isActive ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700 hover:bg-slate-50'} ${
-                  isOrgRoot ? 'border-t border-slate-100 first:border-t-0' : ''
-                }`}
-              >
-                <span className="truncate flex items-center gap-2">
-                  {/* Child Location nested under its Primary — tree connector. */}
-                  {isChild && <span className="text-slate-300" aria-hidden="true">└</span>}
-                  {/* Org-root (top-level account) badge — universal "Primary"
-                      across every vertical (copy.groupSingular). Everything
-                      under it is a "Location". */}
-                  {isOrgRoot && <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{copy.groupSingular}</span>}
-                  <span className="truncate">{t.name}</span>
-                </span>
-                {isSwitching ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : isActive ? (
-                  <Check className="w-3.5 h-3.5" />
-                ) : null}
-              </button>
+              <div key={root.id} className="border-t border-slate-100 first:border-t-0">
+                {/* Company row: chevron toggles its Locations; the name switches
+                    into the company. Childless accounts get a spacer so names
+                    stay aligned with the ones that have a toggle. */}
+                <div className={`flex items-stretch ${rootActive ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
+                  {hasKids ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleExpand(root.id)}
+                      aria-label={isExpanded ? `Collapse ${root.name} locations` : `Expand ${root.name} locations`}
+                      aria-expanded={isExpanded}
+                      className="shrink-0 pl-2.5 pr-1 flex items-center text-slate-400 hover:text-slate-700"
+                    >
+                      {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                    </button>
+                  ) : (
+                    <span className="shrink-0 w-[26px]" aria-hidden="true" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => switchTo(root.slug)}
+                    disabled={!!switchingId}
+                    className={`flex-1 min-w-0 flex items-center justify-between gap-2 py-2 pr-3 text-left text-xs transition-colors disabled:opacity-60 disabled:cursor-wait ${
+                      rootActive ? 'text-indigo-700 font-bold' : 'text-slate-700'
+                    }`}
+                  >
+                    <span className="truncate flex items-center gap-2">
+                      {/* Org-root (top-level account) badge — universal "Primary"
+                          across every vertical (copy.groupSingular). */}
+                      {isTrueRoot && (
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{copy.groupSingular}</span>
+                      )}
+                      <span className="truncate">{root.name}</span>
+                      {hasKids && <span className="shrink-0 text-[10px] font-medium text-slate-400">({kids.length})</span>}
+                    </span>
+                    {rootSwitching ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                    ) : rootActive ? (
+                      <Check className="w-3.5 h-3.5 shrink-0" />
+                    ) : null}
+                  </button>
+                </div>
+                {/* Child Locations — only mounted when the company is expanded. */}
+                {isExpanded &&
+                  kids.map((k) => {
+                    const kActive = k.slug === activeTenant || k.id === activeTenant;
+                    const kSwitching = switchingId === k.id;
+                    return (
+                      <button
+                        key={k.id}
+                        type="button"
+                        onClick={() => switchTo(k.slug)}
+                        disabled={!!switchingId}
+                        className={`w-full flex items-center justify-between gap-2 py-2 pr-3 pl-9 text-left text-xs transition-colors disabled:opacity-60 disabled:cursor-wait ${
+                          kActive ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="truncate flex items-center gap-2">
+                          <span className="text-slate-300" aria-hidden="true">└</span>
+                          <span className="truncate">{k.name}</span>
+                        </span>
+                        {kSwitching ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                        ) : kActive ? (
+                          <Check className="w-3.5 h-3.5 shrink-0" />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+              </div>
             );
           })}
         </div>
