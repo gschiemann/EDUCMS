@@ -8,7 +8,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import DOMPurify from 'isomorphic-dompurify';
+import DOMPurify from 'dompurify';
 import { cn } from '@/lib/utils';
 import { LayoutDashboard, MonitorPlay, LayoutTemplate, Folders, Settings, Bell, ShieldAlert, Search, ChevronDown } from 'lucide-react';
 import { useLogoTone } from './useLogoTone';

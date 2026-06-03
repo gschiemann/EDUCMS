@@ -381,6 +381,9 @@ importers:
       dashjs:
         specifier: ^5.1.1
         version: 5.1.1(@svta/cml-cta@1.0.1(@svta/cml-structured-field-values@1.0.1(@svta/cml-utils@1.0.1))(@svta/cml-utils@1.0.1))(@svta/cml-structured-field-values@1.0.1(@svta/cml-utils@1.0.1))(@svta/cml-utils@1.0.1)
+      dompurify:
+        specifier: ^3.3.3
+        version: 3.3.3
       hls.js:
         specifier: ^1.6.16
         version: 1.6.16
@@ -390,9 +393,6 @@ importers:
       html2canvas:
         specifier: 1.4.1
         version: 1.4.1
-      isomorphic-dompurify:
-        specifier: ^3.8.0
-        version: 3.8.0(@noble/hashes@1.8.0)
       jsqr:
         specifier: ^1.4.0
         version: 1.4.0

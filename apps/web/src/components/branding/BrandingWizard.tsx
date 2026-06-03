@@ -14,7 +14,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import DOMPurify from 'isomorphic-dompurify';
+import DOMPurify from 'dompurify';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import { API_URL } from '@/lib/api-url';

@@ -3,7 +3,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import DOMPurify from 'isomorphic-dompurify';
+import DOMPurify from 'dompurify';
 import { Megaphone, AlertCircle, CalendarClock, ShieldCheck, Construction } from 'lucide-react';
 import { useState } from 'react';
 import { appAlert } from '@/components/ui/app-dialog';

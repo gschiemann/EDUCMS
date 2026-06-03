@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useParams, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import DOMPurify from 'isomorphic-dompurify';
+import DOMPurify from 'dompurify';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';

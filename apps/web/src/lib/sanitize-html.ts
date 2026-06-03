@@ -13,12 +13,32 @@
  * DOMPurify keeps formatting markup (b, i, em, strong, br, h1-h6, p,
  * span, ul/ol/li, a, plus class/style attributes) and strips
  * <script>, event handlers, javascript: URLs, and every other XSS
- * vector. isomorphic-dompurify runs in both the browser and Node
- * (SSR / static export), so it is safe on the player and dashboard.
+ * vector.
+ *
+ * 2026-06-03 — switched from `isomorphic-dompurify` to browser-only
+ * `dompurify`. The isomorphic build drags in `jsdom` so it can sanitize
+ * under Node; on Vercel's serverless runtime jsdom@29's transitive
+ * `html-encoding-sniffer@6 → @exodus/bytes` is ESM-only and blows up
+ * `require()`, which 500'd every `[schoolId]` route's SSR (the layout
+ * module graph imported this file via the widgets). The web client has a
+ * real browser, so it never needed jsdom. Widget content is always
+ * rendered CLIENT-side (the player kiosk + dashboard previews fetch and
+ * render after mount), so sanitization runs in the browser where
+ * DOMPurify is fully supported. On the server (no `window`) DOMPurify's
+ * default export is the un-instantiated factory, so we return '' rather
+ * than emit ANY un-sanitized markup into server HTML; the client
+ * re-renders the sanitized value on hydration.
  */
-import DOMPurify from 'isomorphic-dompurify';
+import DOMPurify from 'dompurify';
 
 /** Sanitize operator-authored HTML before dangerouslySetInnerHTML. */
 export function sanitizeWidgetHtml(html: string | null | undefined): string {
-  return DOMPurify.sanitize(html ?? '');
+  const input = html ?? '';
+  // Server / no-window: DOMPurify is the factory (no `.sanitize`). Never
+  // emit un-sanitized markup server-side — return empty and let the client
+  // render the sanitized value on hydration.
+  if (typeof window === 'undefined' || typeof (DOMPurify as { sanitize?: unknown }).sanitize !== 'function') {
+    return '';
+  }
+  return DOMPurify.sanitize(input);
 }

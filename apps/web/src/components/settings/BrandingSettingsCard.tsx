@@ -11,7 +11,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import DOMPurify from 'isomorphic-dompurify';
+import DOMPurify from 'dompurify';
 import { usePathname } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 // 2026-05-25 — Sparkles dropped here per operator: "why are we
