@@ -7,7 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
-import { MonitorPlay, AlertTriangle, ShieldCheck, Wifi, WifiOff, Clock, Search, X, Crosshair, Map as MapIcon, List, ChevronRight, Building2 } from 'lucide-react';
+import { MonitorPlay, AlertTriangle, ShieldCheck, Wifi, WifiOff, Clock, Search, X, Crosshair, ChevronRight, Building2 } from 'lucide-react';
 
 /**
  * Sprint 8 command-center fleet map — upgraded to sell the product.
@@ -190,7 +190,6 @@ const STATUS_META: Record<StatusKey, { color: string; label: string; icon: typeo
 // CARTO Voyager — premium OSM-data basemap. Free, no key needed.
 // Attribution is required by CARTO's terms.
 const CARTO_VOYAGER = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-const CARTO_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const CARTO_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
@@ -463,7 +462,6 @@ interface Props {
 }
 
 export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onMapClick }: Props) {
-  const [darkMap, setDarkMap] = useState(false);
   const [query, setQuery] = useState('');
   const [flyTarget, setFlyTarget] = useState<[number, number] | null>(null);
   const [flyNonce, setFlyNonce] = useState(0);
@@ -570,17 +568,6 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
           )}
         </div>
 
-        {/* Basemap toggle — Voyager (light) ↔ Dark Matter */}
-        <button
-          type="button"
-          onClick={() => setDarkMap(d => !d)}
-          title={darkMap ? 'Switch to light map' : 'Switch to dark map'}
-          aria-label={darkMap ? 'Switch to light map' : 'Switch to dark map'}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white shadow-sm text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-        >
-          {darkMap ? <MapIcon className="w-3.5 h-3.5" /> : <List className="w-3.5 h-3.5" />}
-          {darkMap ? 'Light' : 'Dark'}
-        </button>
       </div>
 
       {/* ── Mobile legend (above map) ── */}
@@ -644,8 +631,7 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
             className="h-full w-full"
           >
             <TileLayer
-              key={darkMap ? 'dark' : 'light'}
-              url={darkMap ? CARTO_DARK : CARTO_VOYAGER}
+              url={CARTO_VOYAGER}
               attribution={CARTO_ATTRIBUTION}
               subdomains="abcd"
               maxZoom={20}
