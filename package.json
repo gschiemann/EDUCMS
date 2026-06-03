@@ -16,6 +16,8 @@
     "db:seed:demo:clean": "node packages/database/prisma/seed-multilocation-demo.mjs --clean",
     "db:setup": "pnpm run db:push && pnpm run db:seed",
     "db:backfill-hashes": "pnpm --filter @cms/database exec tsx ../../scripts/backfill-asset-hashes.ts",
+    "worktrees:status": "bash scripts/cleanup-worktrees.sh",
+    "worktrees:clean": "bash scripts/cleanup-worktrees.sh --execute --branches",
     "dev:api": "pnpm --filter api run start:dev",
     "dev:web": "pnpm --filter web run dev",
     "test:e2e": "playwright test",

@@ -808,9 +808,15 @@ git status --short  # must be empty
 # 3. Confirm origin is up-to-date.
 git fetch origin master && git log master..origin/master --oneline  # must be empty
 
-# 4. Clean up old worktrees so the new dispatch starts fresh.
-git worktree prune
-git worktree list  # should only show /Users/.../EDU CMS for master
+# 4. Clean up old worktrees so the new dispatch starts fresh. `git worktree
+#    prune` ALONE IS NOT ENOUGH — it SKIPS locked worktrees, and the harness
+#    locks every agent tree, so they accumulate INVISIBLY. On 2026-06-02 this
+#    reached 154 leftover trees / 83 GB and made every git command slow/erroring
+#    (the operator caught it, not the lead — never again). Use the real cleanup
+#    (unlock → remove --force → prune, with a branch-manifest backup):
+pnpm worktrees:status            # count leftover agent/session worktrees
+pnpm worktrees:clean             # remove them all (backs up to ~/Desktop first)
+git worktree list                # MUST show ONLY the main tree before dispatch
 ```
 
 If ANY of those four fail, **stop and fix the workspace before spawning agents.** A dirty tree means a previous session left untracked work that the next agent batch will appear to "wipe" — that was the source of every "agents are stomping me" panic.
@@ -846,7 +852,21 @@ pnpm --filter web exec tsc --noEmit | grep -v "test\.\|@testing-library"
 # 4. Verify branch is master before push.
 git branch --show-current  # MUST be "master"
 git push origin master --no-verify   # --no-verify only when preflight has been done manually
+
+# 5. ⚠️ REMOVE THE AGENT'S WORKTREE THIS SAME TURN. Non-negotiable. The 83 GB /
+#    154-tree pileup (2026-06-02) was caused by exactly this step being skipped:
+#    cherry-pick to master, then walk away leaving the locked ~540 MB tree
+#    behind forever. Once the agent's commits are on master:
+git worktree remove --force ".claude/worktrees/agent-<id>"   # the tree
+git branch -D "worktree-agent-<id>"                          # the now-stale branch
+# (or just `pnpm worktrees:clean` to sweep every finished agent tree at once.)
 ```
+
+**STANDING RULE (2026-06-02): a parallel-agent session is NOT done until
+`git worktree list` shows only the main tree again.** Leaving agent worktrees
+behind is the "lazy development" that built an 83 GB invisible mess. Run
+`pnpm worktrees:status` at the end of every agent batch; if it's not 0, clean it
+before you tell the user the work shipped.
 
 ### Things that look like "agents stomping me" but aren't
 
