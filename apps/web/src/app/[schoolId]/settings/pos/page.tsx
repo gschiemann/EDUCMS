@@ -103,20 +103,16 @@ export default function PosSettingsPage() {
         </div>
       </div>
 
-      {/* 2026-05-23 launch audit P1: pre-warn operators that catalog
-          sync handlers haven't shipped yet. Previously they could
-          connect Square / Toast / Clover credentials, click "Sync now,"
-          then get a generic "Sync handler not yet implemented" alert.
-          Better to set expectations on the page header before they
-          invest in the OAuth dance. */}
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 flex items-start gap-3 text-amber-900">
-        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+      {/* 2026-06-02: catalog sync is LIVE for self-serve providers. */}
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 flex items-start gap-3 text-emerald-900">
+        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
         <div className="text-xs leading-relaxed">
-          <strong className="font-bold">Heads up — catalog sync is on the roadmap.</strong> You
-          can pre-configure a provider connection today and we&rsquo;ll preserve your credentials, but
-          the per-provider catalog handlers (Square / Toast / Clover, etc.) ship in a
-          follow-up. Hitting <em>Sync now</em> will return a clear &ldquo;not yet implemented&rdquo;
-          message until the handler lands.
+          <strong className="font-bold">Catalog sync is live</strong> for the self-serve providers
+          (Square, Clover, Lightspeed, Shopify) — connect, and your items, prices, and
+          availability sync automatically to your menu boards. <strong>Multi-location chains:</strong>{' '}
+          once connected, map each store to one of your locations under <em>Stores</em> below and
+          the POS drives each location&rsquo;s own prices. Partner providers (Toast, etc.) still
+          show an honest &ldquo;in development&rdquo; panel until their connector ships.
         </div>
       </div>
 
@@ -207,28 +203,103 @@ function ConnectionRow({ connection, onSync, onDisconnect }: { connection: PosCo
     ? new Date(connection.lastSyncedAt).toLocaleString()
     : 'never';
   return (
-    <div className="flex items-center gap-3 p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
-      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-        {connection.providerName.charAt(0)}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-slate-800">{connection.providerName}</span>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${statusColor}`}>
-            {connection.status}
-          </span>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+      <div className="flex items-center gap-3 p-4">
+        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+          {connection.providerName.charAt(0)}
         </div>
-        <div className="text-xs text-slate-500 mt-0.5">
-          {connection.itemCount} item{connection.itemCount === 1 ? '' : 's'} · last synced {lastSync}
-          {connection.statusReason && <span className="ml-2 text-rose-600">· {connection.statusReason}</span>}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-800">{connection.providerName}</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${statusColor}`}>
+              {connection.status}
+            </span>
+          </div>
+          <div className="text-xs text-slate-500 mt-0.5">
+            {connection.itemCount} item{connection.itemCount === 1 ? '' : 's'} · last synced {lastSync}
+            {connection.statusReason && <span className="ml-2 text-rose-600">· {connection.statusReason}</span>}
+          </div>
         </div>
+        <button onClick={onSync} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 inline-flex items-center gap-1.5">
+          <RefreshCw className="w-3 h-3" /> Sync now
+        </button>
+        <button onClick={onDisconnect} aria-label="Disconnect" className="p-1.5 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600">
+          <Trash2 className="w-4 h-4" />
+        </button>
       </div>
-      <button onClick={onSync} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 inline-flex items-center gap-1.5">
-        <RefreshCw className="w-3 h-3" /> Sync now
-      </button>
-      <button onClick={onDisconnect} aria-label="Disconnect" className="p-1.5 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600">
-        <Trash2 className="w-4 h-4" />
-      </button>
+      {connection.status === 'ACTIVE' && (
+        <div className="px-4 pb-4">
+          <StoreMappingPanel connectionId={connection.id} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Multi-location store→location mapping (2026-06-02). Lists the POS stores
+ * synced under this connection (Square locations, etc.) and lets the operator
+ * map each to one of their locations. Mapping a store is what lets the POS
+ * drive THAT store's per-location pricing — the bridge writes per-location
+ * overrides only for mapped stores. Renders nothing for single-location
+ * connections (no synced POS locations).
+ */
+interface PosStore { id: string; externalId: string; name: string; address?: string | null; locationTenantId?: string | null; isActive?: boolean }
+function StoreMappingPanel({ connectionId }: { connectionId: string }) {
+  const qc = useQueryClient();
+  const locations = useQuery({
+    queryKey: ['pos-locations', connectionId],
+    queryFn: () => apiFetch<PosStore[]>(`/pos/connections/${connectionId}/locations`),
+  });
+  const children = useQuery({
+    queryKey: ['tenant-children-for-pos'],
+    queryFn: () =>
+      apiFetch<{ districtId: string; children: { id: string; name: string }[] }>('/tenants/children')
+        .catch(() => ({ districtId: '', children: [] as { id: string; name: string }[] })),
+  });
+  const mapStore = useMutation({
+    mutationFn: ({ locationId, locationTenantId }: { locationId: string; locationTenantId: string | null }) =>
+      apiFetch(`/pos/connections/${connectionId}/locations/${locationId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ locationTenantId }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-locations', connectionId] }),
+  });
+
+  const stores = locations.data || [];
+  if (locations.isLoading || stores.length === 0) return null; // single-location → nothing to map
+  const kids = children.data?.children || [];
+  const mapped = stores.filter((s) => s.locationTenantId).length;
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="text-xs font-bold text-slate-600 mb-2">
+        Stores ({stores.length}) · {mapped}/{stores.length} mapped
+        <span className="font-normal text-slate-400"> — map each store to a location so its screens show that store&rsquo;s live prices</span>
+      </div>
+      <div className="space-y-1.5">
+        {stores.map((s) => (
+          <div key={s.id} className="flex items-center gap-2 text-xs">
+            <span className="flex-1 min-w-0 truncate font-medium text-slate-700">
+              {s.name}
+              {s.address ? <span className="text-slate-400"> · {s.address}</span> : null}
+            </span>
+            <select
+              value={s.locationTenantId || ''}
+              onChange={(e) => mapStore.mutate({ locationId: s.id, locationTenantId: e.target.value || null })}
+              className="px-2 py-1 rounded-md border border-slate-300 bg-white text-slate-700 max-w-[13rem]"
+            >
+              <option value="">— Not mapped —</option>
+              {kids.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+      {kids.length === 0 && (
+        <p className="mt-2 text-[11px] text-slate-400">
+          No locations found under this account. Add your locations first, then map each store here.
+        </p>
+      )}
     </div>
   );
 }
