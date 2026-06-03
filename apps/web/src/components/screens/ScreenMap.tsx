@@ -7,7 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
-import { MonitorPlay, AlertTriangle, ShieldCheck, Wifi, WifiOff, Clock, Search, X, Crosshair, ChevronRight, Building2 } from 'lucide-react';
+import { MonitorPlay, AlertTriangle, Wifi, WifiOff, Search, X, Crosshair, ChevronRight, Building2 } from 'lucide-react';
 
 /**
  * Sprint 8 command-center fleet map — upgraded to sell the product.
@@ -54,29 +54,39 @@ export type ScreenForMap = {
   lastCacheReport?: { emergency?: { count?: number; bytes?: number } } | null;
 };
 
-type StatusKey = 'EMERGENCY' | 'ONLINE_READY' | 'ONLINE_NO_CACHE' | 'STALE' | 'OFFLINE' | 'PENDING';
+// 4 glance-states for the map. The old taxonomy had 6 (three "Online · …"
+// micro-states + Offline-as-red), which overwhelmed the legend. The richer
+// emergency-cache / stale-sync detail is preserved in the per-pin popup via
+// onlineDetail() — just kept off the at-a-glance key.
+type StatusKey = 'EMERGENCY' | 'ONLINE' | 'OFFLINE' | 'PENDING';
 
 /** Severity order for cluster worst-case coloring: higher = worse. */
 const STATUS_SEVERITY: Record<StatusKey, number> = {
-  EMERGENCY: 5,
-  OFFLINE: 4,
-  STALE: 3,
-  ONLINE_NO_CACHE: 2,
+  EMERGENCY: 3,
+  OFFLINE: 2,
   PENDING: 1,
-  ONLINE_READY: 0,
+  ONLINE: 0,
 };
 
 function classifyScreen(s: ScreenForMap, emergencyActive: boolean): StatusKey {
   if (emergencyActive && s.status === 'ONLINE') return 'EMERGENCY';
   if (s.status === 'PENDING' || !s.status) return 'PENDING';
   if (s.status !== 'ONLINE') return 'OFFLINE';
-  if (s.lastPingAt) {
-    const ageMs = Date.now() - new Date(s.lastPingAt).getTime();
-    if (ageMs > 5 * 60_000) return 'STALE';
-  }
-  const emergencyCount = s.lastCacheReport?.emergency?.count || 0;
-  if (emergencyCount === 0) return 'ONLINE_NO_CACHE';
-  return 'ONLINE_READY';
+  return 'ONLINE';
+}
+
+/** Richer online sub-state — shown ONLY in the per-pin popup, never the map
+ *  key. Preserves the life-safety "can this screen show a lockdown?" signal
+ *  (emergency-media cache) plus a stale-sync warning, without cluttering the
+ *  at-a-glance legend. Returns null for non-online screens. */
+function onlineDetail(s: ScreenForMap): { text: string; color: string } | null {
+  if (s.status !== 'ONLINE') return null;
+  if (s.lastPingAt && Date.now() - new Date(s.lastPingAt).getTime() > 5 * 60_000)
+    return { text: 'Stale sync · last seen >5m ago', color: '#f97316' };
+  const cached = (s.lastCacheReport?.emergency?.count || 0) > 0;
+  return cached
+    ? { text: 'Emergency media cached', color: '#10b981' }
+    : { text: 'No emergency cache yet', color: '#f59e0b' };
 }
 
 // ── Store rollup ────────────────────────────────────────────────────────────
@@ -140,7 +150,7 @@ function deriveStores(located: ScreenForMap[], emergencyActive: boolean): Store[
   for (const [key, devices] of groups) {
     const lat = devices.reduce((a, s) => a + (s.latitude as number), 0) / devices.length;
     const lng = devices.reduce((a, s) => a + (s.longitude as number), 0) / devices.length;
-    let worst: StatusKey = 'ONLINE_READY';
+    let worst: StatusKey = 'ONLINE';
     let sev = -1;
     for (const d of devices) {
       const st = classifyScreen(d, emergencyActive);
@@ -171,19 +181,18 @@ function deriveStores(located: ScreenForMap[], emergencyActive: boolean): Store[
 // Inline SVG paths — same as Sprint 8 (verbatim lucide-react paths).
 const STATUS_ICON_SVG: Record<StatusKey, string> = {
   EMERGENCY: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
-  ONLINE_READY: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
-  ONLINE_NO_CACHE: '<path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/>',
-  STALE: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  ONLINE: '<path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/>',
   OFFLINE: '<path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.177-2.643"/><path d="M22 8.82a15 15 0 0 0-11.288-3.764"/><path d="m2 2 20 20"/>',
   PENDING: '<path d="M15.033 9.44a.647.647 0 0 1 0 1.12l-4.065 2.352a.645.645 0 0 1-.968-.56V7.648a.645.645 0 0 1 .967-.56z"/><path d="M12 17v4"/><path d="M8 21h8"/><rect x="2" y="3" width="20" height="14" rx="2"/>',
 };
 
+// 4 glance-states. Emergency OWNS red (so an outage can't be mistaken for a
+// lockdown); Offline is a neutral slate, Unpaired a lighter grey. Each keeps a
+// distinct Lucide shape for WCAG 1.4.1 (color is never the only signal).
 const STATUS_META: Record<StatusKey, { color: string; label: string; icon: typeof MonitorPlay }> = {
-  EMERGENCY: { color: '#dc2626', label: 'EMERGENCY ACTIVE', icon: AlertTriangle },
-  ONLINE_READY: { color: '#10b981', label: 'Online · cache ready', icon: ShieldCheck },
-  ONLINE_NO_CACHE: { color: '#f59e0b', label: 'Online · NO emergency cache', icon: Wifi },
-  STALE: { color: '#f97316', label: 'Online · stale sync (>5m)', icon: Clock },
-  OFFLINE: { color: '#ef4444', label: 'Offline', icon: WifiOff },
+  EMERGENCY: { color: '#dc2626', label: 'Emergency', icon: AlertTriangle },
+  ONLINE: { color: '#10b981', label: 'Online', icon: Wifi },
+  OFFLINE: { color: '#64748b', label: 'Offline', icon: WifiOff },
   PENDING: { color: '#94a3b8', label: 'Unpaired', icon: MonitorPlay },
 };
 
@@ -355,7 +364,7 @@ function MarkerClusterLayer({
         const markers: L.Marker[] = cluster.getAllChildMarkers();
         // Find the worst status in this cluster using the WeakMap tag.
         let worstSeverity = -1;
-        let worstStatus: StatusKey = 'ONLINE_READY';
+        let worstStatus: StatusKey = 'ONLINE';
         for (const m of markers) {
           const s = markerStatusMap.get(m);
           if (s !== undefined && STATUS_SEVERITY[s] > worstSeverity) {
@@ -419,12 +428,18 @@ function MarkerClusterLayer({
       const addrLine = s.address
         ? `<div style="font-size:11px;color:#64748b;margin-bottom:4px;">${s.address}</div>`
         : '';
+      // Emergency-readiness detail lives HERE (the pin popup), not the map key —
+      // so the glance legend stays clean but the life-safety signal is one click away.
+      const detail = onlineDetail(s);
+      const detailLine = detail
+        ? `<div style="font-size:10px;font-weight:600;color:${detail.color};margin-bottom:6px;">${detail.text}</div>`
+        : '';
 
       const popupHtml = `
         <div style="font-size:12px;min-width:180px;">
           <div style="font-weight:700;color:#1e293b;margin-bottom:4px;">${s.name}</div>
           <div style="font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:10px;color:${meta.color};margin-bottom:6px;">${meta.label}</div>
-          ${addrLine}${geoSourceBadge}${pingLine}
+          ${detailLine}${addrLine}${geoSourceBadge}${pingLine}
         </div>`;
 
       marker.bindPopup(popupHtml, { maxWidth: 240 });
@@ -488,11 +503,11 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
   // Stats for the command-center strip.
   const stats = useMemo(() => {
     const counts: Record<StatusKey, number> = {
-      EMERGENCY: 0, ONLINE_READY: 0, ONLINE_NO_CACHE: 0, STALE: 0, OFFLINE: 0, PENDING: 0,
+      EMERGENCY: 0, ONLINE: 0, OFFLINE: 0, PENDING: 0,
     };
     for (const s of screens) counts[classifyScreen(s, emergencyActive)]++;
     const total = screens.length;
-    const online = counts.ONLINE_READY + counts.ONLINE_NO_CACHE + counts.STALE;
+    const online = counts.ONLINE;
     const offline = counts.OFFLINE;
     const emergency = counts.EMERGENCY;
     return { counts, total, online, offline, emergency };
@@ -579,7 +594,7 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
 
       {/* ── Mobile legend (above map) ── */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs sm:hidden">
-        {(Object.keys(STATUS_META) as StatusKey[]).map(k => {
+        {(Object.keys(STATUS_META) as StatusKey[]).filter(k => k === 'ONLINE' || k === 'OFFLINE' || counts[k] > 0).map(k => {
           const Icon = STATUS_META[k].icon;
           return (
             <div key={k} className="flex items-center gap-1.5">
@@ -666,7 +681,7 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
 
       {/* ── Desktop legend (below map) ── */}
       <div className="hidden sm:flex flex-wrap items-center gap-3 text-xs">
-        {(Object.keys(STATUS_META) as StatusKey[]).map(k => {
+        {(Object.keys(STATUS_META) as StatusKey[]).filter(k => k === 'ONLINE' || k === 'OFFLINE' || counts[k] > 0).map(k => {
           const Icon = STATUS_META[k].icon;
           return (
             <div key={k} className="flex items-center gap-1.5">
@@ -792,13 +807,10 @@ function StatTile({ label, value, tone, sub }: { label: string; value: number; t
 /** Short, human status word for a device sub-row. */
 function deviceStatusWord(st: StatusKey): string {
   switch (st) {
-    case 'ONLINE_READY':
-    case 'ONLINE_NO_CACHE':
+    case 'ONLINE':
       return 'online';
     case 'OFFLINE':
       return 'offline';
-    case 'STALE':
-      return 'stale';
     case 'EMERGENCY':
       return 'alert';
     case 'PENDING':
