@@ -4,7 +4,9 @@ import { useAppStore } from '@/lib/store';
 import { RoleGate } from '../RoleGate';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
 import { ShieldAlert, LogOut, Menu, UserCog } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useRouter, useParams } from 'next/navigation';
+import { useTenantStatus } from '@/hooks/use-api';
 import { useState, useEffect } from 'react';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { HelpDrawer } from '../help/HelpDrawer';
@@ -21,6 +23,18 @@ export function TopToolbar() {
   // dropdown label reads "Super Admin" / "Admin" / etc. instead of
   // raw "DISTRICT_ADMIN" / "SCHOOL_ADMIN".
   const topToolbarTenantCopy = useTenantCopy();
+  const params = useParams<{ schoolId?: string }>();
+  const schoolId = params?.schoolId || '';
+  // Mirror the Sidebar's gate: only ARM the trigger once the tenant has
+  // wired at least one emergency playlist, otherwise a trigger would push
+  // empty content to every screen. No content → a "set up alerts" nudge.
+  const { data: tenantInfo } = useTenantStatus();
+  const tenantInfoAny = tenantInfo as any;
+  const hasEmergencyContent = !!(
+    tenantInfoAny?.panicLockdownPlaylistId ||
+    tenantInfoAny?.panicWeatherPlaylistId ||
+    tenantInfoAny?.panicEvacuatePlaylistId
+  );
   const logout = useAppStore((state) => state.logout);
   const toggleMobileSidebar = useAppStore((state) => state.toggleMobileSidebar);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -68,17 +82,44 @@ export function TopToolbar() {
         <div className="flex items-center gap-3">
           <SchoolSwitcher />
           <NotificationsBell />
-          {/* Emergency button lives in the Sidebar now (design spec update).
-              Active-state indicator stays here as a small chip so the
-              emergency status is visible even when the sidebar is
-              collapsed on mobile. */}
+          {/* Emergency control — TOP-RIGHT on MOBILE. Operator 2026-06-03:
+              "that alert button at the bottom is really the emergency trigger;
+              put it top-right and clear up space at the bottom." On desktop the
+              Sidebar already carries the emergency control, so this is md:hidden
+              to avoid a duplicate. Three states mirror the Sidebar exactly:
+                • active   → pulsing "Emergency Active" status
+                • armed    → red trigger button → opens EmergencyTriggerModal
+                            (the same typed-confirm modal the Sidebar uses)
+                • no setup → "set up alerts" nudge so we never arm a trigger
+                            that would broadcast empty content. */}
           <RoleGate allowedRoles={['admin']}>
-            {isEmergencyActive && (
-              <div className="px-3 py-1.5 bg-red-50 text-red-600 text-[11px] font-bold rounded-lg flex items-center gap-1.5 animate-pulse">
-                <ShieldAlert className="w-3.5 h-3.5" />
-                Emergency Active
-              </div>
-            )}
+            <div className="md:hidden">
+              {isEmergencyActive ? (
+                <span className="inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl bg-red-600 text-white text-xs font-bold animate-pulse">
+                  <ShieldAlert className="w-4 h-4" aria-hidden />
+                  <span className="hidden sm:inline">Emergency Active</span>
+                </span>
+              ) : hasEmergencyContent ? (
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(true)}
+                  aria-label="Trigger emergency"
+                  className="inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
+                >
+                  <ShieldAlert className="w-4 h-4" aria-hidden />
+                  <span className="hidden sm:inline">Emergency</span>
+                </button>
+              ) : (
+                <Link
+                  href={`/${schoolId}/settings/emergency`}
+                  aria-label="Set up emergency alerts"
+                  title="Set up emergency alerts so the trigger is safe to use"
+                  className="inline-flex items-center justify-center w-11 h-11 rounded-xl text-rose-500 hover:bg-rose-50 transition-colors"
+                >
+                  <ShieldAlert className="w-5 h-5" aria-hidden />
+                </Link>
+              )}
+            </div>
           </RoleGate>
 
           {/* In-app help drawer */}

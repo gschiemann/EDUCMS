@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Home, FolderOpen, ListMusic, MonitorPlay, Siren,
+  Home, FolderOpen, ListMusic, MonitorPlay,
   LayoutGrid, Trophy, LayoutTemplate, Settings, ClipboardCheck, FileClock, User, X,
   UtensilsCrossed,
 } from 'lucide-react';
@@ -18,7 +18,7 @@ import { useTenantCopy } from '@/hooks/use-tenant-copy';
  * narrower than the `md` Tailwind breakpoint (768px). Replaces the
  * desktop sidebar on phones.
  *
- * Five primary tabs (Home, Assets, Playlists, Screens, Alerts) plus a
+ * Four primary tabs (Home, Assets, Playlists, Screens) plus a
  * "More" tab that opens a sheet for everything else the desktop
  * sidebar reaches — Sports, Templates, Reviews, Audit Log, Settings,
  * Account. Without "More" those sections were UNREACHABLE on a phone:
@@ -27,10 +27,12 @@ import { useTenantCopy } from '@/hooks/use-tenant-copy';
  * game-day console at all. The tab bar can only hold ~6 items, so the
  * overflow sheet is the scalable fix.
  *
- * The "Alerts" tab is the safety surface — an admin hits emergency
- * triggers from there. Highlighted so it reads as the always-available
- * safety control (OptiSigns reviewers explicitly ask for emergency
- * control on mobile; no competitor signage CMS ships it).
+ * Emergency does NOT live in the bottom bar — operator 2026-06-03:
+ * "that alert button at the bottom is really the emergency trigger; put
+ * it top-right and clear up space at the bottom." Emergency now sits in
+ * the top-right of the header (TopToolbar, mobile) — the always-available
+ * safety control, off the thumb-reach nav so it can't be tapped by
+ * accident while navigating.
  */
 export function MobileTabBar() {
   const pathname = usePathname() || '';
@@ -89,7 +91,6 @@ export function MobileTabBar() {
   // Routes prefixed with the schoolId since most tenant-scoped pages
   // live under /[schoolId]/...
   const base = schoolId ? `/${schoolId}` : '';
-  const isViewer = user?.role === 'RESTRICTED_VIEWER';
   const isAdmin =
     user?.role === 'SUPER_ADMIN' ||
     user?.role === 'DISTRICT_ADMIN' ||
@@ -116,11 +117,7 @@ export function MobileTabBar() {
     { key: 'assets',    label: 'Assets',    icon: FolderOpen,  href: `${base}/assets` },
     { key: 'playlists', label: 'Playlists', icon: ListMusic,   href: `${base}/playlists` },
     { key: 'screens',   label: 'Screens',  icon: MonitorPlay, href: `${base}/screens` },
-    // Alerts is the always-available safety surface. The /panic page
-    // enforces RBAC itself, but viewers get no trigger UI so the tab
-    // is dropped for them entirely.
-    { key: 'alerts',    label: 'Alerts',   icon: Siren,       href: `/panic${schoolId ? `?schoolId=${schoolId}` : ''}`, danger: true },
-  ].filter((t) => !(isViewer && t.key === 'alerts'));
+  ];
 
   // The "More" sheet — everything the desktop sidebar reaches that is
   // not a primary tab. RBAC-filtered; Sports follows the desktop's

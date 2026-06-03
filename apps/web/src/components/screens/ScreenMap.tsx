@@ -273,6 +273,46 @@ function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number
 }
 
 /**
+ * InvalidateSizeOnShow — fixes the classic Leaflet "blank / grey map" that
+ * appears when the map initializes in a container whose size isn't settled:
+ * below the fold on mobile, inside an `h-[60dvh]` box before the dynamic-
+ * viewport unit resolves, or in a grid still laying out. Leaflet measures 0×0
+ * at init and never recovers on its own. We re-measure on a few short delays
+ * after mount, whenever the container resizes, and the first time it scrolls
+ * into view — so the fleet map paints on phones (operator 2026-06-03: "I don't
+ * see the fleet map on the mobile app"). A no-op on desktop, where the map
+ * already measures correctly. Dashboard-only surface → ResizeObserver /
+ * IntersectionObserver are safe (no Taurus/Chromium-83 concern).
+ */
+function InvalidateSizeOnShow() {
+  const map = useMap();
+  useEffect(() => {
+    const fix = () => map.invalidateSize();
+    const timers = [50, 250, 600, 1200].map((ms) => setTimeout(fix, ms));
+    const container = map.getContainer();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fix) : null;
+    ro?.observe(container);
+    const io =
+      typeof IntersectionObserver !== 'undefined'
+        ? new IntersectionObserver((entries) => {
+            if (entries.some((e) => e.isIntersecting)) fix();
+          })
+        : null;
+    io?.observe(container);
+    window.addEventListener('resize', fix);
+    window.addEventListener('orientationchange', fix);
+    return () => {
+      timers.forEach(clearTimeout);
+      ro?.disconnect();
+      io?.disconnect();
+      window.removeEventListener('resize', fix);
+      window.removeEventListener('orientationchange', fix);
+    };
+  }, [map]);
+  return null;
+}
+
+/**
  * MarkerClusterLayer — raw leaflet.markercluster via useMap().
  *
  * Why raw plugin instead of a wrapper package: react-leaflet v5 broke
@@ -613,6 +653,7 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
               // CARTO Voyager + Dark Matter both serve retina tiles at {r}.
               detectRetina
             />
+            <InvalidateSizeOnShow />
             <FitBounds points={points} />
             <FitAllControl points={points} />
             <MarkerClusterLayer

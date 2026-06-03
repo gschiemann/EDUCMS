@@ -35,7 +35,8 @@ import {
   CheckCircle2, AlertTriangle, Activity, ArrowRight, ChevronRight,
   Clock, FolderOpen, Sparkles, Hand, Trophy,
 } from 'lucide-react';
-import { useScreens, usePlaylists, useSchedules, useAssets, useSubmissions, useTenantStatus } from '@/hooks/use-api';
+import { useScreens, usePlaylists, useSchedules, useAssets, useSubmissions, useTenantStatus, useFleet } from '@/hooks/use-api';
+import { FleetRollup } from '@/components/screens/FleetRollup';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useAppStore } from '@/lib/store';
 import { firstName as userFirstName } from '@/lib/user-display';
@@ -75,6 +76,14 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
     isContributor ? { mine: true } : { status: 'PENDING' as const }
   );
   const { data: tenant } = useTenantStatus();
+
+  // HQ fleet command center — Corporate sees every location's screens on one
+  // map (same FleetRollup component + /screens/fleet data as desktop). Admin-
+  // gated to match the endpoint's RBAC; a leaf store gets nothing extra.
+  // Operator 2026-06-03: "I don't see the fleet map on the mobile app."
+  const canFleet = role === 'SUPER_ADMIN' || role === 'DISTRICT_ADMIN';
+  const { data: fleet } = useFleet({ enabled: canFleet });
+  const isHQ = (fleet?.locations?.length ?? 0) > 1;
 
   const totalScreens = (screens || []).length;
   const onlineScreens = (screens || []).filter((s: any) => s.status === 'ONLINE').length;
@@ -201,6 +210,10 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
           />
         )}
       </div>
+
+      {/* HQ fleet command center (Corporate) — full roll-up + map, same as
+          desktop. Renders only for a parent tenant with child locations. */}
+      {isHQ && fleet && <FleetRollup fleet={fleet} />}
 
       {/* Live status — 1-line metrics */}
       <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
