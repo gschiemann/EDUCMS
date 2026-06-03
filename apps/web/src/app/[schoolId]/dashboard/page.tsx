@@ -29,7 +29,7 @@ import {
 import { useRecentActivity } from '@/hooks/use-dashboard-data';
 import {
   useScreens, useScreenGroups, usePlaylists, useAssets, useSchedules,
-  useTenantStatus, useApproveAsset, useSubmissions, useTenantBranding,
+  useTenantStatus, useApproveAsset, useSubmissions, useTenantBranding, useFleet,
   type SubmissionRow,
 } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
@@ -37,6 +37,7 @@ import { useUIStore } from '@/store/ui-store';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { firstName as userFirstName } from '@/lib/user-display';
 import { MobileDashboard } from '@/components/dashboard/MobileDashboard';
+import { FleetRollup } from '@/components/screens/FleetRollup';
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
@@ -45,6 +46,13 @@ import { transformedImageUrl } from '@/lib/asset-image';
 export default function DashboardPage() {
   const isMobile = useIsMobile();
   const params = useParams<{ schoolId?: string }>();
+  // HQ fleet command center (Corporate dashboard). Admin-gated; a leaf tenant
+  // gets nothing extra. Declared before any early return to satisfy rules-of-hooks.
+  const fleetRole = useUIStore((s) => s.user?.role);
+  const canFleet = fleetRole === 'SUPER_ADMIN' || fleetRole === 'DISTRICT_ADMIN';
+  const fleetRollupQuery = useFleet({ enabled: canFleet });
+  const fleetRollup = fleetRollupQuery.data;
+  const isHQ = (fleetRollup?.locations?.length ?? 0) > 1;
   const schoolId = params?.schoolId || '';
 
   // All hooks below run on EVERY render regardless of viewport (Rules
@@ -447,6 +455,11 @@ export default function DashboardPage() {
           </button>
         </div>
       )}
+
+      {/* HQ fleet command center — every child location's screens on one map +
+          per-store list + search/filter (Corporate dashboard). Renders only for
+          a parent with child locations; clicking a store switches into it. */}
+      {isHQ && fleetRollup && <FleetRollup fleet={fleetRollup} />}
 
       {/* ─── Status strip — single line, no redundant CTA ──────────
           The TopToolbar already carries the Emergency button in the top-

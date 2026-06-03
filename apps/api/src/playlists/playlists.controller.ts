@@ -274,7 +274,33 @@ export class PlaylistsController {
     // instead of waiting for the next 5-10s poll — same pattern as
     // schedule create.
     this.notifySync(req.user.tenantId);
-    return { count: result.count, active: !!body.active };
+
+    // Phase 2c — cascade to fleet copies. If this playlist was published to
+    // locations, each child copy (Playlist.sourcePlaylistId === id) has its OWN
+    // schedules in the child tenant, so turning the source off/on here must flip
+    // those too — otherwise the copies keep playing. Scoped to DIRECT children
+    // of this tenant (parent→child authority). Non-fatal: a cascade failure
+    // never blocks the primary toggle.
+    let cascadedLocations = 0;
+    let cascadedSchedules = 0;
+    try {
+      const copies = await this.prisma.client.playlist.findMany({
+        where: { sourcePlaylistId: id, tenant: { parentId: req.user.tenantId } },
+        select: { id: true, tenantId: true },
+      });
+      if (copies.length) {
+        const casc = await this.prisma.client.schedule.updateMany({
+          where: { playlistId: { in: copies.map((c) => c.id) } },
+          data: { isActive: !!body.active },
+        });
+        cascadedSchedules = casc.count;
+        const tenantIds = Array.from(new Set(copies.map((c) => c.tenantId)));
+        cascadedLocations = tenantIds.length;
+        for (const tid of tenantIds) this.notifySync(tid);
+      }
+    } catch { /* cascade is best-effort; primary toggle already succeeded */ }
+
+    return { count: result.count, active: !!body.active, cascadedLocations, cascadedSchedules };
   }
 
   @Delete(':id')

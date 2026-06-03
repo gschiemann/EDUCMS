@@ -1,11 +1,10 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle, Building2 } from 'lucide-react';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile, useFleet, useAccessibleTenants } from '@/hooks/use-api';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
-import { FleetRollup } from '@/components/screens/FleetRollup';
 import { ReturnToFleetBanner } from '@/components/screens/ReturnToFleetBanner';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
 import { FloorPlansView } from '@/components/screens/FloorPlansView';
@@ -1376,26 +1375,11 @@ export default function ScreensPage() {
   const { data: allScreens, refetch: refetchScreens } = useScreens();
   const userRole = useUIStore((s) => s.user?.role);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
-  // HQ fleet roll-up — a parent tenant ("Corporate") with child locations gets
-  // a top-level view of EVERY store's screens (GET /screens/fleet, gated to
-  // SUPER_ADMIN / DISTRICT_ADMIN server-side, so only enable for those roles).
-  // A leaf tenant returns just itself (locations.length === 1) → no roll-up.
-  const canFleet = userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN';
-  const fleetQuery = useFleet({ enabled: canFleet });
-  const fleet = fleetQuery.data;
-  const isHQ = (fleet?.locations?.length ?? 0) > 1;
   // Sprint 8 — fleet map view. Toggle persists in URL via search param so a
-  // bookmarked map link still opens the map.
-  const [viewMode, setViewMode] = useState<'list' | 'map' | 'floor' | 'fleet'>('list');
-  // HQ tenants land on the roll-up by default; once the operator manually
-  // picks another view we never override their choice.
-  const fleetDefaultedRef = useRef(false);
-  useEffect(() => {
-    if (isHQ && !fleetDefaultedRef.current) {
-      fleetDefaultedRef.current = true;
-      setViewMode('fleet');
-    }
-  }, [isHQ]);
+  // bookmarked map link still opens the map. (The HQ cross-location roll-up
+  // now lives on the Corporate dashboard, not here — keeps Screens to a single
+  // map of this tenant's own screens.)
+  const [viewMode, setViewMode] = useState<'list' | 'map' | 'floor'>('list');
   const params = useParams<{ schoolId: string }>();
   const router = useRouter();
   const schoolId = params?.schoolId ?? '';
@@ -1643,12 +1627,6 @@ export default function ScreensPage() {
               floor-plans/[id] pin-placement editor stays a separate
               route because it's a focused full-screen workflow. */}
           <div className="flex w-full sm:inline-flex sm:w-auto bg-slate-100 rounded-lg p-0.5 border border-slate-200">
-            {isHQ && (
-              <button onClick={() => setViewMode('fleet')}
-                className={`flex-1 sm:flex-none justify-center px-3 py-2 sm:py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'fleet' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                <Building2 className="w-3.5 h-3.5" /> Fleet
-              </button>
-            )}
             <button onClick={() => setViewMode('list')}
               className={`flex-1 sm:flex-none justify-center px-3 py-2 sm:py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               <ListIcon className="w-3.5 h-3.5" /> List
@@ -1678,7 +1656,7 @@ export default function ScreensPage() {
               floor plan", which FloorPlansView renders inline so the
               operator isn't reading a "Pair Screen" button while
               looking at building blueprints. */}
-          {viewMode !== 'floor' && viewMode !== 'fleet' && (
+          {viewMode !== 'floor' && (
             <>
               <button onClick={() => { setShowPairModal(true); setPairGroupId(''); setPairCode(''); setPairName(''); setPairError(''); }}
                 disabled={isViewer}
@@ -1707,17 +1685,12 @@ export default function ScreensPage() {
           For SUPER_ADMIN viewing this page while supervising a tenant,
           the same strip shows that tenant's counts (the SUPER cross-tenant
           rollup lives on /super, not here). */}
-      {/* Child location → one-click back up to the parent's fleet view.
-          Renders null for top-level tenants / when the user can't reach
+      {/* Child location → one-click back up to the parent's dashboard fleet
+          view. Renders null for top-level tenants / when the user can't reach
           a parent, so it's safe to mount unconditionally. */}
       <ReturnToFleetBanner />
 
-      {/* HQ roll-up — every child location's screens on one map + list.
-          Only when the parent toggles to (or defaults into) Fleet view;
-          clicking a store switches into it. */}
-      {viewMode === 'fleet' && fleet && <FleetRollup fleet={fleet} />}
-
-      {viewMode !== 'fleet' && <FleetSummaryStrip screens={flatScreens} />}
+      <FleetSummaryStrip screens={flatScreens} />
 
       {/* Sprint 8 — fleet map view (only when toggled on) */}
       {viewMode === 'map' && (
@@ -1767,7 +1740,7 @@ export default function ScreensPage() {
           strip + Map block above ARE still visible on the Map tab
           (existing additive behavior — operators reading the map often
           want the list nearby for a status cross-check). */}
-      {viewMode !== 'floor' && viewMode !== 'fleet' && (
+      {viewMode !== 'floor' && (
       <>
       {/* How it works banner */}
       <div className="bg-gradient-to-br from-emerald-50 to-teal-50/50 rounded-3xl border-transparent p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">

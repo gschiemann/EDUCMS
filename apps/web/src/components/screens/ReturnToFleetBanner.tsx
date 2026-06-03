@@ -33,7 +33,7 @@ export function ReturnToFleetBanner() {
 
   return (
     <button
-      onClick={() => switchToTenant({ id: parent.id, slug: parent.slug }, `/${parent.slug}/screens`)}
+      onClick={() => switchToTenant({ id: parent.id, slug: parent.slug }, `/${parent.slug}/dashboard`)}
       disabled={switchingId === parent.id}
       className="w-full flex items-center gap-2 px-4 py-2.5 rounded-2xl border text-sm font-bold transition-colors disabled:opacity-60"
       style={{
