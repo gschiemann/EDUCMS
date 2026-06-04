@@ -1,0 +1,1481 @@
+<!doctype html>
+<html lang="en" data-theme="bar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Ember · Bar Kiosk</title>
+<!-- VenueOS intake 2026-06-04 — self-contained kiosk (engine + bar) inlined for the EXTERNAL_HTML host. Source: Claude design kiosk batch-16 (kiosk-new-3). -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* ===== kiosk-core.css ===== */
+/* ═══════════════════════════════════════════════════════════════════════════
+   VenueOS · KIOSK CORE  —  shared design system for all touch templates
+   ───────────────────────────────────────────────────────────────────────────
+   • Every measurement scales from a single unit, --u (= 1vmin), so the same
+     markup is pixel-balanced on a 1920×1080 wall panel AND a 1080×1920 totem.
+   • Color + type are fully tokenized. A vertical theme only overrides the
+     variables in the ":root[data-theme=...]" blocks at the bottom — never the
+     component rules. This is what makes the three verticals one product.
+   • Components here are vertical-agnostic. Vertical-specific styling lives in
+     each vertical's styles.css.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* — scale unit: the one knob that makes layouts orientation-proof — */
+  --u: 1vmin;
+
+  /* — spacing scale (multiples of --u) — */
+  --s-1: calc(var(--u) * 0.5);
+  --s-2: calc(var(--u) * 1);
+  --s-3: calc(var(--u) * 1.6);
+  --s-4: calc(var(--u) * 2.4);
+  --s-5: calc(var(--u) * 3.4);
+  --s-6: calc(var(--u) * 4.8);
+  --s-7: calc(var(--u) * 6.6);
+  --s-8: calc(var(--u) * 9);
+
+  /* — type scale — */
+  --t-mega:   calc(var(--u) * 11);
+  --t-xl:     calc(var(--u) * 7.2);
+  --t-h1:     calc(var(--u) * 5.2);
+  --t-h2:     calc(var(--u) * 3.7);
+  --t-h3:     calc(var(--u) * 2.9);
+  --t-lg:     calc(var(--u) * 2.4);
+  --t-body:   calc(var(--u) * 2.0);
+  --t-sm:     calc(var(--u) * 1.7);
+  --t-xs:     calc(var(--u) * 1.42);
+
+  /* — radii — */
+  --r-sm: calc(var(--u) * 1.2);
+  --r-md: calc(var(--u) * 2);
+  --r-lg: calc(var(--u) * 3);
+  --r-xl: calc(var(--u) * 4.4);
+  --r-pill: 999px;
+
+  /* — motion — */
+  --ease: cubic-bezier(.22,.61,.36,1);
+  --ease-out: cubic-bezier(.16,1,.3,1);
+  --ease-in: cubic-bezier(.4,0,1,1);
+  --spring: cubic-bezier(.34,1.56,.64,1);
+  --dur: 460ms;
+  --dur-fast: 240ms;
+
+  /* — elevation (soft, layered, never harsh) — */
+  --sh-1: 0 calc(var(--u)*0.4) calc(var(--u)*1.4) rgba(8,12,22,.10);
+  --sh-2: 0 calc(var(--u)*1.2) calc(var(--u)*3.2) rgba(8,12,22,.16);
+  --sh-3: 0 calc(var(--u)*2.4) calc(var(--u)*7) rgba(8,12,22,.26);
+  --sh-pop: 0 calc(var(--u)*3.4) calc(var(--u)*10) rgba(8,12,22,.40);
+
+  /* — fallback theme (overridden per vertical) — */
+  --bg: #0e1116;
+  --bg-2: #161a22;
+  --surface: #1c212b;
+  --surface-2: #232a36;
+  --line: rgba(255,255,255,.10);
+  --line-strong: rgba(255,255,255,.18);
+  --text: #f4f6fb;
+  --text-dim: #9aa6b8;
+  --text-mute: #6b7689;
+  --accent: #4f7cff;
+  --accent-2: #8a6bff;
+  --on-accent: #ffffff;
+  --good: #2fc77e;
+  --warn: #f5a623;
+  --bad: #ef4d6b;
+
+  --font-display: "Bricolage Grotesque", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--t-body);
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+/* ═══ STAGE & SCREEN SYSTEM ════════════════════════════════════════════════ */
+.kiosk {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* a screen fills the stage; the router stacks them and animates between.
+   Visibility is driven by the .is-active class (NOT by animations) so the
+   final state is always correct even when the tab is backgrounded and
+   rAF/keyframes are throttled. Motion is a transition enhancement only. */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(2.5vmin);
+  pointer-events: none;
+  will-change: transform;
+  transition: transform var(--dur) var(--ease-out);
+}
+.screen.is-active { opacity: 1; transform: none; pointer-events: auto; }
+.screen.is-leaving { opacity: 0; }
+
+/* a scroll region inside a screen */
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.scroll::-webkit-scrollbar { width: calc(var(--u)*1.2); }
+.scroll::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 99px; }
+
+/* ═══ TYPOGRAPHY ═══════════════════════════════════════════════════════════ */
+.display { font-family: var(--font-display); font-weight: 800; line-height: .98; letter-spacing: -.02em; }
+.t-mega { font-family: var(--font-display); font-weight: 800; font-size: var(--t-mega); line-height: .92; letter-spacing: -.03em; }
+.t-xl   { font-family: var(--font-display); font-weight: 800; font-size: var(--t-xl); line-height: .98; letter-spacing: -.025em; }
+.t-h1   { font-family: var(--font-display); font-weight: 700; font-size: var(--t-h1); line-height: 1.02; letter-spacing: -.02em; }
+.t-h2   { font-family: var(--font-display); font-weight: 700; font-size: var(--t-h2); line-height: 1.05; letter-spacing: -.01em; }
+.t-h3   { font-family: var(--font-display); font-weight: 600; font-size: var(--t-h3); line-height: 1.1; }
+.t-lg   { font-size: var(--t-lg); line-height: 1.45; }
+.t-body { font-size: var(--t-body); }
+.t-sm   { font-size: var(--t-sm); }
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.dim { color: var(--text-dim); }
+.mute { color: var(--text-mute); }
+.balance { text-wrap: balance; }
+.pretty { text-wrap: pretty; }
+
+/* ═══ BUTTONS ══════════════════════════════════════════════════════════════ */
+.btn {
+  --pad-y: var(--s-3);
+  --pad-x: var(--s-5);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: var(--pad-y) var(--pad-x);
+  border: none;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: var(--t-lg);
+  font-weight: 700;
+  color: var(--text);
+  background: var(--surface-2);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast), box-shadow var(--dur-fast);
+  white-space: nowrap;
+}
+.btn:active { transform: scale(.955); }
+.btn--primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 calc(var(--u)*1) calc(var(--u)*3) color-mix(in srgb, var(--accent) 45%, transparent); }
+.btn--primary:active { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.btn--ghost { background: transparent; box-shadow: inset 0 0 0 calc(var(--u)*.28) var(--line-strong); }
+.btn--lg { --pad-y: var(--s-4); --pad-x: var(--s-6); font-size: calc(var(--t-lg)*1.12); }
+.btn--block { display: flex; width: 100%; }
+.btn .ic { width: 1.2em; height: 1.2em; }
+
+/* circular icon button (back, close, etc.) */
+.iconbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: calc(var(--u)*8); height: calc(var(--u)*8);
+  border: none; border-radius: var(--r-pill);
+  background: var(--surface); color: var(--text);
+  box-shadow: var(--sh-1); cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast);
+}
+.iconbtn:active { transform: scale(.9); background: var(--surface-2); }
+.iconbtn svg { width: 45%; height: 45%; }
+
+/* ═══ CHIPS / FILTERS ══════════════════════════════════════════════════════ */
+.chiprow { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.chip {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: var(--t-sm); font-weight: 600;
+  box-shadow: inset 0 0 0 calc(var(--u)*.22) var(--line);
+  cursor: pointer; white-space: nowrap;
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast), color var(--dur-fast), box-shadow var(--dur-fast);
+}
+.chip:active { transform: scale(.94); }
+.chip[aria-pressed="true"], .chip.is-on {
+  background: var(--accent); color: var(--on-accent);
+  box-shadow: none;
+}
+.chip .dot { width: .8em; height: .8em; border-radius: 50%; background: currentColor; }
+
+/* ═══ BADGES ═══════════════════════════════════════════════════════════════ */
+.badge {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  padding: calc(var(--u)*.8) var(--s-3);
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs); font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase;
+  background: var(--surface-2); color: var(--text-dim);
+}
+.badge .dot { width: .7em; height: .7em; border-radius: 50%; background: currentColor; }
+.badge--good { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.badge--warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.badge--bad  { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.badge--accent { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+
+/* ═══ CARDS ════════════════════════════════════════════════════════════════ */
+.card {
+  position: relative;
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast);
+  outline: 1px solid var(--line);
+  outline-offset: -1px;
+}
+.card:active { transform: scale(.975); box-shadow: var(--sh-2); }
+.card--static { cursor: default; }
+.card--static:active { transform: none; }
+
+/* ═══ IMAGE PLACEHOLDER ════════════════════════════════════════════════════
+   A refined, intentional placeholder. The dev swaps the background-image (or
+   drops an <img>/<video>) and removes [data-img]. The label chip self-hides
+   once a real asset is set via .has-media.                                    */
+.media {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 20% 10%, color-mix(in srgb,var(--accent) 32%, var(--surface-2)) 0%, transparent 55%),
+    radial-gradient(120% 90% at 90% 90%, color-mix(in srgb,var(--accent-2) 30%, var(--surface)) 0%, transparent 55%),
+    var(--surface-2);
+  background-size: cover; background-position: center;
+}
+.media::after {
+  content: "";
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size: calc(var(--u)*4) calc(var(--u)*4);
+  mask-image: linear-gradient(135deg, #000, transparent 70%);
+  opacity: .5;
+}
+.media.has-media { background-image: var(--src); }
+.media.has-media::after, .media.has-media .media__tag { display: none; }
+.media__tag {
+  position: absolute; left: var(--s-3); bottom: var(--s-3);
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  padding: calc(var(--u)*.7) var(--s-3);
+  border-radius: var(--r-sm);
+  background: rgba(8,10,16,.55);
+  backdrop-filter: blur(8px);
+  font-family: var(--font-mono); font-size: var(--t-xs);
+  letter-spacing: .08em; text-transform: uppercase; color: #fff;
+  z-index: 2;
+}
+.media__tag svg { width: 1.3em; height: 1.3em; opacity: .85; }
+.media__scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(0deg, rgba(6,8,14,.78) 0%, rgba(6,8,14,.05) 45%, transparent 70%);
+  z-index: 1;
+}
+
+/* ═══ HEADER BAR ═══════════════════════════════════════════════════════════ */
+.bar {
+  flex: none;
+  display: flex; align-items: center; gap: var(--s-4);
+  padding: var(--s-4) var(--s-6);
+  z-index: 5;
+}
+.bar__brand { display: flex; align-items: center; gap: var(--s-3); }
+.bar__logo {
+  width: calc(var(--u)*5.4); height: calc(var(--u)*5.4);
+  border-radius: var(--r-md);
+  background: var(--accent); color: var(--on-accent);
+  display: grid; place-items: center;
+  font-family: var(--font-display); font-weight: 800; font-size: var(--t-h3);
+  box-shadow: var(--sh-1);
+}
+.bar__spacer { flex: 1; }
+.bar__clock { font-family: var(--font-mono); font-size: var(--t-lg); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+/* breadcrumb */
+.crumbs { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; font-size: var(--t-sm); }
+.crumbs button { background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; padding: var(--s-1) 0; }
+.crumbs .sep { color: var(--text-mute); }
+.crumbs .now { color: var(--text); font-weight: 700; }
+
+/* ═══ BOTTOM ACTION BAR ════════════════════════════════════════════════════ */
+.actionbar {
+  flex: none;
+  display: flex; align-items: center; gap: var(--s-4);
+  padding: var(--s-4) var(--s-6);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(calc(var(--u)*2));
+  box-shadow: 0 calc(var(--u)*-1.2) calc(var(--u)*4) rgba(0,0,0,.25);
+  border-top: 1px solid var(--line);
+  z-index: 6;
+}
+
+/* ═══ SPEC LIST ════════════════════════════════════════════════════════════ */
+.specs { display: grid; gap: var(--s-3); }
+.spec {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+.spec__k { color: var(--text-dim); font-size: var(--t-body); }
+.spec__v { font-family: var(--font-display); font-weight: 700; font-size: var(--t-h3); text-align: right; white-space: nowrap; line-height: 1.05; }
+.spec__v small { display: block; font-family: var(--font-body); font-weight: 600; font-size: var(--t-xs); color: var(--text-dim); letter-spacing: .02em; }
+
+/* ═══ AMENITY / FEATURE TILE ═══════════════════════════════════════════════ */
+.feat {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--surface); border-radius: var(--r-md);
+  outline: 1px solid var(--line); outline-offset: -1px;
+}
+.feat__ic {
+  flex: none;
+  width: calc(var(--u)*6); height: calc(var(--u)*6);
+  border-radius: var(--r-sm);
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+.feat__ic svg { width: 55%; height: 55%; }
+.feat__t { font-weight: 700; font-size: var(--t-body); }
+.feat__d { color: var(--text-dim); font-size: var(--t-sm); }
+
+/* ═══ SHEET / MODAL ════════════════════════════════════════════════════════ */
+.scrim {
+  position: absolute; inset: 0; z-index: 20;
+  background: rgba(4,6,12,.62);
+  backdrop-filter: blur(calc(var(--u)*1.2));
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.scrim.is-open { opacity: 1; pointer-events: auto; }
+.sheet {
+  width: 100%; max-height: 86%;
+  background: var(--bg-2);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: var(--sh-pop);
+  transform: translateY(8%);
+  transition: transform var(--dur) var(--ease-out);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.scrim.is-open .sheet { transform: none; }
+.sheet__grip { width: calc(var(--u)*12); height: calc(var(--u)*.8); border-radius: 99px; background: var(--line-strong); margin: var(--s-3) auto 0; flex: none; }
+
+/* ═══ QUANTITY STEPPER ═════════════════════════════════════════════════════ */
+.stepper { display: inline-flex; align-items: center; gap: var(--s-3); background: var(--surface); border-radius: var(--r-pill); padding: calc(var(--u)*.7); }
+.stepper button {
+  width: calc(var(--u)*7); height: calc(var(--u)*7);
+  border: none; border-radius: 50%; background: var(--surface-2);
+  color: var(--text); font-size: var(--t-h3); font-weight: 700; cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast);
+}
+.stepper button:active { transform: scale(.88); }
+.stepper button.is-accent { background: var(--accent); color: var(--on-accent); }
+.stepper__n { min-width: calc(var(--u)*7); text-align: center; font-family: var(--font-display); font-weight: 700; font-size: var(--t-h3); font-variant-numeric: tabular-nums; }
+
+/* ═══ VIDEO REGION ═════════════════════════════════════════════════════════ */
+.video { position: relative; overflow: hidden; background: #05070c; }
+.video .media { position: absolute; inset: 0; }
+.video__play {
+  position: absolute; inset: 0; margin: auto;
+  width: calc(var(--u)*14); height: calc(var(--u)*14);
+  display: grid; place-items: center;
+  border: none; border-radius: 50%;
+  background: rgba(255,255,255,.16); backdrop-filter: blur(calc(var(--u)*1.4));
+  box-shadow: 0 0 0 calc(var(--u)*.6) rgba(255,255,255,.22), var(--sh-2);
+  color: #fff; cursor: pointer; z-index: 3;
+  transition: transform var(--dur-fast) var(--spring), opacity var(--dur);
+}
+.video__play:active { transform: scale(.9); }
+.video__play svg { width: 42%; height: 42%; margin-left: 6%; }
+.video.is-playing .video__play { opacity: 0; pointer-events: none; }
+.video__bar { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--u)*.8); background: rgba(255,255,255,.18); z-index: 4; }
+.video__bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+
+/* ═══ AUDIO GUIDE PLAYER ═══════════════════════════════════════════════════ */
+.audio {
+  display: flex; align-items: center; gap: var(--s-4);
+  padding: var(--s-4);
+  background: var(--surface); border-radius: var(--r-lg);
+  outline: 1px solid var(--line); outline-offset: -1px;
+}
+.audio__btn {
+  flex: none; width: calc(var(--u)*9); height: calc(var(--u)*9);
+  border: none; border-radius: 50%; background: var(--accent); color: var(--on-accent);
+  display: grid; place-items: center; cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.audio__btn:active { transform: scale(.9); }
+.audio__btn svg { width: 40%; height: 40%; }
+.wave { flex: 1; display: flex; align-items: center; gap: calc(var(--u)*.5); height: calc(var(--u)*8); }
+.wave i {
+  flex: 1; border-radius: 99px; background: var(--line-strong);
+  height: 30%; transform-origin: center;
+}
+.audio.is-playing .wave i { animation: waveBeat 1s ease-in-out infinite; background: var(--accent); }
+@keyframes waveBeat { 0%,100%{ transform: scaleY(.35) } 50%{ transform: scaleY(1) } }
+.audio__time { font-family: var(--font-mono); font-size: var(--t-sm); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+/* ═══ "YOU ARE HERE" WAYFINDING ════════════════════════════════════════════ */
+.here {
+  position: absolute; width: calc(var(--u)*4); height: calc(var(--u)*4);
+  transform: translate(-50%, -50%); z-index: 5;
+}
+.here::before {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 calc(var(--u)*.5) #fff, var(--sh-2);
+}
+.here::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: var(--accent); animation: pingPulse 1.8s var(--ease-out) infinite;
+}
+@keyframes pingPulse { 0%{ transform: scale(1); opacity: .6 } 100%{ transform: scale(3.4); opacity: 0 } }
+.here__label {
+  position: absolute; left: 50%; bottom: calc(100% + var(--u)*1.4); transform: translateX(-50%);
+  white-space: nowrap; padding: calc(var(--u)*.7) var(--s-3); border-radius: var(--r-sm);
+  background: var(--accent); color: var(--on-accent);
+  font-family: var(--font-mono); font-size: var(--t-xs); font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase; box-shadow: var(--sh-2);
+}
+.here__label::after { content:""; position:absolute; top:100%; left:50%; transform:translateX(-50%); border:calc(var(--u)*.9) solid transparent; border-top-color: var(--accent); }
+
+/* ═══ TAP RIPPLE ═══════════════════════════════════════════════════════════ */
+.ripple { position: absolute; border-radius: 50%; background: currentColor; opacity: .26; transform: scale(0); pointer-events: none; animation: rippleGo .6s var(--ease-out) forwards; }
+@keyframes rippleGo { to { transform: scale(1); opacity: 0; } }
+
+/* ═══ TOAST ════════════════════════════════════════════════════════════════ */
+.toast {
+  position: absolute; left: 50%; bottom: calc(var(--u)*6); transform: translate(-50%, 2vmin);
+  z-index: 60;
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-3) var(--s-5);
+  border-radius: var(--r-pill);
+  background: var(--text); color: var(--bg);
+  font-size: var(--t-body); font-weight: 700;
+  box-shadow: var(--sh-3);
+  opacity: 0; transition: opacity var(--dur) var(--ease), transform var(--dur) var(--spring);
+}
+.toast.is-on { opacity: 1; transform: translate(-50%, 0); }
+.toast .ic { width: 1.3em; height: 1.3em; }
+
+/* ═══ ATTRACT / IDLE SCREEN ════════════════════════════════════════════════ */
+.attract {
+  position: absolute; inset: 0; z-index: 40;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  background: var(--bg);
+  opacity: 0; pointer-events: none;
+  transition: opacity 600ms var(--ease);
+}
+.attract.is-on { opacity: 1; pointer-events: auto; }
+.attract__bg { position: absolute; inset: 0; }
+.attract__bg .media { position: absolute; inset: calc(var(--u)*-4); animation: kenburns 22s ease-in-out infinite alternate; }
+@keyframes kenburns { from{ transform: scale(1) translate(0,0) } to{ transform: scale(1.12) translate(-2%, -2%) } }
+.attract__body { position: relative; z-index: 2; padding: var(--s-8) var(--s-7); }
+.attract__cta {
+  display: inline-flex; align-items: center; gap: var(--s-3);
+  margin-top: var(--s-5); font-size: var(--t-h3); font-weight: 700;
+  animation: breathe 2.4s ease-in-out infinite;
+}
+.attract__cta .ring { width: calc(var(--u)*7); height: calc(var(--u)*7); border-radius: 50%; border: calc(var(--u)*.4) solid var(--accent); display: grid; place-items: center; }
+.attract__cta .ring svg { width: 50%; height: 50%; color: var(--accent); }
+@keyframes breathe { 0%,100%{ opacity:.7; transform: translateY(0) } 50%{ opacity:1; transform: translateY(calc(var(--u)*-.6)) } }
+
+/* ═══ UTILITY ══════════════════════════════════════════════════════════════ */
+.row { display: flex; align-items: center; }
+.col { display: flex; flex-direction: column; }
+.wrap { flex-wrap: wrap; }
+.center { align-items: center; justify-content: center; }
+.between { justify-content: space-between; }
+.gap-2 { gap: var(--s-2); } .gap-3 { gap: var(--s-3); } .gap-4 { gap: var(--s-4); } .gap-5 { gap: var(--s-5); } .gap-6 { gap: var(--s-6); }
+.grow { flex: 1; }
+.pad-6 { padding: var(--s-6); } .pad-7 { padding: var(--s-7); }
+.hidden { display: none !important; }
+.fade-up { animation: scrIn-up var(--dur) var(--ease-out) both; }
+.stagger > * { animation: scrIn-up var(--dur) var(--ease-out) both; }
+@keyframes scrIn-up { from { opacity: 0; transform: translateY(2.5vmin); } to { opacity: 1; transform: none; } }
+
+/* ═══ THEME: REAL ESTATE — architectural, premium, ink + brass ════════════ */
+:root[data-theme="realestate"] {
+  --bg: #11151c;
+  --bg-2: #161b24;
+  --surface: #1b2230;
+  --surface-2: #232c3d;
+  --line: rgba(214,225,245,.10);
+  --line-strong: rgba(214,225,245,.20);
+  --text: #f1f5fc;
+  --text-dim: #9fb0c9;
+  --text-mute: #6a7a93;
+  --accent: #c8a25c;       /* brass */
+  --accent-2: #6f93c9;     /* steel blue */
+  --on-accent: #14181f;
+  --good: #4bbf87;
+  --warn: #e0a13d;
+  --bad: #e06a72;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+}
+
+/* ═══ THEME: MUSEUM — editorial, curatorial, charcoal + amber ═════════════ */
+:root[data-theme="museum"] {
+  --bg: #0c0b0a;
+  --bg-2: #131110;
+  --surface: #1a1715;
+  --surface-2: #221e1b;
+  --line: rgba(245,235,220,.10);
+  --line-strong: rgba(245,235,220,.20);
+  --text: #f6efe4;
+  --text-dim: #b6a994;
+  --text-mute: #837664;
+  --accent: #d98a3c;       /* ochre/amber */
+  --accent-2: #b5483a;     /* terracotta */
+  --on-accent: #1a120a;
+  --good: #7fae6a;
+  --warn: #d9a13c;
+  --bad: #c0584b;
+  --font-display: "Newsreader", Georgia, serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+}
+
+/* ═══ THEME: FOOD — fresh, appetizing, cream + paprika ════════════════════ */
+:root[data-theme="food"] {
+  --bg: #fbf6ee;
+  --bg-2: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f4ece0;
+  --line: rgba(40,30,20,.10);
+  --line-strong: rgba(40,30,20,.18);
+  --text: #241a12;
+  --text-dim: #6c5d4e;
+  --text-mute: #9a8a78;
+  --accent: #e3502a;       /* paprika/tomato */
+  --accent-2: #f0a92a;     /* turmeric */
+  --on-accent: #ffffff;
+  --good: #2fa463;
+  --warn: #e08b2a;
+  --bad: #d23b3b;
+  --font-display: "Bricolage Grotesque", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --sh-1: 0 calc(var(--u)*0.5) calc(var(--u)*1.6) rgba(80,50,20,.08);
+  --sh-2: 0 calc(var(--u)*1.4) calc(var(--u)*3.6) rgba(80,50,20,.12);
+  --sh-3: 0 calc(var(--u)*2.6) calc(var(--u)*7) rgba(80,50,20,.18);
+}
+
+/* ═══ ORIENTATION REFLOW HOOKS ═════════════════════════════════════════════
+   Layout columns collapse to stacks in portrait. Verticals add their own
+   orientation rules in styles.css; these are the shared defaults.            */
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6); }
+.split--6040 { grid-template-columns: 6fr 4fr; }
+.split--4060 { grid-template-columns: 4fr 6fr; }
+@media (orientation: portrait) {
+  .split, .split--6040, .split--4060 { grid-template-columns: 1fr; }
+  .portrait-hide { display: none !important; }
+}
+@media (orientation: landscape) {
+  .landscape-hide { display: none !important; }
+}
+
+/* ═══ THEME: SCHOOL — collegiate, friendly, navy + gold (light) ═══════════ */
+:root[data-theme="school"] {
+  --bg: #f4f6fb;
+  --bg-2: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #eef1f8;
+  --line: rgba(20,30,60,.10);
+  --line-strong: rgba(20,30,60,.18);
+  --text: #15203a;
+  --text-dim: #586079;
+  --text-mute: #8a93ad;
+  --accent: #1e3a8a;       /* navy */
+  --accent-2: #d4a017;     /* gold */
+  --on-accent: #ffffff;
+  --good: #1f9d55;
+  --warn: #d4a017;
+  --bad: #d23b3b;
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --sh-1: 0 calc(var(--u)*0.5) calc(var(--u)*1.6) rgba(20,30,60,.07);
+  --sh-2: 0 calc(var(--u)*1.4) calc(var(--u)*3.6) rgba(20,30,60,.11);
+  --sh-3: 0 calc(var(--u)*2.6) calc(var(--u)*7) rgba(20,30,60,.16);
+}
+
+/* ═══ THEME: GYM — high-energy, dark + volt ═══════════════════════════════ */
+:root[data-theme="gym"] {
+  --bg: #0b0d10;
+  --bg-2: #121519;
+  --surface: #181c22;
+  --surface-2: #20252d;
+  --line: rgba(255,255,255,.09);
+  --line-strong: rgba(255,255,255,.18);
+  --text: #f3f6f8;
+  --text-dim: #9aa6b2;
+  --text-mute: #66707c;
+  --accent: #c6f135;       /* volt */
+  --accent-2: #18d3a6;     /* teal */
+  --on-accent: #0b0d10;
+  --good: #18d3a6;
+  --warn: #f5c542;
+  --bad: #ff5470;
+  --font-display: "Archivo", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+}
+
+/* ═══ THEME: OFFICE — clean, corporate, cool gray + indigo (light) ════════ */
+:root[data-theme="office"] {
+  --bg: #f6f7f9;
+  --bg-2: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #eef0f4;
+  --line: rgba(20,25,40,.09);
+  --line-strong: rgba(20,25,40,.16);
+  --text: #161a22;
+  --text-dim: #565d6b;
+  --text-mute: #8b93a1;
+  --accent: #4f46e5;       /* indigo */
+  --accent-2: #0ea5e9;     /* sky */
+  --on-accent: #ffffff;
+  --good: #16a36a;
+  --warn: #e08b2a;
+  --bad: #e0455e;
+  --font-display: "Schibsted Grotesk", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --sh-1: 0 calc(var(--u)*0.5) calc(var(--u)*1.6) rgba(20,25,40,.06);
+  --sh-2: 0 calc(var(--u)*1.4) calc(var(--u)*3.6) rgba(20,25,40,.10);
+  --sh-3: 0 calc(var(--u)*2.6) calc(var(--u)*7) rgba(20,25,40,.15);
+}
+
+/* ═══ THEME: QSR — bold, neon, drive-thru energy (warm dark) ══════════════ */
+:root[data-theme="qsr"] {
+  --bg: #16100c;
+  --bg-2: #1f1611;
+  --surface: #251a13;
+  --surface-2: #2f221a;
+  --line: rgba(255,225,190,.10);
+  --line-strong: rgba(255,225,190,.20);
+  --text: #fff3e8;
+  --text-dim: #c4a487;
+  --text-mute: #8a6f59;
+  --accent: #ff5a36;       /* flame red-orange */
+  --accent-2: #ffc233;     /* fries gold */
+  --on-accent: #1a0f08;
+  --good: #5dc98a;
+  --warn: #ffc233;
+  --bad: #ff5470;
+  --font-display: "Archivo", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+}
+
+/* ═══ THEME: BAR — moody, candlelit, copper + wine (near-black) ═══════════ */
+:root[data-theme="bar"] {
+  --bg: #0c0a0a;
+  --bg-2: #131010;
+  --surface: #1a1514;
+  --surface-2: #241c1a;
+  --line: rgba(240,220,210,.10);
+  --line-strong: rgba(240,220,210,.20);
+  --text: #f4e9e2;
+  --text-dim: #b39c90;
+  --text-mute: #7e6a60;
+  --accent: #d9a05b;       /* copper / candle */
+  --accent-2: #b3477e;     /* wine / magenta */
+  --on-accent: #1a1210;
+  --good: #7fae6a;
+  --warn: #d9a05b;
+  --bad: #c0584b;
+  --font-display: "DM Serif Display", Georgia, serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+}
+
+/* ═══ THEME: CLINIC — calm, trustworthy, teal (light, accessible) ═════════ */
+:root[data-theme="clinic"] {
+  --bg: #eef4f4;
+  --bg-2: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #e4eeee;
+  --line: rgba(15,60,60,.10);
+  --line-strong: rgba(15,60,60,.18);
+  --text: #122a2a;
+  --text-dim: #4f6a6a;
+  --text-mute: #87a0a0;
+  --accent: #0e8a86;       /* teal */
+  --accent-2: #3b82f6;     /* sky blue */
+  --on-accent: #ffffff;
+  --good: #16a36a;
+  --warn: #e0922a;
+  --bad: #d6455e;
+  --font-display: "Figtree", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --sh-1: 0 calc(var(--u)*0.5) calc(var(--u)*1.6) rgba(15,60,60,.07);
+  --sh-2: 0 calc(var(--u)*1.4) calc(var(--u)*3.6) rgba(15,60,60,.11);
+  --sh-3: 0 calc(var(--u)*2.6) calc(var(--u)*7) rgba(15,60,60,.16);
+}
+
+/* ===== bar/styles.css ===== */
+/* ═══ BAR · vertical layout (theme tokens in [data-theme="bar"]) ════════════ */
+.ba-word{ font-family:var(--font-display); font-weight:400; letter-spacing:.01em }
+.ba-hero,.media.ba-cocktail__img,.media.ba-cd__img{ background:
+  radial-gradient(90% 90% at 75% 10%, color-mix(in srgb,var(--accent) 45%,transparent) 0%, transparent 55%),
+  radial-gradient(90% 100% at 10% 100%, color-mix(in srgb,var(--accent-2) 40%,transparent) 0%, transparent 55%),
+  linear-gradient(150deg,#2a1d16,#0c0807); }
+.ba-bar{ background:var(--bg-2); border-bottom:1px solid var(--line) }
+.ba-bar .bar__logo{ background:var(--accent); color:var(--on-accent); font-family:var(--font-display) }
+.ba-hh{ display:inline-flex;align-items:center;gap:var(--s-2);color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);padding:var(--s-2) var(--s-4);border-radius:var(--r-pill);font-weight:700;font-size:var(--t-sm) }
+.ba-hh svg{ width:1.2em;height:1.2em }
+
+/* age gate */
+.ba-gate{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center }
+.ba-gate__bg{ position:absolute; inset:0 }
+.ba-gate__bg .media__scrim{ background:linear-gradient(0deg,rgba(8,6,5,.85),rgba(8,6,5,.5)) }
+.ba-gate__b{ position:relative; z-index:2; padding:var(--s-7); display:flex; flex-direction:column; align-items:center; max-width:calc(var(--u)*80) }
+.ba-gate__logo{ width:calc(var(--u)*9); height:calc(var(--u)*9); font-size:var(--t-h1); margin-bottom:var(--s-3) }
+.ba-gate__btns{ display:flex; gap:var(--s-3); flex-wrap:wrap; justify-content:center }
+
+.ba-home{ padding:0 var(--s-6) calc(var(--u)*16); display:grid; gap:var(--s-6) }
+.ba-hhcard{ display:flex; align-items:center; gap:var(--s-4); margin-top:var(--s-4); padding:var(--s-5); border-radius:var(--r-lg); background:linear-gradient(120deg, color-mix(in srgb,var(--accent) 22%, var(--surface)), var(--surface)); outline:1px solid color-mix(in srgb,var(--accent) 30%,transparent); outline-offset:-1px }
+.ba-hhcard__ic{ width:calc(var(--u)*8); height:calc(var(--u)*8); border-radius:50%; display:grid; place-items:center; background:var(--accent); color:var(--on-accent); font-size:var(--t-h2); flex:none }
+
+.ba-split{ display:grid; grid-template-columns:1fr 1fr; gap:var(--s-6); align-items:start }
+.ba-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:var(--s-5); flex-wrap:wrap; margin:var(--s-3) 0 var(--s-5) }
+.ba-list{ padding:0 var(--s-6) calc(var(--u)*16) }
+
+/* taps with keg level */
+.ba-taps{ display:grid; gap:var(--s-3) } .ba-taps--full{ grid-template-columns:1fr 1fr; gap:var(--s-4) }
+.ba-tap{ display:flex; gap:var(--s-4); align-items:center; padding:var(--s-4); background:var(--surface); border-radius:var(--r-md); outline:1px solid var(--line); outline-offset:-1px }
+.ba-tap__keg{ width:calc(var(--u)*5); height:calc(var(--u)*10); border-radius:var(--r-sm); background:var(--bg-2); position:relative; overflow:hidden; flex:none; outline:1px solid var(--line-strong); outline-offset:-1px }
+.ba-tap__fill{ position:absolute; left:0; right:0; bottom:0; background:linear-gradient(0deg,var(--accent),color-mix(in srgb,var(--accent) 60%,#fff3)); transition:height var(--dur) }
+.ba-tap__p{ font-family:var(--font-display); font-size:var(--t-h3); color:var(--accent); white-space:nowrap }
+.ba-add{ border:none; background:color-mix(in srgb,var(--accent) 16%,transparent); color:var(--accent); font-weight:700; font-size:var(--t-sm); padding:var(--s-2) var(--s-4); border-radius:var(--r-pill); cursor:pointer; display:inline-flex; align-items:center; gap:var(--s-1) }
+.ba-add svg{ width:1.1em;height:1.1em }
+
+/* cocktails */
+.ba-cocktails{ display:grid; grid-template-columns:1fr 1fr; gap:var(--s-4) }
+.ba-cocktails--home{ grid-template-columns:1fr 1fr }
+.ba-cocktail{ display:flex; flex-direction:column; border:none; cursor:pointer; background:var(--surface); border-radius:var(--r-lg); overflow:hidden; text-align:left; color:var(--text); outline:1px solid var(--line); outline-offset:-1px; transition:transform var(--dur-fast) var(--ease) }
+.ba-cocktail:active{ transform:scale(.98) }
+.ba-cocktail__img{ aspect-ratio:16/10; position:relative }
+.ba-abv{ position:absolute; top:var(--s-2); right:var(--s-2); background:rgba(0,0,0,.5); color:var(--accent); font-family:var(--font-mono); font-weight:700; font-size:var(--t-xs); padding:3px 9px; border-radius:99px; backdrop-filter:blur(6px) }
+.ba-abv--lg{ font-size:var(--t-sm); padding:var(--s-2) var(--s-3) }
+.ba-cocktail__b{ padding:var(--s-4); display:flex; flex-direction:column; gap:var(--s-1) }
+.ba-cocktail__p{ font-family:var(--font-display); font-size:var(--t-h2); color:var(--accent); margin-top:var(--s-1) }
+
+.ba-cd{ padding:0 var(--s-6) calc(var(--u)*16) } .ba-cd .split{ margin-top:var(--s-4); align-items:start }
+.ba-cd__img{ aspect-ratio:4/5; border-radius:var(--r-lg); position:relative }
+.ba-cd__b{ display:flex; flex-direction:column }
+.ba-build{ list-style:none; display:grid; gap:var(--s-2); margin-top:var(--s-3) }
+.ba-build li{ display:flex; gap:var(--s-2); align-items:center; color:var(--text-dim); font-size:var(--t-lg) } .ba-build svg{ color:var(--accent); width:1.2em;height:1.2em;flex:none }
+.ba-addbar{ background:var(--bg-2) }
+
+.ba-tiles{ display:grid; grid-template-columns:repeat(3,1fr); gap:var(--s-4) }
+.ba-tile{ display:flex; align-items:center; gap:var(--s-4); padding:var(--s-5); border:none; cursor:pointer; background:var(--surface); border-radius:var(--r-lg); color:var(--text); outline:1px solid var(--line); outline-offset:-1px; text-align:left; transition:transform var(--dur-fast) var(--ease) }
+.ba-tile:active{ transform:scale(.98) }
+.ba-tile__ic{ width:calc(var(--u)*7); height:calc(var(--u)*7); border-radius:var(--r-md); display:grid; place-items:center; background:color-mix(in srgb,var(--accent) 16%,transparent); color:var(--accent); font-size:var(--t-h3); flex:none }
+.ba-tile__go{ color:var(--accent) }
+
+.ba-events{ display:grid; grid-template-columns:1fr 1fr; gap:var(--s-4) }
+.ba-event{ display:flex; gap:var(--s-4); align-items:flex-start; padding:var(--s-5) }
+.ba-event__ic{ flex:none; width:calc(var(--u)*8); height:calc(var(--u)*8); border-radius:var(--r-md); display:grid; place-items:center; background:color-mix(in srgb,var(--accent-2) 18%,transparent); color:var(--accent-2); font-size:var(--t-h2) }
+.ba-event .row svg{ width:1.1em;height:1.1em;vertical-align:-.15em;margin-right:.2em }
+
+/* tab */
+.ba-fabwrap{ position:absolute; left:0; right:0; bottom:0; padding:var(--s-4) var(--s-6); display:flex; justify-content:center; pointer-events:none }
+.ba-fab{ pointer-events:auto; display:inline-flex; align-items:center; gap:var(--s-4); padding:var(--s-3) var(--s-3) var(--s-3) var(--s-5); border:none; cursor:pointer; background:var(--accent); color:var(--on-accent); border-radius:var(--r-pill); box-shadow:var(--sh-3); font:700 var(--t-lg)/1 var(--font-body); min-width:calc(var(--u)*40) }
+.ba-fab[disabled]{ opacity:.5; background:var(--surface-2); color:var(--text-mute); box-shadow:none }
+.ba-fab__ic{ position:relative; font-size:var(--t-h3); display:grid; place-items:center }
+.ba-fab__count{ position:absolute; top:-.6em; right:-.6em; min-width:1.5em; height:1.5em; padding:0 .35em; border-radius:99px; background:var(--accent-2); color:#fff; font-size:.55em; display:grid; place-items:center; font-weight:800 }
+.ba-fab__total{ background:rgba(0,0,0,.18); padding:var(--s-2) var(--s-4); border-radius:99px; font-family:var(--font-display) }
+.ba-tablines{ display:grid; gap:var(--s-3) }
+.ba-tabline{ display:flex; align-items:center; gap:var(--s-4); padding:var(--s-4); background:var(--surface); border-radius:var(--r-md); outline:1px solid var(--line); outline-offset:-1px }
+.ba-tabline__ic{ width:calc(var(--u)*7); height:calc(var(--u)*7); border-radius:var(--r-md); display:grid; place-items:center; background:color-mix(in srgb,var(--accent) 14%,transparent); color:var(--accent); font-size:var(--t-h3); flex:none }
+.ba-tabline__p{ color:var(--accent); white-space:nowrap }
+.ba-remove{ width:calc(var(--u)*6); height:calc(var(--u)*6); border:none; border-radius:50%; background:var(--surface-2); color:var(--text-mute); cursor:pointer; display:grid; place-items:center; flex:none }
+.ba-checkoutbar{ background:var(--bg-2) }
+.ba-empty,.ba-done{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:var(--s-3); padding:var(--s-7) }
+.ba-empty__ic{ width:calc(var(--u)*16); height:calc(var(--u)*16); border-radius:50%; background:var(--surface); color:var(--text-mute); display:grid; place-items:center; font-size:calc(var(--u)*8) }
+.ba-done__ic{ width:calc(var(--u)*17); height:calc(var(--u)*17); border-radius:50%; background:var(--accent); color:var(--on-accent); display:grid; place-items:center; font-size:calc(var(--u)*10) } .ba-done__ic svg{ width:1em;height:1em }
+
+@media (orientation: portrait){
+  .ba-split{ grid-template-columns:1fr } .ba-cocktails,.ba-cocktails--home{ grid-template-columns:1fr 1fr }
+  .ba-taps--full{ grid-template-columns:1fr } .ba-tiles{ grid-template-columns:1fr } .ba-events{ grid-template-columns:1fr }
+  .bar .crumbs{ display:none }
+}
+
+</style>
+</head>
+<body>
+<script>
+/* ===== kiosk-core.js ===== */
+/* ═══════════════════════════════════════════════════════════════════════════
+   VenueOS · KIOSK CORE ENGINE
+   ───────────────────────────────────────────────────────────────────────────
+   A tiny, dependency-free engine for touch kiosks. It gives every template:
+     • a screen ROUTER with a navigation stack + animated transitions
+     • declarative navigation via data-attributes (no per-element wiring)
+     • an IDLE/ATTRACT manager that resets the kiosk after inactivity
+     • orientation control (auto from viewport, or ?o=portrait|landscape)
+     • a tap RIPPLE for physical touch feedback
+     • a line-ICON set, a live clock, money formatting, and small DOM helpers
+
+   ── How a vertical uses it ──────────────────────────────────────────────────
+     Kiosk.app({
+       theme:   'realestate',          // sets <html data-theme>
+       start:   'home',                // first screen
+       idleMs:  60000,                 // ms of inactivity → attract loop
+       screens: {                      // name → (params) => HTML string or Node
+         home:   (p) => `...`,
+         space:  (p) => `...`,
+       },
+       attract: (p) => `...`,          // the idle/attract screen
+       crumbs:  { home:'Overview', space:'Suite' },   // optional breadcrumb labels
+       onAction(name, el, data){ ... } // handle [data-act="name"] taps
+     });
+
+   ── Declarative navigation (put on any tappable element) ────────────────────
+     data-go="space"            → push screen "space"
+     data-go="space:1204"       → push "space" with params "1204"
+     data-go="space" data-params='{"id":"1204"}'  → push with object params
+     data-back                  → pop one screen
+     data-home                  → reset to start screen
+     data-act="addToCart"       → calls onAction('addToCart', el, el.dataset)
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function (global) {
+  "use strict";
+
+  // ── small DOM helpers ──────────────────────────────────────────────────
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function frag(html) { var t = document.createElement('template'); t.innerHTML = html.trim(); return t.content; }
+
+  // ── ICON SET (24×24, stroke = currentColor) ────────────────────────────
+  var P = { // path/markup keyed by name; {s}=stroke attrs applied by icon()
+    'arrow-left':  '<path d="M15 5l-7 7 7 7" {s}/>',
+    'arrow-right': '<path d="M9 5l7 7-7 7" {s}/>',
+    'arrow-ur':    '<path d="M7 17L17 7M9 7h8v8" {s}/>',
+    'chevron-right':'<path d="M9 6l6 6-6 6" {s}/>',
+    'chevron-down':'<path d="M6 9l6 6 6-6" {s}/>',
+    'x':           '<path d="M6 6l12 12M18 6L6 18" {s}/>',
+    'check':       '<path d="M5 13l4 4 10-11" {s}/>',
+    'plus':        '<path d="M12 5v14M5 12h14" {s}/>',
+    'minus':       '<path d="M5 12h14" {s}/>',
+    'search':      '<circle cx="11" cy="11" r="6" {s}/><path d="M20 20l-3.5-3.5" {s}/>',
+    'pin':         '<path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z" {s}/><circle cx="12" cy="10" r="2.4" {s}/>',
+    'touch':       '<path d="M9 11V6a2 2 0 114 0v6m0-2a2 2 0 114 0v2m0-1a2 2 0 114 0v4a6 6 0 01-6 6h-2a6 6 0 01-5-2.7L6 16a2 2 0 013.2-2.4" {s}/>',
+    'info':        '<circle cx="12" cy="12" r="9" {s}/><path d="M12 11v5M12 7.5v.5" {s}/>',
+    'clock':       '<circle cx="12" cy="12" r="9" {s}/><path d="M12 7v5l3 2" {s}/>',
+    'phone':       '<path d="M5 4h4l2 5-3 2a12 12 0 005 5l2-3 5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z" {s}/>',
+    'calendar':    '<rect x="4" y="5" width="16" height="16" rx="2" {s}/><path d="M4 9h16M9 3v4M15 3v4" {s}/>',
+    'play':        '<path d="M8 5.5v13l11-6.5-11-6.5z" fill="currentColor" stroke="none"/>',
+    'pause':       '<path d="M8 5h3v14H8zM13 5h3v14h-3z" fill="currentColor" stroke="none"/>',
+    'volume':      '<path d="M5 9v6h4l5 4V5L9 9H5z" {s}/><path d="M17 8a5 5 0 010 8" {s}/>',
+    'expand':      '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" {s}/>',
+    'headphones':  '<path d="M4 13v-1a8 8 0 0116 0v1" {s}/><rect x="3" y="13" width="4" height="7" rx="1.6" {s}/><rect x="17" y="13" width="4" height="7" rx="1.6" {s}/>',
+    'image':       '<rect x="4" y="5" width="16" height="14" rx="2" {s}/><circle cx="9" cy="10" r="1.6" {s}/><path d="M5 17l4.5-4 3 2.5L16 12l3 3.5" {s}/>',
+    'video':       '<rect x="3" y="6" width="13" height="12" rx="2" {s}/><path d="M16 10l5-3v10l-5-3" {s}/>',
+    'star':        '<path d="M12 4l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 9.7l5.4-.8L12 4z" {s}/>',
+    'heart':       '<path d="M12 20s-7-4.6-7-9.5A3.5 3.5 0 0112 6a3.5 3.5 0 017 4.5C19 15.4 12 20 12 20z" {s}/>',
+    'share':       '<circle cx="6" cy="12" r="2.4" {s}/><circle cx="18" cy="6" r="2.4" {s}/><circle cx="18" cy="18" r="2.4" {s}/><path d="M8 11l8-4M8 13l8 4" {s}/>',
+    'home':        '<path d="M4 11l8-7 8 7M6 10v9h12v-9" {s}/>',
+    'layers':      '<path d="M12 4l8 4-8 4-8-4 8-4z" {s}/><path d="M4 12l8 4 8-4M4 16l8 4 8-4" {s}/>',
+    'ruler':       '<rect x="3" y="8" width="18" height="8" rx="1.6" {s}/><path d="M7 8v3M11 8v4M15 8v3M19 8v4" {s}/>',
+    'building':    '<rect x="5" y="3" width="14" height="18" rx="1.5" {s}/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2" {s}/>',
+    'parking':     '<rect x="4" y="4" width="16" height="16" rx="3" {s}/><path d="M10 16V8h3a2.5 2.5 0 010 5h-3" {s}/>',
+    'wifi':        '<path d="M4 9a13 13 0 0116 0M7 12.5a8 8 0 0110 0M10 16a3.5 3.5 0 014 0" {s}/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/>',
+    'dumbbell':    '<path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12" {s}/>',
+    'coffee':      '<path d="M4 9h13v4a5 5 0 01-5 5H9a5 5 0 01-5-5V9z" {s}/><path d="M17 10h2a2 2 0 010 4h-2" {s}/><path d="M8 3v2M11 3v2" {s}/>',
+    'shield':      '<path d="M12 4l7 3v5c0 4.4-3 7.4-7 8.5C8 19.4 5 16.4 5 12V7l7-3z" {s}/>',
+    'elevator':    '<rect x="5" y="3" width="14" height="18" rx="1.5" {s}/><path d="M12 3v18M9 9l-1.5 2h3L9 9zM15 15l1.5-2h-3L15 15z" {s}/>',
+    'leaf':        '<path d="M5 19c0-8 6-13 14-13 0 8-5 14-13 14a6 6 0 01-1-1z" {s}/><path d="M9 15c2-3 4-5 7-6" {s}/>',
+    'snow':        '<path d="M12 3v18M5 7l14 10M19 7L5 17" {s}/>',
+    'car':         '<path d="M4 16v-3l2-5h12l2 5v3M4 16h16M4 16v2M20 16v2" {s}/><circle cx="8" cy="16" r="1.4" {s}/><circle cx="16" cy="16" r="1.4" {s}/>',
+    'utensils':    '<path d="M7 3v8a2 2 0 002 2v8M7 7M10 3v4M5 3v4M16 3c-1.5 0-2.5 2-2.5 5s1 4 2.5 4v9" {s}/>',
+    'flame':       '<path d="M12 3c1 3-2 4-2 7a2 2 0 104 0c0-1 1-2 1-2 1 2 2 3 2 6a5 5 0 11-10 0c0-4 3-5 5-11z" {s}/>',
+    'sun':         '<circle cx="12" cy="12" r="4" {s}/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" {s}/>',
+    'camera':      '<rect x="3" y="7" width="18" height="13" rx="2.5" {s}/><circle cx="12" cy="13.5" r="3.4" {s}/><path d="M8 7l1.5-2h5L16 7" {s}/>',
+    'leaf-veg':    '<path d="M12 21V8M12 8C12 5 9 3 6 3c0 3 2 5 6 5zM12 10c0-3 3-5 6-5 0 3-2 5-6 5z" {s}/>',
+    'bag':         '<path d="M6 8h12l-1 12H7L6 8z" {s}/><path d="M9 8V6a3 3 0 016 0v2" {s}/>',
+    'tag':         '<path d="M4 12V5h7l9 9-7 7-9-9z" {s}/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/>',
+    'sparkle':     '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" {s}/>',
+    'send':        '<path d="M5 12L20 5l-5 15-3-7-7-1z" {s}/>',
+    'globe':       '<circle cx="12" cy="12" r="9" {s}/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18" {s}/>',
+    'route':       '<circle cx="6" cy="18" r="2.4" {s}/><circle cx="18" cy="6" r="2.4" {s}/><path d="M8 16c4-1 8-5 8-8M16 6h2a0 0 0 010 0" {s}/>',
+    'grid':        '<rect x="4" y="4" width="6" height="6" rx="1.4" {s}/><rect x="14" y="4" width="6" height="6" rx="1.4" {s}/><rect x="4" y="14" width="6" height="6" rx="1.4" {s}/><rect x="14" y="14" width="6" height="6" rx="1.4" {s}/>',
+    'cocktail':    '<path d="M5 4h14l-7 8-7-8zM12 12v6M8 21h8" {s}/><path d="M7.5 7h9" {s}/>',
+    'beer':        '<path d="M7 8h8v11a2 2 0 01-2 2H9a2 2 0 01-2-2V8z" {s}/><path d="M15 10h2.5A1.5 1.5 0 0119 11.5v3A1.5 1.5 0 0117.5 16H15" {s}/><path d="M8 8c0-2 1-3 2-3M11 8c0-2 1-3 2-3" {s}/>',
+    'cup':         '<path d="M6 8h12l-1 11a2 2 0 01-2 2H9a2 2 0 01-2-2L6 8z" {s}/><path d="M5 8h14M9 5h6" {s}/>',
+    'pill':        '<rect x="3" y="9" width="18" height="6" rx="3" transform="rotate(45 12 12)" {s}/><path d="M9 9l6 6" {s}/>',
+    'clipboard':   '<rect x="6" y="5" width="12" height="16" rx="2" {s}/><path d="M9 5a3 3 0 016 0M9 11h6M9 15h4" {s}/>',
+    'user':        '<circle cx="12" cy="8" r="3.4" {s}/><path d="M5 20a7 7 0 0114 0" {s}/>',
+    'steth':       '<path d="M6 4v5a4 4 0 008 0V4" {s}/><path d="M6 4H4M10 4h2" {s}/><path d="M10 13v2a5 5 0 0010 0v-1" {s}/><circle cx="20" cy="12" r="2" {s}/>',
+    'qr':          '<rect x="4" y="4" width="6" height="6" rx="1" {s}/><rect x="14" y="4" width="6" height="6" rx="1" {s}/><rect x="4" y="14" width="6" height="6" rx="1" {s}/><path d="M14 14h2v2M20 14v6M16 18v2M18 16h2" {s}/>'
+  };
+  function icon(name, opts) {
+    opts = opts || {};
+    var sw = opts.sw || 1.8;
+    var s = 'fill="none" stroke="currentColor" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round"';
+    var body = (P[name] || P['info']).replace(/\{s\}/g, s);
+    return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true" style="width:1em;height:1em">' + body + '</svg>';
+  }
+
+  // ── money ───────────────────────────────────────────────────────────────
+  function money(cents, cur) {
+    cur = cur || 'USD';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format(cents / 100);
+  }
+
+  // ═══ ENGINE ════════════════════════════════════════════════════════════
+  var Kiosk = {
+    cfg: null, stack: [], stage: null, attractEl: null, idleTimer: null,
+
+    app: function (cfg) {
+      this.cfg = cfg;
+      if (cfg.theme) document.documentElement.setAttribute('data-theme', cfg.theme);
+
+      // orientation: explicit override beats auto
+      var o = new URLSearchParams(location.search).get('o');
+      if (o === 'portrait' || o === 'landscape') {
+        document.documentElement.setAttribute('data-orient', o);
+        var st = document.createElement('style');
+        // force the aspect by pinning viewport meta is not possible; we just
+        // let the media queries that read real orientation apply. The launcher
+        // frames each template at the correct aspect, so auto-detection works.
+      }
+
+      // build stage
+      var k = document.createElement('div');
+      k.className = 'kiosk';
+      this.stage = document.createElement('div');
+      this.stage.style.cssText = 'position:absolute;inset:0';
+      k.appendChild(this.stage);
+
+      // attract layer
+      if (cfg.attract) {
+        this.attractEl = document.createElement('div');
+        this.attractEl.className = 'attract';
+        k.appendChild(this.attractEl);
+      }
+      document.body.appendChild(k);
+
+      // global interaction wiring
+      this._wire(k);
+      this._clock();
+
+      // first screen
+      this.stack = [{ name: cfg.start, params: null }];
+      this._render('fade');
+      this._resetIdle();
+      return this;
+    },
+
+    // navigation ----------------------------------------------------------
+    go: function (name, params, opts) {
+      opts = opts || {};
+      this.stack.push({ name: name, params: params || null });
+      this._render(opts.anim || 'up');
+      this._resetIdle();
+    },
+    back: function () {
+      if (this.stack.length > 1) { this.stack.pop(); this._render('back'); }
+      this._resetIdle();
+    },
+    home: function () {
+      this.stack = [{ name: this.cfg.start, params: null }];
+      this._render('fade');
+      this._resetIdle();
+    },
+    current: function () { return this.stack[this.stack.length - 1]; },
+    refresh: function () { this._render('none'); },
+
+    // render --------------------------------------------------------------
+    _render: function (anim) {
+      var cur = this.current();
+      var fn = this.cfg.screens[cur.name];
+      if (!fn) { console.warn('Kiosk: no screen "' + cur.name + '"'); return; }
+      var out = fn.call(this, cur.params);
+
+      var scr = document.createElement('div');
+      scr.className = 'screen';
+      scr.dataset.screen = cur.name;
+      if (typeof out === 'string') scr.appendChild(frag(out));
+      else if (out) scr.appendChild(out);
+
+      // retire ALL existing screens (not just the first) so rapid navigation
+      // can never leave a stale screen showing behind the new one.
+      var olds = Array.prototype.slice.call(this.stage.children);
+      this.stage.appendChild(scr);
+      setTimeout(function () { scr.classList.add('is-active'); }, 20);
+
+      olds.forEach(function (old) {
+        old.classList.remove('is-active');
+        old.classList.add('is-leaving');
+        setTimeout(function () { if (old.parentNode) old.parentNode.removeChild(old); }, 340);
+      });
+
+      // sync breadcrumb elements if present
+      this._crumbs(scr);
+      // (re)bind ripple targets within new screen handled by delegation
+      this.stage.scrollTop = 0;
+      var sc = scr.querySelector('.scroll'); if (sc) sc.scrollTop = 0;
+    },
+
+    _crumbs: function (scr) {
+      var host = scr.querySelector('[data-crumbs]');
+      if (!host || !this.cfg.crumbs) return;
+      var self = this;
+      var html = this.stack.map(function (s, i) {
+        var label = self.cfg.crumbs[s.name] || s.name;
+        var last = i === self.stack.length - 1;
+        if (last) return '<span class="now">' + label + '</span>';
+        return '<button data-jump="' + i + '">' + label + '</button><span class="sep">' + icon('chevron-right', { sw: 2 }) + '</span>';
+      }).join('');
+      host.innerHTML = html;
+    },
+    _jump: function (i) {
+      this.stack = this.stack.slice(0, i + 1);
+      this._render('back');
+      this._resetIdle();
+    },
+
+    // interaction wiring --------------------------------------------------
+    _wire: function (root) {
+      var self = this;
+      root.addEventListener('click', function (e) {
+        var t = e.target;
+        // ripple
+        self._ripple(e);
+        // jump (breadcrumb)
+        var jump = t.closest('[data-jump]'); if (jump) { self._jump(+jump.dataset.jump); return; }
+        // back / home
+        if (t.closest('[data-back]')) { self.back(); return; }
+        if (t.closest('[data-home]')) { self.home(); return; }
+        // go
+        var go = t.closest('[data-go]');
+        if (go) {
+          var spec = go.dataset.go, params = null;
+          if (go.dataset.params) { try { params = JSON.parse(go.dataset.params); } catch (e2) {} }
+          else if (spec.indexOf(':') > -1) { var parts = spec.split(':'); spec = parts[0]; params = parts.slice(1).join(':'); }
+          self.go(spec, params); return;
+        }
+        // action
+        var act = t.closest('[data-act]');
+        if (act && self.cfg.onAction) { self.cfg.onAction.call(self, act.dataset.act, act, act.dataset); }
+      }, { passive: true });
+
+      // any pointer activity resets idle
+      ['pointerdown', 'pointermove', 'wheel', 'touchstart'].forEach(function (ev) {
+        root.addEventListener(ev, function () { self._resetIdle(); if (self._attractOn) self._wake(); }, { passive: true });
+      });
+    },
+
+    _ripple: function (e) {
+      var host = e.target.closest('.btn, .card, .chip, .iconbtn, .feat, [data-ripple]');
+      if (!host) return;
+      var r = host.getBoundingClientRect();
+      var size = Math.max(r.width, r.height) * 1.1;
+      var sp = document.createElement('span');
+      sp.className = 'ripple';
+      sp.style.width = sp.style.height = size + 'px';
+      sp.style.left = (e.clientX - r.left - size / 2) + 'px';
+      sp.style.top = (e.clientY - r.top - size / 2) + 'px';
+      var cs = getComputedStyle(host);
+      if (cs.position === 'static') host.style.position = 'relative';
+      host.appendChild(sp);
+      setTimeout(function () { if (sp.parentNode) sp.parentNode.removeChild(sp); }, 650);
+    },
+
+    // idle / attract ------------------------------------------------------
+    _resetIdle: function () {
+      var self = this;
+      clearTimeout(this.idleTimer);
+      var ms = this.cfg.idleMs || 60000;
+      this.idleTimer = setTimeout(function () { self._sleep(); }, ms);
+    },
+    _sleep: function () {
+      if (!this.attractEl || this._attractOn) return;
+      var fn = this.cfg.attract;
+      this.attractEl.innerHTML = '';
+      var out = typeof fn === 'function' ? fn.call(this) : fn;
+      if (typeof out === 'string') this.attractEl.appendChild(frag(out));
+      this.attractEl.classList.add('is-on');
+      this._attractOn = true;
+    },
+    _wake: function () {
+      if (!this._attractOn) return;
+      this.attractEl.classList.remove('is-on');
+      this._attractOn = false;
+      // returning from attract sends the user home — kiosks always start fresh
+      this.home();
+    },
+
+    // live clock ----------------------------------------------------------
+    _clock: function () {
+      function tick() {
+        var els = $$('[data-clock]');
+        if (els.length) {
+          var t = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          els.forEach(function (el) { el.textContent = t; });
+        }
+      }
+      tick(); setInterval(tick, 15000);
+    },
+
+    // media helper: set a real image on a .media element ------------------
+    setMedia: function (el, url) {
+      if (!el) return;
+      el.style.setProperty('--src', 'url("' + url + '")');
+      el.classList.add('has-media');
+    },
+
+    // simulated video play (placeholder until real <video> wired) ---------
+    playVideo: function (el) {
+      el.classList.add('is-playing');
+      var bar = el.querySelector('.video__bar i'); if (!bar) return;
+      var p = 0; clearInterval(el._vt);
+      el._vt = setInterval(function () {
+        p += 0.4; bar.style.width = p + '%';
+        if (p >= 100) { clearInterval(el._vt); el.classList.remove('is-playing'); bar.style.width = '0%'; }
+      }, 120);
+    },
+    toggleAudio: function (el) {
+      el.classList.toggle('is-playing');
+      var b = el.querySelector('.audio__btn'); if (b) b.innerHTML = icon(el.classList.contains('is-playing') ? 'pause' : 'play');
+    },
+
+    // bottom sheet / modal -------------------------------------------------
+    sheet: function (html, opts) {
+      opts = opts || {};
+      this.closeSheet(true);
+      var scrim = document.createElement('div');
+      scrim.className = 'scrim';
+      scrim.innerHTML = '<div class="sheet" style="' + (opts.maxw ? 'max-width:' + opts.maxw + ';margin:0 auto;border-radius:var(--r-xl) var(--r-xl) 0 0' : '') + '"><div class="sheet__grip"></div>' + html + '</div>';
+      $('.kiosk').appendChild(scrim);
+      this._sheet = scrim;
+      var self = this;
+      scrim.addEventListener('click', function (e) {
+        if (e.target === scrim || e.target.closest('[data-sheet-close]')) self.closeSheet();
+      });
+      requestAnimationFrame && setTimeout(function () { scrim.classList.add('is-open'); }, 20);
+      this._resetIdle();
+      return scrim;
+    },
+    closeSheet: function (instant) {
+      var s = this._sheet; if (!s) return;
+      this._sheet = null;
+      if (instant) { if (s.parentNode) s.parentNode.removeChild(s); return; }
+      s.classList.remove('is-open');
+      setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 480);
+    },
+
+    // transient toast ------------------------------------------------------
+    toast: function (msg, opts) {
+      opts = opts || {};
+      var t = document.createElement('div');
+      t.className = 'toast';
+      t.innerHTML = (opts.icon ? icon(opts.icon) + ' ' : '') + msg;
+      $('.kiosk').appendChild(t);
+      setTimeout(function () { t.classList.add('is-on'); }, 20);
+      setTimeout(function () { t.classList.remove('is-on'); setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 400); }, opts.ms || 2200);
+    },
+
+    // expose helpers
+    icon: icon, money: money, h: frag, $: $, $$: $$
+  };
+
+  // build a column of audio waveform bars
+  Kiosk.waveBars = function (n) {
+    n = n || 28; var s = '';
+    for (var i = 0; i < n; i++) s += '<i style="height:' + (20 + Math.round(Math.random() * 70)) + '%"></i>';
+    return s;
+  };
+
+  global.Kiosk = Kiosk;
+})(window);
+
+</script>
+<script>
+/* ===== bar/data.js ===== */
+/* ═══════════════════════════════════════════════════════════════════════════
+   BAR KIOSK · CONTENT MODEL  (window.BAR)
+   Cocktail & tap house: age gate, happy-hour countdown, live keg levels,
+   cocktail menu with build notes, events, and a running tab → send to bar.
+   ═══════════════════════════════════════════════════════════════════════════ */
+window.BAR = {
+  brandInitials: "E",
+  name: "Ember",
+  tagline: "Cocktail & Tap House",
+  hero: { label: "BAR / BACKBAR HERO" },
+  currency: "USD",
+
+  happyHour: { active: true, until: "7:00 PM", deal: "$2 off all drafts & house cocktails" },
+
+  // live draft list with keg levels (0–100)
+  onTap: [
+    { id: "haze", name: "Lantern Haze IPA", brewery: "Foglight Brewing", style: "Hazy IPA", abv: 6.8, level: 72, priceCents: 800 },
+    { id: "pils", name: "Keystone Pils", brewery: "Anvil & Oak", style: "Pilsner", abv: 5.0, level: 41, priceCents: 700 },
+    { id: "stout", name: "Midnight Oats", brewery: "Foglight Brewing", style: "Oatmeal Stout", abv: 6.2, level: 18, priceCents: 850 },
+    { id: "sour", name: "Tart Cherry", brewery: "Wild Field", style: "Fruited Sour", abv: 5.4, level: 63, priceCents: 900 },
+    { id: "amber", name: "Copper Lantern", brewery: "Anvil & Oak", style: "Amber Ale", abv: 5.6, level: 88, priceCents: 750 },
+    { id: "cider", name: "Orchard Press", brewery: "Wild Field", style: "Dry Cider", abv: 6.0, level: 55, priceCents: 800 }
+  ],
+
+  cocktails: [
+    { id: "old", name: "Ember Old Fashioned", priceCents: 1400, abv: 32, spirit: "Bourbon", tags: ["Spirit-forward", "Classic"], desc: "Charred-oak bourbon, demerara, aromatic bitters, orange oils, big rock.", build: ["2 oz charred-oak bourbon", "0.25 oz demerara", "3 dashes aromatic bitters", "Express orange peel"] },
+    { id: "neg", name: "Smoked Negroni", priceCents: 1400, abv: 28, spirit: "Gin", tags: ["Bitter", "Smoky"], desc: "Gin, Campari, sweet vermouth, finished with a whisper of applewood smoke.", build: ["1 oz gin", "1 oz Campari", "1 oz sweet vermouth", "Applewood smoke"] },
+    { id: "marg", name: "Charred Pineapple Margarita", priceCents: 1300, abv: 24, spirit: "Tequila", tags: ["Fruity", "Tart"], desc: "Blanco tequila, grilled pineapple, lime, agave, chili-salt rim.", build: ["2 oz blanco tequila", "1 oz grilled pineapple", "0.75 oz lime", "Chili-salt rim"] },
+    { id: "paper", name: "Paper Lantern", priceCents: 1350, abv: 26, spirit: "Whiskey", tags: ["Balanced", "Citrus"], desc: "Rye, amaro, yellow chartreuse, lemon — our take on a Paper Plane.", build: ["0.75 oz rye", "0.75 oz amaro", "0.75 oz chartreuse", "0.75 oz lemon"] },
+    { id: "spritz", name: "Garden Spritz", priceCents: 1200, abv: 14, spirit: "Aperitif", tags: ["Light", "Bubbly"], desc: "Aperitivo, prosecco, soda, cucumber and mint. Low and breezy.", build: ["2 oz aperitivo", "3 oz prosecco", "Splash soda", "Cucumber + mint"] },
+    { id: "zero", name: "Smoke & Citrus (0%)", priceCents: 900, abv: 0, spirit: "Zero-proof", tags: ["Zero-proof", "Smoky"], desc: "Non-alc spirit, lapsang syrup, lemon, soda. All flavor, no proof.", build: ["2 oz zero-proof spirit", "0.5 oz lapsang syrup", "0.75 oz lemon", "Top soda"] }
+  ],
+
+  events: [
+    { tag: "Live Music", title: "The Hollow Coats — indie folk", when: "Tonight · 9:00 PM", where: "Main Stage", icon: "headphones" },
+    { tag: "Weekly", title: "Trivia Night", when: "Tue · 8:00 PM", where: "Whole bar", icon: "sparkle" },
+    { tag: "Tasting", title: "Agave Flight Class", when: "Thu · 7:00 PM", where: "Back Room", icon: "cocktail" },
+    { tag: "DJ", title: "Vinyl Sundays", when: "Sun · 6:00 PM", where: "Patio", icon: "headphones" }
+  ],
+
+  tabNote: "Open a tab on the kiosk and a server will bring your order. 21+ only — please drink responsibly."
+};
+
+</script>
+<script>
+/* ===== bar/app.js ===== */
+/* ═══════════════════════════════════════════════════════════════════════════
+   BAR KIOSK · SCREENS  (reads window.BAR)
+   Age gate → home (happy hour, taps, cocktails, events) → drink detail →
+   running tab → send to bar. Moody candlelit aesthetic.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+  var D = window.BAR;
+  var icon = Kiosk.icon, money = Kiosk.money;
+  function cocktailById(id) { return D.cocktails.filter(function (c) { return c.id === id; })[0]; }
+  function tapById(id) { return D.onTap.filter(function (t) { return t.id === id; })[0]; }
+
+  var tab = [];        // {uid, name, priceCents, kind}
+  var uidSeq = 1;
+  var gated = false;   // age gate passed?
+
+  function tabCount() { return tab.length; }
+  function tabTotal() { return tab.reduce(function (s, l) { return s + l.priceCents; }, 0); }
+
+  function bar(showBack) {
+    return '<header class="bar ba-bar">' +
+      (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
+      '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
+      '<div class="col"><div class="t-h3 ba-word" style="line-height:1">' + D.name + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.2em">' + D.tagline + '</div></div></div>' +
+      '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
+      (D.happyHour.active ? '<div class="ba-hh">' + icon('flame') + ' Happy Hour till ' + D.happyHour.until + '</div>' : '') +
+      '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
+    '</header>';
+  }
+  function tabFab() {
+    var n = tabCount();
+    return '<button class="ba-fab ' + (n ? 'is-active' : '') + '" data-go="tab" ' + (n ? '' : 'disabled') + '>' +
+      '<span class="ba-fab__ic">' + icon('cocktail') + (n ? '<span class="ba-fab__count">' + n + '</span>' : '') + '</span>' +
+      '<span>' + (n ? 'Your tab' : 'Tab empty') + '</span>' + (n ? '<span class="ba-fab__total">' + money(tabTotal()) + '</span>' : '') + '</button>';
+  }
+  function syncFab() { var f = Kiosk.$('.ba-fab'); if (f) f.parentNode.innerHTML = tabFab(); }
+
+  // ── AGE GATE (start screen) ───────────────────────────────────────────────
+  function gate() {
+    return '<div class="ba-gate"><div class="ba-gate__bg media ba-hero"><div class="media__scrim"></div></div>' +
+      '<div class="ba-gate__b">' +
+        '<div class="bar__logo ba-gate__logo">' + D.brandInitials + '</div>' +
+        '<div class="t-mega ba-word" style="color:#fff">' + D.name + '</div>' +
+        '<div class="t-h2" style="color:rgba(255,255,255,.85);font-weight:400;font-style:italic">' + D.tagline + '</div>' +
+        '<p class="t-h3" style="color:rgba(255,255,255,.8);font-weight:400;margin:var(--s-4) 0;max-width:30ch">You must be 21 or older to view the menu and order.</p>' +
+        '<div class="ba-gate__btns"><button class="btn btn--primary btn--lg" data-act="enter">' + icon('check', { sw: 2.4 }) + " I\u2019m 21 or older</button>" +
+          '<button class="btn btn--ghost btn--lg" style="color:#fff" data-act="under">Under 21</button></div>' +
+        '<p class="t-sm" style="color:rgba(255,255,255,.55);margin-top:var(--s-4)">' + D.tabNote + '</p>' +
+      '</div></div>';
+  }
+
+  function attract() {
+    return '<div class="attract__bg"><div class="media ba-hero"><div class="media__scrim"></div>' +
+        '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
+      '<div class="attract__body">' +
+        '<div class="eyebrow" style="color:var(--accent)">' + D.tagline + '</div>' +
+        '<div class="t-mega ba-word" style="color:#fff;margin-top:var(--s-1)">' + D.name + '</div>' +
+        '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to see tonight\u2019s menu</div>' +
+      '</div>';
+  }
+
+  function levelTag(l) {
+    if (l <= 20) return '<span class="badge badge--bad"><span class="dot"></span>Last pours</span>';
+    if (l <= 45) return '<span class="badge badge--warn"><span class="dot"></span>Running low</span>';
+    return '<span class="badge badge--good"><span class="dot"></span>On tap</span>';
+  }
+
+  // ── HOME ──────────────────────────────────────────────────────────────────
+  function home() {
+    var taps = D.onTap.slice(0, 3).map(tapRow).join('');
+    var cocktails = D.cocktails.slice(0, 4).map(function (c) {
+      return '<button class="ba-cocktail" data-go="cocktail:' + c.id + '"><div class="media ba-cocktail__img"><span class="media__tag">' + icon('image') + '</span></div>' +
+        '<div class="ba-cocktail__b"><div class="t-h2">' + c.name + '</div><div class="t-sm dim">' + c.spirit + ' · ' + c.abv + '% ABV</div>' +
+        '<div class="ba-cocktail__p">' + money(c.priceCents) + '</div></div></button>';
+    }).join('');
+
+    return bar(false) +
+    '<div class="scroll"><div class="ba-home">' +
+      (D.happyHour.active ? '<section class="ba-hhcard"><div class="ba-hhcard__ic">' + icon('flame') + '</div>' +
+        '<div class="grow"><div class="eyebrow" style="color:var(--accent)">Happy Hour · until ' + D.happyHour.until + '</div>' +
+        '<div class="t-h1">' + D.happyHour.deal + '</div></div>' +
+        '<button class="chip" data-go="events">' + icon('calendar') + ' Tonight</button></section>' : '') +
+
+      '<section class="ba-split">' +
+        '<div><div class="row between" style="margin-bottom:var(--s-3)"><div class="eyebrow">On Tap Now</div>' +
+          '<button class="chip" data-go="tap">All ' + D.onTap.length + ' taps ' + icon('arrow-right', { sw: 2 }) + '</button></div>' +
+          '<div class="ba-taps">' + taps + '</div></div>' +
+        '<div><div class="row between" style="margin-bottom:var(--s-3)"><div class="eyebrow">Signature Cocktails</div>' +
+          '<button class="chip" data-go="cocktails">Full list ' + icon('arrow-right', { sw: 2 }) + '</button></div>' +
+          '<div class="ba-cocktails ba-cocktails--home">' + cocktails + '</div></div>' +
+      '</section>' +
+
+      '<section class="ba-tiles">' +
+        tile('cocktail', 'Cocktails', D.cocktails.length + ' signatures', 'cocktails') +
+        tile('beer', 'On Tap', D.onTap.length + ' drafts & cider', 'tap') +
+        tile('headphones', "Tonight", D.events.length + ' events', 'events') +
+      '</section>' +
+    '</div></div>' +
+    '<div class="ba-fabwrap">' + tabFab() + '</div>';
+  }
+  function tile(ic, t, sub, go) {
+    return '<button class="ba-tile" data-go="' + go + '"><span class="ba-tile__ic">' + icon(ic) + '</span><span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h3">' + t + '</span><span class="t-sm dim">' + sub + '</span></span><span class="ba-tile__go">' + icon('arrow-right', { sw: 2 }) + '</span></button>';
+  }
+  function tapRow(t) {
+    return '<div class="ba-tap"><div class="ba-tap__keg"><div class="ba-tap__fill" style="height:' + t.level + '%"></div></div>' +
+      '<div class="grow"><div class="row between"><div class="t-h3">' + t.name + '</div><div class="ba-tap__p">' + money(t.priceCents) + '</div></div>' +
+      '<div class="t-sm dim">' + t.brewery + ' · ' + t.style + ' · ' + t.abv + '%</div>' +
+      '<div class="row between" style="margin-top:var(--s-2)">' + levelTag(t.level) + '<button class="ba-add" data-act="addtap" data-id="' + t.id + '">' + icon('plus', { sw: 2.6 }) + ' Add to tab</button></div></div></div>';
+  }
+
+  // ── COCKTAILS ─────────────────────────────────────────────────────────────
+  function cocktails() {
+    return bar(true) + '<div class="scroll"><div class="ba-list">' +
+      '<div class="ba-head"><div><div class="eyebrow">The List</div><h1 class="t-xl">Signature Cocktails</h1></div></div>' +
+      '<div class="ba-cocktails">' + D.cocktails.map(function (c) {
+        return '<button class="ba-cocktail" data-go="cocktail:' + c.id + '"><div class="media ba-cocktail__img"><span class="media__tag">' + icon('image') + '</span><span class="ba-abv">' + c.abv + '%</span></div>' +
+          '<div class="ba-cocktail__b"><div class="t-h2">' + c.name + '</div><div class="t-sm dim pretty">' + c.desc + '</div>' +
+          '<div class="row between" style="margin-top:var(--s-2)"><div class="chiprow">' + c.tags.map(function (t) { return '<span class="badge">' + t + '</span>'; }).join('') + '</div><div class="ba-cocktail__p">' + money(c.priceCents) + '</div></div></div></button>';
+      }).join('') + '</div></div></div>' + '<div class="ba-fabwrap">' + tabFab() + '</div>';
+  }
+  function cocktail(id) {
+    var c = cocktailById(id); if (!c) return '<div class="pad-7">Not found</div>';
+    return bar(true) + '<div class="scroll"><div class="ba-cd">' +
+      '<div class="split split--4060">' +
+        '<div class="media ba-cd__img"><span class="ba-abv ba-abv--lg">' + c.abv + '% ABV</span><div class="media__tag">' + icon('image') + ' ' + c.name.toUpperCase() + '</div></div>' +
+        '<div class="ba-cd__b"><div class="chiprow">' + c.tags.map(function (t) { return '<span class="badge badge--accent">' + t + '</span>'; }).join('') + '</div>' +
+          '<h1 class="t-xl" style="margin:var(--s-2) 0 0">' + c.name + '</h1>' +
+          '<div class="t-h3 dim" style="font-weight:500">' + c.spirit + ' · ' + c.abv + '% ABV</div>' +
+          '<p class="t-lg pretty" style="margin:var(--s-3) 0">' + c.desc + '</p>' +
+          '<div class="eyebrow">How it\u2019s built</div><ul class="ba-build">' + c.build.map(function (b) { return '<li>' + icon('check', { sw: 2.4 }) + ' ' + b + '</li>'; }).join('') + '</ul>' +
+        '</div>' +
+      '</div>' +
+    '</div></div>' +
+    '<div class="actionbar ba-addbar"><div class="col" style="gap:0"><div class="t-sm dim">' + c.name + '</div><div class="t-h3">' + money(c.priceCents) + (D.happyHour.active ? ' · <span style="color:var(--accent)">HH $2 off at the bar</span>' : '') + '</div></div>' +
+      '<div class="bar__spacer"></div><button class="btn btn--primary btn--lg" data-act="addcocktail" data-id="' + c.id + '">' + icon('plus', { sw: 2.4 }) + ' Add to tab</button></div>';
+  }
+
+  // ── TAP LIST ────────────────────────────────────────────────────────────
+  function tap() {
+    return bar(true) + '<div class="scroll"><div class="ba-list">' +
+      '<div class="ba-head"><div><div class="eyebrow">Draft · live keg levels</div><h1 class="t-xl">On Tap</h1></div></div>' +
+      '<div class="ba-taps ba-taps--full">' + D.onTap.map(tapRow).join('') + '</div></div></div>' + '<div class="ba-fabwrap">' + tabFab() + '</div>';
+  }
+
+  // ── EVENTS ────────────────────────────────────────────────────────────────
+  function events() {
+    return bar(true) + '<div class="scroll"><div class="ba-list">' +
+      '<div class="ba-head"><div><div class="eyebrow">What\u2019s on</div><h1 class="t-xl">Tonight &amp; This Week</h1></div></div>' +
+      '<div class="ba-events">' + D.events.map(function (e) {
+        return '<div class="card card--static ba-event"><div class="ba-event__ic">' + icon(e.icon) + '</div>' +
+          '<div class="grow"><div class="badge badge--accent">' + e.tag + '</div><div class="t-h2" style="margin:var(--s-1) 0">' + e.title + '</div>' +
+          '<div class="row gap-3 dim t-body"><span>' + icon('clock') + ' ' + e.when + '</span><span>' + icon('pin') + ' ' + e.where + '</span></div></div></div>';
+      }).join('') + '</div></div></div>';
+  }
+
+  // ── TAB ─────────────────────────────────────────────────────────────────
+  function tabScreen() {
+    if (!tab.length) return bar(true) + '<div class="ba-empty"><div class="ba-empty__ic">' + icon('cocktail') + '</div><h1 class="t-h1">Your tab is empty</h1><button class="btn btn--primary btn--lg" data-home>' + icon('cocktail') + ' Browse the menu</button></div>';
+    var lines = tab.map(function (l) {
+      return '<div class="ba-tabline"><div class="ba-tabline__ic">' + icon(l.kind === 'tap' ? 'beer' : 'cocktail') + '</div>' +
+        '<div class="grow"><div class="t-h3">' + l.name + '</div><div class="t-sm dim">' + (l.kind === 'tap' ? 'Draft pour' : 'Cocktail') + '</div></div>' +
+        '<div class="t-h3 ba-tabline__p">' + money(l.priceCents) + '</div>' +
+        '<button class="ba-remove" data-act="remove" data-uid="' + l.uid + '">' + icon('x', { sw: 2.2 }) + '</button></div>';
+    }).join('');
+    return bar(true) + '<div class="scroll"><div class="ba-list">' +
+      '<div class="ba-head"><div><div class="eyebrow">Running tab</div><h1 class="t-xl">Your Tab</h1></div><div class="t-body dim">' + tabCount() + ' drink' + (tabCount() > 1 ? 's' : '') + '</div></div>' +
+      '<div class="ba-tablines">' + lines + '</div></div></div>' +
+      '<div class="actionbar ba-checkoutbar"><div class="col" style="gap:0"><div class="t-sm dim">Estimated total</div><div class="t-h2">' + money(tabTotal()) + '<span class="t-sm dim"> + tax & tip</span></div></div>' +
+      '<div class="bar__spacer"></div><button class="btn btn--primary btn--lg" data-act="opentab">' + icon('send') + ' Send to the bar</button></div>';
+  }
+  function tabConfirmed() {
+    return '<div class="ba-done"><div class="ba-done__ic">' + icon('check', { sw: 2.6 }) + '</div>' +
+      '<h1 class="t-mega ba-word">Tab opened</h1>' +
+      '<p class="t-h3 dim" style="font-weight:400;max-width:34ch">A server is pouring your order now. Find a seat — we\u2019ll bring it over and keep the tab open under your table.</p>' +
+      '<div class="feat" style="max-width:calc(var(--u)*64);margin:var(--s-4) auto"><span class="feat__ic">' + icon('clock') + '</span><div><div class="feat__t">' + tabCount() + ' drinks · ' + money(tabTotal()) + ' so far</div><div class="feat__d">Settle anytime at the bar or kiosk</div></div></div>' +
+      '<button class="btn btn--primary btn--lg" data-act="reset">' + icon('cocktail') + ' Order more</button></div>';
+  }
+
+  Kiosk.app({
+    theme: 'bar', start: 'gate', idleMs: 60000,
+    crumbs: { home: 'Menu', cocktails: 'Cocktails', cocktail: 'Cocktail', tap: 'On Tap', events: 'Tonight', tab: 'Tab' },
+    screens: { gate: gate, home: home, cocktails: cocktails, cocktail: cocktail, tap: tap, events: events, tab: tabScreen },
+    attract: attract,
+    onAction: function (name, el, data) {
+      if (name === 'enter') { gated = true; Kiosk.stack = [{ name: 'home', params: null }]; Kiosk.refresh(); }
+      else if (name === 'under') { Kiosk.toast('Must be 21+ to view the menu', { icon: 'info', ms: 2600 }); }
+      else if (name === 'addtap') { var t = tapById(data.id); tab.push({ uid: uidSeq++, name: t.name, priceCents: t.priceCents, kind: 'tap' }); Kiosk.toast(t.name + ' added to tab', { icon: 'check' }); syncFab(); }
+      else if (name === 'addcocktail') { var c = cocktailById(data.id); tab.push({ uid: uidSeq++, name: c.name, priceCents: c.priceCents, kind: 'cocktail' }); Kiosk.toast(c.name + ' added to tab', { icon: 'check' }); Kiosk.back(); setTimeout(syncFab, 60); }
+      else if (name === 'remove') { tab = tab.filter(function (x) { return x.uid != data.uid; }); Kiosk.refresh(); }
+      else if (name === 'opentab') { Kiosk.stack.push({ name: '_done', params: null }); Kiosk.cfg.screens._done = tabConfirmed; Kiosk.refresh(); }
+      else if (name === 'reset') { Kiosk.stack = [{ name: 'home', params: null }]; Kiosk.refresh(); }
+    }
+  });
+
+  // returning from attract should re-gate
+  var _wake = Kiosk._wake.bind(Kiosk);
+  Kiosk._wake = function () { if (!this._attractOn) return; this.attractEl.classList.remove('is-on'); this._attractOn = false; tab = []; this.stack = [{ name: 'gate', params: null }]; this.refresh(); };
+})();
+
+</script>
+<script src="/templates/kiosk/_edit-shim.js"></script>
+</body>
+</html>

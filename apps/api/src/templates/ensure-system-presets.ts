@@ -207,6 +207,9 @@ PRESET_VERTICALS.set('preset-kiosk-museum', ['ALL']);
 PRESET_VERTICALS.set('preset-kiosk-office', ['ALL']);
 PRESET_VERTICALS.set('preset-kiosk-gym', ['ALL']);
 PRESET_VERTICALS.set('preset-kiosk-school', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-qsr', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-bar', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-clinic', ['ALL']);
 
 /**
  * Resolve the stored `Template.vertical` tag for a preset id. Returns a

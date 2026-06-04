@@ -2110,4 +2110,28 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     screenWidth: 1920, screenHeight: 1080, bgColor: '#f4f6fb',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/kiosk/school.html' } }],
   },
+  {
+    id: 'preset-kiosk-qsr',
+    name: '🍔 Touch Kiosk — Fast-Food Self-Order',
+    description: 'Fast-food self-order kiosk: value-deal combos, a “make it a combo” meal builder with priced modifiers, rewards/points, cart with upsell, order summary + tax, and POS hand-off. Warm appetite-forward theme. Touch-driven, attract loop, reflows landscape/portrait.',
+    category: 'KIOSK', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#171210',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/kiosk/qsr.html' } }],
+  },
+  {
+    id: 'preset-kiosk-bar',
+    name: '🍸 Touch Kiosk — Bar & Tap House',
+    description: 'Cocktail & tap-house kiosk: age-gate entry, live happy-hour countdown, on-tap list with keg levels, cocktail menu with build notes, events, and a running tab → send to bar. Moody backbar theme. Touch-driven, attract loop, reflows landscape/portrait.',
+    category: 'KIOSK', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#120f17',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/kiosk/bar.html' } }],
+  },
+  {
+    id: 'preset-kiosk-clinic',
+    name: '🩺 Touch Kiosk — Patient Check-In',
+    description: 'Healthcare self-service kiosk: patient self check-in (appointment lookup → confirm → copay → queue), live wait board, provider directory, and department wayfinding. Calm, accessible clinical theme. Touch-driven, attract loop, reflows landscape/portrait.',
+    category: 'KIOSK', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#eef4f4',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/kiosk/clinic.html' } }],
+  },
 ];
