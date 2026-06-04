@@ -1356,10 +1356,10 @@ window.QSR = {
     return '<header class="bar qs-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
       '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3 qs-word" style="line-height:1">' + D.restaurant + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.16em">' + D.tagline + '</div></div></div>' +
+      '<div class="col"><div class="t-h3 qs-word" style="line-height:1" data-field="brand.restaurant">' + D.restaurant + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.16em" data-field="brand.tagline">' + D.tagline + '</div></div></div>' +
       '<div class="bar__spacer"></div>' +
-      '<button class="qs-rewards" data-go="rewards">' + icon('sparkle') + ' ' + D.rewards.points + ' pts</button>' +
+      '<button class="qs-rewards" data-go="rewards">' + icon('sparkle') + ' <span data-field="rewards.points">' + D.rewards.points + '</span> pts</button>' +
       '<button class="iconbtn" data-home aria-label="Start over">' + icon('home', { sw: 2 }) + '</button>' +
     '</header>';
   }
@@ -1372,10 +1372,10 @@ window.QSR = {
   function syncFab() { var f = Kiosk.$('.qs-fab'); if (f) f.parentNode.innerHTML = fab(); }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media qs-hero"><div class="media__scrim"></div>' +
-        '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
+    return '<div class="attract__bg"><div class="media qs-hero" data-img="hero.image"><div class="media__scrim"></div>' +
+        '<div class="media__tag">' + icon('image') + ' <span data-field="hero.label">' + D.hero.label + '</span></div></div></div>' +
       '<div class="attract__body">' +
-        '<div class="eyebrow" style="color:var(--accent-2)">' + D.restaurant + ' · ' + D.tagline + '</div>' +
+        '<div class="eyebrow" style="color:var(--accent-2)"><span data-field="brand.restaurant">' + D.restaurant + '</span> · <span data-field="brand.tagline">' + D.tagline + '</span></div>' +
         '<div class="t-mega qs-word" style="color:#fff;margin-top:var(--s-1);font-size:calc(var(--u)*15)">ORDER<br>HERE</div>' +
         '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Tap to start · earn rewards on every order</div>' +
       '</div>';
@@ -1388,18 +1388,18 @@ window.QSR = {
       // rewards + deals strip
       '<section class="qs-promorow">' +
         '<button class="qs-reward" data-go="rewards"><div class="qs-reward__ic">' + icon('sparkle') + '</div>' +
-          '<div><div class="t-h3">' + D.rewards.points + ' points</div><div class="t-sm dim">' + D.rewards.nextReward + '</div></div>' +
+          '<div><div class="t-h3"><span data-field="rewards.points">' + D.rewards.points + '</span> points</div><div class="t-sm dim" data-field="rewards.nextReward">' + D.rewards.nextReward + '</div></div>' +
           '<span class="qs-reward__go">' + icon('arrow-right', { sw: 2 }) + '</span></button>' +
         '<div class="qs-deals">' + D.deals.map(function (d) {
-          return '<button class="qs-deal" data-act="deal" data-id="' + d.id + '"><div class="media qs-deal__img"><span class="media__tag">' + icon('image') + ' ' + d.image + '</span><span class="qs-deal__save">' + d.save + '</span></div>' +
-            '<div class="qs-deal__b"><div class="t-h3">' + d.name + '</div><div class="t-sm dim">' + d.desc + '</div>' +
-            '<div class="qs-deal__price">' + money(d.priceCents) + '</div></div></button>';
+          return '<button class="qs-deal" data-act="deal" data-id="' + d.id + '"><div class="media qs-deal__img" data-img="deal.' + d.id + '.image"><span class="media__tag">' + icon('image') + ' ' + d.image + '</span><span class="qs-deal__save" data-field="deal.' + d.id + '.save">' + d.save + '</span></div>' +
+            '<div class="qs-deal__b"><div class="t-h3" data-field="deal.' + d.id + '.name">' + d.name + '</div><div class="t-sm dim" data-field="deal.' + d.id + '.desc">' + d.desc + '</div>' +
+            '<div class="qs-deal__price" data-field="deal.' + d.id + '.price">' + money(d.priceCents) + '</div></div></button>';
         }).join('') + '</div>' +
       '</section>' +
       // category nav + items
       '<section class="qs-menu">' +
         '<nav class="qs-cats">' + D.categories.map(function (c) {
-          return '<button class="qs-cat ' + (c.id === activeCat ? 'is-on' : '') + '" data-act="cat" data-cat="' + c.id + '"><span class="qs-cat__ic">' + icon(c.icon) + '</span>' + c.name + '</button>';
+          return '<button class="qs-cat ' + (c.id === activeCat ? 'is-on' : '') + '" data-act="cat" data-cat="' + c.id + '"><span class="qs-cat__ic">' + icon(c.icon) + '</span><span data-field="cat.' + c.id + '.name">' + c.name + '</span></button>';
         }).join('') + '</nav>' +
         '<div class="qs-items" id="qs-items">' + itemsFor(activeCat) + '</div>' +
       '</section>' +
@@ -1410,20 +1410,20 @@ window.QSR = {
     if (cat === 'deals') {
       return '<div class="qs-cathead"><h1 class="t-xl">Value Deals</h1><div class="t-body dim">Tap to add a bundle</div></div>' +
         '<div class="qs-grid">' + D.deals.map(function (d) {
-          return '<button class="card qs-card" data-act="deal" data-id="' + d.id + '"><span class="media qs-card__img"><span class="media__tag">' + icon('image') + ' ' + d.image + '</span><span class="qs-deal__save">' + d.save + '</span></span>' +
-            '<span class="qs-card__b"><span class="row between"><span class="t-h3">' + d.name + '</span><span class="qs-card__price">' + money(d.priceCents) + '</span></span><span class="t-sm dim">' + d.desc + '</span></span></button>';
+          return '<button class="card qs-card" data-act="deal" data-id="' + d.id + '"><span class="media qs-card__img" data-img="deal.' + d.id + '.image"><span class="media__tag">' + icon('image') + ' ' + d.image + '</span><span class="qs-deal__save" data-field="deal.' + d.id + '.save">' + d.save + '</span></span>' +
+            '<span class="qs-card__b"><span class="row between"><span class="t-h3" data-field="deal.' + d.id + '.name">' + d.name + '</span><span class="qs-card__price" data-field="deal.' + d.id + '.price">' + money(d.priceCents) + '</span></span><span class="t-sm dim" data-field="deal.' + d.id + '.desc">' + d.desc + '</span></span></button>';
         }).join('') + '</div>';
     }
     var cobj = D.categories.filter(function (c) { return c.id === cat; })[0];
     var list = D.items.filter(function (i) { return i.cat === cat; });
-    return '<div class="qs-cathead"><h1 class="t-xl">' + cobj.name + '</h1><div class="t-body dim">' + list.length + ' options</div></div>' +
+    return '<div class="qs-cathead"><h1 class="t-xl" data-field="cat.' + cobj.id + '.name">' + cobj.name + '</h1><div class="t-body dim">' + list.length + ' options</div></div>' +
       '<div class="qs-grid">' + list.map(card).join('') + '</div>';
   }
   function card(i) {
     return '<button class="card qs-card" data-go="item:' + i.id + '">' +
-      '<span class="media qs-card__img"><span class="media__tag">' + icon('image') + ' ' + i.image + '</span>' + (i.popular ? '<span class="qs-pop">' + icon('star') + ' Popular</span>' : '') + (i.combo ? '<span class="qs-comboflag">Combo +' + money(D.comboUpchargeCents).replace('.00', '') + '</span>' : '') + '</span>' +
-      '<span class="qs-card__b"><span class="row between gap-2"><span class="t-h3 qs-name">' + i.name + '</span><span class="qs-card__price">' + money(i.priceCents) + '</span></span>' +
-      '<span class="t-sm dim qs-desc">' + i.desc + '</span>' +
+      '<span class="media qs-card__img" data-img="item.' + i.id + '.image"><span class="media__tag">' + icon('image') + ' ' + i.image + '</span>' + (i.popular ? '<span class="qs-pop">' + icon('star') + ' Popular</span>' : '') + (i.combo ? '<span class="qs-comboflag">Combo +' + money(D.comboUpchargeCents).replace('.00', '') + '</span>' : '') + '</span>' +
+      '<span class="qs-card__b"><span class="row between gap-2"><span class="t-h3 qs-name" data-field="item.' + i.id + '.name">' + i.name + '</span><span class="qs-card__price" data-field="item.' + i.id + '.price">' + money(i.priceCents) + '</span></span>' +
+      '<span class="t-sm dim qs-desc" data-field="item.' + i.id + '.desc">' + i.desc + '</span>' +
       '<span class="row between" style="margin-top:auto;padding-top:var(--s-3)"><span class="row gap-2">' + tagBadges(i) + '<span class="badge">' + i.kcal + ' cal</span></span><span class="qs-add">' + icon('plus', { sw: 2.6 }) + '</span></span></span></button>';
   }
 
@@ -1445,11 +1445,11 @@ window.QSR = {
     return bar(true) +
     '<div class="scroll"><div class="qs-item">' +
       '<div class="split qs-item__top">' +
-        '<div class="media qs-item__img"><div class="media__scrim"></div><div class="media__tag">' + icon('image') + ' ' + it.image + '</div>' + (it.popular ? '<div class="qs-pop qs-pop--lg">' + icon('star') + ' Popular</div>' : '') + '</div>' +
+        '<div class="media qs-item__img" data-img="item.' + id + '.image"><div class="media__scrim"></div><div class="media__tag">' + icon('image') + ' ' + it.image + '</div>' + (it.popular ? '<div class="qs-pop qs-pop--lg">' + icon('star') + ' Popular</div>' : '') + '</div>' +
         '<div class="qs-item__info"><div class="row gap-2 wrap">' + tagBadges(it) + '<span class="badge">' + it.kcal + ' cal</span></div>' +
-          '<h1 class="t-xl" style="margin:var(--s-2) 0">' + it.name + '</h1>' +
-          '<p class="t-lg dim pretty">' + it.desc + '</p>' +
-          '<div class="qs-base">' + money(it.priceCents) + '</div>' +
+          '<h1 class="t-xl" style="margin:var(--s-2) 0" data-field="item.' + id + '.name">' + it.name + '</h1>' +
+          '<p class="t-lg dim pretty" data-field="item.' + id + '.desc">' + it.desc + '</p>' +
+          '<div class="qs-base" data-field="item.' + id + '.price">' + money(it.priceCents) + '</div>' +
           comboBlock + (mods ? '<div class="qs-mods">' + mods + '</div>' : '') +
         '</div>' +
       '</div>' +
@@ -1493,7 +1493,7 @@ window.QSR = {
       '<div class="qs-cathead"><h1 class="t-xl">Your bag</h1><div class="t-body dim">' + count() + ' item' + (count() > 1 ? 's' : '') + ' · earn ' + Math.round(subtotal() / 100) + ' pts</div></div>' +
       '<div class="qs-lines">' + lines + '</div></div></div>' +
       '<div class="actionbar qs-checkoutbar"><div class="qs-totals"><div class="row between"><span class="dim">Subtotal</span><span>' + money(subtotal()) + '</span></div><div class="row between"><span class="dim">Tax</span><span>' + money(tax()) + '</span></div><div class="row between qs-grand"><span>Total</span><span>' + money(total()) + '</span></div></div>' +
-      '<button class="btn btn--primary btn--lg grow qs-checkout" data-act="send">' + icon('send') + ' Place order · ' + money(total()) + '</button></div>';
+      '<button class="btn btn--primary btn--lg grow qs-checkout" data-act="send" data-action="order.send">' + icon('send') + ' Place order · ' + money(total()) + '</button></div>';
   }
 
   var lastNo = 0;
@@ -1508,12 +1508,12 @@ window.QSR = {
 
   function rewards() {
     return bar(true) + '<div class="scroll"><div class="qs-rewardspg">' +
-      '<div class="qs-rewardhero"><div class="eyebrow" style="color:var(--on-accent);opacity:.75">STACK Rewards</div>' +
-        '<div class="qs-rewardhero__pts">' + D.rewards.points + '<span> pts</span></div>' +
-        '<div class="t-h3" style="color:var(--on-accent)">' + D.rewards.nextReward + '</div>' +
+      '<div class="qs-rewardhero"><div class="eyebrow" style="color:var(--on-accent);opacity:.75" data-field="rewards.programName">STACK Rewards</div>' +
+        '<div class="qs-rewardhero__pts" data-field="rewards.points">' + D.rewards.points + '<span> pts</span></div>' +
+        '<div class="t-h3" style="color:var(--on-accent)" data-field="rewards.nextReward">' + D.rewards.nextReward + '</div>' +
         '<div class="qs-rewardbar"><i style="width:' + Math.round(D.rewards.points / 300 * 100) + '%"></i></div></div>' +
-      '<div class="qs-scan"><div class="qs-scan__qr">' + icon('qr', { sw: 1.5 }) + '</div><div><div class="t-h2">Scan to earn &amp; redeem</div><p class="t-body dim pretty">Open the STACK app, tap Rewards, and scan this code. Earn 1 point per $1 and redeem free food at every tier.</p></div></div>' +
-      '<button class="btn btn--primary btn--lg btn--block" data-home style="margin-top:var(--s-5)">' + icon('flame') + ' Start an order</button>' +
+      '<div class="qs-scan"><div class="qs-scan__qr">' + icon('qr', { sw: 1.5 }) + '</div><div><div class="t-h2" data-field="rewards.scanHeading">Scan to earn &amp; redeem</div><p class="t-body dim pretty" data-field="rewards.scanBody">Open the STACK app, tap Rewards, and scan this code. Earn 1 point per $1 and redeem free food at every tier.</p></div></div>' +
+      '<button class="btn btn--primary btn--lg btn--block" data-act="rewardsjoin" data-action="rewards.join" style="margin-top:var(--s-5)">' + icon('sparkle') + ' <span data-field="rewards.joinLabel">Join rewards &amp; start earning</span></button>' +
     '</div></div>';
   }
 
@@ -1539,11 +1539,95 @@ window.QSR = {
       else if (name === 'remove') { cart = cart.filter(function (x) { return x.uid != data.uid; }); Kiosk.refresh(); }
       else if (name === 'send') { lastNo = 300 + Math.floor(Math.random() * 99); console.log('[POS] STACK order', { no: lastNo, lines: cart, total: total() }); Kiosk.stack.push({ name: '_done', params: null }); Kiosk.cfg.screens._done = confirmed; Kiosk.refresh(); cart = []; }
       else if (name === 'reset') { activeCat = 'burgers'; Kiosk.home(); }
+      else if (name === 'rewardsjoin') { /* platform override via data-action="rewards.join" */ }
     }
   });
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <span data-field="brand.restaurant">STACK</span>
+  <span data-field="brand.tagline">Burgers &amp; Shakes</span>
+  <div data-img="hero.image"></div>
+  <span data-field="hero.label">HERO — THE DOUBLE STACK</span>
+  <span data-field="rewards.points">240</span>
+  <span data-field="rewards.nextReward">Free shake at 300 pts</span>
+  <span data-field="rewards.member">Tap your app to earn 1 pt per $1</span>
+  <span data-field="rewards.programName">STACK Rewards</span>
+  <span data-field="rewards.scanHeading">Scan to earn &amp; redeem</span>
+  <span data-field="rewards.scanBody">Open the STACK app, tap Rewards, and scan this code. Earn 1 point per $1 and redeem free food at every tier.</span>
+  <span data-field="rewards.joinLabel">Join rewards &amp; start earning</span>
+  <span data-field="deal.d1.name">2 Smash Combos</span>
+  <span data-field="deal.d1.desc">Two single combos + two fries</span>
+  <span data-field="deal.d1.price">$17.99</span>
+  <span data-field="deal.d1.save">Save $4</span>
+  <div data-img="deal.d1.image"></div>
+  <span data-field="deal.d2.name">Family Box</span>
+  <span data-field="deal.d2.desc">4 burgers, 2 large fries, 4 drinks</span>
+  <span data-field="deal.d2.price">$29.99</span>
+  <span data-field="deal.d2.save">Save $7</span>
+  <div data-img="deal.d2.image"></div>
+  <span data-field="deal.d3.name">Shake &amp; Fries</span>
+  <span data-field="deal.d3.desc">Any shake + regular fries</span>
+  <span data-field="deal.d3.price">$6.99</span>
+  <span data-field="deal.d3.save">Save $2</span>
+  <div data-img="deal.d3.image"></div>
+  <span data-field="cat.burgers.name">Burgers</span>
+  <span data-field="cat.chicken.name">Chicken</span>
+  <span data-field="cat.sides.name">Sides</span>
+  <span data-field="cat.shakes.name">Shakes</span>
+  <span data-field="cat.deals.name">Deals</span>
+  <span data-field="item.double.name">The Double Stack</span>
+  <span data-field="item.double.desc">Two smashed patties, double cheese, pickles, Stack sauce, toasted bun.</span>
+  <span data-field="item.double.price">$7.49</span>
+  <div data-img="item.double.image"></div>
+  <span data-field="item.single.name">Classic Single</span>
+  <span data-field="item.single.desc">One smashed patty, cheese, lettuce, tomato, onion, Stack sauce.</span>
+  <span data-field="item.single.price">$5.99</span>
+  <div data-img="item.single.image"></div>
+  <span data-field="item.bbq.name">Smokehouse BBQ</span>
+  <span data-field="item.bbq.desc">Double patty, cheddar, crispy onions, bacon, smoky BBQ.</span>
+  <span data-field="item.bbq.price">$8.49</span>
+  <div data-img="item.bbq.image"></div>
+  <span data-field="item.veg.name">Garden Smash</span>
+  <span data-field="item.veg.desc">Plant-based patty, cheese, lettuce, tomato, vegan sauce.</span>
+  <span data-field="item.veg.price">$7.99</span>
+  <div data-img="item.veg.image"></div>
+  <span data-field="item.tenders.name">Crispy Tenders</span>
+  <span data-field="item.tenders.desc">Five hand-breaded tenders with your choice of dip.</span>
+  <span data-field="item.tenders.price">$6.99</span>
+  <div data-img="item.tenders.image"></div>
+  <span data-field="item.sando.name">Spicy Chicken Sando</span>
+  <span data-field="item.sando.desc">Crispy fillet, slaw, pickles, spicy mayo, brioche.</span>
+  <span data-field="item.sando.price">$7.99</span>
+  <div data-img="item.sando.image"></div>
+  <span data-field="item.fries.name">Stack Fries</span>
+  <span data-field="item.fries.desc">Crispy, salted, endless.</span>
+  <span data-field="item.fries.price">$3.49</span>
+  <div data-img="item.fries.image"></div>
+  <span data-field="item.rings.name">Onion Rings</span>
+  <span data-field="item.rings.desc">Beer-battered, crunchy.</span>
+  <span data-field="item.rings.price">$4.49</span>
+  <div data-img="item.rings.image"></div>
+  <span data-field="item.cheese.name">Cheese Fries</span>
+  <span data-field="item.cheese.desc">Fries smothered in queso.</span>
+  <span data-field="item.cheese.price">$4.99</span>
+  <div data-img="item.cheese.image"></div>
+  <span data-field="item.choc.name">Chocolate Shake</span>
+  <span data-field="item.choc.desc">Hand-spun, real ice cream, whipped top.</span>
+  <span data-field="item.choc.price">$5.49</span>
+  <div data-img="item.choc.image"></div>
+  <span data-field="item.van.name">Vanilla Bean Shake</span>
+  <span data-field="item.van.desc">Madagascar vanilla, whipped top.</span>
+  <span data-field="item.van.price">$5.49</span>
+  <div data-img="item.van.image"></div>
+  <span data-field="item.straw.name">Strawberry Shake</span>
+  <span data-field="item.straw.desc">Real strawberries, whipped top.</span>
+  <span data-field="item.straw.price">$5.49</span>
+  <div data-img="item.straw.image"></div>
+  <button data-action="order.send">Place order</button>
+  <button data-action="rewards.join">Join rewards &amp; start earning</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
