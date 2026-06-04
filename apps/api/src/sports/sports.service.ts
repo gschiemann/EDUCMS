@@ -4138,7 +4138,15 @@ export class SportsService {
     await this.owned(tenantId, gameId);
     const raw = await this.prisma.client.gameEvent.findMany({
       where: { gameId },
-      orderBy: { createdAt: 'desc' },
+      // Deterministic order for the undo rail. createdAt alone is NOT enough:
+      // several events fired in the same millisecond (a SCORE + its auto CLOCK,
+      // a rapid tap) tie on createdAt, and the DB is then free to return them
+      // in arbitrary order — so events[0] ("most recent", what one-tap undo
+      // acts on) could be the wrong one between requests. The id tiebreak makes
+      // the sequence stable. (GameEvent.id is a random uuid, so this isn't
+      // chronological within a tie — but same-ms events are effectively
+      // simultaneous; what matters is that the order is DETERMINISTIC.)
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: Math.min(50, Math.max(1, limit)),
     });
     const UNDOABLE_TYPES = new Set(['SCORE', 'CLOCK', 'SEGMENT', 'STAT']);

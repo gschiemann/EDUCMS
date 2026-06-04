@@ -43,7 +43,33 @@ function makeTable(defaults: Record<string, any> = {}) {
     updateCalls,
     findFirst: async ({ where }: any = {}) => rows.find((r) => matches(r, where)) ?? null,
     findUnique: async ({ where }: any = {}) => rows.find((r) => matches(r, where)) ?? null,
-    findMany: async ({ where }: any = {}) => rows.filter((r) => matches(r, where || {})),
+    findMany: async ({ where, orderBy, take, skip }: any = {}) => {
+      let out = rows.filter((r) => matches(r, where || {}));
+      // Honor orderBy the way Prisma does (single clause or an array of
+      // clauses, asc/desc, Date-aware) so tests that request an order get the
+      // SAME sequence prod does. Without this the fake returned insertion
+      // order and silently ignored `orderBy`, which made the undo-rail
+      // reverse-chronological test flake on millisecond ties.
+      if (orderBy) {
+        const clauses = Array.isArray(orderBy) ? orderBy : [orderBy];
+        out = out.slice().sort((a, b) => {
+          for (const clause of clauses) {
+            for (const [k, dir] of Object.entries(clause)) {
+              const av = a[k], bv = b[k];
+              let cmp = 0;
+              if (av instanceof Date || bv instanceof Date) cmp = new Date(av).getTime() - new Date(bv).getTime();
+              else if (av < bv) cmp = -1;
+              else if (av > bv) cmp = 1;
+              if (cmp !== 0) return dir === 'desc' ? -cmp : cmp;
+            }
+          }
+          return 0;
+        });
+      }
+      if (typeof skip === 'number') out = out.slice(skip);
+      if (typeof take === 'number') out = out.slice(0, take);
+      return out;
+    },
     count: async ({ where }: any = {}) => rows.filter((r) => matches(r, where || {})).length,
     create: async ({ data }: any) => {
       const row = { id: `id-${++seq}`, createdAt: new Date(), updatedAt: new Date(), ...defaults, ...data };
