@@ -50,6 +50,7 @@ import { transformedImageUrl } from '@/lib/asset-image';
 // only as the K12 fallback for any non-tenant-aware caller.
 const CATEGORY_TABS = [
   { key: '',          label: 'All' },
+  { key: 'KIOSK',     label: 'Touch Kiosks' },
   { key: 'LOBBY',     label: 'Welcome' },
   { key: 'HALLWAY',   label: 'Hallway' },
   { key: 'CAFETERIA', label: 'Cafeteria' },

@@ -195,17 +195,15 @@ for (const id of RETAIL_ALSO_FASHION) {
   PRESET_VERTICALS.set(id, ['RETAIL', 'FASHION']);
 }
 
-// Interactive touch kiosks (2026-06-03). Flagship interactive showcases —
-// each dual-tagged so it surfaces in its natural vertical AND on RESTAURANT
-// (the Acme Coffee demo tenant), where a self-order kiosk is also a genuine
-// fit. food → QSR + RESTAURANT (self-order/coffee); commercial-leasing →
-// CORPORATE + RESTAURANT; museum/exhibit → HOSPITALITY + RESTAURANT. (A
-// dedicated REAL_ESTATE / MUSEUM vertical, or a universal "showcase" tier
-// visible in every gallery, is a clean future option if we want these
-// everywhere.)
-PRESET_VERTICALS.set('preset-kiosk-food', ['QSR', 'RESTAURANT']);
-PRESET_VERTICALS.set('preset-kiosk-realestate', ['CORPORATE', 'RESTAURANT']);
-PRESET_VERTICALS.set('preset-kiosk-museum', ['HOSPITALITY', 'RESTAURANT']);
+// Interactive touch kiosks (2026-06-03). Flagship interactive showcases tagged
+// 'ALL' so the "Touch Kiosks" section appears in EVERY vertical's gallery —
+// per operator request (2026-06-03), kept universal for testing ease. The
+// 'ALL' sentinel is matched for every caller by verticalMatchOr +
+// verticalTagIncludes. (To split them per-vertical later, swap 'ALL' for the
+// natural verticals, e.g. food→['QSR','RESTAURANT'].)
+PRESET_VERTICALS.set('preset-kiosk-food', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-realestate', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-museum', ['ALL']);
 
 /**
  * Resolve the stored `Template.vertical` tag for a preset id. Returns a
@@ -231,6 +229,7 @@ export function resolvePresetVerticalTag(id: string): string {
  */
 export function verticalTagIncludes(tag: string | null | undefined, vertical: string): boolean {
   if (!tag) return false;
+  if (tag === 'ALL') return true; // universal "Touch Templates"/showcase tier — every vertical sees it
   if (tag === vertical) return true;
   if (tag.indexOf('|') === -1) return false;
   return tag.split('|').includes(vertical);
@@ -250,6 +249,7 @@ export function verticalTagIncludes(tag: string | null | undefined, vertical: st
  */
 export function verticalMatchOr(vertical: string): any[] {
   return [
+    { vertical: 'ALL' }, // universal "Touch Templates"/showcase tier — surfaces in every vertical's gallery
     { vertical },
     { vertical: { startsWith: `${vertical}|` } },
     { vertical: { endsWith: `|${vertical}` } },

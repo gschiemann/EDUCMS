@@ -321,6 +321,7 @@ export const VERTICAL_DEFAULT_BRAND: Record<Vertical, string> = {
 export const VERTICAL_TEMPLATE_CATEGORIES: Record<Vertical, ReadonlyArray<{ key: string; label: string }>> = {
   K12: [
     { key: '',          label: 'All' },
+    { key: 'KIOSK', label: 'Touch Kiosks' },
     { key: 'LOBBY',     label: 'Welcome' },
     { key: 'HALLWAY',   label: 'Hallway' },
     { key: 'CAFETERIA', label: 'Cafeteria' },
@@ -329,12 +330,14 @@ export const VERTICAL_TEMPLATE_CATEGORIES: Record<Vertical, ReadonlyArray<{ key:
   ],
   GYM: [
     { key: '',         label: 'All' },
+    { key: 'KIOSK', label: 'Touch Kiosks' },
     { key: 'FITNESS',  label: 'Class & training' },
     { key: 'LOBBY',    label: 'Welcome' },
     { key: 'PROMO',    label: 'Promo' },
   ],
   RETAIL: [
     { key: '',        label: 'All' },
+    { key: 'KIOSK', label: 'Touch Kiosks' },
     { key: 'LOBBY',   label: 'Welcome' },
     { key: 'PROMO',   label: 'Promo & sale' },
     { key: 'PRICING', label: 'Pricing' },
@@ -343,24 +346,28 @@ export const VERTICAL_TEMPLATE_CATEGORIES: Record<Vertical, ReadonlyArray<{ key:
   ],
   CORPORATE: [
     { key: '',        label: 'All' },
+    { key: 'KIOSK', label: 'Touch Kiosks' },
     { key: 'LOBBY',   label: 'Welcome' },
     { key: 'CONFERENCE', label: 'Conference rooms' },
     { key: 'INTERNAL',   label: 'Internal comms' },
   ],
   QSR: [
     { key: '',         label: 'All' },
+    { key: 'KIOSK', label: 'Touch Kiosks' },
     { key: 'MENU',     label: 'Menu boards' },
     { key: 'PROMO',    label: 'Promo & combos' },
     { key: 'LOYALTY',  label: 'Loyalty' },
   ],
   FASHION: [
     { key: '',         label: 'All' },
+    { key: 'KIOSK', label: 'Touch Kiosks' },
     { key: 'LOOKBOOK', label: 'Lookbook' },
     { key: 'LOBBY',    label: 'Welcome' },
     { key: 'PROMO',    label: 'Promo' },
   ],
   BAR: [
     { key: '',       label: 'All' },
+    { key: 'KIOSK', label: 'Touch Kiosks' },
     { key: 'TAPS',   label: 'Tap list' },
     { key: 'PROMO',  label: 'Drink specials' },
     { key: 'EVENTS', label: 'Events' },
@@ -368,12 +375,14 @@ export const VERTICAL_TEMPLATE_CATEGORIES: Record<Vertical, ReadonlyArray<{ key:
   ],
   HEALTHCARE: [
     { key: '',          label: 'All' },
+    { key: 'KIOSK', label: 'Touch Kiosks' },
     { key: 'WAITING',   label: 'Waiting room' },
     { key: 'DIRECTORY', label: 'Directory' },
     { key: 'PATIENT',   label: 'Patient info' },
   ],
   HOSPITALITY: [
     { key: '',          label: 'All' },
+    { key: 'KIOSK', label: 'Touch Kiosks' },
     { key: 'LOBBY',     label: 'Lobby' },
     { key: 'EVENTS',    label: 'Events' },
     { key: 'WAYFINDING', label: 'Wayfinding' },
@@ -381,12 +390,14 @@ export const VERTICAL_TEMPLATE_CATEGORIES: Record<Vertical, ReadonlyArray<{ key:
   ],
   RESTAURANT: [
     { key: '',        label: 'All' },
+    { key: 'KIOSK', label: 'Touch Kiosks' },
     { key: 'MENU',    label: 'Menus' },
     { key: 'SPECIALS', label: 'Specials' },
     { key: 'WINE',    label: 'Wine & bar' },
   ],
   SPORTS: [
     { key: '',             label: 'All' },
+    { key: 'KIOSK', label: 'Touch Kiosks' },
     { key: 'SCOREBOARD',   label: 'Scoreboards' },
     { key: 'RIBBON',       label: 'Ribbon boards' },
     { key: 'CELEBRATION',  label: 'Celebrations' },
@@ -395,6 +406,7 @@ export const VERTICAL_TEMPLATE_CATEGORIES: Record<Vertical, ReadonlyArray<{ key:
   ],
   WORSHIP: [
     { key: '',        label: 'All' },
+    { key: 'KIOSK', label: 'Touch Kiosks' },
     { key: 'SERVICE', label: 'Services' },
     { key: 'SERMON',  label: 'Sermons' },
     { key: 'EVENTS',  label: 'Events' },
