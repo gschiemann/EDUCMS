@@ -92,13 +92,8 @@ PRESET_VERTICAL.set('preset-main-scorebug', 'SPORTS');
 PRESET_VERTICAL.set('preset-sb-hs', 'SPORTS');
 PRESET_VERTICAL.set('preset-sb-college', 'SPORTS');
 PRESET_VERTICAL.set('preset-sb-pro', 'SPORTS');
-// Interactive touch kiosks (2026-06-03). Tag each to its natural vertical so
-// it surfaces only for the right tenant type (no crosstalk). Food self-order →
-// QSR; commercial-leasing → CORPORATE; museum/exhibit → HOSPITALITY (closest
-// existing vertical; a dedicated REAL_ESTATE / MUSEUM vertical is a future add).
-PRESET_VERTICAL.set('preset-kiosk-food', 'QSR');
-PRESET_VERTICAL.set('preset-kiosk-realestate', 'CORPORATE');
-PRESET_VERTICAL.set('preset-kiosk-museum', 'HOSPITALITY');
+// Interactive touch kiosks (2026-06-03) — multi-vertical, see PRESET_VERTICALS
+// below (declared after this point, so the dual-tags live there).
 
 // 2026-05-16 — the 70-template industry signage pack (preset-sig-*)
 // lives INSIDE SYSTEM_TEMPLATE_PRESETS so it shares the seeder, which
@@ -199,6 +194,18 @@ const RETAIL_ALSO_FASHION = [
 for (const id of RETAIL_ALSO_FASHION) {
   PRESET_VERTICALS.set(id, ['RETAIL', 'FASHION']);
 }
+
+// Interactive touch kiosks (2026-06-03). Flagship interactive showcases —
+// each dual-tagged so it surfaces in its natural vertical AND on RESTAURANT
+// (the Acme Coffee demo tenant), where a self-order kiosk is also a genuine
+// fit. food → QSR + RESTAURANT (self-order/coffee); commercial-leasing →
+// CORPORATE + RESTAURANT; museum/exhibit → HOSPITALITY + RESTAURANT. (A
+// dedicated REAL_ESTATE / MUSEUM vertical, or a universal "showcase" tier
+// visible in every gallery, is a clean future option if we want these
+// everywhere.)
+PRESET_VERTICALS.set('preset-kiosk-food', ['QSR', 'RESTAURANT']);
+PRESET_VERTICALS.set('preset-kiosk-realestate', ['CORPORATE', 'RESTAURANT']);
+PRESET_VERTICALS.set('preset-kiosk-museum', ['HOSPITALITY', 'RESTAURANT']);
 
 /**
  * Resolve the stored `Template.vertical` tag for a preset id. Returns a
