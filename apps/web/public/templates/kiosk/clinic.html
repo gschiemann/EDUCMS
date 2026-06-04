@@ -1328,22 +1328,22 @@ window.CLINIC = {
     return '<header class="bar cl-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
       '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3" style="line-height:1.05">' + D.name + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.12em">' + D.tagline + '</div></div></div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1.05" data-field="brand.name">' + D.name + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.12em" data-field="brand.tagline">' + D.tagline + '</div></div></div>' +
       '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
-      '<div class="cl-help"><button class="chip" data-act="help">' + icon('phone') + ' Need help?</button></div>' +
+      '<div class="cl-help"><button class="chip" data-act="help" data-action="help.call">' + icon('phone') + ' Need help?</button></div>' +
       '<div class="bar__clock" data-clock></div>' +
       '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
     '</header>';
   }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media cl-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media cl-hero" data-img="hero.image"><div class="media__scrim"></div>' +
         '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-        '<div class="eyebrow" style="color:#fff;opacity:.85">' + D.name + '</div>' +
-        '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)">Welcome in.</div>' +
-        '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to check in for your appointment</div>' +
+        '<div class="eyebrow" style="color:#fff;opacity:.85" data-field="brand.name">' + D.name + '</div>' +
+        '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)" data-field="home.attract.headline">Welcome in.</div>' +
+        '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> <span data-field="home.attract.cta">Touch to check in for your appointment</span></div>' +
       '</div>';
   }
 
@@ -1354,7 +1354,7 @@ window.CLINIC = {
       '<section class="cl-dash">' +
         '<button class="cl-hero-tile" data-go="checkin">' +
           '<div class="cl-hero-tile__b"><div class="eyebrow" style="color:rgba(255,255,255,.85)">Have an appointment?</div>' +
-            '<h1 class="t-mega" style="color:#fff;line-height:.95;margin:var(--s-2) 0">Check in</h1>' +
+            '<h1 class="t-mega" style="color:#fff;line-height:.95;margin:var(--s-2) 0" data-field="home.checkin.headline">Check in</h1>' +
             '<p class="t-h3" style="color:rgba(255,255,255,.9);font-weight:400;max-width:24ch">It takes about a minute. We\u2019ll let your care team know you\u2019ve arrived.</p>' +
             '<span class="btn btn--lg cl-hero-tile__cta">' + icon('arrow-right', { sw: 2.4 }) + ' Start check-in</span></div>' +
         '</button>' +
@@ -1386,7 +1386,7 @@ window.CLINIC = {
   function checkinScreen() {
     return bar(true) + '<div class="scroll"><div class="cl-checkin">' +
       '<div class="cl-steps"><span class="cl-step is-on">1 · Find you</span><span class="cl-step">2 · Confirm</span><span class="cl-step">3 · Copay</span></div>' +
-      '<div class="cl-head"><div><div class="eyebrow">Step 1</div><h1 class="t-xl">Find your appointment</h1></div></div>' +
+      '<div class="cl-head"><div><div class="eyebrow">Step 1</div><h1 class="t-xl" data-field="checkin.step1.title">Find your appointment</h1></div></div>' +
       '<div class="cl-search"><span>' + icon('search') + '</span><span class="dim">Enter your date of birth or appointment code…</span></div>' +
       '<div class="t-body dim" style="margin:var(--s-4) 0 var(--s-3)">Today\u2019s appointments — tap your name:</div>' +
       '<div class="cl-appts">' + D.appointments.map(function (a) {
@@ -1403,7 +1403,7 @@ window.CLINIC = {
     var a = checkin.appt;
     return bar(true) + '<div class="scroll"><div class="cl-checkin">' +
       '<div class="cl-steps"><span class="cl-step is-done">' + icon('check', { sw: 3 }) + ' Find you</span><span class="cl-step is-on">2 · Confirm</span><span class="cl-step">3 · Copay</span></div>' +
-      '<div class="cl-head"><div><div class="eyebrow">Step 2</div><h1 class="t-xl">Is everything correct?</h1></div></div>' +
+      '<div class="cl-head"><div><div class="eyebrow">Step 2</div><h1 class="t-xl" data-field="checkin.step2.title">Is everything correct?</h1></div></div>' +
       '<div class="cl-confirm">' +
         crow('user', 'Patient', a.name) + crow('clock', 'Appointment', a.time + ' today') +
         crow('steth', 'Provider', a.provider + ' · ' + a.dept) + crow('pin', 'Location', a.room) +
@@ -1413,7 +1413,7 @@ window.CLINIC = {
       '<button class="chip" data-act="help" style="margin-top:var(--s-3)">' + icon('clipboard') + ' Something changed</button>' +
     '</div></div>' +
     '<div class="actionbar cl-bar2"><button class="btn btn--lg" data-back>Back</button><div class="bar__spacer"></div>' +
-      '<button class="btn btn--primary btn--lg" data-act="toCopay">Looks good ' + icon('arrow-right', { sw: 2.4 }) + '</button></div>';
+      '<button class="btn btn--primary btn--lg" data-act="toCopay" data-action="checkin.confirm">Looks good ' + icon('arrow-right', { sw: 2.4 }) + '</button></div>';
   }
   function crow(ic, k, v) { return '<div class="cl-crow"><span class="cl-crow__ic">' + icon(ic) + '</span><div><div class="t-sm dim">' + k + '</div><div class="t-h3" style="font-size:var(--t-lg)">' + v + '</div></div></div>'; }
 
@@ -1422,7 +1422,7 @@ window.CLINIC = {
     var a = checkin.appt;
     return bar(true) + '<div class="scroll"><div class="cl-checkin">' +
       '<div class="cl-steps"><span class="cl-step is-done">' + icon('check', { sw: 3 }) + ' Find you</span><span class="cl-step is-done">' + icon('check', { sw: 3 }) + ' Confirm</span><span class="cl-step is-on">3 · Copay</span></div>' +
-      '<div class="cl-head"><div><div class="eyebrow">Step 3</div><h1 class="t-xl">Your visit copay</h1></div></div>' +
+      '<div class="cl-head"><div><div class="eyebrow">Step 3</div><h1 class="t-xl" data-field="checkin.step3.title">Your visit copay</h1></div></div>' +
       '<div class="cl-copay"><div class="cl-copay__amt">' + money(a.copayCents) + '</div>' +
         '<div class="t-body dim">Due today for ' + a.dept + ' · ' + a.provider + '</div></div>' +
       '<div class="cl-pays">' +
@@ -1450,8 +1450,8 @@ window.CLINIC = {
   // ── WAIT BOARD ────────────────────────────────────────────────────────────
   function wait() {
     return bar(true) + '<div class="scroll"><div class="cl-list">' +
-      '<div class="cl-head"><div><div class="eyebrow">Live · updates automatically</div><h1 class="t-xl">Waiting Room</h1></div>' +
-        '<span class="badge badge--good" style="font-size:var(--t-sm)"><span class="dot"></span>' + D.waitNote + '</span></div>' +
+      '<div class="cl-head"><div><div class="eyebrow">Live · updates automatically</div><h1 class="t-xl" data-field="wait.title">Waiting Room</h1></div>' +
+        '<span class="badge badge--good" style="font-size:var(--t-sm)"><span class="dot"></span><span data-field="wait.note">' + D.waitNote + '</span></span></div>' +
       '<div class="cl-board">' + D.waitboard.map(function (w) {
         return '<div class="cl-boardrow cl-wait--' + w.state + '"><div class="cl-boardrow__who">' + w.who + '</div>' +
           '<div class="grow"><div class="t-h3">' + w.status + '</div><div class="t-body dim">' + w.provider + '</div></div>' +
@@ -1462,12 +1462,12 @@ window.CLINIC = {
   // ── PROVIDERS ─────────────────────────────────────────────────────────────
   function providers() {
     return bar(true) + '<div class="scroll"><div class="cl-list">' +
-      '<div class="cl-head"><div><div class="eyebrow">Care team</div><h1 class="t-xl">Our Providers</h1></div></div>' +
+      '<div class="cl-head"><div><div class="eyebrow">Care team</div><h1 class="t-xl" data-field="providers.screen.title">Our Providers</h1></div></div>' +
       '<div class="cl-providers">' + D.providers.map(function (p) {
-        return '<div class="card card--static cl-provider"><div class="media cl-provider__img"><span class="media__tag">' + icon('image') + '</span></div>' +
-          '<div class="cl-provider__b"><div class="t-h3">' + p.name + '</div><div class="t-body" style="color:var(--accent);font-weight:600">' + p.dept + '</div>' +
-          '<div class="t-sm dim">' + p.focus + '</div>' +
-          '<div class="row gap-2" style="margin-top:var(--s-2)"><span class="badge">' + icon('pin') + ' ' + p.room + '</span>' +
+        return '<div class="card card--static cl-provider"><div class="media cl-provider__img" data-img="provider.' + p.id + '.photo"><span class="media__tag">' + icon('image') + '</span></div>' +
+          '<div class="cl-provider__b"><div class="t-h3" data-field="provider.' + p.id + '.name">' + p.name + '</div><div class="t-body" style="color:var(--accent);font-weight:600" data-field="provider.' + p.id + '.dept">' + p.dept + '</div>' +
+          '<div class="t-sm dim" data-field="provider.' + p.id + '.focus">' + p.focus + '</div>' +
+          '<div class="row gap-2" style="margin-top:var(--s-2)"><span class="badge" data-field="provider.' + p.id + '.room">' + icon('pin') + ' ' + p.room + '</span>' +
           (p.accepting ? '<span class="badge badge--good"><span class="dot"></span>Accepting</span>' : '<span class="badge">Referral only</span>') + '</div></div></div>';
       }).join('') + '</div></div></div>';
   }
@@ -1479,13 +1479,13 @@ window.CLINIC = {
     }).join('');
     var list = D.departments.map(function (d) {
       return '<button class="cl-dept" data-act="dept" data-id="' + d.id + '"><span class="cl-dept__code cl-pin--' + d.color + '">' + d.code + '</span>' +
-        '<div class="grow" style="text-align:left"><div class="t-h3">' + d.name + '</div><div class="t-sm dim">' + d.dir + '</div></div>' + icon('arrow-right', { sw: 2 }) + '</button>';
+        '<div class="grow" style="text-align:left"><div class="t-h3" data-field="dept.' + d.id + '.name">' + d.name + '</div><div class="t-sm dim" data-field="dept.' + d.id + '.dir">' + d.dir + '</div></div>' + icon('arrow-right', { sw: 2 }) + '</button>';
     }).join('');
     return bar(true) + '<div class="scroll"><div class="cl-list">' +
-      '<div class="cl-head"><div><div class="eyebrow">Wayfinding</div><h1 class="t-xl">Find a Department</h1></div>' +
-        '<div class="t-body dim">Tap a department for directions.</div></div>' +
+      '<div class="cl-head"><div><div class="eyebrow">Wayfinding</div><h1 class="t-xl" data-field="dept.screen.title">Find a Department</h1></div>' +
+        '<div class="t-body dim" data-field="dept.screen.sub">Tap a department for directions.</div></div>' +
       '<div class="split split--6040 cl-way">' +
-        '<div class="cl-mapframe media"><div class="here" style="left:' + D.map.here.x + '%;top:' + D.map.here.y + '%"><div class="here__label">' + D.map.here.label + '</div></div>' + pins + '<div class="media__tag">' + icon('grid') + ' CEDAR PARK — CLINIC MAP</div></div>' +
+        '<div class="cl-mapframe media" data-img="map.image"><div class="here" style="left:' + D.map.here.x + '%;top:' + D.map.here.y + '%"><div class="here__label" data-field="map.here.label">' + D.map.here.label + '</div></div>' + pins + '<div class="media__tag">' + icon('grid') + ' CEDAR PARK — CLINIC MAP</div></div>' +
         '<div class="cl-depts">' + list + '</div>' +
       '</div></div></div>';
   }
@@ -1507,6 +1507,84 @@ window.CLINIC = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- brand -->
+  <span data-field="brand.name">Cedar Park Family Health</span>
+  <span data-field="brand.tagline">Primary &amp; Specialty Care</span>
+  <span data-field="brand.privacy">Your information is protected. This kiosk follows HIPAA privacy and security standards.</span>
+  <!-- hero / attract -->
+  <div data-img="hero.image"></div>
+  <span data-field="home.attract.headline">Welcome in.</span>
+  <span data-field="home.attract.cta">Touch to check in for your appointment</span>
+  <!-- home screen -->
+  <span data-field="home.checkin.eyebrow">Have an appointment?</span>
+  <span data-field="home.checkin.headline">Check in</span>
+  <span data-field="home.checkin.sub">It takes about a minute. We&#x2019;ll let your care team know you&#x2019;ve arrived.</span>
+  <span data-field="home.checkin.cta">Start check-in</span>
+  <span data-field="home.wait.title">Waiting room</span>
+  <span data-field="home.tile.providers.name">Our Providers</span>
+  <span data-field="home.tile.departments.name">Find a Department</span>
+  <span data-field="home.tile.wait.name">Wait Times</span>
+  <!-- wait board -->
+  <span data-field="wait.title">Waiting Room</span>
+  <span data-field="wait.note">On time &middot; average wait under 12 minutes today</span>
+  <!-- providers screen -->
+  <span data-field="providers.screen.title">Our Providers</span>
+  <div data-img="provider.patel.photo"></div>
+  <span data-field="provider.patel.name">Dr. Anika Patel, MD</span>
+  <span data-field="provider.patel.dept">Family Medicine</span>
+  <span data-field="provider.patel.focus">Adult &amp; preventive care</span>
+  <span data-field="provider.patel.room">Clinic A</span>
+  <div data-img="provider.osei.photo"></div>
+  <span data-field="provider.osei.name">Dr. Kwame Osei, MD</span>
+  <span data-field="provider.osei.dept">Pediatrics</span>
+  <span data-field="provider.osei.focus">Newborn to teen</span>
+  <span data-field="provider.osei.room">Clinic B</span>
+  <div data-img="provider.nguyen.photo"></div>
+  <span data-field="provider.nguyen.name">Dr. Mai Nguyen, MD</span>
+  <span data-field="provider.nguyen.dept">Dermatology</span>
+  <span data-field="provider.nguyen.focus">Skin, screenings, minor procedures</span>
+  <span data-field="provider.nguyen.room">Clinic C</span>
+  <div data-img="provider.ross.photo"></div>
+  <span data-field="provider.ross.name">Dr. Elena Ross, DO</span>
+  <span data-field="provider.ross.dept">Family Medicine</span>
+  <span data-field="provider.ross.focus">Women&#x2019;s health &amp; chronic care</span>
+  <span data-field="provider.ross.room">Clinic A</span>
+  <div data-img="provider.boyd.photo"></div>
+  <span data-field="provider.boyd.name">Marcus Boyd, PA-C</span>
+  <span data-field="provider.boyd.dept">Urgent Care</span>
+  <span data-field="provider.boyd.focus">Walk-in &amp; same-day</span>
+  <span data-field="provider.boyd.room">Urgent Care</span>
+  <div data-img="provider.shah.photo"></div>
+  <span data-field="provider.shah.name">Dr. Ravi Shah, MD</span>
+  <span data-field="provider.shah.dept">Cardiology</span>
+  <span data-field="provider.shah.focus">Heart health &amp; referrals</span>
+  <span data-field="provider.shah.room">Specialty Suite</span>
+  <!-- departments screen -->
+  <span data-field="dept.screen.title">Find a Department</span>
+  <span data-field="dept.screen.sub">Tap a department for directions.</span>
+  <div data-img="map.image"></div>
+  <span data-field="map.here.label">You are here &middot; Main Reception</span>
+  <span data-field="dept.fam.name">Family Medicine</span>
+  <span data-field="dept.fam.dir">Down Hall A, past the lab</span>
+  <span data-field="dept.peds.name">Pediatrics</span>
+  <span data-field="dept.peds.dir">Left at the fish tank, Clinic B</span>
+  <span data-field="dept.derm.name">Dermatology</span>
+  <span data-field="dept.derm.dir">Hall C, second door</span>
+  <span data-field="dept.urgent.name">Urgent Care</span>
+  <span data-field="dept.urgent.dir">Straight ahead, own entrance</span>
+  <span data-field="dept.lab.name">Lab &amp; Imaging</span>
+  <span data-field="dept.lab.dir">First right past reception</span>
+  <span data-field="dept.pharm.name">Pharmacy</span>
+  <span data-field="dept.pharm.dir">Next to the main exit</span>
+  <!-- check-in flow -->
+  <span data-field="checkin.step1.title">Find your appointment</span>
+  <span data-field="checkin.step2.title">Is everything correct?</span>
+  <span data-field="checkin.step3.title">Your visit copay</span>
+  <!-- actions -->
+  <button data-action="checkin.confirm">Confirm check-in</button>
+  <button data-action="help.call">Need help?</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
