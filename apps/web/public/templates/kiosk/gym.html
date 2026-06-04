@@ -1310,8 +1310,8 @@ window.CLUB = {
     return '<header class="bar gy-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
       '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3 gy-word" style="line-height:1">' + D.name + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.18em">' + D.tagline + '</div></div></div>' +
+      '<div class="col"><div class="t-h3 gy-word" style="line-height:1" data-field="brand.name">' + D.name + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.18em" data-field="brand.tagline">' + D.tagline + '</div></div></div>' +
       '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
       '<div class="bar__clock" data-clock></div>' +
       '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
@@ -1319,11 +1319,11 @@ window.CLUB = {
   }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media gy-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media gy-hero" data-img="hero.image"><div class="media__scrim"></div>' +
         '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-        '<div class="eyebrow" style="color:var(--accent)">' + D.tagline + '</div>' +
-        '<div class="t-mega gy-word" style="color:#fff;margin-top:var(--s-1);font-size:calc(var(--u)*16)">' + D.name + '</div>' +
+        '<div class="eyebrow" style="color:var(--accent)" data-field="brand.tagline">' + D.tagline + '</div>' +
+        '<div class="t-mega gy-word" style="color:#fff;margin-top:var(--s-1);font-size:calc(var(--u)*16)" data-field="brand.name">' + D.name + '</div>' +
         '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to book classes &amp; find your zone</div>' +
       '</div>';
   }
@@ -1346,7 +1346,7 @@ window.CLUB = {
         '<div class="gy-occ">' +
           '<div class="gy-occ__ring" style="--p:' + pct + '"><div class="gy-occ__inner"><div class="gy-occ__pct">' + pct + '<span>%</span></div><div class="t-sm dim">full now</div></div></div>' +
           '<div class="gy-occ__b"><div class="eyebrow" style="color:var(--accent)">Live club occupancy</div>' +
-            '<div class="t-h1">' + occ.label + '</div><div class="t-body dim">' + occ.current + ' of ' + occ.capacity + ' in the building · ' + occ.trend + '</div>' +
+            '<div class="t-h1" data-field="home.occ.label">' + occ.label + '</div><div class="t-body dim" data-field="home.occ.trend">' + occ.current + ' of ' + occ.capacity + ' in the building · ' + occ.trend + '</div>' +
             '<div class="gy-heatwrap">' + heat + '</div></div>' +
         '</div>' +
         '<div class="gy-checkincard">' +
@@ -1361,8 +1361,8 @@ window.CLUB = {
       '<section class="gy-upnext"><div class="row between" style="margin-bottom:var(--s-3)"><div class="eyebrow">Up Next · ' + D.day + '</div>' +
         '<button class="chip" data-go="classes">Full schedule ' + icon('arrow-right', { sw: 2 }) + '</button></div>' +
         '<div class="gy-nextlist">' + D.classes.slice(0, 3).map(function (c) {
-          return '<button class="gy-next" data-go="class:' + c.id + '"><div class="gy-next__time">' + c.time + '</div>' +
-            '<div class="grow"><div class="t-h3">' + c.name + '</div><div class="t-sm dim">' + c.coach + ' · ' + c.room + '</div></div>' + spotsBadge(c) + '</button>';
+          return '<button class="gy-next" data-go="class:' + c.id + '"><div class="gy-next__time" data-field="class.' + c.id + '.time">' + c.time + '</div>' +
+            '<div class="grow"><div class="t-h3" data-field="class.' + c.id + '.name">' + c.name + '</div><div class="t-sm dim"><span data-field="class.' + c.id + '.coach">' + c.coach + '</span> · <span data-field="class.' + c.id + '.room">' + c.room + '</span></div></div>' + spotsBadge(c) + '</button>';
         }).join('') + '</div></section>' +
 
       // quick tiles
@@ -1409,11 +1409,11 @@ window.CLUB = {
   // ── RECOVERY ────────────────────────────────────────────────────────────
   function recovery() {
     var cards = D.recovery.map(function (r) {
-      return '<button class="card gy-rec" data-act="bookrec" data-id="' + r.id + '">' +
+      return '<button class="card gy-rec" data-act="bookrec" data-id="' + r.id + '" data-action="recovery.book">' +
         '<div class="gy-rec__ic">' + icon(r.icon) + '</div>' +
-        '<div class="grow"><div class="row between"><div class="t-h2">' + r.name + '</div><div class="badge ' + (r.open <= 1 ? 'badge--warn' : 'badge--good') + '"><span class="dot"></span>' + r.open + ' open</div></div>' +
-        '<div class="t-body dim">' + r.desc + '</div>' +
-        '<div class="row gap-3" style="margin-top:var(--s-2)"><span class="badge">' + icon('clock') + ' ' + r.len + '</span><span class="badge badge--accent">' + r.slot + '</span></div></div>' +
+        '<div class="grow"><div class="row between"><div class="t-h2" data-field="recovery.' + r.id + '.name">' + r.name + '</div><div class="badge ' + (r.open <= 1 ? 'badge--warn' : 'badge--good') + '"><span class="dot"></span>' + r.open + ' open</div></div>' +
+        '<div class="t-body dim" data-field="recovery.' + r.id + '.desc">' + r.desc + '</div>' +
+        '<div class="row gap-3" style="margin-top:var(--s-2)"><span class="badge">' + icon('clock') + ' <span data-field="recovery.' + r.id + '.len">' + r.len + '</span></span><span class="badge badge--accent" data-field="recovery.' + r.id + '.slot">' + r.slot + '</span></div></div>' +
         '<div class="gy-rec__go">' + icon('arrow-right', { sw: 2 }) + '</div></button>';
     }).join('');
     return bar(true) + '<div class="scroll"><div class="gy-list">' +
@@ -1427,15 +1427,15 @@ window.CLUB = {
     var cards = D.dayPasses.map(function (p) {
       return '<div class="card card--static gy-pass ' + (p.best ? 'is-best' : '') + '">' +
         (p.best ? '<div class="gy-pass__flag">Most popular</div>' : '') +
-        '<div class="t-h2">' + p.name + '</div><div class="t-sm dim">' + p.sub + '</div>' +
-        '<div class="gy-pass__price">' + p.price + '</div>' +
+        '<div class="t-h2" data-field="pass.' + p.id + '.name">' + p.name + '</div><div class="t-sm dim" data-field="pass.' + p.id + '.sub">' + p.sub + '</div>' +
+        '<div class="gy-pass__price" data-field="pass.' + p.id + '.price">' + p.price + '</div>' +
         '<ul class="gy-pass__feat">' + p.feat.map(function (f) { return '<li>' + icon('check', { sw: 2.6 }) + ' ' + f + '</li>'; }).join('') + '</ul>' +
-        '<button class="btn ' + (p.best ? 'btn--primary' : '') + ' btn--lg btn--block" data-act="buypass" data-id="' + p.id + '">' + icon('tag') + ' Buy ' + p.name + '</button>' +
+        '<button class="btn ' + (p.best ? 'btn--primary' : '') + ' btn--lg btn--block" data-act="buypass" data-id="' + p.id + '" data-action="pass.buy">' + icon('tag') + ' Buy ' + p.name + '</button>' +
       '</div>';
     }).join('');
     return bar(true) + '<div class="scroll"><div class="gy-list">' +
       '<div class="gy-head"><div><div class="eyebrow">New here or bringing a guest?</div><h1 class="t-xl">Day Passes</h1></div>' +
-        '<div class="t-body dim">' + D.hours + '</div></div>' +
+        '<div class="t-body dim" data-field="brand.hours">' + D.hours + '</div></div>' +
       '<div class="gy-passes">' + cards + '</div></div></div>';
   }
 
@@ -1454,9 +1454,9 @@ window.CLUB = {
     var list = D.classes.filter(function (c) { return tagFilter === 'All' || c.tag === tagFilter; });
     return list.map(function (c) {
       return '<button class="card gy-class" data-go="class:' + c.id + '">' +
-        '<div class="gy-class__time"><div class="gy-class__hr">' + c.time.replace(/ (AM|PM)/, '') + '</div><div class="gy-class__ap">' + (c.time.indexOf('PM') > -1 ? 'PM' : 'AM') + '</div></div>' +
-        '<div class="gy-class__b"><div class="row between"><div class="t-h2">' + c.name + '</div><div class="badge">' + c.tag + '</div></div>' +
-        '<div class="t-body dim">' + c.coach + ' · ' + c.room + ' · ' + c.len + ' min</div>' +
+        '<div class="gy-class__time"><div class="gy-class__hr" data-field="class.' + c.id + '.time">' + c.time.replace(/ (AM|PM)/, '') + '</div><div class="gy-class__ap">' + (c.time.indexOf('PM') > -1 ? 'PM' : 'AM') + '</div></div>' +
+        '<div class="gy-class__b"><div class="row between"><div class="t-h2" data-field="class.' + c.id + '.name">' + c.name + '</div><div class="badge">' + c.tag + '</div></div>' +
+        '<div class="t-body dim"><span data-field="class.' + c.id + '.coach">' + c.coach + '</span> · <span data-field="class.' + c.id + '.room">' + c.room + '</span> · ' + c.len + ' min</div>' +
         '<div class="row between" style="margin-top:var(--s-2)"><div class="row gap-2">' + bars(c.intensity) + '<span class="t-sm dim">' + D.intensityLabel[c.intensity] + '</span></div>' + spotsBadge(c) + '</div></div>' +
         '<div class="gy-class__go">' + icon('arrow-right', { sw: 2 }) + '</div></button>';
     }).join('');
@@ -1468,15 +1468,15 @@ window.CLUB = {
     var full = c.spots === 0;
     return bar(true) +
     '<div class="scroll"><div class="gy-cd">' +
-      '<div class="media gy-cd__img"><div class="media__scrim"></div>' +
-        '<div class="gy-cd__cap"><div class="badge badge--accent">' + c.tag + '</div><h1 class="t-mega" style="color:#fff;margin-top:var(--s-1)">' + c.name + '</h1>' +
-        '<div class="t-h3" style="color:#fff;font-weight:500">' + c.time + ' · ' + c.len + ' min · ' + c.room + '</div></div>' +
+      '<div class="media gy-cd__img" data-img="class.' + c.id + '.image"><div class="media__scrim"></div>' +
+        '<div class="gy-cd__cap"><div class="badge badge--accent">' + c.tag + '</div><h1 class="t-mega" style="color:#fff;margin-top:var(--s-1)" data-field="class.' + c.id + '.name">' + c.name + '</h1>' +
+        '<div class="t-h3" style="color:#fff;font-weight:500"><span data-field="class.' + c.id + '.time">' + c.time + '</span> · <span data-field="class.' + c.id + '.len">' + c.len + '</span> min · <span data-field="class.' + c.id + '.room">' + c.room + '</span></div></div>' +
         '<div class="media__tag">' + icon('image') + ' ' + c.name.toUpperCase() + '</div></div>' +
       '<div class="split split--6040 gy-cd__body">' +
         '<div><div class="eyebrow">About this class</div>' +
           '<p class="t-h3" style="font-weight:400;margin-top:var(--s-3)">A ' + D.intensityLabel[c.intensity].toLowerCase() + '-intensity ' + c.tag.toLowerCase() + ' session built to push your limits and leave you better than you walked in. All levels welcome — modifications offered throughout.</p>' +
           '<div class="gy-coachrow" data-go="trainer:' + (coach ? coach.id : '') + '"><div class="media gy-coachrow__img"><span class="media__tag">' + icon('image') + '</span></div>' +
-            '<div class="grow"><div class="t-sm dim">Coached by</div><div class="t-h3">' + c.coach + '</div></div>' +
+            '<div class="grow"><div class="t-sm dim">Coached by</div><div class="t-h3" data-field="class.' + c.id + '.coach">' + c.coach + '</div></div>' +
             '<span class="badge">' + icon('star') + ' ' + (coach ? coach.rating : '') + '</span>' + icon('arrow-right', { sw: 2 }) + '</div>' +
         '</div>' +
         '<aside class="gy-cd__side">' +
@@ -1490,7 +1490,7 @@ window.CLUB = {
     '<div class="actionbar gy-bookbar">' +
       '<div class="col" style="gap:0"><div class="t-sm dim">' + c.name + ' · ' + c.time + '</div><div class="t-h3">' + (full ? 'Join the waitlist' : 'Reserve your spot') + '</div></div>' +
       '<div class="bar__spacer"></div>' +
-      '<button class="btn ' + (full ? '' : 'btn--primary') + ' btn--lg" data-act="reserve" data-id="' + c.id + '">' + icon(full ? 'plus' : 'check', { sw: 2.4 }) + ' ' + (full ? 'Join waitlist' : 'Reserve spot') + '</button>' +
+      '<button class="btn ' + (full ? '' : 'btn--primary') + ' btn--lg" data-act="reserve" data-id="' + c.id + '" data-action="class.book">' + icon(full ? 'plus' : 'check', { sw: 2.4 }) + ' ' + (full ? 'Join waitlist' : 'Reserve spot') + '</button>' +
     '</div>';
   }
   function sp(ic, k, v) { return '<div class="spec"><div class="spec__k">' + k + '</div><div class="spec__v" style="font-size:var(--t-lg)">' + v + '</div></div>'; }
@@ -1499,9 +1499,9 @@ window.CLUB = {
   function trainers() {
     var cards = D.trainers.map(function (t) {
       return '<button class="card gy-trainer" data-go="trainer:' + t.id + '">' +
-        '<span class="media gy-trainer__img"><span class="media__tag">' + icon('image') + '</span><span class="gy-trainer__rate">' + icon('star') + ' ' + t.rating + '</span></span>' +
-        '<span class="gy-trainer__b"><span class="t-h2">' + t.name + '</span><span class="t-body" style="color:var(--accent)">' + t.specialty + '</span>' +
-        '<span class="t-sm dim">' + t.cert + '</span></span></button>';
+        '<span class="media gy-trainer__img" data-img="trainer.' + t.id + '.photo"><span class="media__tag">' + icon('image') + '</span><span class="gy-trainer__rate">' + icon('star') + ' <span data-field="trainer.' + t.id + '.rating">' + t.rating + '</span></span></span>' +
+        '<span class="gy-trainer__b"><span class="t-h2" data-field="trainer.' + t.id + '.name">' + t.name + '</span><span class="t-body" style="color:var(--accent)" data-field="trainer.' + t.id + '.specialty">' + t.specialty + '</span>' +
+        '<span class="t-sm dim" data-field="trainer.' + t.id + '.cert">' + t.cert + '</span></span></button>';
     }).join('');
     return bar(true) + '<div class="scroll"><div class="gy-list">' +
       '<div class="gy-head"><div><div class="eyebrow">Coaching</div><h1 class="t-xl">Our Trainers</h1></div></div>' +
@@ -1511,12 +1511,12 @@ window.CLUB = {
     var t = trainerById(id); if (!t) return '<div class="pad-7">Not found</div>';
     return bar(true) + '<div class="scroll"><div class="gy-td">' +
       '<div class="split split--4060">' +
-        '<div class="media gy-td__img"><span class="gy-trainer__rate">' + icon('star') + ' ' + t.rating + '</span><div class="media__tag">' + icon('image') + ' ' + t.name.toUpperCase() + '</div></div>' +
-        '<div class="gy-td__b"><div class="badge badge--accent">' + t.specialty + '</div>' +
-          '<h1 class="t-xl" style="margin:var(--s-2) 0 0">' + t.name + '</h1>' +
-          '<div class="row gap-3 dim" style="margin:var(--s-2) 0"><span>' + icon('shield') + ' ' + t.cert + '</span><span>' + icon('clock') + ' ' + t.years + ' yrs</span></div>' +
-          '<p class="t-lg pretty" style="margin-top:var(--s-2)">' + t.bio + '</p>' +
-          '<button class="btn btn--primary btn--lg" style="margin-top:var(--s-5)" data-act="book" data-id="' + t.id + '">' + icon('calendar') + ' Book a session with ' + t.name.split(' ')[0] + '</button>' +
+        '<div class="media gy-td__img" data-img="trainer.' + t.id + '.photo"><span class="gy-trainer__rate">' + icon('star') + ' <span data-field="trainer.' + t.id + '.rating">' + t.rating + '</span></span><div class="media__tag">' + icon('image') + ' ' + t.name.toUpperCase() + '</div></div>' +
+        '<div class="gy-td__b"><div class="badge badge--accent" data-field="trainer.' + t.id + '.specialty">' + t.specialty + '</div>' +
+          '<h1 class="t-xl" style="margin:var(--s-2) 0 0" data-field="trainer.' + t.id + '.name">' + t.name + '</h1>' +
+          '<div class="row gap-3 dim" style="margin:var(--s-2) 0"><span>' + icon('shield') + ' <span data-field="trainer.' + t.id + '.cert">' + t.cert + '</span></span><span>' + icon('clock') + ' ' + t.years + ' yrs</span></div>' +
+          '<p class="t-lg pretty" style="margin-top:var(--s-2)" data-field="trainer.' + t.id + '.bio">' + t.bio + '</p>' +
+          '<button class="btn btn--primary btn--lg" style="margin-top:var(--s-5)" data-act="book" data-id="' + t.id + '" data-action="trainer.book">' + icon('calendar') + ' Book a session with ' + t.name.split(' ')[0] + '</button>' +
         '</div>' +
       '</div></div></div>';
   }
@@ -1527,8 +1527,8 @@ window.CLUB = {
       return '<button class="gy-zone gy-zone--' + z.color + '" style="left:' + z.x + '%;top:' + z.y + '%" data-act="zone" data-name="' + z.name + '">' +
         '<span class="gy-zone__code">' + z.code + '</span><span class="gy-zone__label">' + z.name + '</span></button>';
     }).join('');
-    var am = D.amenities.map(function (a) {
-      return '<div class="feat"><span class="feat__ic">' + icon(a.icon) + '</span><div><div class="feat__t">' + a.t + '</div><div class="feat__d">' + a.d + '</div></div></div>';
+    var am = D.amenities.map(function (a, i) {
+      return '<div class="feat"><span class="feat__ic">' + icon(a.icon) + '</span><div><div class="feat__t" data-field="amenity.' + i + '.title">' + a.t + '</div><div class="feat__d" data-field="amenity.' + i + '.desc">' + a.d + '</div></div></div>';
     }).join('');
     return bar(true) + '<div class="scroll"><div class="gy-list">' +
       '<div class="gy-head"><div><div class="eyebrow">Wayfinding</div><h1 class="t-xl">Find your zone</h1></div>' +
@@ -1584,6 +1584,129 @@ window.CLUB = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- brand -->
+  <span data-field="brand.name">PULSE</span>
+  <span data-field="brand.tagline">Athletic Club</span>
+  <span data-field="brand.address">Riverfront &middot; Floor 1&ndash;2</span>
+  <span data-field="brand.hours">Open today 5:00 AM &ndash; 11:00 PM</span>
+  <!-- home dashboard -->
+  <span data-field="home.occ.label">Busy</span>
+  <span data-field="home.occ.trend">Quieter than usual for 5 PM</span>
+  <!-- hero image -->
+  <div data-img="hero.image"></div>
+  <!-- classes -->
+  <span data-field="class.ride.name">Rhythm Ride</span>
+  <span data-field="class.ride.time">5:30 PM</span>
+  <span data-field="class.ride.len">45</span>
+  <span data-field="class.ride.coach">Maya Lin</span>
+  <span data-field="class.ride.room">Cycle Studio</span>
+  <div data-img="class.ride.image"></div>
+  <span data-field="class.hiit.name">Engine HIIT</span>
+  <span data-field="class.hiit.time">6:00 PM</span>
+  <span data-field="class.hiit.len">50</span>
+  <span data-field="class.hiit.coach">Deon Carter</span>
+  <span data-field="class.hiit.room">Studio A</span>
+  <div data-img="class.hiit.image"></div>
+  <span data-field="class.lift.name">Barbell Strength</span>
+  <span data-field="class.lift.time">6:15 PM</span>
+  <span data-field="class.lift.len">60</span>
+  <span data-field="class.lift.coach">Sam Okafor</span>
+  <span data-field="class.lift.room">Strength Lab</span>
+  <div data-img="class.lift.image"></div>
+  <span data-field="class.flow.name">Vinyasa Flow</span>
+  <span data-field="class.flow.time">6:30 PM</span>
+  <span data-field="class.flow.len">60</span>
+  <span data-field="class.flow.coach">Priya Nair</span>
+  <span data-field="class.flow.room">Mind &amp; Body</span>
+  <div data-img="class.flow.image"></div>
+  <span data-field="class.row.name">Row Club</span>
+  <span data-field="class.row.time">7:00 PM</span>
+  <span data-field="class.row.len">40</span>
+  <span data-field="class.row.coach">Deon Carter</span>
+  <span data-field="class.row.room">Row Bay</span>
+  <div data-img="class.row.image"></div>
+  <span data-field="class.core.name">Core &amp; Restore</span>
+  <span data-field="class.core.time">7:30 PM</span>
+  <span data-field="class.core.len">30</span>
+  <span data-field="class.core.coach">Priya Nair</span>
+  <span data-field="class.core.room">Mind &amp; Body</span>
+  <div data-img="class.core.image"></div>
+  <!-- trainers -->
+  <span data-field="trainer.maya.name">Maya Lin</span>
+  <span data-field="trainer.maya.specialty">Cycle &middot; Endurance</span>
+  <span data-field="trainer.maya.cert">NASM-CPT &middot; Schwinn</span>
+  <span data-field="trainer.maya.rating">4.9</span>
+  <span data-field="trainer.maya.bio">Builds playlists as hard as the climbs. Maya&rsquo;s rides blend power intervals with serious fun &mdash; beginners and racers leave equally wrecked.</span>
+  <div data-img="trainer.maya.photo"></div>
+  <span data-field="trainer.deon.name">Deon Carter</span>
+  <span data-field="trainer.deon.specialty">HIIT &middot; Rowing</span>
+  <span data-field="trainer.deon.cert">CF-L2 &middot; Concept2</span>
+  <span data-field="trainer.deon.rating">4.8</span>
+  <span data-field="trainer.deon.bio">Former collegiate rower turned conditioning coach. Deon&rsquo;s sessions are engine-builders &mdash; relentless pacing, perfect technique, zero ego.</span>
+  <div data-img="trainer.deon.photo"></div>
+  <span data-field="trainer.sam.name">Sam Okafor</span>
+  <span data-field="trainer.sam.specialty">Strength &middot; Powerlifting</span>
+  <span data-field="trainer.sam.cert">CSCS &middot; USAW</span>
+  <span data-field="trainer.sam.rating">5.0</span>
+  <span data-field="trainer.sam.bio">Sam coaches the big three with a physio&rsquo;s eye. Expect precise cues, smart progression, and PRs that actually stick.</span>
+  <div data-img="trainer.sam.photo"></div>
+  <span data-field="trainer.priya.name">Priya Nair</span>
+  <span data-field="trainer.priya.specialty">Yoga &middot; Mobility</span>
+  <span data-field="trainer.priya.cert">RYT-500 &middot; FRC</span>
+  <span data-field="trainer.priya.rating">4.9</span>
+  <span data-field="trainer.priya.bio">Priya bridges strength and stillness &mdash; functional range work, breath, and recovery flows that keep you training for decades.</span>
+  <div data-img="trainer.priya.photo"></div>
+  <!-- recovery services -->
+  <span data-field="recovery.sauna.name">Infrared Sauna</span>
+  <span data-field="recovery.sauna.desc">Private cabin, up to 2 guests.</span>
+  <span data-field="recovery.sauna.len">30 min</span>
+  <span data-field="recovery.sauna.slot">Next: 5:15 PM</span>
+  <span data-field="recovery.plunge.name">Cold Plunge</span>
+  <span data-field="recovery.plunge.desc">48&deg;F contrast therapy circuit.</span>
+  <span data-field="recovery.plunge.len">15 min</span>
+  <span data-field="recovery.plunge.slot">Walk-in</span>
+  <span data-field="recovery.norma.name">NormaTec Boots</span>
+  <span data-field="recovery.norma.desc">Dynamic compression for legs.</span>
+  <span data-field="recovery.norma.len">20 min</span>
+  <span data-field="recovery.norma.slot">Next: 5:00 PM</span>
+  <span data-field="recovery.massage.name">Sports Massage</span>
+  <span data-field="recovery.massage.desc">Licensed therapist, book ahead.</span>
+  <span data-field="recovery.massage.len">50 min</span>
+  <span data-field="recovery.massage.slot">Next: 6:30 PM</span>
+  <span data-field="recovery.stretch.name">Assisted Stretch</span>
+  <span data-field="recovery.stretch.desc">1:1 guided mobility session.</span>
+  <span data-field="recovery.stretch.len">25 min</span>
+  <span data-field="recovery.stretch.slot">Next: 5:45 PM</span>
+  <span data-field="recovery.theragun.name">Percussion Bar</span>
+  <span data-field="recovery.theragun.desc">Self-serve recovery station.</span>
+  <span data-field="recovery.theragun.len">10 min</span>
+  <span data-field="recovery.theragun.slot">Walk-in</span>
+  <!-- day passes -->
+  <span data-field="pass.day.name">Day Pass</span>
+  <span data-field="pass.day.price">$25</span>
+  <span data-field="pass.day.sub">Full access, all day</span>
+  <span data-field="pass.week.name">Week Pass</span>
+  <span data-field="pass.week.price">$59</span>
+  <span data-field="pass.week.sub">7 days, unlimited</span>
+  <span data-field="pass.class.name">Single Class</span>
+  <span data-field="pass.class.price">$18</span>
+  <span data-field="pass.class.sub">One group class</span>
+  <!-- amenities -->
+  <span data-field="amenity.0.title">Recovery Suite</span>
+  <span data-field="amenity.0.desc">Sauna, cold plunge, compression boots</span>
+  <span data-field="amenity.1.title">Free Wi-Fi</span>
+  <span data-field="amenity.1.desc">Throughout both floors</span>
+  <span data-field="amenity.2.title">Day Lockers</span>
+  <span data-field="amenity.2.desc">App-controlled, no padlock needed</span>
+  <span data-field="amenity.3.title">Fuel Bar</span>
+  <span data-field="amenity.3.desc">Smoothies, cold brew, snacks</span>
+  <!-- actions -->
+  <button data-action="class.book">Book a class</button>
+  <button data-action="trainer.book">Book a trainer session</button>
+  <button data-action="recovery.book">Book recovery service</button>
+  <button data-action="pass.buy">Buy a day pass</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
