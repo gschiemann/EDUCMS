@@ -1345,25 +1345,25 @@ window.SCHOOL = {
   function bar(showBack) {
     return '<header class="bar sc-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
-      '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3" style="line-height:1">' + D.name + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.14em">' + D.mascot + '</div></div></div>' +
+      '<div class="bar__brand"><div class="bar__logo" data-field="brand.initials">' + D.brandInitials + '</div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1" data-field="brand.name">' + D.name + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.14em" data-field="brand.mascot">' + D.mascot + '</div></div></div>' +
       '<div class="bar__spacer"></div>' +
       '<nav class="crumbs" data-crumbs></nav>' +
       '<div class="bar__spacer"></div>' +
-      '<div class="sc-day"><span class="dot"></span>' + D.day + '</div>' +
+      '<div class="sc-day"><span class="dot"></span><span data-field="home.day">' + D.day + '</span></div>' +
       '<div class="bar__clock" data-clock></div>' +
       '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
     '</header>';
   }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media sc-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media sc-hero" data-img="hero.image"><div class="media__scrim"></div>' +
         '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-        '<div class="eyebrow" style="color:#fff;opacity:.85">' + D.mascot + '</div>' +
-        '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)">' + D.name + '</div>' +
-        '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch for schedules, dining, athletics &amp; more</div>' +
+        '<div class="eyebrow" style="color:#fff;opacity:.85" data-field="brand.mascot">' + D.mascot + '</div>' +
+        '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)" data-field="brand.name">' + D.name + '</div>' +
+        '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> <span data-field="attract.cta">Touch for schedules, dining, athletics &amp; more</span></div>' +
       '</div>';
   }
 
@@ -1380,11 +1380,11 @@ window.SCHOOL = {
       // HERO ROW: happening now + quick glance cards
       '<section class="sc-now">' +
         '<div class="sc-nowcard">' +
-          '<div class="row between"><div class="eyebrow" style="color:rgba(255,255,255,.85)">Happening now · ' + D.day + '</div>' +
+          '<div class="row between"><div class="eyebrow" style="color:rgba(255,255,255,.85)">Happening now · <span data-field="home.day">' + D.day + '</span></div>' +
             '<div class="sc-live">' + icon('clock') + ' <span data-clock></span></div></div>' +
-          '<div class="sc-now__period">' + D.now.period + '</div>' +
-          '<div class="sc-now__sub">' + D.now.remaining + ' · ends ' + D.now.ends + '</div>' +
-          '<div class="sc-now__next"><span class="dim" style="color:rgba(255,255,255,.7)">Up next</span> ' + D.now.next + '</div>' +
+          '<div class="sc-now__period" data-field="now.period">' + D.now.period + '</div>' +
+          '<div class="sc-now__sub"><span data-field="now.remaining">' + D.now.remaining + '</span> · ends <span data-field="now.ends">' + D.now.ends + '</span></div>' +
+          '<div class="sc-now__next"><span class="dim" style="color:rgba(255,255,255,.7)">Up next</span> <span data-field="now.next">' + D.now.next + '</span></div>' +
           '<button class="sc-now__btn" data-go="schedule">' + icon('clock') + ' Full bell schedule ' + icon('arrow-right', { sw: 2 }) + '</button>' +
         '</div>' +
         '<div class="sc-glance">' +
@@ -1404,12 +1404,18 @@ window.SCHOOL = {
         qt('calendar', 'Events', "This week", 'events') +
       '</section>' +
 
+      // VISITOR CHECK-IN
+      '<section style="display:flex;gap:var(--s-4);flex-wrap:wrap">' +
+        '<button class="btn btn--primary btn--lg" data-action="visitor.checkin">' + icon('shield') + ' Check in as a visitor</button>' +
+        '<button class="btn btn--ghost btn--lg" data-action="office.call">' + icon('phone') + ' Call the front office</button>' +
+      '</section>' +
+
       // ANNOUNCEMENTS
       '<section><div class="eyebrow" style="margin-bottom:var(--s-3)">Daily Bulletin</div>' +
-        '<div class="sc-anns">' + D.announcements.map(function (a) {
+        '<div class="sc-anns">' + D.announcements.map(function (a, i) {
           return '<div class="card card--static sc-ann"><div class="sc-ann__ic">' + icon(a.icon) + '</div>' +
-            '<div><div class="badge badge--accent">' + a.tag + '</div><div class="t-h3" style="margin:var(--s-1) 0">' + a.title + '</div>' +
-            '<p class="t-body dim pretty">' + a.body + '</p></div></div>';
+            '<div><div class="badge badge--accent" data-field="ann.' + i + '.tag">' + a.tag + '</div><div class="t-h3" style="margin:var(--s-1) 0" data-field="ann.' + i + '.title">' + a.title + '</div>' +
+            '<p class="t-body dim pretty" data-field="ann.' + i + '.body">' + a.body + '</p></div></div>';
         }).join('') + '</div></section>' +
 
     '</div></div>';
@@ -1428,16 +1434,19 @@ window.SCHOOL = {
   // SCHEDULE
   // ════════════════════════════════════════════════════════════════════════
   function schedule() {
-    var bell = D.bell.map(function (b) {
+    var bell = D.bell.map(function (b, i) {
       return '<div class="sc-bell ' + (b.now ? 'is-now' : '') + ' ' + (b.done ? 'is-done' : '') + '">' +
-        '<div class="sc-bell__p">' + b.period + '</div><div class="sc-bell__n">' + b.name + (b.now ? ' <span class="sc-bell__live">NOW</span>' : (b.next ? ' <span class="sc-bell__live" style="color:var(--accent-2);background:color-mix(in srgb,var(--accent-2) 18%,transparent)">NEXT</span>' : '')) + '</div>' +
-        '<div class="sc-bell__t">' + b.time + '</div></div>';
+        '<div class="sc-bell__p" data-field="bell.' + i + '.period">' + b.period + '</div><div class="sc-bell__n" data-field="bell.' + i + '.name">' + b.name + (b.now ? ' <span class="sc-bell__live">NOW</span>' : (b.next ? ' <span class="sc-bell__live" style="color:var(--accent-2);background:color-mix(in srgb,var(--accent-2) 18%,transparent)">NEXT</span>' : '')) + '</div>' +
+        '<div class="sc-bell__t" data-field="bell.' + i + '.time">' + b.time + '</div></div>';
     }).join('');
     return bar(true) +
     '<div class="scroll"><div class="sc-dir">' +
-      '<div class="sc-head"><div><div class="eyebrow">' + D.day + '</div><h1 class="t-xl">Bell Schedule</h1></div>' +
-        '<div class="t-body dim">' + D.scheduleNote + '</div></div>' +
+      '<div class="sc-head"><div><div class="eyebrow" data-field="home.day">' + D.day + '</div><h1 class="t-xl" data-field="schedule.heading">Bell Schedule</h1></div>' +
+        '<div class="t-body dim" data-field="schedule.note">' + D.scheduleNote + '</div></div>' +
       '<div class="sc-bells sc-bells--full">' + bell + '</div>' +
+      '<div class="row" style="justify-content:flex-end;margin-top:var(--s-6)">' +
+        '<button class="btn btn--primary btn--lg" data-action="schedule.email">' + icon('send') + ' Email me the schedule</button>' +
+      '</div>' +
     '</div></div>';
   }
 
@@ -1448,23 +1457,23 @@ window.SCHOOL = {
     return (tags || []).map(function (t) { return '<span class="sc-diet sc-diet--' + t.replace('*', 's') + '">' + (D.dining.legend[t] || t) + '</span>'; }).join('');
   }
   function dining() {
-    var stations = D.dining.stations.map(function (s) {
-      return '<div class="card card--static sc-station"><div class="sc-station__h"><div class="t-h3">' + s.name + '</div></div>' +
-        s.items.map(function (it) {
-          return '<div class="sc-dish"><div class="sc-dish__dot"></div><div class="grow"><div class="t-body" style="font-weight:600">' + it.name + '</div>' +
+    var stations = D.dining.stations.map(function (s, si) {
+      return '<div class="card card--static sc-station"><div class="sc-station__h"><div class="t-h3" data-field="dining.station.' + si + '.name">' + s.name + '</div></div>' +
+        s.items.map(function (it, ii) {
+          return '<div class="sc-dish"><div class="sc-dish__dot"></div><div class="grow"><div class="t-body" style="font-weight:600" data-field="dining.station.' + si + '.item.' + ii + '.name">' + it.name + '</div>' +
             (it.tags.length ? '<div class="sc-diets">' + tagChips(it.tags) + '</div>' : '') + '</div></div>';
         }).join('') + '</div>';
     }).join('');
     return bar(true) +
     '<div class="scroll"><div class="sc-dir">' +
-      '<div class="sc-head"><div><div class="eyebrow">Dining Commons · ' + D.day + '</div><h1 class="t-xl">Today\u2019s Menu</h1></div>' +
-        '<div class="t-body dim" style="max-width:34ch">' + D.dining.note + '</div></div>' +
+      '<div class="sc-head"><div><div class="eyebrow">Dining Commons · <span data-field="home.day">' + D.day + '</span></div><h1 class="t-xl" data-field="dining.heading">Today\u2019s Menu</h1></div>' +
+        '<div class="t-body dim" style="max-width:34ch" data-field="dining.note">' + D.dining.note + '</div></div>' +
       '<div class="sc-bfast"><div class="sc-bfast__ic">' + icon('coffee') + '</div><div><div class="eyebrow" style="color:var(--accent-2)">Breakfast · free for all students</div>' +
-        '<div class="t-h3" style="font-weight:500;margin-top:var(--s-1)">' + D.dining.breakfast.join('  ·  ') + '</div></div></div>' +
+        '<div class="t-h3" style="font-weight:500;margin-top:var(--s-1)" data-field="dining.breakfast">' + D.dining.breakfast.join('  ·  ') + '</div></div></div>' +
       '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)">Lunch Stations</div>' +
       '<div class="sc-stations">' + stations + '</div>' +
       '<div class="row between sc-dining-foot"><div class="sc-diets">' + Object.keys(D.dining.legend).map(function (k) { return '<span class="sc-diet sc-diet--' + k.replace('*', 's') + '">' + D.dining.legend[k] + '</span>'; }).join('') + '</div>' +
-        '<div class="t-body dim">' + D.dining.tomorrow + '</div></div>' +
+        '<div class="t-body dim" data-field="dining.tomorrow">' + D.dining.tomorrow + '</div></div>' +
     '</div></div>';
   }
 
@@ -1478,17 +1487,17 @@ window.SCHOOL = {
       var fin = g.status === 'final';
       return '<div class="card card--static sc-game ' + (fin ? 'is-final' : '') + '">' +
         '<div class="sc-game__sport"><div class="sc-game__ic">' + icon(g.sport === 'Swim & Dive' ? 'star' : g.icon) + '</div>' +
-          '<div><div class="t-h3">' + g.sport + '</div><div class="t-sm dim">' + g.level + '</div></div></div>' +
+          '<div><div class="t-h3" data-field="game.' + g.sport.toLowerCase().replace(/[^a-z]/g,'.') + '.sport">' + g.sport + '</div><div class="t-sm dim" data-field="game.' + g.sport.toLowerCase().replace(/[^a-z]/g,'.') + '.level">' + g.level + '</div></div></div>' +
         '<div class="sc-game__vs"><span class="badge ' + (g.ha === 'HOME' ? 'badge--accent' : '') + '">' + g.ha + '</span>' +
-          '<div class="t-h3" style="margin-top:var(--s-1)">vs. ' + g.vs + '</div>' +
-          '<div class="t-sm dim">' + g.when + ' · ' + g.where + '</div></div>' +
-        '<div class="sc-game__res">' + (fin ? '<span class="sc-score">' + g.score + '</span>' : '<span class="badge badge--good"><span class="dot"></span>Upcoming</span>') + '</div>' +
+          '<div class="t-h3" style="margin-top:var(--s-1)" data-field="game.' + g.sport.toLowerCase().replace(/[^a-z]/g,'.') + '.vs">vs. ' + g.vs + '</div>' +
+          '<div class="t-sm dim"><span data-field="game.' + g.sport.toLowerCase().replace(/[^a-z]/g,'.') + '.when">' + g.when + '</span> · <span data-field="game.' + g.sport.toLowerCase().replace(/[^a-z]/g,'.') + '.where">' + g.where + '</span></div></div>' +
+        '<div class="sc-game__res">' + (fin ? '<span class="sc-score" data-field="game.' + g.sport.toLowerCase().replace(/[^a-z]/g,'.') + '.score">' + g.score + '</span>' : '<span class="badge badge--good"><span class="dot"></span>Upcoming</span>') + '</div>' +
       '</div>';
     }
     return bar(true) +
     '<div class="scroll"><div class="sc-dir">' +
       '<div class="sc-head"><div><div class="eyebrow">Go Hawks</div><h1 class="t-xl">Athletics</h1></div>' +
-        '<div class="badge badge--accent" style="font-size:var(--t-sm)">' + icon('star') + ' ' + D.athletics.record + '</div></div>' +
+        '<div class="badge badge--accent" style="font-size:var(--t-sm)" data-field="athletics.record">' + icon('star') + ' ' + D.athletics.record + '</div></div>' +
       '<div class="eyebrow" style="margin-bottom:var(--s-3)">Upcoming</div>' +
       '<div class="sc-games">' + up.map(gcard).join('') + '</div>' +
       '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)">Recent Results</div>' +
@@ -1500,10 +1509,10 @@ window.SCHOOL = {
   // CLUBS
   // ════════════════════════════════════════════════════════════════════════
   function clubs() {
-    var cards = D.clubs.map(function (c) {
-      return '<div class="card card--static sc-club"><div class="row between"><div class="t-h3">' + c.name + '</div>' +
-        '<span class="badge badge--accent">' + c.tag + '</span></div>' +
-        '<div class="sc-club__meta"><span>' + icon('clock') + ' ' + c.when + '</span><span>' + icon('pin') + ' ' + c.room + '</span><span>' + icon('star') + ' ' + c.advisor + '</span></div></div>';
+    var cards = D.clubs.map(function (c, i) {
+      return '<div class="card card--static sc-club"><div class="row between"><div class="t-h3" data-field="club.' + i + '.name">' + c.name + '</div>' +
+        '<span class="badge badge--accent" data-field="club.' + i + '.tag">' + c.tag + '</span></div>' +
+        '<div class="sc-club__meta"><span>' + icon('clock') + ' <span data-field="club.' + i + '.when">' + c.when + '</span></span><span>' + icon('pin') + ' <span data-field="club.' + i + '.room">' + c.room + '</span></span><span>' + icon('star') + ' <span data-field="club.' + i + '.advisor">' + c.advisor + '</span></span></div></div>';
     }).join('');
     return bar(true) +
     '<div class="scroll"><div class="sc-dir">' +
@@ -1522,8 +1531,8 @@ window.SCHOOL = {
         '<span class="sc-pin__code">' + b.code + '</span><span class="sc-pin__label">' + b.name + '</span></button>';
     }).join('');
     var list = D.map.buildings.map(function (b) {
-      return '<button class="sc-blist" data-act="bldg" data-id="' + b.id + '"><span class="sc-blist__code sc-pin--' + b.color + '">' + b.code + '</span>' +
-        '<span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h3">' + b.name + '</span><span class="t-sm dim">' + b.rooms + '</span></span>' +
+      return '<button class="sc-blist" data-act="bldg" data-id="' + b.id + '"><span class="sc-blist__code sc-pin--' + b.color + '" data-field="bldg.' + b.id + '.code">' + b.code + '</span>' +
+        '<span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h3" data-field="bldg.' + b.id + '.name">' + b.name + '</span><span class="t-sm dim" data-field="bldg.' + b.id + '.rooms">' + b.rooms + '</span></span>' +
         '<span class="sc-blist__go">' + icon('arrow-right', { sw: 2 }) + '</span></button>';
     }).join('');
     return bar(true) +
@@ -1531,10 +1540,11 @@ window.SCHOOL = {
       '<div class="sc-head"><div><div class="eyebrow">Wayfinding</div><h1 class="t-xl">Find your way around</h1></div>' +
         '<div class="t-body dim">Tap a building on the map or in the list.</div></div>' +
       '<div class="split split--6040 sc-way__split">' +
-        '<div class="sc-mapframe media">' +
-          '<div class="here" style="left:' + D.map.here.x + '%;top:' + D.map.here.y + '%"><div class="here__label">' + D.map.here.label + '</div></div>' +
-          pins + '<div class="media__tag">' + icon('grid') + ' RIVERSIDE HIGH — CAMPUS MAP</div></div>' +
-        '<div class="sc-blistwrap"><div class="eyebrow" style="margin-bottom:var(--s-3)">Buildings</div>' + list + '</div>' +
+        '<div class="sc-mapframe media" data-img="map.image">' +
+          '<div class="here" style="left:' + D.map.here.x + '%;top:' + D.map.here.y + '%"><div class="here__label" data-field="map.here.label">' + D.map.here.label + '</div></div>' +
+          pins + '<div class="media__tag">' + icon('grid') + ' <span data-field="map.title">RIVERSIDE HIGH — CAMPUS MAP</span></div></div>' +
+        '<div class="sc-blistwrap"><div class="eyebrow" style="margin-bottom:var(--s-3)">Buildings</div>' + list +
+        '<button class="btn btn--primary btn--lg" style="margin-top:var(--s-5)" data-action="wayfinding.get-directions">' + icon('pin') + ' Get directions</button></div>' +
       '</div>' +
     '</div></div>';
   }
@@ -1557,10 +1567,10 @@ window.SCHOOL = {
     var list = D.staff.filter(function (s) { return deptFilter === 'All' || s.dept === deptFilter; });
     return list.map(function (s) {
       return '<button class="card sc-person" data-go="person:' + s.id + '">' +
-        '<span class="media sc-person__img"><span class="media__tag">' + icon('image') + '</span></span>' +
-        '<span class="sc-person__b"><span class="t-h3">' + s.name + '</span>' +
-        '<span class="t-sm dim">' + s.role + '</span>' +
-        '<span class="row gap-2" style="margin-top:var(--s-2)"><span class="badge">' + icon('pin') + ' ' + s.room + '</span></span></span></button>';
+        '<span class="media sc-person__img" data-img="staff.' + s.id + '.photo"><span class="media__tag">' + icon('image') + '</span></span>' +
+        '<span class="sc-person__b"><span class="t-h3" data-field="staff.' + s.id + '.name">' + s.name + '</span>' +
+        '<span class="t-sm dim" data-field="staff.' + s.id + '.role">' + s.role + '</span>' +
+        '<span class="row gap-2" style="margin-top:var(--s-2)"><span class="badge">' + icon('pin') + ' <span data-field="staff.' + s.id + '.room">' + s.room + '</span></span></span></span></button>';
     }).join('');
   }
   function person(id) {
@@ -1569,31 +1579,35 @@ window.SCHOOL = {
     return bar(true) +
     '<div class="scroll"><div class="sc-pdetail">' +
       '<div class="split split--4060">' +
-        '<div class="media sc-pdetail__img"><div class="media__tag">' + icon('image') + ' ' + s.name.toUpperCase() + '</div></div>' +
+        '<div class="media sc-pdetail__img" data-img="staff.' + s.id + '.photo"><div class="media__tag">' + icon('image') + ' ' + s.name.toUpperCase() + '</div></div>' +
         '<div class="sc-pdetail__b">' +
-          '<div class="badge badge--accent">' + s.dept + '</div>' +
-          '<h1 class="t-xl" style="margin:var(--s-2) 0 0">' + s.name + '</h1>' +
-          '<div class="t-h3 dim" style="font-weight:500">' + s.role + '</div>' +
+          '<div class="badge badge--accent" data-field="staff.' + s.id + '.dept">' + s.dept + '</div>' +
+          '<h1 class="t-xl" style="margin:var(--s-2) 0 0" data-field="staff.' + s.id + '.name">' + s.name + '</h1>' +
+          '<div class="t-h3 dim" style="font-weight:500" data-field="staff.' + s.id + '.role">' + s.role + '</div>' +
           '<div class="specs sc-specs" style="margin-top:var(--s-5)">' +
-            sp('pin', 'Room', s.room) + sp('phone', 'Extension', 'x' + s.ext) +
-            sp('clock', 'Help / office hours', s.hours) + sp('send', 'Email', s.email) +
+            sp('pin', 'Room', s.room, 'staff.' + s.id + '.room') + sp('phone', 'Extension', 'x' + s.ext, 'staff.' + s.id + '.ext') +
+            sp('clock', 'Help / office hours', s.hours, 'staff.' + s.id + '.hours') + sp('send', 'Email', s.email, 'staff.' + s.id + '.email') +
           '</div>' +
-          '<button class="btn btn--primary btn--lg" style="margin-top:var(--s-5)" data-act="locate" data-room="' + s.room + '">' + icon('pin') + ' Show ' + s.room + ' on the map</button>' +
+          '<div class="row" style="margin-top:var(--s-5);gap:var(--s-3)">' +
+          '<button class="btn btn--primary btn--lg" data-act="locate" data-room="' + s.room + '">' + icon('pin') + ' Show on map</button>' +
+          '<button class="btn btn--ghost btn--lg" data-action="staff.contact">' + icon('send') + ' Email</button>' +
+          '<button class="btn btn--ghost btn--lg" data-action="staff.call">' + icon('phone') + ' Call</button>' +
+          '</div>' +
         '</div>' +
       '</div>' +
     '</div></div>';
   }
-  function sp(ic, k, v) { return '<div class="spec"><div class="spec__k">' + k + '</div><div class="spec__v" style="font-size:var(--t-lg);white-space:normal">' + v + '</div></div>'; }
+  function sp(ic, k, v, dfkey) { return '<div class="spec"><div class="spec__k">' + k + '</div><div class="spec__v" style="font-size:var(--t-lg);white-space:normal"' + (dfkey ? ' data-field="' + dfkey + '"' : '') + '>' + v + '</div></div>'; }
 
   // ════════════════════════════════════════════════════════════════════════
   // EVENTS
   // ════════════════════════════════════════════════════════════════════════
   function events() {
-    var cards = D.events.map(function (e) {
+    var cards = D.events.map(function (e, i) {
       return '<div class="card card--static sc-event"><div class="sc-event__ic">' + icon(e.icon) + '</div>' +
-        '<div class="grow"><div class="badge badge--accent">' + e.tag + '</div>' +
-        '<div class="t-h2" style="margin:var(--s-1) 0">' + e.title + '</div>' +
-        '<div class="row gap-3 dim t-body"><span>' + icon('clock') + ' ' + e.when + '</span><span>' + icon('pin') + ' ' + e.where + '</span></div></div></div>';
+        '<div class="grow"><div class="badge badge--accent" data-field="event.' + i + '.tag">' + e.tag + '</div>' +
+        '<div class="t-h2" style="margin:var(--s-1) 0" data-field="event.' + i + '.title">' + e.title + '</div>' +
+        '<div class="row gap-3 dim t-body"><span>' + icon('clock') + ' <span data-field="event.' + i + '.when">' + e.when + '</span></span><span>' + icon('pin') + ' <span data-field="event.' + i + '.where">' + e.where + '</span></span></div></div></div>';
     }).join('');
     return bar(true) +
     '<div class="scroll"><div class="sc-dir">' +
@@ -1626,6 +1640,253 @@ window.SCHOOL = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- brand -->
+  <span data-field="brand.initials">R</span>
+  <span data-field="brand.name">Riverside High</span>
+  <span data-field="brand.mascot">Home of the Hawks</span>
+  <!-- home / attract -->
+  <div data-img="hero.image"></div>
+  <span data-field="attract.cta">Touch for schedules, dining, athletics &amp; more</span>
+  <span data-field="home.day">Wednesday &middot; Day B</span>
+  <!-- happening now card -->
+  <span data-field="now.period">Period 3</span>
+  <span data-field="now.remaining">18 min left</span>
+  <span data-field="now.ends">10:45</span>
+  <span data-field="now.next">Lunch &middot; 10:50</span>
+  <!-- announcements -->
+  <span data-field="ann.0.tag">Today</span>
+  <span data-field="ann.0.title">Picture Day &mdash; Main Gym</span>
+  <span data-field="ann.0.body">Underclassmen photos during periods 2&ndash;5. Bring your order form.</span>
+  <span data-field="ann.1.tag">Athletics</span>
+  <span data-field="ann.1.title">Varsity Soccer vs. Lincoln</span>
+  <span data-field="ann.1.body">Home game tonight at 6:00 PM on Hawk Field. Student section opens at 5:30.</span>
+  <span data-field="ann.2.tag">Reminder</span>
+  <span data-field="ann.2.title">Spring Registration closes Friday</span>
+  <span data-field="ann.2.body">Course selection closes Friday &mdash; see your counselor in the B-Wing Guidance suite.</span>
+  <!-- bell schedule -->
+  <span data-field="schedule.heading">Bell Schedule</span>
+  <span data-field="schedule.note">Regular bell schedule today. Early release Friday.</span>
+  <span data-field="bell.0.period">1</span>
+  <span data-field="bell.0.name">Period 1</span>
+  <span data-field="bell.0.time">8:05&ndash;8:55</span>
+  <span data-field="bell.1.period">2</span>
+  <span data-field="bell.1.name">Period 2</span>
+  <span data-field="bell.1.time">9:00&ndash;9:50</span>
+  <span data-field="bell.2.period">3</span>
+  <span data-field="bell.2.name">Period 3</span>
+  <span data-field="bell.2.time">9:55&ndash;10:45</span>
+  <span data-field="bell.3.period">L</span>
+  <span data-field="bell.3.name">Lunch</span>
+  <span data-field="bell.3.time">10:50&ndash;11:30</span>
+  <span data-field="bell.4.period">4</span>
+  <span data-field="bell.4.name">Period 4</span>
+  <span data-field="bell.4.time">11:35&ndash;12:25</span>
+  <span data-field="bell.5.period">5</span>
+  <span data-field="bell.5.name">Period 5</span>
+  <span data-field="bell.5.time">12:30&ndash;1:20</span>
+  <span data-field="bell.6.period">6</span>
+  <span data-field="bell.6.name">Period 6</span>
+  <span data-field="bell.6.time">1:25&ndash;2:15</span>
+  <span data-field="bell.7.period">7</span>
+  <span data-field="bell.7.name">Period 7</span>
+  <span data-field="bell.7.time">2:20&ndash;3:10</span>
+  <!-- dining -->
+  <span data-field="dining.heading">Today&rsquo;s Menu</span>
+  <span data-field="dining.note">Free breakfast for all students &middot; Lunch $3.25 / reduced $0.40</span>
+  <span data-field="dining.breakfast">Cinnamon french toast sticks &middot; Yogurt &amp; granola parfait &middot; Fresh fruit &amp; juice bar</span>
+  <span data-field="dining.station.0.name">Main Line</span>
+  <span data-field="dining.station.0.item.0.name">Hawk Burger &amp; sweet potato fries</span>
+  <span data-field="dining.station.0.item.1.name">Grilled chicken sandwich</span>
+  <span data-field="dining.station.1.name">Garden</span>
+  <span data-field="dining.station.1.item.0.name">Build-your-own salad bar</span>
+  <span data-field="dining.station.1.item.1.name">Roasted veggie grain bowl</span>
+  <span data-field="dining.station.2.name">Global</span>
+  <span data-field="dining.station.2.item.0.name">Chicken tikka with rice &amp; naan</span>
+  <span data-field="dining.station.2.item.1.name">Black bean &amp; cheese quesadilla</span>
+  <span data-field="dining.station.3.name">Deli &amp; Pizza</span>
+  <span data-field="dining.station.3.item.0.name">Build-your-own deli sandwich</span>
+  <span data-field="dining.station.3.item.1.name">Cheese or pepperoni pizza</span>
+  <span data-field="dining.tomorrow">Tomorrow: Taco bar &middot; Mac &amp; cheese &middot; Asian noodle bowl</span>
+  <!-- athletics -->
+  <span data-field="athletics.record">Fall season &middot; Hawks overall 8&ndash;2</span>
+  <!-- clubs -->
+  <span data-field="club.0.name">Robotics &mdash; Team 4821</span>
+  <span data-field="club.0.tag">STEM</span>
+  <span data-field="club.0.when">Tue &amp; Thu &middot; 3:30 PM</span>
+  <span data-field="club.0.room">A-128</span>
+  <span data-field="club.0.advisor">Mr. Novak</span>
+  <span data-field="club.1.name">Model United Nations</span>
+  <span data-field="club.1.tag">Academic</span>
+  <span data-field="club.1.when">Wed &middot; Lunch</span>
+  <span data-field="club.1.room">B-140</span>
+  <span data-field="club.1.advisor">Mr. Ford</span>
+  <span data-field="club.2.name">Drama &amp; Stagecraft</span>
+  <span data-field="club.2.tag">Arts</span>
+  <span data-field="club.2.when">Mon&ndash;Thu &middot; 3:30 PM</span>
+  <span data-field="club.2.room">Auditorium</span>
+  <span data-field="club.2.advisor">Ms. Sato</span>
+  <span data-field="club.3.name">Hawk Newspaper</span>
+  <span data-field="club.3.tag">Media</span>
+  <span data-field="club.3.when">Wed &middot; 3:30 PM</span>
+  <span data-field="club.3.room">B-104</span>
+  <span data-field="club.3.advisor">Ms. Ellis</span>
+  <span data-field="club.4.name">Environmental Club</span>
+  <span data-field="club.4.tag">Service</span>
+  <span data-field="club.4.when">Fri &middot; Lunch</span>
+  <span data-field="club.4.room">A-112</span>
+  <span data-field="club.4.advisor">Dr. Haddad</span>
+  <span data-field="club.5.name">Black Student Union</span>
+  <span data-field="club.5.tag">Affinity</span>
+  <span data-field="club.5.when">Thu &middot; Lunch</span>
+  <span data-field="club.5.room">B-118</span>
+  <span data-field="club.5.advisor">Ms. Okoye</span>
+  <span data-field="club.6.name">Jazz Band</span>
+  <span data-field="club.6.tag">Arts</span>
+  <span data-field="club.6.when">Tue &amp; Fri &middot; 7:15 AM</span>
+  <span data-field="club.6.room">Band Room</span>
+  <span data-field="club.6.advisor">Mr. Diaz</span>
+  <span data-field="club.7.name">Key Club (Service)</span>
+  <span data-field="club.7.tag">Service</span>
+  <span data-field="club.7.when">Every other Wed &middot; 3:30</span>
+  <span data-field="club.7.room">B-104</span>
+  <span data-field="club.7.advisor">Ms. Ellis</span>
+  <!-- wayfinding -->
+  <div data-img="map.image"></div>
+  <span data-field="map.here.label">You are here &middot; Main Commons</span>
+  <span data-field="map.title">RIVERSIDE HIGH &mdash; CAMPUS MAP</span>
+  <span data-field="bldg.a.code">A</span>
+  <span data-field="bldg.a.name">A-Wing &middot; Sciences</span>
+  <span data-field="bldg.a.rooms">A100&ndash;A140</span>
+  <span data-field="bldg.b.code">B</span>
+  <span data-field="bldg.b.name">B-Wing &middot; Humanities &amp; Guidance</span>
+  <span data-field="bldg.b.rooms">B100&ndash;B160</span>
+  <span data-field="bldg.c.code">C</span>
+  <span data-field="bldg.c.name">C-Wing &middot; Arts</span>
+  <span data-field="bldg.c.rooms">C100&ndash;C120</span>
+  <span data-field="bldg.gym.code">G</span>
+  <span data-field="bldg.gym.name">Athletics &amp; Gym</span>
+  <span data-field="bldg.gym.rooms">Gym, Pool</span>
+  <span data-field="bldg.lib.code">L</span>
+  <span data-field="bldg.lib.name">Media Center / Library</span>
+  <span data-field="bldg.lib.rooms">Library</span>
+  <span data-field="bldg.caf.code">D</span>
+  <span data-field="bldg.caf.name">Dining Commons</span>
+  <span data-field="bldg.caf.rooms">Cafeteria</span>
+  <!-- staff directory -->
+  <div data-img="staff.reyes.photo"></div>
+  <span data-field="staff.reyes.name">Dr. Amara Reyes</span>
+  <span data-field="staff.reyes.role">Principal</span>
+  <span data-field="staff.reyes.dept">Main Office</span>
+  <span data-field="staff.reyes.room">Main Office</span>
+  <span data-field="staff.reyes.ext">x100</span>
+  <span data-field="staff.reyes.hours">By appointment</span>
+  <span data-field="staff.reyes.email">areyes@riverside.edu</span>
+  <div data-img="staff.tran.photo"></div>
+  <span data-field="staff.tran.name">Mr. David Tran</span>
+  <span data-field="staff.tran.role">Assistant Principal</span>
+  <span data-field="staff.tran.dept">Main Office</span>
+  <span data-field="staff.tran.room">Main Office</span>
+  <span data-field="staff.tran.ext">x102</span>
+  <span data-field="staff.tran.hours">7:30&ndash;3:30</span>
+  <span data-field="staff.tran.email">dtran@riverside.edu</span>
+  <div data-img="staff.okoye.photo"></div>
+  <span data-field="staff.okoye.name">Ms. Ngozi Okoye</span>
+  <span data-field="staff.okoye.role">School Counselor (A&ndash;L)</span>
+  <span data-field="staff.okoye.dept">Counseling</span>
+  <span data-field="staff.okoye.room">B-118</span>
+  <span data-field="staff.okoye.ext">x210</span>
+  <span data-field="staff.okoye.hours">Periods 2, 4, 6</span>
+  <span data-field="staff.okoye.email">nokoye@riverside.edu</span>
+  <div data-img="staff.park.photo"></div>
+  <span data-field="staff.park.name">Mr. Julian Park</span>
+  <span data-field="staff.park.role">School Counselor (M&ndash;Z)</span>
+  <span data-field="staff.park.dept">Counseling</span>
+  <span data-field="staff.park.room">B-120</span>
+  <span data-field="staff.park.ext">x211</span>
+  <span data-field="staff.park.hours">Periods 1, 3, 5</span>
+  <span data-field="staff.park.email">jpark@riverside.edu</span>
+  <div data-img="staff.haddad.photo"></div>
+  <span data-field="staff.haddad.name">Dr. Lena Haddad</span>
+  <span data-field="staff.haddad.role">Chemistry &amp; AP Bio</span>
+  <span data-field="staff.haddad.dept">Science</span>
+  <span data-field="staff.haddad.room">A-112</span>
+  <span data-field="staff.haddad.ext">x330</span>
+  <span data-field="staff.haddad.hours">After school Tue/Thu</span>
+  <span data-field="staff.haddad.email">lhaddad@riverside.edu</span>
+  <div data-img="staff.novak.photo"></div>
+  <span data-field="staff.novak.name">Mr. Sam Novak</span>
+  <span data-field="staff.novak.role">Physics &amp; Robotics</span>
+  <span data-field="staff.novak.dept">Science</span>
+  <span data-field="staff.novak.room">A-128</span>
+  <span data-field="staff.novak.ext">x334</span>
+  <span data-field="staff.novak.hours">Lunch + Period 7</span>
+  <span data-field="staff.novak.email">snovak@riverside.edu</span>
+  <div data-img="staff.ellis.photo"></div>
+  <span data-field="staff.ellis.name">Ms. Bianca Ellis</span>
+  <span data-field="staff.ellis.role">English &amp; Journalism</span>
+  <span data-field="staff.ellis.dept">Humanities</span>
+  <span data-field="staff.ellis.room">B-104</span>
+  <span data-field="staff.ellis.ext">x350</span>
+  <span data-field="staff.ellis.hours">Period 6</span>
+  <span data-field="staff.ellis.email">bellis@riverside.edu</span>
+  <div data-img="staff.ford.photo"></div>
+  <span data-field="staff.ford.name">Mr. Marcus Ford</span>
+  <span data-field="staff.ford.role">U.S. History &amp; Debate</span>
+  <span data-field="staff.ford.dept">Humanities</span>
+  <span data-field="staff.ford.room">B-140</span>
+  <span data-field="staff.ford.ext">x356</span>
+  <span data-field="staff.ford.hours">After school Wed</span>
+  <span data-field="staff.ford.email">mford@riverside.edu</span>
+  <div data-img="staff.sato.photo"></div>
+  <span data-field="staff.sato.name">Ms. Yuki Sato</span>
+  <span data-field="staff.sato.role">Visual Arts &amp; Ceramics</span>
+  <span data-field="staff.sato.dept">Arts</span>
+  <span data-field="staff.sato.room">C-108</span>
+  <span data-field="staff.sato.ext">x410</span>
+  <span data-field="staff.sato.hours">Open studio Fri</span>
+  <span data-field="staff.sato.email">ysato@riverside.edu</span>
+  <div data-img="staff.boone.photo"></div>
+  <span data-field="staff.boone.name">Coach Tasha Boone</span>
+  <span data-field="staff.boone.role">Athletic Director</span>
+  <span data-field="staff.boone.dept">Athletics</span>
+  <span data-field="staff.boone.room">Gym Office</span>
+  <span data-field="staff.boone.ext">x500</span>
+  <span data-field="staff.boone.hours">7:00&ndash;4:00</span>
+  <span data-field="staff.boone.email">tboone@riverside.edu</span>
+  <!-- events -->
+  <span data-field="event.0.tag">Athletics</span>
+  <span data-field="event.0.title">Varsity Soccer vs. Lincoln</span>
+  <span data-field="event.0.when">Today &middot; 6:00 PM</span>
+  <span data-field="event.0.where">Hawk Field</span>
+  <span data-field="event.1.tag">Arts</span>
+  <span data-field="event.1.title">Spring Choir Concert</span>
+  <span data-field="event.1.when">Thu &middot; 7:00 PM</span>
+  <span data-field="event.1.where">Auditorium</span>
+  <span data-field="event.2.tag">Academics</span>
+  <span data-field="event.2.title">AP Info Night</span>
+  <span data-field="event.2.when">Mon &middot; 6:30 PM</span>
+  <span data-field="event.2.where">Media Center</span>
+  <span data-field="event.3.tag">Community</span>
+  <span data-field="event.3.title">Hawk Family Pancake Breakfast</span>
+  <span data-field="event.3.when">Sat &middot; 8:00 AM</span>
+  <span data-field="event.3.where">Dining Commons</span>
+  <span data-field="event.4.tag">Athletics</span>
+  <span data-field="event.4.title">Swim &amp; Dive Invitational</span>
+  <span data-field="event.4.when">Sat &middot; 9:00 AM</span>
+  <span data-field="event.4.where">Natatorium</span>
+  <span data-field="event.5.tag">Academics</span>
+  <span data-field="event.5.title">Robotics Showcase</span>
+  <span data-field="event.5.when">Fri &middot; 3:30 PM</span>
+  <span data-field="event.5.where">A-128</span>
+  <!-- action buttons -->
+  <button data-action="visitor.checkin">Check in as a visitor</button>
+  <button data-action="office.call">Call the front office</button>
+  <button data-action="schedule.email">Email me the schedule</button>
+  <button data-action="wayfinding.get-directions">Get directions</button>
+  <button data-action="staff.contact">Email staff member</button>
+  <button data-action="staff.call">Call staff member</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
