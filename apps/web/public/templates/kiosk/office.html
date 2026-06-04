@@ -1284,23 +1284,23 @@ window.OFFICE = {
   function bar(showBack) {
     return '<header class="bar of-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
-      '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3" style="line-height:1">' + D.company + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.14em">' + D.building + '</div></div></div>' +
+      '<div class="bar__brand"><div class="bar__logo" data-field="brand.initials">' + D.brandInitials + '</div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1" data-field="brand.company">' + D.company + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.14em" data-field="brand.building">' + D.building + '</div></div></div>' +
       '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
-      '<div class="of-wifi">' + icon('wifi') + ' ' + D.wifi.network + '</div>' +
+      '<div class="of-wifi">' + icon('wifi') + ' <span data-field="wifi.network">' + D.wifi.network + '</span></div>' +
       '<div class="bar__clock" data-clock></div>' +
       '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
     '</header>';
   }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media of-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media of-hero" data-img="hero.image"><div class="media__scrim"></div>' +
         '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-        '<div class="eyebrow" style="color:#fff;opacity:.85">' + D.building + '</div>' +
-        '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)">' + D.tagline + '.</div>' +
-        '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to check in or find your way</div>' +
+        '<div class="eyebrow" style="color:#fff;opacity:.85" data-field="brand.building">' + D.building + '</div>' +
+        '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)" data-field="brand.tagline">' + D.tagline + '.</div>' +
+        '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> <span data-field="attract.cta">Touch to check in or find your way</span></div>' +
       '</div>';
   }
 
@@ -1319,17 +1319,17 @@ window.OFFICE = {
       // top: check-in hero + occupancy
       '<section class="of-dash">' +
         '<button class="of-hero-tile" data-go="checkin">' +
-          '<div class="of-hero-tile__b"><div class="eyebrow" style="color:rgba(255,255,255,.8)">Visitors</div>' +
-            '<h1 class="t-mega" style="color:#fff;line-height:.95;margin:var(--s-2) 0">Check in</h1>' +
-            '<p class="t-h3" style="color:rgba(255,255,255,.85);font-weight:400;max-width:24ch">Notify your host and print a badge in seconds.</p>' +
-            '<span class="btn btn--lg of-hero-tile__cta">' + icon('arrow-right', { sw: 2.4 }) + ' Start check-in</span></div>' +
+          '<div class="of-hero-tile__b"><div class="eyebrow" style="color:rgba(255,255,255,.8)" data-field="home.checkin.eyebrow">Visitors</div>' +
+            '<h1 class="t-mega" style="color:#fff;line-height:.95;margin:var(--s-2) 0" data-field="home.checkin.title">Check in</h1>' +
+            '<p class="t-h3" style="color:rgba(255,255,255,.85);font-weight:400;max-width:24ch" data-field="home.checkin.subtitle">Notify your host and print a badge in seconds.</p>' +
+            '<span class="btn btn--lg of-hero-tile__cta">' + icon('arrow-right', { sw: 2.4 }) + ' <span data-field="home.checkin.cta">Start check-in</span></span></div>' +
         '</button>' +
         '<div class="of-side">' +
-          '<div class="of-occ"><div class="row between"><div class="eyebrow" style="color:var(--accent)">Building occupancy</div>' +
-            '<span class="badge badge--accent">' + occ.label + '</span></div>' +
+          '<div class="of-occ"><div class="row between"><div class="eyebrow" style="color:var(--accent)" data-field="home.occ.label">Building occupancy</div>' +
+            '<span class="badge badge--accent" data-field="home.occ.status">' + occ.label + '</span></div>' +
             '<div class="of-occ__big">' + pct + '<span>%</span></div>' +
             '<div class="of-occ__bar"><i style="width:' + pct + '%"></i></div>' +
-            '<div class="t-sm dim">' + occ.current + ' of ' + occ.capacity + ' people · ' + occ.note + '</div></div>' +
+            '<div class="t-sm dim"><span data-field="home.occ.note">' + occ.note + '</span></div></div>' +
           '<div class="of-agendacard"><div class="eyebrow" style="margin-bottom:var(--s-2)">On this campus today</div>' + agenda + '</div>' +
         '</div>' +
       '</section>' +
@@ -1365,7 +1365,7 @@ window.OFFICE = {
       '</div>';
     }).join('');
     return bar(true) + '<div class="scroll"><div class="of-list">' +
-      '<div class="of-head"><div><div class="eyebrow">Mailroom · Front Desk</div><h1 class="t-xl">Packages &amp; Deliveries</h1></div>' +
+      '<div class="of-head"><div><div class="eyebrow" data-field="packages.eyebrow">Mailroom · Front Desk</div><h1 class="t-xl" data-field="packages.heading">Packages &amp; Deliveries</h1></div>' +
       '<div class="t-body dim">' + D.packages.length + ' items waiting for pickup</div></div>' +
       '<div class="of-pkgs">' + rows + '</div></div></div>';
   }
@@ -1380,13 +1380,13 @@ window.OFFICE = {
     var cards = D.desks.map(function (d) {
       return '<div class="card of-desk ' + (d.status === 'busy' ? 'is-busy' : '') + '" ' + (d.status !== 'busy' ? 'data-act="bookdesk" data-id="' + d.id + '"' : '') + '>' +
         '<div class="of-desk__top"><div class="of-desk__ic">' + icon('ruler') + '</div>' + deskBadge(d) + '</div>' +
-        '<div class="t-h2" style="margin-top:var(--s-2)">' + d.name + '</div>' +
-        '<div class="t-body dim">' + d.type + ' · Floor ' + d.floor + '</div>' +
+        '<div class="t-h2" style="margin-top:var(--s-2)" data-field="desk.' + d.id + '.name">' + d.name + '</div>' +
+        '<div class="t-body dim"><span data-field="desk.' + d.id + '.type">' + d.type + '</span> · Floor <span data-field="desk.' + d.id + '.floor">' + d.floor + '</span></div>' +
         '<div class="of-desk__cta">' + (d.status === 'busy' ? '<span class="dim">In use</span>' : '<span style="color:var(--accent);font-weight:700">' + icon('check', { sw: 2.2 }) + ' Reserve ' + icon('arrow-right', { sw: 2 }) + '</span>') + '</div>' +
       '</div>';
     }).join('');
     return bar(true) + '<div class="scroll"><div class="of-list">' +
-      '<div class="of-head"><div><div class="eyebrow">Need a spot to work?</div><h1 class="t-xl">Desks &amp; Focus Spaces</h1></div>' +
+      '<div class="of-head"><div><div class="eyebrow" data-field="desks.eyebrow">Need a spot to work?</div><h1 class="t-xl" data-field="desks.heading">Desks &amp; Focus Spaces</h1></div>' +
       '<div class="t-body dim">' + desksFree() + ' of ' + D.desks.length + ' open right now</div></div>' +
       '<div class="of-desks">' + cards + '</div></div></div>';
   }
@@ -1395,13 +1395,13 @@ window.OFFICE = {
   function checkin() {
     return bar(true) +
     '<div class="scroll"><div class="of-checkin">' +
-      '<div class="of-head"><div><div class="eyebrow">Visitor Check-in</div><h1 class="t-xl">Who are you here to see?</h1></div></div>' +
+      '<div class="of-head"><div><div class="eyebrow" data-field="checkin.eyebrow">Visitor Check-in</div><h1 class="t-xl" data-field="checkin.heading">Who are you here to see?</h1></div></div>' +
       '<div class="of-search"><span>' + icon('search') + '</span><span class="dim">Search by name or team…</span></div>' +
       '<div class="of-hosts">' + D.people.map(function (p) {
         var on = visit.host === p.id;
         return '<button class="of-host ' + (on ? 'is-on' : '') + '" data-act="host" data-id="' + p.id + '">' +
-          '<span class="media of-host__img"><span class="media__tag">' + icon('image') + '</span></span>' +
-          '<span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h3">' + p.name + '</span><span class="t-sm dim">' + p.title + '</span></span>' +
+          '<span class="media of-host__img" data-img="dir.' + p.id + '.photo"><span class="media__tag">' + icon('image') + '</span></span>' +
+          '<span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h3" data-field="dir.' + p.id + '.name">' + p.name + '</span><span class="t-sm dim" data-field="dir.' + p.id + '.title">' + p.title + '</span></span>' +
           '<span class="of-host__check">' + icon('check', { sw: 3 }) + '</span></button>';
       }).join('') + '</div>' +
       '<div class="of-purpose"><div class="eyebrow" style="margin-bottom:var(--s-3)">Reason for your visit</div>' +
@@ -1410,7 +1410,7 @@ window.OFFICE = {
     '<div class="actionbar of-checkinbar">' +
       '<div class="col" style="gap:0"><div class="t-sm dim">Visiting</div><div class="t-h3" id="of-hostlabel">' + (visit.host ? personById(visit.host).name : 'Select a host above') + '</div></div>' +
       '<div class="bar__spacer"></div>' +
-      '<button class="btn btn--primary btn--lg" data-act="notify" id="of-notify" ' + (visit.host ? '' : 'disabled') + '>' + icon('send') + ' Notify &amp; print badge</button>' +
+      '<button class="btn btn--primary btn--lg" data-act="notify" data-action="checkin.notify" id="of-notify" ' + (visit.host ? '' : 'disabled') + '>' + icon('send') + ' <span data-field="checkin.notify.label">Notify &amp; print badge</span></button>' +
     '</div>';
   }
 
@@ -1438,14 +1438,14 @@ window.OFFICE = {
   function rooms() {
     var cards = D.rooms.map(function (r) {
       return '<div class="card of-room ' + (r.status === 'busy' ? 'is-busy' : '') + '" ' + (r.status !== 'busy' ? 'data-act="book" data-id="' + r.id + '"' : '') + '>' +
-        '<div class="of-room__top"><div class="t-h2">' + r.name + '</div>' + statusBadge(r) + '</div>' +
-        '<div class="row gap-3 dim t-body"><span>' + icon('building') + ' Floor ' + r.floor + '</span><span>' + icon('star') + ' ' + r.seats + ' seats</span></div>' +
+        '<div class="of-room__top"><div class="t-h2" data-field="room.' + r.id + '.name">' + r.name + '</div>' + statusBadge(r) + '</div>' +
+        '<div class="row gap-3 dim t-body"><span>' + icon('building') + ' Floor <span data-field="room.' + r.id + '.floor">' + r.floor + '</span></span><span>' + icon('star') + ' <span data-field="room.' + r.id + '.seats">' + r.seats + '</span> seats</span></div>' +
         '<div class="chiprow" style="margin-top:var(--s-3)">' + r.equip.map(function (e) { return '<span class="chip" style="pointer-events:none">' + e + '</span>'; }).join('') + '</div>' +
         '<div class="of-room__cta">' + (r.status === 'busy' ? '<span class="dim">In use</span>' : '<span style="color:var(--accent);font-weight:700">' + icon('calendar') + ' Book now ' + icon('arrow-right', { sw: 2 }) + '</span>') + '</div>' +
       '</div>';
     }).join('');
     return bar(true) + '<div class="scroll"><div class="of-list">' +
-      '<div class="of-head"><div><div class="eyebrow">Spaces · Live availability</div><h1 class="t-xl">Meeting Rooms</h1></div>' +
+      '<div class="of-head"><div><div class="eyebrow" data-field="rooms.eyebrow">Spaces · Live availability</div><h1 class="t-xl" data-field="rooms.heading">Meeting Rooms</h1></div>' +
       '<div class="t-body dim">' + roomsFree() + ' of ' + D.rooms.length + ' free right now</div></div>' +
       '<div class="of-rooms">' + cards + '</div></div></div>';
   }
@@ -1458,7 +1458,7 @@ window.OFFICE = {
       '<div class="chiprow" data-pick="time">' + times.map(function (t, i) { return '<button class="chip ' + (i === 0 ? 'is-on' : '') + '" data-act="pickt">' + t + '</button>'; }).join('') + '</div>' +
       '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)">For how long</div>' +
       '<div class="chiprow" data-pick="dur">' + ['30 min', '45 min', '60 min', '90 min'].map(function (t, i) { return '<button class="chip ' + (i === 1 ? 'is-on' : '') + '" data-act="pickd">' + t + '</button>'; }).join('') + '</div>' +
-      '<button class="btn btn--primary btn--lg btn--block" style="margin-top:var(--s-6)" data-act="confirmRoom" data-id="' + r.id + '">' + icon('check', { sw: 2.4 }) + ' Confirm booking</button>' +
+      '<button class="btn btn--primary btn--lg btn--block" style="margin-top:var(--s-6)" data-act="confirmRoom" data-action="room.' + r.id + '.confirm" data-id="' + r.id + '">' + icon('check', { sw: 2.4 }) + ' <span data-field="room.confirm.label">Confirm booking</span></button>' +
     '</div>';
   }
 
@@ -1473,21 +1473,21 @@ window.OFFICE = {
   function peopleGrid() {
     return D.people.filter(function (p) { return teamFilter === 'All' || p.team === teamFilter; }).map(function (p) {
       return '<button class="card of-person" data-go="person:' + p.id + '">' +
-        '<span class="media of-person__img"><span class="media__tag">' + icon('image') + '</span></span>' +
-        '<span class="of-person__b"><span class="t-h3">' + p.name + '</span><span class="t-sm dim">' + p.title + '</span>' +
-        '<span class="badge" style="margin-top:var(--s-2)">' + icon('building') + ' Floor ' + p.floor + '</span></span></button>';
+        '<span class="media of-person__img" data-img="dir.' + p.id + '.photo"><span class="media__tag">' + icon('image') + '</span></span>' +
+        '<span class="of-person__b"><span class="t-h3" data-field="dir.' + p.id + '.name">' + p.name + '</span><span class="t-sm dim" data-field="dir.' + p.id + '.title">' + p.title + '</span>' +
+        '<span class="badge" style="margin-top:var(--s-2)">' + icon('building') + ' Floor <span data-field="dir.' + p.id + '.floor">' + p.floor + '</span></span></span></button>';
     }).join('');
   }
   function person(id) {
     var p = personById(id); if (!p) return '<div class="pad-7">Not found</div>';
     return bar(true) + '<div class="scroll"><div class="of-pdetail">' +
       '<div class="split split--4060">' +
-        '<div class="media of-pdetail__img"><div class="media__tag">' + icon('image') + ' ' + p.name.toUpperCase() + '</div></div>' +
-        '<div class="of-pdetail__b"><div class="badge badge--accent">' + p.team + '</div>' +
-          '<h1 class="t-xl" style="margin:var(--s-2) 0 0">' + p.name + '</h1>' +
-          '<div class="t-h3 dim" style="font-weight:500">' + p.title + '</div>' +
+        '<div class="media of-pdetail__img" data-img="dir.' + p.id + '.photo"><div class="media__tag">' + icon('image') + ' ' + p.name.toUpperCase() + '</div></div>' +
+        '<div class="of-pdetail__b"><div class="badge badge--accent" data-field="dir.' + p.id + '.team">' + p.team + '</div>' +
+          '<h1 class="t-xl" style="margin:var(--s-2) 0 0" data-field="dir.' + p.id + '.name">' + p.name + '</h1>' +
+          '<div class="t-h3 dim" style="font-weight:500" data-field="dir.' + p.id + '.title">' + p.title + '</div>' +
           '<div class="specs of-specs" style="margin-top:var(--s-5)">' +
-            sp('building', 'Floor', String(p.floor)) + sp('pin', 'Desk / office', p.room) + sp('send', 'Email', p.email) + '</div>' +
+            sp('building', 'Floor', String(p.floor)) + sp('pin', 'Desk / office', p.room) + sp('send', 'Email', '<span data-field="dir.' + p.id + '.email">' + p.email + '</span>') + '</div>' +
           '<div class="row gap-3" style="margin-top:var(--s-5)">' +
             '<button class="btn btn--primary btn--lg" data-go="checkin">' + icon('send') + ' Check in to see ' + p.name.split(' ')[0] + '</button>' +
             '<button class="btn btn--lg" data-act="locatep" data-floor="' + p.floor + '">' + icon('pin') + ' Floor ' + p.floor + '</button></div>' +
@@ -1501,15 +1501,15 @@ window.OFFICE = {
     var rows = D.floors.map(function (f) {
       var people = D.people.filter(function (p) { return String(p.floor) === f.level; }).length;
       return '<div class="of-floor ' + (f.here ? 'is-here' : '') + '">' +
-        '<span class="of-floor__lvl">' + f.level + '</span>' +
-        '<span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h3">' + f.name + '</span>' +
+        '<span class="of-floor__lvl" data-field="floor.' + f.level + '.level">' + f.level + '</span>' +
+        '<span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h3" data-field="floor.' + f.level + '.name">' + f.name + '</span>' +
         (f.here ? '<span class="of-floor__here">' + icon('pin') + ' You are here</span>' : '<span class="t-sm dim">' + people + ' people · ' + D.rooms.filter(function (r) { return String(r.floor) === f.level; }).length + ' rooms</span>') + '</span>' +
         (f.here ? '<span class="badge badge--accent">Lobby</span>' : '<span class="badge"><span class="dot"></span>Floor ' + f.level + '</span>') +
       '</div>';
     }).join('');
     return bar(true) + '<div class="scroll"><div class="of-list">' +
-      '<div class="of-head"><div><div class="eyebrow">Wayfinding</div><h1 class="t-xl">Building Directory</h1></div>' +
-      '<div class="t-body dim">' + D.here.label + '</div></div>' +
+      '<div class="of-head"><div><div class="eyebrow" data-field="wayfinding.eyebrow">Wayfinding</div><h1 class="t-xl" data-field="wayfinding.heading">Building Directory</h1></div>' +
+      '<div class="t-body dim" data-field="here.label">' + D.here.label + '</div></div>' +
       '<div class="of-stack"><div class="of-stack__roof">TOWER ONE</div>' + rows + '</div>' +
     '</div></div>';
   }
@@ -1567,6 +1567,154 @@ window.OFFICE = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- brand / building identity -->
+  <span data-field="brand.initials">N</span>
+  <span data-field="brand.company">Northwind</span>
+  <span data-field="brand.building">Northwind HQ &middot; Tower One</span>
+  <span data-field="brand.tagline">Welcome</span>
+  <span data-field="brand.address">500 Market St &middot; Floors 8&ndash;14</span>
+  <span data-field="brand.hours">Reception 8:00 AM &ndash; 6:00 PM</span>
+  <!-- wi-fi -->
+  <span data-field="wifi.network">Northwind-Guest</span>
+  <span data-field="wifi.code">welcome2026</span>
+  <!-- hero image -->
+  <div data-img="hero.image"></div>
+  <!-- attract screen -->
+  <span data-field="attract.cta">Touch to check in or find your way</span>
+  <!-- home screen hero tile -->
+  <span data-field="home.checkin.eyebrow">Visitors</span>
+  <span data-field="home.checkin.title">Check in</span>
+  <span data-field="home.checkin.subtitle">Notify your host and print a badge in seconds.</span>
+  <span data-field="home.checkin.cta">Start check-in</span>
+  <!-- home occupancy widget -->
+  <span data-field="home.occ.label">Building occupancy</span>
+  <span data-field="home.occ.status">Steady</span>
+  <span data-field="home.occ.note">Busiest 10 AM&ndash;12 PM</span>
+  <!-- check-in screen -->
+  <span data-field="checkin.eyebrow">Visitor Check-in</span>
+  <span data-field="checkin.heading">Who are you here to see?</span>
+  <span data-field="checkin.notify.label">Notify &amp; print badge</span>
+  <button data-action="checkin.notify">Notify &amp; print badge</button>
+  <!-- people directory — 8 entries (id, name, title, team, floor, email, photo) -->
+  <div data-img="dir.ros.photo"></div>
+  <span data-field="dir.ros.name">Rosa M&eacute;ndez</span>
+  <span data-field="dir.ros.title">Chief Executive Officer</span>
+  <span data-field="dir.ros.team">Executive</span>
+  <span data-field="dir.ros.floor">14</span>
+  <span data-field="dir.ros.email">rosa@northwind.co</span>
+  <div data-img="dir.kai.photo"></div>
+  <span data-field="dir.kai.name">Kai Andersen</span>
+  <span data-field="dir.kai.title">VP, Product</span>
+  <span data-field="dir.kai.team">Product</span>
+  <span data-field="dir.kai.floor">12</span>
+  <span data-field="dir.kai.email">kai@northwind.co</span>
+  <div data-img="dir.ned.photo"></div>
+  <span data-field="dir.ned.name">Nedra Coleman</span>
+  <span data-field="dir.ned.title">Head of Engineering</span>
+  <span data-field="dir.ned.team">Engineering</span>
+  <span data-field="dir.ned.floor">11</span>
+  <span data-field="dir.ned.email">nedra@northwind.co</span>
+  <div data-img="dir.tom.photo"></div>
+  <span data-field="dir.tom.name">Tom&aacute;s Rivera</span>
+  <span data-field="dir.tom.title">Principal Designer</span>
+  <span data-field="dir.tom.team">Design</span>
+  <span data-field="dir.tom.floor">12</span>
+  <span data-field="dir.tom.email">tomas@northwind.co</span>
+  <div data-img="dir.ams.photo"></div>
+  <span data-field="dir.ams.name">Amara Singh</span>
+  <span data-field="dir.ams.title">People Operations Lead</span>
+  <span data-field="dir.ams.team">People</span>
+  <span data-field="dir.ams.floor">9</span>
+  <span data-field="dir.ams.email">amara@northwind.co</span>
+  <div data-img="dir.ben.photo"></div>
+  <span data-field="dir.ben.name">Ben Walsh</span>
+  <span data-field="dir.ben.title">Account Executive</span>
+  <span data-field="dir.ben.team">Sales</span>
+  <span data-field="dir.ben.floor">10</span>
+  <span data-field="dir.ben.email">ben@northwind.co</span>
+  <div data-img="dir.lia.photo"></div>
+  <span data-field="dir.lia.name">Lia Petrov</span>
+  <span data-field="dir.lia.title">Senior PM</span>
+  <span data-field="dir.lia.team">Product</span>
+  <span data-field="dir.lia.floor">12</span>
+  <span data-field="dir.lia.email">lia@northwind.co</span>
+  <div data-img="dir.jon.photo"></div>
+  <span data-field="dir.jon.name">Jon Park</span>
+  <span data-field="dir.jon.title">Staff Engineer</span>
+  <span data-field="dir.jon.team">Engineering</span>
+  <span data-field="dir.jon.floor">11</span>
+  <span data-field="dir.jon.email">jon@northwind.co</span>
+  <!-- meeting rooms — 6 rooms -->
+  <span data-field="rooms.eyebrow">Spaces &middot; Live availability</span>
+  <span data-field="rooms.heading">Meeting Rooms</span>
+  <span data-field="room.summit.name">Summit</span>
+  <span data-field="room.summit.floor">12</span>
+  <span data-field="room.summit.seats">14</span>
+  <button data-action="room.summit.confirm">Confirm booking</button>
+  <span data-field="room.harbor.name">Harbor</span>
+  <span data-field="room.harbor.floor">12</span>
+  <span data-field="room.harbor.seats">8</span>
+  <button data-action="room.harbor.confirm">Confirm booking</button>
+  <span data-field="room.atlas.name">Atlas</span>
+  <span data-field="room.atlas.floor">11</span>
+  <span data-field="room.atlas.seats">6</span>
+  <button data-action="room.atlas.confirm">Confirm booking</button>
+  <span data-field="room.delta.name">Delta</span>
+  <span data-field="room.delta.floor">10</span>
+  <span data-field="room.delta.seats">4</span>
+  <button data-action="room.delta.confirm">Confirm booking</button>
+  <span data-field="room.nook.name">The Nook</span>
+  <span data-field="room.nook.floor">9</span>
+  <span data-field="room.nook.seats">2</span>
+  <button data-action="room.nook.confirm">Confirm booking</button>
+  <span data-field="room.forum.name">Forum</span>
+  <span data-field="room.forum.floor">14</span>
+  <span data-field="room.forum.seats">20</span>
+  <button data-action="room.forum.confirm">Confirm booking</button>
+  <span data-field="room.confirm.label">Confirm booking</span>
+  <!-- desks — 6 desks -->
+  <span data-field="desks.eyebrow">Need a spot to work?</span>
+  <span data-field="desks.heading">Desks &amp; Focus Spaces</span>
+  <span data-field="desk.d1.name">Focus Pod 9-A</span>
+  <span data-field="desk.d1.type">Phone booth</span>
+  <span data-field="desk.d1.floor">9</span>
+  <span data-field="desk.d2.name">Hot Desk 10-12</span>
+  <span data-field="desk.d2.type">Sit/stand desk</span>
+  <span data-field="desk.d2.floor">10</span>
+  <span data-field="desk.d3.name">Hot Desk 10-14</span>
+  <span data-field="desk.d3.type">Sit/stand desk</span>
+  <span data-field="desk.d3.floor">10</span>
+  <span data-field="desk.d4.name">Quiet Carrel 11-3</span>
+  <span data-field="desk.d4.type">Focus carrel</span>
+  <span data-field="desk.d4.floor">11</span>
+  <span data-field="desk.d5.name">Studio Bench 12-S</span>
+  <span data-field="desk.d5.type">Design bench</span>
+  <span data-field="desk.d5.floor">12</span>
+  <span data-field="desk.d6.name">Window Desk 12-9</span>
+  <span data-field="desk.d6.type">Sit/stand desk</span>
+  <span data-field="desk.d6.floor">12</span>
+  <!-- packages screen -->
+  <span data-field="packages.eyebrow">Mailroom &middot; Front Desk</span>
+  <span data-field="packages.heading">Packages &amp; Deliveries</span>
+  <!-- wayfinding screen -->
+  <span data-field="wayfinding.eyebrow">Wayfinding</span>
+  <span data-field="wayfinding.heading">Building Directory</span>
+  <span data-field="here.label">You are here &middot; Lobby, Floor 8</span>
+  <!-- floor levels -->
+  <span data-field="floor.14.level">14</span>
+  <span data-field="floor.14.name">Executive &amp; Forum</span>
+  <span data-field="floor.12.level">12</span>
+  <span data-field="floor.12.name">Product &middot; Design</span>
+  <span data-field="floor.11.level">11</span>
+  <span data-field="floor.11.name">Engineering</span>
+  <span data-field="floor.10.level">10</span>
+  <span data-field="floor.10.name">Sales</span>
+  <span data-field="floor.9.level">9</span>
+  <span data-field="floor.9.name">People &amp; Ops</span>
+  <span data-field="floor.8.level">8</span>
+  <span data-field="floor.8.name">Reception &amp; Lobby</span>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
