@@ -1283,8 +1283,8 @@ window.EXHIBIT = {
     return '<header class="bar mu-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
       '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3" style="line-height:1">' + D.title + ' <span class="dim" style="font-weight:400">· ' + D.subtitle + '</span></div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.16em">' + D.gallery + '</div></div></div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1"><span data-field="home.title">' + D.title + '</span> <span class="dim" style="font-weight:400">· <span data-field="home.subtitle">' + D.subtitle + '</span></span></div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.16em" data-field="home.gallery">' + D.gallery + '</div></div></div>' +
       '<div class="bar__spacer"></div>' +
       '<nav class="crumbs" data-crumbs></nav>' +
       '<div class="bar__spacer"></div>' +
@@ -1297,12 +1297,12 @@ window.EXHIBIT = {
   // ATTRACT
   // ════════════════════════════════════════════════════════════════════════
   function attract() {
-    return '<div class="attract__bg"><div class="media mu-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media mu-hero" data-img="hero.image"><div class="media__scrim"></div>' +
         '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-        '<div class="eyebrow" style="color:var(--accent)">' + D.museum + ' · ' + D.gallery + '</div>' +
-        '<div class="t-mega" style="color:#fff;margin-top:var(--s-2);letter-spacing:.04em">' + D.title + '</div>' +
-        '<div class="t-h1" style="color:rgba(255,255,255,.9);font-weight:400;font-style:italic;margin-top:var(--s-1)">' + D.subtitle + '</div>' +
+        '<div class="eyebrow" style="color:var(--accent)"><span data-field="home.museum">' + D.museum + '</span> · <span data-field="home.gallery">' + D.gallery + '</span></div>' +
+        '<div class="t-mega" style="color:#fff;margin-top:var(--s-2);letter-spacing:.04em" data-field="home.title">' + D.title + '</div>' +
+        '<div class="t-h1" style="color:rgba(255,255,255,.9);font-weight:400;font-style:italic;margin-top:var(--s-1)" data-field="home.subtitle">' + D.subtitle + '</div>' +
         '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to begin the tour</div>' +
       '</div>';
   }
@@ -1315,14 +1315,14 @@ window.EXHIBIT = {
     return bar(false) +
     '<div class="scroll"><div class="mu-home">' +
       '<section class="mu-intro">' +
-        '<div class="mu-intro__media media mu-hero"><div class="media__scrim"></div>' +
+        '<div class="mu-intro__media media mu-hero" data-img="hero.image"><div class="media__scrim"></div>' +
           '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div>' +
-          '<div class="mu-intro__title"><div class="eyebrow" style="color:#fff;opacity:.85">' + D.museum + '</div>' +
-            '<h1 class="t-mega" style="color:#fff;letter-spacing:.03em">' + D.title + '</h1>' +
-            '<div class="t-h2" style="color:#fff;font-weight:400;font-style:italic">' + D.subtitle + '</div></div>' +
+          '<div class="mu-intro__title"><div class="eyebrow" style="color:#fff;opacity:.85" data-field="home.museum">' + D.museum + '</div>' +
+            '<h1 class="t-mega" style="color:#fff;letter-spacing:.03em" data-field="home.title">' + D.title + '</h1>' +
+            '<div class="t-h2" style="color:#fff;font-weight:400;font-style:italic" data-field="home.subtitle">' + D.subtitle + '</div></div>' +
         '</div>' +
         '<div class="mu-intro__body">' +
-          '<p class="t-h3 pretty" style="font-weight:400;line-height:1.4">' + D.intro + '</p>' +
+          '<p class="t-h3 pretty" style="font-weight:400;line-height:1.4" data-field="home.intro">' + D.intro + '</p>' +
           '<div class="mu-intro__actions">' +
             '<button class="btn btn--primary btn--lg" data-go="poi:' + D.pois[0].id + '">' + icon('play') + ' Start the tour</button>' +
             '<button class="btn btn--ghost btn--lg" data-go="map">' + icon('pin') + ' Explore the hall map</button>' +
@@ -1331,7 +1331,7 @@ window.EXHIBIT = {
       '</section>' +
       '<section class="mu-stations">' +
         '<div class="row between" style="margin-bottom:var(--s-4)"><div class="eyebrow">The Six Stations</div>' +
-          '<div class="t-sm dim">' + D.hours + '</div></div>' +
+          '<div class="t-sm dim" data-field="home.hours">' + D.hours + '</div></div>' +
         '<div class="mu-stationlist">' + list + '</div>' +
       '</section>' +
     '</div></div>';
@@ -1340,10 +1340,10 @@ window.EXHIBIT = {
   function stationRow(p) {
     return '<button class="mu-station" data-go="poi:' + p.id + '">' +
       '<span class="mu-station__num">' + String(p.num).padStart(2, '0') + '</span>' +
-      '<span class="media mu-station__img"><span class="media__tag">' + icon('image') + ' ' + p.hero + '</span></span>' +
-      '<span class="mu-station__txt"><span class="t-h2">' + p.title + '</span>' +
-        '<span class="eyebrow" style="color:var(--text-mute)">' + p.era + '</span>' +
-        '<span class="t-body dim pretty">' + p.short + '</span>' +
+      '<span class="media mu-station__img" data-img="poi.' + p.id + '.image"><span class="media__tag">' + icon('image') + ' ' + p.hero + '</span></span>' +
+      '<span class="mu-station__txt"><span class="t-h2" data-field="poi.' + p.id + '.title">' + p.title + '</span>' +
+        '<span class="eyebrow" style="color:var(--text-mute)" data-field="poi.' + p.id + '.era">' + p.era + '</span>' +
+        '<span class="t-body dim pretty" data-field="poi.' + p.id + '.short">' + p.short + '</span>' +
         '<span class="mu-station__meta">' +
           '<span class="badge"><span>' + icon('headphones') + '</span> ' + p.audioLen + '</span>' +
           (p.hasVideo ? '<span class="badge badge--accent"><span>' + icon('video') + '</span> Film</span>' : '') +
@@ -1363,18 +1363,21 @@ window.EXHIBIT = {
     var idx = poiIndex(id);
     var prev = D.pois[idx - 1], next = D.pois[idx + 1];
 
+    var fIdx = 0;
     var facts = p.facts.map(function (f) {
-      return '<div class="mu-fact"><div class="mu-fact__v">' + f.v + '</div><div class="mu-fact__k">' + f.k + '</div></div>';
+      var key = 'poi.' + p.id + '.fact.' + (fIdx++);
+      return '<div class="mu-fact"><div class="mu-fact__v" data-field="' + key + '.v">' + f.v + '</div><div class="mu-fact__k" data-field="' + key + '.k">' + f.k + '</div></div>';
     }).join('');
 
-    var story = p.story.map(function (s) { return '<p class="mu-p pretty">' + s + '</p>'; }).join('');
+    var sIdx = 0;
+    var story = p.story.map(function (s) { return '<p class="mu-p pretty" data-field="poi.' + p.id + '.story.' + (sIdx++) + '">' + s + '</p>'; }).join('');
 
     var related = p.related.map(function (rid) {
       var r = poiById(rid); if (!r) return '';
       return '<button class="mu-rel" data-go="poi:' + r.id + '">' +
-        '<span class="media mu-rel__img"><span class="media__tag">' + icon('image') + ' ' + r.title.toUpperCase() + '</span></span>' +
+        '<span class="media mu-rel__img" data-img="poi.' + r.id + '.image"><span class="media__tag">' + icon('image') + ' ' + r.title.toUpperCase() + '</span></span>' +
         '<span class="mu-rel__t"><span class="eyebrow" style="color:var(--text-mute)">Station ' + r.num + '</span>' +
-        '<span class="t-h3">' + r.title + '</span></span>' + icon('arrow-right', { sw: 2 }) +
+        '<span class="t-h3" data-field="poi.' + r.id + '.title">' + r.title + '</span></span>' + icon('arrow-right', { sw: 2 }) +
       '</button>';
     }).join('');
 
@@ -1384,20 +1387,20 @@ window.EXHIBIT = {
       // STAGE: hero film/image + audio guide
       '<div class="mu-stage">' +
         '<div class="video mu-video" data-act="video">' +
-          '<div class="media mu-hero"><div class="media__scrim"></div></div>' +
+          '<div class="media mu-hero" data-img="poi.' + p.id + '.image"><div class="media__scrim"></div></div>' +
           (p.hasVideo ? '<button class="video__play">' + icon('play') + '</button>' : '') +
-          '<div class="media__tag">' + icon(p.hasVideo ? 'video' : 'image') + ' ' + (p.hasVideo ? p.videoLabel : p.hero) + '</div>' +
+          '<div class="media__tag">' + icon(p.hasVideo ? 'video' : 'image') + ' <span data-field="poi.' + p.id + (p.hasVideo ? '.videoLabel' : '.hero') + '">' + (p.hasVideo ? p.videoLabel : p.hero) + '</span></div>' +
           '<div class="video__bar"><i></i></div>' +
           '<div class="mu-stage__cap"><span class="mu-poi__num">' + String(p.num).padStart(2, '0') + '</span>' +
-            '<div><div class="eyebrow" style="color:#fff;opacity:.8">Station ' + p.num + ' · ' + p.era + '</div>' +
-            '<h1 class="t-xl" style="color:#fff">' + p.title + '</h1></div></div>' +
+            '<div><div class="eyebrow" style="color:#fff;opacity:.8">Station ' + p.num + ' · <span data-field="poi.' + p.id + '.era">' + p.era + '</span></div>' +
+            '<h1 class="t-xl" style="color:#fff" data-field="poi.' + p.id + '.title">' + p.title + '</h1></div></div>' +
         '</div>' +
-        '<div class="audio mu-audio" data-act="audio">' +
+        '<div class="audio mu-audio" data-act="audio" data-action="poi.' + p.id + '.audio.play">' +
           '<button class="audio__btn">' + icon('play') + '</button>' +
           '<div class="col" style="gap:2px;flex:1"><div class="t-body" style="font-weight:700">Audio guide</div>' +
-            '<div class="t-sm dim">' + p.audioTitle + '</div>' +
+            '<div class="t-sm dim" data-field="poi.' + p.id + '.audioTitle">' + p.audioTitle + '</div>' +
             '<div class="wave">' + Kiosk.waveBars(40) + '</div></div>' +
-          '<div class="audio__time">' + p.audioLen + '</div>' +
+          '<div class="audio__time" data-field="poi.' + p.id + '.audioLen">' + p.audioLen + '</div>' +
         '</div>' +
       '</div>' +
 
@@ -1406,7 +1409,7 @@ window.EXHIBIT = {
         '<div class="mu-story"><div class="eyebrow">The Story</div>' + story +
           '<div class="mu-dyk"><div class="mu-dyk__ic">' + icon('sparkle') + '</div>' +
             '<div><div class="eyebrow" style="color:var(--accent)">Did you know</div>' +
-            '<p class="t-h3" style="font-weight:400;font-style:italic;line-height:1.35">' + p.didYouKnow + '</p></div></div>' +
+            '<p class="t-h3" style="font-weight:400;font-style:italic;line-height:1.35" data-field="poi.' + p.id + '.dyk">' + p.didYouKnow + '</p></div></div>' +
         '</div>' +
         '<aside class="mu-side"><div class="eyebrow">By the numbers</div>' +
           '<div class="mu-facts">' + facts + '</div>' +
@@ -1418,9 +1421,9 @@ window.EXHIBIT = {
 
     // STATION NAV
     '<div class="actionbar mu-nav">' +
-      (prev ? '<button class="btn mu-navbtn" data-go="poi:' + prev.id + '">' + icon('arrow-left', { sw: 2 }) + ' <span class="col" style="gap:0;align-items:flex-start"><small class="dim t-xs">Station ' + prev.num + '</small><b>' + prev.title + '</b></span></button>' : '<span></span>') +
+      (prev ? '<button class="btn mu-navbtn" data-go="poi:' + prev.id + '">' + icon('arrow-left', { sw: 2 }) + ' <span class="col" style="gap:0;align-items:flex-start"><small class="dim t-xs">Station ' + prev.num + '</small><b data-field="poi.' + prev.id + '.title">' + prev.title + '</b></span></button>' : '<span></span>') +
       '<button class="chip" data-go="map">' + icon('pin') + ' ' + (idx + 1) + ' / ' + D.pois.length + '</button>' +
-      (next ? '<button class="btn btn--primary mu-navbtn mu-navbtn--next" data-go="poi:' + next.id + '"><span class="col" style="gap:0;align-items:flex-end"><small class="t-xs" style="opacity:.8">Station ' + next.num + '</small><b>' + next.title + '</b></span> ' + icon('arrow-right', { sw: 2 }) + '</button>' : '<button class="btn btn--ghost" data-home>Finish ' + icon('check', { sw: 2 }) + '</button>') +
+      (next ? '<button class="btn btn--primary mu-navbtn mu-navbtn--next" data-go="poi:' + next.id + '"><span class="col" style="gap:0;align-items:flex-end"><small class="t-xs" style="opacity:.8">Station ' + next.num + '</small><b data-field="poi.' + next.id + '.title">' + next.title + '</b></span> ' + icon('arrow-right', { sw: 2 }) + '</button>' : '<button class="btn btn--ghost" data-home>Finish ' + icon('check', { sw: 2 }) + '</button>') +
     '</div>';
   }
 
@@ -1441,11 +1444,11 @@ window.EXHIBIT = {
     return bar(true) +
     '<div class="scroll"><div class="mu-map">' +
       '<div class="mu-list__head"><div><div class="eyebrow">Wayfinding</div>' +
-        '<h1 class="t-xl">' + D.gallery + '</h1></div>' +
+        '<h1 class="t-xl" data-field="map.gallery">' + D.gallery + '</h1></div>' +
         '<div class="t-body dim">Tap a station to jump straight to it.</div></div>' +
-      '<div class="mu-mapframe media">' +
+      '<div class="mu-mapframe media" data-img="map.image">' +
         '<svg class="mu-path" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points="50,90 ' + pts + '" /></svg>' +
-        '<div class="here" style="left:' + D.map.here.x + '%;top:' + D.map.here.y + '%"><div class="here__label">' + D.map.here.label + '</div></div>' +
+        '<div class="here" style="left:' + D.map.here.x + '%;top:' + D.map.here.y + '%"><div class="here__label" data-field="map.here.label">' + D.map.here.label + '</div></div>' +
         stations +
         '<div class="media__tag">' + icon('grid') + ' OCEAN HALL — FLOOR PLATE</div>' +
       '</div>' +
@@ -1474,6 +1477,152 @@ window.EXHIBIT = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- global / attract / home -->
+  <span data-field="home.museum">Harbor Museum of Natural Science</span>
+  <span data-field="home.title">ABYSS</span>
+  <span data-field="home.subtitle">Life in the Deep Ocean</span>
+  <span data-field="home.gallery">Ocean Hall &middot; Level 2</span>
+  <span data-field="home.intro">Ninety-five percent of the ocean has never been seen by human eyes. Below the reach of sunlight lies the largest living space on Earth — cold, crushing, and lit only by the creatures that live there. Follow the six stations of this hall from the fading light of the twilight zone to the volcanic floor four kilometers down.</span>
+  <span data-field="home.hours">Open today 10–6 · Ocean Hall closes 5:30</span>
+  <div data-img="hero.image"></div>
+
+  <!-- map screen -->
+  <span data-field="map.gallery">Ocean Hall &middot; Level 2</span>
+  <span data-field="map.here.label">You are here &middot; Hall entrance</span>
+  <div data-img="map.image"></div>
+
+  <!-- poi: twilight (Station 1) -->
+  <div data-img="poi.twilight.image"></div>
+  <span data-field="poi.twilight.title">The Twilight Zone</span>
+  <span data-field="poi.twilight.era">200–1,000 m</span>
+  <span data-field="poi.twilight.short">Where the last of the sunlight disappears and the largest animal migration on Earth begins every night.</span>
+  <span data-field="poi.twilight.hero">STATION 1 — THE TWILIGHT ZONE</span>
+  <span data-field="poi.twilight.story.0">Between 200 and 1,000 metres, sunlight fades from blue dusk to total black. This is the mesopelagic, or 'twilight,' zone — a layer so vast it may hold more fish biomass than the rest of the ocean combined.</span>
+  <span data-field="poi.twilight.story.1">Every night, billions of lanternfish, shrimp, and squid rise hundreds of metres toward the surface to feed under cover of darkness, then sink back down before dawn. It is the largest synchronized migration of animals on the planet, and it moves carbon from the surface to the deep with every trip.</span>
+  <span data-field="poi.twilight.dyk">The daily vertical migration was first mistaken for a 'false sea floor' by WWII sonar operators — a phantom layer that rose and fell with the sun.</span>
+  <span data-field="poi.twilight.audioTitle">Narrated by Dr. Lena Cruz, Marine Ecologist</span>
+  <span data-field="poi.twilight.audioLen">3:42</span>
+  <span data-field="poi.twilight.videoLabel">FILM — THE NIGHTLY MIGRATION (2:10)</span>
+  <span data-field="poi.twilight.fact.0.v">200–1,000 m</span>
+  <span data-field="poi.twilight.fact.0.k">Depth</span>
+  <span data-field="poi.twilight.fact.1.v">Up to 1,000 m</span>
+  <span data-field="poi.twilight.fact.1.k">Daily migration</span>
+  <span data-field="poi.twilight.fact.2.v">Up to 100 atm</span>
+  <span data-field="poi.twilight.fact.2.k">Pressure</span>
+  <span data-field="poi.twilight.fact.3.v">&lt; 1%</span>
+  <span data-field="poi.twilight.fact.3.k">Sunlight</span>
+  <button data-action="poi.twilight.audio.play">Audio guide — The Twilight Zone</button>
+
+  <!-- poi: biolum (Station 2) -->
+  <div data-img="poi.biolum.image"></div>
+  <span data-field="poi.biolum.title">Living Light</span>
+  <span data-field="poi.biolum.era">Bioluminescence</span>
+  <span data-field="poi.biolum.short">In a world without sun, most animals make their own light — to hunt, to hide, and to find a mate.</span>
+  <span data-field="poi.biolum.hero">STATION 2 — BIOLUMINESCENCE</span>
+  <span data-field="poi.biolum.story.0">An estimated 76% of deep-sea animals produce their own light through a chemical reaction between a molecule called luciferin and oxygen. The result is cold light — almost no heat — in blues and greens that travel farthest through seawater.</span>
+  <span data-field="poi.biolum.story.1">Light is a tool of survival. Anglerfish dangle a glowing lure; some squid cloak their silhouette with belly lights to vanish against the faint glow above; others release a blinding cloud of luminous mucus and disappear into the dark.</span>
+  <span data-field="poi.biolum.dyk">The light of a single firefly squid is bright enough to read by — and millions of them gather each spring to turn Toyama Bay electric blue.</span>
+  <span data-field="poi.biolum.audioTitle">Narrated by Dr. Lena Cruz, Marine Ecologist</span>
+  <span data-field="poi.biolum.audioLen">2:58</span>
+  <span data-field="poi.biolum.videoLabel">FILM — A SYMPHONY OF LIGHT (1:48)</span>
+  <span data-field="poi.biolum.fact.0.v">~76%</span>
+  <span data-field="poi.biolum.fact.0.k">Animals that glow</span>
+  <span data-field="poi.biolum.fact.1.v">Blue / green</span>
+  <span data-field="poi.biolum.fact.1.k">Common colors</span>
+  <span data-field="poi.biolum.fact.2.v">Almost none</span>
+  <span data-field="poi.biolum.fact.2.k">Heat produced</span>
+  <span data-field="poi.biolum.fact.3.v">Luciferin</span>
+  <span data-field="poi.biolum.fact.3.k">Chemical</span>
+  <button data-action="poi.biolum.audio.play">Audio guide — Living Light</button>
+
+  <!-- poi: squid (Station 3) -->
+  <div data-img="poi.squid.image"></div>
+  <span data-field="poi.squid.title">The Giant Squid</span>
+  <span data-field="poi.squid.era">Architeuthis dux</span>
+  <span data-field="poi.squid.short">A legend made real — the largest invertebrate eye in the animal kingdom, filmed alive for the first time in 2012.</span>
+  <span data-field="poi.squid.hero">STATION 3 — THE GIANT SQUID</span>
+  <span data-field="poi.squid.story.0">For centuries the giant squid lived only in sailors' tales of the kraken. It was not filmed alive in its natural habitat until 2012, when a team lured one before a camera 630 metres down using a glowing decoy.</span>
+  <span data-field="poi.squid.story.1">Its eyes are the size of dinner plates — the largest of any animal — tuned to catch the faintest flicker of light, perhaps the glow of its only true predator, the sperm whale, disturbing bioluminescent plankton as it dives.</span>
+  <span data-field="poi.squid.dyk">Sperm whales surface with circular scars from squid suckers — the only evidence of battles that take place a kilometre below, in total darkness.</span>
+  <span data-field="poi.squid.audioTitle">Narrated by Dr. Lena Cruz, Marine Ecologist</span>
+  <span data-field="poi.squid.audioLen">4:05</span>
+  <span data-field="poi.squid.videoLabel">FILM — FIRST CONTACT, 630 M DOWN (3:20)</span>
+  <span data-field="poi.squid.fact.0.v">~13 m</span>
+  <span data-field="poi.squid.fact.0.k">Max length</span>
+  <span data-field="poi.squid.fact.1.v">~27 cm</span>
+  <span data-field="poi.squid.fact.1.k">Eye diameter</span>
+  <span data-field="poi.squid.fact.2.v">2012</span>
+  <span data-field="poi.squid.fact.2.k">First filmed</span>
+  <span data-field="poi.squid.fact.3.v">Sperm whale</span>
+  <span data-field="poi.squid.fact.3.k">Predator</span>
+  <button data-action="poi.squid.audio.play">Audio guide — The Giant Squid</button>
+
+  <!-- poi: vents (Station 4) -->
+  <div data-img="poi.vents.image"></div>
+  <span data-field="poi.vents.title">Hydrothermal Vents</span>
+  <span data-field="poi.vents.era">Chemosynthesis</span>
+  <span data-field="poi.vents.short">Volcanic chimneys on the sea floor feed entire ecosystems with chemicals instead of sunlight.</span>
+  <span data-field="poi.vents.hero">STATION 4 — HYDROTHERMAL VENTS</span>
+  <span data-field="poi.vents.story.0">Discovered only in 1977, hydrothermal vents are cracks in the sea floor where seawater, superheated by magma, erupts at up to 400°C, rich in minerals. Around them thrives life that needs no sun at all.</span>
+  <span data-field="poi.vents.story.1">Bacteria here perform chemosynthesis — building food from hydrogen sulfide instead of light. They feed towering tube worms, ghostly crabs, and shrimp, in oases of life on an otherwise barren plain. Many scientists believe life on Earth may have begun in exactly such a place.</span>
+  <span data-field="poi.vents.dyk">Vent tube worms have no mouth or gut — they are fed entirely by billions of bacteria living inside their bodies.</span>
+  <span data-field="poi.vents.audioTitle">Narrated by Dr. Lena Cruz, Marine Ecologist</span>
+  <span data-field="poi.vents.audioLen">3:30</span>
+  <span data-field="poi.vents.videoLabel">FILM — GARDENS OF FIRE (2:40)</span>
+  <span data-field="poi.vents.fact.0.v">1977</span>
+  <span data-field="poi.vents.fact.0.k">Discovered</span>
+  <span data-field="poi.vents.fact.1.v">Up to 400°C</span>
+  <span data-field="poi.vents.fact.1.k">Vent fluid</span>
+  <span data-field="poi.vents.fact.2.v">Chemicals</span>
+  <span data-field="poi.vents.fact.2.k">Energy source</span>
+  <span data-field="poi.vents.fact.3.v">Up to 2 m</span>
+  <span data-field="poi.vents.fact.3.k">Tube worms</span>
+  <button data-action="poi.vents.audio.play">Audio guide — Hydrothermal Vents</button>
+
+  <!-- poi: whalefall (Station 5) -->
+  <div data-img="poi.whalefall.image"></div>
+  <span data-field="poi.whalefall.title">Whale Fall</span>
+  <span data-field="poi.whalefall.era">An ecosystem from death</span>
+  <span data-field="poi.whalefall.short">When a whale dies and sinks, it becomes an island of life that can feed the deep for fifty years.</span>
+  <span data-field="poi.whalefall.hero">STATION 5 — WHALE FALL</span>
+  <span data-field="poi.whalefall.story.0">When a great whale dies, its body sinks to the sea floor and becomes a 'whale fall' — a sudden feast in a food desert. Sharks and hagfish strip the flesh within months; then worms, snails, and crustaceans move in for years.</span>
+  <span data-field="poi.whalefall.story.1">Finally, bacteria break down the lipids locked in the bones, releasing sulfides that support vent-like communities. A single whale can sustain a thriving ecosystem for up to half a century — and some species are known to live nowhere else.</span>
+  <span data-field="poi.whalefall.dyk">The bone-eating worm Osedax has no mouth and no stomach — it drills into whale bone with body acid and digests the fat inside.</span>
+  <span data-field="poi.whalefall.audioTitle">Narrated by Dr. Lena Cruz, Marine Ecologist</span>
+  <span data-field="poi.whalefall.audioLen">3:12</span>
+  <span data-field="poi.whalefall.fact.0.v">Up to 50 yr</span>
+  <span data-field="poi.whalefall.fact.0.k">Can sustain life</span>
+  <span data-field="poi.whalefall.fact.1.v">3 phases</span>
+  <span data-field="poi.whalefall.fact.1.k">Stages</span>
+  <span data-field="poi.whalefall.fact.2.v">60+</span>
+  <span data-field="poi.whalefall.fact.2.k">Specialist species</span>
+  <span data-field="poi.whalefall.fact.3.v">Osedax</span>
+  <span data-field="poi.whalefall.fact.3.k">Bone-eating worm</span>
+  <button data-action="poi.whalefall.audio.play">Audio guide — Whale Fall</button>
+
+  <!-- poi: explore (Station 6) -->
+  <div data-img="poi.explore.image"></div>
+  <span data-field="poi.explore.title">Into the Abyss</span>
+  <span data-field="poi.explore.era">Exploration &amp; technology</span>
+  <span data-field="poi.explore.short">More people have walked on the Moon than have reached the deepest point of the ocean.</span>
+  <span data-field="poi.explore.hero">STATION 6 — EXPLORING THE ABYSS</span>
+  <span data-field="poi.explore.story.0">The Challenger Deep, nearly 11 kilometres down, has been visited by fewer than two dozen people. The pressure there is over a thousand times that at the surface — enough to crush an unprotected submarine like a soda can.</span>
+  <span data-field="poi.explore.story.1">Today, remotely operated vehicles and autonomous robots map the dark with sonar and bring back samples and footage. Yet over 80% of the ocean floor remains unmapped in detail — making the deep sea the largest unexplored frontier on our own planet.</span>
+  <span data-field="poi.explore.dyk">We have higher-resolution maps of Mars and the Moon than we do of our own ocean floor.</span>
+  <span data-field="poi.explore.audioTitle">Narrated by Dr. Lena Cruz, Marine Ecologist</span>
+  <span data-field="poi.explore.audioLen">3:55</span>
+  <span data-field="poi.explore.videoLabel">FILM — TO THE BOTTOM OF THE WORLD (4:00)</span>
+  <span data-field="poi.explore.fact.0.v">10,935 m</span>
+  <span data-field="poi.explore.fact.0.k">Deepest point</span>
+  <span data-field="poi.explore.fact.1.v">&lt; 24</span>
+  <span data-field="poi.explore.fact.1.k">People reached it</span>
+  <span data-field="poi.explore.fact.2.v">~20%</span>
+  <span data-field="poi.explore.fact.2.k">Ocean floor mapped</span>
+  <span data-field="poi.explore.fact.3.v">1,100 atm</span>
+  <span data-field="poi.explore.fact.3.k">Pressure</span>
+  <button data-action="poi.explore.audio.play">Audio guide — Into the Abyss</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
