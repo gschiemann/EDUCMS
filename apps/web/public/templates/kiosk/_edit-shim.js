@@ -20,7 +20,7 @@
     primary: ['--accent', '--brand-primary'], accent: ['--accent', '--accent-2', '--brand-accent'],
     fontDisplay: ['--font-display'], fontBody: ['--font-body']
   };
-  var state = { brand: {}, text: {}, styles: {}, img: {} };
+  var state = { brand: {}, text: {}, styles: {}, img: {}, actions: {} };
   var editMode = false;
 
   function b64json(s) {
@@ -32,7 +32,7 @@
   }
   function readParams() {
     var q = new URLSearchParams(location.search);
-    return { brand: b64json(q.get('brand')), text: b64json(q.get('text')), styles: b64json(q.get('textStyles')), img: b64json(q.get('img')) };
+    return { brand: b64json(q.get('brand')), text: b64json(q.get('text')), styles: b64json(q.get('textStyles')), img: b64json(q.get('img')), actions: b64json(q.get('actions')) };
   }
   function applyBrand(b) {
     if (!b) return; var r = document.documentElement.style;
@@ -73,24 +73,44 @@
 
   // ── edit mode (builder) ──────────────────────────────────────────────
   function armEdit() {
-    document.querySelectorAll('[data-field],[data-img]').forEach(function (el) {
+    document.querySelectorAll('[data-field],[data-img],[data-action]').forEach(function (el) {
       if (el.__veArmed) return;
       if (el.closest && el.closest('#venueos-fields')) return; // hidden manifest — not a click target
       el.__veArmed = true;
       el.style.cursor = 'pointer';
-      el.addEventListener('mouseenter', function () { el.style.outline = '2px dashed #06b6d4'; el.style.outlineOffset = '2px'; });
+      var isAct = el.hasAttribute('data-action');
+      el.addEventListener('mouseenter', function () { el.style.outline = '2px dashed ' + (isAct ? '#f59e0b' : '#06b6d4'); el.style.outlineOffset = '2px'; });
       el.addEventListener('mouseleave', function () { el.style.outline = ''; });
       el.addEventListener('click', function (e) {
         e.preventDefault(); e.stopPropagation();
-        var key = el.getAttribute('data-field') || el.getAttribute('data-img') || '';
-        var kind = el.hasAttribute('data-img') ? 'img' : 'text';
+        var key = el.getAttribute('data-action') || el.getAttribute('data-field') || el.getAttribute('data-img') || '';
+        var kind = el.hasAttribute('data-action') ? 'action' : (el.hasAttribute('data-img') ? 'img' : 'text');
         try { parent.postMessage({ type: 'educms-field-click', key: key, kind: kind }, '*'); } catch (_) {}
       }, true);
     });
   }
 
+  // ── player mode: a tap on a WIRED [data-action] button posts the
+  // operator-configured platform action up to the player (which runs it
+  // through the security-gated dispatchTouchAction). Delegated on document
+  // so it survives every screen swap without re-arming. Never fires in
+  // edit mode (there the click configures the action instead). The kiosk's
+  // own handler still runs — we don't preventDefault — so a "Send order"
+  // button can show its confirmation screen AND fire the POS webhook.
+  function onActionTap(e) {
+    if (editMode) return;
+    var t = e.target; var el = t && t.closest ? t.closest('[data-action]') : null;
+    if (!el || (el.closest && el.closest('#venueos-fields'))) return;
+    var key = el.getAttribute('data-action'); if (!key) return;
+    var action = state.actions && state.actions[key];
+    if (action && typeof action === 'object' && action.type) {
+      try { parent.postMessage({ type: 'educms-action', key: key, action: action }, '*'); } catch (_) {}
+    }
+  }
+
   function init() {
-    var p = readParams(); state.brand = p.brand; state.text = p.text; state.styles = p.styles; state.img = p.img;
+    var p = readParams(); state.brand = p.brand; state.text = p.text; state.styles = p.styles; state.img = p.img; state.actions = p.actions || {};
+    document.addEventListener('click', onActionTap, true);
     // Wrap the engine render so overrides survive every screen swap.
     function hook() {
       if (!window.Kiosk || window.Kiosk.__veHooked) return false;
@@ -106,7 +126,7 @@
     try { parent.postMessage({ type: 'educms-ready' }, '*'); } catch (_) {}
     addEventListener('message', function (e) {
       var d = e.data; if (!d || typeof d !== 'object') return;
-      if (d.type === 'educms-overrides') { if (d.brand) state.brand = d.brand; if (d.text) state.text = d.text; if (d.textStyles) state.styles = d.textStyles; if (d.img) state.img = d.img; applyAll(); }
+      if (d.type === 'educms-overrides') { if (d.brand) state.brand = d.brand; if (d.text) state.text = d.text; if (d.textStyles) state.styles = d.textStyles; if (d.img) state.img = d.img; if (d.actions) state.actions = d.actions; applyAll(); }
       else if (d.type === 'educms-edit-mode') { editMode = !!d.on; if (editMode) armEdit(); }
     });
   }

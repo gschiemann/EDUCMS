@@ -6562,6 +6562,66 @@ function PosDriverPicker({ cfg, setField }: { cfg: Record<string, unknown>; setF
  * shows up in the panel within ~50ms of the operator selecting the
  * EXTERNAL_HTML zone, regardless of iframe load order.
  */
+// Button-wiring catalog — the operator-facing "When tapped…" choices. Each
+// maps to a primitive the player's dispatchTouchAction already executes (with
+// its http-only / no-private-IP / no-javascript: security gates). 'open-url'
+// doubles as Phone (tel:) + Email (mailto:) since the dispatcher navigates
+// those schemes directly.
+const KIOSK_ACTION_TYPES: Array<{ value: string; label: string; targetPlaceholder?: string }> = [
+  { value: '', label: '— Not wired (button does its normal thing) —' },
+  { value: 'open-url', label: 'Open a web page / phone / email', targetPlaceholder: 'https://…  (or tel:+15551234567, mailto:hi@co.com)' },
+  { value: 'webhook', label: 'Send a webhook (POS / CRM / Zapier)', targetPlaceholder: 'https://hooks.example.com/…' },
+  { value: 'request-help', label: 'Notify staff (request help)', targetPlaceholder: 'Message title (optional)' },
+  { value: 'play-video', label: 'Play a video', targetPlaceholder: 'Asset ID' },
+  { value: 'show-overlay', label: 'Show an image / asset overlay', targetPlaceholder: 'Asset ID' },
+  { value: 'goto-template', label: 'Switch to another template', targetPlaceholder: 'Template ID' },
+  { value: 'reset-idle', label: 'Stay on screen (reset idle timer)' },
+  { value: 'sound-toggle', label: 'Toggle sound on / off' },
+];
+
+function KioskActionRow({
+  label,
+  fieldKey,
+  current,
+  onChange,
+  onFocus,
+}: {
+  label: string;
+  fieldKey: string;
+  current: { type: string; target?: string };
+  onChange: (type: string, target: string) => void;
+  onFocus?: () => void;
+}) {
+  const [target, setTarget] = useState(current.target || '');
+  useEffect(() => { setTarget(current.target || ''); }, [current.target]);
+  const meta = KIOSK_ACTION_TYPES.find((t) => t.value === current.type);
+  const needsTarget = !!current.type && current.type !== 'reset-idle' && current.type !== 'sound-toggle';
+  return (
+    <div className="space-y-1" data-edit-action={fieldKey} onFocusCapture={onFocus}>
+      <label className="block text-[10px] font-semibold text-slate-600">{label}</label>
+      <select
+        className="w-full text-[12px] rounded-md border border-slate-300 bg-white px-2 py-1.5"
+        value={current.type}
+        onChange={(e) => onChange(e.target.value, target)}
+      >
+        {KIOSK_ACTION_TYPES.map((t) => (
+          <option key={t.value || 'none'} value={t.value}>{t.label}</option>
+        ))}
+      </select>
+      {needsTarget && (
+        <input
+          type="text"
+          className="w-full text-[12px] rounded-md border border-slate-300 bg-white px-2 py-1.5"
+          placeholder={meta?.targetPlaceholder || ''}
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          onBlur={() => onChange(current.type, target)}
+        />
+      )}
+    </div>
+  );
+}
+
 function ExternalHtmlTextEditor({
   cfg,
   setField,
@@ -6584,23 +6644,30 @@ function ExternalHtmlTextEditor({
   const [discoveredImages, setDiscoveredImages] = useState<
     Array<{ key: string; label: string; aspect: string }> | null
   >(null);
+  // Button wiring (operator: "wire our touch content manager to each button").
+  // discoveredActions: leaf buttons marked [data-action] that can fire a
+  // PLATFORM touch-action (open-url, webhook, request-help, …). The shim posts
+  // educms-action on tap in the player; the player runs it via dispatchTouchAction.
+  const [discoveredActions, setDiscoveredActions] = useState<
+    Array<{ key: string; label: string }> | null
+  >(null);
 
   useEffect(() => {
     if (!url) {
       setDiscoveredFields([]);
-      setDiscoveredImages([]);
+      setDiscoveredImages([]); setDiscoveredActions([]);
       return;
     }
     let cancelled = false;
     setDiscoveredFields(null);
-    setDiscoveredImages(null);
+    setDiscoveredImages(null); setDiscoveredActions(null);
     fetch(url, { credentials: 'omit' })
       .then((res) => res.ok ? res.text() : '')
       .then((html) => {
         if (cancelled) return;
         if (!html) {
           setDiscoveredFields([]);
-          setDiscoveredImages([]);
+          setDiscoveredImages([]); setDiscoveredActions([]);
           return;
         }
         try {
@@ -6654,13 +6721,27 @@ function ExternalHtmlTextEditor({
             imgOut.push({ key, label, aspect });
           });
           setDiscoveredImages(imgOut);
+
+          // Button wiring — discover [data-action] leaf buttons. Static parse,
+          // same as text/images. The button's own text is the friendly label.
+          const actSeen = new Set<string>();
+          const actOut: Array<{ key: string; label: string }> = [];
+          doc.querySelectorAll('[data-action]').forEach((el) => {
+            const e = el as HTMLElement;
+            const key = e.getAttribute('data-action') || '';
+            if (!key || actSeen.has(key) || e.closest('#venueos-fields')) return;
+            actSeen.add(key);
+            const label = (e.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40) || prettyFieldLabel(key);
+            actOut.push({ key, label });
+          });
+          setDiscoveredActions(actOut);
         } catch {
           setDiscoveredFields([]);
-          setDiscoveredImages([]);
+          setDiscoveredImages([]); setDiscoveredActions([]);
         }
       })
       .catch(() => {
-        if (!cancelled) { setDiscoveredFields([]); setDiscoveredImages([]); }
+        if (!cancelled) { setDiscoveredFields([]); setDiscoveredImages([]); setDiscoveredActions([]); }
       });
     return () => { cancelled = true; };
   }, [url]);
@@ -6704,9 +6785,12 @@ function ExternalHtmlTextEditor({
         return;
       }
       if (d.type === 'educms-field-click' && typeof d.key === 'string') {
-        const sel = d.kind === 'img'
-          ? `[data-edit-img="${d.key.replace(/"/g, '')}"]`
-          : `[data-edit-field="${d.key.replace(/"/g, '')}"]`;
+        const safeKey = d.key.replace(/"/g, '');
+        const sel = d.kind === 'action'
+          ? `[data-edit-action="${safeKey}"]`
+          : d.kind === 'img'
+          ? `[data-edit-img="${safeKey}"]`
+          : `[data-edit-field="${safeKey}"]`;
         let row: HTMLElement | null = null;
         try { row = document.querySelector(sel); } catch { row = null; }
         if (!row) return;
@@ -6748,14 +6832,14 @@ function ExternalHtmlTextEditor({
       </div>
     );
   }
-  if (discoveredFields === null || discoveredImages === null) {
+  if (discoveredFields === null || discoveredImages === null || discoveredActions === null) {
     return (
       <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-500">
         Scanning template…
       </div>
     );
   }
-  if (discoveredFields.length === 0 && discoveredImages.length === 0) {
+  if (discoveredFields.length === 0 && discoveredImages.length === 0 && discoveredActions.length === 0) {
     return (
       <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
         This template has no editable text or image hooks yet. Recolor / restyle via the controls below; we&apos;ll add inline editing to this template in a future update.
@@ -6794,6 +6878,24 @@ function ExternalHtmlTextEditor({
     if (!value || !value.trim()) delete next[key];
     else next[key] = value.trim();
     setField({ imageOverrides: Object.keys(next).length ? next : undefined });
+  };
+
+  // Button wiring — per-[data-action] platform action map. Stored as
+  // actionOverrides[key] = { type, target? }; WidgetRenderer encodes it as
+  // ?actions=, the shim posts educms-action on tap, the player runs it via
+  // dispatchTouchAction. Empty type clears the wiring (button reverts to its
+  // own kiosk behavior). 'open-url' with a tel:/mailto: target = phone/email.
+  const actionOverrides: Record<string, { type: string; target?: string }> =
+    (cfg?.actionOverrides && typeof cfg.actionOverrides === 'object') ? cfg.actionOverrides : {};
+  const setActionOverride = (key: string, type: string, target: string) => {
+    const next = { ...actionOverrides };
+    if (!type) {
+      delete next[key];
+    } else {
+      const needsTarget = !['reset-idle', 'sound-toggle'].includes(type);
+      next[key] = needsTarget && target.trim() ? { type, target: target.trim() } : { type };
+    }
+    setField({ actionOverrides: Object.keys(next).length ? next : undefined });
   };
 
   // ── 2026-05-29 — BYO field-binding to a live POS item ──────────────
@@ -6956,6 +7058,28 @@ function ExternalHtmlTextEditor({
           })}
         </div>
       ))}
+      {/* Button wiring — "When tapped…" pickers for [data-action] leaf buttons.
+          Rendered last so the operator edits content first, then wires buttons. */}
+      {discoveredActions.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-3 space-y-2">
+          <div className="text-[10px] font-bold text-amber-600 uppercase tracking-widest border-b border-amber-200 pb-1">
+            When tapped…
+          </div>
+          <div className="text-[10px] text-amber-700/80 -mt-1">
+            Wire a button to a real action (open a page, fire a POS webhook, notify staff). Leave “Not wired” to keep its normal behavior.
+          </div>
+          {discoveredActions.map((a) => (
+            <KioskActionRow
+              key={`act:${a.key}`}
+              fieldKey={a.key}
+              label={a.label}
+              current={actionOverrides[a.key] || { type: '', target: '' }}
+              onChange={(type, target) => setActionOverride(a.key, type, target)}
+              onFocus={() => pingHighlight(a.key)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

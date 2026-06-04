@@ -4425,6 +4425,31 @@ function PlayerPage() {
     };
   }, [isTouchTemplate, idleResetMs]);
 
+  // ── Kiosk (EXTERNAL_HTML) wired-button actions ───────────────────
+  // The Touch Kiosks pack runs inside a sandboxed null-origin iframe, so
+  // a kiosk can't navigate the player or call our API itself. When a
+  // visitor taps a [data-action] button the operator wired in the builder
+  // ("When tapped…"), the in-iframe edit-shim posts {type:'educms-action',
+  // key, action}. We run that action through the SAME security-gated
+  // dispatcher TOUCH_POINT zones use (http-only URLs, no private IPs, no
+  // javascript:). Only the player mounts this — the builder preview never
+  // executes, it just previews. zoneId carries the kiosk field key so the
+  // touch-analytics queue attributes the tap.
+  useEffect(() => {
+    const onKioskAction = (e: MessageEvent) => {
+      const d = e.data as { type?: string; key?: string; action?: unknown } | null;
+      if (!d || typeof d !== 'object' || d.type !== 'educms-action') return;
+      if (!d.action || typeof d.action !== 'object') return;
+      dispatchTouchAction(d.action, {
+        screenId,
+        tenantId,
+        zoneId: typeof d.key === 'string' ? `kiosk:${d.key}` : null,
+      });
+    };
+    window.addEventListener('message', onKioskAction);
+    return () => window.removeEventListener('message', onKioskAction);
+  }, [screenId, tenantId]);
+
   // Phase D5 — when the playlist swaps to a new template, the stale
   // currentSceneId (a scene id from the PREVIOUS template) silently
   // filters out every zone in the new template (no scene ids match).

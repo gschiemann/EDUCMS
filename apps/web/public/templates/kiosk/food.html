@@ -1541,7 +1541,7 @@ window.MENU = {
       '<div class="col" style="gap:0"><div class="t-sm dim">' + cartCount() + ' items · ' + (orderType === 'dinein' ? 'Dine in' : 'Take out') + '</div>' +
         '<div class="t-h3">' + money(cartTotal()) + '</div></div>' +
       '<div class="bar__spacer"></div>' +
-      '<button class="btn btn--primary btn--lg fd-send" data-act="send">' + icon('send') + ' Send order to ' + D.pos.name + '</button>' +
+      '<button class="btn btn--primary btn--lg fd-send" data-act="send" data-action="order.send">' + icon('send') + ' Send order to ' + D.pos.name + '</button>' +
     '</div>';
   }
   function seg(id, ic, t, sub) {
@@ -1724,6 +1724,7 @@ window.MENU = {
   <span data-field="item.parfait.desc">Greek yogurt, granola, seasonal berries, honey.</span>
   <span data-field="item.parfait.price">$5.95</span>
   <div data-img="item.parfait.image"></div>
+  <button data-action="order.send">Send order to POS</button>
 </div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>

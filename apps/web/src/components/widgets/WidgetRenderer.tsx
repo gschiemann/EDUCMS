@@ -2793,6 +2793,11 @@ function ExternalHtmlWidget({ config }: { config: any }) {
       ['text', config?.textOverrides],
       ['textStyles', styles],
       ['img', config?.imageOverrides],
+      // ?actions=… per-[data-action] button → platform touch-action map
+      // ({ key: { type, target } }). The kiosk shim reads it and, on a
+      // visitor tap, posts educms-action to the parent; the PLAYER runs it
+      // through dispatchTouchAction (the builder preview just ignores it).
+      ['actions', config?.actionOverrides],
     ];
     const segments: string[] = [];
     for (const [name, raw] of params) {
@@ -2818,7 +2823,7 @@ function ExternalHtmlWidget({ config }: { config: any }) {
     if (segments.length === 0) return url;
     const joiner = url.includes('?') ? '&' : '?';
     return `${url}${joiner}${segments.join('&')}`;
-  }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides]);
+  }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.actionOverrides]);
 
   // ── Live menu feed (CTS-style) ──────────────────────────────────
   // QSR / restaurant / bar menu boards feed live the same way the sports
