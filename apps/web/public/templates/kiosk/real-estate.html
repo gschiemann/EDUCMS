@@ -1354,9 +1354,9 @@ window.PROPERTY = {
   function bar(showBack) {
     return '<header class="bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
-      '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3" style="line-height:1">' + D.name + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.16em">' + D.address + '</div></div></div>' +
+      '<div class="bar__brand"><div class="bar__logo" data-field="brand.initials">' + D.brandInitials + '</div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1" data-field="brand.name">' + D.name + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.16em" data-field="brand.address">' + D.address + '</div></div></div>' +
       '<div class="bar__spacer"></div>' +
       '<nav class="crumbs" data-crumbs></nav>' +
       '<div class="bar__spacer"></div>' +
@@ -1371,12 +1371,12 @@ window.PROPERTY = {
   // ════════════════════════════════════════════════════════════════════════
   function attract() {
     return '' +
-      '<div class="attract__bg"><div class="media re-hero"><div class="media__scrim"></div>' +
-        '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
+      '<div class="attract__bg"><div class="media re-hero" data-img="hero.image"><div class="media__scrim"></div>' +
+        '<div class="media__tag">' + icon('image') + ' <span data-field="hero.label">' + D.hero.label + '</span></div></div></div>' +
       '<div class="attract__body">' +
-        '<div class="eyebrow" style="color:#fff;opacity:.8">Now Leasing · ' + D.address + '</div>' +
-        '<div class="t-mega" style="color:#fff;margin-top:var(--s-3);max-width:18ch">' + D.name + '</div>' +
-        '<div class="t-h3 dim" style="color:rgba(255,255,255,.82);font-family:var(--font-body);font-weight:500;max-width:30ch;margin-top:var(--s-3)">' + D.tagline + '</div>' +
+        '<div class="eyebrow" style="color:#fff;opacity:.8">Now Leasing · <span data-field="brand.address">' + D.address + '</span></div>' +
+        '<div class="t-mega" style="color:#fff;margin-top:var(--s-3);max-width:18ch" data-field="brand.name">' + D.name + '</div>' +
+        '<div class="t-h3 dim" style="color:rgba(255,255,255,.82);font-family:var(--font-body);font-weight:500;max-width:30ch;margin-top:var(--s-3)" data-field="brand.tagline">' + D.tagline + '</div>' +
         '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch anywhere to explore the building</div>' +
       '</div>';
   }
@@ -1385,8 +1385,8 @@ window.PROPERTY = {
   // HOME · property overview
   // ════════════════════════════════════════════════════════════════════════
   function home() {
-    var stats = D.stats.map(function (s) {
-      return '<div class="re-stat"><div class="re-stat__v">' + s.v + '</div><div class="re-stat__k">' + s.k + '<br><span class="mute">' + s.sub + '</span></div></div>';
+    var stats = D.stats.map(function (s, i) {
+      return '<div class="re-stat"><div class="re-stat__v" data-field="stat.' + i + '.v">' + s.v + '</div><div class="re-stat__k" data-field="stat.' + i + '.k">' + s.k + '<br><span class="mute" data-field="stat.' + i + '.sub">' + s.sub + '</span></div></div>';
     }).join('');
 
     var feature = D.spaces.filter(function (s) { return s.status === 'available'; })[0];
@@ -1396,12 +1396,12 @@ window.PROPERTY = {
 
       // HERO PANEL
       '<section class="re-heropanel card card--static">' +
-        '<div class="media re-hero"><div class="media__scrim"></div>' +
-          '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div>' +
+        '<div class="media re-hero" data-img="hero.image"><div class="media__scrim"></div>' +
+          '<div class="media__tag">' + icon('image') + ' <span data-field="hero.label">' + D.hero.label + '</span></div></div>' +
         '<div class="re-heropanel__body">' +
           '<div class="eyebrow">The Property</div>' +
-          '<h1 class="t-xl" style="margin:var(--s-2) 0">' + D.name + '</h1>' +
-          '<p class="t-lg dim pretty" style="max-width:46ch">' + D.about + '</p>' +
+          '<h1 class="t-xl" style="margin:var(--s-2) 0" data-field="brand.name">' + D.name + '</h1>' +
+          '<p class="t-lg dim pretty" style="max-width:46ch" data-field="home.about">' + D.about + '</p>' +
           '<div class="re-statrow">' + stats + '</div>' +
         '</div>' +
       '</section>' +
@@ -1435,17 +1435,17 @@ window.PROPERTY = {
   // ── suite card ────────────────────────────────────────────────────────────
   function suiteCard(s, wide) {
     return '<div class="card re-suite ' + (wide ? 're-suite--wide' : '') + '" data-go="space:' + s.id + '">' +
-      '<div class="media re-suite__img"><div class="media__scrim"></div>' +
-        '<div class="media__tag">' + icon('image') + ' ' + s.images[0] + '</div>' +
+      '<div class="media re-suite__img" data-img="space.' + s.id + '.image"><div class="media__scrim"></div>' +
+        '<div class="media__tag">' + icon('image') + ' <span data-field="space.' + s.id + '.image.label">' + s.images[0] + '</span></div>' +
         '<div class="re-suite__status">' + statusBadge(s.status) + '</div>' +
       '</div>' +
       '<div class="re-suite__body">' +
-        '<div class="row between"><div><div class="t-h2">' + s.name + '</div>' +
-          '<div class="t-sm dim">Floor ' + s.floor + ' · ' + s.type + '</div></div>' +
-          '<div class="re-suite__rate"><div class="t-h3">' + sf(s.sqft) + ' <small class="dim">SF</small></div>' +
-          '<div class="t-sm dim">' + rateLine(s) + '</div></div>' +
+        '<div class="row between"><div><div class="t-h2" data-field="space.' + s.id + '.name">' + s.name + '</div>' +
+          '<div class="t-sm dim">Floor ' + s.floor + ' · <span data-field="space.' + s.id + '.type">' + s.type + '</span></div></div>' +
+          '<div class="re-suite__rate"><div class="t-h3"><span data-field="space.' + s.id + '.sqft">' + sf(s.sqft) + '</span> <small class="dim">SF</small></div>' +
+          '<div class="t-sm dim" data-field="space.' + s.id + '.rate">' + rateLine(s) + '</div></div>' +
         '</div>' +
-        (wide ? '<p class="t-body dim pretty" style="margin-top:var(--s-3)">' + s.blurb + '</p>' : '') +
+        (wide ? '<p class="t-body dim pretty" style="margin-top:var(--s-3)" data-field="space.' + s.id + '.blurb">' + s.blurb + '</p>' : '') +
         '<div class="row between" style="margin-top:var(--s-3)">' +
           '<div class="chiprow">' + s.amenities.slice(0, 3).map(function (a) {
             var m = D.amenityLabels[a]; return m ? '<span class="chip" style="pointer-events:none">' + icon(m.icon) + m.t + '</span>' : '';
@@ -1513,10 +1513,10 @@ window.PROPERTY = {
       '<div class="split split--6040 re-detail__top">' +
         // GALLERY
         '<div class="re-gallery" data-gallery>' +
-          '<div class="media re-gallery__main" data-gallery-main>' +
+          '<div class="media re-gallery__main" data-gallery-main data-img="space.' + s.id + '.image">' +
             '<div class="media__scrim"></div>' +
             '<button class="iconbtn re-gallery__zoom" data-act="zoom" data-suite="' + s.id + '">' + icon('expand', { sw: 2 }) + '</button>' +
-            '<div class="media__tag">' + icon('image') + ' <span data-gallery-label>' + s.images[0] + '</span></div>' +
+            '<div class="media__tag">' + icon('image') + ' <span data-gallery-label data-field="space.' + s.id + '.image.label">' + s.images[0] + '</span></div>' +
           '</div>' +
           '<div class="re-gallery__thumbs">' + s.images.map(function (im, i) {
             return '<button class="media re-thumb ' + (i === 0 ? 'is-sel' : '') + '" data-act="gallery" data-i="' + i + '" data-label="' + im + '"><div class="re-thumb__n">' + (i + 1) + '</div></button>';
@@ -1527,16 +1527,16 @@ window.PROPERTY = {
         // SUMMARY
         '<div class="re-summary">' +
           statusBadge(s.status) +
-          '<h1 class="t-xl" style="margin:var(--s-2) 0 0">' + s.name + '</h1>' +
-          '<div class="t-h3 dim" style="font-family:var(--font-body);font-weight:500">Floor ' + s.floor + ' · ' + s.type + '</div>' +
-          '<p class="t-lg dim pretty" style="margin:var(--s-3) 0">' + s.blurb + '</p>' +
+          '<h1 class="t-xl" style="margin:var(--s-2) 0 0" data-field="space.' + s.id + '.name">' + s.name + '</h1>' +
+          '<div class="t-h3 dim" style="font-family:var(--font-body);font-weight:500">Floor ' + s.floor + ' · <span data-field="space.' + s.id + '.type">' + s.type + '</span></div>' +
+          '<p class="t-lg dim pretty" style="margin:var(--s-3) 0" data-field="space.' + s.id + '.blurb">' + s.blurb + '</p>' +
           '<div class="specs re-specs">' +
-            spec('ruler', 'Size', sf(s.sqft) + ' <small>SF</small>') +
-            spec('tag', 'Asking rate', '$' + s.ratePerSfYear + ' <small>/SF/yr</small>') +
+            spec('ruler', 'Size', '<span data-field="space.' + s.id + '.sqft">' + sf(s.sqft) + '</span> <small>SF</small>') +
+            spec('tag', 'Asking rate', '<span data-field="space.' + s.id + '.rate">$' + s.ratePerSfYear + ' <small>/SF/yr</small></span>') +
             spec('building', 'Est. monthly', monthly(s).replace(' est.', '') + ' <small>est.</small>') +
-            spec('layers', 'Ceiling', s.ceiling) +
-            spec('clock', 'Available', s.available) +
-            spec('calendar', 'Term', s.term) +
+            spec('layers', 'Ceiling', '<span data-field="space.' + s.id + '.ceiling">' + s.ceiling + '</span>') +
+            spec('clock', 'Available', '<span data-field="space.' + s.id + '.available">' + s.available + '</span>') +
+            spec('calendar', 'Term', '<span data-field="space.' + s.id + '.term">' + s.term + '</span>') +
           '</div>' +
         '</div>' +
       '</div>' +
@@ -1560,12 +1560,12 @@ window.PROPERTY = {
 
     // STICKY ACTION BAR
     '<div class="actionbar re-actionbar">' +
-      '<div class="col" style="gap:0"><div class="t-sm dim">' + s.name + ' · ' + sf(s.sqft) + ' SF</div>' +
+      '<div class="col" style="gap:0"><div class="t-sm dim" data-field="space.' + s.id + '.name">' + s.name + ' · ' + sf(s.sqft) + ' SF</div>' +
         '<div class="t-h3">' + rateLine(s) + ' <span class="dim t-sm">· ' + monthly(s) + '</span></div></div>' +
       '<div class="bar__spacer"></div>' +
-      '<button class="btn ' + (inShort ? 'is-saved' : '') + '" data-act="shortlist" data-suite="' + s.id + '" id="shortBtn">' +
+      '<button class="btn ' + (inShort ? 'is-saved' : '') + '" data-act="shortlist" data-suite="' + s.id + '" data-action="space.' + s.id + '.shortlist" id="shortBtn">' +
         icon(inShort ? 'check' : 'heart') + ' <span>' + (inShort ? 'Shortlisted' : 'Shortlist') + '</span></button>' +
-      '<button class="btn btn--primary btn--lg" data-act="tour" data-suite="' + s.id + '">' + icon('calendar') + ' Schedule a Tour</button>' +
+      '<button class="btn btn--primary btn--lg" data-act="tour" data-suite="' + s.id + '" data-action="space.' + s.id + '.tour">' + icon('calendar') + ' Schedule a Tour</button>' +
     '</div>';
   }
   function spec(ic, k, v) {
@@ -1589,10 +1589,10 @@ window.PROPERTY = {
   function amenities() {
     var cards = D.amenities.map(function (a) {
       return '<div class="card card--static re-amen">' +
-        '<div class="media re-amen__img"><div class="media__scrim"></div><div class="media__tag">' + icon('image') + ' ' + a.title.toUpperCase() + '</div></div>' +
+        '<div class="media re-amen__img" data-img="amenity.' + a.id + '.image"><div class="media__scrim"></div><div class="media__tag">' + icon('image') + ' <span data-field="amenity.' + a.id + '.title">' + a.title + '</span></div></div>' +
         '<div class="re-amen__body"><span class="re-amen__ic">' + icon(a.icon) + '</span>' +
-          '<div class="t-h3">' + a.title + '</div>' +
-          '<p class="t-body dim pretty">' + a.desc + '</p></div>' +
+          '<div class="t-h3" data-field="amenity.' + a.id + '.title">' + a.title + '</div>' +
+          '<p class="t-body dim pretty" data-field="amenity.' + a.id + '.desc">' + a.desc + '</p></div>' +
       '</div>';
     }).join('');
     return bar(true) +
@@ -1675,11 +1675,11 @@ window.PROPERTY = {
         '<div class="re-field"><div class="t-sm dim">Your details</div>' +
           '<div class="re-inputs"><div class="re-input">' + icon('star') + ' Name & company</div>' +
           '<div class="re-input">' + icon('phone') + ' Mobile number</div></div>' +
-          '<p class="t-xs mute">Tour requests route to ' + D.contact.agent + ' · ' + D.contact.leasing + ' · ' + D.contact.phone + '</p></div>' +
+          '<p class="t-xs mute">Tour requests route to <span data-field="contact.agent">' + D.contact.agent + '</span> · <span data-field="contact.leasing">' + D.contact.leasing + '</span> · <span data-field="contact.phone">' + D.contact.phone + '</span></p></div>' +
       '</div>' +
       '<div class="re-sheet__foot">' +
         '<button class="btn" data-sheet-close>Cancel</button>' +
-        '<button class="btn btn--primary btn--lg grow" data-act="confirmTour" data-suite="' + s.id + '">' + icon('check', { sw: 2.4 }) + ' Confirm tour request</button>' +
+        '<button class="btn btn--primary btn--lg grow" data-act="confirmTour" data-suite="' + s.id + '" data-action="contact.confirm-tour">' + icon('check', { sw: 2.4 }) + ' Confirm tour request</button>' +
       '</div>' +
     '</div>';
   }
@@ -1745,6 +1745,152 @@ window.PROPERTY = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- brand -->
+  <span data-field="brand.name">The Meridian</span>
+  <span data-field="brand.tagline">Class A office in the heart of the Innovation District</span>
+  <span data-field="brand.address">400 Harbor Street · Downtown</span>
+  <span data-field="brand.initials">M</span>
+  <!-- hero -->
+  <span data-field="hero.label">PROPERTY EXTERIOR / DRONE HERO</span>
+  <div data-img="hero.image"></div>
+  <!-- home overview -->
+  <span data-field="home.about">Completed in 2023, The Meridian pairs a LEED Platinum core with column-free floor plates, floor-to-ceiling glass, and a tenant amenity stack usually reserved for the coasts. Direct light-rail access, 1,200 structured stalls, and a chef-driven ground-floor market make it the address tenants don&#39;t want to leave.</span>
+  <!-- stats -->
+  <span data-field="stat.0.v">18</span>
+  <span data-field="stat.0.k">Building</span>
+  <span data-field="stat.0.sub">floors</span>
+  <span data-field="stat.1.v">6</span>
+  <span data-field="stat.1.k">Available</span>
+  <span data-field="stat.1.sub">suites now</span>
+  <span data-field="stat.2.v">24,500</span>
+  <span data-field="stat.2.k">Typical floor</span>
+  <span data-field="stat.2.sub">RSF</span>
+  <span data-field="stat.3.v">97</span>
+  <span data-field="stat.3.k">Walk Score</span>
+  <span data-field="stat.3.sub">/ 100</span>
+  <!-- suite 1801 -->
+  <span data-field="space.1801.name">Suite 1801</span>
+  <span data-field="space.1801.type">Full-floor identity</span>
+  <span data-field="space.1801.sqft">12,480</span>
+  <span data-field="space.1801.rate">$58 /SF/yr</span>
+  <span data-field="space.1801.ceiling">10&#39;6&quot;</span>
+  <span data-field="space.1801.available">Now</span>
+  <span data-field="space.1801.term">5–10 yr</span>
+  <span data-field="space.1801.blurb">Corner penthouse floor with wraparound harbor and skyline views, private elevator vestibule, and a roughed-in pantry.</span>
+  <span data-field="space.1801.image.label">SUITE 1801 — RECEPTION</span>
+  <div data-img="space.1801.image"></div>
+  <!-- suite 1604 -->
+  <span data-field="space.1604.name">Suite 1604</span>
+  <span data-field="space.1604.type">Spec suite</span>
+  <span data-field="space.1604.sqft">6,850</span>
+  <span data-field="space.1604.rate">$54 /SF/yr</span>
+  <span data-field="space.1604.ceiling">9&#39;8&quot;</span>
+  <span data-field="space.1604.available">Now</span>
+  <span data-field="space.1604.term">3–7 yr</span>
+  <span data-field="space.1604.blurb">Designer-built spec suite with a glass-front boardroom, 14-person town-hall stair seating, and two huddle rooms.</span>
+  <span data-field="space.1604.image.label">SUITE 1604 — LOUNGE</span>
+  <div data-img="space.1604.image"></div>
+  <!-- suite 1410 -->
+  <span data-field="space.1410.name">Suite 1410</span>
+  <span data-field="space.1410.type">Warm shell</span>
+  <span data-field="space.1410.sqft">9,320</span>
+  <span data-field="space.1410.rate">$52 /SF/yr</span>
+  <span data-field="space.1410.ceiling">10&#39;0&quot;</span>
+  <span data-field="space.1410.available">Mar 2026</span>
+  <span data-field="space.1410.term">5–10 yr</span>
+  <span data-field="space.1410.blurb">Efficient mid-rise plate with abundant glass line and a flexible warm shell ready for your architect.</span>
+  <span data-field="space.1410.image.label">SUITE 1410 — SHELL</span>
+  <div data-img="space.1410.image"></div>
+  <!-- suite 1102 -->
+  <span data-field="space.1102.name">Suite 1102</span>
+  <span data-field="space.1102.type">Boutique suite</span>
+  <span data-field="space.1102.sqft">4,180</span>
+  <span data-field="space.1102.rate">$50 /SF/yr</span>
+  <span data-field="space.1102.ceiling">9&#39;6&quot;</span>
+  <span data-field="space.1102.available">Now</span>
+  <span data-field="space.1102.term">3–5 yr</span>
+  <span data-field="space.1102.blurb">Right-sized boutique suite for a growing team — four perimeter offices, open bullpen, and a branded reception.</span>
+  <span data-field="space.1102.image.label">SUITE 1102 — RECEPTION</span>
+  <div data-img="space.1102.image"></div>
+  <!-- suite 0705 -->
+  <span data-field="space.0705.name">Suite 705</span>
+  <span data-field="space.0705.type">Creative loft</span>
+  <span data-field="space.0705.sqft">7,640</span>
+  <span data-field="space.0705.rate">$49 /SF/yr</span>
+  <span data-field="space.0705.ceiling">12&#39;2&quot;</span>
+  <span data-field="space.0705.available">Now</span>
+  <span data-field="space.0705.term">5–8 yr</span>
+  <span data-field="space.0705.blurb">Exposed-structure creative floor with polished concrete, oversized operable windows, and a roll-up garage wall to the terrace.</span>
+  <span data-field="space.0705.image.label">SUITE 705 — LOFT</span>
+  <div data-img="space.0705.image"></div>
+  <!-- suite 0408 -->
+  <span data-field="space.0408.name">Suite 408</span>
+  <span data-field="space.0408.type">Starter suite</span>
+  <span data-field="space.0408.sqft">3,260</span>
+  <span data-field="space.0408.rate">$47 /SF/yr</span>
+  <span data-field="space.0408.ceiling">9&#39;4&quot;</span>
+  <span data-field="space.0408.available">Now</span>
+  <span data-field="space.0408.term">2–4 yr</span>
+  <span data-field="space.0408.blurb">Flexible starter suite ideal for a satellite team — efficient layout with two offices and an open collaboration zone.</span>
+  <span data-field="space.0408.image.label">SUITE 408 — OPEN ZONE</span>
+  <div data-img="space.0408.image"></div>
+  <!-- amenities -->
+  <span data-field="amenity.concierge.title">Attended Lobby &amp; Concierge</span>
+  <span data-field="amenity.concierge.desc">Staffed 24/7 with visitor management and package handling.</span>
+  <div data-img="amenity.concierge.image"></div>
+  <span data-field="amenity.fitness.title">Fitness Center</span>
+  <span data-field="amenity.fitness.desc">3,500 SF gym, peloton studio, and on-demand classes.</span>
+  <div data-img="amenity.fitness.image"></div>
+  <span data-field="amenity.conf.title">Conference Center</span>
+  <span data-field="amenity.conf.desc">Bookable 120-seat town hall and four meeting rooms.</span>
+  <div data-img="amenity.conf.image"></div>
+  <span data-field="amenity.parking.title">Structured Parking</span>
+  <span data-field="amenity.parking.desc">1,200 stalls, valet option, 2.0 / 1,000 SF ratio.</span>
+  <div data-img="amenity.parking.image"></div>
+  <span data-field="amenity.terrace.title">Rooftop Sky Lounge</span>
+  <span data-field="amenity.terrace.desc">Landscaped terrace, catering kitchen, harbor views.</span>
+  <div data-img="amenity.terrace.image"></div>
+  <span data-field="amenity.fiber.title">Redundant Connectivity</span>
+  <span data-field="amenity.fiber.desc">Dual-provider fiber, building-wide DAS and Wi-Fi 6E.</span>
+  <div data-img="amenity.fiber.image"></div>
+  <span data-field="amenity.ev.title">EV Charging</span>
+  <span data-field="amenity.ev.desc">48 Level-2 chargers and 4 DC fast stalls.</span>
+  <div data-img="amenity.ev.image"></div>
+  <span data-field="amenity.bike.title">Bike Room &amp; Showers</span>
+  <span data-field="amenity.bike.desc">Secure bike storage with lockers and towel service.</span>
+  <div data-img="amenity.bike.image"></div>
+  <span data-field="amenity.market.title">Ground-Floor Market</span>
+  <span data-field="amenity.market.desc">Chef-driven café, grab-and-go, and a wine bar.</span>
+  <div data-img="amenity.market.image"></div>
+  <span data-field="amenity.security.title">Life Safety &amp; Security</span>
+  <span data-field="amenity.security.desc">Credentialed access, CCTV, and full sprinkler coverage.</span>
+  <div data-img="amenity.security.image"></div>
+  <span data-field="amenity.lounge.title">Tenant Lounge</span>
+  <span data-field="amenity.lounge.desc">Members-style lounge with barista and phone booths.</span>
+  <div data-img="amenity.lounge.image"></div>
+  <span data-field="amenity.green.title">LEED Platinum</span>
+  <span data-field="amenity.green.desc">All-electric core, 38% energy savings, Fitwel certified.</span>
+  <div data-img="amenity.green.image"></div>
+  <!-- contact -->
+  <span data-field="contact.leasing">Marlowe &amp; Co. — Leasing</span>
+  <span data-field="contact.agent">Dana Okafor</span>
+  <span data-field="contact.phone">(206) 555-0142</span>
+  <!-- actions -->
+  <button data-action="space.1801.tour">Schedule a Tour</button>
+  <button data-action="space.1801.shortlist">Shortlist</button>
+  <button data-action="space.1604.tour">Schedule a Tour</button>
+  <button data-action="space.1604.shortlist">Shortlist</button>
+  <button data-action="space.1410.tour">Schedule a Tour</button>
+  <button data-action="space.1410.shortlist">Shortlist</button>
+  <button data-action="space.1102.tour">Schedule a Tour</button>
+  <button data-action="space.1102.shortlist">Shortlist</button>
+  <button data-action="space.0705.tour">Schedule a Tour</button>
+  <button data-action="space.0705.shortlist">Shortlist</button>
+  <button data-action="space.0408.tour">Schedule a Tour</button>
+  <button data-action="space.0408.shortlist">Shortlist</button>
+  <button data-action="contact.confirm-tour">Confirm tour request</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
