@@ -2054,4 +2054,36 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0f172a',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/qsr/10-now-hiring.html' } }],
   },
+
+  // ── Interactive Touch Kiosks (2026-06-03) ───────────────────────────────
+  // Self-contained interactive touch experiences (Claude-design intake), each
+  // a single inlined HTML under /public/templates/kiosk/ hosted by the
+  // EXTERNAL_HTML sandboxed iframe. They carry their own screen router, idle/
+  // attract reset, and touch handling — fully interactive inside the iframe.
+  // Resolution-independent (--u=1vmin) so the same file is balanced landscape
+  // OR portrait; the declared 1920×1080 is just the gallery design canvas.
+  {
+    id: 'preset-kiosk-realestate',
+    name: '🏢 Touch Kiosk — Commercial Leasing',
+    description: 'Interactive leasing kiosk: building overview + stats, filterable suite inventory (size/availability), suite detail with gallery, specs, in-suite amenities + floor plan, you-are-here wayfinding, and a schedule-a-tour flow. Touch-driven, attract loop, reflows landscape/portrait.',
+    category: 'CORPORATE', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#11151c',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/kiosk/real-estate.html' } }],
+  },
+  {
+    id: 'preset-kiosk-museum',
+    name: '🏛️ Touch Kiosk — Museum / Exhibits',
+    description: 'Interactive exhibit kiosk: guided tour intro, numbered station stories with facts + audio-guide + video, a hall map with you-are-here, and related stations. Editorial charcoal/amber theme. Touch-driven, attract loop, reflows landscape/portrait.',
+    category: 'LOBBY', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#0c0b0a',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/kiosk/museum.html' } }],
+  },
+  {
+    id: 'preset-kiosk-food',
+    name: '🥗 Touch Kiosk — Self-Order (QSR)',
+    description: 'Interactive self-order kiosk: category browse, item detail with priced option groups (required/single/multi), quantity stepper, cart with upsell, order summary + tax, and an order-confirmation screen (POS hand-off ready). Fresh cream/paprika theme. Touch-driven, reflows landscape/portrait.',
+    category: 'QSR', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#fbf6ee',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/kiosk/food.html' } }],
+  },
 ];

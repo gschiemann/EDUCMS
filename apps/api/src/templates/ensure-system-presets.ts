@@ -92,6 +92,13 @@ PRESET_VERTICAL.set('preset-main-scorebug', 'SPORTS');
 PRESET_VERTICAL.set('preset-sb-hs', 'SPORTS');
 PRESET_VERTICAL.set('preset-sb-college', 'SPORTS');
 PRESET_VERTICAL.set('preset-sb-pro', 'SPORTS');
+// Interactive touch kiosks (2026-06-03). Tag each to its natural vertical so
+// it surfaces only for the right tenant type (no crosstalk). Food self-order →
+// QSR; commercial-leasing → CORPORATE; museum/exhibit → HOSPITALITY (closest
+// existing vertical; a dedicated REAL_ESTATE / MUSEUM vertical is a future add).
+PRESET_VERTICAL.set('preset-kiosk-food', 'QSR');
+PRESET_VERTICAL.set('preset-kiosk-realestate', 'CORPORATE');
+PRESET_VERTICAL.set('preset-kiosk-museum', 'HOSPITALITY');
 
 // 2026-05-16 — the 70-template industry signage pack (preset-sig-*)
 // lives INSIDE SYSTEM_TEMPLATE_PRESETS so it shares the seeder, which
