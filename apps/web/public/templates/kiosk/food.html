@@ -1347,8 +1347,8 @@ window.MENU = {
     return '<header class="bar fd-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
       '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3" style="line-height:1">' + D.restaurant + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.14em">' + D.tagline + '</div></div></div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1" data-field="brand.restaurant">' + D.restaurant + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.14em" data-field="brand.tagline">' + D.tagline + '</div></div></div>' +
       '<div class="bar__spacer"></div>' +
       '<div class="fd-ordertype"><span class="dot"></span>' + (orderType === 'dinein' ? 'Dine in' : 'Take out') + '</div>' +
       '<button class="iconbtn" data-home aria-label="Start over">' + icon('home', { sw: 2 }) + '</button>' +
@@ -1373,10 +1373,10 @@ window.MENU = {
   // ATTRACT
   // ════════════════════════════════════════════════════════════════════════
   function attract() {
-    return '<div class="attract__bg"><div class="media fd-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media fd-hero" data-img="hero.image"><div class="media__scrim"></div>' +
         '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-        '<div class="eyebrow" style="color:#fff;opacity:.85">' + D.restaurant + ' · ' + D.tagline + '</div>' +
+        '<div class="eyebrow" style="color:#fff;opacity:.85"><span data-field="brand.restaurant">' + D.restaurant + '</span> · <span data-field="brand.tagline">' + D.tagline + '</span></div>' +
         '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)">Order<br>here.</div>' +
         '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to start your order</div>' +
       '</div>';
@@ -1392,7 +1392,7 @@ window.MENU = {
       // category rail
       '<nav class="fd-cats">' + D.categories.map(function (c) {
         return '<button class="fd-cat ' + (c.id === activeCat ? 'is-on' : '') + '" data-act="cat" data-cat="' + c.id + '">' +
-          '<span class="fd-cat__ic">' + icon(c.icon) + '</span><span>' + c.name + '</span></button>';
+          '<span class="fd-cat__ic">' + icon(c.icon) + '</span><span data-field="cat.' + c.id + '.name">' + c.name + '</span></button>';
       }).join('') + '</nav>' +
       // items
       '<div class="scroll fd-menu__scroll"><div class="fd-items" id="fd-items">' + itemsFor(activeCat) + '</div></div>' +
@@ -1402,16 +1402,16 @@ window.MENU = {
   function itemsFor(cat) {
     var cobj = D.categories.filter(function (c) { return c.id === cat; })[0];
     var list = D.items.filter(function (i) { return i.cat === cat; });
-    return '<div class="fd-cathead"><h1 class="t-xl">' + cobj.name + '</h1><div class="t-body dim">' + list.length + ' options</div></div>' +
+    return '<div class="fd-cathead"><h1 class="t-xl" data-field="cat.' + cobj.id + '.name">' + cobj.name + '</h1><div class="t-body dim">' + list.length + ' options</div></div>' +
       '<div class="fd-grid">' + list.map(itemCard).join('') + '</div>';
   }
   function itemCard(i) {
     return '<button class="card fd-card" data-go="item:' + i.id + '">' +
-      '<span class="media fd-card__img"><span class="media__tag">' + icon('image') + ' ' + i.image + '</span>' +
+      '<span class="media fd-card__img" data-img="item.' + i.id + '.image"><span class="media__tag">' + icon('image') + ' ' + i.image + '</span>' +
         (i.popular ? '<span class="fd-pop">' + icon('star') + ' Popular</span>' : '') + '</span>' +
       '<span class="fd-card__body">' +
-        '<span class="row between gap-2"><span class="t-h3 fd-card__name">' + i.name + '</span><span class="fd-card__price">' + money(i.priceCents) + '</span></span>' +
-        '<span class="t-sm dim pretty fd-card__desc">' + i.desc + '</span>' +
+        '<span class="row between gap-2"><span class="t-h3 fd-card__name" data-field="item.' + i.id + '.name">' + i.name + '</span><span class="fd-card__price" data-field="item.' + i.id + '.price">' + money(i.priceCents) + '</span></span>' +
+        '<span class="t-sm dim pretty fd-card__desc" data-field="item.' + i.id + '.desc">' + i.desc + '</span>' +
         '<span class="row between" style="margin-top:auto;padding-top:var(--s-3)"><span class="row gap-2">' + tagBadges(i) + '<span class="badge">' + i.kcal + ' cal</span></span>' +
         '<span class="fd-card__add">' + icon('plus', { sw: 2.4 }) + '</span></span>' +
       '</span>' +
@@ -1429,14 +1429,14 @@ window.MENU = {
     return bar(true) +
     '<div class="scroll"><div class="fd-item">' +
       '<div class="split fd-item__top">' +
-        '<div class="media fd-item__img"><div class="media__scrim"></div>' +
+        '<div class="media fd-item__img" data-img="item.' + id + '.image"><div class="media__scrim"></div>' +
           '<div class="media__tag">' + icon('image') + ' ' + it.image + '</div>' +
           (it.popular ? '<div class="fd-pop fd-pop--lg">' + icon('star') + ' Popular</div>' : '') + '</div>' +
         '<div class="fd-item__info">' +
           '<div class="row gap-2 wrap">' + tagBadges(it) + '<span class="badge">' + it.kcal + ' cal</span></div>' +
-          '<h1 class="t-xl" style="margin:var(--s-2) 0">' + it.name + '</h1>' +
-          '<p class="t-lg dim pretty">' + it.desc + '</p>' +
-          '<div class="fd-baseprice">' + money(it.priceCents) + '</div>' +
+          '<h1 class="t-xl" style="margin:var(--s-2) 0" data-field="item.' + id + '.name">' + it.name + '</h1>' +
+          '<p class="t-lg dim pretty" data-field="item.' + id + '.desc">' + it.desc + '</p>' +
+          '<div class="fd-baseprice" data-field="item.' + id + '.price">' + money(it.priceCents) + '</div>' +
           (groups ? '<div class="fd-options">' + groups + '</div>' : '<div class="t-body dim" style="margin-top:var(--s-4)">No customization needed — just add it to your order.</div>') +
         '</div>' +
       '</div>' +
@@ -1659,6 +1659,72 @@ window.MENU = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <span data-field="brand.restaurant">Greenhouse</span>
+  <span data-field="brand.tagline">Kitchen &amp; Juice Bar</span>
+  <div data-img="hero.image"></div>
+  <span data-field="cat.bowls.name">Grain Bowls</span>
+  <span data-field="cat.hand.name">Handhelds</span>
+  <span data-field="cat.sides.name">Sides</span>
+  <span data-field="cat.drinks.name">Cold Press</span>
+  <span data-field="cat.sweets.name">Sweets</span>
+  <span data-field="item.harvest.name">Harvest Bowl</span>
+  <span data-field="item.harvest.desc">Wild rice, roasted sweet potato, kale, apple, goat cheese, toasted almond, balsamic.</span>
+  <span data-field="item.harvest.price">$13.95</span>
+  <div data-img="item.harvest.image"></div>
+  <span data-field="item.sesame.name">Sesame Ginger Bowl</span>
+  <span data-field="item.sesame.desc">Brown rice, edamame, cabbage slaw, carrot, cucumber, crispy shallot, sesame-ginger.</span>
+  <span data-field="item.sesame.price">$14.50</span>
+  <div data-img="item.sesame.image"></div>
+  <span data-field="item.mezze.name">Mezze Bowl</span>
+  <span data-field="item.mezze.desc">Herbed couscous, falafel, hummus, cucumber-tomato, pickled onion, tahini, dill.</span>
+  <span data-field="item.mezze.price">$13.75</span>
+  <div data-img="item.mezze.image"></div>
+  <span data-field="item.smash.name">Greenhouse Smash</span>
+  <span data-field="item.smash.desc">Double smashed patty, aged cheddar, house sauce, pickles, martin's roll.</span>
+  <span data-field="item.smash.price">$12.95</span>
+  <div data-img="item.smash.image"></div>
+  <span data-field="item.crispy.name">Crispy Chicken Sando</span>
+  <span data-field="item.crispy.desc">Buttermilk-fried chicken, slaw, dill pickle, comeback sauce, brioche.</span>
+  <span data-field="item.crispy.price">$13.45</span>
+  <div data-img="item.crispy.image"></div>
+  <span data-field="item.wrap.name">Falafel Wrap</span>
+  <span data-field="item.wrap.desc">Falafel, hummus, pickled veg, greens, tahini, warm lavash.</span>
+  <span data-field="item.wrap.price">$11.45</span>
+  <div data-img="item.wrap.image"></div>
+  <span data-field="item.fries.name">Rosemary Fries</span>
+  <span data-field="item.fries.desc">Crispy fries, rosemary salt, garlic aioli.</span>
+  <span data-field="item.fries.price">$5.45</span>
+  <div data-img="item.fries.image"></div>
+  <span data-field="item.brussels.name">Charred Brussels</span>
+  <span data-field="item.brussels.desc">Maple, chili, lemon, toasted hazelnut.</span>
+  <span data-field="item.brussels.price">$6.95</span>
+  <div data-img="item.brussels.image"></div>
+  <span data-field="item.soup.name">Soup of the Day</span>
+  <span data-field="item.soup.desc">Ask staff — made fresh each morning.</span>
+  <span data-field="item.soup.price">$5.95</span>
+  <div data-img="item.soup.image"></div>
+  <span data-field="item.green.name">Green Machine</span>
+  <span data-field="item.green.desc">Kale, apple, cucumber, lemon, ginger.</span>
+  <span data-field="item.green.price">$7.95</span>
+  <div data-img="item.green.image"></div>
+  <span data-field="item.citrus.name">Citrus Sunrise</span>
+  <span data-field="item.citrus.desc">Orange, carrot, turmeric, lemon.</span>
+  <span data-field="item.citrus.price">$7.50</span>
+  <div data-img="item.citrus.image"></div>
+  <span data-field="item.cold.name">Cold Brew</span>
+  <span data-field="item.cold.desc">48-hour steep, splash of oat optional.</span>
+  <span data-field="item.cold.price">$5.45</span>
+  <div data-img="item.cold.image"></div>
+  <span data-field="item.cookie.name">Brown Butter Cookie</span>
+  <span data-field="item.cookie.desc">Sea salt, dark chocolate.</span>
+  <span data-field="item.cookie.price">$3.95</span>
+  <div data-img="item.cookie.image"></div>
+  <span data-field="item.parfait.name">Berry Parfait</span>
+  <span data-field="item.parfait.desc">Greek yogurt, granola, seasonal berries, honey.</span>
+  <span data-field="item.parfait.price">$5.95</span>
+  <div data-img="item.parfait.image"></div>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>

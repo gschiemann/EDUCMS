@@ -50,3 +50,26 @@ Kiosks build their DOM in JS (Kiosk engine renders screens, swaps on nav). So:
 - Then parallelize the other 5 (real-estate, museum, office, gym, school) as
   worktree agents following the proven `food` reference; lead reviews + merges +
   verifies each.
+
+## Button action wiring (added 2026-06-04, operator request)
+"Wire our touch content manager to each button where it makes sense." A third
+marker type on the SAME markup pass:
+- **`data-action="<key>"`** on meaningful LEAF buttons — the ones that should
+  trigger a PLATFORM action, not just internal kiosk nav. Examples: real-estate
+  "Schedule a Tour" → webhook/CRM or request-help; food "Send order" → webhook
+  (POS) ; office "Check in / Notify host" → webhook ; "Call / Concierge" → tel/
+  email ; "Email me this" → email. Internal screen-to-screen nav (data-go/
+  data-back) stays the kiosk engine's job — NOT wired.
+- **Editor**: discover `[data-action]` (static-parse, same as data-field) and
+  render a per-button "When tapped…" picker = our existing touch-action set
+  {open-url, webhook, goto-template, goto-scene, show-overlay, play-video,
+  email, request-help, sound-toggle, reset-idle} + a target field. Store in
+  `config.actionOverrides[key] = { type, target }`.
+- **Runtime (shim)**: in player mode, a tap on `[data-action]` posts
+  `educms-action {key, action}` to the parent; the PLAYER executes it via the
+  same touch-action handler TOUCH_POINT uses (the null-origin iframe can't
+  navigate top / call our API itself, so the parent runs it). Default behavior
+  (the kiosk's own handler) still runs when no override is set, so nothing
+  breaks unwired.
+- Manifest carries `data-action` entries too (default = the button's own label)
+  so discovery lists them.

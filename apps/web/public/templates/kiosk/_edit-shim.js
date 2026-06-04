@@ -58,10 +58,15 @@
     Object.keys(img).forEach(function (k) {
       var v = img[k]; if (typeof v !== 'string' || !v) return;
       var esc = k.replace(/"/g, '\\"');
-      var el = document.querySelector('[data-img="' + esc + '"]') || document.querySelector('[data-slot="' + esc + '"]');
-      if (!el) return; var safe = v.replace(/[\s]/g, '%20').replace(/["'()]/g, '');
-      if (el.tagName === 'IMG') { el.setAttribute('src', safe); } else { el.style.setProperty('--src', "url('" + safe + "')"); el.style.backgroundImage = "url('" + safe + "')"; el.style.backgroundSize = 'cover'; el.style.backgroundPosition = 'center'; if (el.classList) el.classList.add('has-media'); }
-      el.setAttribute('data-has-image', 'true');
+      // apply to EVERY match (visible render node + hidden manifest node), not
+      // just the first — querySelector would hit the manifest div and miss the card.
+      var els = document.querySelectorAll('[data-img="' + esc + '"],[data-slot="' + esc + '"]');
+      var safe = v.replace(/[\s]/g, '%20').replace(/["'()]/g, '');
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        if (el.tagName === 'IMG') { el.setAttribute('src', safe); } else { el.style.setProperty('--src', "url('" + safe + "')"); el.style.backgroundImage = "url('" + safe + "')"; el.style.backgroundSize = 'cover'; el.style.backgroundPosition = 'center'; if (el.classList) el.classList.add('has-media'); }
+        el.setAttribute('data-has-image', 'true');
+      }
     });
   }
   function applyAll() { applyBrand(state.brand); applyText(state.text, state.styles); applyImages(state.img); if (editMode) armEdit(); }
@@ -69,7 +74,9 @@
   // ── edit mode (builder) ──────────────────────────────────────────────
   function armEdit() {
     document.querySelectorAll('[data-field],[data-img]').forEach(function (el) {
-      if (el.__veArmed) return; el.__veArmed = true;
+      if (el.__veArmed) return;
+      if (el.closest && el.closest('#venueos-fields')) return; // hidden manifest — not a click target
+      el.__veArmed = true;
       el.style.cursor = 'pointer';
       el.addEventListener('mouseenter', function () { el.style.outline = '2px dashed #06b6d4'; el.style.outlineOffset = '2px'; });
       el.addEventListener('mouseleave', function () { el.style.outline = ''; });
