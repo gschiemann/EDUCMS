@@ -204,6 +204,9 @@ for (const id of RETAIL_ALSO_FASHION) {
 PRESET_VERTICALS.set('preset-kiosk-food', ['ALL']);
 PRESET_VERTICALS.set('preset-kiosk-realestate', ['ALL']);
 PRESET_VERTICALS.set('preset-kiosk-museum', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-office', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-gym', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-school', ['ALL']);
 
 /**
  * Resolve the stored `Template.vertical` tag for a preset id. Returns a

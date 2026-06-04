@@ -2086,4 +2086,28 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     screenWidth: 1920, screenHeight: 1080, bgColor: '#fbf6ee',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/kiosk/food.html' } }],
   },
+  {
+    id: 'preset-kiosk-office',
+    name: '🏢 Touch Kiosk — Workplace / Lobby',
+    description: 'Interactive workplace hub: visitor welcome, building/floor wayfinding, room & desk availability, company directory, today’s meetings and announcements. Clean corporate theme. Touch-driven, attract loop, reflows landscape/portrait.',
+    category: 'KIOSK', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#f6f7f9',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/kiosk/office.html' } }],
+  },
+  {
+    id: 'preset-kiosk-gym',
+    name: '🏋️ Touch Kiosk — Fitness Club',
+    description: 'Interactive fitness-club kiosk: live club capacity, class schedule + sign-up, trainer spotlights, amenities and member info. Bold dark athletic theme. Touch-driven, attract loop, reflows landscape/portrait.',
+    category: 'KIOSK', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#0b0d10',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/kiosk/gym.html' } }],
+  },
+  {
+    id: 'preset-kiosk-school',
+    name: '🎓 Touch Kiosk — Campus Hub',
+    description: 'Interactive campus hub: bell schedule, today’s events, building wayfinding, staff/dept directory, athletics and announcements. Spirited school theme. Touch-driven, attract loop, reflows landscape/portrait.',
+    category: 'KIOSK', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#f4f6fb',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/kiosk/school.html' } }],
+  },
 ];
