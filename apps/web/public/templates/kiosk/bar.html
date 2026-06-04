@@ -1297,11 +1297,11 @@ window.BAR = {
   function bar(showBack) {
     return '<header class="bar ba-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
-      '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3 ba-word" style="line-height:1">' + D.name + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.2em">' + D.tagline + '</div></div></div>' +
+      '<div class="bar__brand"><div class="bar__logo" data-field="brand.initials">' + D.brandInitials + '</div>' +
+      '<div class="col"><div class="t-h3 ba-word" style="line-height:1" data-field="brand.name">' + D.name + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.2em" data-field="brand.tagline">' + D.tagline + '</div></div></div>' +
       '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
-      (D.happyHour.active ? '<div class="ba-hh">' + icon('flame') + ' Happy Hour till ' + D.happyHour.until + '</div>' : '') +
+      (D.happyHour.active ? '<div class="ba-hh">' + icon('flame') + ' Happy Hour till <span data-field="happyhour.until">' + D.happyHour.until + '</span></div>' : '') +
       '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
     '</header>';
   }
@@ -1315,24 +1315,24 @@ window.BAR = {
 
   // ── AGE GATE (start screen) ───────────────────────────────────────────────
   function gate() {
-    return '<div class="ba-gate"><div class="ba-gate__bg media ba-hero"><div class="media__scrim"></div></div>' +
+    return '<div class="ba-gate"><div class="ba-gate__bg media ba-hero" data-img="hero.image"><div class="media__scrim"></div></div>' +
       '<div class="ba-gate__b">' +
-        '<div class="bar__logo ba-gate__logo">' + D.brandInitials + '</div>' +
-        '<div class="t-mega ba-word" style="color:#fff">' + D.name + '</div>' +
-        '<div class="t-h2" style="color:rgba(255,255,255,.85);font-weight:400;font-style:italic">' + D.tagline + '</div>' +
-        '<p class="t-h3" style="color:rgba(255,255,255,.8);font-weight:400;margin:var(--s-4) 0;max-width:30ch">You must be 21 or older to view the menu and order.</p>' +
+        '<div class="bar__logo ba-gate__logo" data-field="brand.initials">' + D.brandInitials + '</div>' +
+        '<div class="t-mega ba-word" style="color:#fff" data-field="brand.name">' + D.name + '</div>' +
+        '<div class="t-h2" style="color:rgba(255,255,255,.85);font-weight:400;font-style:italic" data-field="brand.tagline">' + D.tagline + '</div>' +
+        '<p class="t-h3" style="color:rgba(255,255,255,.8);font-weight:400;margin:var(--s-4) 0;max-width:30ch" data-field="gate.agenotice">You must be 21 or older to view the menu and order.</p>' +
         '<div class="ba-gate__btns"><button class="btn btn--primary btn--lg" data-act="enter">' + icon('check', { sw: 2.4 }) + " I\u2019m 21 or older</button>" +
           '<button class="btn btn--ghost btn--lg" style="color:#fff" data-act="under">Under 21</button></div>' +
-        '<p class="t-sm" style="color:rgba(255,255,255,.55);margin-top:var(--s-4)">' + D.tabNote + '</p>' +
+        '<p class="t-sm" style="color:rgba(255,255,255,.55);margin-top:var(--s-4)" data-field="gate.tabnote">' + D.tabNote + '</p>' +
       '</div></div>';
   }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media ba-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media ba-hero" data-img="hero.image"><div class="media__scrim"></div>' +
         '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-        '<div class="eyebrow" style="color:var(--accent)">' + D.tagline + '</div>' +
-        '<div class="t-mega ba-word" style="color:#fff;margin-top:var(--s-1)">' + D.name + '</div>' +
+        '<div class="eyebrow" style="color:var(--accent)" data-field="brand.tagline">' + D.tagline + '</div>' +
+        '<div class="t-mega ba-word" style="color:#fff;margin-top:var(--s-1)" data-field="brand.name">' + D.name + '</div>' +
         '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to see tonight\u2019s menu</div>' +
       '</div>';
   }
@@ -1347,16 +1347,16 @@ window.BAR = {
   function home() {
     var taps = D.onTap.slice(0, 3).map(tapRow).join('');
     var cocktails = D.cocktails.slice(0, 4).map(function (c) {
-      return '<button class="ba-cocktail" data-go="cocktail:' + c.id + '"><div class="media ba-cocktail__img"><span class="media__tag">' + icon('image') + '</span></div>' +
-        '<div class="ba-cocktail__b"><div class="t-h2">' + c.name + '</div><div class="t-sm dim">' + c.spirit + ' · ' + c.abv + '% ABV</div>' +
-        '<div class="ba-cocktail__p">' + money(c.priceCents) + '</div></div></button>';
+      return '<button class="ba-cocktail" data-go="cocktail:' + c.id + '"><div class="media ba-cocktail__img" data-img="cocktail.' + c.id + '.image"><span class="media__tag">' + icon('image') + '</span></div>' +
+        '<div class="ba-cocktail__b"><div class="t-h2" data-field="cocktail.' + c.id + '.name">' + c.name + '</div><div class="t-sm dim">' + c.spirit + ' · ' + c.abv + '% ABV</div>' +
+        '<div class="ba-cocktail__p" data-field="cocktail.' + c.id + '.price">' + money(c.priceCents) + '</div></div></button>';
     }).join('');
 
     return bar(false) +
     '<div class="scroll"><div class="ba-home">' +
       (D.happyHour.active ? '<section class="ba-hhcard"><div class="ba-hhcard__ic">' + icon('flame') + '</div>' +
-        '<div class="grow"><div class="eyebrow" style="color:var(--accent)">Happy Hour · until ' + D.happyHour.until + '</div>' +
-        '<div class="t-h1">' + D.happyHour.deal + '</div></div>' +
+        '<div class="grow"><div class="eyebrow" style="color:var(--accent)">Happy Hour · until <span data-field="happyhour.until">' + D.happyHour.until + '</span></div>' +
+        '<div class="t-h1" data-field="happyhour.deal">' + D.happyHour.deal + '</div></div>' +
         '<button class="chip" data-go="events">' + icon('calendar') + ' Tonight</button></section>' : '') +
 
       '<section class="ba-split">' +
@@ -1381,8 +1381,8 @@ window.BAR = {
   }
   function tapRow(t) {
     return '<div class="ba-tap"><div class="ba-tap__keg"><div class="ba-tap__fill" style="height:' + t.level + '%"></div></div>' +
-      '<div class="grow"><div class="row between"><div class="t-h3">' + t.name + '</div><div class="ba-tap__p">' + money(t.priceCents) + '</div></div>' +
-      '<div class="t-sm dim">' + t.brewery + ' · ' + t.style + ' · ' + t.abv + '%</div>' +
+      '<div class="grow"><div class="row between"><div class="t-h3" data-field="tap.' + t.id + '.name">' + t.name + '</div><div class="ba-tap__p" data-field="tap.' + t.id + '.price">' + money(t.priceCents) + '</div></div>' +
+      '<div class="t-sm dim"><span data-field="tap.' + t.id + '.brewery">' + t.brewery + '</span> · <span data-field="tap.' + t.id + '.style">' + t.style + '</span> · ' + t.abv + '%</div>' +
       '<div class="row between" style="margin-top:var(--s-2)">' + levelTag(t.level) + '<button class="ba-add" data-act="addtap" data-id="' + t.id + '">' + icon('plus', { sw: 2.6 }) + ' Add to tab</button></div></div></div>';
   }
 
@@ -1391,25 +1391,25 @@ window.BAR = {
     return bar(true) + '<div class="scroll"><div class="ba-list">' +
       '<div class="ba-head"><div><div class="eyebrow">The List</div><h1 class="t-xl">Signature Cocktails</h1></div></div>' +
       '<div class="ba-cocktails">' + D.cocktails.map(function (c) {
-        return '<button class="ba-cocktail" data-go="cocktail:' + c.id + '"><div class="media ba-cocktail__img"><span class="media__tag">' + icon('image') + '</span><span class="ba-abv">' + c.abv + '%</span></div>' +
-          '<div class="ba-cocktail__b"><div class="t-h2">' + c.name + '</div><div class="t-sm dim pretty">' + c.desc + '</div>' +
-          '<div class="row between" style="margin-top:var(--s-2)"><div class="chiprow">' + c.tags.map(function (t) { return '<span class="badge">' + t + '</span>'; }).join('') + '</div><div class="ba-cocktail__p">' + money(c.priceCents) + '</div></div></div></button>';
+        return '<button class="ba-cocktail" data-go="cocktail:' + c.id + '"><div class="media ba-cocktail__img" data-img="cocktail.' + c.id + '.image"><span class="media__tag">' + icon('image') + '</span><span class="ba-abv">' + c.abv + '%</span></div>' +
+          '<div class="ba-cocktail__b"><div class="t-h2" data-field="cocktail.' + c.id + '.name">' + c.name + '</div><div class="t-sm dim pretty" data-field="cocktail.' + c.id + '.notes">' + c.desc + '</div>' +
+          '<div class="row between" style="margin-top:var(--s-2)"><div class="chiprow">' + c.tags.map(function (t) { return '<span class="badge">' + t + '</span>'; }).join('') + '</div><div class="ba-cocktail__p" data-field="cocktail.' + c.id + '.price">' + money(c.priceCents) + '</div></div></div></button>';
       }).join('') + '</div></div></div>' + '<div class="ba-fabwrap">' + tabFab() + '</div>';
   }
   function cocktail(id) {
     var c = cocktailById(id); if (!c) return '<div class="pad-7">Not found</div>';
     return bar(true) + '<div class="scroll"><div class="ba-cd">' +
       '<div class="split split--4060">' +
-        '<div class="media ba-cd__img"><span class="ba-abv ba-abv--lg">' + c.abv + '% ABV</span><div class="media__tag">' + icon('image') + ' ' + c.name.toUpperCase() + '</div></div>' +
+        '<div class="media ba-cd__img" data-img="cocktail.' + c.id + '.image"><span class="ba-abv ba-abv--lg">' + c.abv + '% ABV</span><div class="media__tag">' + icon('image') + ' ' + c.name.toUpperCase() + '</div></div>' +
         '<div class="ba-cd__b"><div class="chiprow">' + c.tags.map(function (t) { return '<span class="badge badge--accent">' + t + '</span>'; }).join('') + '</div>' +
-          '<h1 class="t-xl" style="margin:var(--s-2) 0 0">' + c.name + '</h1>' +
+          '<h1 class="t-xl" style="margin:var(--s-2) 0 0" data-field="cocktail.' + c.id + '.name">' + c.name + '</h1>' +
           '<div class="t-h3 dim" style="font-weight:500">' + c.spirit + ' · ' + c.abv + '% ABV</div>' +
-          '<p class="t-lg pretty" style="margin:var(--s-3) 0">' + c.desc + '</p>' +
-          '<div class="eyebrow">How it\u2019s built</div><ul class="ba-build">' + c.build.map(function (b) { return '<li>' + icon('check', { sw: 2.4 }) + ' ' + b + '</li>'; }).join('') + '</ul>' +
+          '<p class="t-lg pretty" style="margin:var(--s-3) 0" data-field="cocktail.' + c.id + '.notes">' + c.desc + '</p>' +
+          '<div class="eyebrow">How it\u2019s built</div><ul class="ba-build">' + c.build.map(function (b, bi) { return '<li>' + icon('check', { sw: 2.4 }) + ' <span data-field="cocktail.' + c.id + '.build' + bi + '">' + b + '</span></li>'; }).join('') + '</ul>' +
         '</div>' +
       '</div>' +
     '</div></div>' +
-    '<div class="actionbar ba-addbar"><div class="col" style="gap:0"><div class="t-sm dim">' + c.name + '</div><div class="t-h3">' + money(c.priceCents) + (D.happyHour.active ? ' · <span style="color:var(--accent)">HH $2 off at the bar</span>' : '') + '</div></div>' +
+    '<div class="actionbar ba-addbar"><div class="col" style="gap:0"><div class="t-sm dim" data-field="cocktail.' + c.id + '.name">' + c.name + '</div><div class="t-h3"><span data-field="cocktail.' + c.id + '.price">' + money(c.priceCents) + '</span>' + (D.happyHour.active ? ' · <span style="color:var(--accent)">HH $2 off at the bar</span>' : '') + '</div></div>' +
       '<div class="bar__spacer"></div><button class="btn btn--primary btn--lg" data-act="addcocktail" data-id="' + c.id + '">' + icon('plus', { sw: 2.4 }) + ' Add to tab</button></div>';
   }
 
@@ -1424,10 +1424,10 @@ window.BAR = {
   function events() {
     return bar(true) + '<div class="scroll"><div class="ba-list">' +
       '<div class="ba-head"><div><div class="eyebrow">What\u2019s on</div><h1 class="t-xl">Tonight &amp; This Week</h1></div></div>' +
-      '<div class="ba-events">' + D.events.map(function (e) {
+      '<div class="ba-events">' + D.events.map(function (e, ei) {
         return '<div class="card card--static ba-event"><div class="ba-event__ic">' + icon(e.icon) + '</div>' +
-          '<div class="grow"><div class="badge badge--accent">' + e.tag + '</div><div class="t-h2" style="margin:var(--s-1) 0">' + e.title + '</div>' +
-          '<div class="row gap-3 dim t-body"><span>' + icon('clock') + ' ' + e.when + '</span><span>' + icon('pin') + ' ' + e.where + '</span></div></div></div>';
+          '<div class="grow"><div class="badge badge--accent" data-field="event.' + ei + '.tag">' + e.tag + '</div><div class="t-h2" style="margin:var(--s-1) 0" data-field="event.' + ei + '.title">' + e.title + '</div>' +
+          '<div class="row gap-3 dim t-body"><span>' + icon('clock') + ' <span data-field="event.' + ei + '.when">' + e.when + '</span></span><span>' + icon('pin') + ' <span data-field="event.' + ei + '.where">' + e.where + '</span></span></div></div></div>';
       }).join('') + '</div></div></div>';
   }
 
@@ -1444,7 +1444,7 @@ window.BAR = {
       '<div class="ba-head"><div><div class="eyebrow">Running tab</div><h1 class="t-xl">Your Tab</h1></div><div class="t-body dim">' + tabCount() + ' drink' + (tabCount() > 1 ? 's' : '') + '</div></div>' +
       '<div class="ba-tablines">' + lines + '</div></div></div>' +
       '<div class="actionbar ba-checkoutbar"><div class="col" style="gap:0"><div class="t-sm dim">Estimated total</div><div class="t-h2">' + money(tabTotal()) + '<span class="t-sm dim"> + tax & tip</span></div></div>' +
-      '<div class="bar__spacer"></div><button class="btn btn--primary btn--lg" data-act="opentab">' + icon('send') + ' Send to the bar</button></div>';
+      '<div class="bar__spacer"></div><button class="btn btn--primary btn--lg" data-act="opentab" data-action="tab.send">' + icon('send') + ' Send to the bar</button></div>';
   }
   function tabConfirmed() {
     return '<div class="ba-done"><div class="ba-done__ic">' + icon('check', { sw: 2.6 }) + '</div>' +
@@ -1476,6 +1476,105 @@ window.BAR = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <span data-field="brand.initials">E</span>
+  <span data-field="brand.name">Ember</span>
+  <span data-field="brand.tagline">Cocktail &amp; Tap House</span>
+  <span data-field="gate.agenotice">You must be 21 or older to view the menu and order.</span>
+  <span data-field="gate.tabnote">Open a tab on the kiosk and a server will bring your order. 21+ only &#8212; please drink responsibly.</span>
+  <span data-field="happyhour.deal">$2 off all drafts &amp; house cocktails</span>
+  <span data-field="happyhour.until">7:00 PM</span>
+  <span data-field="tap.haze.name">Lantern Haze IPA</span>
+  <span data-field="tap.haze.brewery">Foglight Brewing</span>
+  <span data-field="tap.haze.style">Hazy IPA</span>
+  <span data-field="tap.haze.price">$8.00</span>
+  <span data-field="tap.pils.name">Keystone Pils</span>
+  <span data-field="tap.pils.brewery">Anvil &amp; Oak</span>
+  <span data-field="tap.pils.style">Pilsner</span>
+  <span data-field="tap.pils.price">$7.00</span>
+  <span data-field="tap.stout.name">Midnight Oats</span>
+  <span data-field="tap.stout.brewery">Foglight Brewing</span>
+  <span data-field="tap.stout.style">Oatmeal Stout</span>
+  <span data-field="tap.stout.price">$8.50</span>
+  <span data-field="tap.sour.name">Tart Cherry</span>
+  <span data-field="tap.sour.brewery">Wild Field</span>
+  <span data-field="tap.sour.style">Fruited Sour</span>
+  <span data-field="tap.sour.price">$9.00</span>
+  <span data-field="tap.amber.name">Copper Lantern</span>
+  <span data-field="tap.amber.brewery">Anvil &amp; Oak</span>
+  <span data-field="tap.amber.style">Amber Ale</span>
+  <span data-field="tap.amber.price">$7.50</span>
+  <span data-field="tap.cider.name">Orchard Press</span>
+  <span data-field="tap.cider.brewery">Wild Field</span>
+  <span data-field="tap.cider.style">Dry Cider</span>
+  <span data-field="tap.cider.price">$8.00</span>
+  <span data-field="cocktail.old.name">Ember Old Fashioned</span>
+  <span data-field="cocktail.old.price">$14.00</span>
+  <span data-field="cocktail.old.notes">Charred-oak bourbon, demerara, aromatic bitters, orange oils, big rock.</span>
+  <span data-field="cocktail.old.build0">2 oz charred-oak bourbon</span>
+  <span data-field="cocktail.old.build1">0.25 oz demerara</span>
+  <span data-field="cocktail.old.build2">3 dashes aromatic bitters</span>
+  <span data-field="cocktail.old.build3">Express orange peel</span>
+  <span data-field="cocktail.neg.name">Smoked Negroni</span>
+  <span data-field="cocktail.neg.price">$14.00</span>
+  <span data-field="cocktail.neg.notes">Gin, Campari, sweet vermouth, finished with a whisper of applewood smoke.</span>
+  <span data-field="cocktail.neg.build0">1 oz gin</span>
+  <span data-field="cocktail.neg.build1">1 oz Campari</span>
+  <span data-field="cocktail.neg.build2">1 oz sweet vermouth</span>
+  <span data-field="cocktail.neg.build3">Applewood smoke</span>
+  <span data-field="cocktail.marg.name">Charred Pineapple Margarita</span>
+  <span data-field="cocktail.marg.price">$13.00</span>
+  <span data-field="cocktail.marg.notes">Blanco tequila, grilled pineapple, lime, agave, chili-salt rim.</span>
+  <span data-field="cocktail.marg.build0">2 oz blanco tequila</span>
+  <span data-field="cocktail.marg.build1">1 oz grilled pineapple</span>
+  <span data-field="cocktail.marg.build2">0.75 oz lime</span>
+  <span data-field="cocktail.marg.build3">Chili-salt rim</span>
+  <span data-field="cocktail.paper.name">Paper Lantern</span>
+  <span data-field="cocktail.paper.price">$13.50</span>
+  <span data-field="cocktail.paper.notes">Rye, amaro, yellow chartreuse, lemon &#8212; our take on a Paper Plane.</span>
+  <span data-field="cocktail.paper.build0">0.75 oz rye</span>
+  <span data-field="cocktail.paper.build1">0.75 oz amaro</span>
+  <span data-field="cocktail.paper.build2">0.75 oz chartreuse</span>
+  <span data-field="cocktail.paper.build3">0.75 oz lemon</span>
+  <span data-field="cocktail.spritz.name">Garden Spritz</span>
+  <span data-field="cocktail.spritz.price">$12.00</span>
+  <span data-field="cocktail.spritz.notes">Aperitivo, prosecco, soda, cucumber and mint. Low and breezy.</span>
+  <span data-field="cocktail.spritz.build0">2 oz aperitivo</span>
+  <span data-field="cocktail.spritz.build1">3 oz prosecco</span>
+  <span data-field="cocktail.spritz.build2">Splash soda</span>
+  <span data-field="cocktail.spritz.build3">Cucumber + mint</span>
+  <span data-field="cocktail.zero.name">Smoke &amp; Citrus (0%)</span>
+  <span data-field="cocktail.zero.price">$9.00</span>
+  <span data-field="cocktail.zero.notes">Non-alc spirit, lapsang syrup, lemon, soda. All flavor, no proof.</span>
+  <span data-field="cocktail.zero.build0">2 oz zero-proof spirit</span>
+  <span data-field="cocktail.zero.build1">0.5 oz lapsang syrup</span>
+  <span data-field="cocktail.zero.build2">0.75 oz lemon</span>
+  <span data-field="cocktail.zero.build3">Top soda</span>
+  <span data-field="event.0.tag">Live Music</span>
+  <span data-field="event.0.title">The Hollow Coats &#8212; indie folk</span>
+  <span data-field="event.0.when">Tonight &middot; 9:00 PM</span>
+  <span data-field="event.0.where">Main Stage</span>
+  <span data-field="event.1.tag">Weekly</span>
+  <span data-field="event.1.title">Trivia Night</span>
+  <span data-field="event.1.when">Tue &middot; 8:00 PM</span>
+  <span data-field="event.1.where">Whole bar</span>
+  <span data-field="event.2.tag">Tasting</span>
+  <span data-field="event.2.title">Agave Flight Class</span>
+  <span data-field="event.2.when">Thu &middot; 7:00 PM</span>
+  <span data-field="event.2.where">Back Room</span>
+  <span data-field="event.3.tag">DJ</span>
+  <span data-field="event.3.title">Vinyl Sundays</span>
+  <span data-field="event.3.when">Sun &middot; 6:00 PM</span>
+  <span data-field="event.3.where">Patio</span>
+  <div data-img="hero.image"></div>
+  <div data-img="cocktail.old.image"></div>
+  <div data-img="cocktail.neg.image"></div>
+  <div data-img="cocktail.marg.image"></div>
+  <div data-img="cocktail.paper.image"></div>
+  <div data-img="cocktail.spritz.image"></div>
+  <div data-img="cocktail.zero.image"></div>
+  <button data-action="tab.send">Send to the bar</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
