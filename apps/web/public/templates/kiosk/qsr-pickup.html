@@ -1317,9 +1317,9 @@ window.PICKUP = {
   function bar(showBack) {
     return '<header class="bar pk-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
-      '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3 pk-word" style="line-height:1">' + D.restaurant + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.16em">' + D.tagline + '</div></div></div>' +
+      '<div class="bar__brand"><div class="bar__logo" data-field="brand.initials">' + D.brandInitials + '</div>' +
+      '<div class="col"><div class="t-h3 pk-word" style="line-height:1" data-field="brand.name">' + D.restaurant + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.16em" data-field="brand.tagline">' + D.tagline + '</div></div></div>' +
       '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
       '<button class="chip" data-go="board">' + icon('grid') + ' Live board</button>' +
       '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
@@ -1327,12 +1327,12 @@ window.PICKUP = {
   }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media pk-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media pk-hero" data-img="attract.hero"><div class="media__scrim"></div>' +
       '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-      '<div class="eyebrow" style="color:var(--accent-2)">' + D.restaurant + ' · ' + D.tagline + '</div>' +
-      '<div class="t-mega pk-word" style="color:#fff;margin-top:var(--s-1)">Pick up<br>your order</div>' +
-      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to track or check in for curbside</div>' +
+      '<div class="eyebrow" style="color:var(--accent-2)" data-field="attract.eyebrow">' + D.restaurant + ' · ' + D.tagline + '</div>' +
+      '<div class="t-mega pk-word" style="color:#fff;margin-top:var(--s-1)" data-field="attract.headline">Pick up<br>your order</div>' +
+      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> <span data-field="attract.cta">Touch to track or check in for curbside</span></div>' +
     '</div>';
   }
 
@@ -1340,20 +1340,20 @@ window.PICKUP = {
   function home() {
     return bar(false) +
     '<div class="scroll"><div class="pk-home">' +
-      '<section class="pk-enter"><div class="eyebrow">Track your order</div>' +
-        '<h1 class="t-xl pk-word" style="margin:var(--s-1) 0 var(--s-3)">Enter your order number</h1>' +
+      '<section class="pk-enter"><div class="eyebrow" data-field="home.track.eyebrow">Track your order</div>' +
+        '<h1 class="t-xl pk-word" style="margin:var(--s-1) 0 var(--s-3)" data-field="home.track.heading">Enter your order number</h1>' +
         '<div class="pk-display" data-entry>' + (entry || '<span class="dim">— — —</span>') + '</div>' +
         '<div class="pk-keypad">' + ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'go'].map(function (k) {
           if (k === 'clear') return '<button class="pk-key pk-key--fn" data-act="key" data-k="clear">' + icon('x', { sw: 2.4 }) + '</button>';
           if (k === 'go') return '<button class="pk-key pk-key--go" data-act="key" data-k="go">' + icon('arrow-right', { sw: 2.6 }) + '</button>';
           return '<button class="pk-key" data-act="key" data-k="' + k + '">' + k + '</button>';
         }).join('') + '</div>' +
-        '<div class="pk-recent"><span class="t-sm dim">Recent:</span>' + D.recent.map(function (n) { return '<button class="chip" data-act="track" data-no="' + n + '">#' + n + '</button>'; }).join('') + '</div>' +
-        '<p class="pk-note">' + icon('info') + ' ' + D.note + '</p>' +
+        '<div class="pk-recent"><span class="t-sm dim" data-field="home.recent.label">Recent:</span>' + D.recent.map(function (n) { return '<button class="chip" data-act="track" data-no="' + n + '">#' + n + '</button>'; }).join('') + '</div>' +
+        '<p class="pk-note">' + icon('info') + ' <span data-field="home.note">' + D.note + '</span></p>' +
       '</section>' +
-      '<section class="pk-miniboard"><div class="pk-col"><div class="pk-col__h pk-col__h--prep">' + icon('flame') + ' Preparing</div>' +
+      '<section class="pk-miniboard"><div class="pk-col"><div class="pk-col__h pk-col__h--prep">' + icon('flame') + ' <span data-field="home.board.preparing.label">Preparing</span></div>' +
         D.board.preparing.map(function (o) { return '<div class="pk-chip">#' + o.no + '<small>' + o.etaMin + ' min</small></div>'; }).join('') + '</div>' +
-        '<div class="pk-col"><div class="pk-col__h pk-col__h--ready">' + icon('check', { sw: 2.6 }) + ' Ready</div>' +
+        '<div class="pk-col"><div class="pk-col__h pk-col__h--ready">' + icon('check', { sw: 2.6 }) + ' <span data-field="home.board.ready.label">Ready</span></div>' +
         D.board.ready.map(function (o) { return '<div class="pk-chip pk-chip--ready">#' + o.no + '<small>' + o.name + '</small></div>'; }).join('') + '</div></section>' +
     '</div></div>';
   }
@@ -1361,29 +1361,30 @@ window.PICKUP = {
   // ── TRACK ORDER ───────────────────────────────────────────────────────────
   function track(no) {
     var o = orderByNo(no);
-    if (!o) return bar(true) + '<div class="pk-empty"><div class="pk-empty__ic">' + icon('search') + '</div><h1 class="t-h1">Order #' + no + ' not found</h1>' +
-      '<p class="t-lg dim">Double-check the number on your receipt.</p><button class="btn btn--primary btn--lg" data-home>' + icon('arrow-left', { sw: 2 }) + ' Try again</button></div>';
+    if (!o) return bar(true) + '<div class="pk-empty"><div class="pk-empty__ic">' + icon('search') + '</div><h1 class="t-h1" data-field="track.notfound.heading">Order #' + no + ' not found</h1>' +
+      '<p class="t-lg dim" data-field="track.notfound.body">Double-check the number on your receipt.</p><button class="btn btn--primary btn--lg" data-home>' + icon('arrow-left', { sw: 2 }) + ' <span data-field="track.notfound.cta">Try again</span></button></div>';
 
     var steps = D.stages.map(function (st, i) {
       var done = i < o.stage, cur = i === o.stage;
+      var stageKey = ['track.stage.received', 'track.stage.kitchen', 'track.stage.pickup'][i] || ('track.stage.' + i);
       return '<div class="pk-step ' + (done ? 'is-done' : '') + ' ' + (cur ? 'is-cur' : '') + '"><div class="pk-step__dot">' + (done ? icon('check', { sw: 3 }) : (i + 1)) + '</div>' +
-        '<div class="pk-step__t">' + st + '</div></div>';
+        '<div class="pk-step__t" data-field="' + stageKey + '">' + st + '</div></div>';
     }).join('<div class="pk-stepline"></div>');
 
     var ready = o.stage >= 2;
     return bar(true) + '<div class="scroll"><div class="pk-track">' +
-      '<div class="pk-trackhead pk-trackhead--' + (ready ? 'ready' : 'prep') + '"><div><div class="eyebrow" style="color:inherit;opacity:.85">Order</div>' +
+      '<div class="pk-trackhead pk-trackhead--' + (ready ? 'ready' : 'prep') + '"><div><div class="eyebrow" style="color:inherit;opacity:.85" data-field="track.order.eyebrow">Order</div>' +
         '<div class="pk-no pk-word">#' + o.no + '</div><div class="t-h3">' + o.name + ' · ' + o.type + '</div></div>' +
-        '<div class="pk-trackhead__status">' + (ready ? icon('check', { sw: 2.4 }) + ' Ready!' : icon('clock') + ' ~' + o.etaMin + ' min') + '</div></div>' +
+        '<div class="pk-trackhead__status">' + (ready ? icon('check', { sw: 2.4 }) + ' <span data-field="track.status.ready">Ready!</span>' : icon('clock') + ' ~' + o.etaMin + ' min') + '</div></div>' +
       '<div class="pk-steps">' + steps + '</div>' +
       '<div class="split pk-track__mid">' +
-        '<div><div class="eyebrow" style="margin-bottom:var(--s-3)">In your bag</div><div class="pk-items">' +
+        '<div><div class="eyebrow" style="margin-bottom:var(--s-3)" data-field="track.bag.label">In your bag</div><div class="pk-items">' +
           o.items.map(function (it) { return '<div class="pk-item"><span class="pk-item__q">' + it.q + '×</span> ' + it.name + '</div>'; }).join('') +
-          '<div class="pk-item pk-item--total"><span>Total</span><b>' + money(o.total) + '</b></div></div></div>' +
+          '<div class="pk-item pk-item--total"><span data-field="track.total.label">Total</span><b>' + money(o.total) + '</b></div></div></div>' +
         '<div class="pk-curbcta"><div class="pk-curbcta__ic">' + icon('car') + '</div>' +
-          '<div class="t-h2">' + (ready ? 'Pull up — we\u2019ll bring it out' : 'Doing curbside?') + '</div>' +
-          '<p class="t-body dim pretty">Let us know your stall and car and we\u2019ll run it out the moment it\u2019s ready.</p>' +
-          '<button class="btn btn--primary btn--lg btn--block" data-act="startCurb" data-no="' + o.no + '">' + icon('car') + ' I\u2019m here — curbside</button></div>' +
+          '<div class="t-h2" data-field="' + (ready ? 'track.curb.ready.heading' : 'track.curb.waiting.heading') + '">' + (ready ? 'Pull up — we\u2019ll bring it out' : 'Doing curbside?') + '</div>' +
+          '<p class="t-body dim pretty" data-field="track.curb.body">Let us know your stall and car and we\u2019ll run it out the moment it\u2019s ready.</p>' +
+          '<button class="btn btn--primary btn--lg btn--block" data-act="startCurb" data-no="' + o.no + '">' + icon('car') + ' <span data-field="track.curb.cta">I\u2019m here — curbside</span></button></div>' +
       '</div>' +
     '</div></div>';
   }
@@ -1391,36 +1392,36 @@ window.PICKUP = {
   // ── CURBSIDE CHECK-IN ─────────────────────────────────────────────────────
   function curbside() {
     return bar(true) + '<div class="scroll"><div class="pk-curb">' +
-      '<div class="pk-head"><div><div class="eyebrow">Curbside check-in</div><h1 class="t-xl pk-word">Where are you parked?</h1></div>' +
+      '<div class="pk-head"><div><div class="eyebrow">Curbside check-in</div><h1 class="t-xl pk-word" data-field="curbside.heading">Where are you parked?</h1></div>' +
         (curb.order ? '<div class="badge badge--accent">Order #' + curb.order + '</div>' : '') + '</div>' +
-      '<div class="eyebrow" style="margin-bottom:var(--s-3)">Stall number</div>' +
+      '<div class="eyebrow" style="margin-bottom:var(--s-3)" data-field="curbside.stall.label">Stall number</div>' +
       '<div class="pk-stalls">' + D.curbside.stalls.map(function (s) {
         return '<button class="pk-stall ' + (curb.stall === s ? 'is-on' : '') + '" data-act="curbStall" data-s="' + s + '">' + s + '</button>';
       }).join('') + '</div>' +
-      '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)">Car color</div>' +
+      '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)" data-field="curbside.color.label">Car color</div>' +
       '<div class="chiprow" data-curb="color">' + D.curbside.colors.map(function (c) { return '<button class="chip ' + (curb.color === c ? 'is-on' : '') + '" data-act="curbColor" data-c="' + c + '">' + c + '</button>'; }).join('') + '</div>' +
-      '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)">Car type</div>' +
+      '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)" data-field="curbside.type.label">Car type</div>' +
       '<div class="chiprow" data-curb="type">' + D.curbside.types.map(function (t) { return '<button class="chip ' + (curb.type === t ? 'is-on' : '') + '" data-act="curbType" data-t="' + t + '">' + t + '</button>'; }).join('') + '</div>' +
     '</div></div>' +
     '<div class="actionbar pk-curbbar"><div class="t-body dim">' + (curb.stall ? 'Stall ' + curb.stall : 'Pick a stall') + (curb.color ? ' · ' + curb.color : '') + (curb.type ? ' ' + curb.type : '') + '</div>' +
-      '<div class="bar__spacer"></div><button class="btn btn--primary btn--lg" data-act="curbConfirm">' + icon('check', { sw: 2.4 }) + ' We\u2019re on our way</button></div>';
+      '<div class="bar__spacer"></div><button class="btn btn--primary btn--lg" data-act="curbConfirm" data-action="arrival.notify">' + icon('check', { sw: 2.4 }) + ' <span data-field="curbside.confirm.cta">We\u2019re on our way</span></button></div>';
   }
   function curbDone() {
     return '<div class="pk-done"><div class="pk-done__ic">' + icon('car', { sw: 2 }) + '</div>' +
-      '<div class="eyebrow" style="color:var(--accent-2)">Curbside confirmed</div>' +
-      '<h1 class="t-mega pk-word" style="margin:var(--s-2) 0">On our way!</h1>' +
-      '<p class="t-h3 dim" style="font-weight:400;max-width:36ch">We\u2019ll bring order #' + (curb.order || '') + ' to ' + (curb.color || '') + ' ' + (curb.type || 'car') + ' in stall ' + (curb.stall || '') + '. Hang tight!</p>' +
-      '<button class="btn btn--primary btn--lg" data-act="reset">' + icon('check', { sw: 2.4 }) + ' Done</button></div>';
+      '<div class="eyebrow" style="color:var(--accent-2)" data-field="curbside.done.eyebrow">Curbside confirmed</div>' +
+      '<h1 class="t-mega pk-word" style="margin:var(--s-2) 0" data-field="curbside.done.heading">On our way!</h1>' +
+      '<p class="t-h3 dim" style="font-weight:400;max-width:36ch" data-field="curbside.done.body">We\u2019ll bring order #' + (curb.order || '') + ' to ' + (curb.color || '') + ' ' + (curb.type || 'car') + ' in stall ' + (curb.stall || '') + '. Hang tight!</p>' +
+      '<button class="btn btn--primary btn--lg" data-act="reset">' + icon('check', { sw: 2.4 }) + ' <span data-field="curbside.done.cta">Done</span></button></div>';
   }
 
   // ── LIVE BOARD ────────────────────────────────────────────────────────────
   function board() {
     return bar(true) + '<div class="scroll"><div class="pk-boardpg">' +
-      '<div class="pk-head"><div><div class="eyebrow">Live · updates automatically</div><h1 class="t-xl pk-word">Pickup Board</h1></div></div>' +
+      '<div class="pk-head"><div><div class="eyebrow" data-field="board.eyebrow">Live · updates automatically</div><h1 class="t-xl pk-word" data-field="board.heading">Pickup Board</h1></div></div>' +
       '<div class="pk-board">' +
-        '<div class="pk-bcol"><div class="pk-bcol__h pk-col__h--prep">' + icon('flame') + ' Preparing</div>' +
+        '<div class="pk-bcol"><div class="pk-bcol__h pk-col__h--prep">' + icon('flame') + ' <span data-field="board.preparing.label">Preparing</span></div>' +
           D.board.preparing.map(function (o) { return '<div class="pk-bchip"><span class="pk-bchip__no">#' + o.no + '</span><span class="grow">' + o.name + '</span><span class="badge">' + o.etaMin + ' min</span></div>'; }).join('') + '</div>' +
-        '<div class="pk-bcol"><div class="pk-bcol__h pk-col__h--ready">' + icon('check', { sw: 2.6 }) + ' Ready for pickup</div>' +
+        '<div class="pk-bcol"><div class="pk-bcol__h pk-col__h--ready">' + icon('check', { sw: 2.6 }) + ' <span data-field="board.ready.label">Ready for pickup</span></div>' +
           D.board.ready.map(function (o) { return '<div class="pk-bchip pk-bchip--ready"><span class="pk-bchip__no">#' + o.no + '</span><span class="grow">' + o.name + '</span><span class="badge badge--good"><span class="dot"></span>Ready</span></div>'; }).join('') + '</div>' +
       '</div>' +
     '</div></div>';
@@ -1455,6 +1456,61 @@ window.PICKUP = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- brand (bar — every screen) -->
+  <span data-field="brand.initials">S</span>
+  <span data-field="brand.name">STACK</span>
+  <span data-field="brand.tagline">Pickup &amp; Curbside</span>
+  <!-- attract screen -->
+  <div data-img="attract.hero"></div>
+  <span data-field="attract.eyebrow">STACK · Pickup &amp; Curbside</span>
+  <span data-field="attract.headline">Pick up<br>your order</span>
+  <span data-field="attract.cta">Touch to track or check in for curbside</span>
+  <!-- home screen -->
+  <span data-field="home.track.eyebrow">Track your order</span>
+  <span data-field="home.track.heading">Enter your order number</span>
+  <span data-field="home.recent.label">Recent:</span>
+  <span data-field="home.note">Orders auto-expire after 4 hours.</span>
+  <span data-field="home.board.preparing.label">Preparing</span>
+  <span data-field="home.board.ready.label">Ready</span>
+  <!-- track screen — not found -->
+  <span data-field="track.notfound.heading">Order not found</span>
+  <span data-field="track.notfound.body">Double-check the number on your receipt.</span>
+  <span data-field="track.notfound.cta">Try again</span>
+  <!-- track screen — stage steps -->
+  <span data-field="track.stage.received">Order received</span>
+  <span data-field="track.stage.kitchen">In the kitchen</span>
+  <span data-field="track.stage.pickup">Ready for pickup</span>
+  <!-- track screen — order details -->
+  <span data-field="track.order.eyebrow">Order</span>
+  <span data-field="track.status.ready">Ready!</span>
+  <span data-field="track.bag.label">In your bag</span>
+  <span data-field="track.total.label">Total</span>
+  <!-- track screen — curbside prompt (ready state) -->
+  <span data-field="track.curb.ready.heading">Check in for curbside?</span>
+  <!-- track screen — curbside prompt (waiting state) -->
+  <span data-field="track.curb.waiting.heading">Want curbside?</span>
+  <span data-field="track.curb.body">Let us know your stall and we&#x2019;ll bring it out.</span>
+  <span data-field="track.curb.cta">I&#x2019;m here &#x2014; curbside</span>
+  <!-- curbside screen -->
+  <span data-field="curbside.eyebrow">Curbside check-in</span>
+  <span data-field="curbside.heading">Where are you parked?</span>
+  <span data-field="curbside.stall.label">Stall number</span>
+  <span data-field="curbside.color.label">Car color</span>
+  <span data-field="curbside.type.label">Car type</span>
+  <span data-field="curbside.confirm.cta">We&#x2019;re on our way</span>
+  <button data-action="arrival.notify">We&#x2019;re on our way</button>
+  <!-- curbside done screen -->
+  <span data-field="curbside.done.eyebrow">Curbside confirmed</span>
+  <span data-field="curbside.done.heading">On our way!</span>
+  <span data-field="curbside.done.body">We&#x2019;ll bring your order right out. Hang tight!</span>
+  <span data-field="curbside.done.cta">Done</span>
+  <!-- board screen -->
+  <span data-field="board.eyebrow">Live · updates automatically</span>
+  <span data-field="board.heading">Pickup Board</span>
+  <span data-field="board.preparing.label">Preparing</span>
+  <span data-field="board.ready.label">Ready for pickup</span>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
