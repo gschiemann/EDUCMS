@@ -2503,6 +2503,23 @@ export default function ScoreboardPage() {
           initial={displayData ?? data}
           embedded={(data as { scoreboardTemplate?: any }).scoreboardTemplate ?? null}
         />
+        {/* 2026-06-05 — celebration cues MUST play on a CUSTOM scoreboard
+            template too. Previously <CueOverlay> was only mounted in the
+            legacy scene path below, so a board using a custom template
+            played NOTHING on a fired cue (BOARD/ALL targets) — only the
+            ribbon reacted. Same overlay + pack resolution as the legacy
+            path; it renders position:absolute over the custom scene. */}
+        {activeCue && (
+          <CueOverlay
+            cue={activeCue}
+            sport={data?.sport}
+            pack={
+              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v1'
+                ? 'v1'
+                : 'v2') as 'v1' | 'v2'
+            }
+          />
+        )}
       </div>
     );
   }
