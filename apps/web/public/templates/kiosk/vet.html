@@ -1418,22 +1418,22 @@ window.VET = {
     return '<header class="bar vt-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
       '<div class="bar__brand"><div class="bar__logo">' + icon('paw', { sw: 1.7 }) + '</div>' +
-      '<div class="col"><div class="t-h3" style="line-height:1.05">' + D.name + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.1em">' + D.tagline + '</div></div></div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1.05" data-field="brand.name">' + D.name + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.1em" data-field="brand.tagline">' + D.tagline + '</div></div></div>' +
       '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
-      '<button class="chip" data-act="help">' + icon('phone') + ' Need a hand?</button>' +
+      '<button class="chip" data-act="help" data-action="help.call">' + icon('phone') + ' <span data-field="bar.help">Need a hand?</span></button>' +
       '<div class="bar__clock" data-clock></div>' +
       '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
     '</header>';
   }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media vt-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media vt-hero" data-img="hero.image"><div class="media__scrim"></div>' +
         '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-        '<div class="eyebrow" style="color:#fff;opacity:.9">' + D.name + '</div>' +
-        '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)">Welcome,<br>furry friends.</div>' +
-        '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to check your pet in</div>' +
+        '<div class="eyebrow" style="color:#fff;opacity:.9" data-field="brand.name">' + D.name + '</div>' +
+        '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)" data-field="attract.headline">Welcome,<br>furry friends.</div>' +
+        '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> <span data-field="attract.cta">Touch to check your pet in</span></div>' +
       '</div>';
   }
 
@@ -1444,18 +1444,18 @@ window.VET = {
       '<section class="vt-dash">' +
         '<button class="vt-hero-tile" data-go="checkin">' +
           '<span class="vt-paws" aria-hidden="true">' + icon('paw') + icon('paw') + icon('paw') + '</span>' +
-          '<div class="vt-hero-tile__b"><div class="eyebrow" style="color:rgba(255,255,255,.9)">Have an appointment?</div>' +
-            '<h1 class="t-mega" style="color:#fff;line-height:.95;margin:var(--s-2) 0">Check in<br>your pet</h1>' +
+          '<div class="vt-hero-tile__b"><div class="eyebrow" style="color:rgba(255,255,255,.9)" data-field="home.checkin.eyebrow">Have an appointment?</div>' +
+            '<h1 class="t-mega" style="color:#fff;line-height:.95;margin:var(--s-2) 0" data-field="home.checkin.headline">Check in<br>your pet</h1>' +
             '<p class="t-h3" style="color:rgba(255,255,255,.92);font-weight:500;max-width:24ch">Takes about a minute — we\u2019ll let the care team know you\u2019ve arrived.</p>' +
-            '<span class="btn btn--lg vt-hero-tile__cta">' + icon('arrow-right', { sw: 2.4 }) + ' Start check-in</span></div>' +
+            '<span class="btn btn--lg vt-hero-tile__cta" data-field="home.checkin.cta">' + icon('arrow-right', { sw: 2.4 }) + ' Start check-in</span></div>' +
         '</button>' +
-        '<div class="vt-waitcard"><div class="row between"><div class="eyebrow" style="color:var(--accent)">In the waiting room</div>' +
-          '<span class="badge badge--good"><span class="dot"></span>On time</span></div>' +
+        '<div class="vt-waitcard"><div class="row between"><div class="eyebrow" style="color:var(--accent)" data-field="home.wait.title">In the waiting room</div>' +
+          '<span class="badge badge--good"><span class="dot"></span><span data-field="wait.status.label">On time</span></span></div>' +
           '<div class="vt-waitlist">' + D.waitboard.slice(0, 4).map(function (w) {
             return '<div class="vt-wait vt-wait--' + w.state + '">' + petAvatar(w.species) +
               '<span class="grow"><span class="t-body" style="font-weight:700">' + w.pet + '</span><span class="t-sm dim"> · ' + w.status + '</span></span></div>';
           }).join('') + '</div>' +
-          '<button class="chip" data-go="wait" style="margin-top:var(--s-3)">' + icon('clock') + ' Full wait board</button></div>' +
+          '<button class="chip" data-go="wait" style="margin-top:var(--s-3)">' + icon('clock') + ' <span data-field="home.wait.cta">Full wait board</span></button></div>' +
       '</section>' +
       '<section class="vt-tiles">' +
         tile('heart', 'Our Services', D.services.length + ' kinds of care', 'services') +
@@ -1463,7 +1463,7 @@ window.VET = {
         tile('star', 'Meet the Team', D.providers.length + ' vets & techs', 'providers') +
         tile('pin', 'Find your way', D.departments.length + ' areas', 'departments') +
       '</section>' +
-      '<div class="vt-comfort">' + icon('heart') + ' ' + D.comfort + '</div>' +
+      '<div class="vt-comfort" data-field="home.comfort">' + icon('heart') + ' ' + D.comfort + '</div>' +
     '</div></div>';
   }
   function refillReadyCount() { return D.refills.length; }
@@ -1481,8 +1481,8 @@ window.VET = {
   }
   function checkinScreen() {
     return bar(true) + '<div class="scroll"><div class="vt-checkin">' + steps(1) +
-      '<div class="vt-head"><div><div class="eyebrow">Step 1</div><h1 class="t-xl">Find your pet</h1></div></div>' +
-      '<div class="vt-search"><span>' + icon('search') + '</span><span class="dim">Search by your last name or phone…</span></div>' +
+      '<div class="vt-head"><div><div class="eyebrow">Step 1</div><h1 class="t-xl" data-field="checkin.step1.title">Find your pet</h1></div></div>' +
+      '<div class="vt-search"><span>' + icon('search') + '</span><span class="dim" data-field="checkin.search.hint">Search by your last name or phone…</span></div>' +
       '<div class="t-body dim" style="margin:var(--s-4) 0 var(--s-3)">Today\u2019s appointments — tap your pet:</div>' +
       '<div class="vt-petgrid">' + D.appointments.map(function (a) {
         return '<button class="vt-petcard" data-act="pickPet" data-id="' + a.id + '">' + petAvatar(a.species, true) +
@@ -1492,7 +1492,7 @@ window.VET = {
           '<div class="t-sm dim">with ' + a.owner + '</div></div>' +
           '<span class="vt-petcard__go">' + icon('arrow-right', { sw: 2 }) + '</span></button>';
       }).join('') + '</div>' +
-      '<p class="vt-privacy" style="margin-top:var(--s-5)">' + icon('shield') + ' ' + D.privacy + '</p>' +
+      '<p class="vt-privacy" style="margin-top:var(--s-5)">' + icon('shield') + ' <span data-field="brand.privacy">' + D.privacy + '</span></p>' +
     '</div></div>';
   }
 
@@ -1519,7 +1519,7 @@ window.VET = {
   function symptomScreen() {
     var a = ci.appt;
     return bar(true) + '<div class="scroll"><div class="vt-checkin">' + steps(3) +
-      '<div class="vt-head"><div><div class="eyebrow">Step 3</div><h1 class="t-xl">Anything you\u2019ve noticed?</h1></div>' +
+      '<div class="vt-head"><div><div class="eyebrow">Step 3</div><h1 class="t-xl" data-field="checkin.step3.title">Anything you\u2019ve noticed?</h1></div>' +
         '<div class="t-body dim">Tap all that apply — it helps the vet prepare.</div></div>' +
       '<div class="vt-symptoms">' + D.symptoms.map(function (s) {
         return '<button class="vt-symptom ' + (ci.symptoms.indexOf(s) > -1 ? 'is-on' : '') + '" data-act="toggleSymptom" data-s="' + s + '"><span class="vt-symptom__mark">' + icon('check', { sw: 3 }) + '</span>' + s + '</button>';
@@ -1527,7 +1527,7 @@ window.VET = {
       '<div class="vt-note"><span>' + icon('info') + '</span><span class="dim">A team member will go over the details with you in the exam room.</span></div>' +
     '</div></div>' +
     '<div class="actionbar vt-bar2"><button class="btn btn--lg" data-back>Back</button><div class="bar__spacer"></div>' +
-      '<button class="btn btn--primary btn--lg" data-act="finish">' + icon('check', { sw: 2.4 }) + ' Complete check-in</button></div>';
+      '<button class="btn btn--primary btn--lg" data-act="finish" data-action="checkin.confirm">' + icon('check', { sw: 2.4 }) + ' Complete check-in</button></div>';
   }
 
   // ── DONE: queue ticket ────────────────────────────────────────────────────
@@ -1548,8 +1548,8 @@ window.VET = {
   // ── WAIT BOARD ────────────────────────────────────────────────────────────
   function wait() {
     return bar(true) + '<div class="scroll"><div class="vt-list">' +
-      '<div class="vt-head"><div><div class="eyebrow">Live · updates automatically</div><h1 class="t-xl">Waiting Room</h1></div>' +
-        '<span class="badge badge--good" style="font-size:var(--t-sm)"><span class="dot"></span>' + D.waitNote + '</span></div>' +
+      '<div class="vt-head"><div><div class="eyebrow">Live · updates automatically</div><h1 class="t-xl" data-field="wait.title">Waiting Room</h1></div>' +
+        '<span class="badge badge--good" style="font-size:var(--t-sm)"><span class="dot"></span><span data-field="wait.note">' + D.waitNote + '</span></span></div>' +
       '<div class="vt-board">' + D.waitboard.map(function (w) {
         return '<div class="vt-boardrow vt-wait--' + w.state + '">' + petAvatar(w.species, true) +
           '<div class="grow"><div class="t-h3">' + w.pet + '</div><div class="t-body dim">' + w.status + '</div></div>' +
@@ -1560,12 +1560,12 @@ window.VET = {
   // ── SERVICES ──────────────────────────────────────────────────────────────
   function services() {
     return bar(true) + '<div class="scroll"><div class="vt-list">' +
-      '<div class="vt-head"><div><div class="eyebrow">How we care</div><h1 class="t-xl">Our Services</h1></div></div>' +
+      '<div class="vt-head"><div><div class="eyebrow" data-field="services.eyebrow">How we care</div><h1 class="t-xl" data-field="services.title">Our Services</h1></div></div>' +
       '<div class="vt-services">' + D.services.map(function (s) {
         var go = s.id === 'pharm' ? ' data-go="refills"' : ' data-act="help"';
         return '<button class="card vt-service"' + go + '><span class="vt-service__ic">' + icon(s.icon) + '</span>' +
-          '<div class="grow" style="text-align:left"><div class="t-h2">' + s.t + '</div><p class="t-body dim pretty">' + s.d + '</p></div>' +
-          '<span class="vt-service__price">' + s.price + '</span></button>';
+          '<div class="grow" style="text-align:left"><div class="t-h2" data-field="service.' + s.id + '.name">' + s.t + '</div><p class="t-body dim pretty" data-field="service.' + s.id + '.desc">' + s.d + '</p></div>' +
+          '<span class="vt-service__price" data-field="service.' + s.id + '.price">' + s.price + '</span></button>';
       }).join('') + '</div></div></div>';
   }
 
@@ -1574,19 +1574,19 @@ window.VET = {
     var lines = D.refills.map(function (r) {
       var inCart = refillCart.indexOf(r.id) > -1;
       return '<div class="vt-refill"><div class="vt-refill__ic">' + icon(r.kind.indexOf('diet') > -1 || r.kind.indexOf('Food') > -1 ? 'bone' : 'syringe') + '</div>' +
-        '<div class="grow"><div class="t-h3">' + r.item + '</div><div class="t-sm dim">For ' + r.pet + ' · ' + r.kind + '</div>' +
-        '<div class="badge badge--good" style="margin-top:var(--s-1)"><span class="dot"></span>' + r.ready + '</div></div>' +
+        '<div class="grow"><div class="t-h3" data-field="refill.' + r.id + '.item">' + r.item + '</div><div class="t-sm dim">For ' + r.pet + ' · <span data-field="refill.' + r.id + '.kind">' + r.kind + '</span></div>' +
+        '<div class="badge badge--good" style="margin-top:var(--s-1)"><span class="dot"></span><span data-field="refill.' + r.id + '.ready">' + r.ready + '</span></div></div>' +
         '<div class="vt-refill__r"><div class="vt-refill__p">' + money(r.priceCents) + '</div>' +
         '<button class="btn ' + (inCart ? 'vt-added' : 'btn--primary') + '" data-act="refillAdd" data-id="' + r.id + '">' + (inCart ? icon('check', { sw: 2.4 }) + ' Added' : icon('plus', { sw: 2.4 }) + ' Refill') + '</button></div></div>';
     }).join('');
     var n = refillCart.length;
     return bar(true) + '<div class="scroll"><div class="vt-list">' +
-      '<div class="vt-head"><div><div class="eyebrow">Pharmacy &amp; Food</div><h1 class="t-xl">Refills for your pets</h1></div>' +
-        '<div class="t-body dim">Confirm and we\u2019ll have them at the pickup counter.</div></div>' +
+      '<div class="vt-head"><div><div class="eyebrow" data-field="refills.eyebrow">Pharmacy &amp; Food</div><h1 class="t-xl" data-field="refills.title">Refills for your pets</h1></div>' +
+        '<div class="t-body dim" data-field="refills.sub">Confirm and we\u2019ll have them at the pickup counter.</div></div>' +
       '<div class="vt-refills">' + lines + '</div></div></div>' +
       (n ? '<div class="actionbar vt-bar2"><div class="col" style="gap:0"><div class="t-sm dim">' + n + ' item' + (n > 1 ? 's' : '') + ' to pick up</div>' +
         '<div class="t-h3">' + money(refillTotal()) + '</div></div><div class="bar__spacer"></div>' +
-        '<button class="btn btn--primary btn--lg" data-act="refillDone">' + icon('check', { sw: 2.4 }) + ' Send to pharmacy</button></div>' : '');
+        '<button class="btn btn--primary btn--lg" data-act="refillDone" data-action="refill.request">' + icon('check', { sw: 2.4 }) + ' Send to pharmacy</button></div>' : '');
   }
   function refillTotal() { return D.refills.filter(function (r) { return refillCart.indexOf(r.id) > -1; }).reduce(function (s, r) { return s + r.priceCents; }, 0); }
   function refillDone() {
@@ -1601,11 +1601,11 @@ window.VET = {
   // ── PROVIDERS ─────────────────────────────────────────────────────────────
   function providers() {
     return bar(true) + '<div class="scroll"><div class="vt-list">' +
-      '<div class="vt-head"><div><div class="eyebrow">Care team</div><h1 class="t-xl">Meet the Team</h1></div></div>' +
+      '<div class="vt-head"><div><div class="eyebrow" data-field="providers.eyebrow">Care team</div><h1 class="t-xl" data-field="providers.title">Meet the Team</h1></div></div>' +
       '<div class="vt-providers">' + D.providers.map(function (p) {
-        return '<div class="card card--static vt-provider"><div class="media vt-provider__img"><span class="media__tag">' + icon('image') + '</span></div>' +
-          '<div class="vt-provider__b"><div class="t-h3">' + p.name + '</div><div class="t-body" style="color:var(--accent);font-weight:600">' + p.focus + '</div>' +
-          '<div class="row gap-2" style="margin-top:var(--s-2)"><span class="badge">' + icon('pin') + ' ' + p.room + '</span>' +
+        return '<div class="card card--static vt-provider"><div class="media vt-provider__img" data-img="provider.' + p.id + '.photo"><span class="media__tag">' + icon('image') + '</span></div>' +
+          '<div class="vt-provider__b"><div class="t-h3" data-field="provider.' + p.id + '.name">' + p.name + '</div><div class="t-body" style="color:var(--accent);font-weight:600" data-field="provider.' + p.id + '.focus">' + p.focus + '</div>' +
+          '<div class="row gap-2" style="margin-top:var(--s-2)"><span class="badge">' + icon('pin') + ' <span data-field="provider.' + p.id + '.room">' + p.room + '</span></span>' +
           (p.accepting ? '<span class="badge badge--good"><span class="dot"></span>Seeing pets today</span>' : '') + '</div></div></div>';
       }).join('') + '</div></div></div>';
   }
@@ -1613,17 +1613,17 @@ window.VET = {
   // ── DEPARTMENTS / WAYFINDING ──────────────────────────────────────────────
   function departments() {
     var pins = D.departments.map(function (d) {
-      return '<button class="vt-pin vt-pin--' + d.color + '" style="left:' + d.x + '%;top:' + d.y + '%" data-act="dept" data-id="' + d.id + '"><span class="vt-pin__code">' + d.code + '</span><span class="vt-pin__label">' + d.name + '</span></button>';
+      return '<button class="vt-pin vt-pin--' + d.color + '" style="left:' + d.x + '%;top:' + d.y + '%" data-act="dept" data-id="' + d.id + '"><span class="vt-pin__code">' + d.code + '</span><span class="vt-pin__label" data-field="dept.' + d.id + '.name">' + d.name + '</span></button>';
     }).join('');
     var list = D.departments.map(function (d) {
       return '<button class="vt-dept" data-act="dept" data-id="' + d.id + '"><span class="vt-dept__code vt-pin--' + d.color + '">' + d.code + '</span>' +
-        '<div class="grow" style="text-align:left"><div class="t-h3">' + d.name + '</div><div class="t-sm dim">' + d.dir + '</div></div>' + icon('arrow-right', { sw: 2 }) + '</button>';
+        '<div class="grow" style="text-align:left"><div class="t-h3" data-field="dept.' + d.id + '.name">' + d.name + '</div><div class="t-sm dim" data-field="dept.' + d.id + '.dir">' + d.dir + '</div></div>' + icon('arrow-right', { sw: 2 }) + '</button>';
     }).join('');
     return bar(true) + '<div class="scroll"><div class="vt-list">' +
-      '<div class="vt-head"><div><div class="eyebrow">Wayfinding</div><h1 class="t-xl">Find your way</h1></div>' +
-        '<div class="t-body dim">Tap an area for directions.</div></div>' +
+      '<div class="vt-head"><div><div class="eyebrow" data-field="departments.eyebrow">Wayfinding</div><h1 class="t-xl" data-field="departments.title">Find your way</h1></div>' +
+        '<div class="t-body dim" data-field="departments.sub">Tap an area for directions.</div></div>' +
       '<div class="split split--6040 vt-way">' +
-        '<div class="vt-mapframe media"><div class="here" style="left:' + D.map.here.x + '%;top:' + D.map.here.y + '%"><div class="here__label">' + D.map.here.label + '</div></div>' + pins + '<div class="media__tag">' + icon('grid') + ' MAPLE STREET — CLINIC MAP</div></div>' +
+        '<div class="vt-mapframe media" data-img="map.image"><div class="here" style="left:' + D.map.here.x + '%;top:' + D.map.here.y + '%"><div class="here__label" data-field="map.here.label">' + D.map.here.label + '</div></div>' + pins + '<div class="media__tag">' + icon('grid') + ' MAPLE STREET — CLINIC MAP</div></div>' +
         '<div class="vt-depts">' + list + '</div>' +
       '</div></div></div>';
   }
@@ -1672,6 +1672,113 @@ window.VET = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- brand -->
+  <span data-field="brand.name">Maple Street Veterinary</span>
+  <span data-field="brand.tagline">Compassionate care for every paw</span>
+  <span data-field="brand.privacy">Your contact and pet records are kept private and secure.</span>
+  <!-- hero / attract -->
+  <div data-img="hero.image"></div>
+  <span data-field="attract.headline">Welcome,&lt;br&gt;furry friends.</span>
+  <span data-field="attract.cta">Touch to check your pet in</span>
+  <!-- bar -->
+  <span data-field="bar.help">Need a hand?</span>
+  <!-- home screen -->
+  <span data-field="home.checkin.eyebrow">Have an appointment?</span>
+  <span data-field="home.checkin.headline">Check in your pet</span>
+  <span data-field="home.checkin.sub">Takes about a minute &#x2014; we&#x2019;ll let the care team know you&#x2019;ve arrived.</span>
+  <span data-field="home.checkin.cta">Start check-in</span>
+  <span data-field="home.wait.title">In the waiting room</span>
+  <span data-field="home.wait.cta">Full wait board</span>
+  <span data-field="home.comfort">Anxious pet? Tap &#x201C;Need a hand&#x201D; and a team member will bring you to a quiet room.</span>
+  <!-- wait board -->
+  <span data-field="wait.title">Waiting Room</span>
+  <span data-field="wait.status.label">On time</span>
+  <span data-field="wait.note">Running on time &middot; avg wait under 14 min</span>
+  <!-- services screen -->
+  <span data-field="services.eyebrow">How we care</span>
+  <span data-field="services.title">Our Services</span>
+  <span data-field="service.well.name">Wellness &amp; Vaccines</span>
+  <span data-field="service.well.desc">Annual exams, shots, parasite prevention.</span>
+  <span data-field="service.well.price">from $55</span>
+  <span data-field="service.dental.name">Dental Care</span>
+  <span data-field="service.dental.desc">Cleanings, X-rays, extractions.</span>
+  <span data-field="service.dental.price">from $320</span>
+  <span data-field="service.surg.name">Surgery</span>
+  <span data-field="service.surg.desc">Spay/neuter &amp; soft-tissue procedures.</span>
+  <span data-field="service.surg.price">consult</span>
+  <span data-field="service.groom.name">Grooming</span>
+  <span data-field="service.groom.desc">Baths, trims, nails &amp; de-shed.</span>
+  <span data-field="service.groom.price">from $45</span>
+  <span data-field="service.board.name">Boarding &amp; Daycare</span>
+  <span data-field="service.board.desc">Cozy suites and supervised play.</span>
+  <span data-field="service.board.price">from $38/night</span>
+  <span data-field="service.pharm.name">Pharmacy &amp; Food</span>
+  <span data-field="service.pharm.desc">Refill meds and prescription diets.</span>
+  <span data-field="service.pharm.price">refill</span>
+  <!-- providers screen -->
+  <span data-field="providers.eyebrow">Care team</span>
+  <span data-field="providers.title">Meet the Team</span>
+  <div data-img="provider.flores.photo"></div>
+  <span data-field="provider.flores.name">Dr. Sofia Flores, DVM</span>
+  <span data-field="provider.flores.focus">Dogs &amp; general medicine</span>
+  <span data-field="provider.flores.room">Exam 2</span>
+  <div data-img="provider.lin.photo"></div>
+  <span data-field="provider.lin.name">Dr. Henry Lin, DVM</span>
+  <span data-field="provider.lin.focus">Cats &amp; feline dentistry</span>
+  <span data-field="provider.lin.room">Exam 1</span>
+  <div data-img="provider.okafor.photo"></div>
+  <span data-field="provider.okafor.name">Dr. Amara Okafor, DVM</span>
+  <span data-field="provider.okafor.focus">Exotics, rabbits &amp; birds</span>
+  <span data-field="provider.okafor.room">Exam 1</span>
+  <div data-img="provider.tess.photo"></div>
+  <span data-field="provider.tess.name">Tessa Vaughn, RVT</span>
+  <span data-field="provider.tess.focus">Lead vet technician</span>
+  <span data-field="provider.tess.room">Treatment</span>
+  <div data-img="provider.marco.photo"></div>
+  <span data-field="provider.marco.name">Marco Reyes</span>
+  <span data-field="provider.marco.focus">Certified groomer</span>
+  <span data-field="provider.marco.room">Grooming</span>
+  <!-- refills screen -->
+  <span data-field="refills.eyebrow">Pharmacy &amp; Food</span>
+  <span data-field="refills.title">Refills for your pets</span>
+  <span data-field="refills.sub">Confirm and we&#x2019;ll have them at the pickup counter.</span>
+  <span data-field="refill.r1.item">Apoquel 16 mg</span>
+  <span data-field="refill.r1.kind">Rx &middot; allergy</span>
+  <span data-field="refill.r1.ready">Ready today 4 PM</span>
+  <span data-field="refill.r2.item">Heartgard Plus (6 mo)</span>
+  <span data-field="refill.r2.kind">Rx &middot; prevention</span>
+  <span data-field="refill.r2.ready">Ready today 4 PM</span>
+  <span data-field="refill.r3.item">Hill&#x2019;s c/d 8.5 lb bag</span>
+  <span data-field="refill.r3.kind">Prescription diet</span>
+  <span data-field="refill.r3.ready">In stock &#x2014; grab now</span>
+  <!-- departments / wayfinding screen -->
+  <span data-field="departments.eyebrow">Wayfinding</span>
+  <span data-field="departments.title">Find your way</span>
+  <span data-field="departments.sub">Tap an area for directions.</span>
+  <div data-img="map.image"></div>
+  <span data-field="map.here.label">You are here &middot; Front Desk</span>
+  <span data-field="dept.lobby.name">Reception &amp; Waiting</span>
+  <span data-field="dept.lobby.dir">You&#x2019;re here</span>
+  <span data-field="dept.exams.name">Exam Rooms 1&#x2013;3</span>
+  <span data-field="dept.exams.dir">Down the hall, left</span>
+  <span data-field="dept.treat.name">Treatment &amp; Lab</span>
+  <span data-field="dept.treat.dir">Past the exam rooms</span>
+  <span data-field="dept.groom.name">Grooming</span>
+  <span data-field="dept.groom.dir">Right at the mural</span>
+  <span data-field="dept.board.name">Boarding Suites</span>
+  <span data-field="dept.board.dir">Through the blue door</span>
+  <span data-field="dept.pharm.name">Pharmacy Pickup</span>
+  <span data-field="dept.pharm.dir">Counter by reception</span>
+  <!-- check-in flow -->
+  <span data-field="checkin.step1.title">Find your pet</span>
+  <span data-field="checkin.search.hint">Search by your last name or phone&#x2026;</span>
+  <span data-field="checkin.step3.title">Anything you&#x2019;ve noticed?</span>
+  <!-- actions -->
+  <button data-action="checkin.confirm">Complete check-in</button>
+  <button data-action="refill.request">Send to pharmacy</button>
+  <button data-action="help.call">Need a hand?</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
