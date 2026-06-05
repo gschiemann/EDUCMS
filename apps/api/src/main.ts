@@ -14,6 +14,7 @@ import { AppModule } from './app.module';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { PrismaService } from './prisma/prisma.service';
 import { ensureSystemPresets } from './templates/ensure-system-presets';
+import { backfillManagedAssetHashes } from './maintenance/backfill-asset-hashes';
 import { requireSecret } from './security/required-secret';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 
@@ -262,6 +263,15 @@ async function bootstrap() {
     // the container is ready-to-serve before the seed finishes.
     ensureSystemPresets(prisma).catch((e) =>
       logger.warn(`ensureSystemPresets threw: ${(e as Error).message}`),
+    );
+
+    // 2026-06-06 (audit #6) — backfill SHA-256 for managed assets missing a
+    // hash so the player can integrity-verify emergency / offline media that
+    // pre-dates upload-time hashing. Background, best-effort, capped per boot;
+    // never blocks boot and only writes Asset.fileHash (no emergency-path
+    // logic touched). Disable with EMERGENCY_HASH_BACKFILL=off.
+    backfillManagedAssetHashes(prisma, logger).catch((e) =>
+      logger.warn(`asset hash backfill threw: ${(e as Error).message}`),
     );
   } catch (e) {
     logger.warn(`Prisma warm-up failed (continuing anyway): ${(e as Error).message}`);
