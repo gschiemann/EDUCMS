@@ -731,6 +731,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     ],
   },
   {
+    id: 'preset-hs-caf-today',
+    name: '🍴 Cafeteria — Today + Tomorrow',
+    description: 'Live lunch-block countdown, rotating Special / Tomorrow / Harvest spotlight, per-dish dietary chips + photo thumbnails, safe ticker. Auto-fit text, portrait + landscape. 4K.',
+    category: 'CAFETERIA_MENU', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0b1220',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/caf-today.html' } }],
+  },
+  {
     id: 'preset-hs-caf-counter',
     name: '🍽️ Cafeteria — Counter Plate',
     description: 'Single-line cafeteria counter: today\'s plate hero photo card, 5-day rotation strip, allergen badges. Restaurant-menu polish. 4K landscape.',

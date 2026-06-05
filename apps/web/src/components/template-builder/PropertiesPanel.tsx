@@ -6707,10 +6707,15 @@ function ExternalHtmlTextEditor({
           // with the matching key, so editor key === render key === shim key.
           const imgSeen = new Set<string>();
           const imgOut: Array<{ key: string; label: string; aspect: string }> = [];
-          const imgNodes = doc.querySelectorAll('[data-img],[data-widget="image-slot"]');
+          // Flagship templates mark a photo slot with `data-imgslot="<key>"`
+          // and hold its URL in that element's own `data-img` attr (the
+          // template paints it). So data-imgslot wins as the KEY; for the older
+          // convention, data-slot / data-img IS the key. (V4 shim applies by
+          // the same precedence.)
+          const imgNodes = doc.querySelectorAll('[data-imgslot],[data-img],[data-widget="image-slot"]');
           imgNodes.forEach((el) => {
             const e = el as HTMLElement;
-            const key = e.getAttribute('data-img') || e.getAttribute('data-slot') || '';
+            const key = e.getAttribute('data-imgslot') || e.getAttribute('data-slot') || e.getAttribute('data-img') || '';
             if (!key || imgSeen.has(key)) return;
             imgSeen.add(key);
             // Friendly label: the slot's caption text (e.g. "Group portrait"),

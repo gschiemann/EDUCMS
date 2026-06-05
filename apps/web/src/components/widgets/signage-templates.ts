@@ -17,6 +17,7 @@ export interface SignageTemplate {
 export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   { id: "preset-hs-ath-gameday", name: "Athletics — Game Day Hub", group: "High School", url: "/templates/hs/ath-gameday.html" },
   { id: "preset-hs-ath-standings", name: "Athletics — Standings & AOTW", group: "High School", url: "/templates/hs/ath-standings.html" },
+  { id: "preset-hs-caf-today", name: "Cafeteria — Today + Tomorrow", group: "High School", url: "/templates/hs/caf-today.html" },
   { id: "preset-hs-caf-counter", name: "Cafeteria — Counter Plate", group: "High School", url: "/templates/hs/caf-counter.html" },
   { id: "preset-hs-caf-market", name: "Cafeteria — Food-Hall Market", group: "High School", url: "/templates/hs/caf-market.html" },
   { id: "preset-hs-class-nownext", name: "Classroom — Now / Next Agenda", group: "High School", url: "/templates/hs/class-nownext.html" },

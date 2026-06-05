@@ -1,0 +1,305 @@
+<!doctype html>
+<!-- HS · CAFETERIA TODAY — FLAGSHIP. Diner identity, rebuilt for 20-ft legibility,
+     portrait+landscape reflow, total CMS editability (theme tokens + photo slots),
+     live clock/date + live lunch-block countdown + auto-rotating spotlight. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Cafeteria — Today</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Bungee&family=Inter:wght@500;600;700;800&family=Monoton&family=Archivo:wght@600;700;800;900&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME TOKENS — every value here is CMS-editable (see [data-widget="theme"]).
+   Colors accept any hex; fonts any family; --scale multiplies ALL type at once.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --stage-w:3840px; --stage-h:2160px; --stage-scale:1;
+  /* palette */
+  --c-page:#f4efe2; --c-ink:#0d1b3d; --c-ink2:#4a587a; --c-accent:#e03b1c;
+  --c-accent2:#ffc42b; --c-board:#0d1b3d; --c-board-ink:#f4efe2; --c-mint:#2faa7e;
+  /* fonts */
+  --f-display:'Bungee'; --f-head:'Oswald'; --f-body:'Inter'; --f-neon:'Monoton';
+  /* master size scale + per-role sizes (px on the 3840 stage = readable at 20ft) */
+  --scale:1;
+  --t-title:calc(150px*var(--scale));  --t-date:calc(44px*var(--scale));
+  --t-dept:calc(44px*var(--scale));     --t-clock:calc(104px*var(--scale));
+  --t-clocklbl:calc(34px*var(--scale)); --t-block:calc(116px*var(--scale));
+  --t-blocksub:calc(34px*var(--scale)); --t-dish:calc(104px*var(--scale));
+  --t-desc:calc(42px*var(--scale));     --t-price:calc(100px*var(--scale));
+  --t-chip:calc(34px*var(--scale));     --t-spotlbl:calc(40px*var(--scale));
+  --t-spoth:calc(184px*var(--scale));   --t-metak:calc(30px*var(--scale));
+  --t-metav:calc(60px*var(--scale));    --t-sidenm:calc(62px*var(--scale));
+  --t-sidedsc:calc(36px*var(--scale));  --t-sidelbl:calc(30px*var(--scale));
+  --t-ticker:calc(44px*var(--scale));   --t-neon:calc(96px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#07090f;color:var(--c-ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--c-page);
+  display:flex;flex-direction:column;gap:36px;padding:64px 64px 0;box-shadow:0 80px 200px rgba(0,0,0,.55)}
+.stage::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 1800px 900px at 50% 0%,color-mix(in srgb,var(--c-accent) 8%,transparent),transparent 60%);pointer-events:none}
+
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.25}}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes neon{0%,100%{filter:drop-shadow(0 0 14px color-mix(in srgb,var(--c-accent) 60%,transparent))}50%{filter:drop-shadow(0 0 30px color-mix(in srgb,var(--c-accent) 95%,transparent))}}
+@keyframes spotIn{from{opacity:0;transform:translateY(26px) scale(.985)}to{opacity:1;transform:none}}
+
+/* ── HEADER ── */
+.head{flex:none;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:40px;z-index:4}
+.seal{width:248px;height:248px;display:grid;place-items:center;text-align:center;line-height:1;color:var(--c-page);background:var(--c-accent);
+  clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);box-shadow:0 20px 40px rgba(0,0,0,.4);
+  font-family:var(--f-display);font-size:48px}
+.seal .est{font-size:22px;letter-spacing:.18em;margin-top:10px;color:rgba(255,255,255,.75)}
+.titlewrap{min-width:0}
+.titlewrap .dept{font-family:var(--f-head);font-weight:700;font-size:var(--t-dept);letter-spacing:.2em;color:var(--c-accent);text-transform:uppercase;white-space:nowrap}
+.titlewrap .name{font-family:var(--f-display);font-size:var(--t-title);line-height:.88;letter-spacing:-.01em;color:var(--c-ink);text-shadow:9px 9px 0 var(--c-accent2)}
+.titlewrap .date{font-family:var(--f-head);font-weight:700;font-size:var(--t-date);letter-spacing:.12em;text-transform:uppercase;color:var(--c-ink2);margin-top:8px}
+.chips{display:flex;gap:28px}
+.chip{background:var(--c-ink);color:var(--c-page);padding:22px 34px;min-width:300px;text-align:center;border:7px solid var(--c-accent2);border-radius:6px}
+.chip.lit{background:var(--c-accent);border-color:var(--c-page)}
+.chip .k{font-family:var(--f-head);font-weight:700;font-size:var(--t-clocklbl);letter-spacing:.18em;text-transform:uppercase;color:var(--c-accent2);line-height:1;white-space:nowrap}
+.chip.lit .k{color:rgba(255,255,255,.92)}
+.chip .v{font-family:var(--f-display);font-size:var(--t-clock);line-height:1;color:#fff;margin-top:8px;letter-spacing:-.01em;white-space:nowrap}
+.chip.block .v{font-size:var(--t-block)}
+.chip .sub{font-family:var(--f-head);font-weight:700;font-size:var(--t-blocksub);letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.9);margin-top:10px;white-space:nowrap}
+.chip .cd{height:16px;background:rgba(255,255,255,.24);margin-top:16px;border-radius:99px;overflow:hidden}
+.chip .cd i{display:block;height:100%;background:var(--c-accent2);border-radius:99px;transition:width 1s linear}
+
+/* ── MAIN ── */
+.main{flex:1;min-height:0;display:grid;grid-template-columns:1.04fr 1fr;gap:44px;z-index:3}
+
+/* MENU BOARD */
+.board{background:var(--c-board);color:var(--c-board-ink);padding:44px 52px;border:12px solid var(--c-accent2);border-radius:8px;position:relative;display:flex;flex-direction:column;overflow:hidden}
+.board::before{content:'';position:absolute;inset:14px;border:3px solid color-mix(in srgb,var(--c-accent2) 28%,transparent);pointer-events:none;border-radius:4px}
+.board .bhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px}
+.board .neon{font-family:var(--f-neon),cursive;font-size:var(--t-neon);color:var(--c-accent);letter-spacing:.04em;line-height:1;animation:neon 2s ease-in-out infinite}
+.board .open{font-family:var(--f-head);font-weight:700;font-size:34px;letter-spacing:.18em;color:var(--c-mint);text-transform:uppercase;display:flex;align-items:center;gap:16px;white-space:nowrap}
+.board .open::before{content:'';width:22px;height:22px;background:var(--c-mint);border-radius:50%;animation:blink 1.4s steps(2) infinite;box-shadow:0 0 18px var(--c-mint)}
+.board .lineup{display:flex;flex-direction:column;justify-content:space-between;flex:1;gap:14px}
+.board .row{display:grid;grid-template-columns:auto 1fr auto;gap:32px;align-items:center;border-bottom:3px dashed color-mix(in srgb,var(--c-accent2) 26%,transparent);padding-bottom:18px}
+.board .row:last-child{border:0;padding-bottom:0}
+.row .thumb{width:150px;height:150px;border-radius:14px;flex:none;background:linear-gradient(135deg,#3a1a10,#7a3320);background-size:cover;background-position:center;border:5px solid color-mix(in srgb,var(--c-accent2) 40%,transparent);display:grid;place-items:center;font-size:92px;overflow:hidden}
+.row .thumb.has-img{font-size:0}
+.row .nm{font-family:var(--f-display);font-size:var(--t-dish);line-height:.92;color:#fff;text-transform:uppercase;letter-spacing:-.01em}
+.row .nm em{font-style:normal;color:var(--c-accent2)}
+.row .desc{font-family:var(--f-body);font-weight:600;font-size:var(--t-desc);color:rgba(255,255,255,.82);margin-top:10px;line-height:1.2}
+.row .pr{font-family:var(--f-display);font-size:var(--t-price);line-height:.9;color:var(--c-accent2);letter-spacing:-.01em;white-space:nowrap;text-align:right}
+.diet{display:flex;gap:12px;margin-top:14px;flex-wrap:wrap}
+.diet b{font-family:var(--f-head);font-weight:700;font-size:var(--t-chip);letter-spacing:.06em;height:58px;padding:0 18px;display:inline-flex;align-items:center;border-radius:9px;text-transform:uppercase}
+.diet b.v{background:color-mix(in srgb,var(--c-mint) 22%,transparent);color:var(--c-mint);box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--c-mint) 55%,transparent)}
+.diet b.vg{background:color-mix(in srgb,var(--c-mint) 34%,transparent);color:#8af0cd;box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--c-mint) 60%,transparent)}
+.diet b.gf{background:color-mix(in srgb,var(--c-accent2) 22%,transparent);color:var(--c-accent2);box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--c-accent2) 55%,transparent)}
+.diet b.nf{background:color-mix(in srgb,var(--c-accent) 24%,transparent);color:#ff9c87;box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--c-accent) 55%,transparent)}
+
+/* SPOTLIGHT */
+.spotlight{position:relative;overflow:hidden;border:12px solid var(--c-ink);border-radius:8px;background:var(--c-page)}
+.spot{position:absolute;inset:0;display:flex;flex-direction:column;opacity:0;pointer-events:none}
+.spot.on{opacity:1;pointer-events:auto;animation:spotIn .7s cubic-bezier(.16,1,.3,1) both}
+.spot::before{content:'';position:absolute;top:0;left:0;right:0;height:26px;z-index:2;background:var(--c-accent)}
+.spot::after{content:'';position:absolute;bottom:0;left:0;right:0;height:26px;z-index:2;background:var(--c-accent2)}
+.spot.t-harvest::before{background:var(--c-mint)}
+.spot .label{margin:46px 56px 0;font-family:var(--f-head);font-weight:700;font-size:var(--t-spotlbl);letter-spacing:.18em;text-transform:uppercase;color:var(--c-accent);display:flex;align-items:center;gap:16px}
+.spot.t-harvest .label{color:var(--c-mint)}
+.spot .label::before{content:'';width:54px;height:7px;background:currentColor}
+.spot h2{margin:14px 56px 0;font-family:var(--f-display);font-size:var(--t-spoth);line-height:.82;color:var(--c-ink);text-transform:uppercase;letter-spacing:-.02em}
+.spot h2 em{font-style:normal;color:var(--c-accent)}
+.spot.t-harvest h2 em{color:var(--c-mint)}
+.spot .photo{flex:1;margin:24px 56px 0;background:linear-gradient(135deg,#3a1a10,#7a3320);background-size:cover;background-position:center;border:10px solid var(--c-ink);border-radius:8px;position:relative;overflow:hidden;display:grid;place-items:center}
+.spot .photo::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent 0 90px,rgba(255,255,255,.05) 90px 92px)}
+.spot .photo .ic{font-size:440px;line-height:1;filter:drop-shadow(0 18px 36px rgba(0,0,0,.5))}
+.spot .photo.has-img .ic{display:none}.spot .photo.has-img::before{opacity:.3}
+.spot .meta{display:grid;grid-template-columns:repeat(3,1fr);margin:0 0 40px;padding:26px 56px 0;gap:26px}
+.spot .meta .k{font-family:var(--f-head);font-weight:700;font-size:var(--t-metak);letter-spacing:.18em;text-transform:uppercase;color:var(--c-ink2);line-height:1}
+.spot .meta .v{font-family:var(--f-display);font-size:var(--t-metav);color:var(--c-ink);line-height:1;margin-top:10px;letter-spacing:-.01em}
+.spot .meta .v.red{color:var(--c-accent)}
+.dots{position:absolute;bottom:30px;left:0;right:0;display:flex;gap:18px;justify-content:center;z-index:6}
+.dots i{width:28px;height:28px;border-radius:50%;background:color-mix(in srgb,var(--c-ink) 25%,transparent)}
+.dots i.on{background:var(--c-accent);box-shadow:0 0 0 7px color-mix(in srgb,var(--c-accent) 22%,transparent)}
+
+/* SIDES */
+.sides{flex:none;display:grid;grid-template-columns:repeat(4,1fr);gap:28px;z-index:3}
+.scell{background:#fff;border:6px solid var(--c-ink);border-radius:8px;padding:26px 30px;display:flex;align-items:center;gap:24px;min-height:230px}
+.scell .ic{width:150px;height:150px;border-radius:12px;flex:none;display:grid;place-items:center;font-size:108px;background:color-mix(in srgb,var(--c-accent2) 18%,transparent);background-size:cover;background-position:center}
+.scell .ic.has-img{font-size:0}
+.scell .info{flex:1;min-width:0}
+.scell .lbl{font-family:var(--f-head);font-weight:700;font-size:var(--t-sidelbl);letter-spacing:.18em;text-transform:uppercase;color:var(--c-accent);line-height:1}
+.scell .nm{font-family:var(--f-display);font-size:var(--t-sidenm);line-height:.95;color:var(--c-ink);margin-top:8px;text-transform:uppercase;letter-spacing:-.01em}
+.scell .dsc{font-family:var(--f-body);font-weight:600;font-size:var(--t-sidedsc);color:var(--c-ink2);margin-top:8px;line-height:1.2}
+
+/* TICKER */
+.ticker{flex:none;height:96px;margin:0 -64px;background:var(--c-accent2);color:var(--c-ink);display:flex;align-items:center;overflow:hidden;z-index:5;border-top:6px solid var(--c-accent)}
+.ticker .tag{background:var(--c-ink);color:var(--c-accent2);font-family:var(--f-display);font-size:38px;padding:0 40px;height:100%;display:flex;align-items:center;flex-shrink:0;letter-spacing:.14em}
+.ticker .msg{font-family:var(--f-head);font-weight:700;font-size:var(--t-ticker);padding-left:40px;white-space:nowrap;letter-spacing:.12em;text-transform:uppercase;animation:sc 70s linear infinite}
+
+/* ═══ PORTRAIT REFLOW (2160×3840) ═══ */
+.stage[data-orient="port"]{gap:44px}
+.stage[data-orient="port"] .head{grid-template-columns:auto 1fr;grid-template-areas:'seal title' 'chips chips';gap:36px 40px}
+.stage[data-orient="port"] .seal{grid-area:seal}
+.stage[data-orient="port"] .titlewrap{grid-area:title}
+.stage[data-orient="port"] .chips{grid-area:chips;justify-content:stretch}
+.stage[data-orient="port"] .chips .chip{flex:1}
+.stage[data-orient="port"] .main{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+.stage[data-orient="port"] .sides{grid-template-columns:repeat(2,1fr)}
+.stage[data-orient="port"]{--t-title:calc(170px*var(--scale));--t-dish:calc(116px*var(--scale))}
+</style><script>/*EDUCMS-SHIM-V4*/(function(){try{
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){if(el.children.length===0){el.textContent=text[k];}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=text[k];}else{el.insertBefore(document.createTextNode(text[k]),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+addEventListener('message',function(e){try{var d=e.data;if(d&&d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<!-- ═══ THEME (CMS-editable): edit any value; the script applies it live ═══ -->
+<div data-widget="theme" hidden>
+  <span data-field="theme.cPage">#f4efe2</span><span data-field="theme.cInk">#0d1b3d</span>
+  <span data-field="theme.cAccent">#e03b1c</span><span data-field="theme.cAccent2">#ffc42b</span>
+  <span data-field="theme.cBoard">#0d1b3d</span><span data-field="theme.cBoardInk">#f4efe2</span>
+  <span data-field="theme.cMint">#2faa7e</span>
+  <span data-field="theme.fDisplay">Bungee</span><span data-field="theme.fHead">Oswald</span>
+  <span data-field="theme.fBody">Inter</span><span data-field="theme.fNeon">Monoton</span>
+  <span data-field="theme.scale">1</span>
+</div>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+  <header class="head">
+    <div class="seal" data-widget="school"><div><span data-field="school.initials">WHS</span><br/><span class="est" data-field="school.est">EST. 1956</span></div></div>
+    <div class="titlewrap" data-widget="dept">
+      <div class="dept" data-field="dept.label">CAFETERIA · LUNCH</div>
+      <div class="name" data-field="dept.title">DINER</div>
+      <div class="date" data-field="dept.date" data-live="date">WEDNESDAY · JUNE 4</div>
+    </div>
+    <div class="chips">
+      <div class="chip" data-widget="clock"><div class="k" data-field="clock.label">RIGHT NOW</div><div class="v" data-field="clock.time" data-live="clock">11:42</div></div>
+      <div class="chip lit block" data-widget="lunchwave"><div class="k" data-field="lunchwave.label">NOW SERVING</div><div class="v" data-field="lunchwave.value" data-live="block">B</div><div class="sub" data-live="blocksub">ENDS 11:45 · 23 MIN</div><div class="cd"><i data-live="blockbar" style="width:60%"></i></div></div>
+    </div>
+  </header>
+
+  <div class="main">
+    <section class="board" data-widget="board">
+      <div class="bhead"><div class="neon" data-field="board.neon">TODAY</div><div class="open" data-field="board.open">OPEN · GRILL HOT</div></div>
+      <div class="lineup">
+        <div class="row" data-widget="board.0">
+          <div class="thumb" data-imgslot="board.0.img" data-field="board.0.ic">🍔</div>
+          <div><div class="nm"><span data-field="board.0.n1">Smash </span><em data-field="board.0.n2">burger</em></div>
+            <div class="desc" data-field="board.0.d">double-stack · american · pickles · house sauce</div>
+            <div class="diet" data-widget="board.0.diet"><b class="nf" data-field="board.0.g0">Nut-free</b></div></div>
+          <div class="pr" data-field="board.0.p">$4.50</div>
+        </div>
+        <div class="row" data-widget="board.1">
+          <div class="thumb" data-imgslot="board.1.img" data-field="board.1.ic">🌯</div>
+          <div><div class="nm"><span data-field="board.1.n1">Buffalo </span><em data-field="board.1.n2">wrap</em></div>
+            <div class="desc" data-field="board.1.d">crispy chicken · blue cheese · romaine · jalapeños</div>
+            <div class="diet" data-widget="board.1.diet"><b class="nf" data-field="board.1.g0">Nut-free</b></div></div>
+          <div class="pr" data-field="board.1.p">$4.25</div>
+        </div>
+        <div class="row" data-widget="board.2">
+          <div class="thumb" data-imgslot="board.2.img" data-field="board.2.ic">🥗</div>
+          <div><div class="nm"><span data-field="board.2.n1">Veggie </span><em data-field="board.2.n2">bowl</em></div>
+            <div class="desc" data-field="board.2.d">brown rice · roasted veg · chickpeas · tahini</div>
+            <div class="diet" data-widget="board.2.diet"><b class="v" data-field="board.2.g0">Veg</b><b class="vg" data-field="board.2.g1">Vegan</b><b class="gf" data-field="board.2.g2">GF</b></div></div>
+          <div class="pr" data-field="board.2.p">$4.00</div>
+        </div>
+        <div class="row" data-widget="board.3">
+          <div class="thumb" data-imgslot="board.3.img" data-field="board.3.ic">🍲</div>
+          <div><div class="nm"><span data-field="board.3.n1">Daily </span><em data-field="board.3.n2">soup</em></div>
+            <div class="desc" data-field="board.3.d">tomato basil · grilled cheese add-on $1.25</div>
+            <div class="diet" data-widget="board.3.diet"><b class="v" data-field="board.3.g0">Veg</b><b class="nf" data-field="board.3.g1">Nut-free</b></div></div>
+          <div class="pr" data-field="board.3.p">$2.75</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="spotlight" data-widget="spotlight">
+      <div class="spot t-special on" data-widget="spot.special">
+        <div class="label" data-field="spot.special.label">SPECIAL OF THE DAY</div>
+        <h2><span data-field="spot.special.t1">The </span><em data-field="spot.special.t2">smash.</em></h2>
+        <div class="photo" data-imgslot="spot.special.img"><div class="ic" data-field="spot.special.ic">🍔</div></div>
+        <div class="meta"><div><div class="k" data-field="spot.special.m0k">FULL TRAY</div><div class="v red" data-field="spot.special.m0v">$4.50</div></div>
+          <div><div class="k" data-field="spot.special.m1k">CALORIES</div><div class="v" data-field="spot.special.m1v">680</div></div>
+          <div><div class="k" data-field="spot.special.m2k">SERVED</div><div class="v" data-field="spot.special.m2v">11–1</div></div></div>
+      </div>
+      <div class="spot t-tomorrow" data-widget="spot.tomorrow">
+        <div class="label" data-field="spot.tomorrow.label">TOMORROW</div>
+        <h2><span data-field="spot.tomorrow.t1">Taco </span><em data-field="spot.tomorrow.t2">bar.</em></h2>
+        <div class="photo" data-imgslot="spot.tomorrow.img"><div class="ic" data-field="spot.tomorrow.ic">🌮</div></div>
+        <div class="meta"><div><div class="k" data-field="spot.tomorrow.m0k">FILLINGS</div><div class="v red" data-field="spot.tomorrow.m0v">6</div></div>
+          <div><div class="k" data-field="spot.tomorrow.m1k">STYLE</div><div class="v" data-field="spot.tomorrow.m1v">BYO</div></div>
+          <div><div class="k" data-field="spot.tomorrow.m2k">LINE</div><div class="v" data-field="spot.tomorrow.m2v">A+B</div></div></div>
+      </div>
+      <div class="spot t-harvest" data-widget="spot.harvest">
+        <div class="label" data-field="spot.harvest.label">HARVEST OF THE MONTH</div>
+        <h2><span data-field="spot.harvest.t1">Local </span><em data-field="spot.harvest.t2">apple.</em></h2>
+        <div class="photo" data-imgslot="spot.harvest.img"><div class="ic" data-field="spot.harvest.ic">🍎</div></div>
+        <div class="meta"><div><div class="k" data-field="spot.harvest.m0k">FROM</div><div class="v" data-field="spot.harvest.m0v" style="font-size:44px">BANNER FARM</div></div>
+          <div><div class="k" data-field="spot.harvest.m1k">MILES</div><div class="v red" data-field="spot.harvest.m1v">12</div></div>
+          <div><div class="k" data-field="spot.harvest.m2k">FREE AT</div><div class="v" data-field="spot.harvest.m2v" style="font-size:44px">SALAD BAR</div></div></div>
+      </div>
+      <div class="dots" data-live="dots"><i class="on"></i><i></i><i></i></div>
+    </section>
+  </div>
+
+  <section class="sides">
+    <div class="scell" data-widget="sides.0"><div class="ic" data-imgslot="sides.0.img" data-field="sides.0.ic">🍟</div><div class="info"><div class="lbl" data-field="sides.0.lbl">SIDE</div><div class="nm" data-field="sides.0.nm">Crinkle fries</div><div class="dsc" data-field="sides.0.dsc">salt · vinegar · mayo bar</div></div></div>
+    <div class="scell" data-widget="sides.1"><div class="ic" data-imgslot="sides.1.img" data-field="sides.1.ic">🥬</div><div class="info"><div class="lbl" data-field="sides.1.lbl">SALAD BAR</div><div class="nm" data-field="sides.1.nm">All-you-can</div><div class="dsc" data-field="sides.1.dsc">8 toppings · 4 dressings</div></div></div>
+    <div class="scell" data-widget="sides.2"><div class="ic" data-imgslot="sides.2.img" data-field="sides.2.ic">🥤</div><div class="info"><div class="lbl" data-field="sides.2.lbl">FOUNTAIN</div><div class="nm" data-field="sides.2.nm">Free refill</div><div class="dsc" data-field="sides.2.dsc">water · tea · seltzer</div></div></div>
+    <div class="scell" data-widget="sides.3"><div class="ic" data-imgslot="sides.3.img" data-field="sides.3.ic">💳</div><div class="info"><div class="lbl" data-field="sides.3.lbl">ACCOUNT</div><div class="nm" data-field="sides.3.nm">Tap to pay</div><div class="dsc" data-field="sides.3.dsc">add funds in the app</div></div></div>
+  </section>
+
+  <div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">TODAY</div><div class="msg"><span data-field="ticker.message">★ smash burger today $4.50 ★ vegan bowls every day at line B ★ tomorrow taco bar ★ harvest of the month: APPLE · local from Banner farm ★ </span><span>★ smash burger today $4.50 ★ vegan bowls every day at line B ★ tomorrow taco bar ★ harvest of the month: APPLE · local from Banner farm ★ </span></div></div>
+
+</div></div></div>
+<script>
+(function(){
+  var root=document.documentElement, stage=document.getElementById('stage');
+  /* ── orientation: auto from viewport aspect (or ?o=portrait|landscape) ── */
+  function orient(){
+    var o=new URLSearchParams(location.search).get('o');
+    var portrait = o? o==='portrait' : window.innerHeight>window.innerWidth;
+    stage.setAttribute('data-orient',portrait?'port':'land');
+    root.style.setProperty('--stage-w',portrait?'2160px':'3840px');
+    root.style.setProperty('--stage-h',portrait?'3840px':'2160px');
+    fit();
+  }
+  function fit(){var c=getComputedStyle(root);var w=parseFloat(c.getPropertyValue('--stage-w'));var h=parseFloat(c.getPropertyValue('--stage-h'));var k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+
+  /* ── THEME: read data-field theme values → CSS variables (CMS-editable) ── */
+  var THEME={cPage:'--c-page',cInk:'--c-ink',cAccent:'--c-accent',cAccent2:'--c-accent2',cBoard:'--c-board',cBoardInk:'--c-board-ink',cMint:'--c-mint',fDisplay:'--f-display',fHead:'--f-head',fBody:'--f-body',fNeon:'--f-neon',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k], k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();
+  /* re-apply if the CMS edits theme fields live */
+  new MutationObserver(applyTheme).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
+
+  /* ── PHOTO SLOTS: [data-imgslot] uses its data-img URL as background ── */
+  function applyImgs(){document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}else{el.classList.remove('has-img');el.style.backgroundImage='';}});}
+  applyImgs();
+
+  /* ── LIVE clock + date + lunch-block countdown ── */
+  var BLOCKS=[{label:'A',start:'10:50',end:'11:15'},{label:'B',start:'11:20',end:'11:45'},{label:'C',start:'11:50',end:'12:15'},{label:'D',start:'12:20',end:'12:45'}];
+  function toMin(s){var p=s.split(':');return (+p[0])*60+(+p[1]);}
+  function fmt(m){m=((m%1440)+1440)%1440;var h=Math.floor(m/60),x=m%60,ap=h<12?'AM':'PM',h12=h%12||12;return h12+':'+(x<10?'0':'')+x+' '+ap;}
+  function f24(d){return (d.getHours()%12||12)+':'+(d.getMinutes()<10?'0':'')+d.getMinutes();}
+  var DAYS=['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'],MON=['JAN','FEB','MAR','APR','MAY','JUNE','JULY','AUG','SEPT','OCT','NOV','DEC'];
+  function setLive(n,v){var el=document.querySelector('[data-live="'+n+'"]');if(el)el.textContent=v;}
+  function tick(){var now=new Date(),nm=now.getHours()*60+now.getMinutes();
+    setLive('clock',f24(now));setLive('date',DAYS[now.getDay()]+' · '+MON[now.getMonth()]+' '+now.getDate());
+    var cur=null,next=null;for(var i=0;i<BLOCKS.length;i++){var b=BLOCKS[i],s=toMin(b.start),e=toMin(b.end);if(nm>=s&&nm<e){cur=b;break;}if(nm<s&&!next)next=b;}
+    var chip=document.querySelector('[data-widget="lunchwave"]'),bar=document.querySelector('[data-live="blockbar"]');
+    if(cur){var s=toMin(cur.start),e=toMin(cur.end);setLive('block',cur.label);setLive('blocksub','ENDS '+fmt(e)+' · '+(e-nm)+' MIN');if(bar)bar.style.width=(100-(nm-s)/(e-s)*100)+'%';if(chip){chip.classList.add('lit');chip.querySelector('.k').textContent='NOW SERVING';}}
+    else if(next){setLive('block',next.label);setLive('blocksub','OPENS '+fmt(toMin(next.start)));if(bar)bar.style.width='0%';if(chip){chip.classList.remove('lit');chip.querySelector('.k').textContent='UP NEXT';}}
+    else{setLive('block','—');setLive('blocksub','SERVICE CLOSED');if(bar)bar.style.width='0%';if(chip){chip.classList.remove('lit');chip.querySelector('.k').textContent='LUNCH';}}}
+  tick();setInterval(tick,15000);
+
+  /* ── auto-rotating spotlight ── */
+  var spots=[].slice.call(document.querySelectorAll('.spot')),dots=[].slice.call(document.querySelectorAll('[data-live="dots"] i')),si=0;
+  if(spots.length>1)setInterval(function(){si=(si+1)%spots.length;spots.forEach(function(s,i){s.classList.toggle('on',i===si);});dots.forEach(function(d,i){d.classList.toggle('on',i===si);});},8000);
+})();
+</script>
+</body></html>
