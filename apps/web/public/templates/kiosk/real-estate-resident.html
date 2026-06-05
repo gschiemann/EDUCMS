@@ -1341,9 +1341,9 @@ window.RESIDENT = {
   function bar(showBack) {
     return '<header class="bar re-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
-      '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3" style="line-height:1">' + D.name + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.16em">' + D.tagline + '</div></div></div>' +
+      '<div class="bar__brand"><div class="bar__logo" data-field="brand.initials">' + D.brandInitials + '</div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1" data-field="brand.name">' + D.name + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.16em" data-field="brand.tagline">' + D.tagline + '</div></div></div>' +
       '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
       '<div class="bar__clock" data-clock></div>' +
       '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
@@ -1351,12 +1351,12 @@ window.RESIDENT = {
   }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media re-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media re-hero" data-img="hero.image"><div class="media__scrim"></div>' +
       '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-      '<div class="eyebrow" style="color:#fff;opacity:.85">' + D.name + ' · ' + D.tagline + '</div>' +
-      '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)">Welcome home.</div>' +
-      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to book amenities, packages &amp; more</div>' +
+      '<div class="eyebrow" style="color:#fff;opacity:.85"><span data-field="brand.name">' + D.name + '</span> · <span data-field="brand.tagline">' + D.tagline + '</span></div>' +
+      '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)" data-field="attract.headline">Welcome home.</div>' +
+      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> <span data-field="attract.cta">Touch to book amenities, packages &amp; more</span></div>' +
     '</div>';
   }
 
@@ -1364,9 +1364,9 @@ window.RESIDENT = {
   function home() {
     return bar(false) +
     '<div class="scroll"><div class="rc-home">' +
-      '<section class="rc-greet"><div><div class="eyebrow">' + D.date + '</div>' +
-        '<h1 class="t-xl" style="margin:var(--s-1) 0">Good day, ' + D.greetingName + '</h1>' +
-        '<p class="t-lg dim">What can the concierge help you with?</p></div>' +
+      '<section class="rc-greet"><div><div class="eyebrow" data-field="home.date">' + D.date + '</div>' +
+        '<h1 class="t-xl" style="margin:var(--s-1) 0">Good day, <span data-field="home.greetingName">' + D.greetingName + '</span></h1>' +
+        '<p class="t-lg dim" data-field="home.subtitle">What can the concierge help you with?</p></div>' +
         '<div class="rc-pkgalert" data-go="packages"><span class="rc-pkgalert__ic">' + icon('layers') + '<span class="rc-pkgalert__n">' + D.packages.length + '</span></span>' +
         '<div><div class="t-h3">' + D.packages.length + ' packages</div><div class="t-sm dim">ready to pick up</div></div></div>' +
       '</section>' +
@@ -1379,8 +1379,8 @@ window.RESIDENT = {
       '<section class="rc-notices"><div class="eyebrow" style="margin-bottom:var(--s-3)">Building Notices</div>' +
         '<div class="rc-noticegrid">' + D.notices.map(function (n) {
           return '<div class="card card--static rc-notice"><div class="rc-notice__ic">' + icon(n.icon) + '</div>' +
-            '<div><div class="badge badge--accent">' + n.tag + '</div><div class="t-h3" style="margin:var(--s-1) 0">' + n.title + '</div>' +
-            '<p class="t-body dim pretty">' + n.body + '</p></div></div>';
+            '<div><div class="badge badge--accent">' + n.tag + '</div><div class="t-h3" style="margin:var(--s-1) 0" data-field="notice.' + n.icon + '.title">' + n.title + '</div>' +
+            '<p class="t-body dim pretty" data-field="notice.' + n.icon + '.body">' + n.body + '</p></div></div>';
         }).join('') + '</div></section>' +
     '</div></div>';
   }
@@ -1396,11 +1396,11 @@ window.RESIDENT = {
       '<div class="rc-head"><div><div class="eyebrow">Reserve</div><h1 class="t-xl">Book an Amenity</h1></div>' +
         '<div class="t-body dim">Tap a space to see today\u2019s open times.</div></div>' +
       '<div class="rc-amgrid">' + D.amenities.map(function (a) {
-        return '<button class="card rc-amenity" data-go="book:' + a.id + '"><span class="media rc-amenity__img"><span class="media__tag">' + icon('image') + ' ' + a.name.toUpperCase() + '</span>' +
+        return '<button class="card rc-amenity" data-go="book:' + a.id + '"><span class="media rc-amenity__img" data-img="amenity.' + a.id + '.image"><span class="media__tag">' + icon('image') + ' ' + a.name.toUpperCase() + '</span>' +
           '<span class="rc-amenity__ic">' + icon(a.icon) + '</span></span>' +
-          '<span class="rc-amenity__b"><span class="row between"><span class="t-h2">' + a.name + '</span>' + (a.free ? '<span class="badge badge--good"><span class="dot"></span>Free</span>' : '<span class="badge badge--accent">Reservable</span>') + '</span>' +
-          '<span class="t-sm dim pretty">' + a.desc + '</span>' +
-          '<span class="row between" style="margin-top:var(--s-2)"><span class="badge">' + icon('star') + ' ' + a.capacity + '</span><span class="rc-amenity__slots">' + a.slots.length + ' open today</span></span></span></button>';
+          '<span class="rc-amenity__b"><span class="row between"><span class="t-h2" data-field="amenity.' + a.id + '.name">' + a.name + '</span>' + (a.free ? '<span class="badge badge--good"><span class="dot"></span>Free</span>' : '<span class="badge badge--accent">Reservable</span>') + '</span>' +
+          '<span class="t-sm dim pretty" data-field="amenity.' + a.id + '.desc">' + a.desc + '</span>' +
+          '<span class="row between" style="margin-top:var(--s-2)"><span class="badge">' + icon('star') + ' <span data-field="amenity.' + a.id + '.capacity">' + a.capacity + '</span></span><span class="rc-amenity__slots">' + a.slots.length + ' open today</span></span></span></button>';
       }).join('') + '</div></div></div>';
   }
 
@@ -1410,10 +1410,10 @@ window.RESIDENT = {
     if (!booking.amenity || booking.amenity !== id) { booking = { amenity: id, slot: a.slots[0] }; }
     return bar(true) + '<div class="scroll"><div class="rc-book">' +
       '<div class="split split--6040">' +
-        '<div class="media rc-book__img"><div class="media__scrim"></div><div class="rc-amenity__ic rc-amenity__ic--lg">' + icon(a.icon) + '</div>' +
+        '<div class="media rc-book__img" data-img="amenity.' + a.id + '.image"><div class="media__scrim"></div><div class="rc-amenity__ic rc-amenity__ic--lg">' + icon(a.icon) + '</div>' +
           '<div class="media__tag">' + icon('image') + ' ' + a.name.toUpperCase() + '</div></div>' +
-        '<div class="rc-book__b"><div class="eyebrow">Reserve</div><h1 class="t-xl" style="margin:var(--s-1) 0">' + a.name + '</h1>' +
-          '<p class="t-lg dim pretty">' + a.desc + '</p>' +
+        '<div class="rc-book__b"><div class="eyebrow">Reserve</div><h1 class="t-xl" style="margin:var(--s-1) 0" data-field="amenity.' + a.id + '.name">' + a.name + '</h1>' +
+          '<p class="t-lg dim pretty" data-field="amenity.' + a.id + '.desc">' + a.desc + '</p>' +
           '<div class="specs rc-bookspecs"><div class="spec"><div class="spec__k">Capacity</div><div class="spec__v" style="font-size:var(--t-lg)">' + a.capacity + '</div></div>' +
             '<div class="spec"><div class="spec__k">Cost</div><div class="spec__v" style="font-size:var(--t-lg)">' + (a.free ? 'Included' : 'Charged to unit') + '</div></div></div>' +
           '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)">Pick a time</div>' +
@@ -1425,7 +1425,7 @@ window.RESIDENT = {
     '</div></div>' +
     '<div class="actionbar re-actionbar"><div class="col" style="gap:0"><div class="t-sm dim">' + a.name + '</div>' +
       '<div class="t-h3">Today · <span data-slotlabel>' + booking.slot + '</span></div></div><div class="bar__spacer"></div>' +
-      '<button class="btn btn--primary btn--lg" data-act="confirmBook">' + icon('check', { sw: 2.4 }) + ' Confirm reservation</button></div>';
+      '<button class="btn btn--primary btn--lg rc-confirm" data-act="confirmBook" data-action="amenity.book">' + icon('check', { sw: 2.4 }) + ' Confirm reservation</button></div>';
   }
   function bookDone() {
     var a = amenityById(booking.amenity);
@@ -1443,7 +1443,7 @@ window.RESIDENT = {
         '<div class="t-body dim">We\u2019ll dispatch the building team and text you updates.</div></div>' +
       '<div class="eyebrow" style="margin-bottom:var(--s-3)">What\u2019s the issue?</div>' +
       '<div class="rc-cats">' + D.maintCategories.map(function (c) {
-        return '<button class="rc-cat ' + (maint.cat === c.id ? 'is-on' : '') + '" data-act="maintCat" data-id="' + c.id + '"><span class="rc-cat__ic">' + icon(c.icon) + '</span><span class="t-h3">' + c.t + '</span></button>';
+        return '<button class="rc-cat ' + (maint.cat === c.id ? 'is-on' : '') + '" data-act="maintCat" data-id="' + c.id + '"><span class="rc-cat__ic">' + icon(c.icon) + '</span><span class="t-h3" data-field="maint.cat.' + c.id + '">' + c.t + '</span></button>';
       }).join('') + '</div>' +
       '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)">Where?</div>' +
       '<div class="rc-input"><span>' + icon('pin') + '</span><span class="dim">Tap to enter a room or location (e.g. Kitchen sink)</span></div>' +
@@ -1452,8 +1452,8 @@ window.RESIDENT = {
         return '<button class="chip ' + (maint.urgency === u ? 'is-on' : '') + '" data-act="maintUrg" data-u="' + u + '">' + u + '</button>';
       }).join('') + '</div>' +
     '</div></div>' +
-    '<div class="actionbar re-actionbar"><div class="t-body dim">Front desk: ' + D.contact.phone + '</div><div class="bar__spacer"></div>' +
-      '<button class="btn btn--primary btn--lg" data-act="submitMaint">' + icon('check', { sw: 2.4 }) + ' Submit request</button></div>';
+    '<div class="actionbar re-actionbar"><div class="t-body dim">Front desk: <span data-field="contact.phone">' + D.contact.phone + '</span></div><div class="bar__spacer"></div>' +
+      '<button class="btn btn--primary btn--lg rc-submit" data-act="submitMaint" data-action="maintenance.submit">' + icon('check', { sw: 2.4 }) + ' Submit request</button></div>';
   }
   function maintDone() {
     var c = D.maintCategories.filter(function (x) { return x.id === maint.cat; })[0];
@@ -1470,9 +1470,9 @@ window.RESIDENT = {
     var lines = D.packages.map(function (p) {
       var picked = pickedPackages.indexOf(p.id) > -1;
       return '<div class="rc-pkg ' + (picked ? 'is-picked' : '') + '"><div class="rc-pkg__ic">' + icon('layers') + '</div>' +
-        '<div class="grow"><div class="row between"><div class="t-h3">' + p.from + '</div><span class="badge">' + p.carrier + '</span></div>' +
-        '<div class="t-sm dim">' + p.size + ' · Locker ' + p.locker + ' · ' + p.arrived + '</div></div>' +
-        '<button class="btn ' + (picked ? 'rc-opened' : 'btn--primary') + '" data-act="openLocker" data-id="' + p.id + '">' + (picked ? icon('check', { sw: 2.4 }) + ' Opened' : icon('shield', { sw: 2 }) + ' Open locker') + '</button></div>';
+        '<div class="grow"><div class="row between"><div class="t-h3" data-field="pkg.' + p.id + '.from">' + p.from + '</div><span class="badge" data-field="pkg.' + p.id + '.carrier">' + p.carrier + '</span></div>' +
+        '<div class="t-sm dim"><span data-field="pkg.' + p.id + '.size">' + p.size + '</span> · Locker <span data-field="pkg.' + p.id + '.locker">' + p.locker + '</span> · <span data-field="pkg.' + p.id + '.arrived">' + p.arrived + '</span></div></div>' +
+        '<button class="btn ' + (picked ? 'rc-opened' : 'btn--primary') + '" data-act="openLocker" data-action="package.notify" data-id="' + p.id + '">' + (picked ? icon('check', { sw: 2.4 }) + ' Opened' : icon('shield', { sw: 2 }) + ' Open locker') + '</button></div>';
     }).join('');
     return bar(true) + '<div class="scroll"><div class="rc-list">' +
       '<div class="rc-head"><div><div class="eyebrow">Mailroom</div><h1 class="t-xl">Your Packages</h1></div>' +
@@ -1488,9 +1488,9 @@ window.RESIDENT = {
       '<div class="rc-head"><div><div class="eyebrow">Community</div><h1 class="t-xl">This Week at The Meridian</h1></div></div>' +
       '<div class="rc-events">' + D.events.map(function (e) {
         return '<div class="card card--static rc-event"><div class="rc-event__ic">' + icon(e.icon) + '</div>' +
-          '<div class="grow"><div class="badge badge--accent">' + e.tag + '</div><div class="t-h2" style="margin:var(--s-1) 0">' + e.title + '</div>' +
-          '<div class="row gap-3 dim t-body"><span>' + icon('clock') + ' ' + e.when + '</span><span>' + icon('pin') + ' ' + e.where + '</span></div></div>' +
-          '<button class="btn btn--ghost" data-act="rsvp" data-t="' + e.title + '">' + icon('check', { sw: 2 }) + ' RSVP</button></div>';
+          '<div class="grow"><div class="badge badge--accent">' + e.tag + '</div><div class="t-h2" style="margin:var(--s-1) 0" data-field="event.' + e.icon + '.title">' + e.title + '</div>' +
+          '<div class="row gap-3 dim t-body"><span>' + icon('clock') + ' <span data-field="event.' + e.icon + '.when">' + e.when + '</span></span><span>' + icon('pin') + ' <span data-field="event.' + e.icon + '.where">' + e.where + '</span></span></div></div>' +
+          '<button class="btn btn--ghost" data-act="rsvp" data-action="event.rsvp" data-t="' + e.title + '">' + icon('check', { sw: 2 }) + ' RSVP</button></div>';
       }).join('') + '</div></div></div>';
   }
 
@@ -1500,7 +1500,7 @@ window.RESIDENT = {
       '<div class="rc-head"><div><div class="eyebrow">Resident Perks</div><h1 class="t-xl">Local offers for residents</h1></div></div>' +
       '<div class="rc-perks">' + D.perks.map(function (p) {
         return '<div class="card card--static rc-perk"><div class="rc-perk__ic">' + icon(p.icon) + '</div>' +
-          '<div class="t-h3">' + p.partner + '</div><p class="t-body dim">' + p.offer + '</p></div>';
+          '<div class="t-h3" data-field="perk.' + p.icon + '.partner">' + p.partner + '</div><p class="t-body dim" data-field="perk.' + p.icon + '.offer">' + p.offer + '</p></div>';
       }).join('') + '</div></div></div>';
   }
 
@@ -1523,6 +1523,102 @@ window.RESIDENT = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- brand -->
+  <span data-field="brand.initials">M</span>
+  <span data-field="brand.name">The Meridian</span>
+  <span data-field="brand.tagline">Resident Concierge</span>
+  <!-- attract -->
+  <div data-img="hero.image"></div>
+  <span data-field="attract.headline">Welcome home.</span>
+  <span data-field="attract.cta">Touch to book amenities, packages &amp; more</span>
+  <!-- home -->
+  <span data-field="home.date">Wednesday, June 4</span>
+  <span data-field="home.greetingName">Resident</span>
+  <span data-field="home.subtitle">What can the concierge help you with?</span>
+  <!-- notices (keyed by icon to match runtime) -->
+  <span data-field="notice.building.title">Window washing — north face</span>
+  <span data-field="notice.building.body">Thu 8–11 AM. Please keep blinds drawn on floors 12–18.</span>
+  <span data-field="notice.star.title">Sky Lounge reserved Friday PM</span>
+  <span data-field="notice.star.body">Private resident event 6–9 PM. Rooftop terrace stays open.</span>
+  <!-- amenities -->
+  <div data-img="amenity.conf.image"></div>
+  <span data-field="amenity.conf.name">Conference Room</span>
+  <span data-field="amenity.conf.desc">Seats 12 · display, whiteboard, coffee.</span>
+  <span data-field="amenity.conf.capacity">12 people</span>
+  <div data-img="amenity.sky.image"></div>
+  <span data-field="amenity.sky.name">Sky Lounge</span>
+  <span data-field="amenity.sky.desc">Rooftop lounge &amp; catering kitchen.</span>
+  <span data-field="amenity.sky.capacity">40 people</span>
+  <div data-img="amenity.fit.image"></div>
+  <span data-field="amenity.fit.name">Fitness Studio</span>
+  <span data-field="amenity.fit.desc">Private studio for 1:1 or small group.</span>
+  <span data-field="amenity.fit.capacity">6 people</span>
+  <div data-img="amenity.golf.image"></div>
+  <span data-field="amenity.golf.name">Golf Simulator</span>
+  <span data-field="amenity.golf.desc">Full swing sim, 30+ courses.</span>
+  <span data-field="amenity.golf.capacity">4 people</span>
+  <div data-img="amenity.guest.image"></div>
+  <span data-field="amenity.guest.name">Guest Suite</span>
+  <span data-field="amenity.guest.desc">Overnight suite for visiting guests.</span>
+  <span data-field="amenity.guest.capacity">Overnight</span>
+  <div data-img="amenity.work.image"></div>
+  <span data-field="amenity.work.name">Coworking Desk</span>
+  <span data-field="amenity.work.desc">Quiet focus desk with dual monitors.</span>
+  <span data-field="amenity.work.capacity">1 person</span>
+  <!-- maintenance categories -->
+  <span data-field="maint.cat.plumb">Plumbing</span>
+  <span data-field="maint.cat.hvac">Heating / Cooling</span>
+  <span data-field="maint.cat.elec">Electrical</span>
+  <span data-field="maint.cat.appliance">Appliance</span>
+  <span data-field="maint.cat.door">Door / Lock</span>
+  <span data-field="maint.cat.other">Something else</span>
+  <!-- contact -->
+  <span data-field="contact.phone">(206) 555-0142</span>
+  <!-- packages -->
+  <span data-field="pkg.p1.from">Amazon</span>
+  <span data-field="pkg.p1.carrier">UPS</span>
+  <span data-field="pkg.p1.size">Small</span>
+  <span data-field="pkg.p1.locker">A-14</span>
+  <span data-field="pkg.p1.arrived">Today 11:24 AM</span>
+  <span data-field="pkg.p2.from">Wayfair</span>
+  <span data-field="pkg.p2.carrier">FedEx</span>
+  <span data-field="pkg.p2.size">Large</span>
+  <span data-field="pkg.p2.locker">Oversize 3</span>
+  <span data-field="pkg.p2.arrived">Today 9:02 AM</span>
+  <span data-field="pkg.p3.from">Blue Apron</span>
+  <span data-field="pkg.p3.carrier">USPS</span>
+  <span data-field="pkg.p3.size">Cold</span>
+  <span data-field="pkg.p3.locker">Cold 2</span>
+  <span data-field="pkg.p3.arrived">Today 7:40 AM</span>
+  <!-- events (keyed by icon) -->
+  <span data-field="event.sun.title">Rooftop Sunset Social</span>
+  <span data-field="event.sun.when">Fri · 6:00 PM</span>
+  <span data-field="event.sun.where">Sky Lounge</span>
+  <span data-field="event.dumbbell.title">Saturday Morning Yoga</span>
+  <span data-field="event.dumbbell.when">Sat · 8:00 AM</span>
+  <span data-field="event.dumbbell.where">Fitness Studio</span>
+  <span data-field="event.coffee.title">Coffee with the Property Team</span>
+  <span data-field="event.coffee.when">Mon · 8:00 AM</span>
+  <span data-field="event.coffee.where">Lobby</span>
+  <span data-field="event.star.title">Yappy Hour — Dog Meetup</span>
+  <span data-field="event.star.when">Sun · 4:00 PM</span>
+  <span data-field="event.star.where">Courtyard</span>
+  <!-- perks (keyed by icon) -->
+  <span data-field="perk.coffee.partner">Brewline Coffee</span>
+  <span data-field="perk.coffee.offer">15% off — show resident app</span>
+  <span data-field="perk.dumbbell.partner">CityFit Gym</span>
+  <span data-field="perk.dumbbell.offer">Waived join fee for residents</span>
+  <span data-field="perk.shield.partner">Meridian Dry Cleaning</span>
+  <span data-field="perk.shield.offer">Pickup &amp; delivery to your door</span>
+  <span data-field="perk.car.partner">Park Valet</span>
+  <span data-field="perk.car.offer">$5 weekend guest parking</span>
+  <!-- actions -->
+  <button data-action="amenity.book">Confirm reservation</button>
+  <button data-action="maintenance.submit">Submit request</button>
+  <button data-action="package.notify">Open locker</button>
+  <button data-action="event.rsvp">RSVP</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
