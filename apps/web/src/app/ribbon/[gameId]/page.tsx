@@ -645,10 +645,13 @@ export default function RibbonPage() {
   const cueQueue = useRef<Cue[]>([]);
   const firstLoad = useRef(true);
   const playing = useRef(false);
-  // 2026-06-05 — coalesce a duplicate of the SAME cue (key+team) within 2.5s
-  // (a manual fire + the auto-celebrate goal-delta can both record one goal),
-  // so the celebration doesn't play twice / cut off on the second.
-  const lastCueSig = useRef<{ sig: string; t: number }>({ sig: '', t: 0 });
+  // 2026-06-05 (v2) — coalesce duplicate celebration cues from ONE scoring
+  // moment. The auto-celebrate always carries `team`; a manual player fire
+  // usually has `team:null`, so the v1 `key|team` sig never matched and both
+  // played. Match on KEY with a team-WILDCARD (empty matches any) within a
+  // window wide enough to cover the scorer-pick delay; a genuine
+  // home-then-away of the same key still plays twice.
+  const lastCueSig = useRef<{ key: string; team: string; t: number }>({ key: '', team: '', t: 0 });
   const cueTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pumpCues = () => {
@@ -745,11 +748,19 @@ export default function RibbonPage() {
           if (seenCues.current.has(c.id)) continue;
           seenCues.current.add(c.id);
           if (firstLoad.current || !cuePlaysHere(c.target)) continue;
-          // Drop a duplicate of the same cue fired within 2.5s (manual + auto).
-          const sig = `${c.key || ''}|${c.team || ''}`;
+          // Drop the auto+manual duplicate of one scoring moment (see the
+          // lastCueSig comment above): same KEY, team-wildcard, 6s window.
+          const ck = String(c.key || '');
+          const ctm = String(c.team || '');
           const nowMs = Date.now();
-          if (lastCueSig.current.sig === sig && nowMs - lastCueSig.current.t < 2500) continue;
-          lastCueSig.current = { sig, t: nowMs };
+          const lc = lastCueSig.current;
+          const isDup =
+            ck !== '' &&
+            lc.key === ck &&
+            (!lc.team || !ctm || lc.team === ctm) &&
+            nowMs - lc.t < 6000;
+          if (isDup) continue;
+          lastCueSig.current = { key: ck, team: ctm, t: nowMs };
           cueQueue.current.push(c);
         }
         firstLoad.current = false;

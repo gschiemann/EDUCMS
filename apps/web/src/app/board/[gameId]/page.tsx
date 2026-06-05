@@ -2237,12 +2237,16 @@ export default function ScoreboardPage() {
   const cueQueue = useRef<Cue[]>([]);
   const firstLoad = useRef(true);
   const playing = useRef(false);
-  // 2026-06-05 — coalesce a duplicate of the SAME cue (key+team) fired within
-  // 2.5s. A manual fire + the auto-celebrate goal-delta can both record a CUE
-  // event for one goal, which otherwise queues two celebrations that play
-  // back-to-back (the second visibly cuts off). Two genuine distinct goals
-  // never land <2.5s apart, so this only ever drops true duplicates.
-  const lastCueSig = useRef<{ sig: string; t: number }>({ sig: '', t: 0 });
+  // 2026-06-05 (v2) — coalesce duplicate celebration cues from ONE scoring
+  // moment. A single goal can emit TWO CUE events: the auto-celebrate (which
+  // ALWAYS carries `team`) and a manual player-attributed fire (whose `team`
+  // is usually null — the operator fired it from the cue/player picker). The
+  // v1 sig `key|team` therefore never matched (`goal|home` vs `goal|`), so
+  // both still played. Fix: match on the cue KEY with a team-WILDCARD (an
+  // empty team matches any) inside a window wide enough to cover the human
+  // delay of picking the scorer. A genuine home-THEN-away of the same key
+  // (both teams set AND different) still plays twice.
+  const lastCueSig = useRef<{ key: string; team: string; t: number }>({ key: '', team: '', t: 0 });
   const cueTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Audio ref for celebration sounds — holds the current Audio object
   // so we can pause + release it when the cue ends or on unmount.
@@ -2330,11 +2334,19 @@ export default function ScoreboardPage() {
           // board opened — record them as seen but don't replay.
           // Skip cues targeted only at the ribbon.
           if (firstLoad.current || !cuePlaysHere(c.target)) continue;
-          // Drop a duplicate of the same cue fired within 2.5s (manual + auto).
-          const sig = `${c.key || ''}|${c.team || ''}`;
+          // Drop the auto+manual duplicate of one scoring moment (see the
+          // lastCueSig comment above): same KEY, team-wildcard, 6s window.
+          const ck = String(c.key || '');
+          const ctm = String(c.team || '');
           const nowMs = Date.now();
-          if (lastCueSig.current.sig === sig && nowMs - lastCueSig.current.t < 2500) continue;
-          lastCueSig.current = { sig, t: nowMs };
+          const lc = lastCueSig.current;
+          const isDup =
+            ck !== '' &&
+            lc.key === ck &&
+            (!lc.team || !ctm || lc.team === ctm) &&
+            nowMs - lc.t < 6000;
+          if (isDup) continue;
+          lastCueSig.current = { key: ck, team: ctm, t: nowMs };
           cueQueue.current.push(c);
         }
         firstLoad.current = false;

@@ -52,6 +52,10 @@ export interface Cue {
   key?: string;
   label?: string;
   emoji?: string;
+  // Scoring team ('home' | 'away') when the cue is a team celebration —
+  // used by the auto+manual double-fire coalesce. Auto-celebrate always
+  // sets it; a manual player fire may leave it null.
+  team?: string | null;
   // Which surfaces play this cue — BOARD / RIBBON / ALL (default ALL).
   target?: string;
 }
@@ -258,6 +262,11 @@ export function useScorebugData(gameId: string): ScorebugData {
   const cueQueue = useRef<Cue[]>([]);
   const firstLoad = useRef(true);
   const playing = useRef(false);
+  // 2026-06-05 — same auto+manual double-fire coalesce the board/ribbon use:
+  // one goal can emit two celebration CUEs (auto carries `team`, the manual
+  // player fire usually has `team:null`). Match on KEY with a team-wildcard
+  // (empty matches any) within 6s so the overlay celebrates once.
+  const lastCueSig = useRef<{ key: string; team: string; t: number }>({ key: '', team: '', t: 0 });
   const cueTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pumpCues = () => {
@@ -301,8 +310,23 @@ export function useScorebugData(gameId: string): ScorebugData {
         for (const c of json.cues || []) {
           if (seenCues.current.has(c.id)) continue;
           seenCues.current.add(c.id);
-          // Skip cues targeted only at the ribbon.
-          if (!firstLoad.current && cuePlaysHere(c.target)) cueQueue.current.push(c);
+          // Skip cues targeted only at the ribbon, and the first poll's
+          // already-happened cues.
+          if (firstLoad.current || !cuePlaysHere(c.target)) continue;
+          // Coalesce the auto+manual double of one scoring moment: same KEY,
+          // team-wildcard (empty matches any), 6s window.
+          const ck = String(c.key || '');
+          const ctm = String(c.team || '');
+          const nowMs = Date.now();
+          const lc = lastCueSig.current;
+          const isDup =
+            ck !== '' &&
+            lc.key === ck &&
+            (!lc.team || !ctm || lc.team === ctm) &&
+            nowMs - lc.t < 6000;
+          if (isDup) continue;
+          lastCueSig.current = { key: ck, team: ctm, t: nowMs };
+          cueQueue.current.push(c);
         }
         firstLoad.current = false;
         pumpCues();
