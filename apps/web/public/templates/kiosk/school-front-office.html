@@ -1311,9 +1311,9 @@ window.FRONT = {
   function bar(showBack) {
     return '<header class="bar fo-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
-      '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3" style="line-height:1">' + D.school + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.14em">Front Office Check-In</div></div></div>' +
+      '<div class="bar__brand"><div class="bar__logo" data-field="brand.initials">' + D.brandInitials + '</div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1" data-field="brand.name">' + D.school + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.14em" data-field="bar.subtitle">Front Office Check-In</div></div></div>' +
       '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
       '<div class="bar__clock" data-clock></div>' +
       '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
@@ -1321,12 +1321,12 @@ window.FRONT = {
   }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media fo-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media fo-hero" data-img="hero.image"><div class="media__scrim"></div>' +
       '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-      '<div class="eyebrow" style="color:#fff;opacity:.85">' + D.school + ' · ' + D.mascot + '</div>' +
-      '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)">Welcome to<br>the front office</div>' +
-      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to sign in</div>' +
+      '<div class="eyebrow" style="color:#fff;opacity:.85"><span data-field="brand.name">' + D.school + '</span> · <span data-field="brand.tagline">' + D.mascot + '</span></div>' +
+      '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)" data-field="attract.headline">Welcome to<br>the front office</div>' +
+      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> <span data-field="attract.cta">Touch to sign in</span></div>' +
     '</div>';
   }
 
@@ -1334,16 +1334,16 @@ window.FRONT = {
   function home() {
     return bar(false) +
     '<div class="scroll"><div class="fo-home">' +
-      '<div class="fo-welcome"><div class="eyebrow">' + D.date + '</div><h1 class="t-mega" style="line-height:.95;margin:var(--s-2) 0">How can we<br>help you?</h1></div>' +
+      '<div class="fo-welcome"><div class="eyebrow" data-field="home.date">' + D.date + '</div><h1 class="t-mega" style="line-height:.95;margin:var(--s-2) 0" data-field="home.heading">How can we<br>help you?</h1></div>' +
       '<div class="fo-paths">' +
         '<button class="fo-path fo-path--visitor" data-go="visitor"><span class="fo-path__ic">' + icon('user') + '</span>' +
-          '<span class="t-h1">I\u2019m a Visitor</span><span class="t-body" style="opacity:.85">Sign in & print a badge</span>' +
+          '<span class="t-h1" data-field="home.visitor.label">I\u2019m a Visitor</span><span class="t-body" style="opacity:.85" data-field="home.visitor.sub">Sign in &amp; print a badge</span>' +
           '<span class="fo-path__go">' + icon('arrow-right', { sw: 2.4 }) + '</span></button>' +
         '<button class="fo-path fo-path--student" data-go="student"><span class="fo-path__ic">' + icon('star') + '</span>' +
-          '<span class="t-h1">Student Sign-In</span><span class="t-body" style="opacity:.85">Late arrival or early dismissal</span>' +
+          '<span class="t-h1" data-field="home.student.label">Student Sign-In</span><span class="t-body" style="opacity:.85" data-field="home.student.sub">Late arrival or early dismissal</span>' +
           '<span class="fo-path__go">' + icon('arrow-right', { sw: 2.4 }) + '</span></button>' +
       '</div>' +
-      '<p class="fo-policy">' + icon('shield') + ' ' + D.policy + '</p>' +
+      '<p class="fo-policy">' + icon('shield') + ' <span data-field="home.policy">' + D.policy + '</span></p>' +
     '</div></div>';
   }
 
@@ -1351,10 +1351,10 @@ window.FRONT = {
   function visitor() {
     return bar(true) + '<div class="scroll"><div class="fo-flow">' +
       '<div class="fo-steps"><span class="fo-step is-on">1 · Reason</span><span class="fo-step">2 · Who you\u2019re seeing</span><span class="fo-step">3 · Badge</span></div>' +
-      '<div class="fo-head"><div><div class="eyebrow">Visitor sign-in</div><h1 class="t-xl">What brings you in today?</h1></div></div>' +
+      '<div class="fo-head"><div><div class="eyebrow" data-field="visitor.step.eyebrow">Visitor sign-in</div><h1 class="t-xl" data-field="visitor.heading">What brings you in today?</h1></div></div>' +
       '<div class="fo-reasons">' + D.visitorReasons.map(function (r) {
         return '<button class="fo-reason" data-act="visReason" data-id="' + r.id + '"><span class="fo-reason__ic">' + icon(r.icon) + '</span>' +
-          '<span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h2">' + r.t + '</span><span class="t-sm dim">' + r.d + '</span></span>' +
+          '<span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h2" data-field="visitor.reason.' + r.id + '.label">' + r.t + '</span><span class="t-sm dim" data-field="visitor.reason.' + r.id + '.desc">' + r.d + '</span></span>' +
           '<span class="fo-reason__go">' + icon('arrow-right', { sw: 2 }) + '</span></button>';
       }).join('') + '</div>' +
     '</div></div>';
@@ -1363,24 +1363,24 @@ window.FRONT = {
     var r = D.visitorReasons.filter(function (x) { return x.id === vis.reason; })[0];
     return bar(true) + '<div class="scroll"><div class="fo-flow">' +
       '<div class="fo-steps"><span class="fo-step is-done">' + icon('check', { sw: 3 }) + ' Reason</span><span class="fo-step is-on">2 · Who you\u2019re seeing</span><span class="fo-step">3 · Badge</span></div>' +
-      '<div class="fo-head"><div><div class="eyebrow">' + (r ? r.t : 'Visit') + '</div><h1 class="t-xl">Who are you here to see?</h1></div></div>' +
-      '<div class="fo-name"><div class="fo-input">' + icon('user') + ' Tap to enter your name</div></div>' +
-      '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)">Host</div>' +
+      '<div class="fo-head"><div><div class="eyebrow">' + (r ? r.t : 'Visit') + '</div><h1 class="t-xl" data-field="visitor.host.heading">Who are you here to see?</h1></div></div>' +
+      '<div class="fo-name"><div class="fo-input">' + icon('user') + ' <span data-field="visitor.name.prompt">Tap to enter your name</span></div></div>' +
+      '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)" data-field="visitor.host.eyebrow">Host</div>' +
       '<div class="fo-hosts">' + D.hosts.map(function (h) {
         return '<button class="chip fo-hostchip ' + (vis.host === h ? 'is-on' : '') + '" data-act="visHost" data-h="' + h + '">' + h + '</button>';
       }).join('') + '</div>' +
     '</div></div>' +
     '<div class="actionbar fo-bar2"><button class="btn btn--lg" data-back>Back</button><div class="bar__spacer"></div>' +
-      '<button class="btn btn--primary btn--lg" data-act="visPrint">' + icon('shield') + ' Print my badge</button></div>';
+      '<button class="btn btn--primary btn--lg" data-act="visPrint" data-action="visitor.checkin">' + icon('shield') + ' <span data-field="visitor.print.btn">Print my badge</span></button></div>';
   }
   function visitorBadge() {
     var r = D.visitorReasons.filter(function (x) { return x.id === vis.reason; })[0];
     var escort = vis.reason === 'tour' || vis.reason === 'volunteer';
     return '<div class="fo-done">' +
-      '<div class="fo-printline"><span class="fo-printline__dot"></span>' + icon('check', { sw: 2.4 }) + ' Badge printing…</div>' +
+      '<div class="fo-printline"><span class="fo-printline__dot"></span>' + icon('check', { sw: 2.4 }) + ' <span data-field="visitor.badge.printing">Badge printing…</span></div>' +
       '<div class="fo-badge ' + (escort ? 'fo-badge--escort' : '') + '">' +
-        '<div class="fo-badge__top"><div class="fo-badge__logo">' + D.brandInitials + '</div><div><div class="eyebrow" style="color:var(--on-accent);opacity:.8">' + D.school + '</div>' +
-          '<div class="t-h3" style="color:var(--on-accent)">VISITOR</div></div>' +
+        '<div class="fo-badge__top"><div class="fo-badge__logo">' + D.brandInitials + '</div><div><div class="eyebrow" style="color:var(--on-accent);opacity:.8" data-field="brand.name">' + D.school + '</div>' +
+          '<div class="t-h3" style="color:var(--on-accent)" data-field="visitor.badge.type">VISITOR</div></div>' +
           '<div class="fo-badge__date">' + D.date.split(',')[0] + '<br>' + nowTime() + '</div></div>' +
         '<div class="fo-badge__body"><div class="fo-badge__photo">' + icon('user') + '</div>' +
           '<div><div class="t-h1">' + vis.name + '</div>' +
@@ -1388,7 +1388,7 @@ window.FRONT = {
           (escort ? '<div class="badge badge--warn" style="margin-top:var(--s-2)">' + icon('shield') + ' Escort required</div>' : '<div class="badge badge--good" style="margin-top:var(--s-2)"><span class="dot"></span>Cleared</div>') + '</div></div>' +
         '<div class="fo-badge__strip"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>' +
       '</div>' +
-      '<p class="t-h3 dim" style="font-weight:400;max-width:34ch;text-align:center">Please wear your badge while on campus. Return it to the front office when you leave.</p>' +
+      '<p class="t-h3 dim" style="font-weight:400;max-width:34ch;text-align:center" data-field="visitor.badge.instruction">Please wear your badge while on campus. Return it to the front office when you leave.</p>' +
       '<button class="btn btn--primary btn--lg" data-act="reset">' + icon('check', { sw: 2.4 }) + ' Done</button>' +
     '</div>';
   }
@@ -1396,19 +1396,19 @@ window.FRONT = {
   // ── STUDENT: action → student → reason → pass ─────────────────────────────
   function student() {
     return bar(true) + '<div class="scroll"><div class="fo-flow">' +
-      '<div class="fo-head"><div><div class="eyebrow">Student sign-in</div><h1 class="t-xl">What do you need to do?</h1></div></div>' +
+      '<div class="fo-head"><div><div class="eyebrow" data-field="student.step.eyebrow">Student sign-in</div><h1 class="t-xl" data-field="student.heading">What do you need to do?</h1></div></div>' +
       '<div class="fo-actions">' + D.studentActions.map(function (a) {
         return '<button class="fo-action" data-act="stuAction" data-id="' + a.id + '"><span class="fo-action__ic">' + icon(a.icon) + '</span>' +
-          '<span class="t-h2">' + a.t + '</span><span class="t-sm dim pretty">' + a.d + '</span></button>';
+          '<span class="t-h2" data-field="student.action.' + a.id + '.label">' + a.t + '</span><span class="t-sm dim pretty" data-field="student.action.' + a.id + '.desc">' + a.d + '</span></button>';
       }).join('') + '</div>' +
     '</div></div>';
   }
   function studentPick() {
     var a = D.studentActions.filter(function (x) { return x.id === stu.action; })[0];
     return bar(true) + '<div class="scroll"><div class="fo-flow">' +
-      '<div class="fo-head"><div><div class="eyebrow">' + (a ? a.t : '') + '</div><h1 class="t-xl">Find your name</h1></div></div>' +
-      '<div class="fo-input">' + icon('search') + ' Search by name or student ID…</div>' +
-      '<div class="t-body dim" style="margin:var(--s-4) 0 var(--s-3)">Tap your name:</div>' +
+      '<div class="fo-head"><div><div class="eyebrow">' + (a ? a.t : '') + '</div><h1 class="t-xl" data-field="student.pick.heading">Find your name</h1></div></div>' +
+      '<div class="fo-input">' + icon('search') + ' <span data-field="student.pick.search">Search by name or student ID…</span></div>' +
+      '<div class="t-body dim" style="margin:var(--s-4) 0 var(--s-3)" data-field="student.pick.prompt">Tap your name:</div>' +
       '<div class="fo-students">' + D.students.map(function (s) {
         return '<button class="fo-student" data-act="stuPick" data-id="' + s.id + '"><span class="fo-student__av">' + s.name.charAt(0) + '</span>' +
           '<span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h3">' + s.name + '</span><span class="t-sm dim">Grade ' + s.grade + ' · ' + s.room + '</span></span>' +
@@ -1420,25 +1420,25 @@ window.FRONT = {
     var s = stu.student;
     return bar(true) + '<div class="scroll"><div class="fo-flow">' +
       '<div class="fo-petbar"><span class="fo-student__av fo-student__av--lg">' + s.name.charAt(0) + '</span><div><div class="t-h1">' + s.name + '</div><div class="t-body dim">Grade ' + s.grade + ' · heading to ' + s.room + '</div></div></div>' +
-      '<div class="eyebrow" style="margin:var(--s-3) 0 var(--s-3)">Reason</div>' +
+      '<div class="eyebrow" style="margin:var(--s-3) 0 var(--s-3)" data-field="student.reason.eyebrow">Reason</div>' +
       '<div class="chiprow fo-lreasons">' + D.lateReasons.map(function (r) {
-        return '<button class="chip ' + (stu.reason === r ? 'is-on' : '') + '" data-act="stuReason" data-r="' + r + '">' + r + '</button>';
+        return '<button class="chip ' + (stu.reason === r ? 'is-on' : '') + '" data-act="stuReason" data-r="' + r + '" data-field="student.lateReason.' + r.toLowerCase().replace(/[^a-z0-9]/g,'-') + '">' + r + '</button>';
       }).join('') + '</div>' +
     '</div></div>' +
     '<div class="actionbar fo-bar2"><button class="btn btn--lg" data-back>Back</button><div class="bar__spacer"></div>' +
-      '<button class="btn btn--primary btn--lg" data-act="stuPrint">' + icon('check', { sw: 2.4 }) + ' Print hall pass</button></div>';
+      '<button class="btn btn--primary btn--lg" data-act="stuPrint" data-action="student.checkin">' + icon('check', { sw: 2.4 }) + ' <span data-field="student.print.btn">Print hall pass</span></button></div>';
   }
   function studentPass() {
     var s = stu.student, a = D.studentActions.filter(function (x) { return x.id === stu.action; })[0];
     return '<div class="fo-done">' +
-      '<div class="fo-printline"><span class="fo-printline__dot"></span>' + icon('check', { sw: 2.4 }) + ' Pass printing…</div>' +
-      '<div class="fo-pass"><div class="fo-pass__h"><div class="t-h3">HALL PASS</div><div class="eyebrow">' + D.school + '</div></div>' +
+      '<div class="fo-printline"><span class="fo-printline__dot"></span>' + icon('check', { sw: 2.4 }) + ' <span data-field="student.pass.printing">Pass printing…</span></div>' +
+      '<div class="fo-pass"><div class="fo-pass__h"><div class="t-h3" data-field="student.pass.type">HALL PASS</div><div class="eyebrow" data-field="brand.name">' + D.school + '</div></div>' +
         '<div class="fo-pass__name">' + s.name + '</div>' +
         '<div class="fo-pass__rows"><div><span class="dim">Action</span><b>' + (a ? a.t : '') + '</b></div>' +
           '<div><span class="dim">Reason</span><b>' + (stu.reason || '—') + '</b></div>' +
           '<div><span class="dim">Time</span><b>' + nowTime() + '</b></div>' +
           '<div><span class="dim">Go to</span><b>' + (stu.action === 'early' ? 'Front exit' : s.room) + '</b></div></div>' +
-        '<div class="fo-pass__foot">' + icon('check', { sw: 2.4 }) + ' Excused · show this to your teacher</div></div>' +
+        '<div class="fo-pass__foot">' + icon('check', { sw: 2.4 }) + ' <span data-field="student.pass.footer">Excused · show this to your teacher</span></div></div>' +
       '<button class="btn btn--primary btn--lg" data-act="reset">' + icon('check', { sw: 2.4 }) + ' Done</button>' +
     '</div>';
   }
@@ -1462,6 +1462,64 @@ window.FRONT = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <span data-field="brand.initials">R</span>
+  <span data-field="brand.name">Riverside High</span>
+  <span data-field="brand.tagline">Home of the Hawks</span>
+  <span data-field="bar.subtitle">Front Office Check-In</span>
+  <span data-field="attract.headline">Welcome to the front office</span>
+  <span data-field="attract.cta">Touch to sign in</span>
+  <div data-img="hero.image"></div>
+  <span data-field="home.date">Wednesday, June 4</span>
+  <span data-field="home.heading">How can we help you?</span>
+  <span data-field="home.visitor.label">I’m a Visitor</span>
+  <span data-field="home.visitor.sub">Sign in &amp; print a badge</span>
+  <span data-field="home.student.label">Student Sign-In</span>
+  <span data-field="home.student.sub">Late arrival or early dismissal</span>
+  <span data-field="home.policy">All visitors must sign in and wear a badge while on campus. A valid photo ID may be required. Thank you for keeping Riverside safe.</span>
+  <span data-field="visitor.step.eyebrow">Visitor sign-in</span>
+  <span data-field="visitor.heading">What brings you in today?</span>
+  <span data-field="visitor.reason.pickup.label">Pick up a student</span>
+  <span data-field="visitor.reason.meeting.label">Scheduled meeting</span>
+  <span data-field="visitor.reason.volunteer.label">Volunteering</span>
+  <span data-field="visitor.reason.delivery.label">Delivery / drop-off</span>
+  <span data-field="visitor.reason.tour.label">Campus tour</span>
+  <span data-field="visitor.reason.pickup.desc">Early dismissal</span>
+  <span data-field="visitor.reason.meeting.desc">Teacher / staff / counselor</span>
+  <span data-field="visitor.reason.volunteer.desc">Approved volunteer</span>
+  <span data-field="visitor.reason.delivery.desc">Front office</span>
+  <span data-field="visitor.reason.tour.desc">Prospective family</span>
+  <span data-field="visitor.host.heading">Who are you here to see?</span>
+  <span data-field="visitor.host.eyebrow">Host</span>
+  <span data-field="visitor.name.prompt">Tap to enter your name</span>
+  <span data-field="visitor.print.btn">Print my badge</span>
+  <span data-field="visitor.badge.printing">Badge printing…</span>
+  <span data-field="visitor.badge.type">VISITOR</span>
+  <span data-field="visitor.badge.instruction">Please wear your badge while on campus. Return it to the front office when you leave.</span>
+  <span data-field="student.step.eyebrow">Student sign-in</span>
+  <span data-field="student.heading">What do you need to do?</span>
+  <span data-field="student.action.late.label">Late arrival</span>
+  <span data-field="student.action.early.label">Early dismissal</span>
+  <span data-field="student.action.return.label">Returning to campus</span>
+  <span data-field="student.action.late.desc">Sign in &amp; get a pass to class</span>
+  <span data-field="student.action.early.desc">Sign out — guardian must be approved</span>
+  <span data-field="student.action.return.desc">Back from an appointment</span>
+  <span data-field="student.pick.heading">Find your name</span>
+  <span data-field="student.pick.search">Search by name or student ID…</span>
+  <span data-field="student.pick.prompt">Tap your name:</span>
+  <span data-field="student.reason.eyebrow">Reason</span>
+  <span data-field="student.lateReason.appointment">Appointment</span>
+  <span data-field="student.lateReason.traffic---bus">Traffic / bus</span>
+  <span data-field="student.lateReason.family">Family</span>
+  <span data-field="student.lateReason.slept-in">Slept in</span>
+  <span data-field="student.lateReason.other">Other</span>
+  <span data-field="student.print.btn">Print hall pass</span>
+  <span data-field="student.pass.printing">Pass printing…</span>
+  <span data-field="student.pass.type">HALL PASS</span>
+  <span data-field="student.pass.footer">Excused · show this to your teacher</span>
+  <button data-action="visitor.checkin">Print my badge &amp; notify the office</button>
+  <button data-action="student.checkin">Print hall pass &amp; notify the office</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
