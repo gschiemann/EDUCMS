@@ -645,6 +645,10 @@ export default function RibbonPage() {
   const cueQueue = useRef<Cue[]>([]);
   const firstLoad = useRef(true);
   const playing = useRef(false);
+  // 2026-06-05 — coalesce a duplicate of the SAME cue (key+team) within 2.5s
+  // (a manual fire + the auto-celebrate goal-delta can both record one goal),
+  // so the celebration doesn't play twice / cut off on the second.
+  const lastCueSig = useRef<{ sig: string; t: number }>({ sig: '', t: 0 });
   const cueTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pumpCues = () => {
@@ -740,7 +744,13 @@ export default function RibbonPage() {
         for (const c of json.cues || []) {
           if (seenCues.current.has(c.id)) continue;
           seenCues.current.add(c.id);
-          if (!firstLoad.current && cuePlaysHere(c.target)) cueQueue.current.push(c);
+          if (firstLoad.current || !cuePlaysHere(c.target)) continue;
+          // Drop a duplicate of the same cue fired within 2.5s (manual + auto).
+          const sig = `${c.key || ''}|${c.team || ''}`;
+          const nowMs = Date.now();
+          if (lastCueSig.current.sig === sig && nowMs - lastCueSig.current.t < 2500) continue;
+          lastCueSig.current = { sig, t: nowMs };
+          cueQueue.current.push(c);
         }
         firstLoad.current = false;
         pumpCues();

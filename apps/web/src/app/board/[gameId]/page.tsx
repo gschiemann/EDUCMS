@@ -2237,6 +2237,12 @@ export default function ScoreboardPage() {
   const cueQueue = useRef<Cue[]>([]);
   const firstLoad = useRef(true);
   const playing = useRef(false);
+  // 2026-06-05 — coalesce a duplicate of the SAME cue (key+team) fired within
+  // 2.5s. A manual fire + the auto-celebrate goal-delta can both record a CUE
+  // event for one goal, which otherwise queues two celebrations that play
+  // back-to-back (the second visibly cuts off). Two genuine distinct goals
+  // never land <2.5s apart, so this only ever drops true duplicates.
+  const lastCueSig = useRef<{ sig: string; t: number }>({ sig: '', t: 0 });
   const cueTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Audio ref for celebration sounds — holds the current Audio object
   // so we can pause + release it when the cue ends or on unmount.
@@ -2323,7 +2329,13 @@ export default function ScoreboardPage() {
           // The very first poll's cues already happened before the
           // board opened — record them as seen but don't replay.
           // Skip cues targeted only at the ribbon.
-          if (!firstLoad.current && cuePlaysHere(c.target)) cueQueue.current.push(c);
+          if (firstLoad.current || !cuePlaysHere(c.target)) continue;
+          // Drop a duplicate of the same cue fired within 2.5s (manual + auto).
+          const sig = `${c.key || ''}|${c.team || ''}`;
+          const nowMs = Date.now();
+          if (lastCueSig.current.sig === sig && nowMs - lastCueSig.current.t < 2500) continue;
+          lastCueSig.current = { sig, t: nowMs };
+          cueQueue.current.push(c);
         }
         firstLoad.current = false;
         pumpCues();

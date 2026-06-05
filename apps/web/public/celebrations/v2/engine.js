@@ -820,20 +820,27 @@
     if(p<=0) return;
     ctx.save();
     ctx.globalAlpha = p;
-    var y = H*0.18;
-    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    // 2026-06-05 — scorer line sits in the CENTER-LEFT band, NOT top-right.
+    // The action scene (net / goalie hand / whistle) lives on the right,
+    // so a top-right name sat on top of it (the save showed the name in the
+    // middle of the net). Center-left clears the left headline AND the right
+    // action for EVERY cue, so placement is consistent across all of them.
+    var x = Math.round(W*0.35);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     if(opts.player){
-      ctx.font = '900 ' + Math.round(H*0.16) + 'px "Inter", sans-serif';
+      ctx.font = '900 ' + Math.round(H*0.17) + 'px "Inter", sans-serif';
       ctx.fillStyle = '#ffffff';
-      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowColor = 'rgba(0,0,0,0.85)';
       ctx.shadowBlur = 8;
-      ctx.fillText('#' + opts.player.number + '   ' + opts.player.name, W - 30, y);
+      ctx.fillText('#' + opts.player.number + '   ' + opts.player.name, x, H*0.40);
       ctx.shadowBlur = 0;
     }
     if(opts.context){
-      ctx.font = '700 ' + Math.round(H*0.10) + 'px "JetBrains Mono", monospace';
+      ctx.font = '700 ' + Math.round(H*0.11) + 'px "JetBrains Mono", monospace';
       ctx.fillStyle = rgba(lighten(opts.team,0.5), 0.95);
-      ctx.fillText(opts.context, W - 30, y + Math.round(H*0.14));
+      ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 6;
+      ctx.fillText(opts.context, x, H*0.40 + Math.round(H*0.20));
+      ctx.shadowBlur = 0;
     }
     ctx.restore();
   }
