@@ -1360,20 +1360,20 @@ window.TRAIN = {
     return '<header class="bar gw-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
       '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3 gw-word" style="line-height:1">' + D.gym + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.2em">' + D.tagline + '</div></div></div>' +
+      '<div class="col"><div class="t-h3 gw-word" style="line-height:1" data-field="brand.gym">' + D.gym + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.2em" data-field="brand.tagline">' + D.tagline + '</div></div></div>' +
       '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
       '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
     '</header>';
   }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media gw-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media gw-hero" data-img="hero.image"><div class="media__scrim"></div>' +
       '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-      '<div class="eyebrow" style="color:var(--accent)">' + D.gym + ' · ' + D.tagline + '</div>' +
-      '<div class="t-mega gw-word" style="color:#fff;margin-top:var(--s-1)">Let\u2019s<br>move.</div>' +
-      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to start a guided workout</div>' +
+      '<div class="eyebrow" style="color:var(--accent)" data-field="brand.gym">' + D.gym + '</div>' +
+      '<div class="t-mega gw-word" style="color:#fff;margin-top:var(--s-1)" data-field="attract.headline">Let\u2019s<br>move.</div>' +
+      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> <span data-field="attract.cta">Touch to start a guided workout</span></div>' +
     '</div>';
   }
 
@@ -1383,8 +1383,8 @@ window.TRAIN = {
     return bar(false) +
     '<div class="scroll"><div class="gw-home">' +
       '<section class="gw-wod" data-go="preview:' + D.wod.focusId + '">' +
-        '<div class="gw-wod__b"><span class="badge badge--accent">' + D.wod.badge + '</span>' +
-          '<h1 class="t-mega gw-word" style="margin:var(--s-2) 0 0;color:#fff">' + wodW.name + '</h1>' +
+        '<div class="gw-wod__b"><span class="badge badge--accent" data-field="wod.badge">' + D.wod.badge + '</span>' +
+          '<h1 class="t-mega gw-word" style="margin:var(--s-2) 0 0;color:#fff" data-field="workout.' + D.wod.focusId + '.name">' + wodW.name + '</h1>' +
           '<div class="gw-wod__meta"><span>' + icon('clock') + ' ' + wodW.rounds + ' rounds</span><span>' + icon('flame') + ' ' + wodW.moves.length + ' moves</span><span>' + icon('star') + ' ' + wodW.level + '</span></div>' +
           '<span class="btn btn--primary btn--lg gw-wod__cta">' + icon('play') + ' Start the WOD</span></div>' +
         '<div class="gw-wod__ring"><span>' + wodW.rounds + '</span><small>rounds</small></div>' +
@@ -1393,7 +1393,7 @@ window.TRAIN = {
         '<div class="gw-focuses">' + D.focuses.map(function (f) {
           var w = workoutFor(f.id);
           return '<button class="gw-focus" data-go="preview:' + f.id + '"><span class="gw-focus__ic">' + icon(f.icon) + '</span>' +
-            '<span class="t-h2 gw-word">' + f.name + '</span><span class="t-sm dim">' + f.desc + '</span>' +
+            '<span class="t-h2 gw-word" data-field="focus.' + f.id + '.name">' + f.name + '</span><span class="t-sm dim" data-field="focus.' + f.id + '.desc">' + f.desc + '</span>' +
             '<span class="gw-focus__meta">' + w.rounds + ' rounds · ' + w.moves.length + ' moves ' + icon('arrow-right', { sw: 2 }) + '</span></button>';
         }).join('') + '</div></section>' +
     '</div></div>';
@@ -1406,21 +1406,21 @@ window.TRAIN = {
     var est = w.rounds * w.moves.length * (w.workS + w.restS);
     return bar(true) + '<div class="scroll"><div class="gw-preview">' +
       '<div class="gw-phead"><div class="gw-phead__ic">' + icon(f.icon) + '</div>' +
-        '<div><div class="eyebrow">' + f.name + ' · ' + w.level + '</div><h1 class="t-xl gw-word">' + w.name + '</h1>' +
+        '<div><div class="eyebrow" data-field="focus.' + focusId + '.name">' + f.name + ' · ' + w.level + '</div><h1 class="t-xl gw-word" data-field="workout.' + focusId + '.name">' + w.name + '</h1>' +
         '<div class="gw-phead__meta"><span>' + icon('clock') + ' ~' + Math.round(est / 60) + ' min</span><span>' + icon('flame') + ' ' + w.rounds + ' rounds</span><span>' + w.workS + 's work / ' + w.restS + 's rest</span></div></div></div>' +
       '<div class="eyebrow" style="margin:var(--s-2) 0 var(--s-3)">Set your intensity</div>' +
       '<div class="gw-intensity">' + D.intensities.map(function (it) {
-        return '<button class="gw-int ' + (sel.intensity === it.id ? 'is-on' : '') + '" data-act="intensity" data-id="' + it.id + '"><span class="t-h3">' + it.name + '</span>' +
+        return '<button class="gw-int ' + (sel.intensity === it.id ? 'is-on' : '') + '" data-act="intensity" data-id="' + it.id + '"><span class="t-h3" data-field="intensity.' + it.id + '.name">' + it.name + '</span>' +
           '<span class="t-sm dim">' + Math.round(w.workS * it.workMult) + 's work · ' + Math.round(w.restS * it.restMult) + 's rest</span></button>';
       }).join('') + '</div>' +
       '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)">The circuit · ' + w.moves.length + ' moves × ' + w.rounds + ' rounds</div>' +
       '<div class="gw-moves">' + w.moves.map(function (m, i) {
         return '<div class="gw-move"><div class="gw-move__n">' + (i + 1) + '</div>' +
-          '<div class="grow"><div class="t-h3">' + m.name + '</div><div class="t-sm dim">' + m.detail + '</div></div>' +
+          '<div class="grow"><div class="t-h3" data-field="move.' + focusId + '.' + i + '.name">' + m.name + '</div><div class="t-sm dim" data-field="move.' + focusId + '.' + i + '.detail">' + m.detail + '</div></div>' +
           '<div class="badge">' + m.equip + '</div></div>';
       }).join('') + '</div>' +
     '</div></div>' +
-    '<div class="actionbar gw-startbar"><div class="col" style="gap:0"><div class="t-sm dim">' + w.name + '</div>' +
+    '<div class="actionbar gw-startbar"><div class="col" style="gap:0"><div class="t-sm dim" data-field="workout.' + focusId + '.name">' + w.name + '</div>' +
       '<div class="t-h3">~' + Math.round(est / 60) + ' min · ' + w.rounds + ' rounds</div></div><div class="bar__spacer"></div>' +
       '<button class="btn btn--primary btn--lg gw-go" data-act="start" data-id="' + focusId + '">' + icon('play') + ' Start guided session</button></div>';
   }
@@ -1452,10 +1452,10 @@ window.TRAIN = {
     var ringClass = s.type === 'work' ? 'is-work' : s.type === 'rest' ? 'is-rest' : 'is-ready';
     return '<div class="gw-timer ' + ringClass + '">' +
       '<div class="gw-timer__top"><button class="iconbtn" data-act="quit">' + icon('x', { sw: 2 }) + '</button>' +
-        '<div class="gw-timer__round">Round ' + s.round + ' / ' + run.rounds + '</div>' +
-        '<div class="gw-timer__label">' + (s.type === 'work' ? 'WORK' : s.type === 'rest' ? 'REST' : 'READY') + '</div></div>' +
+        '<div class="gw-timer__round" data-field="timer.label.round">Round ' + s.round + ' / ' + run.rounds + '</div>' +
+        '<div class="gw-timer__label" data-field="timer.label.state">' + (s.type === 'work' ? 'WORK' : s.type === 'rest' ? 'REST' : 'READY') + '</div></div>' +
       '<div class="gw-ring"><svg viewBox="0 0 36 36"><circle class="gw-ring__bg" cx="18" cy="18" r="15.9"/><circle class="gw-ring__fg" cx="18" cy="18" r="15.9" stroke-dasharray="' + pct + ',100"/></svg>' +
-        '<div class="gw-ring__c"><div class="gw-ring__time" data-time>' + run.left + '</div><div class="gw-ring__unit">sec</div></div></div>' +
+        '<div class="gw-ring__c"><div class="gw-ring__time" data-time>' + run.left + '</div><div class="gw-ring__unit" data-field="timer.label.unit">sec</div></div></div>' +
       '<div class="gw-timer__move"><div class="t-mega gw-word" data-movename>' + s.name + '</div>' +
         '<div class="t-h3 dim" data-movesub>' + (s.detail || s.sub || '') + '</div></div>' +
       '<div class="gw-timer__ctrls"><button class="btn btn--ghost btn--lg" data-act="prev">' + icon('arrow-left', { sw: 2.4 }) + '</button>' +
@@ -1503,13 +1503,14 @@ window.TRAIN = {
     var kcal = Math.round(totalMoves * 7.5);
     return '<div class="gw-finish">' +
       '<div class="gw-finish__ic">' + icon('check', { sw: 2.6 }) + '</div>' +
-      '<div class="eyebrow" style="color:var(--accent)">Session complete</div>' +
-      '<h1 class="t-mega gw-word" style="margin:var(--s-2) 0">' + w.name + '</h1>' +
-      '<div class="gw-finish__stats"><div><div class="gw-finish__v">' + w.rounds + '</div><div class="t-sm dim">rounds</div></div>' +
-        '<div class="gw-finish__div"></div><div><div class="gw-finish__v">' + totalMoves + '</div><div class="t-sm dim">sets done</div></div>' +
-        '<div class="gw-finish__div"></div><div><div class="gw-finish__v">~' + kcal + '</div><div class="t-sm dim">est. cal</div></div></div>' +
-      '<p class="t-h3 dim pretty" style="font-weight:400;max-width:34ch">' + D.finish.note + '</p>' +
+      '<div class="eyebrow" style="color:var(--accent)" data-field="finish.badge">Session complete</div>' +
+      '<h1 class="t-mega gw-word" style="margin:var(--s-2) 0" data-field="workout.' + (sel.focus || 'hiit') + '.name">' + w.name + '</h1>' +
+      '<div class="gw-finish__stats"><div><div class="gw-finish__v">' + w.rounds + '</div><div class="t-sm dim" data-field="finish.label.rounds">rounds</div></div>' +
+        '<div class="gw-finish__div"></div><div><div class="gw-finish__v">' + totalMoves + '</div><div class="t-sm dim" data-field="finish.label.sets">sets done</div></div>' +
+        '<div class="gw-finish__div"></div><div><div class="gw-finish__v">~' + kcal + '</div><div class="t-sm dim" data-field="finish.label.cal">est. cal</div></div></div>' +
+      '<p class="t-h3 dim pretty" style="font-weight:400;max-width:34ch" data-field="finish.note">' + D.finish.note + '</p>' +
       '<div class="gw-finish__btns"><button class="btn btn--primary btn--lg" data-act="again" data-id="' + sel.focus + '">' + icon('play') + ' Go again</button>' +
+        '<button class="btn btn--ghost btn--lg" data-act="email" data-action="results.email">' + icon('send') + ' Email my results</button>' +
         '<button class="btn btn--ghost btn--lg" data-home>' + icon('home', { sw: 2 }) + ' Done</button></div>' +
     '</div>';
   }
@@ -1539,6 +1540,119 @@ window.TRAIN = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- brand / global -->
+  <span data-field="brand.gym">PULSE</span>
+  <span data-field="brand.tagline">Guided Training</span>
+  <!-- attract screen -->
+  <div data-img="hero.image"></div>
+  <span data-field="attract.headline">Let&#8217;s move.</span>
+  <span data-field="attract.cta">Touch to start a guided workout</span>
+  <!-- WOD section (home) -->
+  <span data-field="wod.badge">Today&#39;s WOD</span>
+  <!-- workouts (name repeated on preview + finish + home WOD card) -->
+  <span data-field="workout.full.name">Full-Body Builder</span>
+  <span data-field="workout.hiit.name">20-Minute HIIT Burn</span>
+  <span data-field="workout.push.name">Push Power</span>
+  <span data-field="workout.pull.name">Pull Strength</span>
+  <span data-field="workout.legs.name">Leg Day Circuit</span>
+  <span data-field="workout.core.name">Core &amp; Mobility Flow</span>
+  <!-- focus tiles (home grid) -->
+  <span data-field="focus.full.name">Full Body</span>
+  <span data-field="focus.full.desc">Hit everything in one circuit</span>
+  <span data-field="focus.hiit.name">HIIT Burn</span>
+  <span data-field="focus.hiit.desc">Max effort, short rest</span>
+  <span data-field="focus.push.name">Push</span>
+  <span data-field="focus.push.desc">Chest &middot; shoulders &middot; triceps</span>
+  <span data-field="focus.pull.name">Pull</span>
+  <span data-field="focus.pull.desc">Back &middot; biceps &middot; grip</span>
+  <span data-field="focus.legs.name">Legs</span>
+  <span data-field="focus.legs.desc">Quads &middot; glutes &middot; calves</span>
+  <span data-field="focus.core.name">Core &amp; Mobility</span>
+  <span data-field="focus.core.desc">Abs, balance &amp; stretch</span>
+  <!-- intensity options (preview) -->
+  <span data-field="intensity.easy.name">Ease in</span>
+  <span data-field="intensity.std.name">As written</span>
+  <span data-field="intensity.beast.name">Beast mode</span>
+  <!-- Full Body moves -->
+  <span data-field="move.full.0.name">Goblet Squat</span>
+  <span data-field="move.full.0.detail">Hold a dumbbell at your chest, sit back and down</span>
+  <span data-field="move.full.1.name">Push-Up</span>
+  <span data-field="move.full.1.detail">Hands under shoulders, body in a line</span>
+  <span data-field="move.full.2.name">Bent-Over Row</span>
+  <span data-field="move.full.2.detail">Hinge at hips, pull to your ribs</span>
+  <span data-field="move.full.3.name">Reverse Lunge</span>
+  <span data-field="move.full.3.detail">Step back, drop the knee, drive up</span>
+  <span data-field="move.full.4.name">Plank Hold</span>
+  <span data-field="move.full.4.detail">Forearms down, squeeze everything</span>
+  <!-- HIIT moves -->
+  <span data-field="move.hiit.0.name">Jump Squats</span>
+  <span data-field="move.hiit.0.detail">Explode up, land soft</span>
+  <span data-field="move.hiit.1.name">Mountain Climbers</span>
+  <span data-field="move.hiit.1.detail">Drive knees fast, hips low</span>
+  <span data-field="move.hiit.2.name">Burpees</span>
+  <span data-field="move.hiit.2.detail">Chest to floor, jump at the top</span>
+  <span data-field="move.hiit.3.name">High Knees</span>
+  <span data-field="move.hiit.3.detail">Run in place, knees to waist</span>
+  <span data-field="move.hiit.4.name">Skater Hops</span>
+  <span data-field="move.hiit.4.detail">Bound side to side</span>
+  <!-- Push moves -->
+  <span data-field="move.push.0.name">Dumbbell Bench Press</span>
+  <span data-field="move.push.0.detail">Press up, control down</span>
+  <span data-field="move.push.1.name">Overhead Press</span>
+  <span data-field="move.push.1.detail">Press to lockout overhead</span>
+  <span data-field="move.push.2.name">Incline Push-Up</span>
+  <span data-field="move.push.2.detail">Hands on bench, chest to edge</span>
+  <span data-field="move.push.3.name">Triceps Dip</span>
+  <span data-field="move.push.3.detail">Elbows back, lower and press</span>
+  <span data-field="move.push.4.name">Lateral Raise</span>
+  <span data-field="move.push.4.detail">Lift to shoulder height</span>
+  <!-- Pull moves -->
+  <span data-field="move.pull.0.name">One-Arm Row</span>
+  <span data-field="move.pull.0.detail">Knee on bench, pull to hip</span>
+  <span data-field="move.pull.1.name">Lat Pulldown</span>
+  <span data-field="move.pull.1.detail">Pull the bar to your chest</span>
+  <span data-field="move.pull.2.name">Face Pull</span>
+  <span data-field="move.pull.2.detail">Pull to your face, elbows high</span>
+  <span data-field="move.pull.3.name">Hammer Curl</span>
+  <span data-field="move.pull.3.detail">Palms in, curl up</span>
+  <span data-field="move.pull.4.name">Dead Hang</span>
+  <span data-field="move.pull.4.detail">Hang and hold for grip</span>
+  <!-- Legs moves -->
+  <span data-field="move.legs.0.name">Back Squat</span>
+  <span data-field="move.legs.0.detail">Brace and sit between your heels</span>
+  <span data-field="move.legs.1.name">Romanian Deadlift</span>
+  <span data-field="move.legs.1.detail">Hinge, feel the hamstrings</span>
+  <span data-field="move.legs.2.name">Walking Lunge</span>
+  <span data-field="move.legs.2.detail">Long steps, tall chest</span>
+  <span data-field="move.legs.3.name">Calf Raise</span>
+  <span data-field="move.legs.3.detail">Up on the toes, slow down</span>
+  <span data-field="move.legs.4.name">Wall Sit</span>
+  <span data-field="move.legs.4.detail">90&#176; knees, hold and breathe</span>
+  <!-- Core moves -->
+  <span data-field="move.core.0.name">Dead Bug</span>
+  <span data-field="move.core.0.detail">Opposite arm &amp; leg, slow</span>
+  <span data-field="move.core.1.name">Bicycle Crunch</span>
+  <span data-field="move.core.1.detail">Elbow to opposite knee</span>
+  <span data-field="move.core.2.name">Side Plank (R)</span>
+  <span data-field="move.core.2.detail">Stack the hips, reach tall</span>
+  <span data-field="move.core.3.name">Side Plank (L)</span>
+  <span data-field="move.core.3.detail">Other side, stay long</span>
+  <span data-field="move.core.4.name">World&#39;s Greatest Stretch</span>
+  <span data-field="move.core.4.detail">Lunge, twist, reach</span>
+  <!-- timer labels -->
+  <span data-field="timer.label.round">Round</span>
+  <span data-field="timer.label.state">WORK</span>
+  <span data-field="timer.label.unit">sec</span>
+  <!-- finish screen -->
+  <span data-field="finish.badge">Session complete</span>
+  <span data-field="finish.label.rounds">rounds</span>
+  <span data-field="finish.label.sets">sets done</span>
+  <span data-field="finish.label.cal">est. cal</span>
+  <span data-field="finish.note">Nice work! Log this session in the PULSE app to keep your streak alive.</span>
+  <!-- platform actions -->
+  <button data-action="results.email">Email my results</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
