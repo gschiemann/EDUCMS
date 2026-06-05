@@ -72,7 +72,7 @@ import { RibbonImagesPanel } from './RibbonImagesPanel';
 import { SurfacePreview } from './SurfacePreview';
 import { SurfaceHealthPills } from './SurfaceHealthPills';
 import { AssetPicker } from '@/components/assets/AssetPicker';
-import { RecentEventsRail } from './RecentEventsRail';
+import { RecentEventsBar } from './RecentEventsBar';
 
 // ── constants ──────────────────────────────────────────────────
 
@@ -245,7 +245,7 @@ function GameControl() {
   useEffect(() => { latestDef.current = def; }, [def]);
 
   // We need the event list so `u` can undo the most recent undoable event.
-  // Use the same hook RecentEventsRail uses — share the query cache, zero
+  // Use the same hook RecentEventsBar uses — share the query cache, zero
   // extra fetches.
   const { data: recentEvents } = useGameEvents(gameId);
   const undoEvent = useUndoGameEvent(gameId);
@@ -549,29 +549,35 @@ function GameControl() {
 
       {/* ── mode panels ───────────────────────────────────────── */}
 
-      {/* RUN MODE — 3-zone no-scroll live console + undo rail.
-          The rail is a collapsible 320px right panel that polls
-          GET /events?limit=25 every 2 s and surfaces per-row Undo. */}
+      {/* RUN MODE — 3-zone no-scroll live console with a full-width
+          run-of-show strip docked UNDERNEATH (RecentEventsBar). The bar
+          replaced the old 320px right rail, which overflowed off the
+          right edge on narrower windows. Column layout: the console fills
+          the available height; the bar is a fixed-height strip at the
+          bottom that polls GET /events?limit=25 every 2 s and surfaces
+          per-row Undo on hover. */}
       {mode === 'run' && (
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          <RunMode
-            gameId={gameId}
-            g={g}
-            def={def}
-            liveMs={liveMs}
-            homeColor={homeColor}
-            awayColor={awayColor}
-            ctl={ctl}
-            view={view}
-            onViewChange={setView}
-            onShowCues={() => setShowCues(true)}
-            onHighlights={() => setShowHighlights(true)}
-            onPenalties={() => setShowPenalties(true)}
-          />
-          {/* RecentEventsRail hidden in show/pa views where the extra
-              column would crowd the reduced-control layout */}
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+            <RunMode
+              gameId={gameId}
+              g={g}
+              def={def}
+              liveMs={liveMs}
+              homeColor={homeColor}
+              awayColor={awayColor}
+              ctl={ctl}
+              view={view}
+              onViewChange={setView}
+              onShowCues={() => setShowCues(true)}
+              onHighlights={() => setShowHighlights(true)}
+              onPenalties={() => setShowPenalties(true)}
+            />
+          </div>
+          {/* Hidden in show / pa views where the strip would crowd the
+              reduced-control layout. */}
           {(view === '' || view === 'score') && (
-            <RecentEventsRail gameId={gameId} />
+            <RecentEventsBar gameId={gameId} />
           )}
         </div>
       )}
