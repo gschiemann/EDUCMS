@@ -1307,11 +1307,11 @@ window.ROOM = {
 
   function bar() {
     return '<header class="bar rp-bar">' +
-      '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3" style="line-height:1">' + D.org + '</div>' +
+      '<div class="bar__brand"><div class="bar__logo" data-field="room.brandInitials">' + D.brandInitials + '</div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1" data-field="room.org">' + D.org + '</div>' +
       '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.16em">Room Panel</div></div></div>' +
       '<div class="bar__spacer"></div>' +
-      '<button class="chip" data-go="finder">' + icon('grid') + ' Find a room</button>' +
+      '<button class="chip" data-go="finder">' + icon('grid') + ' <span data-field="finder.cta">Find a room</span></button>' +
       '<div class="rp-clock" data-rpclock>' + fmt(now) + '</div>' +
     '</header>';
   }
@@ -1319,12 +1319,12 @@ window.ROOM = {
   function attract() {
     var cur = currentMeeting();
     var st = cur ? 'busy' : 'free';
-    return '<div class="attract__bg"><div class="media rp-hero rp-hero--' + st + '"></div></div>' +
+    return '<div class="attract__bg"><div class="media rp-hero rp-hero--' + st + '" data-img="hero.image"></div></div>' +
       '<div class="attract__body">' +
-      '<div class="eyebrow" style="color:#fff;opacity:.9">' + D.org + ' · ' + D.floor + '</div>' +
-      '<div class="t-mega" style="color:#fff;margin-top:var(--s-1)">' + D.room + '</div>' +
+      '<div class="eyebrow" style="color:#fff;opacity:.9"><span data-field="room.org">' + D.org + '</span> · <span data-field="room.floor">' + D.floor + '</span></div>' +
+      '<div class="t-mega" style="color:#fff;margin-top:var(--s-1)" data-field="room.name">' + D.room + '</div>' +
       '<div class="t-h2" style="color:#fff;opacity:.9">' + (cur ? 'In use right now' : 'Available now') + '</div>' +
-      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to book or check the schedule</div>' +
+      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> <span data-field="home.attract.cta">Touch to book or check the schedule</span></div>' +
     '</div>';
   }
 
@@ -1336,37 +1336,38 @@ window.ROOM = {
     var statusText = cur ? 'In Use' : (state === 'soon' ? 'Reserved Soon' : 'Available');
     var sub = cur ? ('Until ' + fmt(cur.end)) : (nx ? ('Free for ' + maxQuick() + ' min · next at ' + fmt(nx.start)) : 'Free for the rest of the day');
 
-    var agenda = sched.map(function (s) {
+    var agenda = sched.map(function (s, si) {
       var isNow = s === cur, past = s.end <= now;
+      var pfx = 'sched.' + si;
       return '<div class="rp-slot ' + (isNow ? 'is-now' : '') + ' ' + (past ? 'is-past' : '') + '">' +
         '<div class="rp-slot__time">' + fmtShort(s.start) + '<span>' + fmtShort(s.end) + '</span></div>' +
         '<div class="rp-slot__bar"></div>' +
-        '<div class="grow"><div class="t-h3">' + s.title + '</div><div class="t-sm dim">' + s.organizer + ' · ' + s.team + '</div></div>' +
+        '<div class="grow"><div class="t-h3" data-field="' + pfx + '.title">' + s.title + '</div><div class="t-sm dim"><span data-field="' + pfx + '.organizer">' + s.organizer + '</span> · <span data-field="' + pfx + '.team">' + s.team + '</span></div></div>' +
         (isNow ? '<span class="badge badge--bad"><span class="dot"></span>Now</span>' : past ? '<span class="badge">Done</span>' : '<span class="badge badge--accent">Upcoming</span>') + '</div>';
     }).join('');
 
     return bar() +
     '<div class="rp-panel">' +
       '<section class="rp-status rp-status--' + state + '">' +
-        '<div class="rp-status__top"><div><div class="rp-room">' + D.room + '</div>' +
-          '<div class="rp-meta">' + icon('user') + ' ' + D.capacity + ' · ' + D.floor + '</div></div>' +
+        '<div class="rp-status__top"><div><div class="rp-room" data-field="room.name">' + D.room + '</div>' +
+          '<div class="rp-meta">' + icon('user') + ' <span data-field="room.capacity">' + D.capacity + '</span> · <span data-field="room.floor">' + D.floor + '</span></div></div>' +
           '<div class="rp-dot"></div></div>' +
         '<div class="rp-status__big">' + statusText + '</div>' +
         '<div class="rp-status__sub">' + sub + '</div>' +
         (cur ? '<div class="rp-current"><div class="eyebrow" style="color:inherit;opacity:.8">In progress</div>' +
-          '<div class="t-h2">' + cur.title + '</div><div class="t-body" style="opacity:.85">' + cur.organizer + ' · ' + cur.team + '</div>' +
-          '<div class="rp-current__btns"><button class="rp-btn rp-btn--solid" data-act="extend">' + icon('plus', { sw: 2.4 }) + ' Extend 15 min</button>' +
-          '<button class="rp-btn" data-act="end">' + icon('check', { sw: 2.4 }) + ' End meeting</button></div></div>'
+          '<div class="t-h2" data-field="now.title">' + cur.title + '</div><div class="t-body" style="opacity:.85"><span data-field="now.organizer">' + cur.organizer + '</span> · <span data-field="now.team">' + cur.team + '</span></div>' +
+          '<div class="rp-current__btns"><button class="rp-btn rp-btn--solid" data-act="extend" data-action="room.extend">' + icon('plus', { sw: 2.4 }) + ' <span data-field="now.extend.label">Extend 15 min</span></button>' +
+          '<button class="rp-btn" data-act="end" data-action="room.end">' + icon('check', { sw: 2.4 }) + ' <span data-field="now.end.label">End meeting</span></button></div></div>'
           : '<div class="rp-book"><div class="eyebrow" style="color:inherit;opacity:.8">Book it now</div>' +
           '<div class="rp-durs">' + D.quickDurations.map(function (d) {
             var ok = d <= maxQuick();
-            return '<button class="rp-dur" data-act="book" data-min="' + d + '" ' + (ok ? '' : 'disabled') + '>' + d + '<small>min</small></button>';
+            return '<button class="rp-dur" data-act="book" data-action="room.book" data-min="' + d + '" ' + (ok ? '' : 'disabled') + '>' + d + '<small>min</small></button>';
           }).join('') + '</div></div>') +
       '</section>' +
       '<section class="rp-agenda"><div class="rp-agenda__h"><div class="eyebrow">Today\u2019s Schedule</div>' +
-        '<div class="t-sm dim">' + D.amenities.join(' · ') + '</div></div>' +
+        '<div class="t-sm dim" data-field="room.amenities">' + D.amenities.join(' · ') + '</div></div>' +
         '<div class="rp-slots">' + agenda + '</div>' +
-        '<p class="rp-note">' + icon('info') + ' ' + D.bookNote + '</p></section>' +
+        '<p class="rp-note">' + icon('info') + ' <span data-field="room.booknote">' + D.bookNote + '</span></p></section>' +
     '</div>';
   }
 
@@ -1390,18 +1391,18 @@ window.ROOM = {
   // ── ROOM FINDER ───────────────────────────────────────────────────────────
   function finder() {
     return '<header class="bar rp-bar"><button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' +
-      '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div><div class="col"><div class="t-h3" style="line-height:1">Find a room</div><div class="eyebrow" style="color:var(--text-mute)">' + D.floor + '</div></div></div>' +
+      '<div class="bar__brand"><div class="bar__logo" data-field="room.brandInitials">' + D.brandInitials + '</div><div class="col"><div class="t-h3" style="line-height:1">Find a room</div><div class="eyebrow" style="color:var(--text-mute)" data-field="room.floor">' + D.floor + '</div></div></div>' +
       '<div class="bar__spacer"></div><div class="rp-clock" data-rpclock>' + fmt(now) + '</div></header>' +
     '<div class="scroll"><div class="rp-finder">' +
-      '<div class="rp-finder__self rp-status--' + (currentMeeting() ? 'busy' : 'free') + '"><div><div class="eyebrow" style="opacity:.8">This room</div><div class="t-h2">' + D.room + '</div></div>' +
+      '<div class="rp-finder__self rp-status--' + (currentMeeting() ? 'busy' : 'free') + '"><div><div class="eyebrow" style="opacity:.8">This room</div><div class="t-h2" data-field="room.name">' + D.room + '</div></div>' +
         '<div class="t-h3">' + (currentMeeting() ? 'In use' : 'Available') + '</div></div>' +
       '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)">Other rooms on this floor</div>' +
-      '<div class="rp-rooms">' + D.otherRooms.map(function (r) {
+      '<div class="rp-rooms">' + D.otherRooms.map(function (r, ri) {
         var free = r.status === 'free';
         return '<div class="rp-roomcard ' + (free ? 'is-free' : 'is-busy') + '"><div class="rp-roomcard__dot"></div>' +
-          '<div class="grow"><div class="t-h3">' + r.name + '</div><div class="t-sm dim">' + icon('user') + ' ' + r.capacity + ' people</div></div>' +
+          '<div class="grow"><div class="t-h3" data-field="finder.' + ri + '.name">' + r.name + '</div><div class="t-sm dim">' + icon('user') + ' <span data-field="finder.' + ri + '.capacity">' + r.capacity + '</span> people</div></div>' +
           '<div class="rp-roomcard__status">' + (free ? '<span class="badge badge--good"><span class="dot"></span>Free ' + (r.freeFor >= 60 ? Math.floor(r.freeFor / 60) + 'h ' + (r.freeFor % 60 ? (r.freeFor % 60) + 'm' : '') : r.freeFor + ' min') + '</span>' : '<span class="badge badge--bad"><span class="dot"></span>Until ' + r.until + '</span>') +
-          (free ? '<button class="rp-btn rp-btn--mini" data-act="bookOther" data-name="' + r.name + '">Book</button>' : '') + '</div></div>';
+          (free ? '<button class="rp-btn rp-btn--mini" data-act="bookOther" data-action="room.book.other" data-name="' + r.name + '">Book</button>' : '') + '</div></div>';
       }).join('') + '</div>' +
     '</div></div>';
   }
@@ -1438,6 +1439,64 @@ window.ROOM = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- room identity -->
+  <span data-field="room.brandInitials">N</span>
+  <span data-field="room.org">Northwind</span>
+  <span data-field="room.name">Cedar Room</span>
+  <span data-field="room.floor">Level 3 &middot; West</span>
+  <span data-field="room.capacity">8</span>
+  <span data-field="room.amenities">Display + Wireless cast &middot; Video conference &middot; Whiteboard</span>
+  <span data-field="room.booknote">Walk-up bookings hold for 10 minutes. Tap your badge to confirm on the live panel.</span>
+
+  <!-- attract / hero image -->
+  <div data-img="hero.image"></div>
+
+  <!-- attract CTA -->
+  <span data-field="home.attract.cta">Touch to book or check the schedule</span>
+
+  <!-- finder nav -->
+  <span data-field="finder.cta">Find a room</span>
+
+  <!-- current meeting (shown when room is busy) -->
+  <span data-field="now.title">Design Critique</span>
+  <span data-field="now.organizer">Priya Anand</span>
+  <span data-field="now.team">Product</span>
+  <span data-field="now.extend.label">Extend 15 min</span>
+  <span data-field="now.end.label">End meeting</span>
+
+  <!-- today&#39;s agenda slots (4 meetings) -->
+  <span data-field="sched.0.title">Design Critique</span>
+  <span data-field="sched.0.organizer">Priya Anand</span>
+  <span data-field="sched.0.team">Product</span>
+  <span data-field="sched.1.title">1:1 &#x2014; Marco &amp; Dana</span>
+  <span data-field="sched.1.organizer">Marco Reyes</span>
+  <span data-field="sched.1.team">Eng</span>
+  <span data-field="sched.2.title">Roadmap Sync</span>
+  <span data-field="sched.2.organizer">Jordan Lee</span>
+  <span data-field="sched.2.team">Leadership</span>
+  <span data-field="sched.3.title">Customer Call &#x2014; Acme</span>
+  <span data-field="sched.3.organizer">Sara Kim</span>
+  <span data-field="sched.3.team">Sales</span>
+
+  <!-- other rooms on the floor (finder screen, 5 rooms) -->
+  <span data-field="finder.0.name">Birch Room</span>
+  <span data-field="finder.0.capacity">4</span>
+  <span data-field="finder.1.name">Maple Boardroom</span>
+  <span data-field="finder.1.capacity">14</span>
+  <span data-field="finder.2.name">Aspen Nook</span>
+  <span data-field="finder.2.capacity">2</span>
+  <span data-field="finder.3.name">Willow Room</span>
+  <span data-field="finder.3.capacity">6</span>
+  <span data-field="finder.4.name">Spruce Room</span>
+  <span data-field="finder.4.capacity">10</span>
+
+  <!-- platform action buttons -->
+  <button data-action="room.book">Book room (15/30/60 min)</button>
+  <button data-action="room.extend">Extend meeting 15 min</button>
+  <button data-action="room.end">End current meeting</button>
+  <button data-action="room.book.other">Book another room</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
