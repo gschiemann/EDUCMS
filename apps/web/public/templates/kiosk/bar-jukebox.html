@@ -1349,9 +1349,9 @@ window.JUKE = {
   function bar(showBack) {
     return '<header class="bar jk-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
-      '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3 jk-word" style="line-height:1">' + D.name + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.24em">' + D.tagline + '</div></div></div>' +
+      '<div class="bar__brand"><div class="bar__logo" data-field="brand.initials">' + D.brandInitials + '</div>' +
+      '<div class="col"><div class="t-h3 jk-word" style="line-height:1" data-field="brand.name">' + D.name + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.24em" data-field="brand.tagline">' + D.tagline + '</div></div></div>' +
       '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
       '<button class="chip jk-qchip" data-go="queue">' + icon('headphones') + ' Up next · ' + queue.length + '</button>' +
       '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
@@ -1361,12 +1361,12 @@ window.JUKE = {
   function eq(n) { var s = ''; for (var i = 0; i < (n || 5); i++) s += '<i style="animation-delay:' + (i * 0.12) + 's"></i>'; return '<span class="jk-eq">' + s + '</span>'; }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media jk-hero"><div class="media__scrim"></div>' +
-      '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
+    return '<div class="attract__bg"><div class="media jk-hero" data-img="hero.image"><div class="media__scrim"></div>' +
+      '<div class="media__tag">' + icon('image') + ' <span data-field="hero.label">' + D.hero.label + '</span></div></div></div>' +
       '<div class="attract__body">' +
-      '<div class="eyebrow" style="color:var(--accent)">' + D.name + ' · ' + D.tagline + '</div>' +
-      '<div class="t-mega jk-word" style="color:#fff;margin-top:var(--s-1)">You pick<br>the music.</div>' +
-      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to queue a song</div>' +
+      '<div class="eyebrow" style="color:var(--accent)" data-field="attract.eyebrow">' + D.name + ' \xb7 ' + D.tagline + '</div>' +
+      '<div class="t-mega jk-word" style="color:#fff;margin-top:var(--s-1)" data-field="attract.headline">You pick<br>the music.</div>' +
+      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> <span data-field="attract.cta">Touch to queue a song</span></div>' +
     '</div>';
   }
 
@@ -1377,20 +1377,20 @@ window.JUKE = {
     return bar(false) +
     '<div class="scroll"><div class="jk-home">' +
       '<section class="jk-now">' +
-        '<div class="media jk-art"><div class="jk-art__disc"></div><div class="media__tag">' + icon('image') + ' ' + n.art + '</div></div>' +
-        '<div class="jk-now__b"><div class="row gap-2" style="align-items:center"><span class="badge badge--accent">' + eq(4) + ' Now playing</span></div>' +
-          '<h1 class="t-mega jk-word" style="margin:var(--s-2) 0 0">' + n.title + '</h1>' +
-          '<div class="t-h2 dim" style="font-weight:400;font-style:italic">' + n.artist + ' · ' + n.album + '</div>' +
+        '<div class="media jk-art" data-img="nowplaying.art"><div class="jk-art__disc"></div><div class="media__tag">' + icon('image') + ' <span data-field="nowplaying.artlabel">' + n.art + '</span></div></div>' +
+        '<div class="jk-now__b"><div class="row gap-2" style="align-items:center"><span class="badge badge--accent">' + eq(4) + ' <span data-field="nowplaying.badge">Now playing</span></span></div>' +
+          '<h1 class="t-mega jk-word" style="margin:var(--s-2) 0 0" data-field="nowplaying.title">' + n.title + '</h1>' +
+          '<div class="t-h2 dim" style="font-weight:400;font-style:italic"><span data-field="nowplaying.artist">' + n.artist + '</span> \xb7 <span data-field="nowplaying.album">' + n.album + '</span></div>' +
           '<div class="jk-prog"><div class="jk-prog__bar"><i style="width:' + pct + '%"></i></div>' +
             '<div class="row between t-sm dim"><span>' + mmss(np.elapsed) + '</span><span>' + mmss(n.lengthS) + '</span></div></div>' +
-          '<div class="jk-upnext"><span class="eyebrow">Up next</span>' + (queue[0] ? '<span class="t-h3">' + queue[0].title + '</span><span class="dim"> · ' + queue[0].artist + '</span>' : '<span class="dim">Nothing queued — add one!</span>') + '</div>' +
+          '<div class="jk-upnext"><span class="eyebrow" data-field="queue.upnext.label">Up next</span>' + (queue[0] ? '<span class="t-h3" data-field="queue.0.title">' + queue[0].title + '</span><span class="dim"> \xb7 <span data-field="queue.0.artist">' + queue[0].artist + '</span></span>' : '<span class="dim" data-field="queue.empty.label">Nothing queued — add one!</span>') + '</div>' +
         '</div>' +
       '</section>' +
-      '<section><div class="row between" style="margin-bottom:var(--s-3)"><div class="eyebrow">Pick a vibe</div>' +
-        '<div class="t-sm dim">' + D.credits.note + '</div></div>' +
+      '<section><div class="row between" style="margin-bottom:var(--s-3)"><div class="eyebrow" data-field="vibes.heading">Pick a vibe</div>' +
+        '<div class="t-sm dim" data-field="credits.note">' + D.credits.note + '</div></div>' +
         '<div class="jk-vibes">' + D.vibes.map(function (v) {
           return '<button class="jk-vibe jk-vibe--' + v.color + '" data-go="vibe:' + v.id + '"><span class="jk-vibe__ic">' + icon(v.icon) + '</span>' +
-            '<span class="t-h2 jk-word">' + v.name + '</span><span class="t-sm dim">' + v.desc + '</span>' +
+            '<span class="t-h2 jk-word" data-field="vibe.' + v.id + '.name">' + v.name + '</span><span class="t-sm dim" data-field="vibe.' + v.id + '.desc">' + v.desc + '</span>' +
             '<span class="jk-vibe__n">' + D.library[v.id].length + ' songs ' + icon('arrow-right', { sw: 2 }) + '</span></button>';
         }).join('') + '</div></section>' +
     '</div></div>';
@@ -1401,13 +1401,14 @@ window.JUKE = {
     var v = vibeById(id), songs = D.library[id];
     return bar(true) + '<div class="scroll"><div class="jk-list">' +
       '<div class="jk-head jk-head--' + v.color + '"><div class="jk-head__ic">' + icon(v.icon) + '</div>' +
-        '<div><div class="eyebrow" style="color:#fff;opacity:.85">Pick a song</div><h1 class="t-xl jk-word" style="color:#fff">' + v.name + '</h1>' +
-        '<div class="t-body" style="color:rgba(255,255,255,.85)">' + v.desc + '</div></div></div>' +
+        '<div><div class="eyebrow" style="color:#fff;opacity:.85" data-field="vibe.picksong.label">Pick a song</div><h1 class="t-xl jk-word" style="color:#fff" data-field="vibe.' + v.id + '.name">' + v.name + '</h1>' +
+        '<div class="t-body" style="color:rgba(255,255,255,.85)" data-field="vibe.' + v.id + '.desc">' + v.desc + '</div></div></div>' +
       '<div class="jk-songs">' + songs.map(function (s, i) {
+        var sk = id + '.' + i;
         return '<div class="jk-song"><div class="jk-song__n">' + (i + 1) + '</div>' +
-          '<div class="jk-song__art media"><span class="jk-song__note">' + icon('headphones') + '</span></div>' +
-          '<div class="grow"><div class="t-h3">' + s.title + '</div><div class="t-sm dim">' + s.artist + ' · ' + mmss(s.lengthS) + '</div></div>' +
-          '<button class="btn btn--primary jk-add" data-act="add" data-title="' + s.title + '" data-artist="' + s.artist + '">' + icon('plus', { sw: 2.6 }) + ' Queue it</button></div>';
+          '<div class="jk-song__art media" data-img="song.' + sk + '.art"><span class="jk-song__note">' + icon('headphones') + '</span></div>' +
+          '<div class="grow"><div class="t-h3" data-field="song.' + sk + '.title">' + s.title + '</div><div class="t-sm dim"><span data-field="song.' + sk + '.artist">' + s.artist + '</span> \xb7 ' + mmss(s.lengthS) + '</div></div>' +
+          '<button class="btn btn--primary jk-add" data-act="add" data-action="song.queue" data-title="' + s.title + '" data-artist="' + s.artist + '">' + icon('plus', { sw: 2.6 }) + ' <span data-field="song.queue.btn">Queue it</span></button></div>';
       }).join('') + '</div></div></div>';
   }
 
@@ -1417,39 +1418,39 @@ window.JUKE = {
     var sorted = queue.slice().sort(function (a, b) { return (b.bumped ? 1000 : 0) + b.votes - ((a.bumped ? 1000 : 0) + a.votes); });
     return bar(true) + '<div class="scroll"><div class="jk-list">' +
       '<div class="jk-head jk-head--accent"><div class="jk-head__ic">' + eq(5) + '</div>' +
-        '<div><div class="eyebrow" style="color:#fff;opacity:.85">Playing now</div><h1 class="t-xl jk-word" style="color:#fff">' + n.title + '</h1>' +
-        '<div class="t-body" style="color:rgba(255,255,255,.85)">' + n.artist + '</div></div></div>' +
-      '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)">Up next · ' + sorted.length + ' songs · vote to move them up</div>' +
+        '<div><div class="eyebrow" style="color:#fff;opacity:.85" data-field="queue.playingnow.label">Playing now</div><h1 class="t-xl jk-word" style="color:#fff" data-field="nowplaying.title">' + n.title + '</h1>' +
+        '<div class="t-body" style="color:rgba(255,255,255,.85)" data-field="nowplaying.artist">' + n.artist + '</div></div></div>' +
+      '<div class="eyebrow" style="margin:var(--s-5) 0 var(--s-3)" data-field="queue.upnext.label">Up next \xb7 ' + sorted.length + ' songs \xb7 vote to move them up</div>' +
       '<div class="jk-queue">' + sorted.map(function (q, i) {
         var didVote = voted[q.id];
         return '<div class="jk-qrow ' + (q.bumped ? 'is-bumped' : '') + '"><div class="jk-qrow__pos">' + (i + 1) + '</div>' +
-          '<div class="grow"><div class="row gap-2" style="align-items:center"><div class="t-h3">' + q.title + '</div>' + (q.bumped ? '<span class="badge badge--accent">' + icon('flame') + ' Bumped</span>' : '') + '</div>' +
-          '<div class="t-sm dim">' + q.artist + ' · added by ' + q.by + '</div></div>' +
+          '<div class="grow"><div class="row gap-2" style="align-items:center"><div class="t-h3" data-field="queue.' + q.id + '.title">' + q.title + '</div>' + (q.bumped ? '<span class="badge badge--accent">' + icon('flame') + ' <span data-field="queue.bumped.badge">Bumped</span></span>' : '') + '</div>' +
+          '<div class="t-sm dim"><span data-field="queue.' + q.id + '.artist">' + q.artist + '</span> \xb7 added by ' + q.by + '</div></div>' +
           '<button class="jk-vote ' + (didVote ? 'is-voted' : '') + '" data-act="vote" data-id="' + q.id + '">' + icon('heart', { sw: 2 }) + ' <span>' + q.votes + '</span></button></div>';
       }).join('') + '</div>' +
-      '<button class="btn btn--primary btn--lg btn--block" data-home style="margin-top:var(--s-5)">' + icon('plus', { sw: 2.4 }) + ' Add another song</button>' +
+      '<button class="btn btn--primary btn--lg btn--block" data-home style="margin-top:var(--s-5)">' + icon('plus', { sw: 2.4 }) + ' <span data-field="queue.addanother.btn">Add another song</span></button>' +
     '</div></div>';
   }
 
   // ── ADD SHEET (queue free or bump) ────────────────────────────────────────
   function addSheet(title, artist) {
-    return '<div class="jk-sheet"><div class="row between"><div><div class="eyebrow" style="color:var(--accent)">Add to the queue</div>' +
+    return '<div class="jk-sheet"><div class="row between"><div><div class="eyebrow" style="color:var(--accent)" data-field="sheet.addtoqueue.heading">Add to the queue</div>' +
       '<h2 class="t-h1 jk-word">' + title + '</h2><div class="t-body dim">' + artist + '</div></div>' +
       '<button class="iconbtn" data-sheet-close>' + icon('x', { sw: 2 }) + '</button></div>' +
       '<div class="jk-sheet__opts">' +
-        '<button class="jk-opt" data-act="queueFree" data-title="' + title + '" data-artist="' + artist + '"><span class="jk-opt__ic">' + icon('headphones') + '</span>' +
-          '<span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h3">Add to the queue</span><span class="t-sm dim">Plays in turn · free</span></span>' + icon('arrow-right', { sw: 2 }) + '</button>' +
-        '<button class="jk-opt jk-opt--bump" data-act="queueBump" data-title="' + title + '" data-artist="' + artist + '"><span class="jk-opt__ic">' + icon('flame') + '</span>' +
-          '<span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h3">Bump to the front</span><span class="t-sm dim">Plays next · ' + money(D.credits.bumpCents) + '</span></span>' +
-          '<span class="badge badge--accent">' + money(D.credits.bumpCents) + '</span></button>' +
+        '<button class="jk-opt" data-act="queueFree" data-action="song.queue" data-title="' + title + '" data-artist="' + artist + '"><span class="jk-opt__ic">' + icon('headphones') + '</span>' +
+          '<span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h3" data-field="sheet.queuefree.label">Add to the queue</span><span class="t-sm dim" data-field="sheet.queuefree.sub">Plays in turn \xb7 free</span></span>' + icon('arrow-right', { sw: 2 }) + '</button>' +
+        '<button class="jk-opt jk-opt--bump" data-act="queueBump" data-action="song.bump" data-title="' + title + '" data-artist="' + artist + '"><span class="jk-opt__ic">' + icon('flame') + '</span>' +
+          '<span class="col" style="align-items:flex-start;gap:0;flex:1"><span class="t-h3" data-field="sheet.bump.label">Bump to the front</span><span class="t-sm dim" data-field="sheet.bump.sub">Plays next \xb7 ' + money(D.credits.bumpCents) + '</span></span>' +
+          '<span class="badge badge--accent" data-field="sheet.bump.price">' + money(D.credits.bumpCents) + '</span></button>' +
       '</div></div>';
   }
   function added(title, bumped) {
     return '<div class="jk-sheet jk-sheet--done"><div class="jk-done__ic">' + icon(bumped ? 'flame' : 'check', { sw: 2.4 }) + '</div>' +
-      '<h2 class="t-h1 jk-word">' + (bumped ? 'Bumped to the front!' : 'Added to the queue') + '</h2>' +
+      '<h2 class="t-h1 jk-word" data-field="' + (bumped ? 'sheet.bumped.title' : 'sheet.added.title') + '">' + (bumped ? 'Bumped to the front!' : 'Added to the queue') + '</h2>' +
       '<p class="t-lg dim pretty">' + title + (bumped ? ' plays next.' : ' is in line — others can vote it up.') + '</p>' +
-      '<div class="jk-sheet__foot"><button class="btn" data-sheet-close>Done</button>' +
-        '<button class="btn btn--primary grow" data-act="goQueue">See the queue ' + icon('arrow-right', { sw: 2 }) + '</button></div></div>';
+      '<div class="jk-sheet__foot"><button class="btn" data-sheet-close data-field="sheet.done.btn">Done</button>' +
+        '<button class="btn btn--primary grow" data-act="goQueue"><span data-field="sheet.seequeue.btn">See the queue</span> ' + icon('arrow-right', { sw: 2 }) + '</button></div></div>';
   }
 
   Kiosk.app({
@@ -1484,6 +1485,171 @@ window.JUKE = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- brand / bar identity -->
+  <span data-field="brand.name">Ember</span>
+  <span data-field="brand.tagline">Jukebox</span>
+  <span data-field="brand.initials">E</span>
+  <!-- attract screen -->
+  <div data-img="hero.image"></div>
+  <span data-field="hero.label">BACKBAR / NEON HERO</span>
+  <span data-field="attract.eyebrow">Ember &middot; Jukebox</span>
+  <span data-field="attract.headline">You pick the music.</span>
+  <span data-field="attract.cta">Touch to queue a song</span>
+  <!-- now playing -->
+  <span data-field="nowplaying.badge">Now playing</span>
+  <span data-field="nowplaying.title">Midnight City</span>
+  <span data-field="nowplaying.artist">Aurelia</span>
+  <span data-field="nowplaying.album">Neon Tides</span>
+  <span data-field="nowplaying.artlabel">NOW PLAYING &mdash; NEON TIDES</span>
+  <div data-img="nowplaying.art"></div>
+  <!-- queue / up-next -->
+  <span data-field="queue.upnext.label">Up next</span>
+  <span data-field="queue.0.title">Electric Feel</span>
+  <span data-field="queue.0.artist">Volta Kids</span>
+  <span data-field="queue.empty.label">Nothing queued &mdash; add one!</span>
+  <span data-field="queue.q1.title">Electric Feel</span>
+  <span data-field="queue.q1.artist">Volta Kids</span>
+  <span data-field="queue.q2.title">Golden</span>
+  <span data-field="queue.q2.artist">June Harper</span>
+  <span data-field="queue.q3.title">Sunflower Soul</span>
+  <span data-field="queue.q3.artist">The Marigolds</span>
+  <span data-field="queue.q4.title">Heatwave</span>
+  <span data-field="queue.q4.artist">Cassette Club</span>
+  <span data-field="queue.bumped.badge">Bumped</span>
+  <span data-field="queue.playingnow.label">Playing now</span>
+  <span data-field="queue.addanother.btn">Add another song</span>
+  <!-- credits / pricing -->
+  <span data-field="credits.note">One free request per guest &middot; bump to the front for $2</span>
+  <!-- vibes section -->
+  <span data-field="vibes.heading">Pick a vibe</span>
+  <span data-field="vibe.tonight.name">Tonight&#39;s Mix</span>
+  <span data-field="vibe.tonight.desc">The house blend &mdash; upbeat &amp; easy</span>
+  <span data-field="vibe.throwback.name">Throwbacks</span>
+  <span data-field="vibe.throwback.desc">80s, 90s &amp; 2000s gold</span>
+  <span data-field="vibe.indie.name">Indie &amp; Alt</span>
+  <span data-field="vibe.indie.desc">Guitars, synths, feelings</span>
+  <span data-field="vibe.hiphop.name">Hip-Hop &amp; R&amp;B</span>
+  <span data-field="vibe.hiphop.desc">Smooth grooves &amp; bangers</span>
+  <span data-field="vibe.country.name">Country</span>
+  <span data-field="vibe.country.desc">Boots, trucks &amp; heartbreak</span>
+  <span data-field="vibe.chill.name">Late Night Chill</span>
+  <span data-field="vibe.chill.desc">Slow it down a notch</span>
+  <!-- vibe song list heading -->
+  <span data-field="vibe.picksong.label">Pick a song</span>
+  <!-- tonight songs -->
+  <span data-field="song.tonight.0.title">Midnight City</span>
+  <span data-field="song.tonight.0.artist">Aurelia</span>
+  <div data-img="song.tonight.0.art"></div>
+  <span data-field="song.tonight.1.title">Levitate</span>
+  <span data-field="song.tonight.1.artist">Sona</span>
+  <div data-img="song.tonight.1.art"></div>
+  <span data-field="song.tonight.2.title">Good Days</span>
+  <span data-field="song.tonight.2.artist">Mira Vale</span>
+  <div data-img="song.tonight.2.art"></div>
+  <span data-field="song.tonight.3.title">Pulse</span>
+  <span data-field="song.tonight.3.artist">Night Market</span>
+  <div data-img="song.tonight.3.art"></div>
+  <span data-field="song.tonight.4.title">Brighter</span>
+  <span data-field="song.tonight.4.artist">Lux &amp; Low</span>
+  <div data-img="song.tonight.4.art"></div>
+  <span data-field="song.tonight.5.title">Wild Tonight</span>
+  <span data-field="song.tonight.5.artist">The Embers</span>
+  <div data-img="song.tonight.5.art"></div>
+  <!-- throwback songs -->
+  <span data-field="song.throwback.0.title">Take On Me</span>
+  <span data-field="song.throwback.0.artist">a-ha</span>
+  <div data-img="song.throwback.0.art"></div>
+  <span data-field="song.throwback.1.title">Mr. Brightside</span>
+  <span data-field="song.throwback.1.artist">The Killers</span>
+  <div data-img="song.throwback.1.art"></div>
+  <span data-field="song.throwback.2.title">September</span>
+  <span data-field="song.throwback.2.artist">Earth, Wind &amp; Fire</span>
+  <div data-img="song.throwback.2.art"></div>
+  <span data-field="song.throwback.3.title">Dancing Queen</span>
+  <span data-field="song.throwback.3.artist">ABBA</span>
+  <div data-img="song.throwback.3.art"></div>
+  <span data-field="song.throwback.4.title">Hey Ya!</span>
+  <span data-field="song.throwback.4.artist">OutKast</span>
+  <div data-img="song.throwback.4.art"></div>
+  <span data-field="song.throwback.5.title">Sweet Caroline</span>
+  <span data-field="song.throwback.5.artist">Neil Diamond</span>
+  <div data-img="song.throwback.5.art"></div>
+  <!-- indie songs -->
+  <span data-field="song.indie.0.title">Electric Feel</span>
+  <span data-field="song.indie.0.artist">Volta Kids</span>
+  <div data-img="song.indie.0.art"></div>
+  <span data-field="song.indie.1.title">Float On</span>
+  <span data-field="song.indie.1.artist">Modest Tides</span>
+  <div data-img="song.indie.1.art"></div>
+  <span data-field="song.indie.2.title">Two Weeks</span>
+  <span data-field="song.indie.2.artist">Glass Animals Cover</span>
+  <div data-img="song.indie.2.art"></div>
+  <span data-field="song.indie.3.title">Sunflower Soul</span>
+  <span data-field="song.indie.3.artist">The Marigolds</span>
+  <div data-img="song.indie.3.art"></div>
+  <span data-field="song.indie.4.title">Ribcage</span>
+  <span data-field="song.indie.4.artist">Paper Lanterns</span>
+  <div data-img="song.indie.4.art"></div>
+  <!-- hiphop songs -->
+  <span data-field="song.hiphop.0.title">Golden</span>
+  <span data-field="song.hiphop.0.artist">June Harper</span>
+  <div data-img="song.hiphop.0.art"></div>
+  <span data-field="song.hiphop.1.title">Heatwave</span>
+  <span data-field="song.hiphop.1.artist">Cassette Club</span>
+  <div data-img="song.hiphop.1.art"></div>
+  <span data-field="song.hiphop.2.title">Smooth Operator (Flip)</span>
+  <span data-field="song.hiphop.2.artist">DJ Vela</span>
+  <div data-img="song.hiphop.2.art"></div>
+  <span data-field="song.hiphop.3.title">Nightcap</span>
+  <span data-field="song.hiphop.3.artist">Kofi Blue</span>
+  <div data-img="song.hiphop.3.art"></div>
+  <span data-field="song.hiphop.4.title">Loyal</span>
+  <span data-field="song.hiphop.4.artist">Sable</span>
+  <div data-img="song.hiphop.4.art"></div>
+  <!-- country songs -->
+  <span data-field="song.country.0.title">Dirt Road Sunrise</span>
+  <span data-field="song.country.0.artist">Hank Mercer</span>
+  <div data-img="song.country.0.art"></div>
+  <span data-field="song.country.1.title">Whiskey &amp; Rain</span>
+  <span data-field="song.country.1.artist">The Bootlegs</span>
+  <div data-img="song.country.1.art"></div>
+  <span data-field="song.country.2.title">Small Town Glow</span>
+  <span data-field="song.country.2.artist">Carly June</span>
+  <div data-img="song.country.2.art"></div>
+  <span data-field="song.country.3.title">Tailgate Heart</span>
+  <span data-field="song.country.3.artist">Dusty Lane</span>
+  <div data-img="song.country.3.art"></div>
+  <!-- chill songs -->
+  <span data-field="song.chill.0.title">Slow Burn</span>
+  <span data-field="song.chill.0.artist">Lowlight</span>
+  <div data-img="song.chill.0.art"></div>
+  <span data-field="song.chill.1.title">Velvet Hour</span>
+  <span data-field="song.chill.1.artist">Mira Vale</span>
+  <div data-img="song.chill.1.art"></div>
+  <span data-field="song.chill.2.title">Amber</span>
+  <span data-field="song.chill.2.artist">Night Market</span>
+  <div data-img="song.chill.2.art"></div>
+  <span data-field="song.chill.3.title">Drift</span>
+  <span data-field="song.chill.3.artist">Sona</span>
+  <div data-img="song.chill.3.art"></div>
+  <!-- song queue button -->
+  <span data-field="song.queue.btn">Queue it</span>
+  <!-- add sheet (bottom drawer) -->
+  <span data-field="sheet.addtoqueue.heading">Add to the queue</span>
+  <span data-field="sheet.queuefree.label">Add to the queue</span>
+  <span data-field="sheet.queuefree.sub">Plays in turn &middot; free</span>
+  <span data-field="sheet.bump.label">Bump to the front</span>
+  <span data-field="sheet.bump.sub">Plays next &middot; $2.00</span>
+  <span data-field="sheet.bump.price">$2.00</span>
+  <span data-field="sheet.added.title">Added to the queue</span>
+  <span data-field="sheet.bumped.title">Bumped to the front!</span>
+  <span data-field="sheet.done.btn">Done</span>
+  <span data-field="sheet.seequeue.btn">See the queue</span>
+  <!-- platform action wiring -->
+  <button data-action="song.queue">Queue it</button>
+  <button data-action="song.bump">Bump to front</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
