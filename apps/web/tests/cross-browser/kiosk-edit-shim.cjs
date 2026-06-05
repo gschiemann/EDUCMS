@@ -18,7 +18,12 @@
  * Runs in WebKit (Safari engine — the historical "works in Chrome, breaks in
  * Safari" blind spot) AND Chromium. Run locally:  cd apps/web && pnpm test:kiosk-shim
  */
-const { webkit, chromium } = require('@playwright/test');
+// WebKit-only by design: the cross-browser CI job installs ONLY webkit
+// (`playwright install --with-deps webkit`), and WebKit is the historical
+// "works in Chrome, breaks in Safari" blind spot this harness guards. The
+// decode path is plain DOM (textarea RCDATA + textContent) — if it's right in
+// WebKit it's right in Chromium/Firefox too.
+const { webkit } = require('@playwright/test');
 const { spawn } = require('node:child_process');
 const http = require('node:http');
 const { setTimeout: delay } = require('node:timers/promises');
@@ -96,7 +101,6 @@ async function testOne(browserType, name) {
   try {
     console.log('Kiosk edit-shim — entity-decode + XSS-safety:');
     await testOne(webkit, 'webkit');
-    await testOne(chromium, 'chromium');
   } finally {
     server.kill();
   }
