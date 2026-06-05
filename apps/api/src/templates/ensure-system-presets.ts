@@ -210,6 +210,16 @@ PRESET_VERTICALS.set('preset-kiosk-school', ['ALL']);
 PRESET_VERTICALS.set('preset-kiosk-qsr', ['ALL']);
 PRESET_VERTICALS.set('preset-kiosk-bar', ['ALL']);
 PRESET_VERTICALS.set('preset-kiosk-clinic', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-qsr-pickup', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-office-room', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-realestate-models', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-realestate-resident', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-food-nutrition', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-museum-quest', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-gym-workout', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-bar-jukebox', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-school-frontoffice', ['ALL']);
+PRESET_VERTICALS.set('preset-kiosk-vet', ['ALL']);
 
 /**
  * Resolve the stored `Template.vertical` tag for a preset id. Returns a

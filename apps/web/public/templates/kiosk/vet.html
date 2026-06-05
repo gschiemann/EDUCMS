@@ -1,0 +1,1677 @@
+<!doctype html>
+<html lang="en" data-theme="vet">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Maple Street Veterinary · Check-in Kiosk</title>
+<!-- VenueOS intake 2026-06-05 — self-contained kiosk (engine + vet) inlined for the EXTERNAL_HTML host. Source: Claude design kiosk batch-17 (kiosk-new-9). -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* ===== kiosk-core.css ===== */
+/* ═══════════════════════════════════════════════════════════════════════════
+   VenueOS · KIOSK CORE  —  shared design system for all touch templates
+   ───────────────────────────────────────────────────────────────────────────
+   • Every measurement scales from a single unit, --u (= 1vmin), so the same
+     markup is pixel-balanced on a 1920×1080 wall panel AND a 1080×1920 totem.
+   • Color + type are fully tokenized. A vertical theme only overrides the
+     variables in the ":root[data-theme=...]" blocks at the bottom — never the
+     component rules. This is what makes the three verticals one product.
+   • Components here are vertical-agnostic. Vertical-specific styling lives in
+     each vertical's styles.css.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* — scale unit: the one knob that makes layouts orientation-proof — */
+  --u: 1vmin;
+
+  /* — spacing scale (multiples of --u) — */
+  --s-1: calc(var(--u) * 0.5);
+  --s-2: calc(var(--u) * 1);
+  --s-3: calc(var(--u) * 1.6);
+  --s-4: calc(var(--u) * 2.4);
+  --s-5: calc(var(--u) * 3.4);
+  --s-6: calc(var(--u) * 4.8);
+  --s-7: calc(var(--u) * 6.6);
+  --s-8: calc(var(--u) * 9);
+
+  /* — type scale — */
+  --t-mega:   calc(var(--u) * 11);
+  --t-xl:     calc(var(--u) * 7.2);
+  --t-h1:     calc(var(--u) * 5.2);
+  --t-h2:     calc(var(--u) * 3.7);
+  --t-h3:     calc(var(--u) * 2.9);
+  --t-lg:     calc(var(--u) * 2.4);
+  --t-body:   calc(var(--u) * 2.0);
+  --t-sm:     calc(var(--u) * 1.7);
+  --t-xs:     calc(var(--u) * 1.42);
+
+  /* — radii — */
+  --r-sm: calc(var(--u) * 1.2);
+  --r-md: calc(var(--u) * 2);
+  --r-lg: calc(var(--u) * 3);
+  --r-xl: calc(var(--u) * 4.4);
+  --r-pill: 999px;
+
+  /* — motion — */
+  --ease: cubic-bezier(.22,.61,.36,1);
+  --ease-out: cubic-bezier(.16,1,.3,1);
+  --ease-in: cubic-bezier(.4,0,1,1);
+  --spring: cubic-bezier(.34,1.56,.64,1);
+  --dur: 460ms;
+  --dur-fast: 240ms;
+
+  /* — elevation (soft, layered, never harsh) — */
+  --sh-1: 0 calc(var(--u)*0.4) calc(var(--u)*1.4) rgba(8,12,22,.10);
+  --sh-2: 0 calc(var(--u)*1.2) calc(var(--u)*3.2) rgba(8,12,22,.16);
+  --sh-3: 0 calc(var(--u)*2.4) calc(var(--u)*7) rgba(8,12,22,.26);
+  --sh-pop: 0 calc(var(--u)*3.4) calc(var(--u)*10) rgba(8,12,22,.40);
+
+  /* — fallback theme (overridden per vertical) — */
+  --bg: #0e1116;
+  --bg-2: #161a22;
+  --surface: #1c212b;
+  --surface-2: #232a36;
+  --line: rgba(255,255,255,.10);
+  --line-strong: rgba(255,255,255,.18);
+  --text: #f4f6fb;
+  --text-dim: #9aa6b8;
+  --text-mute: #6b7689;
+  --accent: #4f7cff;
+  --accent-2: #8a6bff;
+  --on-accent: #ffffff;
+  --good: #2fc77e;
+  --warn: #f5a623;
+  --bad: #ef4d6b;
+
+  --font-display: "Bricolage Grotesque", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--t-body);
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+/* ═══ STAGE & SCREEN SYSTEM ════════════════════════════════════════════════ */
+.kiosk {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* a screen fills the stage; the router stacks them and animates between.
+   Visibility is driven by the .is-active class (NOT by animations) so the
+   final state is always correct even when the tab is backgrounded and
+   rAF/keyframes are throttled. Motion is a transition enhancement only. */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(2.5vmin);
+  pointer-events: none;
+  will-change: transform;
+  transition: transform var(--dur) var(--ease-out);
+}
+.screen.is-active { opacity: 1; transform: none; pointer-events: auto; }
+.screen.is-leaving { opacity: 0; }
+
+/* a scroll region inside a screen */
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.scroll::-webkit-scrollbar { width: calc(var(--u)*1.2); }
+.scroll::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 99px; }
+
+/* ═══ TYPOGRAPHY ═══════════════════════════════════════════════════════════ */
+.display { font-family: var(--font-display); font-weight: 800; line-height: .98; letter-spacing: -.02em; }
+.t-mega { font-family: var(--font-display); font-weight: 800; font-size: var(--t-mega); line-height: .92; letter-spacing: -.03em; }
+.t-xl   { font-family: var(--font-display); font-weight: 800; font-size: var(--t-xl); line-height: .98; letter-spacing: -.025em; }
+.t-h1   { font-family: var(--font-display); font-weight: 700; font-size: var(--t-h1); line-height: 1.02; letter-spacing: -.02em; }
+.t-h2   { font-family: var(--font-display); font-weight: 700; font-size: var(--t-h2); line-height: 1.05; letter-spacing: -.01em; }
+.t-h3   { font-family: var(--font-display); font-weight: 600; font-size: var(--t-h3); line-height: 1.1; }
+.t-lg   { font-size: var(--t-lg); line-height: 1.45; }
+.t-body { font-size: var(--t-body); }
+.t-sm   { font-size: var(--t-sm); }
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.dim { color: var(--text-dim); }
+.mute { color: var(--text-mute); }
+.balance { text-wrap: balance; }
+.pretty { text-wrap: pretty; }
+
+/* ═══ BUTTONS ══════════════════════════════════════════════════════════════ */
+.btn {
+  --pad-y: var(--s-3);
+  --pad-x: var(--s-5);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: var(--pad-y) var(--pad-x);
+  border: none;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: var(--t-lg);
+  font-weight: 700;
+  color: var(--text);
+  background: var(--surface-2);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast), box-shadow var(--dur-fast);
+  white-space: nowrap;
+}
+.btn:active { transform: scale(.955); }
+.btn--primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 calc(var(--u)*1) calc(var(--u)*3) color-mix(in srgb, var(--accent) 45%, transparent); }
+.btn--primary:active { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.btn--ghost { background: transparent; box-shadow: inset 0 0 0 calc(var(--u)*.28) var(--line-strong); }
+.btn--lg { --pad-y: var(--s-4); --pad-x: var(--s-6); font-size: calc(var(--t-lg)*1.12); }
+.btn--block { display: flex; width: 100%; }
+.btn .ic { width: 1.2em; height: 1.2em; }
+
+/* circular icon button (back, close, etc.) */
+.iconbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: calc(var(--u)*8); height: calc(var(--u)*8);
+  border: none; border-radius: var(--r-pill);
+  background: var(--surface); color: var(--text);
+  box-shadow: var(--sh-1); cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast);
+}
+.iconbtn:active { transform: scale(.9); background: var(--surface-2); }
+.iconbtn svg { width: 45%; height: 45%; }
+
+/* ═══ CHIPS / FILTERS ══════════════════════════════════════════════════════ */
+.chiprow { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.chip {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: var(--t-sm); font-weight: 600;
+  box-shadow: inset 0 0 0 calc(var(--u)*.22) var(--line);
+  cursor: pointer; white-space: nowrap;
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast), color var(--dur-fast), box-shadow var(--dur-fast);
+}
+.chip:active { transform: scale(.94); }
+.chip[aria-pressed="true"], .chip.is-on {
+  background: var(--accent); color: var(--on-accent);
+  box-shadow: none;
+}
+.chip .dot { width: .8em; height: .8em; border-radius: 50%; background: currentColor; }
+
+/* ═══ BADGES ═══════════════════════════════════════════════════════════════ */
+.badge {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  padding: calc(var(--u)*.8) var(--s-3);
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs); font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase;
+  background: var(--surface-2); color: var(--text-dim);
+}
+.badge .dot { width: .7em; height: .7em; border-radius: 50%; background: currentColor; }
+.badge--good { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.badge--warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.badge--bad  { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.badge--accent { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+
+/* ═══ CARDS ════════════════════════════════════════════════════════════════ */
+.card {
+  position: relative;
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast);
+  outline: 1px solid var(--line);
+  outline-offset: -1px;
+}
+.card:active { transform: scale(.975); box-shadow: var(--sh-2); }
+.card--static { cursor: default; }
+.card--static:active { transform: none; }
+
+/* ═══ IMAGE PLACEHOLDER ════════════════════════════════════════════════════
+   A refined, intentional placeholder. The dev swaps the background-image (or
+   drops an <img>/<video>) and removes [data-img]. The label chip self-hides
+   once a real asset is set via .has-media.                                    */
+.media {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 20% 10%, color-mix(in srgb,var(--accent) 32%, var(--surface-2)) 0%, transparent 55%),
+    radial-gradient(120% 90% at 90% 90%, color-mix(in srgb,var(--accent-2) 30%, var(--surface)) 0%, transparent 55%),
+    var(--surface-2);
+  background-size: cover; background-position: center;
+}
+.media::after {
+  content: "";
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size: calc(var(--u)*4) calc(var(--u)*4);
+  mask-image: linear-gradient(135deg, #000, transparent 70%);
+  opacity: .5;
+}
+.media.has-media { background-image: var(--src); }
+.media.has-media::after, .media.has-media .media__tag { display: none; }
+.media__tag {
+  position: absolute; left: var(--s-3); bottom: var(--s-3);
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  padding: calc(var(--u)*.7) var(--s-3);
+  border-radius: var(--r-sm);
+  background: rgba(8,10,16,.55);
+  backdrop-filter: blur(8px);
+  font-family: var(--font-mono); font-size: var(--t-xs);
+  letter-spacing: .08em; text-transform: uppercase; color: #fff;
+  z-index: 2;
+}
+.media__tag svg { width: 1.3em; height: 1.3em; opacity: .85; }
+.media__scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(0deg, rgba(6,8,14,.78) 0%, rgba(6,8,14,.05) 45%, transparent 70%);
+  z-index: 1;
+}
+
+/* ═══ HEADER BAR ═══════════════════════════════════════════════════════════ */
+.bar {
+  flex: none;
+  display: flex; align-items: center; gap: var(--s-4);
+  padding: var(--s-4) var(--s-6);
+  z-index: 5;
+}
+.bar__brand { display: flex; align-items: center; gap: var(--s-3); }
+.bar__logo {
+  width: calc(var(--u)*5.4); height: calc(var(--u)*5.4);
+  border-radius: var(--r-md);
+  background: var(--accent); color: var(--on-accent);
+  display: grid; place-items: center;
+  font-family: var(--font-display); font-weight: 800; font-size: var(--t-h3);
+  box-shadow: var(--sh-1);
+}
+.bar__spacer { flex: 1; }
+.bar__clock { font-family: var(--font-mono); font-size: var(--t-lg); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+/* breadcrumb */
+.crumbs { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; font-size: var(--t-sm); }
+.crumbs button { background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; padding: var(--s-1) 0; }
+.crumbs .sep { color: var(--text-mute); }
+.crumbs .now { color: var(--text); font-weight: 700; }
+
+/* ═══ BOTTOM ACTION BAR ════════════════════════════════════════════════════ */
+.actionbar {
+  flex: none;
+  display: flex; align-items: center; gap: var(--s-4);
+  padding: var(--s-4) var(--s-6);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(calc(var(--u)*2));
+  box-shadow: 0 calc(var(--u)*-1.2) calc(var(--u)*4) rgba(0,0,0,.25);
+  border-top: 1px solid var(--line);
+  z-index: 6;
+}
+
+/* ═══ SPEC LIST ════════════════════════════════════════════════════════════ */
+.specs { display: grid; gap: var(--s-3); }
+.spec {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+.spec__k { color: var(--text-dim); font-size: var(--t-body); }
+.spec__v { font-family: var(--font-display); font-weight: 700; font-size: var(--t-h3); text-align: right; white-space: nowrap; line-height: 1.05; }
+.spec__v small { display: block; font-family: var(--font-body); font-weight: 600; font-size: var(--t-xs); color: var(--text-dim); letter-spacing: .02em; }
+
+/* ═══ AMENITY / FEATURE TILE ═══════════════════════════════════════════════ */
+.feat {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--surface); border-radius: var(--r-md);
+  outline: 1px solid var(--line); outline-offset: -1px;
+}
+.feat__ic {
+  flex: none;
+  width: calc(var(--u)*6); height: calc(var(--u)*6);
+  border-radius: var(--r-sm);
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+.feat__ic svg { width: 55%; height: 55%; }
+.feat__t { font-weight: 700; font-size: var(--t-body); }
+.feat__d { color: var(--text-dim); font-size: var(--t-sm); }
+
+/* ═══ SHEET / MODAL ════════════════════════════════════════════════════════ */
+.scrim {
+  position: absolute; inset: 0; z-index: 20;
+  background: rgba(4,6,12,.62);
+  backdrop-filter: blur(calc(var(--u)*1.2));
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.scrim.is-open { opacity: 1; pointer-events: auto; }
+.sheet {
+  width: 100%; max-height: 86%;
+  background: var(--bg-2);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: var(--sh-pop);
+  transform: translateY(8%);
+  transition: transform var(--dur) var(--ease-out);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.scrim.is-open .sheet { transform: none; }
+.sheet__grip { width: calc(var(--u)*12); height: calc(var(--u)*.8); border-radius: 99px; background: var(--line-strong); margin: var(--s-3) auto 0; flex: none; }
+
+/* ═══ QUANTITY STEPPER ═════════════════════════════════════════════════════ */
+.stepper { display: inline-flex; align-items: center; gap: var(--s-3); background: var(--surface); border-radius: var(--r-pill); padding: calc(var(--u)*.7); }
+.stepper button {
+  width: calc(var(--u)*7); height: calc(var(--u)*7);
+  border: none; border-radius: 50%; background: var(--surface-2);
+  color: var(--text); font-size: var(--t-h3); font-weight: 700; cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast);
+}
+.stepper button:active { transform: scale(.88); }
+.stepper button.is-accent { background: var(--accent); color: var(--on-accent); }
+.stepper__n { min-width: calc(var(--u)*7); text-align: center; font-family: var(--font-display); font-weight: 700; font-size: var(--t-h3); font-variant-numeric: tabular-nums; }
+
+/* ═══ VIDEO REGION ═════════════════════════════════════════════════════════ */
+.video { position: relative; overflow: hidden; background: #05070c; }
+.video .media { position: absolute; inset: 0; }
+.video__play {
+  position: absolute; inset: 0; margin: auto;
+  width: calc(var(--u)*14); height: calc(var(--u)*14);
+  display: grid; place-items: center;
+  border: none; border-radius: 50%;
+  background: rgba(255,255,255,.16); backdrop-filter: blur(calc(var(--u)*1.4));
+  box-shadow: 0 0 0 calc(var(--u)*.6) rgba(255,255,255,.22), var(--sh-2);
+  color: #fff; cursor: pointer; z-index: 3;
+  transition: transform var(--dur-fast) var(--spring), opacity var(--dur);
+}
+.video__play:active { transform: scale(.9); }
+.video__play svg { width: 42%; height: 42%; margin-left: 6%; }
+.video.is-playing .video__play { opacity: 0; pointer-events: none; }
+.video__bar { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--u)*.8); background: rgba(255,255,255,.18); z-index: 4; }
+.video__bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+
+/* ═══ AUDIO GUIDE PLAYER ═══════════════════════════════════════════════════ */
+.audio {
+  display: flex; align-items: center; gap: var(--s-4);
+  padding: var(--s-4);
+  background: var(--surface); border-radius: var(--r-lg);
+  outline: 1px solid var(--line); outline-offset: -1px;
+}
+.audio__btn {
+  flex: none; width: calc(var(--u)*9); height: calc(var(--u)*9);
+  border: none; border-radius: 50%; background: var(--accent); color: var(--on-accent);
+  display: grid; place-items: center; cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.audio__btn:active { transform: scale(.9); }
+.audio__btn svg { width: 40%; height: 40%; }
+.wave { flex: 1; display: flex; align-items: center; gap: calc(var(--u)*.5); height: calc(var(--u)*8); }
+.wave i {
+  flex: 1; border-radius: 99px; background: var(--line-strong);
+  height: 30%; transform-origin: center;
+}
+.audio.is-playing .wave i { animation: waveBeat 1s ease-in-out infinite; background: var(--accent); }
+@keyframes waveBeat { 0%,100%{ transform: scaleY(.35) } 50%{ transform: scaleY(1) } }
+.audio__time { font-family: var(--font-mono); font-size: var(--t-sm); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+/* ═══ "YOU ARE HERE" WAYFINDING ════════════════════════════════════════════ */
+.here {
+  position: absolute; width: calc(var(--u)*4); height: calc(var(--u)*4);
+  transform: translate(-50%, -50%); z-index: 5;
+}
+.here::before {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 calc(var(--u)*.5) #fff, var(--sh-2);
+}
+.here::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: var(--accent); animation: pingPulse 1.8s var(--ease-out) infinite;
+}
+@keyframes pingPulse { 0%{ transform: scale(1); opacity: .6 } 100%{ transform: scale(3.4); opacity: 0 } }
+.here__label {
+  position: absolute; left: 50%; bottom: calc(100% + var(--u)*1.4); transform: translateX(-50%);
+  white-space: nowrap; padding: calc(var(--u)*.7) var(--s-3); border-radius: var(--r-sm);
+  background: var(--accent); color: var(--on-accent);
+  font-family: var(--font-mono); font-size: var(--t-xs); font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase; box-shadow: var(--sh-2);
+}
+.here__label::after { content:""; position:absolute; top:100%; left:50%; transform:translateX(-50%); border:calc(var(--u)*.9) solid transparent; border-top-color: var(--accent); }
+
+/* ═══ TAP RIPPLE ═══════════════════════════════════════════════════════════ */
+.ripple { position: absolute; border-radius: 50%; background: currentColor; opacity: .26; transform: scale(0); pointer-events: none; animation: rippleGo .6s var(--ease-out) forwards; }
+@keyframes rippleGo { to { transform: scale(1); opacity: 0; } }
+
+/* ═══ TOAST ════════════════════════════════════════════════════════════════ */
+.toast {
+  position: absolute; left: 50%; bottom: calc(var(--u)*6); transform: translate(-50%, 2vmin);
+  z-index: 60;
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-3) var(--s-5);
+  border-radius: var(--r-pill);
+  background: var(--text); color: var(--bg);
+  font-size: var(--t-body); font-weight: 700;
+  box-shadow: var(--sh-3);
+  opacity: 0; transition: opacity var(--dur) var(--ease), transform var(--dur) var(--spring);
+}
+.toast.is-on { opacity: 1; transform: translate(-50%, 0); }
+.toast .ic { width: 1.3em; height: 1.3em; }
+
+/* ═══ ATTRACT / IDLE SCREEN ════════════════════════════════════════════════ */
+.attract {
+  position: absolute; inset: 0; z-index: 40;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  background: var(--bg);
+  opacity: 0; pointer-events: none;
+  transition: opacity 600ms var(--ease);
+}
+.attract.is-on { opacity: 1; pointer-events: auto; }
+.attract__bg { position: absolute; inset: 0; }
+.attract__bg .media { position: absolute; inset: calc(var(--u)*-4); animation: kenburns 22s ease-in-out infinite alternate; }
+@keyframes kenburns { from{ transform: scale(1) translate(0,0) } to{ transform: scale(1.12) translate(-2%, -2%) } }
+.attract__body { position: relative; z-index: 2; padding: var(--s-8) var(--s-7); }
+.attract__cta {
+  display: inline-flex; align-items: center; gap: var(--s-3);
+  margin-top: var(--s-5); font-size: var(--t-h3); font-weight: 700;
+  animation: breathe 2.4s ease-in-out infinite;
+}
+.attract__cta .ring { width: calc(var(--u)*7); height: calc(var(--u)*7); border-radius: 50%; border: calc(var(--u)*.4) solid var(--accent); display: grid; place-items: center; }
+.attract__cta .ring svg { width: 50%; height: 50%; color: var(--accent); }
+@keyframes breathe { 0%,100%{ opacity:.7; transform: translateY(0) } 50%{ opacity:1; transform: translateY(calc(var(--u)*-.6)) } }
+
+/* ═══ UTILITY ══════════════════════════════════════════════════════════════ */
+.row { display: flex; align-items: center; }
+.col { display: flex; flex-direction: column; }
+.wrap { flex-wrap: wrap; }
+.center { align-items: center; justify-content: center; }
+.between { justify-content: space-between; }
+.gap-2 { gap: var(--s-2); } .gap-3 { gap: var(--s-3); } .gap-4 { gap: var(--s-4); } .gap-5 { gap: var(--s-5); } .gap-6 { gap: var(--s-6); }
+.grow { flex: 1; }
+.pad-6 { padding: var(--s-6); } .pad-7 { padding: var(--s-7); }
+.hidden { display: none !important; }
+.fade-up { animation: scrIn-up var(--dur) var(--ease-out) both; }
+.stagger > * { animation: scrIn-up var(--dur) var(--ease-out) both; }
+@keyframes scrIn-up { from { opacity: 0; transform: translateY(2.5vmin); } to { opacity: 1; transform: none; } }
+
+/* ═══ THEME: REAL ESTATE — architectural, premium, ink + brass ════════════ */
+:root[data-theme="realestate"] {
+  --bg: #11151c;
+  --bg-2: #161b24;
+  --surface: #1b2230;
+  --surface-2: #232c3d;
+  --line: rgba(214,225,245,.10);
+  --line-strong: rgba(214,225,245,.20);
+  --text: #f1f5fc;
+  --text-dim: #9fb0c9;
+  --text-mute: #6a7a93;
+  --accent: #c8a25c;       /* brass */
+  --accent-2: #6f93c9;     /* steel blue */
+  --on-accent: #14181f;
+  --good: #4bbf87;
+  --warn: #e0a13d;
+  --bad: #e06a72;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+}
+
+/* ═══ THEME: MUSEUM — editorial, curatorial, charcoal + amber ═════════════ */
+:root[data-theme="museum"] {
+  --bg: #0c0b0a;
+  --bg-2: #131110;
+  --surface: #1a1715;
+  --surface-2: #221e1b;
+  --line: rgba(245,235,220,.10);
+  --line-strong: rgba(245,235,220,.20);
+  --text: #f6efe4;
+  --text-dim: #b6a994;
+  --text-mute: #837664;
+  --accent: #d98a3c;       /* ochre/amber */
+  --accent-2: #b5483a;     /* terracotta */
+  --on-accent: #1a120a;
+  --good: #7fae6a;
+  --warn: #d9a13c;
+  --bad: #c0584b;
+  --font-display: "Newsreader", Georgia, serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+}
+
+/* ═══ THEME: FOOD — fresh, appetizing, cream + paprika ════════════════════ */
+:root[data-theme="food"] {
+  --bg: #fbf6ee;
+  --bg-2: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f4ece0;
+  --line: rgba(40,30,20,.10);
+  --line-strong: rgba(40,30,20,.18);
+  --text: #241a12;
+  --text-dim: #6c5d4e;
+  --text-mute: #9a8a78;
+  --accent: #e3502a;       /* paprika/tomato */
+  --accent-2: #f0a92a;     /* turmeric */
+  --on-accent: #ffffff;
+  --good: #2fa463;
+  --warn: #e08b2a;
+  --bad: #d23b3b;
+  --font-display: "Bricolage Grotesque", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --sh-1: 0 calc(var(--u)*0.5) calc(var(--u)*1.6) rgba(80,50,20,.08);
+  --sh-2: 0 calc(var(--u)*1.4) calc(var(--u)*3.6) rgba(80,50,20,.12);
+  --sh-3: 0 calc(var(--u)*2.6) calc(var(--u)*7) rgba(80,50,20,.18);
+}
+
+/* ═══ ORIENTATION REFLOW HOOKS ═════════════════════════════════════════════
+   Layout columns collapse to stacks in portrait. Verticals add their own
+   orientation rules in styles.css; these are the shared defaults.            */
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6); }
+.split--6040 { grid-template-columns: 6fr 4fr; }
+.split--4060 { grid-template-columns: 4fr 6fr; }
+@media (orientation: portrait) {
+  .split, .split--6040, .split--4060 { grid-template-columns: 1fr; }
+  .portrait-hide { display: none !important; }
+}
+@media (orientation: landscape) {
+  .landscape-hide { display: none !important; }
+}
+
+/* ═══ THEME: SCHOOL — collegiate, friendly, navy + gold (light) ═══════════ */
+:root[data-theme="school"] {
+  --bg: #f4f6fb;
+  --bg-2: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #eef1f8;
+  --line: rgba(20,30,60,.10);
+  --line-strong: rgba(20,30,60,.18);
+  --text: #15203a;
+  --text-dim: #586079;
+  --text-mute: #8a93ad;
+  --accent: #1e3a8a;       /* navy */
+  --accent-2: #d4a017;     /* gold */
+  --on-accent: #ffffff;
+  --good: #1f9d55;
+  --warn: #d4a017;
+  --bad: #d23b3b;
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --sh-1: 0 calc(var(--u)*0.5) calc(var(--u)*1.6) rgba(20,30,60,.07);
+  --sh-2: 0 calc(var(--u)*1.4) calc(var(--u)*3.6) rgba(20,30,60,.11);
+  --sh-3: 0 calc(var(--u)*2.6) calc(var(--u)*7) rgba(20,30,60,.16);
+}
+
+/* ═══ THEME: GYM — high-energy, dark + volt ═══════════════════════════════ */
+:root[data-theme="gym"] {
+  --bg: #0b0d10;
+  --bg-2: #121519;
+  --surface: #181c22;
+  --surface-2: #20252d;
+  --line: rgba(255,255,255,.09);
+  --line-strong: rgba(255,255,255,.18);
+  --text: #f3f6f8;
+  --text-dim: #9aa6b2;
+  --text-mute: #66707c;
+  --accent: #c6f135;       /* volt */
+  --accent-2: #18d3a6;     /* teal */
+  --on-accent: #0b0d10;
+  --good: #18d3a6;
+  --warn: #f5c542;
+  --bad: #ff5470;
+  --font-display: "Archivo", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+}
+
+/* ═══ THEME: OFFICE — clean, corporate, cool gray + indigo (light) ════════ */
+:root[data-theme="office"] {
+  --bg: #f6f7f9;
+  --bg-2: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #eef0f4;
+  --line: rgba(20,25,40,.09);
+  --line-strong: rgba(20,25,40,.16);
+  --text: #161a22;
+  --text-dim: #565d6b;
+  --text-mute: #8b93a1;
+  --accent: #4f46e5;       /* indigo */
+  --accent-2: #0ea5e9;     /* sky */
+  --on-accent: #ffffff;
+  --good: #16a36a;
+  --warn: #e08b2a;
+  --bad: #e0455e;
+  --font-display: "Schibsted Grotesk", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --sh-1: 0 calc(var(--u)*0.5) calc(var(--u)*1.6) rgba(20,25,40,.06);
+  --sh-2: 0 calc(var(--u)*1.4) calc(var(--u)*3.6) rgba(20,25,40,.10);
+  --sh-3: 0 calc(var(--u)*2.6) calc(var(--u)*7) rgba(20,25,40,.15);
+}
+
+/* ═══ THEME: QSR — bold, neon, drive-thru energy (warm dark) ══════════════ */
+:root[data-theme="qsr"] {
+  --bg: #16100c;
+  --bg-2: #1f1611;
+  --surface: #251a13;
+  --surface-2: #2f221a;
+  --line: rgba(255,225,190,.10);
+  --line-strong: rgba(255,225,190,.20);
+  --text: #fff3e8;
+  --text-dim: #c4a487;
+  --text-mute: #8a6f59;
+  --accent: #ff5a36;       /* flame red-orange */
+  --accent-2: #ffc233;     /* fries gold */
+  --on-accent: #1a0f08;
+  --good: #5dc98a;
+  --warn: #ffc233;
+  --bad: #ff5470;
+  --font-display: "Archivo", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+}
+
+/* ═══ THEME: BAR — moody, candlelit, copper + wine (near-black) ═══════════ */
+:root[data-theme="bar"] {
+  --bg: #0c0a0a;
+  --bg-2: #131010;
+  --surface: #1a1514;
+  --surface-2: #241c1a;
+  --line: rgba(240,220,210,.10);
+  --line-strong: rgba(240,220,210,.20);
+  --text: #f4e9e2;
+  --text-dim: #b39c90;
+  --text-mute: #7e6a60;
+  --accent: #d9a05b;       /* copper / candle */
+  --accent-2: #b3477e;     /* wine / magenta */
+  --on-accent: #1a1210;
+  --good: #7fae6a;
+  --warn: #d9a05b;
+  --bad: #c0584b;
+  --font-display: "DM Serif Display", Georgia, serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+}
+
+/* ═══ THEME: CLINIC — calm, trustworthy, teal (light, accessible) ═════════ */
+:root[data-theme="clinic"] {
+  --bg: #eef4f4;
+  --bg-2: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #e4eeee;
+  --line: rgba(15,60,60,.10);
+  --line-strong: rgba(15,60,60,.18);
+  --text: #122a2a;
+  --text-dim: #4f6a6a;
+  --text-mute: #87a0a0;
+  --accent: #0e8a86;       /* teal */
+  --accent-2: #3b82f6;     /* sky blue */
+  --on-accent: #ffffff;
+  --good: #16a36a;
+  --warn: #e0922a;
+  --bad: #d6455e;
+  --font-display: "Figtree", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --sh-1: 0 calc(var(--u)*0.5) calc(var(--u)*1.6) rgba(15,60,60,.07);
+  --sh-2: 0 calc(var(--u)*1.4) calc(var(--u)*3.6) rgba(15,60,60,.11);
+  --sh-3: 0 calc(var(--u)*2.6) calc(var(--u)*7) rgba(15,60,60,.16);
+}
+
+/* ═══ THEME: VET — warm, friendly, paws-and-care (light sage + coral) ═════ */
+:root[data-theme="vet"] {
+  --bg: #f4f1e9;
+  --bg-2: #fffdf8;
+  --surface: #fffdf8;
+  --surface-2: #ece6d8;
+  --line: rgba(60,50,35,.10);
+  --line-strong: rgba(60,50,35,.18);
+  --text: #2b2519;
+  --text-dim: #6f6552;
+  --text-mute: #9c917b;
+  --accent: #2f9e7e;       /* friendly green */
+  --accent-2: #f0744a;     /* warm coral */
+  --on-accent: #ffffff;
+  --good: #2f9e7e;
+  --warn: #e0922a;
+  --bad: #d6455e;
+  --font-display: "Quicksand", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  --r-lg: calc(var(--u) * 3.4);
+  --r-xl: calc(var(--u) * 5);
+  --sh-1: 0 calc(var(--u)*0.5) calc(var(--u)*1.6) rgba(80,60,30,.07);
+  --sh-2: 0 calc(var(--u)*1.4) calc(var(--u)*3.6) rgba(80,60,30,.11);
+  --sh-3: 0 calc(var(--u)*2.6) calc(var(--u)*7) rgba(80,60,30,.16);
+}
+
+/* ===== vet/styles.css ===== */
+/* ═══ VET · vertical layout (theme tokens in [data-theme="vet"]) ════════════
+   Warm, rounded, friendly. Big targets, soft cards, playful paw accents. */
+.vt-hero,.media.vt-hero,.media.vt-provider__img{ background:
+  radial-gradient(90% 90% at 75% 12%, color-mix(in srgb,var(--accent) 55%,transparent), transparent 55%),
+  radial-gradient(90% 100% at 8% 100%, color-mix(in srgb,var(--accent-2) 60%,transparent), transparent 55%),
+  linear-gradient(150deg,#3aa886,#1f7d76); }
+.vt-bar{ background:var(--bg-2); box-shadow:var(--sh-1) }
+.vt-bar .bar__logo{ background:var(--accent); color:#fff } .vt-bar .bar__logo svg{ width:60%;height:60% }
+
+/* pet avatar */
+.vt-avatar{ width:calc(var(--u)*8); height:calc(var(--u)*8); border-radius:50%; display:grid; place-items:center; flex:none; color:#fff }
+.vt-avatar svg{ width:55%;height:55% }
+.vt-avatar--lg{ width:calc(var(--u)*12); height:calc(var(--u)*12) }
+.vt-avatar--dog{ background:linear-gradient(140deg,#f0a05a,#e07a3c) }
+.vt-avatar--cat{ background:linear-gradient(140deg,#9a86d8,#6f57c2) }
+.vt-avatar--rabbit{ background:linear-gradient(140deg,#6fb6e0,#3d8fc2) }
+
+.vt-home{ padding:0 var(--s-6) var(--s-7); display:grid; gap:var(--s-5) }
+.vt-dash{ display:grid; grid-template-columns:1.1fr 1fr; gap:var(--s-5); margin-top:var(--s-4); align-items:stretch }
+.vt-hero-tile{ position:relative; overflow:hidden; border:none; cursor:pointer; border-radius:var(--r-xl); padding:0; text-align:left;
+  background:linear-gradient(140deg, var(--accent), #2bb197 55%, var(--accent-2)); box-shadow:var(--sh-2); transition:transform var(--dur-fast) var(--ease); min-height:calc(var(--u)*46) }
+.vt-hero-tile:active{ transform:scale(.99) }
+.vt-hero-tile__b{ position:relative; z-index:2; padding:var(--s-7); height:100%; display:flex; flex-direction:column }
+.vt-hero-tile__cta{ margin-top:auto; align-self:flex-start; background:#fff; color:var(--accent) }
+.vt-paws{ position:absolute; inset:0; z-index:1; opacity:.16; color:#fff; pointer-events:none }
+.vt-paws svg{ position:absolute; width:calc(var(--u)*16); height:calc(var(--u)*16) }
+.vt-paws svg:nth-child(1){ top:8%; right:6%; transform:rotate(18deg) }
+.vt-paws svg:nth-child(2){ bottom:24%; right:22%; transform:rotate(-12deg); width:calc(var(--u)*11);height:calc(var(--u)*11) }
+.vt-paws svg:nth-child(3){ bottom:6%; right:40%; transform:rotate(24deg); width:calc(var(--u)*8);height:calc(var(--u)*8) }
+
+.vt-waitcard{ background:var(--surface); border-radius:var(--r-lg); padding:var(--s-5); box-shadow:var(--sh-1); display:flex; flex-direction:column }
+.vt-waitlist{ display:grid; gap:var(--s-2); margin-top:var(--s-3) }
+.vt-wait{ display:flex; align-items:center; gap:var(--s-3); padding:var(--s-2) var(--s-3); border-radius:var(--r-md); background:var(--bg) }
+.vt-wait--now{ background:color-mix(in srgb,var(--accent) 12%,var(--surface)) }
+.vt-wait .vt-avatar{ width:calc(var(--u)*6); height:calc(var(--u)*6) }
+
+.vt-tiles{ display:grid; grid-template-columns:repeat(4,1fr); gap:var(--s-4) }
+.vt-tile{ display:flex; flex-direction:column; align-items:flex-start; gap:var(--s-1); padding:var(--s-5); border:none; cursor:pointer; background:var(--surface); border-radius:var(--r-lg); box-shadow:var(--sh-1); color:var(--text); text-align:left; transition:transform var(--dur-fast) var(--ease) }
+.vt-tile:active{ transform:scale(.97) }
+.vt-tile__ic{ width:calc(var(--u)*7); height:calc(var(--u)*7); border-radius:var(--r-md); display:grid; place-items:center; background:color-mix(in srgb,var(--accent) 14%,transparent); color:var(--accent); font-size:var(--t-h3); margin-bottom:var(--s-2) }
+.vt-tile__t{ font-family:var(--font-display); font-weight:700; font-size:var(--t-h3); line-height:1.1 }
+.vt-tile__go{ align-self:flex-end; color:var(--accent); margin-top:var(--s-2) }
+.vt-comfort{ display:flex; align-items:center; gap:var(--s-2); color:var(--text-dim); font-size:var(--t-body); padding:var(--s-4); background:color-mix(in srgb,var(--accent-2) 10%,var(--surface)); border-radius:var(--r-lg); border-left:4px solid var(--accent-2) }
+.vt-comfort svg{ width:1.4em;height:1.4em;color:var(--accent-2);flex:none }
+
+.vt-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:var(--s-5); flex-wrap:wrap; margin:var(--s-3) 0 var(--s-5) }
+.vt-list{ padding:0 var(--s-6) var(--s-7) }
+.vt-privacy{ display:flex; align-items:center; gap:var(--s-2); color:var(--text-mute); font-size:var(--t-sm) } .vt-privacy svg{ width:1.3em;height:1.3em;color:var(--accent);flex:none }
+
+/* check-in */
+.vt-checkin{ padding:0 var(--s-6) calc(var(--u)*16); max-width:calc(var(--u)*124); margin:0 auto; width:100% }
+.vt-steps{ display:flex; gap:var(--s-2); margin-top:var(--s-4); flex-wrap:wrap }
+.vt-step{ display:inline-flex; align-items:center; gap:var(--s-1); padding:var(--s-2) var(--s-4); border-radius:var(--r-pill); background:var(--surface-2); color:var(--text-mute); font-weight:700; font-size:var(--t-sm) }
+.vt-step.is-on{ background:var(--accent); color:#fff } .vt-step.is-done{ background:color-mix(in srgb,var(--good) 18%,transparent); color:var(--good) } .vt-step svg{ width:1.1em;height:1.1em }
+.vt-search{ display:flex; align-items:center; gap:var(--s-3); padding:var(--s-5); background:var(--surface); border-radius:var(--r-lg); box-shadow:var(--sh-1); font-size:var(--t-h3); border:2px dashed var(--line-strong) }
+.vt-search svg{ color:var(--accent) }
+.vt-petgrid{ display:grid; grid-template-columns:1fr 1fr; gap:var(--s-4) }
+.vt-petcard{ display:flex; align-items:center; gap:var(--s-4); padding:var(--s-5); border:2px solid var(--line); border-radius:var(--r-lg); background:var(--surface); cursor:pointer; text-align:left; color:var(--text); transition:border-color var(--dur-fast),transform var(--dur-fast) var(--ease) }
+.vt-petcard:active{ transform:scale(.99) } .vt-petcard:hover{ border-color:var(--accent) }
+.vt-petcard__b{ flex:1 } .vt-petcard__go{ color:var(--accent) }
+
+.vt-petbanner{ display:flex; align-items:center; gap:var(--s-4); margin-top:var(--s-4); padding:var(--s-5); background:var(--surface); border-radius:var(--r-lg); box-shadow:var(--sh-1) }
+.vt-reasons{ display:grid; grid-template-columns:repeat(3,1fr); gap:var(--s-4) }
+.vt-reason{ position:relative; display:flex; flex-direction:column; gap:var(--s-1); align-items:flex-start; padding:var(--s-5); border:2px solid var(--line); border-radius:var(--r-lg); background:var(--surface); cursor:pointer; text-align:left; color:var(--text); transition:border-color var(--dur-fast),transform var(--dur-fast) var(--ease) }
+.vt-reason:active{ transform:scale(.98) } .vt-reason.is-on{ border-color:var(--accent); background:color-mix(in srgb,var(--accent) 8%,var(--surface)) }
+.vt-reason__ic{ width:calc(var(--u)*8); height:calc(var(--u)*8); border-radius:var(--r-md); display:grid; place-items:center; background:color-mix(in srgb,var(--accent) 14%,transparent); color:var(--accent); font-size:var(--t-h2); margin-bottom:var(--s-2) }
+.vt-reason__check{ position:absolute; top:var(--s-4); right:var(--s-4); width:calc(var(--u)*4); height:calc(var(--u)*4); border-radius:50%; background:var(--accent); color:#fff; display:grid; place-items:center; opacity:0; transition:opacity var(--dur-fast) } .vt-reason__check svg{ width:60%;height:60% }
+.vt-reason.is-on .vt-reason__check{ opacity:1 }
+
+.vt-symptoms{ display:flex; flex-wrap:wrap; gap:var(--s-3) }
+.vt-symptom{ display:inline-flex; align-items:center; gap:var(--s-2); padding:var(--s-3) var(--s-5); border:2px solid var(--line); border-radius:var(--r-pill); background:var(--surface); color:var(--text); font-weight:600; font-size:var(--t-lg); cursor:pointer; transition:border-color var(--dur-fast) }
+.vt-symptom.is-on{ border-color:var(--accent); background:color-mix(in srgb,var(--accent) 10%,var(--surface)); color:var(--accent) }
+.vt-symptom__mark{ width:calc(var(--u)*3); height:calc(var(--u)*3); border-radius:50%; border:2px solid var(--line-strong); display:grid; place-items:center; color:#fff } .vt-symptom__mark svg{ width:60%;height:60%;opacity:0 }
+.vt-symptom.is-on .vt-symptom__mark{ background:var(--accent); border-color:var(--accent) } .vt-symptom.is-on .vt-symptom__mark svg{ opacity:1 }
+.vt-note{ display:flex; align-items:center; gap:var(--s-3); margin-top:var(--s-5); padding:var(--s-4); background:var(--surface); border-radius:var(--r-lg); color:var(--text-dim) } .vt-note svg{ color:var(--accent);flex:none }
+.vt-bar2{ background:var(--bg-2) }
+
+/* done / ticket */
+.vt-done{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:var(--s-3); padding:var(--s-7) }
+.vt-done__ic{ width:calc(var(--u)*17); height:calc(var(--u)*17); border-radius:50%; background:var(--good); color:#fff; display:grid; place-items:center; font-size:calc(var(--u)*10); box-shadow:0 calc(var(--u)*2) calc(var(--u)*5) color-mix(in srgb,var(--good) 35%,transparent) } .vt-done__ic svg{ width:1em;height:1em }
+.vt-ticket{ display:flex; align-items:center; gap:var(--s-6); background:var(--surface); border-radius:var(--r-xl); box-shadow:var(--sh-2); padding:var(--s-6); margin:var(--s-4) 0 }
+.vt-ticket__pet{ display:flex; align-items:center; gap:var(--s-3) }
+.vt-ticket__div{ width:2px; align-self:stretch; background:var(--line) }
+.vt-ticket__cols{ display:flex; gap:var(--s-6); align-items:center }
+.vt-ticket__no{ font-family:var(--font-display); font-weight:700; font-size:calc(var(--u)*11); line-height:1; color:var(--accent) }
+
+/* wait board */
+.vt-board{ display:grid; gap:var(--s-3) }
+.vt-boardrow{ display:flex; align-items:center; gap:var(--s-4); padding:var(--s-4) var(--s-5); background:var(--surface); border-radius:var(--r-lg); box-shadow:var(--sh-1) }
+.vt-boardrow.vt-wait--now{ outline:2px solid var(--accent); outline-offset:-2px }
+
+/* services */
+.vt-services{ display:grid; grid-template-columns:1fr 1fr; gap:var(--s-4) }
+.vt-service{ display:flex; align-items:center; gap:var(--s-4); padding:var(--s-5); text-align:left; border:none; background:var(--surface) }
+.vt-service__ic{ width:calc(var(--u)*9); height:calc(var(--u)*9); border-radius:var(--r-lg); display:grid; place-items:center; background:color-mix(in srgb,var(--accent) 14%,transparent); color:var(--accent); font-size:var(--t-h1); flex:none }
+.vt-service__price{ font-family:var(--font-display); font-weight:700; color:var(--accent); white-space:nowrap; align-self:flex-start }
+
+/* refills */
+.vt-refills{ display:grid; gap:var(--s-3) }
+.vt-refill{ display:flex; align-items:center; gap:var(--s-4); padding:var(--s-4) var(--s-5); background:var(--surface); border-radius:var(--r-lg); box-shadow:var(--sh-1) }
+.vt-refill__ic{ width:calc(var(--u)*8); height:calc(var(--u)*8); border-radius:var(--r-md); display:grid; place-items:center; background:color-mix(in srgb,var(--accent-2) 16%,transparent); color:var(--accent-2); font-size:var(--t-h3); flex:none }
+.vt-refill__r{ display:flex; flex-direction:column; align-items:flex-end; gap:var(--s-2) }
+.vt-refill__p{ font-family:var(--font-display); font-weight:700; font-size:var(--t-h3); color:var(--accent) }
+.btn.vt-added{ color:var(--good); box-shadow:inset 0 0 0 2px var(--good); background:color-mix(in srgb,var(--good) 12%,transparent) }
+
+/* providers */
+.vt-providers{ display:grid; grid-template-columns:repeat(3,1fr); gap:var(--s-4) }
+.vt-provider{ display:flex; flex-direction:column }
+.vt-provider__img{ aspect-ratio:4/3; position:relative } .vt-provider__img .media__tag{ display:none }
+.vt-provider__b{ padding:var(--s-5); display:flex; flex-direction:column; gap:2px }
+
+/* wayfinding */
+.vt-way{ align-items:start }
+.vt-mapframe{ position:relative; aspect-ratio:16/11; border-radius:var(--r-xl); overflow:hidden; outline:1px solid var(--line); outline-offset:-1px; background:
+  repeating-linear-gradient(0deg, rgba(47,158,126,.05) 0 1px, transparent 1px calc(var(--u)*4)),
+  repeating-linear-gradient(90deg, rgba(47,158,126,.05) 0 1px, transparent 1px calc(var(--u)*4)),
+  radial-gradient(70% 60% at 50% 110%, color-mix(in srgb,var(--accent) 14%,transparent), transparent 60%),
+  linear-gradient(160deg,#eae3d4,#ddd0bb); }
+.vt-pin{ position:absolute; transform:translate(-50%,-50%); z-index:3; display:flex; flex-direction:column; align-items:center; gap:var(--s-1); border:none; background:none; cursor:pointer }
+.vt-pin__code{ width:calc(var(--u)*7); height:calc(var(--u)*7); border-radius:var(--r-md); display:grid; place-items:center; font-family:var(--font-display); font-weight:700; font-size:var(--t-h3); color:#fff; box-shadow:var(--sh-2); transition:transform var(--dur-fast) var(--spring) }
+.vt-pin:active .vt-pin__code{ transform:scale(.88) }
+.vt-pin--accent .vt-pin__code{ background:var(--accent) } .vt-pin--accent2 .vt-pin__code{ background:var(--accent-2) }
+.vt-pin--accent .vt-dept__code{ background:var(--accent);color:#fff } .vt-pin--accent2 .vt-dept__code{ background:var(--accent-2);color:#fff }
+.vt-pin__label{ font-size:var(--t-xs); font-weight:700; color:var(--text); background:rgba(255,253,248,.88); padding:2px var(--s-2); border-radius:var(--r-sm); white-space:nowrap; box-shadow:var(--sh-1) }
+.vt-depts{ display:grid; gap:var(--s-2) }
+.vt-dept{ display:flex; align-items:center; gap:var(--s-4); padding:var(--s-4); border:none; cursor:pointer; background:var(--surface); border-radius:var(--r-md); box-shadow:var(--sh-1); color:var(--text); transition:transform var(--dur-fast) var(--ease) }
+.vt-dept:active{ transform:scale(.99) } .vt-dept svg{ color:var(--accent); flex:none }
+.vt-dept__code{ width:calc(var(--u)*6); height:calc(var(--u)*6); border-radius:var(--r-sm); display:grid; place-items:center; font-family:var(--font-display); font-weight:700; font-size:var(--t-h3); flex:none }
+
+@media (orientation: portrait){
+  .vt-dash{ grid-template-columns:1fr } .vt-tiles{ grid-template-columns:1fr 1fr } .vt-petgrid{ grid-template-columns:1fr }
+  .vt-reasons{ grid-template-columns:1fr 1fr } .vt-services{ grid-template-columns:1fr } .vt-providers{ grid-template-columns:1fr 1fr }
+  .vt-mapframe{ aspect-ratio:1 } .vt-ticket{ flex-direction:column; gap:var(--s-4) } .vt-ticket__div{ width:auto; height:2px; align-self:stretch } .bar .crumbs{ display:none }
+}
+
+</style>
+</head>
+<body>
+<script>
+/* ===== kiosk-core.js ===== */
+/* ═══════════════════════════════════════════════════════════════════════════
+   VenueOS · KIOSK CORE ENGINE
+   ───────────────────────────────────────────────────────────────────────────
+   A tiny, dependency-free engine for touch kiosks. It gives every template:
+     • a screen ROUTER with a navigation stack + animated transitions
+     • declarative navigation via data-attributes (no per-element wiring)
+     • an IDLE/ATTRACT manager that resets the kiosk after inactivity
+     • orientation control (auto from viewport, or ?o=portrait|landscape)
+     • a tap RIPPLE for physical touch feedback
+     • a line-ICON set, a live clock, money formatting, and small DOM helpers
+
+   ── How a vertical uses it ──────────────────────────────────────────────────
+     Kiosk.app({
+       theme:   'realestate',          // sets <html data-theme>
+       start:   'home',                // first screen
+       idleMs:  60000,                 // ms of inactivity → attract loop
+       screens: {                      // name → (params) => HTML string or Node
+         home:   (p) => `...`,
+         space:  (p) => `...`,
+       },
+       attract: (p) => `...`,          // the idle/attract screen
+       crumbs:  { home:'Overview', space:'Suite' },   // optional breadcrumb labels
+       onAction(name, el, data){ ... } // handle [data-act="name"] taps
+     });
+
+   ── Declarative navigation (put on any tappable element) ────────────────────
+     data-go="space"            → push screen "space"
+     data-go="space:1204"       → push "space" with params "1204"
+     data-go="space" data-params='{"id":"1204"}'  → push with object params
+     data-back                  → pop one screen
+     data-home                  → reset to start screen
+     data-act="addToCart"       → calls onAction('addToCart', el, el.dataset)
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function (global) {
+  "use strict";
+
+  // ── small DOM helpers ──────────────────────────────────────────────────
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function frag(html) { var t = document.createElement('template'); t.innerHTML = html.trim(); return t.content; }
+
+  // ── ICON SET (24×24, stroke = currentColor) ────────────────────────────
+  var P = { // path/markup keyed by name; {s}=stroke attrs applied by icon()
+    'arrow-left':  '<path d="M15 5l-7 7 7 7" {s}/>',
+    'arrow-right': '<path d="M9 5l7 7-7 7" {s}/>',
+    'arrow-ur':    '<path d="M7 17L17 7M9 7h8v8" {s}/>',
+    'chevron-right':'<path d="M9 6l6 6-6 6" {s}/>',
+    'chevron-down':'<path d="M6 9l6 6 6-6" {s}/>',
+    'x':           '<path d="M6 6l12 12M18 6L6 18" {s}/>',
+    'check':       '<path d="M5 13l4 4 10-11" {s}/>',
+    'plus':        '<path d="M12 5v14M5 12h14" {s}/>',
+    'minus':       '<path d="M5 12h14" {s}/>',
+    'search':      '<circle cx="11" cy="11" r="6" {s}/><path d="M20 20l-3.5-3.5" {s}/>',
+    'pin':         '<path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z" {s}/><circle cx="12" cy="10" r="2.4" {s}/>',
+    'touch':       '<path d="M9 11V6a2 2 0 114 0v6m0-2a2 2 0 114 0v2m0-1a2 2 0 114 0v4a6 6 0 01-6 6h-2a6 6 0 01-5-2.7L6 16a2 2 0 013.2-2.4" {s}/>',
+    'info':        '<circle cx="12" cy="12" r="9" {s}/><path d="M12 11v5M12 7.5v.5" {s}/>',
+    'clock':       '<circle cx="12" cy="12" r="9" {s}/><path d="M12 7v5l3 2" {s}/>',
+    'phone':       '<path d="M5 4h4l2 5-3 2a12 12 0 005 5l2-3 5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z" {s}/>',
+    'calendar':    '<rect x="4" y="5" width="16" height="16" rx="2" {s}/><path d="M4 9h16M9 3v4M15 3v4" {s}/>',
+    'play':        '<path d="M8 5.5v13l11-6.5-11-6.5z" fill="currentColor" stroke="none"/>',
+    'pause':       '<path d="M8 5h3v14H8zM13 5h3v14h-3z" fill="currentColor" stroke="none"/>',
+    'volume':      '<path d="M5 9v6h4l5 4V5L9 9H5z" {s}/><path d="M17 8a5 5 0 010 8" {s}/>',
+    'expand':      '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" {s}/>',
+    'headphones':  '<path d="M4 13v-1a8 8 0 0116 0v1" {s}/><rect x="3" y="13" width="4" height="7" rx="1.6" {s}/><rect x="17" y="13" width="4" height="7" rx="1.6" {s}/>',
+    'image':       '<rect x="4" y="5" width="16" height="14" rx="2" {s}/><circle cx="9" cy="10" r="1.6" {s}/><path d="M5 17l4.5-4 3 2.5L16 12l3 3.5" {s}/>',
+    'video':       '<rect x="3" y="6" width="13" height="12" rx="2" {s}/><path d="M16 10l5-3v10l-5-3" {s}/>',
+    'star':        '<path d="M12 4l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 9.7l5.4-.8L12 4z" {s}/>',
+    'heart':       '<path d="M12 20s-7-4.6-7-9.5A3.5 3.5 0 0112 6a3.5 3.5 0 017 4.5C19 15.4 12 20 12 20z" {s}/>',
+    'share':       '<circle cx="6" cy="12" r="2.4" {s}/><circle cx="18" cy="6" r="2.4" {s}/><circle cx="18" cy="18" r="2.4" {s}/><path d="M8 11l8-4M8 13l8 4" {s}/>',
+    'home':        '<path d="M4 11l8-7 8 7M6 10v9h12v-9" {s}/>',
+    'layers':      '<path d="M12 4l8 4-8 4-8-4 8-4z" {s}/><path d="M4 12l8 4 8-4M4 16l8 4 8-4" {s}/>',
+    'ruler':       '<rect x="3" y="8" width="18" height="8" rx="1.6" {s}/><path d="M7 8v3M11 8v4M15 8v3M19 8v4" {s}/>',
+    'building':    '<rect x="5" y="3" width="14" height="18" rx="1.5" {s}/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2" {s}/>',
+    'parking':     '<rect x="4" y="4" width="16" height="16" rx="3" {s}/><path d="M10 16V8h3a2.5 2.5 0 010 5h-3" {s}/>',
+    'wifi':        '<path d="M4 9a13 13 0 0116 0M7 12.5a8 8 0 0110 0M10 16a3.5 3.5 0 014 0" {s}/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/>',
+    'dumbbell':    '<path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12" {s}/>',
+    'coffee':      '<path d="M4 9h13v4a5 5 0 01-5 5H9a5 5 0 01-5-5V9z" {s}/><path d="M17 10h2a2 2 0 010 4h-2" {s}/><path d="M8 3v2M11 3v2" {s}/>',
+    'shield':      '<path d="M12 4l7 3v5c0 4.4-3 7.4-7 8.5C8 19.4 5 16.4 5 12V7l7-3z" {s}/>',
+    'elevator':    '<rect x="5" y="3" width="14" height="18" rx="1.5" {s}/><path d="M12 3v18M9 9l-1.5 2h3L9 9zM15 15l1.5-2h-3L15 15z" {s}/>',
+    'leaf':        '<path d="M5 19c0-8 6-13 14-13 0 8-5 14-13 14a6 6 0 01-1-1z" {s}/><path d="M9 15c2-3 4-5 7-6" {s}/>',
+    'snow':        '<path d="M12 3v18M5 7l14 10M19 7L5 17" {s}/>',
+    'car':         '<path d="M4 16v-3l2-5h12l2 5v3M4 16h16M4 16v2M20 16v2" {s}/><circle cx="8" cy="16" r="1.4" {s}/><circle cx="16" cy="16" r="1.4" {s}/>',
+    'utensils':    '<path d="M7 3v8a2 2 0 002 2v8M7 7M10 3v4M5 3v4M16 3c-1.5 0-2.5 2-2.5 5s1 4 2.5 4v9" {s}/>',
+    'flame':       '<path d="M12 3c1 3-2 4-2 7a2 2 0 104 0c0-1 1-2 1-2 1 2 2 3 2 6a5 5 0 11-10 0c0-4 3-5 5-11z" {s}/>',
+    'sun':         '<circle cx="12" cy="12" r="4" {s}/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" {s}/>',
+    'camera':      '<rect x="3" y="7" width="18" height="13" rx="2.5" {s}/><circle cx="12" cy="13.5" r="3.4" {s}/><path d="M8 7l1.5-2h5L16 7" {s}/>',
+    'leaf-veg':    '<path d="M12 21V8M12 8C12 5 9 3 6 3c0 3 2 5 6 5zM12 10c0-3 3-5 6-5 0 3-2 5-6 5z" {s}/>',
+    'bag':         '<path d="M6 8h12l-1 12H7L6 8z" {s}/><path d="M9 8V6a3 3 0 016 0v2" {s}/>',
+    'tag':         '<path d="M4 12V5h7l9 9-7 7-9-9z" {s}/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/>',
+    'sparkle':     '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" {s}/>',
+    'send':        '<path d="M5 12L20 5l-5 15-3-7-7-1z" {s}/>',
+    'globe':       '<circle cx="12" cy="12" r="9" {s}/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18" {s}/>',
+    'route':       '<circle cx="6" cy="18" r="2.4" {s}/><circle cx="18" cy="6" r="2.4" {s}/><path d="M8 16c4-1 8-5 8-8M16 6h2a0 0 0 010 0" {s}/>',
+    'grid':        '<rect x="4" y="4" width="6" height="6" rx="1.4" {s}/><rect x="14" y="4" width="6" height="6" rx="1.4" {s}/><rect x="4" y="14" width="6" height="6" rx="1.4" {s}/><rect x="14" y="14" width="6" height="6" rx="1.4" {s}/>',
+    'cocktail':    '<path d="M5 4h14l-7 8-7-8zM12 12v6M8 21h8" {s}/><path d="M7.5 7h9" {s}/>',
+    'beer':        '<path d="M7 8h8v11a2 2 0 01-2 2H9a2 2 0 01-2-2V8z" {s}/><path d="M15 10h2.5A1.5 1.5 0 0119 11.5v3A1.5 1.5 0 0117.5 16H15" {s}/><path d="M8 8c0-2 1-3 2-3M11 8c0-2 1-3 2-3" {s}/>',
+    'cup':         '<path d="M6 8h12l-1 11a2 2 0 01-2 2H9a2 2 0 01-2-2L6 8z" {s}/><path d="M5 8h14M9 5h6" {s}/>',
+    'pill':        '<rect x="3" y="9" width="18" height="6" rx="3" transform="rotate(45 12 12)" {s}/><path d="M9 9l6 6" {s}/>',
+    'clipboard':   '<rect x="6" y="5" width="12" height="16" rx="2" {s}/><path d="M9 5a3 3 0 016 0M9 11h6M9 15h4" {s}/>',
+    'user':        '<circle cx="12" cy="8" r="3.4" {s}/><path d="M5 20a7 7 0 0114 0" {s}/>',
+    'steth':       '<path d="M6 4v5a4 4 0 008 0V4" {s}/><path d="M6 4H4M10 4h2" {s}/><path d="M10 13v2a5 5 0 0010 0v-1" {s}/><circle cx="20" cy="12" r="2" {s}/>',
+    'qr':          '<rect x="4" y="4" width="6" height="6" rx="1" {s}/><rect x="14" y="4" width="6" height="6" rx="1" {s}/><rect x="4" y="14" width="6" height="6" rx="1" {s}/><path d="M14 14h2v2M20 14v6M16 18v2M18 16h2" {s}/>',
+    'paw':         '<ellipse cx="12" cy="16" rx="4.4" ry="3.6" {s}/><ellipse cx="6.5" cy="10.5" rx="1.7" ry="2.2" {s}/><ellipse cx="17.5" cy="10.5" rx="1.7" ry="2.2" {s}/><ellipse cx="9.5" cy="7.5" rx="1.6" ry="2" {s}/><ellipse cx="14.5" cy="7.5" rx="1.6" ry="2" {s}/>',
+    'bone':        '<path d="M7 9a2.4 2.4 0 10-2 2l3 3-3 3a2.4 2.4 0 102 2 2.4 2.4 0 102 2l8-8 1-1a2.4 2.4 0 102-2 2.4 2.4 0 10-2-2l-1 1-8 8" {s}/>',
+    'syringe':     '<path d="M14 4l6 6M17 7l-9 9-3.5 1L6 13.5 15 4.5M9 12l3 3" {s}/>',
+    'scissors':    '<circle cx="6" cy="6" r="2.4" {s}/><circle cx="6" cy="18" r="2.4" {s}/><path d="M8 8l12 10M8 16L20 6" {s}/>',
+    'dog':         '<path d="M5 9l2-4 3 2h4l3-2 2 4v7a2 2 0 01-2 2H7a2 2 0 01-2-2V9z" {s}/><circle cx="9.5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12" r="1" fill="currentColor" stroke="none"/><path d="M11 15h2" {s}/>',
+    'shop':        '<path d="M4 8l1-3h14l1 3M4 8h16v11a1 1 0 01-1 1H5a1 1 0 01-1-1V8zM9 12h6" {s}/>'
+  };
+  function icon(name, opts) {
+    opts = opts || {};
+    var sw = opts.sw || 1.8;
+    var s = 'fill="none" stroke="currentColor" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round"';
+    var body = (P[name] || P['info']).replace(/\{s\}/g, s);
+    return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true" style="width:1em;height:1em">' + body + '</svg>';
+  }
+
+  // ── money ───────────────────────────────────────────────────────────────
+  function money(cents, cur) {
+    cur = cur || 'USD';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format(cents / 100);
+  }
+
+  // ═══ ENGINE ════════════════════════════════════════════════════════════
+  var Kiosk = {
+    cfg: null, stack: [], stage: null, attractEl: null, idleTimer: null,
+
+    app: function (cfg) {
+      this.cfg = cfg;
+      if (cfg.theme) document.documentElement.setAttribute('data-theme', cfg.theme);
+
+      // orientation: explicit override beats auto
+      var o = new URLSearchParams(location.search).get('o');
+      if (o === 'portrait' || o === 'landscape') {
+        document.documentElement.setAttribute('data-orient', o);
+        var st = document.createElement('style');
+        // force the aspect by pinning viewport meta is not possible; we just
+        // let the media queries that read real orientation apply. The launcher
+        // frames each template at the correct aspect, so auto-detection works.
+      }
+
+      // build stage
+      var k = document.createElement('div');
+      k.className = 'kiosk';
+      this.stage = document.createElement('div');
+      this.stage.style.cssText = 'position:absolute;inset:0';
+      k.appendChild(this.stage);
+
+      // attract layer
+      if (cfg.attract) {
+        this.attractEl = document.createElement('div');
+        this.attractEl.className = 'attract';
+        k.appendChild(this.attractEl);
+      }
+      document.body.appendChild(k);
+
+      // global interaction wiring
+      this._wire(k);
+      this._clock();
+
+      // first screen
+      this.stack = [{ name: cfg.start, params: null }];
+      this._render('fade');
+      this._resetIdle();
+      return this;
+    },
+
+    // navigation ----------------------------------------------------------
+    go: function (name, params, opts) {
+      opts = opts || {};
+      this.stack.push({ name: name, params: params || null });
+      this._render(opts.anim || 'up');
+      this._resetIdle();
+    },
+    back: function () {
+      if (this.stack.length > 1) { this.stack.pop(); this._render('back'); }
+      this._resetIdle();
+    },
+    home: function () {
+      this.stack = [{ name: this.cfg.start, params: null }];
+      this._render('fade');
+      this._resetIdle();
+    },
+    current: function () { return this.stack[this.stack.length - 1]; },
+    refresh: function () { this._render('none'); },
+
+    // render --------------------------------------------------------------
+    _render: function (anim) {
+      var cur = this.current();
+      var fn = this.cfg.screens[cur.name];
+      if (!fn) { console.warn('Kiosk: no screen "' + cur.name + '"'); return; }
+      var out = fn.call(this, cur.params);
+
+      var scr = document.createElement('div');
+      scr.className = 'screen';
+      scr.dataset.screen = cur.name;
+      if (typeof out === 'string') scr.appendChild(frag(out));
+      else if (out) scr.appendChild(out);
+
+      // retire ALL existing screens (not just the first) so rapid navigation
+      // can never leave a stale screen showing behind the new one.
+      var olds = Array.prototype.slice.call(this.stage.children);
+      this.stage.appendChild(scr);
+      setTimeout(function () { scr.classList.add('is-active'); }, 20);
+
+      olds.forEach(function (old) {
+        old.classList.remove('is-active');
+        old.classList.add('is-leaving');
+        setTimeout(function () { if (old.parentNode) old.parentNode.removeChild(old); }, 340);
+      });
+
+      // sync breadcrumb elements if present
+      this._crumbs(scr);
+      // (re)bind ripple targets within new screen handled by delegation
+      this.stage.scrollTop = 0;
+      var sc = scr.querySelector('.scroll'); if (sc) sc.scrollTop = 0;
+    },
+
+    _crumbs: function (scr) {
+      var host = scr.querySelector('[data-crumbs]');
+      if (!host || !this.cfg.crumbs) return;
+      var self = this;
+      var html = this.stack.map(function (s, i) {
+        var label = self.cfg.crumbs[s.name] || s.name;
+        var last = i === self.stack.length - 1;
+        if (last) return '<span class="now">' + label + '</span>';
+        return '<button data-jump="' + i + '">' + label + '</button><span class="sep">' + icon('chevron-right', { sw: 2 }) + '</span>';
+      }).join('');
+      host.innerHTML = html;
+    },
+    _jump: function (i) {
+      this.stack = this.stack.slice(0, i + 1);
+      this._render('back');
+      this._resetIdle();
+    },
+
+    // interaction wiring --------------------------------------------------
+    _wire: function (root) {
+      var self = this;
+      root.addEventListener('click', function (e) {
+        var t = e.target;
+        // ripple
+        self._ripple(e);
+        // jump (breadcrumb)
+        var jump = t.closest('[data-jump]'); if (jump) { self._jump(+jump.dataset.jump); return; }
+        // back / home
+        if (t.closest('[data-back]')) { self.back(); return; }
+        if (t.closest('[data-home]')) { self.home(); return; }
+        // go
+        var go = t.closest('[data-go]');
+        if (go) {
+          var spec = go.dataset.go, params = null;
+          if (go.dataset.params) { try { params = JSON.parse(go.dataset.params); } catch (e2) {} }
+          else if (spec.indexOf(':') > -1) { var parts = spec.split(':'); spec = parts[0]; params = parts.slice(1).join(':'); }
+          self.go(spec, params); return;
+        }
+        // action
+        var act = t.closest('[data-act]');
+        if (act && self.cfg.onAction) { self.cfg.onAction.call(self, act.dataset.act, act, act.dataset); }
+      }, { passive: true });
+
+      // any pointer activity resets idle
+      ['pointerdown', 'pointermove', 'wheel', 'touchstart'].forEach(function (ev) {
+        root.addEventListener(ev, function () { self._resetIdle(); if (self._attractOn) self._wake(); }, { passive: true });
+      });
+    },
+
+    _ripple: function (e) {
+      var host = e.target.closest('.btn, .card, .chip, .iconbtn, .feat, [data-ripple]');
+      if (!host) return;
+      var r = host.getBoundingClientRect();
+      var size = Math.max(r.width, r.height) * 1.1;
+      var sp = document.createElement('span');
+      sp.className = 'ripple';
+      sp.style.width = sp.style.height = size + 'px';
+      sp.style.left = (e.clientX - r.left - size / 2) + 'px';
+      sp.style.top = (e.clientY - r.top - size / 2) + 'px';
+      var cs = getComputedStyle(host);
+      if (cs.position === 'static') host.style.position = 'relative';
+      host.appendChild(sp);
+      setTimeout(function () { if (sp.parentNode) sp.parentNode.removeChild(sp); }, 650);
+    },
+
+    // idle / attract ------------------------------------------------------
+    _resetIdle: function () {
+      var self = this;
+      clearTimeout(this.idleTimer);
+      var ms = this.cfg.idleMs || 60000;
+      this.idleTimer = setTimeout(function () { self._sleep(); }, ms);
+    },
+    _sleep: function () {
+      if (!this.attractEl || this._attractOn) return;
+      var fn = this.cfg.attract;
+      this.attractEl.innerHTML = '';
+      var out = typeof fn === 'function' ? fn.call(this) : fn;
+      if (typeof out === 'string') this.attractEl.appendChild(frag(out));
+      this.attractEl.classList.add('is-on');
+      this._attractOn = true;
+    },
+    _wake: function () {
+      if (!this._attractOn) return;
+      this.attractEl.classList.remove('is-on');
+      this._attractOn = false;
+      // returning from attract sends the user home — kiosks always start fresh
+      this.home();
+    },
+
+    // live clock ----------------------------------------------------------
+    _clock: function () {
+      function tick() {
+        var els = $$('[data-clock]');
+        if (els.length) {
+          var t = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          els.forEach(function (el) { el.textContent = t; });
+        }
+      }
+      tick(); setInterval(tick, 15000);
+    },
+
+    // media helper: set a real image on a .media element ------------------
+    setMedia: function (el, url) {
+      if (!el) return;
+      el.style.setProperty('--src', 'url("' + url + '")');
+      el.classList.add('has-media');
+    },
+
+    // simulated video play (placeholder until real <video> wired) ---------
+    playVideo: function (el) {
+      el.classList.add('is-playing');
+      var bar = el.querySelector('.video__bar i'); if (!bar) return;
+      var p = 0; clearInterval(el._vt);
+      el._vt = setInterval(function () {
+        p += 0.4; bar.style.width = p + '%';
+        if (p >= 100) { clearInterval(el._vt); el.classList.remove('is-playing'); bar.style.width = '0%'; }
+      }, 120);
+    },
+    toggleAudio: function (el) {
+      el.classList.toggle('is-playing');
+      var b = el.querySelector('.audio__btn'); if (b) b.innerHTML = icon(el.classList.contains('is-playing') ? 'pause' : 'play');
+    },
+
+    // bottom sheet / modal -------------------------------------------------
+    sheet: function (html, opts) {
+      opts = opts || {};
+      this.closeSheet(true);
+      var scrim = document.createElement('div');
+      scrim.className = 'scrim';
+      scrim.innerHTML = '<div class="sheet" style="' + (opts.maxw ? 'max-width:' + opts.maxw + ';margin:0 auto;border-radius:var(--r-xl) var(--r-xl) 0 0' : '') + '"><div class="sheet__grip"></div>' + html + '</div>';
+      $('.kiosk').appendChild(scrim);
+      this._sheet = scrim;
+      var self = this;
+      scrim.addEventListener('click', function (e) {
+        if (e.target === scrim || e.target.closest('[data-sheet-close]')) self.closeSheet();
+      });
+      requestAnimationFrame && setTimeout(function () { scrim.classList.add('is-open'); }, 20);
+      this._resetIdle();
+      return scrim;
+    },
+    closeSheet: function (instant) {
+      var s = this._sheet; if (!s) return;
+      this._sheet = null;
+      if (instant) { if (s.parentNode) s.parentNode.removeChild(s); return; }
+      s.classList.remove('is-open');
+      setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 480);
+    },
+
+    // transient toast ------------------------------------------------------
+    toast: function (msg, opts) {
+      opts = opts || {};
+      var t = document.createElement('div');
+      t.className = 'toast';
+      t.innerHTML = (opts.icon ? icon(opts.icon) + ' ' : '') + msg;
+      $('.kiosk').appendChild(t);
+      setTimeout(function () { t.classList.add('is-on'); }, 20);
+      setTimeout(function () { t.classList.remove('is-on'); setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 400); }, opts.ms || 2200);
+    },
+
+    // expose helpers
+    icon: icon, money: money, h: frag, $: $, $$: $$
+  };
+
+  // build a column of audio waveform bars
+  Kiosk.waveBars = function (n) {
+    n = n || 28; var s = '';
+    for (var i = 0; i < n; i++) s += '<i style="height:' + (20 + Math.round(Math.random() * 70)) + '%"></i>';
+    return s;
+  };
+
+  global.Kiosk = Kiosk;
+})(window);
+
+</script>
+<script>
+/* ===== vet/data.js ===== */
+/* ═══════════════════════════════════════════════════════════════════════════
+   VETERINARY KIOSK · CONTENT MODEL  (window.VET)
+   Warm pet-care kiosk: pet self check-in (find pet → reason for visit →
+   symptoms → queue ticket with exam room), live waiting-room board, services,
+   care team, prescription & food refills, and wayfinding. Swap to re-skin.
+   ═══════════════════════════════════════════════════════════════════════════ */
+window.VET = {
+  brandInitials: "M",
+  name: "Maple Street Veterinary",
+  tagline: "Compassionate care for every paw",
+  hero: { label: "WAITING ROOM / HAPPY DOG HERO" },
+  hours: "Open today 8:00 AM – 7:00 PM · Walk-ins welcome",
+
+  // today's appointments — the kiosk matches the pet/owner to one of these
+  appointments: [
+    { id: "a1", pet: "Biscuit", species: "dog", breed: "Golden Retriever", age: "3 yr", owner: "the Avery family", time: "2:15 PM", provider: "Dr. Flores", reason: "Annual wellness", room: "Exam 2", vaccinesDue: false, weight: "68 lb" },
+    { id: "a2", pet: "Mochi", species: "cat", breed: "Domestic Shorthair", age: "5 yr", owner: "S. Rivera", time: "2:30 PM", provider: "Dr. Lin", reason: "Dental check", room: "Exam 1", vaccinesDue: true, weight: "11 lb" },
+    { id: "a3", pet: "Pepper", species: "dog", breed: "Border Collie", age: "7 yr", owner: "the Kim household", time: "2:45 PM", provider: "Dr. Flores", reason: "Recheck — skin", room: "Exam 3", vaccinesDue: false, weight: "42 lb" },
+    { id: "a4", pet: "Waffles", species: "rabbit", breed: "Holland Lop", age: "2 yr", owner: "T. Brooks", time: "3:00 PM", provider: "Dr. Okafor", reason: "Nail trim + check", room: "Exam 1", vaccinesDue: false, weight: "3.4 lb" }
+  ],
+
+  // reason-for-visit quick picks (check-in step 2)
+  reasons: [
+    { id: "wellness", icon: "heart", t: "Wellness / annual", d: "Routine checkup" },
+    { id: "sick", icon: "info", t: "Not feeling well", d: "New symptoms" },
+    { id: "vaccine", icon: "syringe", t: "Vaccines", d: "Shots & boosters" },
+    { id: "recheck", icon: "clock", t: "Recheck", d: "Follow-up visit" },
+    { id: "dental", icon: "paw", t: "Dental", d: "Teeth & gums" },
+    { id: "injury", icon: "shield", t: "Injury / urgent", d: "Needs attention soon" }
+  ],
+
+  // symptom chips shown when reason = sick/injury
+  symptoms: ["Not eating", "Vomiting", "Diarrhea", "Limping", "Lethargic", "Coughing", "Itching / scratching", "Ear trouble", "Eye trouble", "Drinking more"],
+
+  // live waiting-room board (pets are friendly to name openly)
+  waitboard: [
+    { pet: "Biscuit", species: "dog", status: "In Exam 2 with Dr. Flores", state: "now" },
+    { pet: "Luna", species: "cat", status: "Being roomed — Exam 1", state: "now" },
+    { pet: "Rocky", species: "dog", status: "Next · ~5 min", state: "next" },
+    { pet: "Daisy", species: "dog", status: "Waiting · ~15 min", state: "wait" },
+    { pet: "Smokey", species: "cat", status: "Waiting · ~20 min", state: "wait" }
+  ],
+  waitNote: "Running on time · avg wait under 14 min",
+
+  services: [
+    { id: "well", icon: "heart", t: "Wellness & Vaccines", d: "Annual exams, shots, parasite prevention.", price: "from $55" },
+    { id: "dental", icon: "paw", t: "Dental Care", d: "Cleanings, X-rays, extractions.", price: "from $320" },
+    { id: "surg", icon: "syringe", t: "Surgery", d: "Spay/neuter & soft-tissue procedures.", price: "consult" },
+    { id: "groom", icon: "scissors", t: "Grooming", d: "Baths, trims, nails & de-shed.", price: "from $45" },
+    { id: "board", icon: "home", t: "Boarding & Daycare", d: "Cozy suites and supervised play.", price: "from $38/night" },
+    { id: "pharm", icon: "bone", t: "Pharmacy & Food", d: "Refill meds and prescription diets.", price: "refill" }
+  ],
+
+  providers: [
+    { id: "flores", name: "Dr. Sofia Flores, DVM", focus: "Dogs & general medicine", room: "Exam 2", accepting: true, img: "PORTRAIT" },
+    { id: "lin", name: "Dr. Henry Lin, DVM", focus: "Cats & feline dentistry", room: "Exam 1", accepting: true, img: "PORTRAIT" },
+    { id: "okafor", name: "Dr. Amara Okafor, DVM", focus: "Exotics, rabbits & birds", room: "Exam 1", accepting: true, img: "PORTRAIT" },
+    { id: "tess", name: "Tessa Vaughn, RVT", focus: "Lead vet technician", room: "Treatment", accepting: true, img: "PORTRAIT" },
+    { id: "marco", name: "Marco Reyes", focus: "Certified groomer", room: "Grooming", accepting: true, img: "PORTRAIT" }
+  ],
+
+  // prescription & food refills (pharmacy mini-flow)
+  refills: [
+    { id: "r1", pet: "Biscuit", item: "Apoquel 16 mg", kind: "Rx · allergy", priceCents: 4200, ready: "Ready today 4 PM" },
+    { id: "r2", pet: "Pepper", item: "Heartgard Plus (6 mo)", kind: "Rx · prevention", priceCents: 5600, ready: "Ready today 4 PM" },
+    { id: "r3", pet: "Mochi", item: "Hill's c/d 8.5 lb bag", kind: "Prescription diet", priceCents: 3800, ready: "In stock — grab now" }
+  ],
+
+  departments: [
+    { id: "lobby", code: "L", name: "Reception & Waiting", x: 50, y: 88, color: "accent", dir: "You\u2019re here" },
+    { id: "exams", code: "E", name: "Exam Rooms 1–3", x: 28, y: 58, color: "accent", dir: "Down the hall, left" },
+    { id: "treat", code: "T", name: "Treatment & Lab", x: 50, y: 44, color: "accent2", dir: "Past the exam rooms" },
+    { id: "groom", code: "G", name: "Grooming", x: 74, y: 56, color: "accent2", dir: "Right at the mural" },
+    { id: "board", code: "B", name: "Boarding Suites", x: 80, y: 30, color: "accent", dir: "Through the blue door" },
+    { id: "pharm", code: "P", name: "Pharmacy Pickup", x: 38, y: 26, color: "accent2", dir: "Counter by reception" }
+  ],
+  map: { here: { x: 50, y: 90, label: "You are here · Front Desk" } },
+
+  comfort: "Anxious pet? Tap “Need a hand” and a team member will bring you to a quiet room.",
+  privacy: "Your contact and pet records are kept private and secure."
+};
+
+</script>
+<script>
+/* ===== vet/app.js ===== */
+/* ═══════════════════════════════════════════════════════════════════════════
+   VETERINARY KIOSK · SCREENS  (reads window.VET)
+   Pet check-in (find pet → reason → symptoms → queue ticket), wait board,
+   services, care team, refills, wayfinding. Warm + friendly.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+  var D = window.VET;
+  var icon = Kiosk.icon, money = Kiosk.money;
+  function apptById(id) { return D.appointments.filter(function (a) { return a.id === id; })[0]; }
+
+  // check-in working state
+  var ci = { appt: null, reason: null, symptoms: [] };
+  var queueNo = 0;
+  var refillCart = [];
+
+  function speciesIcon(sp) { return sp === 'cat' ? 'paw' : sp === 'rabbit' ? 'paw' : 'dog'; }
+  function petAvatar(sp, big) {
+    return '<span class="vt-avatar ' + (big ? 'vt-avatar--lg' : '') + ' vt-avatar--' + sp + '">' + icon(speciesIcon(sp)) + '</span>';
+  }
+
+  function bar(showBack) {
+    return '<header class="bar vt-bar">' +
+      (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
+      '<div class="bar__brand"><div class="bar__logo">' + icon('paw', { sw: 1.7 }) + '</div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1.05">' + D.name + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.1em">' + D.tagline + '</div></div></div>' +
+      '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
+      '<button class="chip" data-act="help">' + icon('phone') + ' Need a hand?</button>' +
+      '<div class="bar__clock" data-clock></div>' +
+      '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
+    '</header>';
+  }
+
+  function attract() {
+    return '<div class="attract__bg"><div class="media vt-hero"><div class="media__scrim"></div>' +
+        '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
+      '<div class="attract__body">' +
+        '<div class="eyebrow" style="color:#fff;opacity:.9">' + D.name + '</div>' +
+        '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)">Welcome,<br>furry friends.</div>' +
+        '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to check your pet in</div>' +
+      '</div>';
+  }
+
+  // ── HOME ──────────────────────────────────────────────────────────────────
+  function home() {
+    return bar(false) +
+    '<div class="scroll"><div class="vt-home">' +
+      '<section class="vt-dash">' +
+        '<button class="vt-hero-tile" data-go="checkin">' +
+          '<span class="vt-paws" aria-hidden="true">' + icon('paw') + icon('paw') + icon('paw') + '</span>' +
+          '<div class="vt-hero-tile__b"><div class="eyebrow" style="color:rgba(255,255,255,.9)">Have an appointment?</div>' +
+            '<h1 class="t-mega" style="color:#fff;line-height:.95;margin:var(--s-2) 0">Check in<br>your pet</h1>' +
+            '<p class="t-h3" style="color:rgba(255,255,255,.92);font-weight:500;max-width:24ch">Takes about a minute — we\u2019ll let the care team know you\u2019ve arrived.</p>' +
+            '<span class="btn btn--lg vt-hero-tile__cta">' + icon('arrow-right', { sw: 2.4 }) + ' Start check-in</span></div>' +
+        '</button>' +
+        '<div class="vt-waitcard"><div class="row between"><div class="eyebrow" style="color:var(--accent)">In the waiting room</div>' +
+          '<span class="badge badge--good"><span class="dot"></span>On time</span></div>' +
+          '<div class="vt-waitlist">' + D.waitboard.slice(0, 4).map(function (w) {
+            return '<div class="vt-wait vt-wait--' + w.state + '">' + petAvatar(w.species) +
+              '<span class="grow"><span class="t-body" style="font-weight:700">' + w.pet + '</span><span class="t-sm dim"> · ' + w.status + '</span></span></div>';
+          }).join('') + '</div>' +
+          '<button class="chip" data-go="wait" style="margin-top:var(--s-3)">' + icon('clock') + ' Full wait board</button></div>' +
+      '</section>' +
+      '<section class="vt-tiles">' +
+        tile('heart', 'Our Services', D.services.length + ' kinds of care', 'services') +
+        tile('bone', 'Refill Rx & Food', refillReadyCount() + ' ready to pick up', 'refills') +
+        tile('star', 'Meet the Team', D.providers.length + ' vets & techs', 'providers') +
+        tile('pin', 'Find your way', D.departments.length + ' areas', 'departments') +
+      '</section>' +
+      '<div class="vt-comfort">' + icon('heart') + ' ' + D.comfort + '</div>' +
+    '</div></div>';
+  }
+  function refillReadyCount() { return D.refills.length; }
+  function tile(ic, t, sub, go) {
+    return '<button class="vt-tile" data-go="' + go + '"><span class="vt-tile__ic">' + icon(ic) + '</span><span class="vt-tile__t">' + t + '</span><span class="t-sm dim">' + sub + '</span><span class="vt-tile__go">' + icon('arrow-right', { sw: 2 }) + '</span></button>';
+  }
+
+  // ── CHECK-IN STEP 1: find pet ─────────────────────────────────────────────
+  function steps(n) {
+    var labels = ['Find your pet', 'Reason', 'Anything new?', 'Done'];
+    return '<div class="vt-steps">' + labels.map(function (l, i) {
+      var st = i + 1 < n ? 'is-done' : (i + 1 === n ? 'is-on' : '');
+      return '<span class="vt-step ' + st + '">' + (i + 1 < n ? icon('check', { sw: 3 }) : (i + 1)) + ' · ' + l + '</span>';
+    }).join('') + '</div>';
+  }
+  function checkinScreen() {
+    return bar(true) + '<div class="scroll"><div class="vt-checkin">' + steps(1) +
+      '<div class="vt-head"><div><div class="eyebrow">Step 1</div><h1 class="t-xl">Find your pet</h1></div></div>' +
+      '<div class="vt-search"><span>' + icon('search') + '</span><span class="dim">Search by your last name or phone…</span></div>' +
+      '<div class="t-body dim" style="margin:var(--s-4) 0 var(--s-3)">Today\u2019s appointments — tap your pet:</div>' +
+      '<div class="vt-petgrid">' + D.appointments.map(function (a) {
+        return '<button class="vt-petcard" data-act="pickPet" data-id="' + a.id + '">' + petAvatar(a.species, true) +
+          '<div class="vt-petcard__b"><div class="t-h2">' + a.pet + '</div>' +
+          '<div class="t-body dim">' + a.breed + ' · ' + a.age + '</div>' +
+          '<div class="t-sm" style="color:var(--accent);font-weight:700;margin-top:var(--s-1)">' + a.time + ' · ' + a.provider + '</div>' +
+          '<div class="t-sm dim">with ' + a.owner + '</div></div>' +
+          '<span class="vt-petcard__go">' + icon('arrow-right', { sw: 2 }) + '</span></button>';
+      }).join('') + '</div>' +
+      '<p class="vt-privacy" style="margin-top:var(--s-5)">' + icon('shield') + ' ' + D.privacy + '</p>' +
+    '</div></div>';
+  }
+
+  // ── STEP 2: reason for visit ──────────────────────────────────────────────
+  function reasonScreen() {
+    var a = ci.appt;
+    return bar(true) + '<div class="scroll"><div class="vt-checkin">' + steps(2) +
+      '<div class="vt-petbanner">' + petAvatar(a.species, true) + '<div><div class="t-h1">' + a.pet + '</div>' +
+        '<div class="t-body dim">' + a.breed + ' · ' + a.age + ' · ' + a.weight + '</div></div>' +
+        (a.vaccinesDue ? '<span class="badge badge--warn" style="margin-left:auto">' + icon('syringe') + ' Vaccines due</span>' : '<span class="badge badge--good" style="margin-left:auto"><span class="dot"></span>Vaccines current</span>') + '</div>' +
+      '<div class="vt-head"><div><div class="eyebrow">Step 2</div><h1 class="t-xl">What brings ' + a.pet + ' in?</h1></div>' +
+        '<div class="t-body dim">Booked as: ' + a.reason + '</div></div>' +
+      '<div class="vt-reasons">' + D.reasons.map(function (r) {
+        return '<button class="vt-reason ' + (ci.reason === r.id ? 'is-on' : '') + '" data-act="pickReason" data-id="' + r.id + '">' +
+          '<span class="vt-reason__ic">' + icon(r.icon) + '</span><span class="t-h3">' + r.t + '</span><span class="t-sm dim">' + r.d + '</span>' +
+          '<span class="vt-reason__check">' + icon('check', { sw: 3 }) + '</span></button>';
+      }).join('') + '</div>' +
+    '</div></div>' +
+    '<div class="actionbar vt-bar2"><button class="btn btn--lg" data-back>Back</button><div class="bar__spacer"></div>' +
+      '<button class="btn btn--primary btn--lg" data-act="reasonNext">Continue ' + icon('arrow-right', { sw: 2.4 }) + '</button></div>';
+  }
+
+  // ── STEP 3: symptoms (only for sick/injury) ───────────────────────────────
+  function symptomScreen() {
+    var a = ci.appt;
+    return bar(true) + '<div class="scroll"><div class="vt-checkin">' + steps(3) +
+      '<div class="vt-head"><div><div class="eyebrow">Step 3</div><h1 class="t-xl">Anything you\u2019ve noticed?</h1></div>' +
+        '<div class="t-body dim">Tap all that apply — it helps the vet prepare.</div></div>' +
+      '<div class="vt-symptoms">' + D.symptoms.map(function (s) {
+        return '<button class="vt-symptom ' + (ci.symptoms.indexOf(s) > -1 ? 'is-on' : '') + '" data-act="toggleSymptom" data-s="' + s + '"><span class="vt-symptom__mark">' + icon('check', { sw: 3 }) + '</span>' + s + '</button>';
+      }).join('') + '</div>' +
+      '<div class="vt-note"><span>' + icon('info') + '</span><span class="dim">A team member will go over the details with you in the exam room.</span></div>' +
+    '</div></div>' +
+    '<div class="actionbar vt-bar2"><button class="btn btn--lg" data-back>Back</button><div class="bar__spacer"></div>' +
+      '<button class="btn btn--primary btn--lg" data-act="finish">' + icon('check', { sw: 2.4 }) + ' Complete check-in</button></div>';
+  }
+
+  // ── DONE: queue ticket ────────────────────────────────────────────────────
+  function done() {
+    var a = ci.appt;
+    var sympLine = ci.symptoms.length ? ci.symptoms.join(' · ') : 'No new symptoms noted';
+    return '<div class="vt-done"><div class="vt-done__ic">' + icon('check', { sw: 2.6 }) + '</div>' +
+      '<div class="eyebrow" style="color:var(--accent)">Checked in · ' + a.time + '</div>' +
+      '<h1 class="t-mega" style="margin:var(--s-2) 0">' + a.pet + ' is all set!</h1>' +
+      '<p class="t-h3 dim" style="font-weight:500;max-width:40ch">Have a seat — ' + a.provider + ' will be with you shortly. Watch the board for ' + a.pet + '\u2019s name.</p>' +
+      '<div class="vt-ticket"><div class="vt-ticket__pet">' + petAvatar(a.species, true) + '<div><div class="t-sm dim">Now checked in</div><div class="t-h1">' + a.pet + '</div></div></div>' +
+        '<div class="vt-ticket__div"></div>' +
+        '<div class="vt-ticket__cols"><div><div class="t-sm dim">Number</div><div class="vt-ticket__no">' + queueNo + '</div></div>' +
+        '<div><div class="t-sm dim">Please go to</div><div class="t-h2">' + a.room + '</div><div class="t-body dim">Est. wait ~10 min</div></div></div></div>' +
+      '<button class="btn btn--primary btn--lg" data-act="reset">' + icon('paw', { sw: 1.8 }) + ' Done</button></div>';
+  }
+
+  // ── WAIT BOARD ────────────────────────────────────────────────────────────
+  function wait() {
+    return bar(true) + '<div class="scroll"><div class="vt-list">' +
+      '<div class="vt-head"><div><div class="eyebrow">Live · updates automatically</div><h1 class="t-xl">Waiting Room</h1></div>' +
+        '<span class="badge badge--good" style="font-size:var(--t-sm)"><span class="dot"></span>' + D.waitNote + '</span></div>' +
+      '<div class="vt-board">' + D.waitboard.map(function (w) {
+        return '<div class="vt-boardrow vt-wait--' + w.state + '">' + petAvatar(w.species, true) +
+          '<div class="grow"><div class="t-h3">' + w.pet + '</div><div class="t-body dim">' + w.status + '</div></div>' +
+          (w.state === 'now' ? '<span class="badge badge--accent">In with the vet</span>' : w.state === 'next' ? '<span class="badge badge--warn">Up next</span>' : '<span class="badge">Waiting</span>') + '</div>';
+      }).join('') + '</div></div></div>';
+  }
+
+  // ── SERVICES ──────────────────────────────────────────────────────────────
+  function services() {
+    return bar(true) + '<div class="scroll"><div class="vt-list">' +
+      '<div class="vt-head"><div><div class="eyebrow">How we care</div><h1 class="t-xl">Our Services</h1></div></div>' +
+      '<div class="vt-services">' + D.services.map(function (s) {
+        var go = s.id === 'pharm' ? ' data-go="refills"' : ' data-act="help"';
+        return '<button class="card vt-service"' + go + '><span class="vt-service__ic">' + icon(s.icon) + '</span>' +
+          '<div class="grow" style="text-align:left"><div class="t-h2">' + s.t + '</div><p class="t-body dim pretty">' + s.d + '</p></div>' +
+          '<span class="vt-service__price">' + s.price + '</span></button>';
+      }).join('') + '</div></div></div>';
+  }
+
+  // ── REFILLS (pharmacy mini-flow) ──────────────────────────────────────────
+  function refills() {
+    var lines = D.refills.map(function (r) {
+      var inCart = refillCart.indexOf(r.id) > -1;
+      return '<div class="vt-refill"><div class="vt-refill__ic">' + icon(r.kind.indexOf('diet') > -1 || r.kind.indexOf('Food') > -1 ? 'bone' : 'syringe') + '</div>' +
+        '<div class="grow"><div class="t-h3">' + r.item + '</div><div class="t-sm dim">For ' + r.pet + ' · ' + r.kind + '</div>' +
+        '<div class="badge badge--good" style="margin-top:var(--s-1)"><span class="dot"></span>' + r.ready + '</div></div>' +
+        '<div class="vt-refill__r"><div class="vt-refill__p">' + money(r.priceCents) + '</div>' +
+        '<button class="btn ' + (inCart ? 'vt-added' : 'btn--primary') + '" data-act="refillAdd" data-id="' + r.id + '">' + (inCart ? icon('check', { sw: 2.4 }) + ' Added' : icon('plus', { sw: 2.4 }) + ' Refill') + '</button></div></div>';
+    }).join('');
+    var n = refillCart.length;
+    return bar(true) + '<div class="scroll"><div class="vt-list">' +
+      '<div class="vt-head"><div><div class="eyebrow">Pharmacy &amp; Food</div><h1 class="t-xl">Refills for your pets</h1></div>' +
+        '<div class="t-body dim">Confirm and we\u2019ll have them at the pickup counter.</div></div>' +
+      '<div class="vt-refills">' + lines + '</div></div></div>' +
+      (n ? '<div class="actionbar vt-bar2"><div class="col" style="gap:0"><div class="t-sm dim">' + n + ' item' + (n > 1 ? 's' : '') + ' to pick up</div>' +
+        '<div class="t-h3">' + money(refillTotal()) + '</div></div><div class="bar__spacer"></div>' +
+        '<button class="btn btn--primary btn--lg" data-act="refillDone">' + icon('check', { sw: 2.4 }) + ' Send to pharmacy</button></div>' : '');
+  }
+  function refillTotal() { return D.refills.filter(function (r) { return refillCart.indexOf(r.id) > -1; }).reduce(function (s, r) { return s + r.priceCents; }, 0); }
+  function refillDone() {
+    return '<div class="vt-done"><div class="vt-done__ic">' + icon('check', { sw: 2.6 }) + '</div>' +
+      '<div class="eyebrow" style="color:var(--accent)">Sent to the pharmacy</div>' +
+      '<h1 class="t-mega" style="margin:var(--s-2) 0">Refills on the way</h1>' +
+      '<p class="t-h3 dim" style="font-weight:500;max-width:38ch">We\u2019ll text you when everything\u2019s bagged and ready at the pickup counter by reception.</p>' +
+      '<div class="feat" style="max-width:calc(var(--u)*64);margin:var(--s-4) auto"><span class="feat__ic">' + icon('bone') + '</span><div><div class="feat__t">' + refillCart.length + ' items · ' + money(refillTotal()) + '</div><div class="feat__d">Pay at pickup or on your account</div></div></div>' +
+      '<button class="btn btn--primary btn--lg" data-act="reset">' + icon('paw', { sw: 1.8 }) + ' Done</button></div>';
+  }
+
+  // ── PROVIDERS ─────────────────────────────────────────────────────────────
+  function providers() {
+    return bar(true) + '<div class="scroll"><div class="vt-list">' +
+      '<div class="vt-head"><div><div class="eyebrow">Care team</div><h1 class="t-xl">Meet the Team</h1></div></div>' +
+      '<div class="vt-providers">' + D.providers.map(function (p) {
+        return '<div class="card card--static vt-provider"><div class="media vt-provider__img"><span class="media__tag">' + icon('image') + '</span></div>' +
+          '<div class="vt-provider__b"><div class="t-h3">' + p.name + '</div><div class="t-body" style="color:var(--accent);font-weight:600">' + p.focus + '</div>' +
+          '<div class="row gap-2" style="margin-top:var(--s-2)"><span class="badge">' + icon('pin') + ' ' + p.room + '</span>' +
+          (p.accepting ? '<span class="badge badge--good"><span class="dot"></span>Seeing pets today</span>' : '') + '</div></div></div>';
+      }).join('') + '</div></div></div>';
+  }
+
+  // ── DEPARTMENTS / WAYFINDING ──────────────────────────────────────────────
+  function departments() {
+    var pins = D.departments.map(function (d) {
+      return '<button class="vt-pin vt-pin--' + d.color + '" style="left:' + d.x + '%;top:' + d.y + '%" data-act="dept" data-id="' + d.id + '"><span class="vt-pin__code">' + d.code + '</span><span class="vt-pin__label">' + d.name + '</span></button>';
+    }).join('');
+    var list = D.departments.map(function (d) {
+      return '<button class="vt-dept" data-act="dept" data-id="' + d.id + '"><span class="vt-dept__code vt-pin--' + d.color + '">' + d.code + '</span>' +
+        '<div class="grow" style="text-align:left"><div class="t-h3">' + d.name + '</div><div class="t-sm dim">' + d.dir + '</div></div>' + icon('arrow-right', { sw: 2 }) + '</button>';
+    }).join('');
+    return bar(true) + '<div class="scroll"><div class="vt-list">' +
+      '<div class="vt-head"><div><div class="eyebrow">Wayfinding</div><h1 class="t-xl">Find your way</h1></div>' +
+        '<div class="t-body dim">Tap an area for directions.</div></div>' +
+      '<div class="split split--6040 vt-way">' +
+        '<div class="vt-mapframe media"><div class="here" style="left:' + D.map.here.x + '%;top:' + D.map.here.y + '%"><div class="here__label">' + D.map.here.label + '</div></div>' + pins + '<div class="media__tag">' + icon('grid') + ' MAPLE STREET — CLINIC MAP</div></div>' +
+        '<div class="vt-depts">' + list + '</div>' +
+      '</div></div></div>';
+  }
+
+  Kiosk.app({
+    theme: 'vet', start: 'home', idleMs: 60000,
+    crumbs: { home: 'Home', checkin: 'Check-in', _reason: 'Reason', _symptom: 'Symptoms', _done: 'Done', _rdone: 'Done', wait: 'Wait Board', services: 'Services', refills: 'Refills', providers: 'Team', departments: 'Find your way' },
+    screens: { home: home, checkin: checkinScreen, wait: wait, services: services, refills: refills, providers: providers, departments: departments },
+    attract: attract,
+    onAction: function (name, el, data) {
+      if (name === 'help') { Kiosk.toast('A team member has been notified — someone will be right with you.', { icon: 'heart', ms: 3000 }); }
+      else if (name === 'pickPet') {
+        ci = { appt: apptById(data.id), reason: null, symptoms: [] };
+        Kiosk.stack.push({ name: '_reason', params: null }); Kiosk.cfg.screens._reason = reasonScreen; Kiosk.refresh();
+      }
+      else if (name === 'pickReason') {
+        ci.reason = data.id;
+        Kiosk.$$('.vt-reason').forEach(function (r) { r.classList.remove('is-on'); });
+        el.classList.add('is-on');
+      }
+      else if (name === 'reasonNext') {
+        if (!ci.reason) { Kiosk.toast('Pick a reason to continue', { icon: 'info' }); return; }
+        if (ci.reason === 'sick' || ci.reason === 'injury') {
+          Kiosk.stack.push({ name: '_symptom', params: null }); Kiosk.cfg.screens._symptom = symptomScreen; Kiosk.refresh();
+        } else { finishCheckin(); }
+      }
+      else if (name === 'toggleSymptom') {
+        var i = ci.symptoms.indexOf(data.s);
+        if (i > -1) { ci.symptoms.splice(i, 1); el.classList.remove('is-on'); } else { ci.symptoms.push(data.s); el.classList.add('is-on'); }
+      }
+      else if (name === 'finish') { finishCheckin(); }
+      else if (name === 'reset') { ci = { appt: null, reason: null, symptoms: [] }; refillCart = []; Kiosk.home(); }
+      else if (name === 'dept') { var d = D.departments.filter(function (x) { return x.id === data.id; })[0]; Kiosk.toast(d.name + ' · ' + d.dir, { icon: 'pin', ms: 3200 }); }
+      else if (name === 'refillAdd') {
+        var id = data.id; if (refillCart.indexOf(id) > -1) refillCart.splice(refillCart.indexOf(id), 1); else refillCart.push(id);
+        Kiosk.refresh();
+      }
+      else if (name === 'refillDone') { Kiosk.stack.push({ name: '_rdone', params: null }); Kiosk.cfg.screens._rdone = refillDone; Kiosk.refresh(); }
+    }
+  });
+
+  function finishCheckin() {
+    queueNo = 20 + Math.floor(Math.random() * 60);
+    Kiosk.stack.push({ name: '_done', params: null }); Kiosk.cfg.screens._done = done; Kiosk.refresh();
+  }
+})();
+
+</script>
+<script src="/templates/kiosk/_edit-shim.js"></script>
+</body>
+</html>
