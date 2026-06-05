@@ -346,7 +346,11 @@
   // ═══════════════════════════════════════════════════════════════
   (function(){
     var GOAL = { x: 1180, y: WATER_Y - 250, w: 580, h: 250 };
-    var IMPACT = { x: GOAL.x + GOAL.w*0.32, y: GOAL.y + GOAL.h*0.48 };
+    // ENTRY = where the ball crosses the goal line (the mouth). REST =
+    // where it ends up, nestled in the back-bottom of the net. The ball
+    // travels ENTRY → REST so you SEE it go IN, then it stays there.
+    var ENTRY = { x: GOAL.x + GOAL.w*0.42, y: GOAL.y + GOAL.h*0.40 };
+    var REST  = { x: GOAL.x + GOAL.w*0.52, y: GOAL.y + GOAL.h*0.82 };
     var trail = [];
 
     VENUE.register('waterpolo-goal', {
@@ -360,24 +364,46 @@
                away:{abbr:'CDM',name:'Corona del Mar',color:'#ff2d55',goals:8}},
       team: '#21e6ff',
       scene: 'pool',
-      impactPoint: function(){ return IMPACT; },
+      // No downward spotlight beam (it read as "spotlit", not "scored"),
+      // and soften the impact flash so the ball is VISIBLE entering the net.
+      noLightShaft: true,
+      flash: 0.32,
+      impactPoint: function(){ return ENTRY; },
       drawScene: function(ctx, t, T, W, H, team){
-        // goal reveals during anticipation
+        // goal reveals during anticipation; the net BULGES hard when the
+        // shot hits (peak 64px back) and rings down over ~1s.
         var reveal = easeOutCubic(seg(t, 150, 1100));
         drawGoal(ctx, {
           x: GOAL.x, y: GOAL.y, w: GOAL.w, h: GOAL.h,
-          bulge: netBulge(t, T, 36), team: team, reveal: reveal
+          bulge: netBulge(t, T, 64), team: team, reveal: reveal
         });
       },
       drawPreImpact: function(ctx, t, T, W, H, team){
-        // ball arcs in from far upper-left, skimming low over water
-        var fly = T.impact - 800;
-        var p = seg(t, fly, T.impact);
-        if(t > T.impact + 60){ trail.length = 0; return; }
-        var bx = lerp(-200, IMPACT.x, easeOutQuad(p));
-        var by = lerp(WATER_Y + 30, IMPACT.y, p) - Math.sin(Math.PI*p)*180;
-        var r  = lerp(54, 32, p);
-        trail.push({x:bx, y:by}); if(trail.length>16) trail.shift();
+        var bx, by, r;
+        if(t < T.impact){
+          // FLY — from far upper-left, skimming low over the water, to the
+          // goal mouth (ENTRY).
+          var fly = T.impact - 760;
+          var p = seg(t, fly, T.impact);
+          bx = lerp(-200, ENTRY.x, easeOutQuad(p));
+          by = lerp(WATER_Y + 20, ENTRY.y, p) - Math.sin(Math.PI*p)*155;
+          r  = lerp(54, 30, p);
+          trail.push({x:bx, y:by}); if(trail.length>16) trail.shift();
+        } else if(t < T.impact + 300){
+          // ENTER — cross the line and decelerate INTO the back of the net.
+          var pe = seg(t, T.impact, T.impact + 300);
+          bx = lerp(ENTRY.x, REST.x, easeOutCubic(pe));
+          by = lerp(ENTRY.y, REST.y, easeOutCubic(pe));
+          r  = 29;
+          trail.push({x:bx, y:by}); if(trail.length>8) trail.shift();
+        } else {
+          // SETTLE — the ball sits in the back-bottom of the net, bobbing
+          // gently on the surface, and STAYS visible through the hold.
+          bx = REST.x;
+          by = REST.y + Math.sin((t - T.impact)*0.004)*5;
+          r  = 29;
+          if(trail.length) trail.shift();
+        }
         drawBallTrail(ctx, trail, r);
         drawBall(ctx, bx, by, r, t*0.01);
       },
@@ -694,10 +720,12 @@
   (function(){
     VENUE.register('waterpolo-powerplay', {
       sport: 'WATER POLO',
-      headline: '6 ON 5',
-      headSize: 540,
-      context: 'MAN UP · :20 ADVANTAGE',
-      player: { number: '14', name: 'CDM — EXCLUSION' },
+      headline: 'POWER PLAY',
+      headSize: 300,
+      context: 'MAN UP · 6 ON 5',
+      // Power play is a TEAM situation, not one player's moment — no name line
+      // (the 6-vs-5 dot row below shows the advantage).
+      player: null,
       team: '#ffd21a',
       scene: 'pool',
       impactPoint: function(W,H){ return { x: W*0.5, y: H*0.42 }; },
@@ -827,6 +855,60 @@
           }
         }
         ctx.restore();
+      }
+    });
+  })();
+
+  // ═══════════════════════════════════════════════════════════════
+  // CUE: EXCLUSION — a 20-second kick-out (ejection). Referee whistle
+  // blows, a :20 countdown rises, "MAN UP" for the advantaged team.
+  // This is NOT a penalty shot (that's waterpolo-penalty) — an exclusion
+  // is an ejection that creates a man-advantage.
+  // ═══════════════════════════════════════════════════════════════
+  (function(){
+    VENUE.register('waterpolo-exclusion', {
+      sport: 'WATER POLO',
+      headline: 'EXCLUSION',
+      headSize: 300,
+      headPos: { x: 100, y: 1080*0.34 },
+      headAlign: 'left',
+      infoPos: { x: 100, y: 1080*0.56 },
+      infoAlign: 'left',
+      context: 'MAN UP · 20 SEC',
+      player: { number: '4', name: 'BANKS' },
+      team: '#21e6ff',
+      scene: 'pool',
+      impactPoint: function(W,H){ return { x: W*0.70, y: H*0.42 }; },
+      drawScene: function(ctx, t, T, W, H, team){
+        var wx = W*0.70, wy = H*0.42;
+        // Referee whistle pops in (the call) and blows steam.
+        var wp = seg(t, T.impact - 250, T.impact + 120);
+        if(wp > 0){
+          var ws = lerp(0.55, 1.2, easeOutBack(wp));
+          drawWhistle(ctx, wx, wy, ws, wp, team);
+          var bp = seg(t, T.impact, T.impact + 320);
+          if(bp > 0) drawWhistleBlow(ctx, wx + 95*ws, wy, t, bp);
+        }
+        // 20-second exclusion clock rises in below the whistle.
+        var cp = seg(t, T.impact + 220, T.impact + 640);
+        if(cp > 0){
+          var cy = lerp(H*0.82, H*0.72, easeOutCubic(cp));
+          drawCountdownClock(ctx, wx, cy, ':20', 0.8, cp, team);
+        }
+      },
+      ribbon: { headSize: 130 },
+      ribbonImpactPoint: function(W,H){ return { x: W*0.74, y: H*0.42 }; },
+      drawRibbonScene: function(ctx, t, T, W, H, team){
+        var wx = W*0.74, wy = H*0.40;
+        var wp = seg(t, T.impact - 200, T.impact + 100);
+        if(wp > 0){
+          var ws = lerp(H*0.0016, H*0.0030, easeOutBack(wp));
+          drawWhistle(ctx, wx, wy, ws, wp, team);
+          var bp = seg(t, T.impact, T.impact + 300);
+          if(bp > 0) drawWhistleBlow(ctx, wx + H*0.28*ws, wy, t, bp);
+        }
+        var cp = seg(t, T.impact + 200, T.impact + 560);
+        if(cp > 0) drawCountdownClock(ctx, W*0.90, H*0.5, ':20', H*0.0016, cp, team);
       }
     });
   })();
@@ -1029,6 +1111,7 @@
     'waterpolo-goal',
     'waterpolo-penalty',
     'waterpolo-save',
+    'waterpolo-exclusion',
     'waterpolo-powerplay',
     'waterpolo-hattrick'
   ];

@@ -282,11 +282,15 @@
   }
 
   // ── white impact flash
-  function drawFlash(ctx, t, T, W, H){
+  function drawFlash(ctx, t, T, W, H, intensity){
     var f = 0;
     if(t>=T.impact && t<T.impact+220) f = 1-(t-T.impact)/220;
     if(f>0){
-      ctx.fillStyle = 'rgba(245,250,255,'+(f*0.78)+')';
+      // `intensity` (default 1) lets a cue soften the impact flash so the
+      // action stays visible — e.g. the goal needs to SEE the ball enter
+      // the net, not be washed out.
+      var k = (intensity==null ? 1 : intensity);
+      ctx.fillStyle = 'rgba(245,250,255,'+(f*0.78*k)+')';
       ctx.fillRect(0,0,W,H);
     }
   }
@@ -616,7 +620,7 @@
         pos: cfg.infoPos, align: cfg.infoAlign
       });
 
-      drawFlash(ctx, t, T, W, H);
+      drawFlash(ctx, t, T, W, H, cfg.flash);
       drawVignette(ctx, W, H);
       drawScanlines(ctx, W, H, 0.05);
       drawFades(ctx, t, T, W, H);
@@ -705,7 +709,7 @@
       });
 
       // flash
-      drawFlash(ctx, t, T, W, H);
+      drawFlash(ctx, t, T, W, H, cfg.flash);
 
       // scanlines
       ctx.globalAlpha = 0.05;

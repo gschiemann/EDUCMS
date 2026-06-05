@@ -73,7 +73,10 @@ const V2_KEYS: Record<string, string> = {
   // water polo (the live pilot install — first vertical to ship)
   'water_polo/goal':      'waterpolo-goal',
   'water_polo/save':      'waterpolo-save',
-  'water_polo/exclusion': 'waterpolo-penalty', // v2 names the 20-sec excl. "penalty"
+  // An exclusion is a 20-second EJECTION (man-up), NOT a penalty shot — they
+  // are different events with different cinematics. (Was wrongly aliased to
+  // waterpolo-penalty, which played a 5-meter penalty-shot scene.)
+  'water_polo/exclusion': 'waterpolo-exclusion',
   'water_polo/penalty':   'waterpolo-penalty',
   'water_polo/powerPlay': 'waterpolo-powerplay',
   'water_polo/hatTrick':  'waterpolo-hattrick',
