@@ -6469,12 +6469,22 @@ function StyleableAreaField({
  */
 interface PosProviderLite { id: string; name: string; integrationTier: 'DIRECT' | 'PARTNER' | 'CLOSED'; iconEmoji?: string }
 interface PosConnectionLite { providerId: string; status: string }
+// 2026-06-06 — this fallback only renders when GET /pos/providers hasn't
+// resolved, so it MUST mirror the canonical registry (POS_PROVIDERS in
+// packages/api-types/src/pos.ts), minus CLOSED-tier rows the picker hides.
+// The previous list had drifted: Clover was re-tiered DIRECT, and Lightspeed
+// / Shopify use the ids `lightspeed-retail` / `shopify-pos` — so on an API
+// blip the picker showed the wrong tier badges + ids that don't match a
+// connection. Kept in sync by hand; if you add a provider in api-types,
+// add it here too (or this fallback lies).
 const POS_FALLBACK: PosProviderLite[] = [
-  { id: 'square', name: 'Square', integrationTier: 'DIRECT', iconEmoji: '⬛' },
+  { id: 'square', name: 'Square', integrationTier: 'DIRECT', iconEmoji: '◾' },
   { id: 'toast', name: 'Toast', integrationTier: 'PARTNER', iconEmoji: '🍞' },
-  { id: 'clover', name: 'Clover', integrationTier: 'PARTNER', iconEmoji: '🍀' },
-  { id: 'lightspeed', name: 'Lightspeed', integrationTier: 'PARTNER', iconEmoji: '⚡' },
-  { id: 'shopify', name: 'Shopify', integrationTier: 'PARTNER', iconEmoji: '🛍' },
+  { id: 'clover', name: 'Clover', integrationTier: 'DIRECT', iconEmoji: '🍀' },
+  { id: 'lightspeed-retail', name: 'Lightspeed Retail', integrationTier: 'DIRECT', iconEmoji: '⚡' },
+  { id: 'shopify-pos', name: 'Shopify POS', integrationTier: 'DIRECT', iconEmoji: '🛍' },
+  { id: 'stripe-terminal', name: 'Stripe Terminal', integrationTier: 'PARTNER', iconEmoji: '💳' },
+  { id: 'mindbody', name: 'Mindbody', integrationTier: 'PARTNER', iconEmoji: '🧘' },
   { id: 'custom-webhook', name: 'Custom Webhook', integrationTier: 'DIRECT', iconEmoji: '🔗' },
 ];
 function PosDriverPicker({ cfg, setField }: { cfg: Record<string, unknown>; setField: (patch: Record<string, unknown>) => void }) {
