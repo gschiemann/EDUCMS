@@ -2391,17 +2391,45 @@ function PlayerActionMenu({
   );
 }
 
+/** A player the operator can attribute a cue to (subset of a roster row). */
+type ScorerPick = {
+  id?: string;
+  name?: string;
+  number?: string | number | null;
+  position?: string | null;
+  photoUrl?: string | null;
+  team?: string | null;
+};
+
+/**
+ * Does this celebration show an individual player's name (→ pop the scorer
+ * picker), or is it a team / situational cue that fires immediately?
+ * Water polo: goal / save / exclusion → picker; power play / horn → instant.
+ * Generalizes across sports: most celebrations are individual, so we deny-list
+ * the clearly-team ones and status transitions.
+ */
+function cueWantsScorer(key: string): boolean {
+  const k = (key || '').toLowerCase().replace(/[_\s-]/g, '');
+  const TEAM_CUES = new Set([
+    'horn', 'powerplay', 'penaltykill', 'timeout', 'setwin', 'pregameintro',
+  ]);
+  if (TEAM_CUES.has(k)) return false;
+  if (k.startsWith('status')) return false;
+  return true;
+}
+
 /** Quick-fire cue tiles always visible in Run mode. The full launchpad
  *  (target picker, custom cues) stays available behind the Cues
  *  button in the bottom tray; this inline bar is the one-tap path
  *  for the sport's built-in celebrations, broadcasting to ALL
  *  surfaces by default.
  *
- *  2026-05-27 — when a player is currently spotlit, every cue fired
- *  through this bar attaches that player as the scorer. So if the
- *  operator has Greg on the spotlight and taps GOAL, the cinematic
- *  fires with "GOAL!  SCORED BY #99 GREG SCHIEMANN" and his cap
- *  number. No spotlight → cue fires generic.
+ *  2026-06-04 — cue → player-picker flow (operator: "click the cue, then
+ *  it pops a player list and you click the player so it all happens almost
+ *  instantly"). Tapping a name-cue (goal, save, exclusion…) pops a fast
+ *  roster picker; the tapped player is baked into the cinematic as the
+ *  scorer ("#7 RIVERA"). Team / situational cues (power play, horn) fire
+ *  immediately. With no roster, every cue fires immediately.
  */
 function RunInlineCuesBar({
   gameId,
@@ -2419,20 +2447,23 @@ function RunInlineCuesBar({
   const sp = g?.spotlight && typeof g.spotlight === 'object' ? g.spotlight : {};
   const spotName =
     sp.visible && typeof sp.title === 'string' ? sp.title.trim().toLowerCase() : '';
+  // The currently-spotlit player (if any) is pre-highlighted in the scorer
+  // picker so a one-tap confirm is possible when the operator already has
+  // someone on the spotlight.
   const scorerPlayer = spotName
     ? players.find((p) => String(p?.name || '').trim().toLowerCase() === spotName) || null
     : null;
-  const scorerLabel = scorerPlayer
-    ? `${scorerPlayer.number ? `#${scorerPlayer.number} ` : ''}${scorerPlayer.name}`
-    : sp.title || '';
 
   const [lastFiredKey, setLastFiredKey] = useState<string>('');
   // T2-6 — target chip: which surfaces receive the cue from the fast
   // path. Persists for the session (local state, not sessionStorage —
   // page reloads are rare mid-game and state loss is low-consequence).
   const [cueTarget, setCueTarget] = useState<'ALL' | 'BOARD' | 'RIBBON'>('ALL');
+  // 2026-06-04 — cue → player-picker. When set, the scorer picker is open
+  // for this cue key, awaiting the operator's player tap before firing.
+  const [pendingCue, setPendingCue] = useState<string | null>(null);
 
-  const fire = (key: string) => {
+  const fireWithScorer = (key: string, player: ScorerPick | null) => {
     ctl.cue.mutate({
       key,
       target: cueTarget as any,
@@ -2441,18 +2472,25 @@ function RunInlineCuesBar({
       // full 4500ms cinematic. The server also sets this automatically
       // when target === 'RIBBON', but include it here for clarity.
       ...(cueTarget === 'RIBBON' ? { ribbonStrip: true } : {}),
-      // If a player is on the spotlight, attribute the cue to them so
-      // the cinematic shows "SCORED BY #12 SMITH". scorerPlayer is the
-      // roster row (with .number, .photoUrl, .id); if the operator
-      // only has a custom-built spotlight (no matching roster entry),
-      // fall back to the spotlight title only.
-      scorerName: scorerPlayer?.name || (sp.title || undefined),
-      scorerNumber: scorerPlayer?.number ? String(scorerPlayer.number) : undefined,
-      scorerPhotoUrl: scorerPlayer?.photoUrl || sp.photoUrl || undefined,
-      scorerId: scorerPlayer?.id || undefined,
+      // Attribute the cue to the picked player so the cinematic bakes in
+      // "#7 RIVERA" with the REAL name + cap number. A null player (the
+      // operator skipped, or a team cue) fires clean with no name line.
+      scorerName: player?.name || undefined,
+      scorerNumber: player?.number != null && player.number !== '' ? String(player.number) : undefined,
+      scorerPhotoUrl: player?.photoUrl || undefined,
+      scorerId: player?.id || undefined,
     });
     setLastFiredKey(key);
     setTimeout(() => setLastFiredKey((k) => (k === key ? '' : k)), 1500);
+  };
+
+  // Tile tap. Name cues (goal, save, exclusion…) pop the scorer picker so
+  // the operator taps the player and it fires instantly with that name.
+  // Team / situational cues — and any cue when there's no roster yet —
+  // fire immediately with no name.
+  const onCueTap = (key: string) => {
+    if (cueWantsScorer(key) && players.length > 0) setPendingCue(key);
+    else fireWithScorer(key, null);
   };
 
   // T2-6 chip config — label, value, description for the title attr.
@@ -2507,10 +2545,8 @@ function RunInlineCuesBar({
             ⊞ Celebrate
           </span>
           <span className="text-[10px] text-indigo-500">
-            {scorerLabel ? (
-              <>
-                Will attribute to <strong className="text-indigo-700">{scorerLabel}</strong>
-              </>
+            {players.length > 0 ? (
+              <>Tap a play → pick the scorer</>
             ) : cueTarget === 'ALL' ? (
               'Fires on every screen'
             ) : cueTarget === 'BOARD' ? (
@@ -2527,11 +2563,11 @@ function RunInlineCuesBar({
               <button
                 key={c.key}
                 type="button"
-                onClick={() => fire(c.key)}
+                onClick={() => onCueTap(c.key)}
                 disabled={ctl.cue.isPending}
                 title={
-                  scorerLabel
-                    ? `Fire ${c.label} → ${cueTarget} — attributed to ${scorerLabel}`
+                  cueWantsScorer(c.key) && players.length > 0
+                    ? `${c.label} → pick the player, then it fires to ${cueTarget}`
                     : `Fire ${c.label} → ${cueTarget}`
                 }
                 className={
@@ -2547,6 +2583,167 @@ function RunInlineCuesBar({
             );
           })}
         </div>
+      </div>
+
+      {/* 2026-06-04 — the scorer picker. Tapping a name cue opens this;
+          the operator taps the player and the cue fires INSTANTLY with
+          that name baked into the cinematic. */}
+      {pendingCue && (
+        <CueScorerPicker
+          cueLabel={def.celebrations.find((c) => c.key === pendingCue)?.label || 'Cue'}
+          players={players}
+          spotlitName={scorerPlayer?.name || (typeof sp.title === 'string' ? sp.title : '')}
+          homeColor={g?.homeColor}
+          awayColor={g?.awayColor}
+          homeName={g?.homeTeam}
+          awayName={g?.awayTeam}
+          onPick={(player) => {
+            fireWithScorer(pendingCue, player);
+            setPendingCue(null);
+          }}
+          onClose={() => setPendingCue(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * CueScorerPicker — the fast roster popup that turns "fire a cue" into
+ * "fire a cue FOR this player". Mobile-first big tap tiles, home + away
+ * sections, the currently-spotlit player pre-highlighted for a one-tap
+ * confirm, and a prominent "No player" escape so it's never more than one
+ * extra tap. Tapping a player fires immediately and closes.
+ */
+function CueScorerPicker({
+  cueLabel,
+  players,
+  spotlitName,
+  homeColor,
+  awayColor,
+  homeName,
+  awayName,
+  onPick,
+  onClose,
+}: {
+  cueLabel: string;
+  players: any[];
+  spotlitName?: string;
+  homeColor?: string | null;
+  awayColor?: string | null;
+  homeName?: string | null;
+  awayName?: string | null;
+  onPick: (player: ScorerPick | null) => void;
+  onClose: () => void;
+}) {
+  useOverlayLock(); // hide the mobile tab bar so the sheet clears it
+  const spot = (spotlitName || '').trim().toLowerCase();
+  const home = players.filter((p) => p?.team !== 'away');
+  const away = players.filter((p) => p?.team === 'away');
+
+  const Section = ({
+    label,
+    color,
+    list,
+  }: {
+    label: string;
+    color: string;
+    list: any[];
+  }) => {
+    if (!list.length) return null;
+    return (
+      <div className="mb-3 last:mb-0">
+        <div className="mb-1.5 flex items-center gap-2">
+          <span className="h-3 w-1.5 rounded-full shrink-0" style={{ background: color }} />
+          <span className="text-[11px] font-black uppercase tracking-wide text-slate-500 truncate">
+            {label}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+          {list.map((p) => {
+            const name = String(p?.name || '').trim();
+            const onAir = !!spot && name.toLowerCase() === spot;
+            return (
+              <button
+                key={p?.id || `${p?.team}-${p?.number}-${name}`}
+                type="button"
+                onClick={() =>
+                  onPick({
+                    id: p?.id,
+                    name,
+                    number: p?.number ?? '',
+                    position: p?.position ?? '',
+                    photoUrl: p?.photoUrl ?? null,
+                    team: p?.team ?? null,
+                  })
+                }
+                className={
+                  onAir
+                    ? 'flex items-center gap-2 rounded-lg border-2 border-amber-500 bg-amber-50 px-2.5 py-2 text-left transition-colors'
+                    : 'flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-left hover:border-indigo-300 hover:bg-indigo-50 transition-colors'
+                }
+              >
+                <span
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm font-black text-white"
+                  style={{ background: color }}
+                >
+                  {p?.number != null && p?.number !== '' ? p.number : '–'}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-bold text-slate-900">
+                    {name || 'Unnamed'}
+                  </span>
+                  {p?.position && (
+                    <span className="block truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      {p.position}
+                    </span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-3 sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[82vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-base font-black text-slate-900 truncate">{cueLabel}</div>
+            <div className="text-[11px] font-semibold text-slate-400">Who gets the call? Tap a player.</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Cancel"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* No-player escape — always one tap to fire clean. */}
+        <button
+          type="button"
+          onClick={() => onPick(null)}
+          className="mb-3 w-full rounded-lg bg-slate-100 px-3 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+        >
+          ⚡ Fire now — no player
+        </button>
+
+        <Section label={homeName || 'Home'} color={homeColor || '#4f46e5'} list={home} />
+        <Section label={awayName || 'Away'} color={awayColor || '#e11d48'} list={away} />
       </div>
     </div>
   );

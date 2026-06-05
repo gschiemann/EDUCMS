@@ -21,7 +21,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { applyCtsOverlay } from '@/lib/cts-merge';
 import { SituationalRow } from '@/components/widgets/v2/_shared/sports-situational';
-import { celebrationSrc } from '@/lib/celebration-assets';
+import { celebrationSrc, celebrationLiveDataFromCue } from '@/lib/celebration-assets';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import { findSport } from '@cms/api-types';
@@ -80,6 +80,12 @@ interface Cue {
     segmentLabel?: string;
     clockText?: string;
   };
+  // Operator-attributed scorer (the player picked when firing the cue) —
+  // injected into the v2 cinematic so it shows "#7 RIVERA" with the REAL
+  // name instead of the cue file's placeholder. Server persists these on
+  // the CUE GameEvent at fire time.
+  scorerName?: string | null;
+  scorerNumber?: string | null;
 }
 interface Sponsor {
   id: string;
@@ -1867,7 +1873,16 @@ function CueOverlay({
     (cue.team === 'away' ? cue.snapshot?.awayColor : cue.snapshot?.homeColor) ||
     cue.snapshot?.homeColor ||
     null;
-  const celebUrl = celebrationSrc(sport, cue.key, teamColor, pack || 'v1', 'scoreboard');
+  const celebUrl = celebrationSrc(
+    sport,
+    cue.key,
+    teamColor,
+    pack || 'v1',
+    'scoreboard',
+    // Inject the frozen live score + operator-attributed scorer so the v2
+    // cinematic shows the REAL game instead of the cue file's placeholders.
+    celebrationLiveDataFromCue(cue),
+  );
   if (celebUrl) {
     return (
       <div

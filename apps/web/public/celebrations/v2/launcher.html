@@ -69,6 +69,68 @@
     }
   }
 
+  // 2026-06-04 — LIVE DATA INJECTION. The board / ribbon pass a
+  // base64url-encoded JSON `d` param carrying the REAL teams, score,
+  // segment/clock, and the operator-attributed scorer. We patch each
+  // cue's cached config BEFORE runScoreboard/runRibbon reads it, exactly
+  // like the team-color patch above. This replaces the design-time
+  // placeholder names (RIVERA / OKONKWO / Newport Harbor 9 — 8) baked
+  // into the cue files with the live game's data. When `d` is absent
+  // (e.g. the design gallery / a legacy caller), cues keep their built-in
+  // demo data — no regression.
+  var live = null;
+  var draw = q.get('d');
+  if (draw) {
+    try {
+      var b64 = draw.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      // decodeURIComponent(escape(atob())) is the UTF-8-safe base64 decode
+      // (player names + the "·" separator carry multi-byte chars).
+      live = JSON.parse(decodeURIComponent(escape(atob(b64))));
+    } catch (e) { live = null; }
+  }
+  if (live && window.VENUE && VENUE.list) {
+    var clean = function (v) { return v == null ? '' : String(v); };
+    var hex2 = function (v, dflt) {
+      v = clean(v).replace(/^#?/, '');
+      return /^[0-9a-f]{3,8}$/i.test(v) ? '#' + v : dflt;
+    };
+    VENUE.list().forEach(function (k) {
+      var c = VENUE.get(k);
+      if (!c) return;
+      // Scorer / featured player. An empty name HIDES the line entirely
+      // (engine guards `if(opts.player)`), so when the operator fires
+      // without picking a player NO placeholder name leaks to the screen.
+      if ('player' in live) {
+        var pl = live.player;
+        c.player = pl && (clean(pl.name) || clean(pl.number))
+          ? { number: clean(pl.number), name: clean(pl.name) }
+          : null;
+      }
+      // Live scoreline — merge over the cue's existing score shape so any
+      // field the caller omits keeps the cue's sensible default.
+      if (live.home != null || live.away != null || live.hs != null || live.as != null) {
+        var s0 = c.score || {}, h0 = s0.home || {}, a0 = s0.away || {};
+        c.score = {
+          home: {
+            abbr: clean(live.ha) || h0.abbr || 'HOME',
+            name: clean(live.home) || h0.name || 'HOME',
+            color: hex2(live.hc, h0.color || '#21e6ff'),
+            goals: live.hs != null ? live.hs : (h0.goals || 0)
+          },
+          away: {
+            abbr: clean(live.aa) || a0.abbr || 'AWAY',
+            name: clean(live.away) || a0.name || 'AWAY',
+            color: hex2(live.ac, a0.color || '#ff2d55'),
+            goals: live.as != null ? live.as : (a0.goals || 0)
+          }
+        };
+      }
+      // Live context line (segment · clock). Empty string clears it.
+      if ('context' in live) c.context = clean(live.context);
+    });
+  }
+
   // No cue key — fail loud (parent iframe should always include one).
   if (!cueKey || !window.VENUE) return;
 

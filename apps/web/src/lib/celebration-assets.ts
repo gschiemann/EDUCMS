@@ -101,15 +101,121 @@ export function celebrationAsset(
   return null;
 }
 
+/**
+ * 2026-06-04 — live game data injected into a v2 cinematic at fire time.
+ * The v2 launcher (`/celebrations/v2/launcher.html`) decodes this from the
+ * `d` URL param and patches each cue's config BEFORE it paints, so the
+ * scene shows the REAL teams / score / segment-clock and the operator-
+ * attributed scorer — instead of the design-time placeholder names baked
+ * into the cue files (RIVERA / OKONKWO / Newport Harbor 9 — 8). Only the
+ * v2 launcher reads this; v1 marquee/deck files ignore it.
+ */
+export interface CelebrationLiveData {
+  /** Home / away full team names (scorebug + score line). */
+  home?: string;
+  away?: string;
+  /** Home / away short abbreviations (≤ ~4 chars). */
+  ha?: string;
+  aa?: string;
+  /** Home / away scores. */
+  hs?: number;
+  as?: number;
+  /** Home / away accent hex (no leading #). */
+  hc?: string;
+  ac?: string;
+  /**
+   * The featured player (scorer / goalie / etc). `null` / omitted name →
+   * the cinematic renders NO player line (the engine guards on presence),
+   * so firing without picking a player never shows a placeholder name.
+   */
+  player?: { number?: string; name?: string } | null;
+  /** Context line, e.g. "4TH · 2:14". Empty string clears it. */
+  context?: string;
+}
+
+/** UTF-8-safe base64url encode (player names + "·" carry multi-byte chars).
+ *  Encodes the exact UTF-8 bytes of the JSON so the launcher's
+ *  `decodeURIComponent(escape(atob()))` decode round-trips. */
+function encodeLive(data: CelebrationLiveData): string {
+  const json = JSON.stringify(data);
+  let b64: string;
+  if (typeof btoa !== 'undefined' && typeof TextEncoder !== 'undefined') {
+    // UTF-8 → bytes → binary string → base64. Avoids the deprecated
+    // escape()/unescape() pair while producing identical bytes.
+    const bytes = new TextEncoder().encode(json);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
+    b64 = btoa(bin);
+  } else {
+    // SSR / Node fallback.
+    b64 = Buffer.from(json, 'utf8').toString('base64');
+  }
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** Loose shape of a fired cue carrying a frozen snapshot + optional scorer. */
+interface CueWithSnapshot {
+  snapshot?: {
+    homeTeam?: string;
+    awayTeam?: string;
+    homeScore?: number;
+    awayScore?: number;
+    homeColor?: string | null;
+    awayColor?: string | null;
+    segmentLabel?: string;
+    clockText?: string;
+  } | null;
+  scorerName?: string | null;
+  scorerNumber?: string | null;
+}
+
+/**
+ * Build the live-data payload for a v2 cinematic from a fired cue's frozen
+ * snapshot + operator-attributed scorer. Returns undefined when there's no
+ * snapshot AND no scorer (so legacy/preview calls keep the cue's demo data).
+ */
+export function celebrationLiveDataFromCue(
+  cue: CueWithSnapshot | null | undefined,
+): CelebrationLiveData | undefined {
+  if (!cue) return undefined;
+  const s = cue.snapshot || {};
+  const hasSnap =
+    !!(s.homeTeam || s.awayTeam) || typeof s.homeScore === 'number' || typeof s.awayScore === 'number';
+  const scorer = (cue.scorerName || '').trim();
+  if (!hasSnap && !scorer) return undefined;
+
+  // Short abbreviation from a team name when no explicit abbr exists:
+  // first word's first 3 letters (Newport Harbor → NEW, "Sea Kings" → SEA).
+  const abbr = (n?: string) =>
+    n ? n.trim().split(/\s+/)[0]!.slice(0, 4).toUpperCase() : undefined;
+
+  return {
+    home: s.homeTeam || undefined,
+    away: s.awayTeam || undefined,
+    ha: abbr(s.homeTeam),
+    aa: abbr(s.awayTeam),
+    hs: typeof s.homeScore === 'number' ? s.homeScore : undefined,
+    as: typeof s.awayScore === 'number' ? s.awayScore : undefined,
+    hc: (s.homeColor || '').replace('#', '').trim() || undefined,
+    ac: (s.awayColor || '').replace('#', '').trim() || undefined,
+    // Always present (possibly null) so the launcher clears any placeholder
+    // name when the operator fired without picking a player.
+    player: scorer ? { number: (cue.scorerNumber || '').trim(), name: scorer } : null,
+    context: [s.segmentLabel, s.clockText].map((x) => (x || '').trim()).filter(Boolean).join(' · '),
+  };
+}
+
 /** Full iframe src for a celebration, branded to a team hex color (optional).
  *  `format` only affects v2 — that pack has separate scoreboard / ribbon
- *  render paths in a single launcher. v1 ignores it. */
+ *  render paths in a single launcher. v1 ignores it. `data` injects the live
+ *  game state + scorer into the v2 cinematic (ignored by v1 art). */
 export function celebrationSrc(
   sport: string | null | undefined,
   cueKey: string | null | undefined,
   teamHex?: string | null,
   pack: CelebrationPack = 'v1',
   format?: 'scoreboard' | 'ribbon',
+  data?: CelebrationLiveData,
 ): string | null {
   const base = celebrationAsset(sport, cueKey, pack);
   if (!base) return null;
@@ -117,6 +223,10 @@ export function celebrationSrc(
   const params: string[] = [];
   if (hex) params.push('team=' + encodeURIComponent(hex));
   if (format) params.push('format=' + encodeURIComponent(format));
+  // Live data is only understood by the v2 launcher — don't bloat v1 URLs.
+  if (data && base.includes('/v2/launcher.html')) {
+    params.push('d=' + encodeLive(data));
+  }
   if (params.length === 0) return base;
   return base + (base.includes('?') ? '&' : '?') + params.join('&');
 }

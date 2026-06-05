@@ -106,7 +106,7 @@ import { CelebrationWaterPoloGoal } from '@/components/widgets/sports/celebratio
 import { CelebrationDeckScene } from '@/components/widgets/sports/celebrations/CelebrationDeckScene';
 import { pickDeckCue } from '@/components/widgets/sports/celebrations/celebrationDeckCues';
 import { RibbonCelebrationStrip } from '@/components/widgets/sports/celebrations/RibbonCelebrationStrip';
-import { celebrationSrc } from '@/lib/celebration-assets';
+import { celebrationSrc, celebrationLiveDataFromCue } from '@/lib/celebration-assets';
 import type { ComponentType } from 'react';
 
 interface Sponsor {
@@ -2877,7 +2877,16 @@ function RibbonCueOverlay({
   // segment exactly like the strip so the bowl wrap still works.
   if (pack === 'v2') {
     const teamHex = cue.color || cue.snapshot?.homeColor || null;
-    const v2Url = celebrationSrc(sport, cue.key, teamHex, 'v2', 'ribbon');
+    // Inject the frozen live score + operator-attributed scorer so the v2
+    // ribbon cinematic shows the REAL game, not the cue file's placeholders.
+    const v2Url = celebrationSrc(
+      sport,
+      cue.key,
+      teamHex,
+      'v2',
+      'ribbon',
+      celebrationLiveDataFromCue(cue as Parameters<typeof celebrationLiveDataFromCue>[0]),
+    );
     if (v2Url) {
       return (
         <div
