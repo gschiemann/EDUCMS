@@ -1348,18 +1348,18 @@ window.NUTRI = {
     return '<header class="bar nu-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
       '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3" style="line-height:1">' + D.restaurant + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.14em">' + D.tagline + '</div></div></div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1" data-field="brand.name">' + D.restaurant + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.14em" data-field="brand.tagline">' + D.tagline + '</div></div></div>' +
       '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
       '<button class="iconbtn" data-home aria-label="Home">' + icon('home', { sw: 2 }) + '</button>' +
     '</header>';
   }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media nu-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media nu-hero" data-img="hero.image"><div class="media__scrim"></div>' +
       '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-      '<div class="eyebrow" style="color:var(--accent)">' + D.restaurant + ' · ' + D.tagline + '</div>' +
+      '<div class="eyebrow" style="color:var(--accent)" data-field="brand.name">' + D.restaurant + '</div>' +
       '<div class="t-mega" style="color:#fff;margin-top:var(--s-1)">Eat with<br>confidence.</div>' +
       '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to filter by diet &amp; allergens</div>' +
     '</div>';
@@ -1379,14 +1379,15 @@ window.NUTRI = {
       '<aside class="nu-side"><div class="nu-side__h"><div class="eyebrow">Filter the menu</div>' +
         '<button class="chip" data-act="clear">Clear</button></div>' +
         '<div class="nu-fgroup"><div class="nu-flabel">Dietary</div><div class="nu-fchips">' +
-          D.diets.map(function (d) { return '<button class="nu-fchip ' + (filt.diets.indexOf(d.id) > -1 ? 'is-on' : '') + '" data-act="diet" data-id="' + d.id + '">' + icon('check', { sw: 2.6 }) + ' ' + d.t + '</button>'; }).join('') + '</div></div>' +
+          D.diets.map(function (d) { return '<button class="nu-fchip ' + (filt.diets.indexOf(d.id) > -1 ? 'is-on' : '') + '" data-act="diet" data-id="' + d.id + '" data-field="diet.' + d.id + '.label">' + icon('check', { sw: 2.6 }) + ' ' + d.t + '</button>'; }).join('') + '</div></div>' +
         '<div class="nu-fgroup"><div class="nu-flabel">Free from</div><div class="nu-fchips">' +
-          D.allergens.map(function (a) { return '<button class="nu-fchip nu-fchip--free ' + (filt.free.indexOf(a.id) > -1 ? 'is-on' : '') + '" data-act="free" data-id="' + a.id + '">' + icon('x', { sw: 2.6 }) + ' ' + a.t + '</button>'; }).join('') + '</div></div>' +
-        '<p class="nu-note">' + icon('info') + ' ' + D.note + '</p>' +
+          D.allergens.map(function (a) { return '<button class="nu-fchip nu-fchip--free ' + (filt.free.indexOf(a.id) > -1 ? 'is-on' : '') + '" data-act="free" data-id="' + a.id + '" data-field="allergen.' + a.id + '.label">' + icon('x', { sw: 2.6 }) + ' ' + a.t + '</button>'; }).join('') + '</div></div>' +
+        '<p class="nu-note" data-field="brand.note">' + icon('info') + ' ' + D.note + '</p>' +
+        '<button class="btn btn--ghost btn--block" style="margin-top:var(--s-4)" data-act="email" data-action="nutrition.email">' + icon('send') + ' Email me this info</button>' +
       '</aside>' +
       '<main class="nu-main">' +
         '<div class="nu-cats">' + [{ id: 'all', t: 'All' }].concat(D.categories).map(function (c) {
-          return '<button class="chip ' + (filt.cat === c.id ? 'is-on' : '') + '" data-act="cat" data-id="' + c.id + '">' + c.t + '</button>';
+          return '<button class="chip ' + (filt.cat === c.id ? 'is-on' : '') + '" data-act="cat" data-id="' + c.id + '"' + (c.id !== 'all' ? ' data-field="cat.' + c.id + '.name"' : '') + '>' + c.t + '</button>';
         }).join('') + '</div>' +
         '<div class="nu-results" id="nu-results">' + resultsHtml() + '</div>' +
       '</main>' +
@@ -1401,10 +1402,10 @@ window.NUTRI = {
   }
   function card(it) {
     return '<button class="card nu-card" data-go="dish:' + it.id + '">' +
-      '<span class="media nu-card__img"><span class="media__tag">' + icon('image') + ' ' + it.image + '</span>' +
-        '<span class="nu-card__cal">' + it.kcal + ' cal</span></span>' +
-      '<span class="nu-card__b"><span class="t-h3">' + it.name + '</span>' +
-        '<span class="nu-macros"><span><b>' + it.protein + 'g</b> protein</span><span><b>' + it.carbs + 'g</b> carbs</span><span><b>' + it.fat + 'g</b> fat</span></span>' +
+      '<span class="media nu-card__img" data-img="dish.' + it.id + '.image"><span class="media__tag">' + icon('image') + ' ' + it.image + '</span>' +
+        '<span class="nu-card__cal" data-field="dish.' + it.id + '.kcal">' + it.kcal + ' cal</span></span>' +
+      '<span class="nu-card__b"><span class="t-h3" data-field="dish.' + it.id + '.name">' + it.name + '</span>' +
+        '<span class="nu-macros"><span><b data-field="dish.' + it.id + '.protein">' + it.protein + 'g</b> protein</span><span><b data-field="dish.' + it.id + '.carbs">' + it.carbs + 'g</b> carbs</span><span><b data-field="dish.' + it.id + '.fat">' + it.fat + 'g</b> fat</span></span>' +
         '<span class="nu-tags">' + it.diets.slice(0, 3).map(function (d) { return '<span class="nu-diet">' + dietT(d) + '</span>'; }).join('') +
         (it.allergens.length ? '<span class="nu-alln">' + icon('info', { sw: 2 }) + ' ' + it.allergens.length + '</span>' : '<span class="nu-alln nu-alln--none">' + icon('check', { sw: 2.4 }) + ' allergen-free</span>') + '</span></span></button>';
   }
@@ -1420,32 +1421,34 @@ window.NUTRI = {
     var dv = D.dailyValue;
     return bar(true) + '<div class="scroll"><div class="nu-dish">' +
       '<div class="split split--5050 nu-dish__top">' +
-        '<div class="media nu-dish__img"><div class="media__scrim"></div><div class="nu-dish__cal">' + it.kcal + '<small>cal</small></div>' +
+        '<div class="media nu-dish__img" data-img="dish.' + it.id + '.image"><div class="media__scrim"></div><div class="nu-dish__cal" data-field="dish.' + it.id + '.kcal">' + it.kcal + '<small>cal</small></div>' +
           '<div class="media__tag">' + icon('image') + ' ' + it.image + '</div></div>' +
         '<div class="nu-dish__info"><div class="nu-tags">' + it.diets.map(function (d) { return '<span class="nu-diet">' + dietT(d) + '</span>'; }).join('') + '</div>' +
-          '<h1 class="t-xl" style="margin:var(--s-2) 0">' + it.name + '</h1>' +
-          '<p class="t-lg dim pretty">' + it.desc + '</p>' +
+          '<h1 class="t-xl" style="margin:var(--s-2) 0" data-field="dish.' + it.id + '.name">' + it.name + '</h1>' +
+          '<p class="t-lg dim pretty" data-field="dish.' + it.id + '.desc">' + it.desc + '</p>' +
           '<div class="nu-quad">' +
-            '<div class="nu-q"><div class="nu-q__v">' + it.protein + 'g</div><div class="nu-q__k">Protein</div></div>' +
-            '<div class="nu-q"><div class="nu-q__v">' + it.carbs + 'g</div><div class="nu-q__k">Carbs</div></div>' +
-            '<div class="nu-q"><div class="nu-q__v">' + it.fat + 'g</div><div class="nu-q__k">Fat</div></div>' +
-            '<div class="nu-q"><div class="nu-q__v">' + it.fiber + 'g</div><div class="nu-q__k">Fiber</div></div>' +
+            '<div class="nu-q"><div class="nu-q__v" data-field="dish.' + it.id + '.protein">' + it.protein + 'g</div><div class="nu-q__k">Protein</div></div>' +
+            '<div class="nu-q"><div class="nu-q__v" data-field="dish.' + it.id + '.carbs">' + it.carbs + 'g</div><div class="nu-q__k">Carbs</div></div>' +
+            '<div class="nu-q"><div class="nu-q__v" data-field="dish.' + it.id + '.fat">' + it.fat + 'g</div><div class="nu-q__k">Fat</div></div>' +
+            '<div class="nu-q"><div class="nu-q__v" data-field="dish.' + it.id + '.fiber">' + it.fiber + 'g</div><div class="nu-q__k">Fiber</div></div>' +
           '</div>' +
         '</div>' +
       '</div>' +
       '<div class="split nu-dish__mid">' +
-        '<section class="nu-facts"><div class="nu-facts__h"><div class="t-h2">Nutrition Facts</div><div class="t-sm dim">% Daily Value</div></div>' +
+        '<section class="nu-facts"><div class="nu-facts__h"><div class="t-h2" data-field="ui.nutrition.heading">Nutrition Facts</div><div class="t-sm dim">% Daily Value</div></div>' +
           barRow('Protein', it.protein, dv.protein, 'g') + barRow('Carbohydrates', it.carbs, dv.carbs, 'g') +
           barRow('Total Fat', it.fat, dv.fat, 'g') + barRow('Fiber', it.fiber, dv.fiber, 'g') +
           barRow('Sugar', it.sugar, dv.sugar, 'g') + barRow('Sodium', it.sodium, dv.sodium, 'mg') +
         '</section>' +
-        '<section><div class="t-h2" style="margin-bottom:var(--s-3)">Allergens</div>' +
+        '<section><div class="t-h2" style="margin-bottom:var(--s-3)" data-field="ui.allergens.heading">Allergens</div>' +
           '<div class="nu-allergens">' + D.allergens.map(function (a) {
             var has = it.allergens.indexOf(a.id) > -1;
             return '<div class="nu-allergen ' + (has ? 'is-has' : 'is-free') + '">' + icon(has ? 'info' : 'check', { sw: 2.4 }) + ' ' + a.t + '</div>';
           }).join('') + '</div>' +
-          '<div class="t-h2" style="margin:var(--s-5) 0 var(--s-3)">Ingredients</div>' +
-          '<p class="t-lg dim pretty">' + it.ingredients + '</p></section>' +
+          '<div class="t-h2" style="margin:var(--s-5) 0 var(--s-3)" data-field="ui.ingredients.heading">Ingredients</div>' +
+          '<p class="t-lg dim pretty" data-field="dish.' + it.id + '.ingredients">' + it.ingredients + '</p>' +
+          '<button class="btn btn--primary btn--block" style="margin-top:var(--s-5)" data-act="email" data-action="nutrition.email">' + icon('send') + ' Email me this info</button>' +
+        '</section>' +
       '</div>' +
     '</div></div>';
   }
@@ -1468,6 +1471,156 @@ window.NUTRI = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <span data-field="brand.name">Greenhouse</span>
+  <span data-field="brand.tagline">Nutrition &amp; Allergens</span>
+  <span data-field="brand.note">Values are estimates. Tell our team about any allergy — we prepare allergen orders with care.</span>
+  <div data-img="hero.image"></div>
+  <span data-field="cat.bowls.name">Bowls</span>
+  <span data-field="cat.hand.name">Handhelds</span>
+  <span data-field="cat.sides.name">Sides</span>
+  <span data-field="cat.drinks.name">Cold Press</span>
+  <span data-field="diet.veg.label">Vegetarian</span>
+  <span data-field="diet.vegan.label">Vegan</span>
+  <span data-field="diet.gf.label">Gluten-free</span>
+  <span data-field="diet.df.label">Dairy-free</span>
+  <span data-field="diet.highp.label">High protein</span>
+  <span data-field="diet.lowcal.label">Under 500 cal</span>
+  <span data-field="allergen.milk.label">Milk</span>
+  <span data-field="allergen.egg.label">Egg</span>
+  <span data-field="allergen.fish.label">Fish</span>
+  <span data-field="allergen.shellfish.label">Shellfish</span>
+  <span data-field="allergen.tree.label">Tree nut</span>
+  <span data-field="allergen.peanut.label">Peanut</span>
+  <span data-field="allergen.wheat.label">Wheat / gluten</span>
+  <span data-field="allergen.soy.label">Soy</span>
+  <span data-field="allergen.sesame.label">Sesame</span>
+  <span data-field="ui.nutrition.heading">Nutrition Facts</span>
+  <span data-field="ui.allergens.heading">Allergens</span>
+  <span data-field="ui.ingredients.heading">Ingredients</span>
+  <span data-field="dish.harvest.name">Harvest Bowl</span>
+  <span data-field="dish.harvest.desc">Hearty and balanced — complex carbs with a little tang.</span>
+  <span data-field="dish.harvest.kcal">640 cal</span>
+  <span data-field="dish.harvest.protein">22g</span>
+  <span data-field="dish.harvest.carbs">68g</span>
+  <span data-field="dish.harvest.fat">30g</span>
+  <span data-field="dish.harvest.fiber">11g</span>
+  <span data-field="dish.harvest.sodium">720</span>
+  <span data-field="dish.harvest.sugar">14</span>
+  <span data-field="dish.harvest.ingredients">Wild rice, roasted sweet potato, kale, apple, goat cheese, toasted almond, balsamic vinaigrette.</span>
+  <div data-img="dish.harvest.image"></div>
+  <span data-field="dish.sesame.name">Sesame Ginger Bowl</span>
+  <span data-field="dish.sesame.desc">Bright, plant-forward and refreshing.</span>
+  <span data-field="dish.sesame.kcal">580 cal</span>
+  <span data-field="dish.sesame.protein">18g</span>
+  <span data-field="dish.sesame.carbs">74g</span>
+  <span data-field="dish.sesame.fat">18g</span>
+  <span data-field="dish.sesame.fiber">9g</span>
+  <span data-field="dish.sesame.sodium">890</span>
+  <span data-field="dish.sesame.sugar">16</span>
+  <span data-field="dish.sesame.ingredients">Brown rice, edamame, cabbage slaw, carrot, cucumber, crispy shallot, sesame-ginger dressing.</span>
+  <div data-img="dish.sesame.image"></div>
+  <span data-field="dish.mezze.name">Mezze Bowl</span>
+  <span data-field="dish.mezze.desc">Mediterranean and fiber-rich.</span>
+  <span data-field="dish.mezze.kcal">610 cal</span>
+  <span data-field="dish.mezze.protein">19g</span>
+  <span data-field="dish.mezze.carbs">70g</span>
+  <span data-field="dish.mezze.fat">26g</span>
+  <span data-field="dish.mezze.fiber">13g</span>
+  <span data-field="dish.mezze.sodium">760</span>
+  <span data-field="dish.mezze.sugar">9</span>
+  <span data-field="dish.mezze.ingredients">Herbed couscous, falafel, hummus, cucumber-tomato, pickled onion, tahini, dill.</span>
+  <div data-img="dish.mezze.image"></div>
+  <span data-field="dish.smash.name">Greenhouse Smash</span>
+  <span data-field="dish.smash.desc">The indulgent classic, done right.</span>
+  <span data-field="dish.smash.kcal">720 cal</span>
+  <span data-field="dish.smash.protein">38g</span>
+  <span data-field="dish.smash.carbs">41g</span>
+  <span data-field="dish.smash.fat">44g</span>
+  <span data-field="dish.smash.fiber">3g</span>
+  <span data-field="dish.smash.sodium">1080</span>
+  <span data-field="dish.smash.sugar">8</span>
+  <span data-field="dish.smash.ingredients">Double smashed patty, aged cheddar, house sauce, pickles, Martin&#39;s potato roll.</span>
+  <div data-img="dish.smash.image"></div>
+  <span data-field="dish.crispy.name">Crispy Chicken Sando</span>
+  <span data-field="dish.crispy.desc">Crunchy, juicy, a little spicy.</span>
+  <span data-field="dish.crispy.kcal">690 cal</span>
+  <span data-field="dish.crispy.protein">35g</span>
+  <span data-field="dish.crispy.carbs">52g</span>
+  <span data-field="dish.crispy.fat">36g</span>
+  <span data-field="dish.crispy.fiber">4g</span>
+  <span data-field="dish.crispy.sodium">1140</span>
+  <span data-field="dish.crispy.sugar">9</span>
+  <span data-field="dish.crispy.ingredients">Buttermilk-fried chicken, slaw, dill pickle, comeback sauce, brioche.</span>
+  <div data-img="dish.crispy.image"></div>
+  <span data-field="dish.wrap.name">Falafel Wrap</span>
+  <span data-field="dish.wrap.desc">Plant-based and satisfying.</span>
+  <span data-field="dish.wrap.kcal">560 cal</span>
+  <span data-field="dish.wrap.protein">17g</span>
+  <span data-field="dish.wrap.carbs">66g</span>
+  <span data-field="dish.wrap.fat">24g</span>
+  <span data-field="dish.wrap.fiber">10g</span>
+  <span data-field="dish.wrap.sodium">820</span>
+  <span data-field="dish.wrap.sugar">6</span>
+  <span data-field="dish.wrap.ingredients">Falafel, hummus, pickled veg, greens, tahini, warm lavash.</span>
+  <div data-img="dish.wrap.image"></div>
+  <span data-field="dish.fries.name">Rosemary Fries</span>
+  <span data-field="dish.fries.desc">Allergen-friendly and crowd-pleasing.</span>
+  <span data-field="dish.fries.kcal">420 cal</span>
+  <span data-field="dish.fries.protein">5g</span>
+  <span data-field="dish.fries.carbs">52g</span>
+  <span data-field="dish.fries.fat">22g</span>
+  <span data-field="dish.fries.fiber">5g</span>
+  <span data-field="dish.fries.sodium">640</span>
+  <span data-field="dish.fries.sugar">1</span>
+  <span data-field="dish.fries.ingredients">Crispy fries, rosemary salt, garlic aioli on the side.</span>
+  <div data-img="dish.fries.image"></div>
+  <span data-field="dish.brussels.name">Charred Brussels</span>
+  <span data-field="dish.brussels.desc">Sweet-and-spicy, surprisingly light.</span>
+  <span data-field="dish.brussels.kcal">280 cal</span>
+  <span data-field="dish.brussels.protein">8g</span>
+  <span data-field="dish.brussels.carbs">24g</span>
+  <span data-field="dish.brussels.fat">18g</span>
+  <span data-field="dish.brussels.fiber">7g</span>
+  <span data-field="dish.brussels.sodium">520</span>
+  <span data-field="dish.brussels.sugar">8</span>
+  <span data-field="dish.brussels.ingredients">Maple, chili, lemon, toasted hazelnut.</span>
+  <div data-img="dish.brussels.image"></div>
+  <span data-field="dish.soup.name">Garden Soup</span>
+  <span data-field="dish.soup.desc">Light, warm and allergen-free.</span>
+  <span data-field="dish.soup.kcal">210 cal</span>
+  <span data-field="dish.soup.protein">6g</span>
+  <span data-field="dish.soup.carbs">28g</span>
+  <span data-field="dish.soup.fat">8g</span>
+  <span data-field="dish.soup.fiber">6g</span>
+  <span data-field="dish.soup.sodium">690</span>
+  <span data-field="dish.soup.sugar">7</span>
+  <span data-field="dish.soup.ingredients">Seasonal vegetables, herbs, vegetable broth.</span>
+  <div data-img="dish.soup.image"></div>
+  <span data-field="dish.green.name">Green Machine</span>
+  <span data-field="dish.green.desc">Cold-pressed and clean.</span>
+  <span data-field="dish.green.kcal">120 cal</span>
+  <span data-field="dish.green.protein">2g</span>
+  <span data-field="dish.green.carbs">28g</span>
+  <span data-field="dish.green.fat">0g</span>
+  <span data-field="dish.green.fiber">3g</span>
+  <span data-field="dish.green.sodium">40</span>
+  <span data-field="dish.green.sugar">18</span>
+  <span data-field="dish.green.ingredients">Kale, apple, cucumber, lemon, ginger.</span>
+  <div data-img="dish.green.image"></div>
+  <span data-field="dish.citrus.name">Citrus Sunrise</span>
+  <span data-field="dish.citrus.desc">Bright and immune-friendly.</span>
+  <span data-field="dish.citrus.kcal">140 cal</span>
+  <span data-field="dish.citrus.protein">1g</span>
+  <span data-field="dish.citrus.carbs">33g</span>
+  <span data-field="dish.citrus.fat">0g</span>
+  <span data-field="dish.citrus.fiber">2g</span>
+  <span data-field="dish.citrus.sodium">25</span>
+  <span data-field="dish.citrus.sugar">26</span>
+  <span data-field="dish.citrus.ingredients">Orange, carrot, turmeric, lemon.</span>
+  <div data-img="dish.citrus.image"></div>
+  <button data-act="email" data-action="nutrition.email">Email me this info</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
