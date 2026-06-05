@@ -258,10 +258,19 @@ export function BrandKitPanel() {
           // as the ?brand= URL param the shim consumes. Only set keys we have,
           // so a partial brand kit still shows the template's own defaults
           // through for everything else.
+          // Map ACCENT + FONTS only — NOT background/surface/text. Kiosk
+          // templates ship a deliberate, contrast-balanced theme (often a
+          // premium dark UI); forcing the brand's light surface + dark ink
+          // onto it washes the design out and breaks header/text contrast
+          // (observed live rebranding Domino's onto the dark QSR kiosk: the
+          // brand's light surface flipped the page light while a dark header
+          // bar kept dark text → low-contrast title). Accent + display/body
+          // fonts are always safe and high-impact: they recolor prices,
+          // active states, badges and CTAs to the brand color and swap the
+          // type, so the board reads unmistakably on-brand without fighting
+          // its own theme. (Background tinting for kiosks is a future,
+          // contrast-aware enhancement, not this hammer.)
           const b: Record<string, string> = { ...(cfg.brand || {}) };
-          if (surface) b.background = surface;
-          if (surfaceAlt || surface) b.surface = (surfaceAlt || surface) as string;
-          if (ink) b.text = ink;
           if (primary) b.primary = primary;
           if (accent || primary) b.accent = (accent || primary) as string;
           if (fontHeading) b.fontDisplay = fontHeading;
