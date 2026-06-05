@@ -408,33 +408,54 @@
         drawBall(ctx, bx, by, r, t*0.01);
       },
       // ── ribbon (ultra-wide) layout ──
+      // 2026-06-05 — TWO ribbon bugs fixed: (1) ribbonImpactPoint used
+      // gw=H*3.33 while drawRibbonScene drew gw=gh*3.33 (=H*1.33), so the
+      // ball aimed at open water LEFT of the net and never went in.
+      // ONE shared geometry now. (2) The goal sat top-right where the
+      // scorer line is drawn (engine draws it top-right), so the name sat
+      // on the net — dropped the goal to the lower-right band (gy=H*0.34)
+      // so the name clears it. Ball now flies IN + settles in the net.
       ribbonImpactPoint: function(W,H){
-        var gw = H * 3.33, gh = H * 0.40;
-        var gx = W - gw - 60, gy = H*0.10;
-        return { x: gx + gw*0.32, y: gy + gh*0.50 };
+        var gh = H*0.40, gw = gh*3.33, gx = W - gw - 70, gy = H*0.34;
+        return { x: gx + gw*0.42, y: gy + gh*0.40 };
       },
-      drawRibbonScene: function(ctx, t, T, W, H, team, impact){
-        var gh = H * 0.40, gw = gh * 3.33;
-        var gx = W - gw - 60, gy = H*0.10;
+      drawRibbonScene: function(ctx, t, T, W, H, team){
+        var gh = H*0.40, gw = gh*3.33, gx = W - gw - 70, gy = H*0.34;
         var reveal = easeOutCubic(seg(t, 80, 600));
         drawGoal(ctx, { x: gx, y: gy, w: gw, h: gh,
-          bulge: netBulge(t, T, gh*0.18), team: team, reveal: reveal });
+          bulge: netBulge(t, T, gh*0.34), team: team, reveal: reveal });
       },
       drawRibbonPreImpact: (function(){
         var rtrail = [];
-        return function(ctx, t, T, W, H, team, impact){
-          var fly = T.impact - 600;
-          var p = seg(t, fly, T.impact);
-          if(t > T.impact + 60){ rtrail.length = 0; return; }
-          var bx = lerp(W*0.30, impact.x, easeOutQuad(p));
-          var by = lerp(H*0.62, impact.y, p) - Math.sin(Math.PI*p)*(H*0.18);
-          var r  = lerp(H*0.18, H*0.12, p);
-          rtrail.push({x:bx, y:by}); if(rtrail.length>14) rtrail.shift();
+        return function(ctx, t, T, W, H, team){
+          var gh = H*0.40, gw = gh*3.33, gx = W - gw - 70, gy = H*0.34;
+          var ENTRY = { x: gx + gw*0.42, y: gy + gh*0.40 };
+          var REST  = { x: gx + gw*0.52, y: gy + gh*0.82 };
+          var bx, by, r;
+          if(t < T.impact){
+            // FLY — long sweep from the left into the goal mouth.
+            var p = seg(t, T.impact - 600, T.impact);
+            bx = lerp(W*0.12, ENTRY.x, easeOutQuad(p));
+            by = lerp(H*0.66, ENTRY.y, p) - Math.sin(Math.PI*p)*(H*0.24);
+            r  = lerp(H*0.16, H*0.10, p);
+            rtrail.push({x:bx, y:by}); if(rtrail.length>14) rtrail.shift();
+          } else if(t < T.impact + 280){
+            // ENTER — cross the line into the back of the net.
+            var pe = seg(t, T.impact, T.impact + 280);
+            bx = lerp(ENTRY.x, REST.x, easeOutCubic(pe));
+            by = lerp(ENTRY.y, REST.y, easeOutCubic(pe));
+            r  = H*0.10;
+            rtrail.push({x:bx, y:by}); if(rtrail.length>8) rtrail.shift();
+          } else {
+            // SETTLE — nestled in the net, bobbing, visible through the hold.
+            bx = REST.x; by = REST.y + Math.sin((t - T.impact)*0.004)*(H*0.02); r = H*0.10;
+            if(rtrail.length) rtrail.shift();
+          }
           drawBallTrail(ctx, rtrail, r);
           drawBall(ctx, bx, by, r, t*0.01);
         };
       })(),
-      ribbon: { headSize: 170 }
+      ribbon: { headSize: 150 }
     });
   })();
 
