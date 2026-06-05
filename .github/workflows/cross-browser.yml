@@ -96,6 +96,13 @@ jobs:
       - name: Run sports celebration WebKit canary
         run: pnpm --filter web run test:celebrations
 
+      # Kiosk edit-shim — entity-decode + XSS-safety. Same WebKit + python
+      # http.server harness. Guards the 2026-06-04 fix where the server's
+      # XSS sanitizer over-encoded kiosk text overrides ("Mix & Match" →
+      # "Mix &amp; Match") AND asserts the decode stays injection-proof.
+      - name: Run kiosk edit-shim WebKit canary
+        run: pnpm --filter web run test:kiosk-shim
+
       - name: Upload reports on failure
         if: failure()
         uses: actions/upload-artifact@v4

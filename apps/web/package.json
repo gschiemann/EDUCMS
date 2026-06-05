@@ -19,6 +19,7 @@
     "a11y:ci": "tsx scripts/a11y-audit.ts",
     "test:cross-browser": "node tests/cross-browser/holiday-bridge.cjs",
     "test:celebrations": "node tests/cross-browser/celebrations-bridge.cjs",
+    "test:kiosk-shim": "node tests/cross-browser/kiosk-edit-shim.cjs",
     "test:prod-smoke": "node tests/cross-browser/prod-smoke.cjs",
     "test:e2e": "playwright test --config playwright.config.ts",
     "test:e2e:emergency-path": "playwright test --config playwright.config.ts tests/e2e/emergency-path.spec.ts",

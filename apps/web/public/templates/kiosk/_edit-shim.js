@@ -38,6 +38,25 @@
     if (!b) return; var r = document.documentElement.style;
     Object.keys(BRAND_MAP).forEach(function (k) { if (b[k]) BRAND_MAP[k].forEach(function (v) { r.setProperty(v, b[k]); }); });
   }
+  // Decode HTML entities in an override value before it's written via
+  // textContent. The server-side sanitizer (sanitization.pipe.ts) HTML-encodes
+  // every request-body string for XSS defense — correct for innerHTML sinks,
+  // but these overrides are applied with textContent (which never parses HTML),
+  // so the encoding double-applies and a value typed "Mix & Match" would show
+  // the literal "Mix &amp; Match". Decoding here is XSS-SAFE: a DETACHED
+  // <textarea> parses its innerHTML as RCDATA (text only — "<img onerror>" stays
+  // literal, no element/script is ever created), and the decoded string is then
+  // assigned via textContent, which also never executes HTML. Net: the operator
+  // sees exactly what they typed, with zero injection surface.
+  var _veDecoder = null;
+  function decodeEntities(s) {
+    if (typeof s !== 'string' || s.indexOf('&') === -1) return s; // fast path
+    try {
+      if (!_veDecoder) _veDecoder = document.createElement('textarea');
+      _veDecoder.innerHTML = s;
+      return _veDecoder.value;
+    } catch (e) { return s; }
+  }
   function applyText(text, styles) {
     var keys = {}; Object.keys(text || {}).forEach(function (k) { keys[k] = 1; }); Object.keys(styles || {}).forEach(function (k) { keys[k] = 1; });
     Object.keys(keys).forEach(function (k) {
@@ -45,8 +64,9 @@
       for (var i = 0; i < nodes.length; i++) {
         var el = nodes[i];
         if (text && typeof text[k] === 'string') {
-          if (el.children.length === 0) { el.textContent = text[k]; }
-          else { var tn = null; for (var j = 0; j < el.childNodes.length; j++) { if (el.childNodes[j].nodeType === 3) { tn = el.childNodes[j]; break; } } if (tn) tn.textContent = text[k]; else el.insertBefore(document.createTextNode(text[k]), el.firstChild); }
+          var val = decodeEntities(text[k]);
+          if (el.children.length === 0) { el.textContent = val; }
+          else { var tn = null; for (var j = 0; j < el.childNodes.length; j++) { if (el.childNodes[j].nodeType === 3) { tn = el.childNodes[j]; break; } } if (tn) tn.textContent = val; else el.insertBefore(document.createTextNode(val), el.firstChild); }
         }
         var s = styles && styles[k];
         if (s) { if (s.color) el.style.color = s.color; if (s.fontSize != null) el.style.fontSize = (typeof s.fontSize === 'number' ? s.fontSize + 'px' : s.fontSize); if (s.fontWeight != null) el.style.fontWeight = String(s.fontWeight); if (s.fontStyle) el.style.fontStyle = s.fontStyle; if (s.fontFamily) el.style.fontFamily = s.fontFamily; if (s.textAlign) el.style.textAlign = s.textAlign; if (s.textDecoration) el.style.textDecoration = s.textDecoration; if (s.backgroundColor) el.style.backgroundColor = s.backgroundColor; if (s.lineHeight != null) el.style.lineHeight = String(s.lineHeight); }
