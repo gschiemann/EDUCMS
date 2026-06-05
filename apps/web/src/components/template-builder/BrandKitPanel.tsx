@@ -246,6 +246,30 @@ export function BrandKitPanel() {
           if (logoUrl && String(cfg.variant || '') === 'sb-team-logo-home') cfg.logoUrl = logoUrl;
           break;
 
+        case 'EXTERNAL_HTML': {
+          // Self-contained signage / menu / kiosk boards (Domino's, the Touch
+          // Kiosks pack, the 80 HS templates) don't have flat color/bgColor
+          // keys — they read a `brand` OVERRIDE object that the in-iframe shim
+          // maps to CSS vars (--bg / --surface / --text / --accent /
+          // --font-display / --font-body). The `default` case below would skip
+          // them (no matching keys), so a kiosk never picked up the brand kit
+          // and "Apply brand across template" was a no-op on it. Map the kit's
+          // palette + fonts into config.brand here; WidgetRenderer encodes it
+          // as the ?brand= URL param the shim consumes. Only set keys we have,
+          // so a partial brand kit still shows the template's own defaults
+          // through for everything else.
+          const b: Record<string, string> = { ...(cfg.brand || {}) };
+          if (surface) b.background = surface;
+          if (surfaceAlt || surface) b.surface = (surfaceAlt || surface) as string;
+          if (ink) b.text = ink;
+          if (primary) b.primary = primary;
+          if (accent || primary) b.accent = (accent || primary) as string;
+          if (fontHeading) b.fontDisplay = fontHeading;
+          if (fontBody) b.fontBody = fontBody;
+          if (Object.keys(b).length > 0) cfg.brand = b;
+          break;
+        }
+
         default:
           // For any other widget type, only patch keys the existing
           // config already declares (no new keys added → no surprise
