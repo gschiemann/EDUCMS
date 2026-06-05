@@ -143,6 +143,42 @@ export function BrandStyleInjector() {
   return null;
 }
 
+// The VenueOS default tab favicon. The ?v=3 cache-bust matches the root
+// `icons` metadata in app/layout.tsx — see the comment there for why the
+// pre-rebrand triangle kept showing up.
+const DEFAULT_FAVICON = '/favicon.ico?v=3';
+
+/**
+ * Point the browser tab at exactly ONE app-controlled <link rel="icon">.
+ *
+ * Why "exactly one": Chrome keeps the FIRST-resolved <link rel="icon"> for a
+ * page (often the cached one) and frequently ignores a second, later-appended
+ * icon link. The pre-rebrand build shipped a triangle /favicon.ico; on tenant
+ * tabs the cached triangle therefore beat the brand-favicon link the injector
+ * appended, so the operator saw the OLD logo even though the brand favicon was
+ * "set". Removing the Next-emitted root icon links (everything `rel~="icon"`
+ * that isn't ours) leaves our single `data-brand` link as the only candidate,
+ * so the chosen favicon — brand or default — is deterministic.
+ *
+ * Note: `rel~="icon"` matches `rel="icon"` and `rel="shortcut icon"` only; it
+ * does NOT match `apple-touch-icon` (a single token), so PWA / home-screen
+ * icons are left intact.
+ */
+function setBrandFavicon(href: string) {
+  if (typeof document === 'undefined') return;
+  document
+    .querySelectorAll('link[rel~="icon"]:not([data-brand="1"])')
+    .forEach((el) => el.remove());
+  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"][data-brand="1"]');
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    link.setAttribute('data-brand', '1');
+    document.head.appendChild(link);
+  }
+  link.href = href;
+}
+
 function applyBranding(b: TenantBranding | null) {
   if (!b) return;
   const root = document.documentElement;
@@ -164,17 +200,10 @@ function applyBranding(b: TenantBranding | null) {
     }
   }
 
-  // Favicon swap
-  if (b.faviconUrl) {
-    let link: HTMLLinkElement | null = document.querySelector('link[rel="icon"][data-brand="1"]');
-    if (!link) {
-      link = document.createElement('link');
-      link.rel = 'icon';
-      link.setAttribute('data-brand', '1');
-      document.head.appendChild(link);
-    }
-    link.href = b.faviconUrl;
-  }
+  // Favicon swap. Always reconcile (not just when a faviconUrl exists) so
+  // switching to a tenant WITHOUT a custom favicon falls back to the VenueOS
+  // default instead of keeping the previous tenant's icon.
+  setBrandFavicon(b.faviconUrl || DEFAULT_FAVICON);
 
   // Document title prefix
   if (b.displayName) {
@@ -205,6 +234,9 @@ function applyBrandDefault() {
   root.style.removeProperty('--brand-font-body');
   const vars = cssVarsFromPalette(brandDefaultPalette(getClientBrand().colors));
   for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
+  // Revert any tenant brand favicon back to the VenueOS default so sign-out /
+  // public chrome / a no-branding tenant never keeps a prior tenant's icon.
+  setBrandFavicon(DEFAULT_FAVICON);
 }
 
 /** Fire a live-preview update event. Used by the wizard. */

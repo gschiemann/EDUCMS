@@ -61,8 +61,16 @@ export const metadata: Metadata = {
       // Browser tab / bookmark — the transparent VenueOS hex mark (BrandMark),
       // which stays legible at 16px. The filled navy tile lives on apple-touch
       // / PWA below, where a solid background is what you want on a home screen.
-      { url: '/favicon.ico', sizes: 'any' },
-      { url: '/icons/venueos-mark.svg', type: 'image/svg+xml' },
+      //
+      // ?v=3 cache-bust (2026-06-05). Chrome caches favicons per-URL extremely
+      // aggressively — it largely ignores HTTP cache headers and keeps the
+      // first-resolved icon for an origin. After the pre-rebrand *triangle*
+      // /favicon.ico was replaced with this hex mark (commits e41830d4 →
+      // af356250), browsers that had already cached the triangle kept painting
+      // it on tabs. Bumping the query string makes the icon a "new" URL the
+      // browser has never cached, forcing a refetch of the current hex mark.
+      { url: '/favicon.ico?v=3', sizes: 'any' },
+      { url: '/icons/venueos-mark.svg?v=3', type: 'image/svg+xml' },
     ],
     apple: [
       { url: '/icons/venue-os-180.png', sizes: '180x180' },
