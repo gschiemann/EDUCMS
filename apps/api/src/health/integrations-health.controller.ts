@@ -599,9 +599,15 @@ export class IntegrationsHealthController {
   // ─── SSO ─────────────────────────────────────────────────────────
 
   private async probeSso(tenantId: string, checkedAt: string): Promise<IntegrationRow[]> {
-    let ssoConfig: any = null;
+    // 2026-06-06 — was `(this.prisma.client as any).ssoConfig?.findUnique?.()`.
+    // The real Prisma delegate is `tenantSSOConfig` (model TenantSSOConfig /
+    // table tenant_sso_configs); `ssoConfig` does not exist, so the `as any`
+    // + optional-chaining silently returned undefined → the integrations
+    // dashboard reported SSO as NOT_CONFIGURED even when a config row existed.
+    // Use the correct, typed delegate (sso.service.ts uses the same one).
+    let ssoConfig: { provider: string; enabled: boolean } | null = null;
     try {
-      ssoConfig = await (this.prisma.client as any).ssoConfig?.findUnique?.({
+      ssoConfig = await this.prisma.client.tenantSSOConfig.findUnique({
         where: { tenantId },
         select: { provider: true, enabled: true },
       });

@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppRole } from '@cms/database';
@@ -250,7 +250,7 @@ export class SsoService {
    * redirect (scaffold behavior — a real deployment needs passport-saml installed).
    */
   async buildSamlLoginUrl(tenantSlug: string, baseUrl: string): Promise<string> {
-    const { tenant, config } = await this.getConfigByTenantSlug(tenantSlug);
+    const { config } = await this.getConfigByTenantSlug(tenantSlug);
     if (!config || !config.enabled || config.provider !== 'SAML') {
       throw new BadRequestException('SAML SSO is not enabled for this tenant');
     }
@@ -274,13 +274,23 @@ export class SsoService {
         );
       });
     } catch (err) {
-      this.logger.warn(`passport-saml unavailable or failed (${(err as Error).message}); returning stub URL`);
-      // Scaffold fallback — admins will see this URL in the browser and know the lib is missing.
-      const params = new URLSearchParams({
-        SAMLRequest: 'SCAFFOLD_REQUEST',
-        RelayState: tenant.id,
-      });
-      return `${config.metadataUrl || '#sso-not-configured'}?${params.toString()}`;
+      // 2026-06-06 — was a "scaffold" fallback that returned a non-functional
+      // `?SAMLRequest=SCAFFOLD_REQUEST` stub URL. That's a costume: the login
+      // looks armed but no real AuthnRequest is produced. passport-saml is
+      // intentionally NOT installed (CVE-2025-54419 remediation — task #199 /
+      // #225), so this catch is the ALWAYS-taken path whenever SAML is armed.
+      // Fail honestly instead of handing back a dead redirect, so the operator
+      // (and the integrations dashboard) get the truth: SAML isn't available.
+      this.logger.warn(
+        `SAML login requested for "${tenantSlug}" but the SAML library is not installed ` +
+          `(${(err as Error).message}). SAML is disabled pending the @node-saml migration ` +
+          `(task #199); returning an honest 503 instead of a stub URL.`,
+      );
+      throw new ServiceUnavailableException(
+        'SAML SSO is not available in this build. The SAML library was removed to remediate ' +
+          'CVE-2025-54419; use OIDC SSO or email + password. SAML returns after the ' +
+          '@node-saml/passport-saml migration.',
+      );
     }
   }
 
