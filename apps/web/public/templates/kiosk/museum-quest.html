@@ -1356,8 +1356,8 @@ window.QUEST = {
     return '<header class="bar qz-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
       '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3" style="line-height:1">' + D.title + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.14em">' + D.museum + '</div></div></div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1" data-field="quest.title">' + D.title + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.14em" data-field="quest.museum">' + D.museum + '</div></div></div>' +
       '<div class="bar__spacer"></div>' +
       '<div class="qz-scorepill">' + icon('star') + ' ' + game.badges.length + ' / ' + D.badgesNeeded + ' badges</div>' +
       '<button class="iconbtn" data-home aria-label="Restart">' + icon('home', { sw: 2 }) + '</button>' +
@@ -1365,12 +1365,12 @@ window.QUEST = {
   }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media qz-hero"><div class="media__scrim"></div>' +
-      '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
+    return '<div class="attract__bg"><div class="media qz-hero" data-img="hero.image"><div class="media__scrim"></div>' +
+      '<div class="media__tag">' + icon('image') + ' <span data-field="hero.label">' + D.hero.label + '</span></div></div></div>' +
       '<div class="attract__body">' +
-      '<div class="eyebrow" style="color:var(--accent)">' + D.museum + '</div>' +
-      '<div class="t-mega" style="color:#fff;margin-top:var(--s-1)">' + D.title + '</div>' +
-      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to start the quest</div>' +
+      '<div class="eyebrow" style="color:var(--accent)" data-field="quest.museum">' + D.museum + '</div>' +
+      '<div class="t-mega" style="color:#fff;margin-top:var(--s-1)" data-field="quest.title">' + D.title + '</div>' +
+      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> <span data-field="quest.cta">Touch to start the quest</span></div>' +
     '</div>';
   }
 
@@ -1378,14 +1378,14 @@ window.QUEST = {
   function home() {
     return bar(false) +
     '<div class="scroll"><div class="qz-start">' +
-      '<div class="qz-intro"><div class="eyebrow">Family Quest</div>' +
-        '<h1 class="t-mega" style="line-height:.95;margin:var(--s-2) 0">' + D.title + '</h1>' +
-        '<p class="t-h3 dim pretty" style="font-weight:400;max-width:36ch">' + D.subtitle + '</p></div>' +
-      '<div class="qz-pick"><div class="eyebrow" style="margin-bottom:var(--s-3)">Choose your explorer</div>' +
+      '<div class="qz-intro"><div class="eyebrow" data-field="home.eyebrow">Family Quest</div>' +
+        '<h1 class="t-mega" style="line-height:.95;margin:var(--s-2) 0" data-field="quest.title">' + D.title + '</h1>' +
+        '<p class="t-h3 dim pretty" style="font-weight:400;max-width:36ch" data-field="quest.subtitle">' + D.subtitle + '</p></div>' +
+      '<div class="qz-pick"><div class="eyebrow" style="margin-bottom:var(--s-3)" data-field="home.pick.label">Choose your explorer</div>' +
         '<div class="qz-avatars">' + D.avatars.map(function (a) {
-          return '<button class="qz-avatar ' + (game.avatar === a.id ? 'is-on' : '') + '" data-act="pickAvatar" data-id="' + a.id + '"><span class="qz-avatar__ic">' + icon(a.icon) + '</span><span class="t-h3">' + a.name + '</span></button>';
+          return '<button class="qz-avatar ' + (game.avatar === a.id ? 'is-on' : '') + '" data-act="pickAvatar" data-id="' + a.id + '"><span class="qz-avatar__ic">' + icon(a.icon) + '</span><span class="t-h3" data-field="avatar.' + a.id + '.name">' + a.name + '</span></button>';
         }).join('') + '</div></div>' +
-      '<button class="btn btn--primary btn--lg qz-begin" data-act="begin">' + icon('play') + ' Begin the quest · ' + D.stops.length + ' stops</button>' +
+      '<button class="btn btn--primary btn--lg qz-begin" data-act="begin"><span>' + icon('play') + ' <span data-field="home.begin">Begin the quest · ' + D.stops.length + ' stops</span></span></button>' +
     '</div></div>';
   }
 
@@ -1395,7 +1395,7 @@ window.QUEST = {
     var nextStop = D.stops.filter(function (s) { return !game.done[s.id]; })[0];
     return bar(true) + '<div class="scroll"><div class="qz-map">' +
       '<div class="qz-maphead"><div class="qz-maphead__av">' + icon(avatar ? avatar.icon : 'star') + '</div>' +
-        '<div><div class="eyebrow">' + (avatar ? avatar.name : 'Explorer') + '</div><h1 class="t-xl">Your Quest Map</h1>' +
+        '<div><div class="eyebrow">' + (avatar ? avatar.name : 'Explorer') + '</div><h1 class="t-xl" data-field="map.title">Your Quest Map</h1>' +
         '<div class="t-body dim">' + game.badges.length + ' of ' + D.badgesNeeded + ' badges earned</div></div>' +
         '<div class="qz-progress"><svg viewBox="0 0 36 36"><circle class="qz-progress__bg" cx="18" cy="18" r="15.9"/><circle class="qz-progress__fg" cx="18" cy="18" r="15.9" stroke-dasharray="' + Math.round(game.badges.length / D.badgesNeeded * 100) + ',100"/></svg><span>' + Math.round(game.badges.length / D.badgesNeeded * 100) + '%</span></div></div>' +
       '<div class="qz-stops">' + D.stops.map(function (s) {
@@ -1403,8 +1403,8 @@ window.QUEST = {
         var isNext = nextStop && nextStop.id === s.id;
         return '<button class="qz-stop ' + (done ? 'is-done' : '') + ' ' + (isNext ? 'is-next' : '') + '" data-go="stop:' + s.id + '">' +
           '<span class="qz-stop__num">' + (done ? icon('check', { sw: 3 }) : s.num) + '</span>' +
-          '<span class="grow"><span class="t-h3">Stop ' + s.num + (done ? ' · ' + s.badge : '') + '</span>' +
-          '<span class="t-sm dim">' + (done ? 'Badge earned!' : (isNext ? 'Tap to start →' : s.where)) + '</span></span>' +
+          '<span class="grow"><span class="t-h3">Stop ' + s.num + (done ? ' · <span data-field="stop.' + s.id + '.badge">' + s.badge + '</span>' : '') + '</span>' +
+          '<span class="t-sm dim">' + (done ? 'Badge earned!' : (isNext ? 'Tap to start →' : '<span data-field="stop.' + s.id + '.where">' + s.where + '</span>')) + '</span></span>' +
           (done ? '<span class="qz-stop__badge">' + icon('star') + '</span>' : (isNext ? '<span class="badge badge--accent">Next</span>' : '<span class="qz-stop__lock">' + icon('arrow-right', { sw: 2 }) + '</span>')) + '</button>';
       }).join('') + '</div>' +
       (game.badges.length >= D.badgesNeeded ? '<button class="btn btn--primary btn--lg btn--block" data-go="finish" style="margin-top:var(--s-5)">' + icon('star') + ' See your results</button>' : '') +
@@ -1417,15 +1417,16 @@ window.QUEST = {
     if (!s) return '<div class="pad-7">Not found</div>';
     if (game.done[id]) return stopDone(s);
     return bar(true) + '<div class="scroll"><div class="qz-stoppg">' +
+      '<div class="media" data-img="stop.' + id + '.image" style="height:0;overflow:hidden;position:absolute;width:0;pointer-events:none" aria-hidden="true"></div>' +
       '<div class="qz-clue"><div class="qz-clue__badge"><span class="eyebrow" style="color:var(--on-accent)">Stop ' + s.num + '</span></div>' +
         '<div class="qz-clue__ic">' + icon('search') + '</div>' +
-        '<div class="eyebrow">Clue — find it in the gallery</div>' +
-        '<h1 class="t-h1 pretty" style="margin:var(--s-2) 0">' + s.clue + '</h1>' +
-        '<div class="badge"><span>' + icon('pin') + '</span> ' + s.where + '</div></div>' +
-      '<div class="qz-qbox"><div class="eyebrow">Found it? Answer this</div>' +
-        '<h2 class="t-h2" style="margin:var(--s-2) 0 var(--s-4)">' + s.question + '</h2>' +
+        '<div class="eyebrow" data-field="stop.' + id + '.clue.label">Clue — find it in the gallery</div>' +
+        '<h1 class="t-h1 pretty" style="margin:var(--s-2) 0" data-field="stop.' + id + '.clue">' + s.clue + '</h1>' +
+        '<div class="badge"><span>' + icon('pin') + '</span> <span data-field="stop.' + id + '.where">' + s.where + '</span></div></div>' +
+      '<div class="qz-qbox"><div class="eyebrow" data-field="stop.' + id + '.question.label">Found it? Answer this</div>' +
+        '<h2 class="t-h2" style="margin:var(--s-2) 0 var(--s-4)" data-field="stop.' + id + '.question">' + s.question + '</h2>' +
         '<div class="qz-choices">' + s.choices.map(function (c, i) {
-          return '<button class="qz-choice" data-act="answer" data-id="' + id + '" data-i="' + i + '"><span class="qz-choice__letter">' + String.fromCharCode(65 + i) + '</span><span class="grow">' + c + '</span><span class="qz-choice__mark"></span></button>';
+          return '<button class="qz-choice" data-act="answer" data-id="' + id + '" data-i="' + i + '"><span class="qz-choice__letter">' + String.fromCharCode(65 + i) + '</span><span class="grow" data-field="stop.' + id + '.choice.' + i + '">' + c + '</span><span class="qz-choice__mark"></span></button>';
         }).join('') + '</div></div>' +
     '</div></div>';
   }
@@ -1434,9 +1435,9 @@ window.QUEST = {
     var next = D.stops[idx + 1];
     return bar(true) + '<div class="qz-reward">' +
       '<div class="qz-reward__burst"><div class="qz-reward__badge">' + icon('star') + '</div></div>' +
-      '<div class="eyebrow" style="color:var(--accent)">Badge earned</div>' +
-      '<h1 class="t-mega" style="margin:var(--s-1) 0">' + s.badge + '</h1>' +
-      '<div class="qz-fact"><span>' + icon('sparkle') + '</span><p class="t-h3 pretty" style="font-weight:400;font-style:italic">' + s.fact + '</p></div>' +
+      '<div class="eyebrow" style="color:var(--accent)" data-field="reward.earned.label">Badge earned</div>' +
+      '<h1 class="t-mega" style="margin:var(--s-1) 0" data-field="stop.' + s.id + '.badge">' + s.badge + '</h1>' +
+      '<div class="qz-fact"><span>' + icon('sparkle') + '</span><p class="t-h3 pretty" style="font-weight:400;font-style:italic" data-field="stop.' + s.id + '.fact">' + s.fact + '</p></div>' +
       '<div class="qz-reward__btns">' +
         (next ? '<button class="btn btn--primary btn--lg" data-go="stop:' + next.id + '">Next stop ' + icon('arrow-right', { sw: 2.4 }) + '</button>' : '<button class="btn btn--primary btn--lg" data-go="finish">' + icon('star') + ' Finish the quest</button>') +
         '<button class="btn btn--ghost btn--lg" data-go="questmap">Quest map</button>' +
@@ -1448,16 +1449,16 @@ window.QUEST = {
     var all = game.badges.length >= D.badgesNeeded;
     return '<div class="scroll"><div class="qz-finish">' +
       '<div class="qz-finish__medal">' + icon(all ? 'star' : 'heart') + '</div>' +
-      '<h1 class="t-mega" style="margin:var(--s-2) 0">' + (all ? D.finish.title : 'Nice exploring!') + '</h1>' +
+      '<h1 class="t-mega" style="margin:var(--s-2) 0" data-field="finish.title">' + (all ? D.finish.title : 'Nice exploring!') + '</h1>' +
       '<div class="qz-finish__score"><div><div class="qz-bignum">' + game.badges.length + '</div><div class="t-sm dim">badges</div></div>' +
         '<div class="qz-finish__div"></div><div><div class="qz-bignum">' + game.score + '</div><div class="t-sm dim">points</div></div></div>' +
       '<div class="qz-badgewall">' + D.stops.map(function (s) {
         var got = game.done[s.id];
         return '<div class="qz-badgechip ' + (got ? 'is-got' : '') + '"><span>' + icon(got ? 'star' : 'search') + '</span><span class="t-sm">' + (got ? s.badge : 'Stop ' + s.num) + '</span></div>';
       }).join('') + '</div>' +
-      '<p class="t-h3 dim pretty" style="font-weight:400;max-width:34ch">' + (all ? D.finish.rewardHigh : D.finish.rewardLow) + '</p>' +
+      '<p class="t-h3 dim pretty" style="font-weight:400;max-width:34ch">' + (all ? '<span data-field="finish.rewardHigh">' + D.finish.rewardHigh + '</span>' : '<span data-field="finish.rewardLow">' + D.finish.rewardLow + '</span>') + '</p>' +
       '<div class="qz-reward__btns">' + (all ? '' : '<button class="btn btn--primary btn--lg" data-go="questmap">' + icon('arrow-right', { sw: 2.4 }) + ' Keep exploring</button>') +
-        '<button class="btn ' + (all ? 'btn--primary' : 'btn--ghost') + ' btn--lg" data-act="restart">' + icon('play') + ' Play again</button></div>' +
+        '<button class="btn ' + (all ? 'btn--primary' : 'btn--ghost') + ' btn--lg" data-act="restart"' + (all ? ' data-action="reward.claim"' : '') + '>' + icon('play') + ' Play again</button></div>' +
     '</div></div>';
   }
 
@@ -1490,6 +1491,115 @@ window.QUEST = {
 })();
 
 </script>
+<!-- VenueOS static field manifest — parsed by ExternalHtmlTextEditor for discovery.
+     Keys mirror every data-field / data-img / data-action used in app.js. -->
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- quest-level text -->
+  <span data-field="quest.museum">Harbor Museum</span>
+  <span data-field="quest.title">Deep Sea Explorer Quest</span>
+  <span data-field="quest.subtitle">Find the clues. Answer the questions. Earn your badges.</span>
+  <span data-field="quest.cta">Touch to start the quest</span>
+  <!-- hero image -->
+  <div data-img="hero.image"></div>
+  <span data-field="hero.label">QUEST / SUBMARINE HERO</span>
+  <!-- home screen -->
+  <span data-field="home.eyebrow">Family Quest</span>
+  <span data-field="home.pick.label">Choose your explorer</span>
+  <span data-field="home.begin">Begin the quest · 6 stops</span>
+  <!-- avatars -->
+  <span data-field="avatar.sub.name">Sub Pilot</span>
+  <span data-field="avatar.diver.name">Deep Diver</span>
+  <span data-field="avatar.marine.name">Marine Biologist</span>
+  <span data-field="avatar.captain.name">Sea Captain</span>
+  <!-- quest map -->
+  <span data-field="map.title">Your Quest Map</span>
+  <!-- stop: twilight -->
+  <div data-img="stop.twilight.image"></div>
+  <span data-field="stop.twilight.clue.label">Clue — find it in the gallery</span>
+  <span data-field="stop.twilight.clue">Find the giant glowing wall where animals swim UP at night and DOWN at day.</span>
+  <span data-field="stop.twilight.where">Station 1 · The Twilight Zone</span>
+  <span data-field="stop.twilight.question.label">Found it? Answer this</span>
+  <span data-field="stop.twilight.question">Why do trillions of tiny animals swim up to the surface every night?</span>
+  <span data-field="stop.twilight.choice.0">To feed where it&#39;s dark and safer</span>
+  <span data-field="stop.twilight.choice.1">To get sunlight</span>
+  <span data-field="stop.twilight.choice.2">To sleep</span>
+  <span data-field="stop.twilight.choice.3">To lay eggs on the beach</span>
+  <span data-field="stop.twilight.badge">Night Migrator</span>
+  <span data-field="stop.twilight.fact">It&#39;s the largest animal migration on Earth — and it happens every single night!</span>
+  <!-- stop: biolum -->
+  <div data-img="stop.biolum.image"></div>
+  <span data-field="stop.biolum.clue.label">Clue — find it in the gallery</span>
+  <span data-field="stop.biolum.clue">Look for the dark room where the sea creatures glow blue and green all by themselves.</span>
+  <span data-field="stop.biolum.where">Station 2 · Living Light</span>
+  <span data-field="stop.biolum.question.label">Found it? Answer this</span>
+  <span data-field="stop.biolum.question">How do most deep-sea animals make their own light?</span>
+  <span data-field="stop.biolum.choice.0">They swallow flashlights</span>
+  <span data-field="stop.biolum.choice.1">A chemical reaction in their bodies</span>
+  <span data-field="stop.biolum.choice.2">They reflect the moon</span>
+  <span data-field="stop.biolum.choice.3">They get hot</span>
+  <span data-field="stop.biolum.badge">Light Maker</span>
+  <span data-field="stop.biolum.fact">It&#39;s called bioluminescence — cold light made by mixing a chemical with oxygen. About 3 of every 4 deep-sea animals can do it!</span>
+  <!-- stop: squid -->
+  <div data-img="stop.squid.image"></div>
+  <span data-field="stop.squid.clue.label">Clue — find it in the gallery</span>
+  <span data-field="stop.squid.clue">Hunt for the model with eyes as big as dinner plates and ten long arms.</span>
+  <span data-field="stop.squid.where">Station 3 · The Giant Squid</span>
+  <span data-field="stop.squid.question.label">Found it? Answer this</span>
+  <span data-field="stop.squid.question">How big can a giant squid&#39;s eye get?</span>
+  <span data-field="stop.squid.choice.0">As big as a coin</span>
+  <span data-field="stop.squid.choice.1">As big as a dinner plate</span>
+  <span data-field="stop.squid.choice.2">As big as a car</span>
+  <span data-field="stop.squid.choice.3">They have no eyes</span>
+  <span data-field="stop.squid.badge">Kraken Finder</span>
+  <span data-field="stop.squid.fact">The giant squid has the largest eyes of any animal — up to 27 cm across — to spot the faintest glow in the dark.</span>
+  <!-- stop: vents -->
+  <div data-img="stop.vents.image"></div>
+  <span data-field="stop.vents.clue.label">Clue — find it in the gallery</span>
+  <span data-field="stop.vents.clue">Find the smoking underwater chimneys where worms live without any sunlight.</span>
+  <span data-field="stop.vents.where">Station 4 · Hydrothermal Vents</span>
+  <span data-field="stop.vents.question.label">Found it? Answer this</span>
+  <span data-field="stop.vents.question">What do animals near hot vents use for food instead of sunlight?</span>
+  <span data-field="stop.vents.choice.0">Pizza</span>
+  <span data-field="stop.vents.choice.1">Chemicals from the vents</span>
+  <span data-field="stop.vents.choice.2">Ice</span>
+  <span data-field="stop.vents.choice.3">Plastic</span>
+  <span data-field="stop.vents.badge">Volcano Diver</span>
+  <span data-field="stop.vents.fact">Bacteria turn chemicals into food — a trick called chemosynthesis. Whole gardens of life thrive with zero sunlight!</span>
+  <!-- stop: whale -->
+  <div data-img="stop.whale.image"></div>
+  <span data-field="stop.whale.clue.label">Clue — find it in the gallery</span>
+  <span data-field="stop.whale.clue">Search for the giant skeleton resting on the sea floor that feeds animals for years.</span>
+  <span data-field="stop.whale.where">Station 5 · Whale Fall</span>
+  <span data-field="stop.whale.question.label">Found it? Answer this</span>
+  <span data-field="stop.whale.question">How long can one whale&#39;s body feed deep-sea life after it sinks?</span>
+  <span data-field="stop.whale.choice.0">A few hours</span>
+  <span data-field="stop.whale.choice.1">One week</span>
+  <span data-field="stop.whale.choice.2">Up to 50 years</span>
+  <span data-field="stop.whale.choice.3">Forever</span>
+  <span data-field="stop.whale.badge">Whale Watcher</span>
+  <span data-field="stop.whale.fact">A single &#39;whale fall&#39; can support a whole community of animals for up to 50 years!</span>
+  <!-- stop: explore -->
+  <div data-img="stop.explore.image"></div>
+  <span data-field="stop.explore.clue.label">Clue — find it in the gallery</span>
+  <span data-field="stop.explore.clue">Find the deep-diving robot sub at the very end of the hall.</span>
+  <span data-field="stop.explore.where">Station 6 · Into the Abyss</span>
+  <span data-field="stop.explore.question.label">Found it? Answer this</span>
+  <span data-field="stop.explore.question">How much of the ocean floor have humans mapped in detail?</span>
+  <span data-field="stop.explore.choice.0">All of it</span>
+  <span data-field="stop.explore.choice.1">About 1 in 5</span>
+  <span data-field="stop.explore.choice.2">Half</span>
+  <span data-field="stop.explore.choice.3">None</span>
+  <span data-field="stop.explore.badge">Master Explorer</span>
+  <span data-field="stop.explore.fact">Only about 20% of the ocean floor is mapped in detail — we know more about the Moon! The deep sea is the last great frontier.</span>
+  <!-- stopDone shared label -->
+  <span data-field="reward.earned.label">Badge earned</span>
+  <!-- finish screen -->
+  <span data-field="finish.title">Quest Complete!</span>
+  <span data-field="finish.rewardHigh">Show this screen at the front desk for an Explorer sticker!</span>
+  <span data-field="finish.rewardLow">Great start, explorer — keep going to collect all six badges!</span>
+  <!-- platform action: when all badges earned, "Play again" button fires reward.claim -->
+  <button data-action="reward.claim">Play again (claim reward)</button>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
