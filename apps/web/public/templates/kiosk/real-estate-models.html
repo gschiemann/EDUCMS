@@ -1429,9 +1429,9 @@ window.MODELS = {
   function bar(showBack) {
     return '<header class="bar md-bar">' +
       (showBack ? '<button class="iconbtn" data-back aria-label="Back">' + icon('arrow-left', { sw: 2 }) + '</button>' : '') +
-      '<div class="bar__brand"><div class="bar__logo">' + D.brandInitials + '</div>' +
-      '<div class="col"><div class="t-h3" style="line-height:1">' + D.community + '</div>' +
-      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.18em">by ' + D.builder + '</div></div></div>' +
+      '<div class="bar__brand"><div class="bar__logo" data-field="brand.initials">' + D.brandInitials + '</div>' +
+      '<div class="col"><div class="t-h3" style="line-height:1" data-field="brand.community">' + D.community + '</div>' +
+      '<div class="eyebrow" style="color:var(--text-mute);letter-spacing:.18em">by <span data-field="brand.builder">' + D.builder + '</span></div></div></div>' +
       '<div class="bar__spacer"></div><nav class="crumbs" data-crumbs></nav><div class="bar__spacer"></div>' +
       '<button class="chip" data-go="sitemap">' + icon('pin') + ' Site map</button>' +
       '<button class="chip ' + (compare.length ? 'is-on' : '') + '" data-go="compare">' + icon('layers') + ' Compare' + (compare.length ? ' (' + compare.length + ')' : '') + '</button>' +
@@ -1440,47 +1440,47 @@ window.MODELS = {
   }
 
   function attract() {
-    return '<div class="attract__bg"><div class="media md-hero"><div class="media__scrim"></div>' +
+    return '<div class="attract__bg"><div class="media md-hero" data-img="hero.image"><div class="media__scrim"></div>' +
       '<div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div></div>' +
       '<div class="attract__body">' +
-      '<div class="eyebrow" style="color:#fff;opacity:.85">' + D.builder + ' presents</div>' +
-      '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)">' + D.community + '</div>' +
-      '<div class="t-h2" style="color:rgba(255,255,255,.9);font-weight:400;font-style:italic">' + D.tagline + '</div>' +
-      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> Touch to explore the model homes</div>' +
+      '<div class="eyebrow" style="color:#fff;opacity:.85"><span data-field="brand.builder">' + D.builder + '</span> presents</div>' +
+      '<div class="t-mega" style="color:#fff;margin-top:var(--s-2)" data-field="brand.community">' + D.community + '</div>' +
+      '<div class="t-h2" style="color:rgba(255,255,255,.9);font-weight:400;font-style:italic" data-field="brand.tagline">' + D.tagline + '</div>' +
+      '<div class="attract__cta" style="color:#fff"><span class="ring">' + icon('touch') + '</span> <span data-field="home.attractCta">Touch to explore the model homes</span></div>' +
     '</div>';
   }
 
   // ── HOME ──────────────────────────────────────────────────────────────────
   function home() {
-    var stats = D.stats.map(function (s) { return '<div class="md-stat"><div class="md-stat__v">' + s.v + '</div><div class="md-stat__k">' + s.k + '</div></div>'; }).join('');
+    var stats = D.stats.map(function (s, i) { return '<div class="md-stat"><div class="md-stat__v" data-field="home.stat' + i + '.value">' + s.v + '</div><div class="md-stat__k" data-field="home.stat' + i + '.label">' + s.k + '</div></div>'; }).join('');
     return bar(false) +
     '<div class="scroll"><div class="md-home">' +
       '<section class="md-heropanel card card--static">' +
-        '<div class="media md-hero"><div class="media__scrim"></div><div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div>' +
-        '<div class="md-heropanel__b"><div class="eyebrow">' + D.location + '</div>' +
-          '<h1 class="t-xl" style="margin:var(--s-2) 0">' + D.community + '</h1>' +
-          '<p class="t-lg dim pretty" style="max-width:46ch">' + D.intro + '</p>' +
+        '<div class="media md-hero" data-img="hero.image"><div class="media__scrim"></div><div class="media__tag">' + icon('image') + ' ' + D.hero.label + '</div></div>' +
+        '<div class="md-heropanel__b"><div class="eyebrow" data-field="home.location">' + D.location + '</div>' +
+          '<h1 class="t-xl" style="margin:var(--s-2) 0" data-field="brand.community">' + D.community + '</h1>' +
+          '<p class="t-lg dim pretty" style="max-width:46ch" data-field="home.intro">' + D.intro + '</p>' +
           '<div class="md-statrow">' + stats + '</div></div>' +
       '</section>' +
       '<section class="md-incentive"><div class="md-incentive__ic">' + icon('star') + '</div>' +
-        '<div class="grow"><span class="badge badge--accent">' + D.incentive.tag + '</span>' +
-        '<div class="t-h2" style="margin:var(--s-1) 0">' + D.incentive.title + '</div>' +
-        '<p class="t-body dim pretty">' + D.incentive.body + '</p></div>' +
-        '<button class="btn btn--primary" data-act="register">' + icon('calendar') + ' Schedule a tour</button></section>' +
-      '<section><div class="row between" style="margin-bottom:var(--s-4)"><div class="eyebrow">The Floor Plans</div>' +
-        '<div class="t-sm dim">Tap a plan to explore · add to compare</div></div>' +
+        '<div class="grow"><span class="badge badge--accent" data-field="home.incentive.tag">' + D.incentive.tag + '</span>' +
+        '<div class="t-h2" style="margin:var(--s-1) 0" data-field="home.incentive.title">' + D.incentive.title + '</div>' +
+        '<p class="t-body dim pretty" data-field="home.incentive.body">' + D.incentive.body + '</p></div>' +
+        '<button class="btn btn--primary" data-act="register" data-action="model.tour">' + icon('calendar') + ' <span data-field="home.ctaTour">Schedule a tour</span></button></section>' +
+      '<section><div class="row between" style="margin-bottom:var(--s-4)"><div class="eyebrow" data-field="home.plansHeading">The Floor Plans</div>' +
+        '<div class="t-sm dim" data-field="home.plansSubheading">Tap a plan to explore · add to compare</div></div>' +
         '<div class="md-grid">' + D.models.map(modelCard).join('') + '</div></section>' +
     '</div></div>';
   }
   function modelCard(m) {
     var inComp = compare.indexOf(m.id) > -1;
     return '<div class="card md-model" data-go="model:' + m.id + '">' +
-      '<div class="media md-model__img"><div class="media__scrim"></div><div class="media__tag">' + icon('image') + ' ' + m.image + '</div>' +
+      '<div class="media md-model__img" data-img="model.' + m.id + '.image"><div class="media__scrim"></div><div class="media__tag">' + icon('image') + ' ' + m.image + '</div>' +
         (m.popular ? '<div class="md-pop">' + icon('star') + ' Most popular</div>' : '') +
         '<div class="md-model__status">' + statusBadge(m.status) + '</div></div>' +
-      '<div class="md-model__b"><div class="row between"><div><div class="eyebrow" style="color:var(--text-mute)">' + m.collection + '</div>' +
-        '<div class="t-h2">' + m.name + '</div></div><div class="md-model__price"><div class="t-sm dim">from</div><div class="t-h3">' + priceK(m.priceFrom) + '</div></div></div>' +
-        '<div class="md-specrow"><span>' + icon('home') + ' ' + m.beds + ' bd</span><span>' + icon('shield') + ' ' + m.baths + ' ba</span><span>' + icon('ruler') + ' ' + m.sqft.toLocaleString() + ' sf</span><span>' + icon('car') + ' ' + m.garage + ' car</span></div>' +
+      '<div class="md-model__b"><div class="row between"><div><div class="eyebrow" style="color:var(--text-mute)" data-field="model.' + m.id + '.collection">' + m.collection + '</div>' +
+        '<div class="t-h2" data-field="model.' + m.id + '.name">' + m.name + '</div></div><div class="md-model__price"><div class="t-sm dim">from</div><div class="t-h3" data-field="model.' + m.id + '.price">' + priceK(m.priceFrom) + '</div></div></div>' +
+        '<div class="md-specrow"><span>' + icon('home') + ' <span data-field="model.' + m.id + '.beds">' + m.beds + '</span> bd</span><span>' + icon('shield') + ' <span data-field="model.' + m.id + '.baths">' + m.baths + '</span> ba</span><span>' + icon('ruler') + ' <span data-field="model.' + m.id + '.sqft">' + m.sqft.toLocaleString() + '</span> sf</span><span>' + icon('car') + ' <span data-field="model.' + m.id + '.garage">' + m.garage + '</span> car</span></div>' +
         '<div class="row between" style="margin-top:var(--s-3)">' +
           '<button class="chip ' + (inComp ? 'is-on' : '') + '" data-act="compareToggle" data-id="' + m.id + '" onclick="event.stopPropagation()">' + icon(inComp ? 'check' : 'plus', { sw: 2.2 }) + ' Compare</button>' +
           '<span class="md-model__cta">Explore ' + icon('arrow-right', { sw: 2 }) + '</span></div></div></div>';
@@ -1496,43 +1496,43 @@ window.MODELS = {
 
     return bar(true) + '<div class="scroll"><div class="md-detail">' +
       '<div class="split split--6040 md-detail__top">' +
-        '<div class="media md-detail__img"><div class="media__scrim"></div>' +
+        '<div class="media md-detail__img" data-img="model.' + m.id + '.image"><div class="media__scrim"></div>' +
           '<button class="iconbtn md-detail__zoom" data-act="zoom">' + icon('expand', { sw: 2 }) + '</button>' +
           '<div class="md-detail__status">' + statusBadge(m.status) + '</div>' +
           '<div class="media__tag">' + icon('image') + ' ' + m.image + '</div></div>' +
-        '<div class="md-summary"><div class="eyebrow">' + m.collection + ' · ' + m.style + '</div>' +
-          '<h1 class="t-xl" style="margin:var(--s-1) 0">' + m.name + '</h1>' +
-          '<div class="md-fromprice">from ' + priceFull(m.priceFrom) + '</div>' +
-          '<p class="t-lg dim pretty" style="margin:var(--s-3) 0">' + m.blurb + '</p>' +
+        '<div class="md-summary"><div class="eyebrow"><span data-field="model.' + m.id + '.collection">' + m.collection + '</span> · <span data-field="model.' + m.id + '.style">' + m.style + '</span></div>' +
+          '<h1 class="t-xl" style="margin:var(--s-1) 0" data-field="model.' + m.id + '.name">' + m.name + '</h1>' +
+          '<div class="md-fromprice">from <span data-field="model.' + m.id + '.price">' + priceK(m.priceFrom) + '</span></div>' +
+          '<p class="t-lg dim pretty" style="margin:var(--s-3) 0" data-field="model.' + m.id + '.desc">' + m.blurb + '</p>' +
           '<div class="md-keyspecs">' +
-            keyspec('home', m.beds, 'Bedrooms') + keyspec('shield', m.baths, 'Baths') +
-            keyspec('ruler', m.sqft.toLocaleString(), 'Sq ft') + keyspec('car', m.garage, 'Garage') +
-            keyspec('layers', m.stories, 'Stories') + keyspec('pin', m.homesites.length, 'Homesites') +
+            keyspec('home', m.beds, 'Bedrooms', 'model.' + m.id + '.beds') + keyspec('shield', m.baths, 'Baths', 'model.' + m.id + '.baths') +
+            keyspec('ruler', m.sqft.toLocaleString(), 'Sq ft', 'model.' + m.id + '.sqft') + keyspec('car', m.garage, 'Garage', 'model.' + m.id + '.garage') +
+            keyspec('layers', m.stories, 'Stories', 'model.' + m.id + '.stories') + keyspec('pin', m.homesites.length, 'Homesites', null) +
           '</div>' +
-          '<div class="md-findbox"><div class="md-findbox__ic">' + icon('pin') + '</div><div><div class="t-h3">Visit ' + m.modelStop + '</div><div class="t-body dim">' + m.tour + '</div></div>' +
+          '<div class="md-findbox"><div class="md-findbox__ic">' + icon('pin') + '</div><div><div class="t-h3">Visit <span data-field="model.' + m.id + '.modelStop">' + m.modelStop + '</span></div><div class="t-body dim" data-field="model.' + m.id + '.tourDir">' + m.tour + '</div></div>' +
             '<button class="chip" data-go="sitemap">On the map ' + icon('arrow-right', { sw: 2 }) + '</button></div>' +
         '</div>' +
       '</div>' +
       '<div class="split md-detail__mid">' +
         '<section><div class="eyebrow">What you\u2019ll love</div><ul class="md-features">' +
-          m.features.map(function (f) { return '<li>' + icon('check', { sw: 2.4 }) + '<span>' + f + '</span></li>'; }).join('') + '</ul></section>' +
+          m.features.map(function (f, fi) { return '<li>' + icon('check', { sw: 2.4 }) + '<span data-field="model.' + m.id + '.feature' + fi + '">' + f + '</span></li>'; }).join('') + '</ul></section>' +
         '<section><div class="eyebrow">Included finishes</div><div class="md-finishes">' +
-          m.finishes.map(function (f) { return '<div class="md-finish"><span class="md-finish__sw"></span>' + f + '</div>'; }).join('') + '</div></section>' +
+          m.finishes.map(function (f, fi) { return '<div class="md-finish"><span class="md-finish__sw"></span><span data-field="model.' + m.id + '.finish' + fi + '">' + f + '</span></div>'; }).join('') + '</div></section>' +
       '</div>' +
       '<section class="md-planwrap"><div class="row between" style="margin-bottom:var(--s-3)"><div class="eyebrow">Floor Plan</div>' +
         '<div class="md-leveltabs" data-levels>' + m.plans.map(function (p) {
           return '<button class="md-level ' + (galleryLevel[id] === p.level ? 'is-on' : '') + '" data-act="level" data-id="' + id + '" data-level="' + p.level + '">' + p.level + '</button>';
         }).join('') + '</div></div>' +
-        '<div class="media md-plan"><div class="media__tag" data-planlabel>' + icon('grid') + ' ' + curPlan.label + '</div></div></section>' +
+        '<div class="media md-plan" data-img="model.' + m.id + '.floorplan"><div class="media__tag" data-planlabel>' + icon('grid') + ' ' + curPlan.label + '</div></div></section>' +
       '<section><div class="eyebrow" style="margin-bottom:var(--s-3)">Available homesites for this plan</div>' +
         '<div class="md-lots">' + m.homesites.map(function (l) { return '<button class="md-lot" data-act="lotInfo" data-l="' + l + '">' + icon('pin') + ' ' + l + '</button>'; }).join('') + '</div></section>' +
     '</div></div>' +
-    '<div class="actionbar md-actionbar"><div class="col" style="gap:0"><div class="t-sm dim">' + m.name + ' · ' + m.collection + '</div>' +
-      '<div class="t-h3">from ' + priceFull(m.priceFrom) + '</div></div><div class="bar__spacer"></div>' +
+    '<div class="actionbar md-actionbar"><div class="col" style="gap:0"><div class="t-sm dim"><span data-field="model.' + m.id + '.name">' + m.name + '</span> · <span data-field="model.' + m.id + '.collection">' + m.collection + '</span></div>' +
+      '<div class="t-h3">from <span data-field="model.' + m.id + '.price">' + priceK(m.priceFrom) + '</span></div></div><div class="bar__spacer"></div>' +
       '<button class="btn ' + (inComp ? 'is-saved' : '') + '" data-act="compareToggle" data-id="' + m.id + '">' + icon(inComp ? 'check' : 'plus', { sw: 2.2 }) + ' ' + (inComp ? 'In compare' : 'Compare') + '</button>' +
-      '<button class="btn btn--primary btn--lg" data-act="register" data-m="' + m.id + '">' + icon('calendar') + ' Schedule a tour</button></div>';
+      '<button class="btn btn--primary btn--lg" data-act="register" data-m="' + m.id + '" data-action="model.tour">' + icon('calendar') + ' <span data-field="model.ctaTour">Schedule a tour</span></button></div>';
   }
-  function keyspec(ic, v, k) { return '<div class="md-key"><span class="md-key__ic">' + icon(ic) + '</span><div><div class="md-key__v">' + v + '</div><div class="md-key__k">' + k + '</div></div></div>'; }
+  function keyspec(ic, v, k, fieldKey) { var vAttr = fieldKey ? ' data-field="' + fieldKey + '"' : ''; return '<div class="md-key"><span class="md-key__ic">' + icon(ic) + '</span><div><div class="md-key__v"' + vAttr + '>' + v + '</div><div class="md-key__k">' + k + '</div></div></div>'; }
 
   // ── SITE MAP ──────────────────────────────────────────────────────────────
   function sitemap() {
@@ -1545,12 +1545,12 @@ window.MODELS = {
       return '<button class="md-modelpin" style="left:' + mk.x + '%;top:' + mk.y + '%" data-go="model:' + mk.id + '"><span class="md-modelpin__n">' + mk.n + '</span><span class="md-modelpin__label">' + (m ? m.name : '') + '</span></button>';
     }).join('');
     return bar(true) + '<div class="scroll"><div class="md-list">' +
-      '<div class="md-head"><div><div class="eyebrow">Community Site Plan</div><h1 class="t-xl">Find your homesite</h1></div>' +
+      '<div class="md-head"><div><div class="eyebrow" data-field="sitemap.heading">Community Site Plan</div><h1 class="t-xl" data-field="sitemap.title">Find your homesite</h1></div>' +
         '<div class="md-legend"><span><i class="md-key2 md-key2--available"></i> Available</span><span><i class="md-key2 md-key2--ready"></i> Move-in ready</span><span><i class="md-key2 md-key2--sold"></i> Sold</span><span><i class="md-key2 md-key2--model"></i> Model</span></div></div>' +
-      '<div class="md-siteframe media">' +
-        '<div class="here" style="left:' + sp.here.x + '%;top:' + sp.here.y + '%"><div class="here__label">' + sp.here.label + '</div></div>' +
-        lots + models + '<div class="media__tag">' + icon('grid') + ' ' + D.community.toUpperCase() + ' — SITE PLAN</div></div>' +
-      '<p class="md-foot">' + icon('info') + ' Tap a numbered model marker to open that plan, or a lot to check availability.</p>' +
+      '<div class="md-siteframe media" data-img="sitemap.image">' +
+        '<div class="here" style="left:' + sp.here.x + '%;top:' + sp.here.y + '%"><div class="here__label" data-field="sitemap.hereLabel">' + sp.here.label + '</div></div>' +
+        lots + models + '<div class="media__tag">' + icon('grid') + ' <span data-field="sitemap.mapLabel">' + D.community.toUpperCase() + ' — SITE PLAN</span></div></div>' +
+      '<p class="md-foot">' + icon('info') + ' <span data-field="sitemap.footNote">Tap a numbered model marker to open that plan, or a lot to check availability.</span></p>' +
     '</div></div>';
   }
 
@@ -1575,13 +1575,13 @@ window.MODELS = {
       ['Homesites', function (m) { return m.homesites.length + ' available'; }]
     ];
     return bar(true) + '<div class="scroll"><div class="md-list">' +
-      '<div class="md-head"><div><div class="eyebrow">Side by side</div><h1 class="t-xl">Compare Plans</h1></div>' +
+      '<div class="md-head"><div><div class="eyebrow" data-field="compare.eyebrow">Side by side</div><h1 class="t-xl" data-field="compare.title">Compare Plans</h1></div>' +
         '<button class="chip" data-act="clearCompare">' + icon('x', { sw: 2 }) + ' Clear all</button></div>' +
       '<div class="md-compare" style="grid-template-columns:auto repeat(' + ms.length + ',1fr)">' +
         '<div class="md-ccell md-ccell--corner"></div>' +
         ms.map(function (m) {
-          return '<div class="md-ccol"><div class="media md-ccol__img"><span class="media__tag">' + icon('image') + '</span></div>' +
-            '<div class="t-h3">' + m.name + '</div><div class="t-sm dim">' + m.collection + '</div>' +
+          return '<div class="md-ccol"><div class="media md-ccol__img" data-img="model.' + m.id + '.image"><span class="media__tag">' + icon('image') + '</span></div>' +
+            '<div class="t-h3" data-field="model.' + m.id + '.name">' + m.name + '</div><div class="t-sm dim" data-field="model.' + m.id + '.collection">' + m.collection + '</div>' +
             '<button class="md-ccol__x" data-act="compareToggle" data-id="' + m.id + '">' + icon('x', { sw: 2.4 }) + '</button></div>';
         }).join('') +
         rows.map(function (r) {
@@ -1604,14 +1604,14 @@ window.MODELS = {
         '<div class="md-field"><div class="t-sm dim">Time</div><div class="chiprow" data-pick="time">' +
         ['10:30', '12:00', '2:00', '4:00'].map(function (t, i) { return '<button class="chip ' + (i === 0 ? 'is-on' : '') + '" data-act="pick" data-grp="time">' + t + '</button>'; }).join('') + '</div></div>' +
         '<div class="md-field"><div class="t-sm dim">Your details</div><div class="md-inputs"><div class="md-input">' + icon('star') + ' Name</div><div class="md-input">' + icon('phone') + ' Mobile</div></div>' +
-        '<p class="t-xs mute" style="margin-top:var(--s-2)">Registers with ' + D.contact.agent + ' · ' + D.contact.team + ' · ' + D.contact.phone + '</p></div></div>' +
+        '<p class="t-xs mute" style="margin-top:var(--s-2)">Registers with <span data-field="contact.agent">' + D.contact.agent + '</span> · <span data-field="contact.team">' + D.contact.team + '</span> · <span data-field="contact.phone">' + D.contact.phone + '</span></p></div></div>' +
       '<div class="md-sheet__foot"><button class="btn" data-sheet-close>Cancel</button>' +
-        '<button class="btn btn--primary btn--lg grow" data-act="confirmReg">' + icon('check', { sw: 2.4 }) + ' Confirm tour</button></div></div>';
+        '<button class="btn btn--primary btn--lg grow" data-act="confirmReg" data-action="tour.confirm">' + icon('check', { sw: 2.4 }) + ' <span data-field="sheet.confirmTour">Confirm tour</span></button></div></div>';
   }
   function regConfirmed() {
     return '<div class="md-sheet md-sheet--done"><div class="md-done__ic">' + icon('check', { sw: 2.6 }) + '</div>' +
       '<h2 class="t-h1">You\u2019re registered</h2>' +
-      '<p class="t-lg dim pretty">' + D.contact.agent + ' will meet you at the Sales Gallery and walk you through the models. A confirmation text is on its way.</p>' +
+      '<p class="t-lg dim pretty" data-field="sheet.confirmedBody">' + D.contact.agent + ' will meet you at the Sales Gallery and walk you through the models. A confirmation text is on its way.</p>' +
       '<button class="btn btn--primary btn--lg" data-sheet-close>Done</button></div>';
   }
 
@@ -1645,6 +1645,177 @@ window.MODELS = {
 })();
 
 </script>
+<div id="venueos-fields" hidden aria-hidden="true">
+  <!-- brand -->
+  <span data-field="brand.initials">A</span>
+  <span data-field="brand.community">Aldercrest</span>
+  <span data-field="brand.builder">Sterling Homes</span>
+  <span data-field="brand.tagline">A new collection of view homes</span>
+  <!-- hero -->
+  <div data-img="hero.image"></div>
+  <!-- home screen -->
+  <span data-field="home.location">Cedar Ridge &middot; Northgate</span>
+  <span data-field="home.intro">Twelve thoughtfully sited homes on a wooded ridge, each framing the valley view. Five distinct floor plans from the high $600s &mdash; tour the models, compare layouts, and reserve your homesite today.</span>
+  <span data-field="home.stat0.value">5</span>
+  <span data-field="home.stat0.label">Floor plans</span>
+  <span data-field="home.stat1.value">$629k</span>
+  <span data-field="home.stat1.label">From</span>
+  <span data-field="home.stat2.value">2,150&ndash;3,480</span>
+  <span data-field="home.stat2.label">Sq ft</span>
+  <span data-field="home.stat3.value">7</span>
+  <span data-field="home.stat3.label">Homesites left</span>
+  <span data-field="home.incentive.tag">Limited</span>
+  <span data-field="home.incentive.title">$15,000 toward design-studio options</span>
+  <span data-field="home.incentive.body">On homesites reserved this month, plus a rate buydown with the preferred lender.</span>
+  <span data-field="home.ctaTour">Schedule a tour</span>
+  <button data-action="model.tour">Schedule a tour</button>
+  <span data-field="home.plansHeading">The Floor Plans</span>
+  <span data-field="home.plansSubheading">Tap a plan to explore &middot; add to compare</span>
+  <span data-field="home.attractCta">Touch to explore the model homes</span>
+  <!-- belmont -->
+  <div data-img="model.belmont.image"></div>
+  <span data-field="model.belmont.collection">Ridge Collection</span>
+  <span data-field="model.belmont.name">The Belmont</span>
+  <span data-field="model.belmont.price">$629k</span>
+  <span data-field="model.belmont.beds">3</span>
+  <span data-field="model.belmont.baths">2.5</span>
+  <span data-field="model.belmont.sqft">2,150</span>
+  <span data-field="model.belmont.garage">2</span>
+  <span data-field="model.belmont.style">Modern Farmhouse</span>
+  <span data-field="model.belmont.desc">A bright, open main floor with a great-room kitchen and a flex room that works as office or guest space. Efficient and easy to live in.</span>
+  <span data-field="model.belmont.modelStop">Model 1</span>
+  <span data-field="model.belmont.tourDir">First home on the right</span>
+  <span data-field="model.belmont.stories">2</span>
+  <span data-field="model.belmont.feature0">Great-room kitchen with island seating</span>
+  <span data-field="model.belmont.feature1">Main-floor flex / office</span>
+  <span data-field="model.belmont.feature2">Walk-in pantry</span>
+  <span data-field="model.belmont.feature3">Owner&rsquo;s suite with dual vanities</span>
+  <span data-field="model.belmont.feature4">Covered view deck</span>
+  <span data-field="model.belmont.finish0">Quartz counters throughout</span>
+  <span data-field="model.belmont.finish1">Designer two-tone cabinetry</span>
+  <span data-field="model.belmont.finish2">LVP flooring main level</span>
+  <span data-field="model.belmont.finish3">Stainless appliance package</span>
+  <div data-img="model.belmont.floorplan"></div>
+  <!-- carraway -->
+  <div data-img="model.carraway.image"></div>
+  <span data-field="model.carraway.collection">Ridge Collection</span>
+  <span data-field="model.carraway.name">The Carraway</span>
+  <span data-field="model.carraway.price">$712k</span>
+  <span data-field="model.carraway.beds">4</span>
+  <span data-field="model.carraway.baths">3</span>
+  <span data-field="model.carraway.sqft">2,680</span>
+  <span data-field="model.carraway.garage">2</span>
+  <span data-field="model.carraway.style">Transitional</span>
+  <span data-field="model.carraway.desc">Our most popular plan &mdash; a main-floor guest suite, oversized island, and a loft that flexes to a fifth bedroom. Room for everyone.</span>
+  <span data-field="model.carraway.modelStop">Model 2</span>
+  <span data-field="model.carraway.tourDir">Second home, left side</span>
+  <span data-field="model.carraway.stories">2</span>
+  <span data-field="model.carraway.feature0">Main-floor guest suite &amp; full bath</span>
+  <span data-field="model.carraway.feature1">Oversized kitchen island</span>
+  <span data-field="model.carraway.feature2">Upstairs loft (optional 5th bed)</span>
+  <span data-field="model.carraway.feature3">Spa-style owner&rsquo;s bath</span>
+  <span data-field="model.carraway.feature4">Mudroom &amp; drop zone</span>
+  <span data-field="model.carraway.feature5">Covered outdoor room</span>
+  <span data-field="model.carraway.finish0">Waterfall quartz island</span>
+  <span data-field="model.carraway.finish1">Floor-to-ceiling tile fireplace</span>
+  <span data-field="model.carraway.finish2">Wide-plank engineered floors</span>
+  <span data-field="model.carraway.finish3">Chef appliance upgrade available</span>
+  <div data-img="model.carraway.floorplan"></div>
+  <!-- donovan -->
+  <div data-img="model.donovan.image"></div>
+  <span data-field="model.donovan.collection">View Collection</span>
+  <span data-field="model.donovan.name">The Donovan</span>
+  <span data-field="model.donovan.price">$768k</span>
+  <span data-field="model.donovan.beds">4</span>
+  <span data-field="model.donovan.baths">3.5</span>
+  <span data-field="model.donovan.sqft">2,980</span>
+  <span data-field="model.donovan.garage">3</span>
+  <span data-field="model.donovan.style">Contemporary</span>
+  <span data-field="model.donovan.desc">Walls of glass capture the valley view from the main living space. A 3-car garage and main-floor office suit those working from home.</span>
+  <span data-field="model.donovan.modelStop">Model 3</span>
+  <span data-field="model.donovan.tourDir">Up the hill, center</span>
+  <span data-field="model.donovan.stories">2</span>
+  <span data-field="model.donovan.feature0">Wall-of-glass great room</span>
+  <span data-field="model.donovan.feature1">Main-floor office with French doors</span>
+  <span data-field="model.donovan.feature2">3-car tandem garage</span>
+  <span data-field="model.donovan.feature3">Bonus room upstairs</span>
+  <span data-field="model.donovan.feature4">Owner&rsquo;s retreat with sitting area</span>
+  <span data-field="model.donovan.feature5">Two view decks</span>
+  <span data-field="model.donovan.finish0">Panoramic glass slider</span>
+  <span data-field="model.donovan.finish1">Linear fireplace with stone surround</span>
+  <span data-field="model.donovan.finish2">Premium quartz &amp; full backsplash</span>
+  <span data-field="model.donovan.finish3">Smart-home pre-wire</span>
+  <div data-img="model.donovan.floorplan"></div>
+  <!-- everett -->
+  <div data-img="model.everett.image"></div>
+  <span data-field="model.everett.collection">View Collection</span>
+  <span data-field="model.everett.name">The Everett</span>
+  <span data-field="model.everett.price">$824k</span>
+  <span data-field="model.everett.beds">5</span>
+  <span data-field="model.everett.baths">4</span>
+  <span data-field="model.everett.sqft">3,220</span>
+  <span data-field="model.everett.garage">3</span>
+  <span data-field="model.everett.style">Modern Prairie</span>
+  <span data-field="model.everett.desc">Five bedrooms, a main-floor suite, and a true bonus room. The Everett lives large for growing or multigenerational households.</span>
+  <span data-field="model.everett.modelStop">Model 4</span>
+  <span data-field="model.everett.tourDir">Top of the loop</span>
+  <span data-field="model.everett.stories">2</span>
+  <span data-field="model.everett.feature0">Five bedrooms + bonus</span>
+  <span data-field="model.everett.feature1">Main-floor bed &amp; full bath</span>
+  <span data-field="model.everett.feature2">Gourmet kitchen + prep pantry</span>
+  <span data-field="model.everett.feature3">Dual walk-in owner&rsquo;s closets</span>
+  <span data-field="model.everett.feature4">Upstairs laundry</span>
+  <span data-field="model.everett.feature5">Extended covered patio</span>
+  <span data-field="model.everett.finish0">Pro-style 36&rdquo; range</span>
+  <span data-field="model.everett.finish1">Quartz prep pantry</span>
+  <span data-field="model.everett.finish2">Designer lighting package</span>
+  <span data-field="model.everett.finish3">Wired for EV charging</span>
+  <div data-img="model.everett.floorplan"></div>
+  <!-- fairview -->
+  <div data-img="model.fairview.image"></div>
+  <span data-field="model.fairview.collection">Crest Collection</span>
+  <span data-field="model.fairview.name">The Fairview</span>
+  <span data-field="model.fairview.price">$938k</span>
+  <span data-field="model.fairview.beds">5</span>
+  <span data-field="model.fairview.baths">4.5</span>
+  <span data-field="model.fairview.sqft">3,480</span>
+  <span data-field="model.fairview.garage">3</span>
+  <span data-field="model.fairview.style">Luxury Modern</span>
+  <span data-field="model.fairview.desc">Our flagship view home &mdash; a show-stopping great room, scullery kitchen, and a private owner&rsquo;s wing. One move-in-ready homesite remains.</span>
+  <span data-field="model.fairview.modelStop">Model 5</span>
+  <span data-field="model.fairview.tourDir">Crest cul-de-sac</span>
+  <span data-field="model.fairview.stories">2</span>
+  <span data-field="model.fairview.feature0">Vaulted great room</span>
+  <span data-field="model.fairview.feature1">Scullery / second kitchen</span>
+  <span data-field="model.fairview.feature2">Private owner&rsquo;s wing</span>
+  <span data-field="model.fairview.feature3">Guest suite with kitchenette</span>
+  <span data-field="model.fairview.feature4">Glass-rail view deck</span>
+  <span data-field="model.fairview.feature5">Finished lower level option</span>
+  <span data-field="model.fairview.finish0">Full-height stone fireplace</span>
+  <span data-field="model.fairview.finish1">Custom flat-panel cabinetry</span>
+  <span data-field="model.fairview.finish2">Wide-plank white-oak floors</span>
+  <span data-field="model.fairview.finish3">Spa wet room in owner&rsquo;s bath</span>
+  <div data-img="model.fairview.floorplan"></div>
+  <!-- shared model CTA -->
+  <span data-field="model.ctaTour">Schedule a tour</span>
+  <!-- site map -->
+  <span data-field="sitemap.heading">Community Site Plan</span>
+  <span data-field="sitemap.title">Find your homesite</span>
+  <span data-field="sitemap.hereLabel">You are here &middot; Sales Gallery</span>
+  <span data-field="sitemap.mapLabel">ALDERCREST &mdash; SITE PLAN</span>
+  <span data-field="sitemap.footNote">Tap a numbered model marker to open that plan, or a lot to check availability.</span>
+  <div data-img="sitemap.image"></div>
+  <!-- compare -->
+  <span data-field="compare.eyebrow">Side by side</span>
+  <span data-field="compare.title">Compare Plans</span>
+  <!-- contact / register sheet -->
+  <span data-field="contact.agent">Robin Carr</span>
+  <span data-field="contact.team">Aldercrest Sales Gallery</span>
+  <span data-field="contact.phone">(206) 555-0188</span>
+  <span data-field="sheet.confirmTour">Confirm tour</span>
+  <button data-action="tour.confirm">Confirm tour</button>
+  <span data-field="sheet.confirmedBody">Robin Carr will meet you at the Sales Gallery and walk you through the models. A confirmation text is on its way.</span>
+</div>
 <script src="/templates/kiosk/_edit-shim.js"></script>
 </body>
 </html>
