@@ -459,6 +459,15 @@ export default function TemplatesPage() {
     // empty bgColor. Real portrait variants (with dedicated
     // *PortraitWidget components) ship one at a time post-launch.
     if (LETTERBOXED_PORTRAIT_PRESETS.has(t.id)) return false;
+    // Touch kiosks are their own top-level surface: they appear ONLY under the
+    // "Touch Kiosks" (KIOSK) tab — never under "All", another category, or a
+    // school-level (HS/MS/ES) view. They're tagged schoolLevel UNIVERSAL (a
+    // touch kiosk isn't grade-specific), which "always shows", so without this
+    // guard they leaked into every level/category. (Operator 2026-06-06: "I
+    // click the High School filter and I get all the touch — I don't want
+    // that.") Every vertical's category set includes a KIOSK tab, so touch
+    // stays reachable in all verticals.
+    if (t.category === 'KIOSK' && activeCategory !== 'KIOSK') return false;
     if (activeCategory && t.category !== activeCategory) return false;
     if (activeLevel) {
       // UNIVERSAL (or missing) is always shown — it's grade-agnostic.
