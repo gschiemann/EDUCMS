@@ -1160,14 +1160,24 @@ export default function RibbonPage() {
         );
       })}
 
-      {/* celebration cue overlay — a fired cue takes the ribbon over,
-          tiled once per score anchor for the full-bowl wrap */}
+      {/* celebration cue overlay — a fired cue TAKES OVER the whole ribbon.
+          2026-06-06 (THE double-fire) — this used segCount/segWf, which tiled
+          the celebration ONCE PER SCORE ANCHOR. On any ribbon with >1 score
+          anchor (the common bowl-wrap config), one fired cue therefore painted
+          the SAME celebration 2+ times across the strip — which the operator
+          on the console ribbon-preview saw as the celebration "firing twice."
+          The takeover is ONE moment: render a SINGLE full-width burst (segWf =
+          full viewport), exactly like the media-mode path above. On a real
+          wrapped bowl the hardware repeater replicates the frame down the run,
+          so per-anchor software tiling is both wrong here and double-renders
+          the cinematic. The persistent SCORE still repeats per anchor (that's
+          the `segCount` loop above); only the celebration is de-tiled. */}
       {activeCue && (
         <RibbonCueOverlay
           cue={activeCue}
           h={vp.h}
-          segCount={segCount}
-          segWf={segWf}
+          segCount={1}
+          segWf={vp.w}
           sport={data?.sport}
           pack={
             ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v1'
