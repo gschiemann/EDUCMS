@@ -1,0 +1,137 @@
+<!doctype html>
+<!-- HS · TERMINAL — FLAGSHIP. Airport departures board: today's bell schedule as
+     "departures" with live now/next, gates (rooms), status. Canonical brand schema,
+     auto-fit, logo slot, live clock, split-flap feel, safe ticker, portrait. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Campus Terminal · Today</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Inter:wght@500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  /* canonical brand tokens */
+  --bg:#0a0e16;--ink:#ffffff;--brand:#ffb300;--brand2:#b87d00;--accent:#1db8e8;--accent2:#27c46b;--pos:#27c46b;--neg:#ff5670;
+  --bg2:#121826;--rule:rgba(255,255,255,.1);--ink2:#9aa6bd;
+  --f-display:'Archivo';--f-body:'Inter';--f-mono:'JetBrains Mono';
+  --scale:1;
+  --t-logo:calc(58px*var(--scale));--t-name:calc(64px*var(--scale));--t-sub:calc(28px*var(--scale));--t-clocklbl:calc(28px*var(--scale));--t-clock:calc(88px*var(--scale));
+  --t-colh:calc(32px*var(--scale));--t-time:calc(80px*var(--scale));--t-dest:calc(78px*var(--scale));--t-destsub:calc(34px*var(--scale));--t-gate:calc(72px*var(--scale));--t-status:calc(40px*var(--scale));
+  --t-ticker:calc(50px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#05070d;color:var(--ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--bg);box-shadow:0 80px 200px rgba(0,0,0,.7);display:flex;flex-direction:column}
+.stage>*{position:relative;z-index:1}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.3}}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes flap{0%{transform:rotateX(-90deg);opacity:0}100%{transform:rotateX(0);opacity:1}}
+
+.head{flex:none;height:180px;background:var(--bg2);display:flex;align-items:center;justify-content:space-between;padding:0 70px;border-bottom:5px solid var(--brand)}
+.brand{display:flex;align-items:center;gap:26px;min-width:0}
+.brand .logo{width:108px;height:108px;flex:none;background:var(--brand);background-size:cover;background-position:center;display:grid;place-items:center;font-family:var(--f-display);font-weight:900;font-size:var(--t-logo);color:var(--bg);border-radius:16px}
+.brand .logo.has-img{font-size:0}
+.brand .name{font-family:var(--f-display);font-weight:900;font-size:var(--t-name);letter-spacing:-.01em;text-transform:uppercase;white-space:nowrap}
+.brand .sub{font-family:var(--f-mono);font-weight:600;font-size:var(--t-sub);letter-spacing:.22em;color:var(--brand);text-transform:uppercase;white-space:nowrap;margin-top:6px}
+.head .clock{text-align:right;line-height:1}
+.head .clock .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-clocklbl);letter-spacing:.2em;color:var(--ink2);text-transform:uppercase}
+.head .clock .v{font-family:var(--f-display);font-weight:900;font-size:var(--t-clock);color:var(--brand);letter-spacing:-.01em;margin-top:6px;font-variant-numeric:tabular-nums}
+
+.colh{flex:none;height:80px;display:grid;grid-template-columns:200px 1fr 280px 320px;align-items:center;padding:0 70px;background:#0c111c;border-bottom:2px solid var(--rule)}
+.colh span{font-family:var(--f-mono);font-weight:700;font-size:var(--t-colh);letter-spacing:.2em;color:var(--ink2);text-transform:uppercase}
+.board{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-evenly;padding:0 70px}
+.dep{display:grid;grid-template-columns:200px 1fr 280px 320px;align-items:center;padding:8px 0;border-bottom:1px solid var(--rule)}
+.dep:last-child{border-bottom:0}
+.dep .time{font-family:var(--f-display);font-weight:900;font-size:var(--t-time);letter-spacing:.01em;color:var(--ink);font-variant-numeric:tabular-nums}
+.dep .dest .d{font-family:var(--f-display);font-weight:900;font-size:var(--t-dest);line-height:.95;text-transform:uppercase;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dep .dest .s{font-family:var(--f-body);font-weight:600;font-size:var(--t-destsub);color:var(--ink2);margin-top:4px}
+.dep .gate{font-family:var(--f-display);font-weight:900;font-size:var(--t-gate);text-align:center;color:var(--accent);letter-spacing:-.01em}
+.dep .status{font-family:var(--f-mono);font-weight:700;font-size:var(--t-status);letter-spacing:.1em;text-transform:uppercase;text-align:right;color:var(--ink2);white-space:nowrap}
+.dep.now{background:linear-gradient(90deg,color-mix(in srgb,var(--brand) 20%,transparent),transparent 70%);margin:0 -70px;padding:8px 70px;border-bottom:0;border-radius:6px}
+.dep.now .time,.dep.now .dest .d{color:var(--brand);animation:flap .5s ease-out}
+.dep.now .status{color:var(--brand);display:flex;align-items:center;gap:12px;justify-content:flex-end}
+.dep.now .status::before{content:'';width:16px;height:16px;border-radius:50%;background:var(--brand);animation:blink 1.2s steps(2) infinite}
+.dep.done{opacity:.45}.dep.done .status{color:var(--pos)}
+.dep.next .status{color:var(--accent)}
+
+.ticker{position:relative;flex:none;height:110px;background:var(--bg2);display:flex;align-items:center;overflow:hidden;border-top:4px solid var(--brand)}
+.ticker .tag{position:relative;z-index:2;flex:none;background:var(--brand);color:var(--bg);font-family:var(--f-display);font-weight:900;font-size:52px;padding:0 44px;height:100%;display:flex;align-items:center;letter-spacing:.06em;text-transform:uppercase}
+.ticker .msg{font-family:var(--f-mono);font-weight:600;font-size:var(--t-ticker);padding-left:44px;white-space:nowrap;letter-spacing:.1em;text-transform:uppercase;animation:sc 95s linear infinite}
+.ticker .msg .star{color:var(--brand);margin:0 24px}
+
+@media (orientation:portrait){
+  .stage[data-orient="port"] .colh,.stage[data-orient="port"] .dep{grid-template-columns:150px 1fr 180px}
+  .stage[data-orient="port"] .colh span:nth-child(4),.stage[data-orient="port"] .dep .status{display:none}
+}
+</style><script>/*EDUCMS-SHIM-V4*/(function(){try{
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){if(el.children.length===0){el.textContent=text[k];}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=text[k];}else{el.insertBefore(document.createTextNode(text[k]),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+addEventListener('message',function(e){try{var d=e.data;if(d&&d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#0a0e16</span><span data-field="theme.ink">#ffffff</span>
+  <span data-field="theme.brand">#ffb300</span><span data-field="theme.brand2">#b87d00</span>
+  <span data-field="theme.accent">#1db8e8</span><span data-field="theme.accent2">#27c46b</span>
+  <span data-field="theme.pos">#27c46b</span><span data-field="theme.neg">#ff5670</span>
+  <span data-field="theme.fDisplay">Archivo</span><span data-field="theme.fBody">Inter</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
+</div>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+  <header class="head">
+    <div class="brand" data-widget="school">
+      <div class="logo" data-imgslot="school.logo" data-field="school.initials">WHS</div>
+      <div class="col" style="min-width:0"><div class="name" data-field="school.name">Westridge Terminal</div><div class="sub" data-field="school.sub">Today's departures · A-day · regular bell</div></div>
+    </div>
+    <div class="clock" data-widget="clock"><div class="k" data-field="clock.label">Now boarding</div><div class="v" data-field="clock.time" data-live="clock">9:48</div></div>
+  </header>
+
+  <div class="colh"><span data-field="colh.0">Bell</span><span data-field="colh.1">Class · destination</span><span data-field="colh.2">Gate</span><span data-field="colh.3">Status</span></div>
+
+  <div class="board" data-widget="board">
+    <div class="dep done" data-widget="dep.0"><div class="time" data-field="dep.0.t">7:50</div><div class="dest"><div class="d" data-field="dep.0.d">Period 1 · Departed</div><div class="s" data-field="dep.0.s">First bell · homeroom</div></div><div class="gate" data-field="dep.0.g">—</div><div class="status" data-field="dep.0.st">Landed</div></div>
+    <div class="dep done" data-widget="dep.1"><div class="time" data-field="dep.1.t">8:42</div><div class="dest"><div class="d" data-field="dep.1.d">Period 2</div><div class="s" data-field="dep.1.s">Block B</div></div><div class="gate" data-field="dep.1.g">—</div><div class="status" data-field="dep.1.st">Landed</div></div>
+    <div class="dep now" data-widget="dep.2"><div class="time" data-field="dep.2.t">9:34</div><div class="dest"><div class="d" data-field="dep.2.d">Period 3 · In session</div><div class="s" data-field="dep.2.s">Bell at 10:22</div></div><div class="gate" data-field="dep.2.g">Now</div><div class="status" data-field="dep.2.st">Boarding</div></div>
+    <div class="dep next" data-widget="dep.3"><div class="time" data-field="dep.3.t">10:26</div><div class="dest"><div class="d" data-field="dep.3.d">Advisory</div><div class="s" data-field="dep.3.s">Check Schoology</div></div><div class="gate" data-field="dep.3.g">Adv</div><div class="status" data-field="dep.3.st">Up next</div></div>
+    <div class="dep" data-widget="dep.4"><div class="time" data-field="dep.4.t">10:58</div><div class="dest"><div class="d" data-field="dep.4.d">Lunch A</div><div class="s" data-field="dep.4.s">Cafeteria · grill open</div></div><div class="gate" data-field="dep.4.g">Caf</div><div class="status" data-field="dep.4.st">On time</div></div>
+    <div class="dep" data-widget="dep.5"><div class="time" data-field="dep.5.t">11:38</div><div class="dest"><div class="d" data-field="dep.5.d">Period 4</div><div class="s" data-field="dep.5.s">Block D</div></div><div class="gate" data-field="dep.5.g">—</div><div class="status" data-field="dep.5.st">On time</div></div>
+    <div class="dep" data-widget="dep.6"><div class="time" data-field="dep.6.t">12:30</div><div class="dest"><div class="d" data-field="dep.6.d">Period 5</div><div class="s" data-field="dep.6.s">Block E</div></div><div class="gate" data-field="dep.6.g">—</div><div class="status" data-field="dep.6.st">On time</div></div>
+    <div class="dep" data-widget="dep.7"><div class="time" data-field="dep.7.t">1:22</div><div class="dest"><div class="d" data-field="dep.7.d">Period 6 · Final boarding</div><div class="s" data-field="dep.7.s">Dismissal 2:30</div></div><div class="gate" data-field="dep.7.g">—</div><div class="status" data-field="dep.7.st">On time</div></div>
+  </div>
+
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">Announcements</div>
+    <div class="msg"><span data-field="ticker.message">Early release Friday — buses depart 12:15 · picture-day retakes in the gym lobby Thursday · late-bus passes at the front office · spirit week starts Monday, dress-up themes posted · counseling drop-in 9 to 11 every day</span><span class="star">✦</span><span data-field="ticker.message2">Early release Friday — buses depart 12:15 · picture-day retakes in the gym lobby Thursday · late-bus passes at the front office · spirit week starts Monday, dress-up themes posted · counseling drop-in 9 to 11 every day</span></div>
+  </div>
+
+</div></div></div>
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  /* canonical brand schema */
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();new MutationObserver(applyTheme).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.stage'),{subtree:true,childList:true,characterData:true});
+  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m;}
+  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});}
+  tick();setInterval(tick,15000);
+})();
+</script>
+</body></html>

@@ -1,0 +1,123 @@
+<!doctype html>
+<!-- HS · YEARBOOK — FLAGSHIP. Photo-memories board: scrapbook hero + polaroid grid
+     of moments (all photo slots), "this week in photos" caption rail. Canonical brand
+     schema, auto-fit, logo + photo slots, live date, safe ticker, portrait. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Yearbook · Moments</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,900;1,9..144,600&family=Caveat:wght@600;700&family=Inter:wght@500;600;700&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  --bg:#f4ece0;--ink:#241c12;--brand:#b8431f;--brand2:#7a2810;--accent:#1f7a78;--accent2:#caa14a;--pos:#2f8a52;--neg:#c84a64;
+  --paper:#fffdf6;--ink2:#6b5e48;--rule:#d8cbb2;
+  --f-display:'Fraunces';--f-hand:'Caveat';--f-body:'Inter';--f-mono:'JetBrains Mono';
+  --scale:1;
+  --t-logo:calc(56px*var(--scale));--t-name:calc(56px*var(--scale));--t-sub:calc(28px*var(--scale));--t-date:calc(46px*var(--scale));
+  --t-eyebrow:calc(36px*var(--scale));--t-hero:calc(180px*var(--scale));--t-herosub:calc(48px*var(--scale));
+  --t-cap:calc(40px*var(--scale));--t-tag:calc(26px*var(--scale));
+  --t-ticker:calc(46px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#0a0805;color:var(--ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:radial-gradient(ellipse at top,#fbf4e8,#efe2cd 70%,#e6d6bb);box-shadow:0 80px 200px rgba(0,0,0,.6);display:flex;flex-direction:column;padding:44px 60px 0}
+.stage::before{content:'';position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(rgba(120,40,16,.05) 3px,transparent 4px);background-size:34px 34px}
+.stage>*{position:relative;z-index:1}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+.head{flex:none;height:150px;display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:24px;min-width:0}
+.brand .logo{width:112px;height:112px;flex:none;background:var(--brand);background-size:cover;background-position:center;display:grid;place-items:center;font-family:var(--f-display);font-weight:900;font-size:var(--t-logo);color:#fff;border-radius:18px;box-shadow:0 8px 0 var(--brand2)}
+.brand .logo.has-img{font-size:0}
+.brand .name{font-family:var(--f-display);font-weight:900;font-size:var(--t-name);letter-spacing:-.01em;white-space:nowrap}
+.brand .sub{font-family:var(--f-mono);font-weight:600;font-size:var(--t-sub);letter-spacing:.2em;color:var(--brand);text-transform:uppercase;white-space:nowrap;margin-top:6px}
+.head .date{font-family:var(--f-hand);font-weight:700;font-size:var(--t-date);color:var(--accent);transform:rotate(-2deg)}
+
+.hero{flex:none;text-align:center;margin:6px 0 18px}
+.hero .eyebrow{font-family:var(--f-hand);font-weight:700;font-size:var(--t-eyebrow);letter-spacing:.02em;color:var(--brand);transform:rotate(-1deg);display:inline-block}
+.hero h1{font-family:var(--f-display);font-weight:900;font-style:italic;font-size:var(--t-hero);line-height:.86;margin:6px 0 0;letter-spacing:-.02em;color:var(--ink)}
+.hero h1 em{font-style:normal;color:var(--brand)}
+.hero .sub{font-family:var(--f-body);font-weight:600;font-size:var(--t-herosub);color:var(--ink2);margin-top:12px}
+
+.grid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:1fr 1fr;gap:30px;margin-bottom:22px}
+.pic{background:var(--paper);border:1px solid var(--rule);border-radius:6px;box-shadow:0 14px 30px rgba(80,50,20,.18);padding:18px 18px 0;display:flex;flex-direction:column;overflow:hidden}
+.pic:nth-child(odd){transform:rotate(-1.4deg)}.pic:nth-child(even){transform:rotate(1.2deg)}
+.pic:nth-child(3n){transform:rotate(.6deg)}
+.pic .photo{flex:1;min-height:0;background:linear-gradient(135deg,#cdbfa6,#a8946f);background-size:cover;background-position:center;border-radius:3px;position:relative;display:grid;place-items:center}
+.pic .photo::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent 0 60px,rgba(0,0,0,.04) 60px 62px)}
+.pic .photo .ic{font-size:130px;opacity:.5;z-index:1}
+.pic .photo.has-img .ic{display:none}.pic .photo.has-img::after{opacity:.25}
+.pic .tape{position:absolute;top:-14px;left:50%;transform:translateX(-50%) rotate(-3deg);width:160px;height:42px;background:color-mix(in srgb,var(--accent2) 55%,transparent);border:1px dashed color-mix(in srgb,var(--brand2) 40%,transparent);z-index:2}
+.pic .cap{flex:none;font-family:var(--f-hand);font-weight:700;font-size:var(--t-cap);color:var(--ink);padding:14px 4px 16px;text-align:center;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pic .tag{position:absolute;bottom:78px;right:24px;font-family:var(--f-mono);font-weight:700;font-size:var(--t-tag);letter-spacing:.12em;text-transform:uppercase;background:var(--brand);color:#fff;padding:6px 12px;border-radius:5px;z-index:2}
+
+.ticker{position:relative;flex:none;height:104px;margin:0 -60px;background:var(--ink);color:var(--paper);display:flex;align-items:center;overflow:hidden;border-top:6px solid var(--accent2)}
+.ticker .tag{position:relative;z-index:2;flex:none;background:var(--accent2);color:var(--ink);font-family:var(--f-display);font-weight:900;font-style:italic;font-size:46px;padding:0 40px;height:100%;display:flex;align-items:center;letter-spacing:-.01em}
+.ticker .msg{font-family:var(--f-body);font-weight:600;font-size:var(--t-ticker);padding-left:40px;white-space:nowrap;letter-spacing:.06em;animation:sc 95s linear infinite;color:#fff}
+.ticker .msg .star{color:var(--accent2);margin:0 22px}
+
+@media (orientation:portrait){
+  .stage[data-orient="port"] .grid{grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(4,1fr)}
+  .stage[data-orient="port"]{--t-hero:calc(120px*var(--scale))}
+}
+</style></head><body>
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#f4ece0</span><span data-field="theme.ink">#241c12</span>
+  <span data-field="theme.brand">#b8431f</span><span data-field="theme.brand2">#7a2810</span>
+  <span data-field="theme.accent">#1f7a78</span><span data-field="theme.accent2">#caa14a</span>
+  <span data-field="theme.pos">#2f8a52</span><span data-field="theme.neg">#c84a64</span>
+  <span data-field="theme.fDisplay">Fraunces</span><span data-field="theme.fHand">Caveat</span><span data-field="theme.fBody">Inter</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
+</div>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+  <header class="head">
+    <div class="brand" data-widget="school">
+      <div class="logo" data-imgslot="school.logo" data-field="school.initials">W</div>
+      <div class="col" style="min-width:0"><div class="name" data-field="school.name">Westridge Yearbook</div><div class="sub" data-field="school.sub">Hawks · Class of 2026</div></div>
+    </div>
+    <div class="date" data-field="head.date" data-live="date">Week of Oct 14</div>
+  </header>
+
+  <section class="hero" data-widget="hero">
+    <div class="eyebrow" data-field="hero.eyebrow">~ this week in photos ~</div>
+    <h1><span data-field="hero.t1">Moments </span><em data-field="hero.t2">worth keeping.</em></h1>
+    <div class="sub" data-field="hero.sub">Tag #WildcatLife to get your photo on the wall</div>
+  </section>
+
+  <section class="grid">
+    <div class="pic" data-widget="pic.0"><div class="tape"></div><div class="photo" data-imgslot="pic.0.img"><span class="tag" data-field="pic.0.tag">Spirit</span><div class="ic" data-field="pic.0.ic">📸</div></div><div class="cap" data-field="pic.0.cap">Homecoming pep rally</div></div>
+    <div class="pic" data-widget="pic.1"><div class="tape"></div><div class="photo" data-imgslot="pic.1.img"><span class="tag" data-field="pic.1.tag">Sports</span><div class="ic" data-field="pic.1.ic">🏐</div></div><div class="cap" data-field="pic.1.cap">Volleyball region win</div></div>
+    <div class="pic" data-widget="pic.2"><div class="tape"></div><div class="photo" data-imgslot="pic.2.img"><span class="tag" data-field="pic.2.tag">Arts</span><div class="ic" data-field="pic.2.ic">🎭</div></div><div class="cap" data-field="pic.2.cap">Our Town dress rehearsal</div></div>
+    <div class="pic" data-widget="pic.3"><div class="tape"></div><div class="photo" data-imgslot="pic.3.img"><span class="tag" data-field="pic.3.tag">Clubs</span><div class="ic" data-field="pic.3.ic">🤖</div></div><div class="cap" data-field="pic.3.cap">Robotics build night</div></div>
+    <div class="pic" data-widget="pic.4"><div class="tape"></div><div class="photo" data-imgslot="pic.4.img"><span class="tag" data-field="pic.4.tag">Service</span><div class="ic" data-field="pic.4.ic">🍂</div></div><div class="cap" data-field="pic.4.cap">Park clean-up crew</div></div>
+    <div class="pic" data-widget="pic.5"><div class="tape"></div><div class="photo" data-imgslot="pic.5.img"><span class="tag" data-field="pic.5.tag">Music</span><div class="ic" data-field="pic.5.ic">🎺</div></div><div class="cap" data-field="pic.5.cap">Marching band finals</div></div>
+    <div class="pic" data-widget="pic.6"><div class="tape"></div><div class="photo" data-imgslot="pic.6.img"><span class="tag" data-field="pic.6.tag">Seniors</span><div class="ic" data-field="pic.6.ic">🎓</div></div><div class="cap" data-field="pic.6.cap">College signing day</div></div>
+    <div class="pic" data-widget="pic.7"><div class="tape"></div><div class="photo" data-imgslot="pic.7.img"><span class="tag" data-field="pic.7.tag">Friends</span><div class="ic" data-field="pic.7.ic">🍕</div></div><div class="cap" data-field="pic.7.cap">Lunch in the courtyard</div></div>
+  </section>
+
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">Snapshots</div>
+    <div class="msg"><span data-field="ticker.message">Yearbook orders close Friday — save $15 with the early-bird code · seniors, book your portraits at the front office · submit your candids to yearbook@westridge.edu · photo club meets Wednesdays in B-104 · this month's theme: friendship</span><span class="star">✦</span><span data-field="ticker.message2">Yearbook orders close Friday — save $15 with the early-bird code · seniors, book your portraits at the front office · submit your candids to yearbook@westridge.edu · photo club meets Wednesdays in B-104 · this month's theme: friendship</span></div>
+  </div>
+
+</div></div></div>
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fHand:'--f-hand',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();new MutationObserver(applyTheme).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.stage'),{subtree:true,childList:true,characterData:true});
+  var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function tick(){var now=new Date();document.querySelectorAll('[data-live="date"]').forEach(function(el){el.textContent='Week of '+MON[now.getMonth()]+' '+now.getDate();});}
+  tick();setInterval(tick,60000);
+})();
+</script>
+</body></html>

@@ -1,0 +1,179 @@
+<!doctype html>
+<!-- HS · BROADCAST (Campus News) — FLAGSHIP. Newsroom lower-thirds: top story,
+     clock/forecast, teacher-of-week (photo slot), breaking card, schedule +
+     countdown. Tokenized, auto-fit, logo + portrait slots, live clock, safe ticker. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Campus News · Broadcast</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;900&family=Inter:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  --c-bg:#0a1024;--c-bg2:#0f1832;--c-card:#16203c;--c-ink:#ffffff;--c-ink2:#aebbd6;--c-rule:rgba(255,255,255,.12);
+  --c-brand:#ef2b2b;--c-brandd:#9c1414;--c-gold:#ffd23d;--c-green:#36d27e;--c-paper:#f3f5f9;
+  --f-display:'Barlow Condensed';--f-body:'Inter';--f-mono:'JetBrains Mono';
+  --scale:1;
+  --t-chip:calc(54px*var(--scale));--t-brand:calc(66px*var(--scale));--t-brandsub:calc(34px*var(--scale));--t-live:calc(42px*var(--scale));--t-tc:calc(46px*var(--scale));
+  --t-eyebrow:calc(46px*var(--scale));--t-h1:calc(230px*var(--scale));--t-subtitle:calc(58px*var(--scale));
+  --t-panelh:calc(36px*var(--scale));--t-panelbig:calc(146px*var(--scale));--t-panelcap:calc(44px*var(--scale));
+  --t-glabel:calc(34px*var(--scale));--t-gname:calc(140px*var(--scale));--t-gmeta:calc(42px*var(--scale));--t-gquote:calc(52px*var(--scale));
+  --t-btag:calc(40px*var(--scale));--t-bh:calc(92px*var(--scale));--t-bp:calc(50px*var(--scale));--t-bdate:calc(38px*var(--scale));
+  --t-evwhen:calc(36px*var(--scale));--t-evwhat:calc(64px*var(--scale));--t-cdlbl:calc(36px*var(--scale));--t-cdval:calc(180px*var(--scale));--t-cdunit:calc(44px*var(--scale));
+  --t-ticker:calc(62px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#05070f;color:var(--c-ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% -10%,#1a2545 0%,#0b1025 55%,#05070f 100%);box-shadow:0 80px 200px rgba(0,0,0,.7);display:flex;flex-direction:column;padding:48px 64px 0}
+.stage::before{content:'';position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.015) 0 2px,transparent 2px 5px),radial-gradient(ellipse at 70% 90%,rgba(239,43,43,.12),transparent 60%)}
+.stage>*{position:relative;z-index:1}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.25}}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,43,43,.6)}50%{box-shadow:0 0 0 18px rgba(239,43,43,0)}}
+
+.netbar{flex:none;height:130px;display:flex;align-items:center;justify-content:space-between;gap:30px}
+.brandmark{display:flex;align-items:center;gap:24px;min-width:0}
+.brandmark .logo{width:104px;height:104px;flex:none;background:var(--c-brand);background-size:cover;background-position:center;display:grid;place-items:center;font-family:var(--f-display);font-weight:900;font-size:var(--t-chip);color:#fff;border-radius:14px}
+.brandmark .logo.has-img{font-size:0}
+.brandmark .name{font-family:var(--f-display);font-weight:900;font-size:var(--t-brand);letter-spacing:.02em;color:#fff;text-transform:uppercase;white-space:nowrap}
+.brandmark .sub{font-family:var(--f-mono);font-weight:500;font-size:var(--t-brandsub);letter-spacing:.22em;color:var(--c-ink2);text-transform:uppercase;white-space:nowrap}
+.netbar .right{display:flex;align-items:center;gap:30px;flex:none}
+.live{display:flex;align-items:center;gap:18px;font-family:var(--f-display);font-weight:900;font-size:var(--t-live);letter-spacing:.1em;color:#fff;text-transform:uppercase;white-space:nowrap;background:rgba(10,15,26,.7);padding:8px 20px;border-radius:10px}
+.live .dot{width:28px;height:28px;border-radius:50%;background:var(--c-brand);animation:pulse 1.8s ease-in-out infinite;flex:none}
+.tc{font-family:var(--f-mono);font-weight:700;font-size:var(--t-tc);color:var(--c-gold);letter-spacing:.08em;font-variant-numeric:tabular-nums}
+
+.headline{flex:none;display:grid;grid-template-columns:3fr 2fr;gap:48px;margin-top:24px}
+.headline .eyebrow{display:inline-block;font-family:var(--f-display);font-weight:900;background:var(--c-brand);color:#fff;padding:10px 24px 12px;font-size:var(--t-eyebrow);letter-spacing:.12em;text-transform:uppercase}
+.headline h1{font-family:var(--f-display);font-weight:900;font-size:var(--t-h1);line-height:.86;margin:16px 0 0;letter-spacing:-.01em;color:#fff;text-transform:uppercase;text-wrap:balance;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.headline .subtitle{font-family:var(--f-body);font-weight:600;font-size:var(--t-subtitle);color:#cbd5e1;margin-top:22px;line-height:1.2;text-wrap:pretty}
+.panel-col{display:grid;gap:24px;align-content:start}
+.panel{background:rgba(255,255,255,.05);border:1px solid var(--c-rule);border-radius:16px;padding:24px 32px}
+.panel h3{font-family:var(--f-mono);font-weight:700;font-size:var(--t-panelh);letter-spacing:.2em;text-transform:uppercase;color:var(--c-ink2);margin:0 0 8px}
+.panel .big{font-family:var(--f-display);font-weight:900;font-size:var(--t-panelbig);line-height:.9;color:#fff;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.panel .cap{font-family:var(--f-body);font-weight:600;font-size:var(--t-panelcap);color:#cbd5e1;margin-top:6px}
+.panel.clock .big::after{content:'';display:inline-block;width:16px;height:16px;background:var(--c-brand);border-radius:50%;margin-left:14px;vertical-align:middle;animation:blink 1s steps(2) infinite}
+.panel.weather .row{display:flex;align-items:flex-end;gap:20px}
+.panel.weather .ico{font-family:var(--f-display);font-weight:700;font-size:calc(var(--t-panelcap)*1.6);color:var(--c-gold)}
+
+.mid{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:32px;margin:28px 0}
+.guest{background:var(--c-paper);color:#0a0f1a;border-radius:18px;padding:36px 44px;display:grid;grid-template-columns:auto 1fr;gap:40px;align-items:center;position:relative;overflow:hidden;min-width:0}
+.guest::before{content:'';position:absolute;left:0;top:0;bottom:0;width:14px;background:var(--c-brand)}
+.guest .portrait{width:340px;height:340px;flex:none;background:linear-gradient(135deg,#cbd5e1,#94a3b8);background-size:cover;background-position:center;border-radius:14px;display:grid;place-items:center}
+.guest .portrait .mono{font-family:var(--f-mono);font-weight:700;font-size:26px;color:#0a0f1a;background:#fff;padding:6px 14px;border-radius:6px}
+.guest .portrait.has-img .mono{display:none}
+.guest .gbody{min-width:0;display:flex;flex-direction:column;align-items:stretch}
+.guest .gbody .eyebrow{align-self:flex-start}
+.guest .eyebrow{display:inline-block;font-family:var(--f-display);font-weight:900;background:#0a0f1a;color:#fff;padding:6px 18px 8px;font-size:var(--t-glabel);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+.guest h2{font-family:var(--f-display);font-weight:900;font-size:var(--t-gname);line-height:.86;margin:10px 0 6px;text-transform:uppercase;white-space:nowrap;overflow:hidden;width:100%}
+.guest .meta{font-family:var(--f-mono);font-weight:500;font-size:var(--t-gmeta);color:#475569;letter-spacing:.08em;text-transform:uppercase}
+.guest .quote{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-gquote);color:#334155;margin-top:16px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.breaking{background:var(--c-card);border:1px solid var(--c-rule);border-radius:18px;padding:36px 44px;display:flex;flex-direction:column;justify-content:center;min-width:0}
+.breaking .tag{align-self:flex-start;font-family:var(--f-display);font-weight:900;background:var(--c-gold);color:#0a0f1a;padding:8px 22px 10px;font-size:var(--t-btag);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;max-width:100%}
+.breaking h2{font-family:var(--f-display);font-weight:900;font-size:var(--t-bh);line-height:.92;margin:16px 0 12px;color:#fff;text-transform:uppercase;text-wrap:balance;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.breaking p{font-family:var(--f-body);font-weight:500;font-size:var(--t-bp);color:#cbd5e1;margin:0;line-height:1.3;text-wrap:pretty}
+.breaking .date{font-family:var(--f-mono);font-weight:700;font-size:var(--t-bdate);color:var(--c-gold);letter-spacing:.14em;margin-top:18px;text-transform:uppercase}
+
+.schedule{flex:none;height:300px;display:grid;grid-template-columns:repeat(3,1fr) 1fr;gap:28px;margin-bottom:28px}
+.ev{background:rgba(255,255,255,.04);border-left:8px solid var(--c-brand);border-radius:12px;padding:26px 30px;display:flex;flex-direction:column;justify-content:center;min-width:0}
+.ev:nth-child(2){border-color:var(--c-gold)}.ev:nth-child(3){border-color:var(--c-green)}
+.ev .when{font-family:var(--f-mono);font-weight:700;font-size:var(--t-evwhen);color:#aebbd6;letter-spacing:.12em;text-transform:uppercase}
+.ev .what{font-family:var(--f-display);font-weight:900;font-size:var(--t-evwhat);line-height:.92;color:#fff;margin-top:10px;text-transform:uppercase;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.countdown{background:var(--c-brand);border-radius:12px;padding:24px 36px;color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:flex-start}
+.countdown .lbl{font-family:var(--f-mono);font-weight:700;font-size:var(--t-cdlbl);letter-spacing:.18em;text-transform:uppercase;opacity:.92}
+.countdown .val{font-family:var(--f-display);font-weight:900;font-size:var(--t-cdval);line-height:.8;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.countdown .unit{font-family:var(--f-display);font-weight:900;font-size:var(--t-cdunit);letter-spacing:.08em;text-transform:uppercase}
+
+.ticker{position:relative;flex:none;height:120px;margin:0 -64px;background:#0a0f1a;display:flex;align-items:center;overflow:hidden;border-top:4px solid var(--c-brand)}
+.ticker .tag{position:relative;z-index:2;flex:none;background:var(--c-brand);color:#fff;font-family:var(--f-display);font-weight:900;font-size:56px;padding:0 44px;height:100%;display:flex;align-items:center;letter-spacing:.1em;text-transform:uppercase}
+.ticker .msg{font-family:var(--f-display);font-weight:700;font-size:var(--t-ticker);color:#fff;letter-spacing:.04em;text-transform:uppercase;padding-left:44px;white-space:nowrap;animation:sc 90s linear infinite}
+.ticker .msg .star{color:var(--c-gold);margin:0 22px}
+
+@media (orientation:portrait){
+  .stage[data-orient="port"] .headline{grid-template-columns:1fr}
+  .stage[data-orient="port"] .panel-col{grid-template-columns:1fr 1fr;display:grid}
+  .stage[data-orient="port"] .mid{grid-template-columns:1fr;grid-template-rows:1fr 1fr}
+  .stage[data-orient="port"] .schedule{grid-template-columns:1fr 1fr;height:auto}
+  .stage[data-orient="port"]{--t-h1:calc(150px*var(--scale))}
+}
+</style></head><body>
+<div data-widget="theme" hidden>
+  <span data-field="theme.cBg">#0a1024</span><span data-field="theme.cInk">#ffffff</span>
+  <span data-field="theme.cBrand">#ef2b2b</span><span data-field="theme.cGold">#ffd23d</span><span data-field="theme.cGreen">#36d27e</span>
+  <span data-field="theme.fDisplay">Barlow Condensed</span><span data-field="theme.fBody">Inter</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
+</div>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+  <div class="netbar">
+    <div class="brandmark" data-widget="school">
+      <div class="logo" data-imgslot="school.logo" data-field="school.chip">WHS</div>
+      <div class="col" style="min-width:0"><div class="name" data-field="school.name">Westridge High</div><div class="sub" data-field="school.sub">Campus News Network</div></div>
+    </div>
+    <div class="right">
+      <div class="live" data-widget="status"><span class="dot"></span><span data-field="status.label">On Air · Morning Report</span></div>
+      <div class="tc" data-field="clock.tc" data-live="clock">7:53 am</div>
+    </div>
+  </div>
+
+  <div class="headline">
+    <div data-widget="greeting">
+      <span class="eyebrow" data-field="greeting.eyebrow">Top story · Tuesday</span>
+      <h1 data-field="greeting.headline">Good morning, Westridge.</h1>
+      <div class="subtitle" data-field="greeting.subtitle">Doors open at 7:45. First bell rings at 8:05. Let's make it a great one — and don't forget the college fair third period.</div>
+    </div>
+    <div class="panel-col">
+      <div class="panel clock" data-widget="clock"><h3 data-field="clock.label">Local time</h3><div class="big" data-field="clock.time" data-live="bigclock">7:53</div><div class="cap" data-field="clock.caption" data-live="datecap">Tuesday, April 21 · AM Broadcast</div></div>
+      <div class="panel weather" data-widget="weather"><h3 data-field="weather.label">Forecast</h3><div class="row"><div class="big" data-field="weather.temp">46°</div><div class="ico" data-field="weather.condition">☀ Clear · Hi 62°</div></div></div>
+    </div>
+  </div>
+
+  <div class="mid">
+    <div class="guest" data-widget="teacher">
+      <div class="portrait" data-imgslot="teacher.photo"><div class="mono" data-field="teacher.portraitTag">[ portrait ]</div></div>
+      <div class="gbody">
+        <span class="eyebrow" data-fit="single" data-fit-min="22" data-fit-max="32" data-field="teacher.label">Teacher of the week</span>
+        <h2 data-fit="single" data-fit-min="48" data-fit-max="140" data-field="teacher.name">Ms. Kowalski</h2>
+        <div class="meta" data-field="teacher.grade">AP Physics · Room 214 · 14 years at WHS</div>
+        <div class="quote" data-field="teacher.quote">"The answer is in the free-body diagram. If you can draw it, you can solve it."</div>
+      </div>
+    </div>
+    <div class="breaking" data-widget="announcement">
+      <span class="tag" data-fit="single" data-fit-min="26" data-fit-max="38" data-field="announcement.title">★ Breaking · Today</span>
+      <h2 data-field="announcement.headline">College fair in the gym, 3rd period.</h2>
+      <p data-field="announcement.body">48 schools, 60 programs, 3 food trucks. Pre-registered seniors go first — bring your pass.</p>
+      <div class="date" data-field="announcement.date">04.21 · 10:15 AM – 1:00 PM · Main Gym</div>
+    </div>
+  </div>
+
+  <div class="schedule">
+    <div class="ev" data-widget="events.0"><div class="when" data-field="events.0.when">Mon · 3:30 PM</div><div class="what" data-field="events.0.name">Varsity Soccer vs. Central</div></div>
+    <div class="ev" data-widget="events.1"><div class="when" data-field="events.1.when">Wed · 7:00 PM</div><div class="what" data-field="events.1.name">Spring Band Concert</div></div>
+    <div class="ev" data-widget="events.2"><div class="when" data-field="events.2.when">Fri · All day</div><div class="what" data-field="events.2.name">Prom Tickets — Cafe</div></div>
+    <div class="countdown" data-widget="countdown"><div class="lbl" data-field="countdown.label">Days to prom</div><div class="val" data-field="countdown.value">24</div><div class="unit" data-field="countdown.unit">Days</div></div>
+  </div>
+
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">Latest</div>
+    <div class="msg"><span data-field="ticker.message">Lunch today · chicken bowl · salad bar · vegan option available · SAT practice sign-ups close Friday · lost: silver earbuds in the library, see front office · drama club auditions Monday 3:30 in the auditorium · spirit week starts next Monday</span><span class="star">●</span><span data-field="ticker.message2">Lunch today · chicken bowl · salad bar · vegan option available · SAT practice sign-ups close Friday · lost: silver earbuds in the library, see front office · drama club auditions Monday 3:30 in the auditorium · spirit week starts next Monday</span></div>
+  </div>
+
+</div></div></div>
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var THEME={cBg:'--c-bg',cInk:'--c-ink',cBrand:'--c-brand',cGold:'--c-gold',cGreen:'--c-green',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();new MutationObserver(function(){applyTheme();}).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(function(){autofit();}).observe(document.querySelector('.stage'),{subtree:true,childList:true,characterData:true});
+  var DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m+' '+(d.getHours()<12?'am':'pm');}
+  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});document.querySelectorAll('[data-live="bigclock"]').forEach(function(el){el.textContent=(now.getHours()%12||12)+':'+(now.getMinutes()<10?'0':'')+now.getMinutes();});document.querySelectorAll('[data-live="datecap"]').forEach(function(el){el.textContent=DAYS[now.getDay()]+', '+MON[now.getMonth()]+' '+now.getDate()+' · AM Broadcast';});}
+  tick();setInterval(tick,15000);
+})();
+</script>
+</body></html>

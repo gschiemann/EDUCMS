@@ -1,0 +1,172 @@
+<!doctype html>
+<!-- HS · CAFETERIA WEEK — FLAGSHIP. Diner identity, tokenized theme + auto-fit +
+     photo slots, live clock + auto today-highlight, safe ticker, portrait. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Cafeteria — This Week</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Bungee&family=Inter:wght@500;600;700;800&family=Monoton&family=Archivo:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  --c-page:#f4efe2;--c-ink:#0d1b3d;--c-ink2:#475569;--c-accent:#e03b1c;--c-accent2:#ffc42b;--c-board:#0d1b3d;--c-mint:#2faa7e;
+  --f-display:'Bungee';--f-head:'Oswald';--f-body:'Inter';--f-neon:'Monoton';
+  --scale:1;
+  --t-dept:calc(44px*var(--scale));--t-title:calc(150px*var(--scale));
+  --t-chipk:calc(34px*var(--scale));--t-chipv:calc(86px*var(--scale));
+  --t-neon:calc(110px*var(--scale));--t-marqsub:calc(48px*var(--scale));
+  --t-daylbl:calc(36px*var(--scale));--t-daynm:calc(64px*var(--scale));--t-daymain:calc(72px*var(--scale));--t-daydesc:calc(36px*var(--scale));--t-daytag:calc(26px*var(--scale));--t-dayprice:calc(64px*var(--scale));
+  --t-ticker:calc(44px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#07090f;color:var(--c-ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--c-page);box-shadow:0 80px 200px rgba(0,0,0,.55);display:flex;flex-direction:column;gap:32px;padding:56px 60px 0}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.3}}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes neon{0%,100%{filter:drop-shadow(0 0 12px color-mix(in srgb,var(--c-accent) 60%,transparent))}50%{filter:drop-shadow(0 0 28px color-mix(in srgb,var(--c-accent) 95%,transparent))}}
+
+.head{flex:none;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:36px}
+.seal{width:230px;height:230px;display:grid;place-items:center;text-align:center;line-height:1;color:var(--c-page);background:var(--c-accent);clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);box-shadow:0 20px 40px rgba(0,0,0,.4);font-family:var(--f-display);font-size:46px}
+.seal .est{font-size:20px;letter-spacing:.18em;margin-top:10px;color:rgba(255,255,255,.7)}
+.seal.has-img>div{display:none}.seal.has-img{background-size:cover;background-position:center;clip-path:none;border-radius:16px}
+.titlewrap .dept{font-family:var(--f-head);font-weight:700;font-size:var(--t-dept);letter-spacing:.2em;color:var(--c-accent);text-transform:uppercase;white-space:nowrap}
+.titlewrap .name{font-family:var(--f-display);font-size:var(--t-title);line-height:.88;letter-spacing:-.01em;color:var(--c-ink);text-shadow:8px 8px 0 var(--c-accent2)}
+.chips{display:flex;gap:26px}
+.chip{background:var(--c-ink);color:var(--c-page);padding:20px 32px;min-width:260px;text-align:center;border:7px solid var(--c-accent2);border-radius:6px}
+.chip.lit{background:var(--c-accent);border-color:var(--c-page)}
+.chip .k{font-family:var(--f-head);font-weight:700;font-size:var(--t-chipk);letter-spacing:.18em;text-transform:uppercase;color:var(--c-accent2);line-height:1;white-space:nowrap}
+.chip.lit .k{color:rgba(255,255,255,.9)}
+.chip .v{font-family:var(--f-display);font-size:var(--t-chipv);line-height:1;color:#fff;margin-top:8px;white-space:nowrap}
+
+.marq{flex:none;height:188px;background:var(--c-board);border:10px solid var(--c-accent2);border-radius:8px;display:flex;align-items:center;justify-content:space-between;padding:0 70px;overflow:hidden;gap:48px}
+.marq .neon{font-family:var(--f-neon),cursive;font-size:var(--t-neon);color:var(--c-accent);letter-spacing:.04em;line-height:1;animation:neon 2s ease-in-out infinite;white-space:nowrap}
+.marq .sub{font-family:var(--f-head);font-weight:700;font-size:var(--t-marqsub);color:var(--c-page);letter-spacing:.04em;text-transform:uppercase;text-align:right;line-height:1.2;flex:1;text-wrap:balance}
+.marq .sub b{color:var(--c-accent2)}
+
+.week{flex:1;min-height:0;display:grid;grid-template-columns:repeat(5,1fr);gap:24px;padding-bottom:8px}
+.day{background:#fff;color:var(--c-ink);border:7px solid var(--c-ink);border-radius:8px;position:relative;display:flex;flex-direction:column;overflow:hidden}
+.day::before{content:'';position:absolute;top:0;left:0;right:0;height:16px;background:var(--c-accent2);z-index:1}
+.day .hdr{flex:none;padding:34px 26px 16px;display:flex;justify-content:space-between;align-items:baseline;border-bottom:5px solid var(--c-ink);gap:12px}
+.day .lbl{font-family:var(--f-head);font-weight:700;font-size:var(--t-daylbl);letter-spacing:.18em;text-transform:uppercase;color:var(--c-accent);line-height:1;white-space:nowrap}
+.day .nm{font-family:var(--f-display);font-size:var(--t-daynm);color:var(--c-ink);line-height:.95;white-space:nowrap}
+.day .photo{flex:1;min-height:0;background:radial-gradient(ellipse 80% 70% at 50% 42%, #6a3a24 0%, #2a160d 78%);background-size:cover;background-position:center;border-bottom:5px solid var(--c-ink);position:relative;overflow:hidden;display:grid;place-items:center}
+.day .photo::before{content:'';position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:88%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle, rgba(255,236,200,.32) 0%, rgba(255,236,200,.08) 45%, transparent 68%);z-index:0}
+.day .photo.has-img::before{display:none}
+.day .photo .ic{font-size:360px;line-height:1;filter:drop-shadow(0 26px 30px rgba(0,0,0,.55));position:relative;z-index:1}
+.day .photo.has-img .ic{display:none}
+.day .photo .plate,.day .photo .garnish{display:none}
+.day .body{flex:none;padding:24px 26px;display:flex;flex-direction:column;gap:14px}
+.day .mainwrap{flex:none;height:120px;display:flex;align-items:center}
+.day .main{width:100%;font-family:var(--f-display);font-size:var(--t-daymain);line-height:.92;color:var(--c-ink);text-transform:uppercase;letter-spacing:-.01em}
+.day .main em{font-style:normal;color:var(--c-accent)}
+.day .desc{flex:none;font-family:var(--f-body);font-weight:600;font-size:var(--t-daydesc);color:var(--c-ink2);line-height:1.25;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;min-height:3.2em}
+.day .row{flex:none;display:flex;justify-content:space-between;align-items:center;gap:12px;border-top:3px dashed rgba(13,27,61,.25);padding-top:16px}
+.day .tags{display:flex;gap:8px;flex-wrap:wrap}
+.day .tag{font-family:var(--f-head);font-weight:700;font-size:var(--t-daytag);letter-spacing:.06em;text-transform:uppercase;background:var(--c-ink);color:var(--c-accent2);padding:6px 12px;line-height:1;border-radius:6px;white-space:nowrap}
+.day .tag.m{background:color-mix(in srgb,var(--c-mint) 20%,transparent);color:color-mix(in srgb,var(--c-mint) 80%,#000)}
+.day .tag.r{background:color-mix(in srgb,var(--c-accent) 18%,transparent);color:color-mix(in srgb,var(--c-accent) 80%,#000)}
+.day .price{font-family:var(--f-display);font-size:var(--t-dayprice);color:var(--c-accent);line-height:1;white-space:nowrap}
+.day.today{background:var(--c-ink);color:var(--c-page)}
+.day.today::before{background:var(--c-accent)}
+.day.today .tagnow{position:absolute;top:24px;right:18px;background:var(--c-accent2);color:var(--c-ink);font-family:var(--f-display);font-size:24px;letter-spacing:.1em;padding:6px 14px;line-height:1;z-index:2;border-radius:6px}
+.day.today .hdr{border-bottom-color:rgba(255,255,255,.25)} .day.today .nm{color:#fff} .day.today .lbl{color:var(--c-accent2)}
+.day.today .main{color:#fff} .day.today .main em{color:var(--c-accent2)} .day.today .desc{color:rgba(255,255,255,.75)}
+.day.today .row{border-top-color:rgba(255,255,255,.2)} .day.today .tag{background:rgba(255,196,43,.2);color:var(--c-accent2)} .day.today .price{color:var(--c-accent2)} .day.today .photo{border-bottom-color:rgba(255,255,255,.2)}
+
+.ticker{flex:none;height:92px;margin:0 -60px;background:var(--c-accent2);color:var(--c-ink);display:flex;align-items:center;overflow:hidden;border-top:6px solid var(--c-accent)}
+.ticker .tag{position:relative;z-index:2;flex:none;background:var(--c-ink);color:var(--c-accent2);font-family:var(--f-display);font-size:36px;padding:0 40px;height:100%;display:flex;align-items:center;letter-spacing:.06em}
+.ticker .msg{font-family:var(--f-head);font-weight:700;font-size:var(--t-ticker);padding-left:40px;white-space:nowrap;letter-spacing:.06em;text-transform:uppercase;animation:sc 75s linear infinite}
+
+@media (orientation:portrait){.stage[data-orient="port"] .week{grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr}.stage[data-orient="port"]{--t-title:calc(120px*var(--scale))}}
+</style><script>/*EDUCMS-SHIM-V4*/(function(){try{
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){if(el.children.length===0){el.textContent=text[k];}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=text[k];}else{el.insertBefore(document.createTextNode(text[k]),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+addEventListener('message',function(e){try{var d=e.data;if(d&&d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div data-widget="theme" hidden>
+  <span data-field="theme.cPage">#f4efe2</span><span data-field="theme.cInk">#0d1b3d</span>
+  <span data-field="theme.cAccent">#e03b1c</span><span data-field="theme.cAccent2">#ffc42b</span>
+  <span data-field="theme.cMint">#2faa7e</span>
+  <span data-field="theme.fDisplay">Bungee</span><span data-field="theme.fHead">Oswald</span>
+  <span data-field="theme.fBody">Inter</span><span data-field="theme.fNeon">Monoton</span><span data-field="theme.scale">1</span>
+</div>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+  <header class="head">
+    <div class="seal" data-widget="school" data-imgslot="school.logo"><div><span data-field="school.initials">WHS</span><br/><span class="est" data-field="school.est">EST. 1956</span></div></div>
+    <div class="titlewrap" data-widget="dept"><div class="dept" data-field="dept.label">Cafeteria · This Week</div><div class="name" data-field="dept.title">DINER</div></div>
+    <div class="chips">
+      <div class="chip" data-widget="clock"><div class="k" data-field="clock.label">Right now</div><div class="v" data-field="clock.time" data-live="clock">11:42</div></div>
+      <div class="chip lit" data-widget="weekof"><div class="k" data-field="weekof.label">Week of</div><div class="v" data-field="weekof.value" data-live="weekof">Apr 21</div></div>
+    </div>
+  </header>
+
+  <div class="marq" data-widget="marquee">
+    <div class="neon" data-field="marquee.neon">This week</div>
+    <div class="sub" data-fit data-fit-min="34" data-fit-max="56" data-field="marquee.sub">Vegan + GF entrées <b>every day</b> · Salad bar 11–1 · Harvest of the month: <b>APPLE</b></div>
+  </div>
+
+  <div class="week" data-widget="week">
+    <div class="day" data-widget="week.0"><div class="hdr"><div class="lbl" data-field="week.0.lbl">Mon</div><div class="nm" data-field="week.0.nm">Apr 21</div></div>
+      <div class="photo" data-imgslot="week.0.img"><div class="plate" data-field="week.0.plate">🍽️</div><div class="ic" data-field="week.0.ic">🌭</div><div class="garnish" data-field="week.0.garnish">🍟</div></div>
+      <div class="body"><div class="mainwrap"><div class="main" data-fit="single" data-fit-min="44" data-fit-max="76"><span data-field="week.0.m1">Chili </span><em data-field="week.0.m2">dogs</em></div></div>
+        <div class="desc" data-field="week.0.desc">All-beef · house chili · cheddar · onion · slaw on the side</div>
+        <div class="row"><div class="tags"><span class="tag" data-field="week.0.t0">Veg opt</span><span class="tag m" data-field="week.0.t1">GF bun</span></div><div class="price" data-field="week.0.price">$4.25</div></div></div></div>
+    <div class="day today" data-widget="week.1"><div class="tagnow" data-field="week.1.now">Today</div><div class="hdr"><div class="lbl" data-field="week.1.lbl">Tue</div><div class="nm" data-field="week.1.nm">Apr 22</div></div>
+      <div class="photo" data-imgslot="week.1.img"><div class="plate" data-field="week.1.plate">🍽️</div><div class="ic" data-field="week.1.ic">🍔</div><div class="garnish" data-field="week.1.garnish">🍟</div></div>
+      <div class="body"><div class="mainwrap"><div class="main" data-fit="single" data-fit-min="44" data-fit-max="76"><span data-field="week.1.m1">Smash </span><em data-field="week.1.m2">burger</em></div></div>
+        <div class="desc" data-field="week.1.desc">Double-stack · american · pickles · house sauce · crinkle fries</div>
+        <div class="row"><div class="tags"><span class="tag" data-field="week.1.t0">Veg opt</span><span class="tag" data-field="week.1.t1">Local beef</span></div><div class="price" data-field="week.1.price">$4.50</div></div></div></div>
+    <div class="day" data-widget="week.2"><div class="hdr"><div class="lbl" data-field="week.2.lbl">Wed</div><div class="nm" data-field="week.2.nm">Apr 23</div></div>
+      <div class="photo" data-imgslot="week.2.img"><div class="plate" data-field="week.2.plate">🍽️</div><div class="ic" data-field="week.2.ic">🍲</div><div class="garnish" data-field="week.2.garnish">🥖</div></div>
+      <div class="body"><div class="mainwrap"><div class="main" data-fit="single" data-fit-min="44" data-fit-max="76"><span data-field="week.2.m1">Grain </span><em data-field="week.2.m2">bowl</em></div></div>
+        <div class="desc" data-field="week.2.desc">Brown rice · roasted veg · chickpeas · tahini-lemon · feta</div>
+        <div class="row"><div class="tags"><span class="tag m" data-field="week.2.t0">Vegan opt</span><span class="tag m" data-field="week.2.t1">GF</span></div><div class="price" data-field="week.2.price">$4.00</div></div></div></div>
+    <div class="day" data-widget="week.3"><div class="hdr"><div class="lbl" data-field="week.3.lbl">Thu</div><div class="nm" data-field="week.3.nm">Apr 24</div></div>
+      <div class="photo" data-imgslot="week.3.img"><div class="plate" data-field="week.3.plate">🍽️</div><div class="ic" data-field="week.3.ic">🍝</div><div class="garnish" data-field="week.3.garnish">🥖</div></div>
+      <div class="body"><div class="mainwrap"><div class="main" data-fit="single" data-fit-min="44" data-fit-max="76"><span data-field="week.3.m1">Pasta </span><em data-field="week.3.m2">night</em></div></div>
+        <div class="desc" data-field="week.3.desc">Spaghetti · marinara or alfredo · meatballs · garlic bread</div>
+        <div class="row"><div class="tags"><span class="tag" data-field="week.3.t0">Veg opt</span><span class="tag r" data-field="week.3.t1">Dairy</span></div><div class="price" data-field="week.3.price">$3.75</div></div></div></div>
+    <div class="day" data-widget="week.4"><div class="hdr"><div class="lbl" data-field="week.4.lbl">Fri</div><div class="nm" data-field="week.4.nm">Apr 25</div></div>
+      <div class="photo" data-imgslot="week.4.img"><div class="plate" data-field="week.4.plate">🍽️</div><div class="ic" data-field="week.4.ic">🌯</div><div class="garnish" data-field="week.4.garnish">🍚</div></div>
+      <div class="body"><div class="mainwrap"><div class="main" data-fit="single" data-fit-min="44" data-fit-max="76"><span data-field="week.4.m1">Taco </span><em data-field="week.4.m2">bar</em></div></div>
+        <div class="desc" data-field="week.4.desc">Build your own · 6 fillings · 5 salsas · rice and beans</div>
+        <div class="row"><div class="tags"><span class="tag m" data-field="week.4.t0">Vegan opt</span><span class="tag" data-field="week.4.t1">GF shells</span></div><div class="price" data-field="week.4.price">$4.25</div></div></div></div>
+  </div>
+
+  <div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">This week</div><div class="msg"><span data-field="ticker.message">★ Harvest of the month: APPLE · local from Banner farm ★ vegan + GF entrées every day at line B ★ Friday taco bar 11–1 ★ pre-orders: open the app ★ </span><span data-field="ticker.message2">★ Harvest of the month: APPLE · local from Banner farm ★ vegan + GF entrées every day at line B ★ Friday taco bar 11–1 ★ pre-orders: open the app ★ </span></div></div>
+
+</div></div></div>
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var THEME={cPage:'--c-page',cInk:'--c-ink',cAccent:'--c-accent',cAccent2:'--c-accent2',cMint:'--c-mint',fDisplay:'--f-display',fHead:'--f-head',fBody:'--f-body',fNeon:'--f-neon',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();new MutationObserver(function(){applyTheme();}).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(function(){autofit();}).observe(document.querySelector('.stage'),{subtree:true,childList:true,characterData:true});
+  /* live clock + auto today-highlight (Mon–Fri) */
+  var DAYIDX={1:0,2:1,3:2,4:3,5:4};
+  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m+' '+(d.getHours()<12?'am':'pm');}
+  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});
+    var di=DAYIDX[now.getDay()];if(di!=null){document.querySelectorAll('.day').forEach(function(d,i){d.classList.toggle('today',i===di);var t=d.querySelector('.tagnow');if(t)t.remove();});var td=document.querySelectorAll('.day')[di];if(td&&!td.querySelector('.tagnow')){var s=document.createElement('div');s.className='tagnow';s.textContent='Today';td.appendChild(s);}}}
+  tick();setInterval(tick,30000);
+})();
+</script>
+</body></html>

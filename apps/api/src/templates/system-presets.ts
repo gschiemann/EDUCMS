@@ -462,7 +462,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Game-day scoreboard lobby: jersey chest greeting, game-of-the-week card, coach spotlight, pep-rally announcement, pennants, PA-system ticker.',
     category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0d1b3d',
-    zones: [{ name: 'Scene', widgetType: 'HS_VARSITY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/varsity.html' } }],
   },
   {
     id: 'preset-hs-broadcast',
@@ -470,7 +470,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Newsroom lower-thirds lobby: ON AIR indicator, lower-third headline, forecast panel, featured guest of the week, breaking-story card, bottom crawl ticker.',
     category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0b1025',
-    zones: [{ name: 'Scene', widgetType: 'HS_BROADCAST', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/broadcast.html' } }],
   },
   {
     id: 'preset-hs-yearbook',
@@ -478,7 +478,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Magazine-spread lobby: serif masthead, drop-cap italic lede, photo feature with caption, featured portrait pull-quote, calendar folio footer, wire ticker.',
     category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#f7f3ea',
-    zones: [{ name: 'Scene', widgetType: 'HS_YEARBOOK', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/yearbook.html' } }],
   },
   {
     id: 'preset-hs-terminal',
@@ -486,7 +486,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'CRT monitor lobby: phosphor-green monospace, scanlines, whoami teacher card, cron events log, /var/log/syslog ticker, VT323 banner with blinking cursor.',
     category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#060f06',
-    zones: [{ name: 'Scene', widgetType: 'HS_TERMINAL', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/terminal.html' } }],
   },
   {
     id: 'preset-hs-transit',
@@ -542,6 +542,22 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0e1a',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/ath-standings.html' } }],
+  },
+  {
+    id: 'preset-hs-ath-biggame',
+    name: '🏟️ Athletics — Big Game',
+    description: 'Single-matchup hype board: giant auto-fit team names, team-color split wash, live countdown to kickoff, records/streak + venue/tickets strip. Auto-fit text, portrait + landscape. 4K.',
+    category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0e1a',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/ath-biggame.html' } }],
+  },
+  {
+    id: 'preset-hs-ath-broadcast',
+    name: '📺 Athletics — Broadcast Desk',
+    description: 'Broadcast-style athletics board: lower-third score strip, matchup panel, anchor/player spotlight, live ticker crawl. Auto-fit text, portrait + landscape. 4K.',
+    category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0e1a',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/ath-broadcast.html' } }],
   },
   // ── Sprint 13 — Main Scoreboard. THE real game board, as a template.
   // 2026-05-19: the operator called the earlier multi-zone primitive
@@ -745,6 +761,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     category: 'CAFETERIA_MENU', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#fef9f2',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/caf-counter.html' } }],
+  },
+  {
+    id: 'preset-hs-caf-week',
+    name: '🍱 Cafeteria — This Week',
+    description: 'Week-at-a-glance menu grid: five day columns with per-day entrées + dietary chips, today highlighted, rotating spotlight. Auto-fit text, portrait + landscape. 4K.',
+    category: 'CAFETERIA_MENU', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0b1220',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/caf-week.html' } }],
   },
   {
     id: 'preset-hs-caf-market',
