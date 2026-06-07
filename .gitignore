@@ -29,8 +29,12 @@ apps/api/uploads/
 # Turborepo
 .turbo/
 
-# Claude Code local session data
-.claude/
+# Claude Code local session data stays untracked — EXCEPT shared agent
+# definitions under .claude/agents/, which are version-controlled so the
+# template-designer agent (and any future agents) persist across re-clones
+# and are shared with the team.
+.claude/*
+!.claude/agents/
 
 # Playwright
 test-results/
