@@ -60,8 +60,8 @@ value updates a CSS variable live (incl. a global `--scale` that resizes ALL tex
 Expose: every palette color, all font families, and the scale.
 
 ## 4. The rest of the flagship bar (recap)
-- **Auto-fit text** (`data-fit` / `data-fit="single"`) — fills its box; re-fits on edit + after webfonts load.
-- **20-ft legibility** — ~40px hard minimum on the 3840 stage; never clamp/hide text behind `…` (these are non-touch boards).
+- **Auto-fit text** (`data-fit` / `data-fit="single"`) — on **every editable text block** (not just headlines), so any CMS edit re-fits live. Floor every fit at **50px** (`data-fit-min="50"`) — never shrink below legible; if it won't fit at 50px the box gives, never a clip. Re-fits after webfonts load.
+- **20-ft legibility** — **50px HARD MINIMUM** on the 3840 stage for the smallest supporting text (65" TVs viewed ~20 ft away: 4K on a 65" panel ≈ 68px/inch, so 50px ≈ 0.74" cap height ≈ legible at ~20 ft). Body copy **≥60px**, section values / day-names 100px+, heroes far larger — 50 is the FLOOR, not the norm. Never clamp/hide text behind `…` (these are non-touch boards).
 - **Portrait + landscape** from one file (auto-detect, or `?o=portrait` / `?o=landscape`).
 - **Live data** — clocks, bell schedules, countdowns, rotators from small config blocks.
 - **Safe ticker** — the tag block sits above the scroll (z-index) so text can't bleed under it.
@@ -207,9 +207,9 @@ Design must be identical across the library. Before a template is "done", ALL of
 - [ ] Orientation auto-detects AND honors `?o=portrait` / `?o=landscape`; both orientations verified zero-overflow.
 
 **Type & legibility**
-- [ ] ~40px hard minimum text on the 3840 stage (readable from 20 ft); primary content much larger.
+- [ ] **50px hard minimum** text on the 3840 stage (65" @ ~20 ft); body copy ≥60px; primary content far larger.
 - [ ] NO clipping, NO text hidden behind `…` (these are non-touch boards) — wrap to another row or auto-fit instead.
-- [ ] Auto-fit (`data-fit` / `data-fit="single"`) on headline-class text; re-fits on edit and after webfonts load.
+- [ ] Auto-fit (`data-fit`, floor `data-fit-min="50"`) on **every editable text block** (not just headlines) so any edit re-fits live; never below 50px; re-fits after webfonts load.
 
 **Editability (section 1–3)**
 - [ ] Every logo/seal/crest/photo/dish/portrait/background = `data-imgslot` with placeholder + `has-img` hide rule.

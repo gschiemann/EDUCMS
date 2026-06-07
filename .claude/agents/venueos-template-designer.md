@@ -94,9 +94,11 @@ object then skins the entire library; do NOT invent `cBrand`/`cGold`/etc.):
   `senior.photo`, `hero.bg`). The shim writes the chosen URL to `data-img` and the
   runtime paints it as `background-image` + adds `.has-img`; gate the empty-state
   placeholder on `.has-img` so it hides once a photo is set.
-- Headlines that must fill their box use `data-fit` (+ `data-fit-min`/`data-fit-max`,
-  and `data-fit="single"` for one-line). The auto-fit engine binary-searches the
-  font size.
+- EVERY editable text block (headline, body, label, value — NOT just headlines) uses
+  `data-fit` (+ `data-fit-max`; `data-fit="single"` for one-line) so any CMS edit
+  re-fits live. The auto-fit engine binary-searches the font size down to a **50px
+  floor** (`data-fit-min` defaults to 50) — never below legible; if it won't fit at
+  50px the box gives (bigger box / shorter default copy), never a clip.
 - Live clock fields: `data-field="clock.time" data-live="clock"`.
 
 **Do NOT hand-write the `EDUCMS-SHIM` block.** It (`EDUCMS-SHIM-V4`) is injected
@@ -141,7 +143,7 @@ do not "improve" it without re-verifying in WebKit):
   function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
   applyTheme();new MutationObserver(applyTheme).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
   document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
-  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||50),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
   function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
   setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
   new MutationObserver(autofit).observe(document.querySelector('.stage'),{subtree:true,childList:true,characterData:true});
@@ -164,8 +166,9 @@ unsure, open one and match its bones.
   design canvas (still reflow to portrait). One file does BOTH orientations via
   the `@media (orientation:portrait)` + `.stage[data-orient="port"]` overrides and
   `?o=portrait`/`?o=landscape`.
-- **20-ft legibility:** hero ~250–300px, section values ~100–130px, body never
-  below ~40px on the 3840 stage. Numbers get `font-variant-numeric:tabular-nums`.
+- **20-ft legibility:** hero ~250–300px, section values ~100–130px, body copy
+  ≥60px, smallest supporting text **never below 50px** on the 3840 stage (65" TVs
+  @ ~20 ft — 50px is the HARD FLOOR). Numbers get `font-variant-numeric:tabular-nums`.
   No clamped/ellipsed primary copy — auto-fit instead.
 - **Every widget is a SHAPE, never a flat rounded-rectangle-with-soft-shadow.**
   Use real depth: hard offset shadows (`box-shadow:0 12px 0 var(--brand2)`),
