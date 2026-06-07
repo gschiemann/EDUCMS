@@ -14,14 +14,14 @@
   --ink:#ede0c4;--bg:#0a0610;--pos:#7aff5a;--neg:#ff6a18;
   --f-display:'Bebas Neue';--f-body:'Fraunces';--f-mono:'JetBrains Mono';
   --night:#0a0610;--night2:#160c22;--bone:#ede0c4;--mute:#9a8fb0;
-  /* 50px hard floor on the 3840 stage (65" @ ~20 ft); body copy >=60px. Auto-fit re-fits on edit. */
-  --t-est:calc(50px*var(--scale));--t-school:calc(116px*var(--scale));--t-vol:calc(50px*var(--scale));
-  --t-chipk:calc(50px*var(--scale));--t-chipv:calc(78px*var(--scale));
-  --t-ribbon:calc(52px*var(--scale));--t-hero:calc(460px*var(--scale));--t-herosub:calc(62px*var(--scale));
-  --t-bignum:calc(440px*var(--scale));--t-bignumk:calc(56px*var(--scale));
-  --t-cardk:calc(50px*var(--scale));--t-cardh:calc(108px*var(--scale));--t-cardp:calc(62px*var(--scale));--t-cardm:calc(50px*var(--scale));
-  --t-skedh:calc(70px*var(--scale));--t-skedd:calc(50px*var(--scale));--t-skede:calc(62px*var(--scale));--t-skedw:calc(50px*var(--scale));
-  --t-tick:calc(52px*var(--scale));
+  /* 60px hard floor (TRIAL) on the 3840 stage (65" @ ~20 ft); body copy >=60px. Auto-fit re-fits on edit. */
+  --t-est:calc(60px*var(--scale));--t-school:calc(116px*var(--scale));--t-vol:calc(60px*var(--scale));
+  --t-chipk:calc(60px*var(--scale));--t-chipv:calc(78px*var(--scale));
+  --t-ribbon:calc(60px*var(--scale));--t-hero:calc(460px*var(--scale));--t-herosub:calc(62px*var(--scale));
+  --t-bignum:calc(440px*var(--scale));--t-bignumk:calc(60px*var(--scale));
+  --t-cardk:calc(60px*var(--scale));--t-cardh:calc(108px*var(--scale));--t-cardp:calc(62px*var(--scale));--t-cardm:calc(60px*var(--scale));
+  --t-skedh:calc(70px*var(--scale));--t-skedd:calc(60px*var(--scale));--t-skede:calc(62px*var(--scale));--t-skedw:calc(60px*var(--scale));
+  --t-tick:calc(60px*var(--scale));
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#04020a;color:var(--bone);font-family:var(--f-body),serif}
@@ -51,7 +51,7 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 .mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:30px;border-bottom:3px solid color-mix(in srgb,var(--brand) 60%,transparent);padding-bottom:14px}
 .mast .est{font-family:var(--f-mono);font-weight:800;font-size:var(--t-est);letter-spacing:.32em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
 .mast .school{display:flex;align-items:center;gap:22px}
-.mast .crest{width:92px;height:92px;border-radius:50%;border:3px solid var(--brand);background:linear-gradient(135deg,var(--brand),var(--accent2));background-size:cover;background-position:center;flex:none;display:grid;place-items:center;font-family:var(--f-display);font-size:calc(50px*var(--scale));color:#05030a;overflow:hidden}
+.mast .crest{width:92px;height:92px;border-radius:50%;border:3px solid var(--brand);background:linear-gradient(135deg,var(--brand),var(--accent2));background-size:cover;background-position:center;flex:none;display:grid;place-items:center;font-family:var(--f-display);font-size:calc(60px*var(--scale));color:#05030a;overflow:hidden}
 .mast .crest .ph{line-height:1}
 .mast .crest.has-img{border-color:var(--accent)}
 .mast .crest.has-img .ph{display:none}
@@ -98,7 +98,7 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 .sked li .w{font-family:var(--f-mono);font-weight:600;font-size:var(--t-skedw);color:color-mix(in srgb,var(--bone) 78%,transparent);margin-top:6px;text-transform:uppercase;letter-spacing:.14em}
 
 .ticker{position:absolute;bottom:0;left:0;right:0;height:150px;background:var(--brand);display:flex;align-items:center;overflow:hidden;z-index:9;border-top:5px solid var(--accent)}
-.ticker .tag{position:relative;z-index:2;flex:none;background:#05030a;color:var(--accent);font-family:var(--f-display);font-size:calc(56px*var(--scale));padding:0 40px;height:100%;display:flex;align-items:center;letter-spacing:.04em}
+.ticker .tag{position:relative;z-index:2;flex:none;background:#05030a;color:var(--accent);font-family:var(--f-display);font-size:calc(60px*var(--scale));padding:0 40px;height:100%;display:flex;align-items:center;letter-spacing:.04em}
 .ticker .msg{position:relative;z-index:1;font-family:var(--f-body);font-weight:700;font-style:italic;font-size:var(--t-tick);color:#05030a;padding-left:40px;white-space:nowrap;animation:sc 80s linear infinite}
 @keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
@@ -187,7 +187,7 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
   function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
   applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
   document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
-  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||60),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
   function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
   setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
   new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
