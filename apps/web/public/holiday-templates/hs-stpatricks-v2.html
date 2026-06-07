@@ -1,0 +1,212 @@
+<!doctype html>
+<!-- HS ST PATRICK'S v2 — "EMERALD & GOLD · LUCKY 17". Deep emerald field with a luminous
+     gold-shimmer arc, layered floating clovers + drifting gold dust + vignette; an oversized
+     BRANDABLE gold-foil headline + a huge days-to-17th countdown, refined gold-ruled cards, live
+     lucky-week schedule. Every text = data-field, crest = data-imgslot, ALL color (incl. the
+     foil) via canonical brand tokens so a school brand re-skins it. Auto-fit, portrait+landscape,
+     SOLID ticker, live clock/countdown/weekday. Bridge preserved. NO food panel. -->
+<html lang="en"><head><meta charset="utf-8"/><title>St Patrick's · HS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;--scale:1;
+  --brand:#1e8a47;--brand2:#06321c;--accent:#e8c040;--accent2:#3bb56a;
+  --ink:#eafff0;--bg:#06321c;--pos:#3bb56a;--neg:#d83a3a;
+  --f-display:'Bebas Neue';--f-body:'Fraunces';--f-mono:'JetBrains Mono';
+  --cream:#f3ffe8;--mute:#8fc0a0;
+  --gold-lite:color-mix(in srgb,var(--accent) 42%,#fff);
+  --gold-dark:color-mix(in srgb,var(--accent) 58%,#000);
+  --t-est:calc(32px*var(--scale));--t-school:calc(116px*var(--scale));--t-vol:calc(32px*var(--scale));
+  --t-chipk:calc(30px*var(--scale));--t-chipv:calc(78px*var(--scale));
+  --t-ribbon:calc(40px*var(--scale));--t-hero:calc(460px*var(--scale));--t-herosub:calc(54px*var(--scale));
+  --t-bignum:calc(440px*var(--scale));--t-bignumk:calc(56px*var(--scale));
+  --t-cardk:calc(32px*var(--scale));--t-cardh:calc(108px*var(--scale));--t-cardp:calc(36px*var(--scale));--t-cardm:calc(28px*var(--scale));
+  --t-skedh:calc(70px*var(--scale));--t-skedd:calc(30px*var(--scale));--t-skede:calc(56px*var(--scale));--t-skedw:calc(26px*var(--scale));
+  --t-tick:calc(44px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#021810;color:var(--cream);font-family:var(--f-body),serif}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;
+  background:radial-gradient(1500px 1100px at 50% -6%,color-mix(in srgb,var(--accent) 30%,var(--brand)) 0%,transparent 52%),radial-gradient(1900px 1500px at 80% 120%,color-mix(in srgb,var(--brand) 70%,#0a4a28),transparent 64%),linear-gradient(178deg,color-mix(in srgb,var(--brand) 60%,#0a4a28) 0%,var(--brand2) 56%,#031b10 100%)}
+
+.decor{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden}
+.arc{position:absolute;top:-340px;left:50%;transform:translateX(-50%);width:2600px;height:1400px;border-radius:50%;
+  background:radial-gradient(ellipse at 50% 0%,color-mix(in srgb,var(--accent) 60%,transparent) 0%,transparent 56%);opacity:.55;filter:blur(2px)}
+.shim{position:absolute;top:-200px;left:-30%;right:-30%;height:900px;background:linear-gradient(100deg,transparent 20%,color-mix(in srgb,var(--accent) 28%,transparent) 48%,transparent 76%);mix-blend-mode:screen;animation:sweep 9s ease-in-out infinite}
+@keyframes sweep{0%,100%{transform:translateX(-10%)}50%{transform:translateX(10%)}}
+.clover{position:absolute;z-index:1;opacity:.9}
+.clover .l{position:absolute;width:1px;height:1px;border-radius:50% 0 50% 50%;background:currentColor}
+.clover .l1{transform:rotate(-45deg) scale(1)}.clover .l2{transform:rotate(-135deg)}.clover .l3{transform:rotate(45deg)}.clover .l4{transform:rotate(135deg)}
+.big-clover{top:80px;right:-80px;width:1000px;height:1000px;color:color-mix(in srgb,var(--brand) 80%,#0c5a30);opacity:.5;filter:drop-shadow(24px 24px 0 rgba(0,0,0,.25));animation:spin 60s linear infinite}
+.big-clover .l{width:440px;height:440px;border-radius:50% 0 50% 50%}
+.big-clover .l1{top:0;left:280px}.big-clover .l2{top:280px;left:0}.big-clover .l3{top:280px;right:0}.big-clover .l4{top:560px;left:280px}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.float i{position:absolute;color:var(--accent);font-size:60px;opacity:.4;animation:rise 12s linear infinite}
+@keyframes rise{0%{transform:translateY(40px) rotate(0);opacity:0}12%{opacity:.5}100%{transform:translateY(-2300px) rotate(360deg);opacity:0}}
+.dust i{position:absolute;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);opacity:.6;animation:tw 4s ease-in-out infinite}
+@keyframes tw{0%,100%{opacity:.8;transform:scale(1)}50%{opacity:.2;transform:scale(.4)}}
+.vig{position:absolute;top:0;right:0;bottom:0;left:0;box-shadow:inset 0 0 420px rgba(0,0,0,.6)}
+
+.wrap{position:relative;z-index:3;width:100%;height:100%;display:flex;flex-direction:column;padding:104px 180px 150px}
+.mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:30px;border-bottom:3px solid color-mix(in srgb,var(--accent) 60%,transparent);padding-bottom:14px}
+.mast .est{font-family:var(--f-mono);font-weight:800;font-size:var(--t-est);letter-spacing:.32em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+.mast .school{display:flex;align-items:center;gap:22px}
+.mast .crest{width:92px;height:92px;border-radius:50%;border:3px solid var(--accent);background:linear-gradient(135deg,var(--brand),var(--accent2));background-size:cover;background-position:center;flex:none;display:grid;place-items:center;font-family:var(--f-display);font-size:calc(44px*var(--scale));color:var(--brand2);overflow:hidden}
+.mast .crest .ph{line-height:1}
+.mast .crest.has-img{border-color:var(--accent)}
+.mast .crest.has-img .ph{display:none}
+.mast .school .nm{font-family:var(--f-display);font-size:var(--t-school);color:var(--cream);letter-spacing:.04em;line-height:1;white-space:nowrap}
+.mast .school .nm em{color:var(--accent);font-style:normal}
+.mast .vol{font-family:var(--f-mono);font-weight:800;font-size:var(--t-vol);letter-spacing:.28em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+.chips{display:flex;gap:18px;flex:none}
+.chip{background:rgba(6,50,28,.7);border:2px solid var(--accent);border-radius:22px;padding:12px 24px;text-align:center;min-width:180px}
+.chip .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-chipk);color:var(--accent);text-transform:uppercase;letter-spacing:.12em;line-height:1}
+.chip .v{font-family:var(--f-display);font-size:var(--t-chipv);color:var(--cream);line-height:1;margin-top:2px;font-variant-numeric:tabular-nums}
+
+.hero{flex:none;display:grid;grid-template-columns:1fr auto;align-items:center;gap:40px;margin-top:18px}
+.hero .l .ribbon{display:inline-block;background:var(--brand);color:var(--cream);font-family:var(--f-mono);font-weight:800;font-size:var(--t-ribbon);letter-spacing:.28em;padding:12px 50px;text-transform:uppercase;box-shadow:0 0 0 3px var(--accent)}
+.hero .l h1{font-family:var(--f-display);font-size:var(--t-hero);line-height:.8;margin:12px 0 0;letter-spacing:.02em;
+  background:linear-gradient(178deg,var(--gold-lite) 0%,var(--accent) 42%,var(--gold-dark) 60%,var(--accent) 74%,var(--gold-lite) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 8px 0 rgba(0,0,0,.45)) drop-shadow(0 0 60px color-mix(in srgb,var(--accent) 45%,transparent))}
+.hero .l h1 em{font-style:italic;
+  background:linear-gradient(178deg,color-mix(in srgb,var(--accent2) 30%,#fff),var(--accent2) 60%,color-mix(in srgb,var(--accent2) 50%,#000));
+  -webkit-background-clip:text;background-clip:text}
+.hero .l .sub{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-herosub);color:var(--cream);margin-top:16px;line-height:1.18;max-width:1700px}
+.bignum{flex:none;text-align:center;background:var(--brand);color:var(--cream);border-radius:40px;padding:24px 56px;box-shadow:0 18px 0 var(--brand2),0 34px 50px rgba(0,0,0,.45);border:3px solid var(--accent)}
+.bignum .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-bignumk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+.bignum .v{font-family:var(--f-display);font-size:var(--t-bignum);line-height:.82;font-variant-numeric:tabular-nums;color:var(--cream)}
+
+.main{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,1fr);gap:36px;margin-top:30px}
+.cd{position:relative;background:rgba(8,52,30,.78);border:2px solid var(--accent);border-radius:24px;padding:30px 36px;display:flex;flex-direction:column;overflow:hidden;box-shadow:12px 12px 0 var(--brand2)}
+.cd::before{content:'';position:absolute;top:0;left:0;right:0;height:6px;background:linear-gradient(90deg,var(--gold-lite),var(--accent),var(--gold-dark))}
+.cd.feat{background:var(--accent);color:var(--brand2);border-color:var(--cream)}
+.cd.feat::before{background:linear-gradient(90deg,var(--brand2),var(--brand),var(--brand2))}
+.cd .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-cardk);color:var(--accent);text-transform:uppercase;letter-spacing:.24em}
+.cd.feat .k{color:var(--brand2)}
+.cd h2{font-family:var(--f-display);font-size:var(--t-cardh);line-height:.84;margin:8px 0 0;color:var(--cream);letter-spacing:.01em}
+.cd.feat h2{color:var(--brand2);font-size:calc(124px*var(--scale))}
+.cd h2 em{font-style:italic;color:var(--accent)}
+.cd.feat h2 em{color:var(--brand)}
+.cd p{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-cardp);margin:12px 0 0;line-height:1.18;color:var(--cream)}
+.cd.feat p{color:var(--brand2)}
+.cd .m{margin-top:auto;padding-top:14px;font-family:var(--f-mono);font-weight:800;font-size:var(--t-cardm);text-transform:uppercase;letter-spacing:.18em;color:var(--accent);border-top:1px dashed color-mix(in srgb,var(--accent) 60%,transparent);padding-top:14px}
+.cd.feat .m{color:var(--brand2);border-color:color-mix(in srgb,var(--brand2) 60%,transparent)}
+
+.sked{flex:none;margin-top:26px;background:var(--brand2);color:var(--cream);border-radius:22px;padding:20px 32px;display:flex;flex-direction:column;box-shadow:10px 10px 0 var(--brand);border:2px solid var(--accent)}
+.sked .hdr{flex:none;display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px dashed color-mix(in srgb,var(--accent) 70%,transparent);padding-bottom:10px}
+.sked .hdr h3{font-family:var(--f-display);font-size:var(--t-skedh);color:var(--accent);margin:0;letter-spacing:.04em}
+.sked .hdr .d{font-family:var(--f-mono);font-weight:800;font-size:var(--t-skedd);color:var(--cream);letter-spacing:.18em;text-transform:uppercase}
+.sked ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+.sked li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid color-mix(in srgb,var(--brand) 90%,var(--accent2));padding:4px 0 4px 18px}
+.sked li.today{border-left-color:var(--accent);background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 18%,transparent),transparent 72%)}
+.sked li .d{font-family:var(--f-mono);font-weight:800;font-size:var(--t-skedd);color:var(--accent);letter-spacing:.22em;text-transform:uppercase}
+.sked li .e{font-family:var(--f-display);font-size:var(--t-skede);color:var(--cream);line-height:1;margin-top:6px;letter-spacing:.02em}
+.sked li .e em{font-style:italic;color:var(--accent)}
+.sked li .w{font-family:var(--f-mono);font-weight:600;font-size:var(--t-skedw);color:color-mix(in srgb,var(--cream) 78%,transparent);margin-top:6px;text-transform:uppercase;letter-spacing:.14em}
+
+.ticker{position:absolute;bottom:0;left:0;right:0;height:150px;background:var(--accent);display:flex;align-items:center;overflow:hidden;z-index:8;border-top:5px solid var(--brand)}
+.ticker .tag{position:relative;z-index:2;flex:none;background:var(--brand2);color:var(--accent);font-family:var(--f-display);font-size:calc(56px*var(--scale));padding:0 40px;height:100%;display:flex;align-items:center;letter-spacing:.04em}
+.ticker .msg{position:relative;z-index:1;font-family:var(--f-body);font-weight:700;font-style:italic;font-size:var(--t-tick);color:var(--brand2);padding-left:40px;white-space:nowrap;animation:sc 80s linear infinite}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+@media (orientation:portrait){
+  .stage[data-orient="port"] .wrap{padding:140px 120px 156px}
+  .stage[data-orient="port"]{--t-hero:calc(300px*var(--scale));--t-bignum:calc(320px*var(--scale))}
+  .stage[data-orient="port"] .big-clover{top:60px;right:-200px;width:760px;height:760px}
+  .stage[data-orient="port"] .hero{grid-template-columns:1fr;gap:24px}
+  .stage[data-orient="port"] .main{grid-template-columns:1fr;grid-auto-rows:1fr}
+  .stage[data-orient="port"] .sked ul{grid-template-columns:repeat(2,1fr)}
+}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-stpatricks-v2"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#06321c</span><span data-field="theme.ink">#eafff0</span>
+  <span data-field="theme.brand">#1e8a47</span><span data-field="theme.brand2">#06321c</span>
+  <span data-field="theme.accent">#e8c040</span><span data-field="theme.accent2">#3bb56a</span>
+  <span data-field="theme.pos">#3bb56a</span><span data-field="theme.neg">#d83a3a</span>
+  <span data-field="theme.fDisplay">Bebas Neue</span><span data-field="theme.fBody">Fraunces</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
+</div>
+
+<div class="decor">
+  <div class="arc"></div>
+  <div class="shim"></div>
+  <div class="clover big-clover"><i class="l l1"></i><i class="l l2"></i><i class="l l3"></i><i class="l l4"></i></div>
+  <div class="float" id="float"></div>
+  <div class="dust" id="dust"></div>
+  <div class="vig"></div>
+</div>
+
+<div class="wrap">
+  <header class="mast" data-widget="masthead">
+    <div class="est" data-field="masthead.est">march · wear green</div>
+    <div class="school"><div class="crest" data-imgslot="school.logo"><span class="ph" data-field="masthead.crest">BH</span></div><div class="nm"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div></div>
+    <div class="vol" data-field="masthead.vol">lucky edition</div>
+  </header>
+
+  <section class="hero">
+    <div class="l" data-widget="headline">
+      <div class="ribbon" data-field="headline.kicker">★ wear green all week · tue 17 mar ★</div>
+      <h1 data-fit="single" data-fit-min="220" data-fit-max="460"><span data-field="headline.t1">Lucky </span><em data-field="headline.t2">17.</em></h1>
+      <div class="sub" data-field="headline.sub">School colors are emerald all week — gold lockers earn spirit points. ASB hosts cash trivia at lunch Tuesday, then the parade and pep rally roll out before the spring game Friday.</div>
+    </div>
+    <div class="bignum" data-widget="countdown"><div class="k" data-field="countdown.k">days to 17th</div><div class="v" data-field="countdown.v" data-countdown-to="Mar 17" data-demo="3">3</div></div>
+  </section>
+
+  <div class="main">
+    <section class="cd" data-widget="c0"><div class="k" data-field="c0.k">★ quad trivia</div><h2><span data-field="c0.t1">$50 </span><em data-field="c0.t2">cash</em></h2><p data-field="c0.p">Five rounds of Irish lore and general spirit. Teams of 3 — sign up at lunch by the senior bench. Top team takes the cash, second gets pizza for a week.</p><div class="m" data-field="c0.m">Tue · quad · 12:05</div></section>
+    <section class="cd feat" data-widget="c1"><div class="k" data-field="c1.k">★ pep parade</div><h2><span data-field="c1.t1">Main </span><em data-field="c1.t2">hall</em></h2><p data-field="c1.p">Marching band leads down the main hall to the front-lawn pep rally. Spring sports captains introduced. Bring noise — Tuesday after 7th period.</p><div class="m" data-field="c1.m">Tue · 2pm · hall → lawn</div></section>
+    <section class="cd" data-widget="c2"><div class="k" data-field="c2.k">★ dress code</div><h2><span data-field="c2.t1">Wear </span><em data-field="c2.t2">green</em></h2><p data-field="c2.p">Any shade counts — you won't get pinched at school, but you'll lose homeroom spirit points. Free pins at the front office for the unprepared.</p><div class="m" data-field="c2.m">Tue · all day</div></section>
+  </div>
+
+  <section class="sked" data-widget="sked">
+    <div class="hdr"><h3 data-field="sked.h">★ lucky week</h3><div class="d" data-field="sked.day">Mon 3/16 — Fri 3/20</div></div>
+    <ul data-week>
+      <li data-widget="sked.0" data-weekday="1"><div class="d" data-field="sked.0.d">MON</div><div class="e"><span data-field="sked.0.e1">Cap </span><em data-field="sked.0.e2">decor</em></div><div class="w" data-field="sked.0.w">homeroom doors all day</div></li>
+      <li data-widget="sked.1" data-weekday="2"><div class="d" data-field="sked.1.d">TUE</div><div class="e"><span data-field="sked.1.e1">Quad </span><em data-field="sked.1.e2">trivia</em></div><div class="w" data-field="sked.1.w">$50 prize · teams of 3</div></li>
+      <li data-widget="sked.2" data-weekday="2"><div class="d" data-field="sked.2.d">TUE</div><div class="e"><span data-field="sked.2.e1">Pep </span><em data-field="sked.2.e2">parade</em></div><div class="w" data-field="sked.2.w">main hall · band leads</div></li>
+      <li data-widget="sked.3" data-weekday="5"><div class="d" data-field="sked.3.d">FRI</div><div class="e"><span data-field="sked.3.e1">Spring </span><em data-field="sked.3.e2">game</em></div><div class="w" data-field="sked.3.w">field · home opener</div></li>
+    </ul>
+  </section>
+</div>
+
+<div class="ticker" data-widget="ticker">
+  <div class="tag" data-field="ticker.tag">~ TOP O' THE MORNIN' ~</div>
+  <div class="msg"><span data-field="ticker.message">★ Wear green all week — gold lockers earn spirit points ★ Quad trivia Tuesday noon — $50 cash, teams of 3 ★ Pep parade Tuesday 2pm — band leads main hall to the lawn ★ Spring game Friday — home opener ★ Pins free at the front office ★ </span><span>★ Wear green all week — gold lockers earn spirit points ★ Quad trivia Tuesday noon — $50 cash, teams of 3 ★ Pep parade Tuesday 2pm — band leads main hall to the lawn ★ Spring game Friday — home opener ★ Pins free at the front office ★ </span></div>
+</div>
+
+</div></div></div>
+
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var FL=document.getElementById('float');if(FL){var GL=['☘','✦','☘','✶'];for(var k1=0;k1<14;k1++){var c1=document.createElement('i');c1.textContent=GL[k1%GL.length];c1.style.left=((k1*53)%100)+'%';c1.style.bottom=(-((k1*70)%400))+'px';c1.style.fontSize=(42+(k1%5)*14)+'px';c1.style.animationDelay=((k1*0.85)%12)+'s';c1.style.animationDuration=(10+(k1%5))+'s';FL.appendChild(c1);}}
+  var DU=document.getElementById('dust');if(DU){for(var k2=0;k2<28;k2++){var d=document.createElement('i');d.style.left=((k2*37)%100)+'%';d.style.top=((k2*43)%100)+'%';d.style.animationDelay=((k2*0.4)%4)+'s';DU.appendChild(d);}}
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
+  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m;}
+  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});}
+  tick();setInterval(tick,15000);
+  var DMON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  function days(){document.querySelectorAll('[data-countdown-to]').forEach(function(el){var dm=el.getAttribute('data-demo');if(dm!=null){el.textContent=(''+ +dm);return;}var t=el.getAttribute('data-countdown-to').trim().toLowerCase().match(/([a-z]+)\s*(\d{1,2})/);if(!t||!(t[1].slice(0,3) in DMON))return;var now=new Date();now.setHours(0,0,0,0);var y=now.getFullYear(),target=new Date(y,DMON[t[1].slice(0,3)],+t[2]);if(target<now)target=new Date(y+1,DMON[t[1].slice(0,3)],+t[2]);var n=Math.round((target-now)/86400000);el.textContent=''+n;});}
+  days();setInterval(days,3600000);
+  function week(){document.querySelectorAll('[data-week]').forEach(function(ul){var demo=ul.getAttribute('data-demo-dow'),dow=demo!=null?+demo:new Date().getDay();ul.querySelectorAll('[data-weekday]').forEach(function(li){li.classList.toggle('today',+li.getAttribute('data-weekday')===dow);});});}
+  week();setInterval(week,600000);
+})();
+</script>
+
+<script id="holiday-bridge">(function(){function a(){var s=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-w'),10)||3840,h=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-h'),10)||2160,c=Math.min(window.innerWidth/s,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',c)}a();window.addEventListener('resize',a);function r(){var n=document.querySelectorAll('[data-field]'),s={},f=[];n.forEach(function(e){var k=e.getAttribute('data-field');if(!k||s[k])return;s[k]=1;var t=(e.textContent||'').trim();f.push({key:k,defaultText:t,multiline:/\n/.test(t)||t.length>80||e.tagName==='P'})});try{window.parent.postMessage({type:'holiday:ready',fields:f},window.location.origin)}catch(e){}}if(document.readyState==='complete'||document.readyState==='interactive')r();else document.addEventListener('DOMContentLoaded',r);document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document.body){if(n.nodeType===1&&n.hasAttribute&&n.hasAttribute('data-field')){try{window.parent.postMessage({type:'holiday:fieldClicked',key:n.getAttribute('data-field')},window.location.origin)}catch(e){}return}n=n.parentNode}});window.addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='holiday:setField'){var k=String(d.key||'');if(!k)return;var n=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\"')+'"]'),v=String(d.value==null?'':d.value);n.forEach(function(e){e.textContent=v})}})})();</script>
+<script src="_style-bridge.js?v=20260509"></script></body></html>

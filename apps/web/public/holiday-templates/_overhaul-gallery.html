@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Holiday Board Overhaul — Before / After (10)</title>
+<style>
+  :root{--bg:#0b0c10;--card:#15171f;--line:#262a36;--ink:#eef1f7;--mute:#9aa3b8;--before:#ff6b6b;--after:#41d18c}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  header{padding:40px 48px 20px;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:34px;letter-spacing:-.01em}
+  header p{margin:10px 0 0;color:var(--mute);font-size:18px;max-width:1100px;line-height:1.5}
+  .legend{margin-top:16px;display:flex;gap:24px;font-weight:700;font-size:15px}
+  .legend .b{color:var(--before)}.legend .a{color:var(--after)}
+  main{padding:24px 48px 80px;display:flex;flex-direction:column;gap:40px}
+  section{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .hd{display:flex;align-items:center;gap:14px;padding:18px 22px;border-bottom:1px solid var(--line)}
+  .hd .n{background:#2b3040;color:var(--ink);font-weight:800;border-radius:8px;padding:4px 12px;font-size:18px}
+  .hd h2{margin:0;font-size:24px;font-weight:800}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:0}
+  figure{margin:0;position:relative;background:#000;border-top:1px solid var(--line)}
+  figure.before{border-right:1px solid var(--line)}
+  figcaption{position:absolute;top:12px;left:12px;z-index:2;font-weight:800;font-size:14px;letter-spacing:.08em;padding:6px 12px;border-radius:7px}
+  figure.before figcaption{background:var(--before);color:#3a0000}
+  figure.after figcaption{background:var(--after);color:#062b18}
+  iframe{display:block;width:100%;aspect-ratio:16/9;border:0;background:#000}
+  @media (max-width:1100px){.pair{grid-template-columns:1fr}figure.before{border-right:0}}
+</style></head>
+<body>
+<header>
+  <h1>🎄 Holiday Boards — Complete Overhaul · Before vs After</h1>
+  <p>The 10 worst school holiday boards, rebuilt to the flagship bar: one dominant concept, fills the canvas, every word/photo editable, the school's brand re-skins the whole board, auto-fit (no clipping), portrait + landscape, no food panels. Old on the left, new on the right. These are live boards — they animate and show today's date.</p>
+  <div class="legend"><span class="b">◀ BEFORE (current production)</span><span class="a">AFTER (overhaul) ▶</span></div>
+</header>
+<main id="grid"></main>
+<script>
+  var PAIRS=[
+    ['1','HS · Spring Break (Easter)','hs-easter'],
+    ['2','HS · Thanksgiving','hs-thanksgiving'],
+    ['3','MS · Easter','ms-easter'],
+    ['4','HS · Valentine’s Day','hs-valentines'],
+    ['5','MS · Thanksgiving','ms-thanksgiving'],
+    ['6','HS · Halloween','hs-halloween'],
+    ['7','MS · Valentine’s Day','ms-valentines'],
+    ['8','HS · St. Patrick’s Day','hs-stpatricks'],
+    ['9','MS · St. Patrick’s Day','ms-stpatricks'],
+    ['10','MS · Halloween','ms-halloween']
+  ];
+  var html=PAIRS.map(function(p){return '<section><div class="hd"><span class="n">#'+p[0]+'</span><h2>'+p[1]+'</h2></div>'+
+    '<div class="pair">'+
+    '<figure class="before"><figcaption>BEFORE</figcaption><iframe loading="lazy" src="'+p[2]+'.html?o=landscape"></iframe></figure>'+
+    '<figure class="after"><figcaption>AFTER</figcaption><iframe loading="lazy" src="'+p[2]+'-v2.html?o=landscape"></iframe></figure>'+
+    '</div></section>';}).join('');
+  document.getElementById('grid').innerHTML=html;
+</script>
+</body></html>
