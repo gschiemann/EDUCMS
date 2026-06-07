@@ -14,13 +14,14 @@
   --ink:#fff0f3;--bg:#2a0612;--pos:#4fae6b;--neg:#d4445f;
   --f-display:'Bebas Neue';--f-body:'Fraunces';--f-mono:'JetBrains Mono';
   --cream:#fff4ef;--mute:#c89aa6;
-  --t-est:calc(32px*var(--scale));--t-school:calc(116px*var(--scale));--t-vol:calc(32px*var(--scale));
-  --t-chipk:calc(30px*var(--scale));--t-chipv:calc(78px*var(--scale));
-  --t-ribbon:calc(40px*var(--scale));--t-hero:calc(440px*var(--scale));--t-herosub:calc(54px*var(--scale));
+  /* 50px hard floor on the 3840 stage (65" @ ~20 ft); body copy >=60px. Auto-fit re-fits on edit. */
+  --t-est:calc(50px*var(--scale));--t-school:calc(116px*var(--scale));--t-vol:calc(50px*var(--scale));
+  --t-chipk:calc(50px*var(--scale));--t-chipv:calc(78px*var(--scale));
+  --t-ribbon:calc(52px*var(--scale));--t-hero:calc(440px*var(--scale));--t-herosub:calc(62px*var(--scale));
   --t-bignum:calc(440px*var(--scale));--t-bignumk:calc(56px*var(--scale));
-  --t-cardk:calc(32px*var(--scale));--t-cardh:calc(108px*var(--scale));--t-cardp:calc(36px*var(--scale));--t-cardm:calc(28px*var(--scale));
-  --t-skedh:calc(70px*var(--scale));--t-skedd:calc(30px*var(--scale));--t-skede:calc(56px*var(--scale));--t-skedw:calc(26px*var(--scale));
-  --t-tick:calc(44px*var(--scale));
+  --t-cardk:calc(50px*var(--scale));--t-cardh:calc(108px*var(--scale));--t-cardp:calc(62px*var(--scale));--t-cardm:calc(50px*var(--scale));
+  --t-skedh:calc(70px*var(--scale));--t-skedd:calc(50px*var(--scale));--t-skede:calc(62px*var(--scale));--t-skedw:calc(50px*var(--scale));
+  --t-tick:calc(52px*var(--scale));
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#150208;color:var(--ink);font-family:var(--f-body),serif}
@@ -60,21 +61,21 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 .hero .l .ribbon{display:inline-block;background:var(--brand);color:#fff;font-family:var(--f-mono);font-weight:800;font-size:var(--t-ribbon);letter-spacing:.28em;padding:12px 50px;text-transform:uppercase;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 86%,#fff)}
 .hero .l h1{font-family:var(--f-display);font-size:var(--t-hero);line-height:.8;color:var(--ink);margin:12px 0 0;letter-spacing:.01em;text-shadow:0 10px 0 color-mix(in srgb,var(--brand2) 70%,transparent),0 0 60px color-mix(in srgb,var(--brand) 50%,transparent)}
 .hero .l h1 em{color:var(--accent);font-style:normal}
-.hero .l .sub{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-herosub);color:var(--mute);margin-top:16px;line-height:1.18;max-width:1700px}
+.hero .l .sub{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-herosub);color:var(--mute);margin-top:16px;line-height:1.18;max-width:1700px;height:260px;overflow:hidden}
 .bignum{flex:none;text-align:center;background:var(--brand);color:#fff;border-radius:40px;padding:24px 56px;border:3px solid color-mix(in srgb,var(--accent) 80%,#fff);box-shadow:0 18px 0 var(--brand2),0 34px 50px rgba(0,0,0,.45)}
 .bignum .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-bignumk);letter-spacing:.18em;text-transform:uppercase;color:color-mix(in srgb,var(--accent) 92%,#fff)}
 .bignum .v{font-family:var(--f-display);font-size:var(--t-bignum);line-height:.82;font-variant-numeric:tabular-nums}
 
 .main{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,1fr);gap:36px;margin-top:30px}
-.cd{position:relative;background:color-mix(in srgb,var(--brand2) 50%,transparent);border:2px solid var(--accent);border-radius:24px;padding:28px 34px;display:flex;flex-direction:column;overflow:hidden;box-shadow:12px 12px 0 color-mix(in srgb,var(--brand2) 85%,transparent),inset 0 0 0 1px color-mix(in srgb,var(--accent) 30%,transparent)}
+.cd{position:relative;background:color-mix(in srgb,var(--brand2) 50%,transparent);border:2px solid var(--accent);border-radius:24px;padding:28px 34px;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;overflow:hidden;box-shadow:12px 12px 0 color-mix(in srgb,var(--brand2) 85%,transparent),inset 0 0 0 1px color-mix(in srgb,var(--accent) 30%,transparent)}
 .cd.b2{box-shadow:12px 12px 0 var(--brand),inset 0 0 0 1px color-mix(in srgb,var(--accent) 30%,transparent)}
 .cd.b3{background:var(--brand);box-shadow:12px 12px 0 var(--brand2),inset 0 0 0 1px color-mix(in srgb,var(--accent) 50%,transparent)}
 .cd .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-cardk);color:var(--accent);text-transform:uppercase;letter-spacing:.24em}
 .cd h2{font-family:var(--f-display);font-size:var(--t-cardh);line-height:.84;margin:8px 0 0;color:var(--ink);letter-spacing:.01em}
 .cd h2 em{font-style:normal;color:var(--accent)}
 .cd.b3 h2 em{color:#fff}
-.cd p{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-cardp);margin:12px 0 0;line-height:1.18;color:color-mix(in srgb,var(--ink) 82%,transparent)}
-.cd .m{margin-top:auto;padding-top:14px;font-family:var(--f-mono);font-weight:800;font-size:var(--t-cardm);text-transform:uppercase;letter-spacing:.18em;color:var(--accent);display:flex;gap:22px;flex-wrap:wrap}
+.cd p{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-cardp);margin:12px 0 0;line-height:1.16;color:color-mix(in srgb,var(--ink) 82%,transparent);min-height:0;overflow:hidden}
+.cd .m{flex:none;margin-top:0;padding-top:14px;font-family:var(--f-mono);font-weight:800;font-size:var(--t-cardm);text-transform:uppercase;letter-spacing:.18em;color:var(--accent);display:flex;gap:22px;flex-wrap:wrap}
 .cd.b3 .m{color:color-mix(in srgb,var(--accent) 94%,#fff)}
 
 .sked{flex:none;margin-top:26px;background:var(--brand2);color:var(--cream);border-radius:22px;padding:20px 32px;display:flex;flex-direction:column;box-shadow:10px 10px 0 var(--brand),inset 0 0 0 1px color-mix(in srgb,var(--accent) 28%,transparent)}
@@ -97,8 +98,15 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 @media (orientation:portrait){
   .stage[data-orient="port"] .wrap{padding:140px 120px 156px}
   .stage[data-orient="port"]{--t-hero:calc(300px*var(--scale));--t-bignum:calc(320px*var(--scale))}
+  /* Stack the masthead so est/school/vol each get full width and keep the 50px floor without horizontal overflow on the narrow portrait stage. */
+  .stage[data-orient="port"] .mast{flex-direction:column;align-items:center;text-align:center;gap:16px}
+  .stage[data-orient="port"] .mast .school{flex-direction:column;text-align:center;gap:14px}
   .stage[data-orient="port"] .hero{grid-template-columns:1fr;gap:24px}
-  .stage[data-orient="port"] .main{grid-template-columns:1fr;grid-auto-rows:1fr}
+  /* 2-col cards in portrait: taller rows so 50px+ body copy fits without clipping; 3rd card spans the row. */
+  .stage[data-orient="port"] .main{grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr}
+  .stage[data-orient="port"] .main .cd:last-child{grid-column:1 / -1}
+  .stage[data-orient="port"] .cd{padding:22px 30px}
+  .stage[data-orient="port"] .cd p{margin-top:10px}
   .stage[data-orient="port"] .sked ul{grid-template-columns:repeat(2,1fr)}
 }
 </style></head><body>
@@ -123,39 +131,39 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 
 <div class="wrap">
   <header class="mast" data-widget="masthead">
-    <div class="est" data-field="masthead.est">february · 2026</div>
-    <div class="school"><div class="crest" data-imgslot="school.logo"></div><div class="nm"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div></div>
-    <div class="vol" data-field="masthead.vol">cupid edition · vol XIII</div>
+    <div class="est" data-field="masthead.est" data-fit="single" data-fit-max="50">february · 2026</div>
+    <div class="school"><div class="crest" data-imgslot="school.logo"></div><div class="nm" data-fit="single" data-fit-max="116"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div></div>
+    <div class="vol" data-field="masthead.vol" data-fit="single" data-fit-max="50">cupid edition · vol XIII</div>
   </header>
 
   <section class="hero">
     <div class="l" data-widget="headline">
-      <div class="ribbon" data-field="headline.kicker">♥ asb candygrams · ½ off through wed ♥</div>
+      <div class="ribbon" data-field="headline.kicker" data-fit="single" data-fit-max="52">♥ asb candygrams · ½ off through wed ♥</div>
       <h1 data-fit="single" data-fit-min="220" data-fit-max="440"><span data-field="headline.t1">Be </span><em data-field="headline.t2">mine</em></h1>
-      <div class="sub" data-field="headline.sub">Anonymous candygrams delivered Friday during 4th period — $2 each at the ASB window. Sweetheart Dance Saturday 8pm in the gym, no theme this year, just vibes.</div>
+      <div class="sub" data-field="headline.sub" data-fit data-fit-max="72">Anonymous candygrams delivered Friday during 4th period — $2 each at the ASB window. Sweetheart Dance Saturday 8pm in the gym, no theme this year, just vibes.</div>
     </div>
-    <div class="bignum" data-widget="countdown"><div class="k" data-field="countdown.k">days to dance</div><div class="v" data-field="countdown.v" data-countdown-to="Feb 15" data-demo="5">5</div></div>
+    <div class="bignum" data-widget="countdown"><div class="k" data-field="countdown.k" data-fit="single" data-fit-max="56">days to dance</div><div class="v" data-field="countdown.v" data-countdown-to="Feb 15" data-demo="5" data-fit="single" data-fit-min="200" data-fit-max="440">5</div></div>
   </section>
 
   <div class="main">
-    <section class="cd" data-widget="c0"><div class="k" data-field="c0.k">♥ candygrams</div><h2><span data-field="c0.t1">$2 </span><em data-field="c0.t2">each</em></h2><p data-field="c0.p">Anonymous or signed. ASB window during lunches. Half-price three-pack through Wednesday — delivered 4th period Friday, yes even to the office.</p><div class="m"><span data-field="c0.m1">deadline · Thu 2/13 3pm</span></div></section>
-    <section class="cd b2" data-widget="c1"><div class="k" data-field="c1.k">♥ sweetheart dance</div><h2><span data-field="c1.t1">Sat </span><em data-field="c1.t2">8pm</em></h2><p data-field="c1.p">Gym, no theme, real DJ, $10 at the door — $8 with a candygram receipt. Single, paired, or a group of friends, all welcome. Last entry 10pm.</p><div class="m"><span data-field="c1.m1">Sat 2/15 · 8–11pm</span><span data-field="c1.m2">main gym</span></div></section>
-    <section class="cd b3" data-widget="c2"><div class="k" data-field="c2.k">♥ singles night</div><h2><span data-field="c2.t1">Pizza </span><em data-field="c2.t2">+ movie</em></h2><p data-field="c2.p">Friday after school in the library — Spider-Verse, free pizza, ASB hosting. Open to anyone single, partnered, or just hungry.</p><div class="m"><span data-field="c2.m1">Fri 2/14 · 3:30 · library</span></div></section>
+    <section class="cd" data-widget="c0"><div class="k" data-field="c0.k" data-fit="single" data-fit-max="56">♥ candygrams</div><h2 data-fit="single" data-fit-max="108"><span data-field="c0.t1">$2 </span><em data-field="c0.t2">each</em></h2><p data-field="c0.p" data-fit data-fit-max="68">Anonymous or signed. ASB window during lunches. Half-price three-pack through Wednesday — delivered 4th period Friday, yes even to the office.</p><div class="m"><span data-field="c0.m1" data-fit="single" data-fit-max="50">deadline · Thu 2/13 3pm</span></div></section>
+    <section class="cd b2" data-widget="c1"><div class="k" data-field="c1.k" data-fit="single" data-fit-max="56">♥ sweetheart dance</div><h2 data-fit="single" data-fit-max="108"><span data-field="c1.t1">Sat </span><em data-field="c1.t2">8pm</em></h2><p data-field="c1.p" data-fit data-fit-max="68">Gym, no theme, real DJ. $10 at the door, $8 with a candygram receipt. Last entry 10pm.</p><div class="m"><span data-field="c1.m1" data-fit="single" data-fit-max="50">Sat 2/15 · 8–11pm</span><span data-field="c1.m2" data-fit="single" data-fit-max="50">main gym</span></div></section>
+    <section class="cd b3" data-widget="c2"><div class="k" data-field="c2.k" data-fit="single" data-fit-max="56">♥ singles night</div><h2 data-fit="single" data-fit-max="108"><span data-field="c2.t1">Pizza </span><em data-field="c2.t2">+ movie</em></h2><p data-field="c2.p" data-fit data-fit-max="68">Friday after school in the library — Spider-Verse, free pizza, ASB hosting. Open to anyone single, partnered, or just hungry.</p><div class="m"><span data-field="c2.m1" data-fit="single" data-fit-max="50">Fri 2/14 · 3:30 · library</span></div></section>
   </div>
 
   <section class="sked" data-widget="sked">
-    <div class="hdr"><h3 data-field="sked.h">♥ heart week</h3><div class="d" data-field="sked.day">Mon 2/10 — Sat 2/15</div></div>
+    <div class="hdr"><h3 data-field="sked.h" data-fit="single" data-fit-max="70">♥ heart week</h3><div class="d" data-field="sked.day" data-fit="single" data-fit-max="50">Mon 2/10 — Sat 2/15</div></div>
     <ul data-week>
-      <li data-widget="sked.0" data-weekday="1"><div class="d" data-field="sked.0.d">MON</div><div class="e"><span data-field="sked.0.e1">Pink </span><em data-field="sked.0.e2">day</em></div><div class="w" data-field="sked.0.w">spirit · all day</div></li>
-      <li data-widget="sked.1" data-weekday="3"><div class="d" data-field="sked.1.d">WED</div><div class="e"><span data-field="sked.1.e1">Gram </span><em data-field="sked.1.e2">deadline</em></div><div class="w" data-field="sked.1.w">asb window · 3pm</div></li>
-      <li data-widget="sked.2" data-weekday="5"><div class="d" data-field="sked.2.d">FRI</div><div class="e"><span data-field="sked.2.e1">Pizza </span><em data-field="sked.2.e2">+ movie</em></div><div class="w" data-field="sked.2.w">library · 3:30 free</div></li>
-      <li data-widget="sked.3" data-weekday="6"><div class="d" data-field="sked.3.d">SAT</div><div class="e"><span data-field="sked.3.e1">Sweetheart </span><em data-field="sked.3.e2">dance</em></div><div class="w" data-field="sked.3.w">gym · 8pm $10</div></li>
+      <li data-widget="sked.0" data-weekday="1"><div class="d" data-field="sked.0.d" data-fit="single" data-fit-max="50">MON</div><div class="e" data-fit="single" data-fit-max="62"><span data-field="sked.0.e1">Pink </span><em data-field="sked.0.e2">day</em></div><div class="w" data-field="sked.0.w" data-fit data-fit-max="50">spirit · all day</div></li>
+      <li data-widget="sked.1" data-weekday="3"><div class="d" data-field="sked.1.d" data-fit="single" data-fit-max="50">WED</div><div class="e" data-fit="single" data-fit-max="62"><span data-field="sked.1.e1">Gram </span><em data-field="sked.1.e2">deadline</em></div><div class="w" data-field="sked.1.w" data-fit data-fit-max="50">asb window · 3pm</div></li>
+      <li data-widget="sked.2" data-weekday="5"><div class="d" data-field="sked.2.d" data-fit="single" data-fit-max="50">FRI</div><div class="e" data-fit="single" data-fit-max="62"><span data-field="sked.2.e1">Pizza </span><em data-field="sked.2.e2">+ movie</em></div><div class="w" data-field="sked.2.w" data-fit data-fit-max="50">library · 3:30 free</div></li>
+      <li data-widget="sked.3" data-weekday="6"><div class="d" data-field="sked.3.d" data-fit="single" data-fit-max="50">SAT</div><div class="e" data-fit="single" data-fit-max="62"><span data-field="sked.3.e1">Sweetheart </span><em data-field="sked.3.e2">dance</em></div><div class="w" data-field="sked.3.w" data-fit data-fit-max="50">gym · 8pm $10</div></li>
     </ul>
   </section>
 </div>
 
 <div class="ticker" data-widget="ticker">
-  <div class="tag" data-field="ticker.tag">♥ HEART WEEK ♥</div>
+  <div class="tag" data-field="ticker.tag" data-fit="single" data-fit-max="56">♥ HEART WEEK ♥</div>
   <div class="msg"><span data-field="ticker.message">♥ Sweetheart Dance Saturday 8–11pm in the gym — $10 door, $8 with a candygram receipt ♥ Candygram deadline Thursday 3pm at the ASB window — $2 each, three for $5 ♥ Singles Night Friday 3:30 in the library — Spider-Verse + free pizza ♥ Pink day Monday, wear your reds and pinks ♥ </span><span>♥ Sweetheart Dance Saturday 8–11pm in the gym — $10 door, $8 with a candygram receipt ♥ Candygram deadline Thursday 3pm at the ASB window — $2 each, three for $5 ♥ Singles Night Friday 3:30 in the library — Spider-Verse + free pizza ♥ Pink day Monday, wear your reds and pinks ♥ </span></div>
 </div>
 
@@ -173,7 +181,7 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
   function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
   applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
   document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
-  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||50),max=+(el.getAttribute('data-fit-max')||300);if(max<min)max=min;if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
   function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
   setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
   new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});

@@ -14,12 +14,12 @@
   --ink:#23103a;--bg:#fbeef6;--pos:#5fcf8e;--neg:#ee7aa6;
   --f-display:'Figtree';--f-body:'Figtree';--f-mono:'Fraunces';
   --paper:#fff6fb;--mute:#8a6aa0;
-  --t-name:calc(96px*var(--scale));--t-sub:calc(34px*var(--scale));
-  --t-chipk:calc(28px*var(--scale));--t-chipv:calc(62px*var(--scale));
-  --t-kick:calc(46px*var(--scale));--t-hero:calc(330px*var(--scale));--t-herosub:calc(50px*var(--scale));
-  --t-pk:calc(36px*var(--scale));--t-ph:calc(96px*var(--scale));--t-pp:calc(36px*var(--scale));--t-pm:calc(30px*var(--scale));
-  --t-evh:calc(64px*var(--scale));--t-evd:calc(30px*var(--scale));--t-eve:calc(50px*var(--scale));--t-evw:calc(26px*var(--scale));
-  --t-tick:calc(42px*var(--scale));
+  --t-name:calc(96px*var(--scale));--t-sub:calc(52px*var(--scale));
+  --t-chipk:calc(52px*var(--scale));--t-chipv:calc(66px*var(--scale));
+  --t-kick:calc(56px*var(--scale));--t-hero:calc(330px*var(--scale));--t-herosub:calc(60px*var(--scale));
+  --t-pk:calc(52px*var(--scale));--t-ph:calc(96px*var(--scale));--t-pp:calc(60px*var(--scale));--t-pm:calc(52px*var(--scale));
+  --t-evh:calc(72px*var(--scale));--t-evd:calc(52px*var(--scale));--t-eve:calc(60px*var(--scale));--t-evw:calc(50px*var(--scale));
+  --t-tick:calc(56px*var(--scale));
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#1a1024;color:var(--ink);font-family:var(--f-body),sans-serif}
@@ -65,7 +65,7 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 .hero .sub{font-family:var(--f-mono);font-weight:500;font-style:italic;font-size:var(--t-herosub);color:var(--brand2);margin-top:20px;line-height:1.2;max-width:2800px}
 
 .panels{flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,1fr);gap:34px;margin-top:38px}
-.panel{position:relative;border-radius:30px;padding:34px 36px;display:flex;flex-direction:column;overflow:hidden;
+.panel{position:relative;min-width:0;border-radius:30px;padding:34px 36px;display:flex;flex-direction:column;overflow:hidden;
   background:linear-gradient(160deg,rgba(255,255,255,.78),rgba(255,255,255,.5));
   border:1.5px solid color-mix(in srgb,var(--brand) 30%,#fff);backdrop-filter:blur(18px);box-shadow:0 24px 60px rgba(120,60,100,.18),inset 0 1px 0 rgba(255,255,255,.7)}
 .panel::before{content:'';position:absolute;top:0;left:0;right:0;height:6px;background:var(--brand)}
@@ -85,7 +85,7 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 .events .hdr h3{font-family:var(--f-display);font-weight:900;font-size:var(--t-evh);color:var(--brand);margin:0;letter-spacing:-.02em}
 .events .hdr .day{font-family:var(--f-mono);font-weight:700;font-style:italic;font-size:var(--t-evd);color:var(--brand2);text-transform:uppercase;letter-spacing:.16em}
 .events ul{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,1fr);gap:24px}
-.events li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid color-mix(in srgb,var(--brand) 60%,transparent);padding-left:18px}
+.events li{display:flex;flex-direction:column;justify-content:center;min-width:0;border-left:4px solid color-mix(in srgb,var(--brand) 60%,transparent);padding-left:18px}
 .events li.today{border-left-color:var(--brand);background:linear-gradient(90deg,color-mix(in srgb,var(--brand) 18%,transparent),transparent 72%)}
 .events li .d{font-family:var(--f-mono);font-weight:700;font-style:italic;font-size:var(--t-evd);color:var(--brand);text-transform:uppercase;letter-spacing:.14em}
 .events li .e{font-family:var(--f-display);font-weight:900;font-size:var(--t-eve);color:var(--ink);line-height:1;margin-top:6px;letter-spacing:-.01em}
@@ -93,7 +93,7 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 .events li .w{font-family:var(--f-mono);font-weight:500;font-style:italic;font-size:var(--t-evw);color:var(--mute);margin-top:6px;text-transform:uppercase;letter-spacing:.1em}
 
 .ticker{position:absolute;bottom:0;left:0;right:0;height:104px;background:var(--brand);display:flex;align-items:center;overflow:hidden;z-index:8;border-top:3px solid var(--accent)}
-.ticker .tag{position:relative;z-index:2;flex:none;background:var(--brand2);color:#fff;font-family:var(--f-display);font-weight:900;font-size:calc(48px*var(--scale));padding:0 38px;height:100%;display:flex;align-items:center}
+.ticker .tag{position:relative;z-index:2;flex:none;background:var(--brand2);color:#fff;font-family:var(--f-display);font-weight:900;font-size:calc(52px*var(--scale));padding:0 38px;height:100%;display:flex;align-items:center}
 .ticker .msg{position:relative;z-index:1;font-family:var(--f-body);font-weight:800;font-size:var(--t-tick);color:#fff;padding-left:38px;white-space:nowrap;letter-spacing:.1em;text-transform:uppercase;animation:sc 80s linear infinite}
 @keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
@@ -128,55 +128,55 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
   <header class="top">
     <div class="brand" data-widget="school">
       <div class="mark" data-imgslot="school.logo"></div>
-      <div><div class="name" data-fit="single" data-fit-min="48" data-fit-max="104" data-field="school.name">Banner Middle</div><div class="sub" data-field="school.sub">spring break · vol 12</div></div>
+      <div><div class="name" data-fit="single" data-fit-min="50" data-fit-max="104" data-field="school.name">Banner Middle</div><div class="sub" data-field="school.sub" data-fit="single" data-fit-max="56">spring break · vol 12</div></div>
     </div>
     <div class="chips">
-      <div class="chip" data-widget="clock"><div class="k" data-field="clock.label">right now</div><div class="v" data-field="clock.time" data-live="clock">10:14</div></div>
-      <div class="chip" data-widget="countdown"><div class="k" data-field="countdown.label">break in</div><div class="v" data-field="countdown.value" data-countdown-to="Mar 28" data-demo="2">2d</div></div>
+      <div class="chip" data-widget="clock"><div class="k" data-field="clock.label" data-fit="single" data-fit-max="56">right now</div><div class="v" data-field="clock.time" data-live="clock" data-fit="single" data-fit-max="70">10:14</div></div>
+      <div class="chip" data-widget="countdown"><div class="k" data-field="countdown.label" data-fit="single" data-fit-max="56">break in</div><div class="v" data-field="countdown.value" data-countdown-to="Mar 28" data-demo="2" data-fit="single" data-fit-max="70">2d</div></div>
     </div>
   </header>
 
   <section class="hero" data-widget="headline">
-    <div class="kick" data-field="headline.kicker">★ egg hunt + spring fling all week ★</div>
+    <div class="kick" data-field="headline.kicker" data-fit="single" data-fit-max="60">★ egg hunt + spring fling all week ★</div>
     <h1 data-fit="single" data-fit-min="150" data-fit-max="330"><span data-field="headline.t1">Hop </span><em data-field="headline.t2">to it</em></h1>
-    <div class="sub" data-field="headline.sub">Egg hunt on the back lawn Friday at lunch · 200 prize eggs hidden · ASB hosting a tie-dye station Thursday after school behind D-wing.</div>
+    <div class="sub" data-field="headline.sub" data-fit data-fit-max="64">Egg hunt on the back lawn Friday at lunch · 200 prize eggs hidden · ASB hosting a tie-dye station Thursday after school behind D-wing.</div>
   </section>
 
   <div class="panels">
     <section class="panel" data-widget="p0">
-      <div class="k" data-field="p0.k">★ egg hunt</div>
-      <h2><span data-field="p0.t1">200 </span><em data-field="p0.t2">eggs</em></h2>
-      <p data-field="p0.p">Hidden across the back lawn and quad before lunch Friday. Find one with a gold sticker — bring it to the ASB table for a real prize.</p>
-      <div class="m" data-field="p0.m">Fri · lunch · back lawn</div>
+      <div class="k" data-field="p0.k" data-fit="single" data-fit-max="56">★ egg hunt</div>
+      <h2 data-fit="single" data-fit-max="96"><span data-field="p0.t1">200 </span><em data-field="p0.t2">eggs</em></h2>
+      <p data-field="p0.p" data-fit data-fit-max="60">Hidden across the back lawn and quad before lunch Friday. Find one with a gold sticker — bring it to the ASB table for a real prize.</p>
+      <div class="m" data-field="p0.m" data-fit data-fit-max="56">Fri · lunch · back lawn</div>
     </section>
     <section class="panel b2" data-widget="p1">
-      <div class="k" data-field="p1.k">★ tie-dye</div>
-      <h2><span data-field="p1.t1">Bring a </span><em data-field="p1.t2">tee</em></h2>
-      <p data-field="p1.p">Plain cotton tee or socks — ASB supplies dye, gloves, rubber bands. Outside D-wing 3:15 Thursday. Wear clothes you don't love.</p>
-      <div class="m" data-field="p1.m">Thu · 3:15 · D-wing</div>
+      <div class="k" data-field="p1.k" data-fit="single" data-fit-max="56">★ tie-dye</div>
+      <h2 data-fit="single" data-fit-max="96"><span data-field="p1.t1">Bring a </span><em data-field="p1.t2">tee</em></h2>
+      <p data-field="p1.p" data-fit data-fit-max="60">Plain cotton tee or socks — ASB supplies dye, gloves, rubber bands. Outside D-wing 3:15 Thursday. Wear clothes you don't love.</p>
+      <div class="m" data-field="p1.m" data-fit data-fit-max="56">Thu · 3:15 · D-wing</div>
     </section>
     <section class="panel b3" data-widget="p2">
-      <div class="k" data-field="p2.k">★ bunny hop relay</div>
-      <h2><span data-field="p2.t1">PE </span><em data-field="p2.t2">Wed</em></h2>
-      <p data-field="p2.p">Sack-race and egg-on-a-spoon relay in PE Wednesday, 7th and 8th period. Winning advisory earns dress-down passes for after break.</p>
-      <div class="m" data-field="p2.m">Wed · gym · 7th + 8th</div>
+      <div class="k" data-field="p2.k" data-fit="single" data-fit-max="56">★ bunny hop relay</div>
+      <h2 data-fit="single" data-fit-max="96"><span data-field="p2.t1">PE </span><em data-field="p2.t2">Wed</em></h2>
+      <p data-field="p2.p" data-fit data-fit-max="60">Sack-race and egg-on-a-spoon relay in PE Wednesday, 7th and 8th period. Winning advisory earns dress-down passes for after break.</p>
+      <div class="m" data-field="p2.m" data-fit data-fit-max="56">Wed · gym · 7th + 8th</div>
     </section>
     <section class="panel b4" data-widget="p3">
-      <div class="k" data-field="p3.k">★ spring break</div>
-      <h2><span data-field="p3.t1">9 </span><em data-field="p3.t2">days</em></h2>
-      <p data-field="p3.p">Out Friday at 3:15 — back Monday April 6. No homework hand-ins until Tuesday. Office staffed Mon–Wed for transcript pickups.</p>
-      <div class="m" data-field="p3.m">Mar 28 — Apr 5</div>
+      <div class="k" data-field="p3.k" data-fit="single" data-fit-max="56">★ spring break</div>
+      <h2 data-fit="single" data-fit-max="96"><span data-field="p3.t1">9 </span><em data-field="p3.t2">days</em></h2>
+      <p data-field="p3.p" data-fit data-fit-max="60">Out Friday at 3:15 — back Monday April 6. No homework hand-ins until Tuesday. Office staffed Mon–Wed for transcript pickups.</p>
+      <div class="m" data-field="p3.m" data-fit data-fit-max="56">Mar 28 — Apr 5</div>
     </section>
   </div>
 
   <section class="events" data-widget="events">
-    <div class="hdr"><h3 data-field="events.h">★ spring fling week</h3><div class="day" data-field="events.day">Mon Mar 23 — Fri Mar 27</div></div>
+    <div class="hdr"><h3 data-field="events.h" data-fit="single" data-fit-max="72">★ spring fling week</h3><div class="day" data-field="events.day" data-fit="single" data-fit-max="54">Mon Mar 23 — Fri Mar 27</div></div>
     <ul data-week>
-      <li data-widget="events.0" data-weekday="1"><div class="d" data-field="events.0.d">Mon</div><div class="e"><span data-field="events.0.e1">Pastel </span><em data-field="events.0.e2">day</em></div><div class="w" data-field="events.0.w">spirit · wear pastels</div></li>
-      <li data-widget="events.1" data-weekday="2"><div class="d" data-field="events.1.d">Tue</div><div class="e"><span data-field="events.1.e1">Garden </span><em data-field="events.1.e2">club</em></div><div class="w" data-field="events.1.w">plant starts · courtyard</div></li>
-      <li data-widget="events.2" data-weekday="3"><div class="d" data-field="events.2.d">Wed</div><div class="e"><span data-field="events.2.e1">Bunny </span><em data-field="events.2.e2">hop</em></div><div class="w" data-field="events.2.w">PE · 7th + 8th period</div></li>
-      <li data-widget="events.3" data-weekday="4"><div class="d" data-field="events.3.d">Thu</div><div class="e"><span data-field="events.3.e1">Tie </span><em data-field="events.3.e2">dye</em></div><div class="w" data-field="events.3.w">D-wing · 3:15pm</div></li>
-      <li data-widget="events.4" data-weekday="5"><div class="d" data-field="events.4.d">Fri</div><div class="e"><span data-field="events.4.e1">Egg </span><em data-field="events.4.e2">hunt</em></div><div class="w" data-field="events.4.w">back lawn · lunch</div></li>
+      <li data-widget="events.0" data-weekday="1"><div class="d" data-field="events.0.d" data-fit="single" data-fit-max="54">Mon</div><div class="e" data-fit="single" data-fit-max="60"><span data-field="events.0.e1">Pastel </span><em data-field="events.0.e2">day</em></div><div class="w" data-field="events.0.w" data-fit data-fit-max="52">spirit · wear pastels</div></li>
+      <li data-widget="events.1" data-weekday="2"><div class="d" data-field="events.1.d" data-fit="single" data-fit-max="54">Tue</div><div class="e" data-fit="single" data-fit-max="60"><span data-field="events.1.e1">Garden </span><em data-field="events.1.e2">club</em></div><div class="w" data-field="events.1.w" data-fit data-fit-max="52">plant starts · courtyard</div></li>
+      <li data-widget="events.2" data-weekday="3"><div class="d" data-field="events.2.d" data-fit="single" data-fit-max="54">Wed</div><div class="e" data-fit="single" data-fit-max="60"><span data-field="events.2.e1">Bunny </span><em data-field="events.2.e2">hop</em></div><div class="w" data-field="events.2.w" data-fit data-fit-max="52">PE · 7th + 8th period</div></li>
+      <li data-widget="events.3" data-weekday="4"><div class="d" data-field="events.3.d" data-fit="single" data-fit-max="54">Thu</div><div class="e" data-fit="single" data-fit-max="60"><span data-field="events.3.e1">Tie </span><em data-field="events.3.e2">dye</em></div><div class="w" data-field="events.3.w" data-fit data-fit-max="52">D-wing · 3:15pm</div></li>
+      <li data-widget="events.4" data-weekday="5"><div class="d" data-field="events.4.d" data-fit="single" data-fit-max="54">Fri</div><div class="e" data-fit="single" data-fit-max="60"><span data-field="events.4.e1">Egg </span><em data-field="events.4.e2">hunt</em></div><div class="w" data-field="events.4.w" data-fit data-fit-max="52">back lawn · lunch</div></li>
     </ul>
   </section>
 </div>
@@ -201,7 +201,7 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
   function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
   applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
   document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
-  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||50),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
   function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
   setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
   new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});

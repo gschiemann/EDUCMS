@@ -13,13 +13,13 @@
   --ink:#3a2336;--bg:#fdeede;--pos:#4fae6b;--neg:#e0607a;
   --f-display:'Bebas Neue';--f-body:'Fraunces';--f-mono:'JetBrains Mono';
   --cream:#fff7ec;--mute:#9a7d86;
-  --t-est:calc(32px*var(--scale));--t-school:calc(116px*var(--scale));--t-vol:calc(32px*var(--scale));
-  --t-chipk:calc(30px*var(--scale));--t-chipv:calc(78px*var(--scale));
-  --t-ribbon:calc(40px*var(--scale));--t-hero:calc(440px*var(--scale));--t-herosub:calc(54px*var(--scale));
+  --t-est:calc(52px*var(--scale));--t-school:calc(116px*var(--scale));--t-vol:calc(52px*var(--scale));
+  --t-chipk:calc(50px*var(--scale));--t-chipv:calc(82px*var(--scale));
+  --t-ribbon:calc(56px*var(--scale));--t-hero:calc(440px*var(--scale));--t-herosub:calc(62px*var(--scale));
   --t-bignum:calc(440px*var(--scale));--t-bignumk:calc(56px*var(--scale));
-  --t-cardk:calc(32px*var(--scale));--t-cardh:calc(108px*var(--scale));--t-cardp:calc(36px*var(--scale));--t-cardm:calc(28px*var(--scale));
-  --t-skedh:calc(70px*var(--scale));--t-skedd:calc(30px*var(--scale));--t-skede:calc(56px*var(--scale));--t-skedw:calc(26px*var(--scale));
-  --t-tick:calc(44px*var(--scale));
+  --t-cardk:calc(52px*var(--scale));--t-cardh:calc(108px*var(--scale));--t-cardp:calc(60px*var(--scale));--t-cardm:calc(52px*var(--scale));
+  --t-skedh:calc(72px*var(--scale));--t-skedd:calc(52px*var(--scale));--t-skede:calc(64px*var(--scale));--t-skedw:calc(50px*var(--scale));
+  --t-tick:calc(56px*var(--scale));
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#1a1016;color:var(--ink);font-family:var(--f-body),serif}
@@ -92,6 +92,7 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 @media (orientation:portrait){
   .stage[data-orient="port"] .wrap{padding:140px 120px 156px}
   .stage[data-orient="port"]{--t-hero:calc(300px*var(--scale));--t-bignum:calc(320px*var(--scale))}
+  .stage[data-orient="port"] .mast{flex-direction:column;align-items:flex-start;gap:14px}
   .stage[data-orient="port"] .hero{grid-template-columns:minmax(0,1fr);gap:24px}
   .stage[data-orient="port"] .main{grid-template-columns:1fr;grid-auto-rows:1fr}
   .stage[data-orient="port"] .sked ul{grid-template-columns:repeat(2,1fr)}
@@ -117,33 +118,33 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 
 <div class="wrap">
   <header class="mast" data-widget="masthead">
-    <div class="est" data-field="masthead.est">spring · 2026</div>
-    <div class="school"><div class="crest" data-imgslot="school.logo"></div><div class="nm"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div></div>
-    <div class="vol" data-field="masthead.vol">spring break edition</div>
+    <div class="est" data-field="masthead.est" data-fit="single" data-fit-max="56">spring · 2026</div>
+    <div class="school"><div class="crest" data-imgslot="school.logo"></div><div class="nm" data-fit="single" data-fit-max="116"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div></div>
+    <div class="vol" data-field="masthead.vol" data-fit="single" data-fit-max="56">spring break edition</div>
   </header>
 
   <section class="hero">
     <div class="l" data-widget="headline">
-      <div class="ribbon" data-field="headline.kicker">★ spring break · mar 28 – apr 5 ★</div>
+      <div class="ribbon" data-field="headline.kicker" data-fit="single" data-fit-max="60">★ spring break · mar 28 – apr 5 ★</div>
       <h1 data-fit="single" data-fit-min="220" data-fit-max="440"><span data-field="headline.t1">Spring </span><em data-field="headline.t2">Break</em></h1>
-      <div class="sub" data-field="headline.sub">Return Monday April 6. AP review packets posted to Schoology Friday. SAT prep continues virtually. Have a safe, restful break, Bobcats.</div>
+      <div class="sub" data-field="headline.sub" data-fit data-fit-max="72">Return Monday April 6. AP review packets posted to Schoology Friday. SAT prep continues virtually. Have a safe, restful break, Bobcats.</div>
     </div>
-    <div class="bignum" data-widget="countdown"><div class="k" data-field="countdown.k">days off</div><div class="v" data-field="countdown.v" data-countdown-to="Mar 28" data-demo="9">9</div></div>
+    <div class="bignum" data-widget="countdown"><div class="k" data-field="countdown.k" data-fit="single" data-fit-max="60">days off</div><div class="v" data-field="countdown.v" data-countdown-to="Mar 28" data-demo="9" data-fit="single" data-fit-min="120" data-fit-max="440">9</div></div>
   </section>
 
   <div class="main">
-    <section class="cd" data-widget="c0"><div class="k" data-field="c0.k">★ office hours</div><h2 data-field="c0.h">Front desk</h2><p data-field="c0.p">Open Mon–Wed 8–12 for transcript pickup. Custodial on full week. Closed Thu–Fri.</p><div class="m" data-field="c0.m">Mon–Wed · 8am–12</div></section>
-    <section class="cd b2" data-widget="c1"><div class="k" data-field="c1.k">★ AP review</div><h2 data-field="c1.h">Packets up</h2><p data-field="c1.p">Posted to Schoology Friday by 4pm. Optional Zoom review sessions Tue + Thu at 10am.</p><div class="m" data-field="c1.m">Schoology · Fri 4pm</div></section>
-    <section class="cd b3" data-widget="c2"><div class="k" data-field="c2.k">★ when we&#39;re back</div><h2 data-field="c2.h">Mon Apr 6</h2><p data-field="c2.p">Regular bell schedule resumes. Spring sports practice that afternoon. Prom tickets on sale.</p><div class="m" data-field="c2.m">first bell · 8:05</div></section>
+    <section class="cd" data-widget="c0"><div class="k" data-field="c0.k" data-fit="single" data-fit-max="56">★ office hours</div><h2 data-fit="single" data-fit-max="108"><span data-field="c0.h">Front desk</span></h2><p data-field="c0.p" data-fit data-fit-max="64">Open Mon–Wed 8–12 for transcript pickup. Custodial on full week. Closed Thu–Fri.</p><div class="m" data-field="c0.m" data-fit="single" data-fit-max="56">Mon–Wed · 8am–12</div></section>
+    <section class="cd b2" data-widget="c1"><div class="k" data-field="c1.k" data-fit="single" data-fit-max="56">★ AP review</div><h2 data-fit="single" data-fit-max="108"><span data-field="c1.h">Packets up</span></h2><p data-field="c1.p" data-fit data-fit-max="64">Posted to Schoology Friday by 4pm. Optional Zoom review sessions Tue + Thu at 10am.</p><div class="m" data-field="c1.m" data-fit="single" data-fit-max="56">Schoology · Fri 4pm</div></section>
+    <section class="cd b3" data-widget="c2"><div class="k" data-field="c2.k" data-fit="single" data-fit-max="56">★ when we&#39;re back</div><h2 data-fit="single" data-fit-max="108"><span data-field="c2.h">Mon Apr 6</span></h2><p data-field="c2.p" data-fit data-fit-max="64">Regular bell schedule resumes. Spring sports practice that afternoon. Prom tickets on sale.</p><div class="m" data-field="c2.m" data-fit="single" data-fit-max="56">first bell · 8:05</div></section>
   </div>
 
   <section class="sked" data-widget="sked">
-    <div class="hdr"><h3 data-field="sked.h">★ pre-break week</h3><div class="d" data-field="sked.day">Mon 3/23 — Fri 3/27</div></div>
+    <div class="hdr"><h3 data-field="sked.h" data-fit="single" data-fit-max="76">★ pre-break week</h3><div class="d" data-field="sked.day" data-fit="single" data-fit-max="54">Mon 3/23 — Fri 3/27</div></div>
     <ul data-week>
-      <li data-widget="sked.0" data-weekday="1"><div class="d" data-field="sked.0.d">MON</div><div class="e"><span data-field="sked.0.e1">Senior </span><em data-field="sked.0.e2">photos</em></div><div class="w" data-field="sked.0.w">gym · all day</div></li>
-      <li data-widget="sked.1" data-weekday="3"><div class="d" data-field="sked.1.d">WED</div><div class="e"><span data-field="sked.1.e1">Spring </span><em data-field="sked.1.e2">play</em></div><div class="w" data-field="sked.1.w">aud · 7pm</div></li>
-      <li data-widget="sked.2" data-weekday="4"><div class="d" data-field="sked.2.d">THU</div><div class="e"><span data-field="sked.2.e1">Spirit </span><em data-field="sked.2.e2">rally</em></div><div class="w" data-field="sked.2.w">gym · 2pm</div></li>
-      <li data-widget="sked.3" data-weekday="5"><div class="d" data-field="sked.3.d">FRI</div><div class="e"><span data-field="sked.3.e1">Out </span><em data-field="sked.3.e2">at 3:15</em></div><div class="w" data-field="sked.3.w">early dismiss</div></li>
+      <li data-widget="sked.0" data-weekday="1"><div class="d" data-field="sked.0.d" data-fit="single" data-fit-max="54">MON</div><div class="e" data-fit="single" data-fit-max="64"><span data-field="sked.0.e1">Senior </span><em data-field="sked.0.e2">photos</em></div><div class="w" data-field="sked.0.w" data-fit="single" data-fit-max="52">gym · all day</div></li>
+      <li data-widget="sked.1" data-weekday="3"><div class="d" data-field="sked.1.d" data-fit="single" data-fit-max="54">WED</div><div class="e" data-fit="single" data-fit-max="64"><span data-field="sked.1.e1">Spring </span><em data-field="sked.1.e2">play</em></div><div class="w" data-field="sked.1.w" data-fit="single" data-fit-max="52">aud · 7pm</div></li>
+      <li data-widget="sked.2" data-weekday="4"><div class="d" data-field="sked.2.d" data-fit="single" data-fit-max="54">THU</div><div class="e" data-fit="single" data-fit-max="64"><span data-field="sked.2.e1">Spirit </span><em data-field="sked.2.e2">rally</em></div><div class="w" data-field="sked.2.w" data-fit="single" data-fit-max="52">gym · 2pm</div></li>
+      <li data-widget="sked.3" data-weekday="5"><div class="d" data-field="sked.3.d" data-fit="single" data-fit-max="54">FRI</div><div class="e" data-fit="single" data-fit-max="64"><span data-field="sked.3.e1">Out </span><em data-field="sked.3.e2">at 3:15</em></div><div class="w" data-field="sked.3.w" data-fit="single" data-fit-max="52">early dismiss</div></li>
     </ul>
   </section>
 </div>
@@ -167,7 +168,7 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
   function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
   applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
   document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
-  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||50),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
   function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
   setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
   new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
