@@ -1,0 +1,210 @@
+<!doctype html>
+<!-- ES CHRISTMAS v2 — "SNOW-GLOBE WONDERLAND". Dominant glowing snow-globe hero (CSS scene
+     inside: tree, cabin, star, swirling snow) on a cozy night sky with a light-string arc,
+     bokeh + thick snow, candy-cane + gift-mountain footer, oversized layered headline,
+     chunky gift-tag cards. Canonical tokens, auto-fit, portrait+landscape, SOLID ticker,
+     live clock/countdown. Bridge preserved. NO food panel. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Christmas · ES Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Caveat:wght@600;700&family=Mountains+of+Christmas:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;--scale:1;
+  --brand:#d8232f;--brand2:#7a1320;--accent:#f0c64b;--accent2:#1f7a44;
+  --ink:#0b1430;--bg:#0b1430;--pos:#2e9d5b;--neg:#ff5670;
+  --f-display:'Mountains of Christmas';--f-body:'Fredoka';--f-mono:'Caveat';
+  --red:var(--brand);--berry:var(--brand2);--gold:var(--accent);--green:var(--accent2);--cream:#fff6e6;--ice:#bfe0ff;
+  --t-name:calc(96px*var(--scale));--t-sub:calc(46px*var(--scale));
+  --t-chipk:calc(34px*var(--scale));--t-chipv:calc(80px*var(--scale));
+  --t-kick:calc(64px*var(--scale));--t-hero:calc(250px*var(--scale));--t-herosub:calc(50px*var(--scale));
+  --t-plaque:calc(76px*var(--scale));--t-plaquesub:calc(38px*var(--scale));
+  --t-cardk:calc(40px*var(--scale));--t-cardv:calc(96px*var(--scale));--t-cardsub:calc(34px*var(--scale));
+  --t-tick:calc(46px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#05060f;color:var(--cream);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;
+  background:radial-gradient(1600px 1100px at 28% 34%,#2b3c78 0%,transparent 62%),radial-gradient(1400px 1000px at 88% 16%,#5a2a64 0%,transparent 60%),linear-gradient(180deg,#0c1430 0%,#15214c 46%,#34204f 100%)}
+
+/* ---- decor (behind content) ---- */
+.decor{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden}
+.bokeh i{position:absolute;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.9),rgba(255,255,255,0) 70%);opacity:.5;animation:pulse 5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.25;transform:scale(1)}50%{opacity:.65;transform:scale(1.25)}}
+.lights{position:absolute;top:0;left:0;right:0;height:96px;z-index:2}
+.lights i{position:absolute;top:0;width:26px;height:26px;border-radius:50%;animation:tw 2.6s ease-in-out infinite}
+.lights i::after{content:'';position:absolute;top:-14px;left:50%;transform:translateX(-50%);width:4px;height:14px;background:rgba(255,255,255,.25)}
+@keyframes tw{0%,100%{opacity:1;filter:brightness(1.3) drop-shadow(0 0 16px currentColor)}50%{opacity:.45;filter:brightness(.7)}}
+.snow span{position:absolute;background:#fff;border-radius:50%;animation:fall 9s linear infinite;opacity:.9}
+@keyframes fall{from{transform:translateY(-120px)}to{transform:translateY(2300px)}}
+.ground{position:absolute;left:0;right:0;bottom:150px;height:340px;background:radial-gradient(ellipse 1500px 360px at 25% 100%,var(--cream) 0,var(--cream) 60%,transparent 61%),radial-gradient(ellipse 1700px 300px at 75% 100%,var(--cream) 0,var(--cream) 60%,transparent 61%)}
+/* candy-cane + gift-mountain footer trail (right side) */
+.trail{position:absolute;right:80px;bottom:150px;z-index:1;display:flex;align-items:flex-end;gap:26px}
+.trail .gift{border-radius:8px;position:relative}
+.trail .gift::before{content:'';position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:16px}
+.trail .gift::after{content:'';position:absolute;top:0;bottom:0;left:50%;transform:translateX(-50%);width:16px}
+.trail .g1{width:190px;height:180px;background:var(--red)}.trail .g1::before,.trail .g1::after{background:var(--gold)}
+.trail .g2{width:150px;height:140px;background:var(--green)}.trail .g2::before,.trail .g2::after{background:var(--cream)}
+.trail .g3{width:170px;height:158px;background:var(--gold)}.trail .g3::before,.trail .g3::after{background:var(--red)}
+.trail .cane{width:54px;height:200px;border:0;border-radius:40px 40px 0 0;background:repeating-linear-gradient(45deg,var(--red) 0 22px,#fff 22px 44px)}
+
+/* ---- content wrap ---- */
+.wrap{position:relative;z-index:3;width:100%;height:100%;display:flex;flex-direction:column;padding:118px 70px 176px}
+.top{flex:none;display:flex;justify-content:space-between;align-items:center;gap:30px}
+.brand{display:flex;align-items:center;gap:24px;min-width:0}
+.brand .star{width:128px;height:128px;flex:none;background:var(--gold);clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);box-shadow:0 0 40px rgba(240,198,75,.6);background-size:cover;background-position:center}
+.brand .star.has-img{clip-path:none;border-radius:50%}
+.brand .name{font-family:var(--f-display);font-weight:700;font-size:var(--t-name);color:var(--cream);line-height:.95;white-space:nowrap;text-shadow:0 4px 24px rgba(0,0,0,.4)}
+.brand .sub{font-family:var(--f-mono);font-weight:700;font-size:var(--t-sub);color:var(--gold);margin-top:2px;line-height:1;white-space:nowrap}
+.chips{display:flex;gap:20px;flex:none}
+.chip{background:rgba(255,255,255,.1);border:4px solid rgba(255,255,255,.5);border-radius:26px;padding:14px 28px;text-align:center;min-width:200px;backdrop-filter:blur(8px)}
+.chip .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-chipk);color:var(--gold);line-height:1}
+.chip .v{font-family:var(--f-display);font-weight:700;font-size:var(--t-chipv);color:#fff;line-height:1;margin-top:2px;font-variant-numeric:tabular-nums}
+
+.hero{flex:1;min-height:0;display:grid;grid-template-columns:1380px 1fr;gap:50px;align-items:center;margin-top:6px}
+
+/* ---- the snow globe ---- */
+.globe{position:relative;width:1300px;height:100%;margin:0 auto}
+.ball{position:absolute;left:50%;top:50%;transform:translate(-50%,-54%);width:1180px;height:1180px;border-radius:50%;overflow:hidden;
+  background:radial-gradient(circle at 50% 116%,#eaf4ff 0%,#bfe0ff 26%,#7fb0ec 56%,#4f7fc6 78%);
+  box-shadow:inset 0 0 140px rgba(8,20,54,.55),inset 0 -40px 80px rgba(255,255,255,.5),0 40px 90px rgba(0,0,0,.55),0 0 0 16px rgba(255,255,255,.14),0 0 0 26px var(--gold),0 0 0 30px var(--berry)}
+.ball .scene-hill{position:absolute;left:-10%;right:-10%;bottom:-6%;height:46%;background:radial-gradient(ellipse 60% 100% at 50% 100%,#fff 0,#fff 70%,transparent 72%)}
+.ball .tree{position:absolute;bottom:30%;left:50%;transform:translateX(-50%);width:0;height:0;border-left:150px solid transparent;border-right:150px solid transparent;border-bottom:420px solid var(--green);filter:drop-shadow(0 10px 0 #14502e)}
+.ball .tree2{position:absolute;bottom:31%;left:30%;width:0;height:0;border-left:78px solid transparent;border-right:78px solid transparent;border-bottom:220px solid #2a8a52}
+.ball .tree3{position:absolute;bottom:31%;left:70%;width:0;height:0;border-left:90px solid transparent;border-right:90px solid transparent;border-bottom:250px solid #2a8a52}
+.ball .cabin{position:absolute;bottom:30%;left:62%;width:230px;height:150px;background:#8a3b2a;border-radius:6px}
+.ball .cabin::before{content:'';position:absolute;left:-22px;right:-22px;top:-96px;height:120px;background:var(--brand);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.ball .cabin::after{content:'';position:absolute;left:0;right:0;bottom:0;top:30%;background:repeating-linear-gradient(90deg,rgba(0,0,0,.12) 0 4px,transparent 4px 40px)}
+.ball .win{position:absolute;bottom:34%;left:67%;width:64px;height:64px;background:var(--gold);border-radius:8px;box-shadow:0 0 36px rgba(240,198,75,.9)}
+.ball .star{position:absolute;top:14%;left:50%;transform:translateX(-50%);width:90px;height:90px;background:var(--gold);clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);box-shadow:0 0 50px rgba(240,198,75,.9)}
+.ball .isnow b{position:absolute;width:12px;height:12px;background:#fff;border-radius:50%;opacity:.95;animation:fall 6s linear infinite}
+.ball .sheen{position:absolute;top:8%;left:12%;width:48%;height:34%;border-radius:50%;background:linear-gradient(135deg,rgba(255,255,255,.7),rgba(255,255,255,0) 70%);filter:blur(6px)}
+.base{position:absolute;left:50%;bottom:2%;transform:translateX(-50%);width:840px;height:210px;background:linear-gradient(180deg,#9a5a24 0%,#6a3a14 60%,#4a2810 100%);clip-path:polygon(7% 0,93% 0,100% 100%,0 100%);box-shadow:0 24px 50px rgba(0,0,0,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:14px}
+.base .plaque{font-family:var(--f-display);font-weight:700;font-size:var(--t-plaque);color:var(--gold);line-height:.9;text-shadow:0 3px 0 #3a2208;text-align:center}
+.base .plaque .s{display:block;font-family:var(--f-mono);font-size:var(--t-plaquesub);color:var(--cream)}
+
+/* ---- hero text (right) ---- */
+.htxt{min-width:0;display:flex;flex-direction:column;justify-content:center}
+.htxt .kick{font-family:var(--f-mono);font-weight:700;font-size:var(--t-kick);color:var(--gold);letter-spacing:.02em}
+.htxt h1{font-family:var(--f-display);font-weight:700;font-size:var(--t-hero);line-height:.8;color:var(--cream);margin:8px 0 0;text-shadow:6px 6px 0 var(--red),12px 12px 0 var(--green),0 0 60px rgba(0,0,0,.5)}
+.htxt .sub{font-family:var(--f-body);font-weight:600;font-size:var(--t-herosub);color:var(--ice);margin-top:18px;line-height:1.18}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;margin-top:36px}
+.gc{border-radius:26px;padding:26px 28px;border:6px solid #fff;box-shadow:0 12px 0 rgba(0,0,0,.35);position:relative;overflow:hidden}
+.gc.r{background:var(--red)}.gc.g{background:var(--green)}.gc.y{background:var(--gold);color:var(--ink)}
+.gc .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-cardk);color:#fff;line-height:1}
+.gc.y .k{color:var(--berry)}
+.gc .v{font-family:var(--f-display);font-weight:700;font-size:var(--t-cardv);color:#fff;line-height:.9;margin-top:6px}
+.gc.y .v{color:var(--ink)}
+.gc .s{font-family:var(--f-body);font-weight:600;font-size:var(--t-cardsub);color:rgba(255,255,255,.92);margin-top:6px;line-height:1.12}
+.gc.y .s{color:rgba(11,20,48,.8)}
+
+/* ---- SOLID ticker; tag above scroll ---- */
+.ticker{position:absolute;bottom:0;left:0;right:0;height:150px;background:var(--green);display:flex;align-items:center;overflow:hidden;z-index:8;border-top:6px solid var(--gold)}
+.ticker .tag{position:relative;z-index:2;flex:none;background:var(--red);color:var(--cream);font-family:var(--f-display);font-weight:700;font-size:calc(58px*var(--scale));padding:0 40px;height:100%;display:flex;align-items:center}
+.ticker .msg{position:relative;z-index:1;font-family:var(--f-body);font-weight:700;font-size:var(--t-tick);color:#fff;padding-left:40px;white-space:nowrap;letter-spacing:.04em;animation:sc 80s linear infinite}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+@media (orientation:portrait){
+  .stage[data-orient="port"] .wrap{padding:150px 60px 180px}
+  .stage[data-orient="port"] .top{flex-direction:column;align-items:flex-start;gap:16px}
+  .stage[data-orient="port"] .hero{grid-template-columns:1fr;grid-template-rows:1.2fr auto;gap:24px}
+  .stage[data-orient="port"] .globe{width:1100px;height:1200px}
+  .stage[data-orient="port"]{--t-hero:calc(210px*var(--scale))}
+  .stage[data-orient="port"] .trail{display:none}
+}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-es-christmas-v1" }/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#0b1430</span><span data-field="theme.ink">#0b1430</span>
+  <span data-field="theme.brand">#d8232f</span><span data-field="theme.brand2">#7a1320</span>
+  <span data-field="theme.accent">#f0c64b</span><span data-field="theme.accent2">#1f7a44</span>
+  <span data-field="theme.pos">#2e9d5b</span><span data-field="theme.neg">#ff5670</span>
+  <span data-field="theme.fDisplay">Mountains of Christmas</span><span data-field="theme.fBody">Fredoka</span><span data-field="theme.fMono">Caveat</span><span data-field="theme.scale">1</span>
+</div>
+
+<div class="decor">
+  <div class="bokeh" id="bokeh"></div>
+  <div class="lights" id="lights"></div>
+  <div class="ground"></div>
+  <div class="snow" id="snow"></div>
+  <div class="trail"><span class="cane"></span><span class="gift g2"></span><span class="gift g1"></span><span class="gift g3"></span><span class="cane"></span></div>
+</div>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand" data-widget="school">
+      <div class="star" data-imgslot="school.logo"></div>
+      <div><div class="name" data-fit="single" data-fit-min="48" data-fit-max="104" data-field="school.name">Maple Tree</div><div class="sub" data-field="school.sub">~ ho ho ho ~</div></div>
+    </div>
+    <div class="chips">
+      <div class="chip" data-widget="clock"><div class="k" data-field="clock.label">right now</div><div class="v" data-field="clock.time" data-live="clock">9:32</div></div>
+      <div class="chip" data-widget="countdown"><div class="k" data-field="countdown.label">days till break</div><div class="v" data-field="countdown.value" data-countdown-to="Dec 19" data-demo="4">04</div></div>
+    </div>
+  </header>
+
+  <div class="hero">
+    <div class="globe" data-widget="globe">
+      <div class="ball">
+        <div class="scene-hill"></div>
+        <div class="tree2"></div><div class="tree3"></div>
+        <div class="tree"></div>
+        <div class="cabin"></div><div class="win"></div>
+        <div class="star"></div>
+        <div class="isnow" id="isnow"></div>
+        <div class="sheen"></div>
+      </div>
+      <div class="base"><div class="plaque" data-field="globe.plaque">Merry Christmas<span class="s" data-field="globe.sub">from all of us at Maple Tree</span></div></div>
+    </div>
+
+    <div class="htxt" data-widget="headline">
+      <div class="kick" data-field="headline.kicker">~ welcome to ~</div>
+      <h1 data-fit data-fit-min="120" data-fit-max="250" data-field="headline.title">Merry Christmas</h1>
+      <div class="sub" data-field="headline.sub">Pajama day Friday · Winter concert Wednesday at 7 · Break starts Dec 19</div>
+      <div class="cards">
+        <div class="gc r" data-widget="c0"><div class="k" data-field="c0.k">winter concert</div><div class="v" data-field="c0.v">Wed 7pm</div><div class="s" data-field="c0.s">gym · families welcome</div></div>
+        <div class="gc g" data-widget="c1"><div class="k" data-field="c1.k">spirit week</div><div class="v" data-field="c1.v">Mon–Fri</div><div class="s" data-field="c1.s">ugly sweaters → PJ day</div></div>
+        <div class="gc y" data-widget="c2"><div class="k" data-field="c2.k">giving drive</div><div class="v" data-field="c2.v">684</div><div class="s" data-field="c2.s">cans · goal 1,000</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="ticker" data-widget="ticker">
+  <div class="tag" data-field="ticker.tag">~ FA-LA-LA ~</div>
+  <div class="msg"><span data-field="ticker.message">★ Winter concert Wednesday 7pm in the gym — families welcome ★ Pajama day Friday — wear your coziest PJs and bring a canned good ★ Break starts after school Friday Dec 19 — see you back Jan 5 ★ Hot cocoa for everyone in the cafeteria all week ★ </span><span>★ Winter concert Wednesday 7pm in the gym — families welcome ★ Pajama day Friday — wear your coziest PJs and bring a canned good ★ Break starts after school Friday Dec 19 — see you back Jan 5 ★ Hot cocoa for everyone in the cafeteria all week ★ </span></div>
+</div>
+
+</div></div></div>
+
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var cols=['#ff6b6b','#f0c64b','#5be08a','#5ab0ff','#fff6e6'];
+  var L=document.getElementById('lights');if(L){for(var i=0;i<52;i++){var b=document.createElement('i');b.style.left=(i/51*100)+'%';var c=cols[i%5];b.style.background=c;b.style.color=c;b.style.animationDelay=(i%6*0.4)+'s';L.appendChild(b);}}
+  var BK=document.getElementById('bokeh');if(BK){for(var k2=0;k2<26;k2++){var d=document.createElement('i');var sz=20+((k2*13)%90);d.style.width=sz+'px';d.style.height=sz+'px';d.style.left=((k2*53)%100)+'%';d.style.top=((k2*37)%80)+'%';d.style.animationDelay=((k2*0.5)%5)+'s';BK.appendChild(d);}}
+  var S=document.getElementById('snow');if(S){for(var j=0;j<30;j++){var s=document.createElement('span');var sz2=8+((j*7)%14);s.style.left=((j*37)%100)+'%';s.style.top=(-((j*211)%1400))+'px';s.style.width=sz2+'px';s.style.height=sz2+'px';s.style.animationDelay=((j*0.5)%9)+'s';S.appendChild(s);}}
+  var IS=document.getElementById('isnow');if(IS){for(var m=0;m<22;m++){var sb=document.createElement('b');sb.style.left=((m*41)%100)+'%';sb.style.top=(-((m*97)%600))+'px';sb.style.animationDelay=((m*0.3)%6)+'s';sb.style.animationDuration=(4+(m%4))+'s';IS.appendChild(sb);}}
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
+  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m;}
+  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});}
+  tick();setInterval(tick,15000);
+  var DMON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  function days(){document.querySelectorAll('[data-countdown-to]').forEach(function(el){var dm=el.getAttribute('data-demo');if(dm!=null){var dn=+dm;el.textContent=(dn<10?'0':'')+dn;return;}var t=el.getAttribute('data-countdown-to').trim().toLowerCase().match(/([a-z]+)\s*(\d{1,2})/);if(!t||!(t[1].slice(0,3) in DMON))return;var now=new Date();now.setHours(0,0,0,0);var y=now.getFullYear(),target=new Date(y,DMON[t[1].slice(0,3)],+t[2]);if(target<now)target=new Date(y+1,DMON[t[1].slice(0,3)],+t[2]);var n=Math.round((target-now)/86400000);el.textContent=n<10?('0'+n):(''+n);});}
+  days();setInterval(days,3600000);
+})();
+</script>
+
+<script id="holiday-bridge">(function(){function a(){var s=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-w'),10)||3840,h=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-h'),10)||2160,c=Math.min(window.innerWidth/s,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',c)}a();window.addEventListener('resize',a);function r(){var n=document.querySelectorAll('[data-field]'),s={},f=[];n.forEach(function(e){var k=e.getAttribute('data-field');if(!k||s[k])return;s[k]=1;var t=(e.textContent||'').trim();f.push({key:k,defaultText:t,multiline:/\n/.test(t)||t.length>80||e.tagName==='P'})});try{window.parent.postMessage({type:'holiday:ready',fields:f},window.location.origin)}catch(e){}}if(document.readyState==='complete'||document.readyState==='interactive')r();else document.addEventListener('DOMContentLoaded',r);document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document.body){if(n.nodeType===1&&n.hasAttribute&&n.hasAttribute('data-field')){try{window.parent.postMessage({type:'holiday:fieldClicked',key:n.getAttribute('data-field')},window.location.origin)}catch(e){}return}n=n.parentNode}});window.addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='holiday:setField'){var k=String(d.key||'');if(!k)return;var n=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\"')+'"]'),v=String(d.value==null?'':d.value);n.forEach(function(e){e.textContent=v})}})})();</script>
+<script src="_style-bridge.js?v=20260509"></script></body></html>

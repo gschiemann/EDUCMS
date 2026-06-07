@@ -1,0 +1,162 @@
+<!doctype html>
+<!-- HS CHRISTMAS — FLAGSHIP. Vintage department-store / winter-formal: gilt double-border
+     frame, corner ornaments, Bebas masthead, oversized AUTO-FIT "Snow Ball" headline,
+     formal-tickets / dance / toy-drive cards, live winter-week schedule. Canonical brand
+     tokens, portrait+landscape. Bridge preserved. NO food panel. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Winter Formal · HS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;--scale:1;
+  --brand:#a82026;--brand2:#0a1a12;--accent:#d4a838;--accent2:#0e3a26;
+  --ink:#0a1a12;--bg:#0e3a26;--pos:#1f5c3c;--neg:#d83a3a;
+  --f-display:'Bebas Neue';--f-body:'Fraunces';--f-mono:'JetBrains Mono';
+  --red:var(--brand);--green:var(--accent2);--green2:#1f5c3c;--gold:var(--accent);--cream:#f5e8c4;--snow:#fbf3e0;
+  --t-est:calc(32px*var(--scale));--t-school:calc(140px*var(--scale));--t-vol:calc(32px*var(--scale));
+  --t-ribbon:calc(40px*var(--scale));--t-hero:calc(520px*var(--scale));--t-herosub:calc(66px*var(--scale));
+  --t-cardk:calc(32px*var(--scale));--t-cardh:calc(140px*var(--scale));--t-cardhf:calc(168px*var(--scale));--t-cardp:calc(40px*var(--scale));--t-cardm:calc(28px*var(--scale));
+  --t-skedh:calc(74px*var(--scale));--t-skedd:calc(30px*var(--scale));--t-skede:calc(60px*var(--scale));--t-skedw:calc(26px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#05070d;color:var(--cream);font-family:var(--f-body),serif}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--green)}
+.decor{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden}
+.decor .hatch{position:absolute;top:0;right:0;bottom:0;left:0;background-image:repeating-linear-gradient(45deg,color-mix(in srgb,var(--gold) 7%,transparent) 0 2px,transparent 2px 34px),repeating-linear-gradient(-45deg,color-mix(in srgb,var(--gold) 7%,transparent) 0 2px,transparent 2px 34px)}
+.frame{position:absolute;top:34px;right:34px;bottom:34px;left:34px;border:5px solid var(--gold);z-index:5;pointer-events:none}
+.frame::before{content:'';position:absolute;top:14px;right:14px;bottom:14px;left:14px;border:1px solid var(--gold);opacity:.6}
+.frame::after{content:'';position:absolute;top:24px;right:24px;bottom:24px;left:24px;border:3px double var(--gold)}
+.orn{position:absolute;width:128px;height:128px;border:4px solid var(--gold);background:var(--red);z-index:6;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:78px;color:var(--gold);transform:rotate(45deg);box-shadow:inset 0 0 0 2px var(--gold)}
+.orn span{transform:rotate(-45deg)}
+.orn.tl{top:84px;left:84px}.orn.tr{top:84px;right:84px}.orn.bl{bottom:84px;left:84px}.orn.br{bottom:84px;right:84px}
+.snow span{position:absolute;background:var(--snow);border-radius:50%;animation:fall 9s linear infinite;opacity:.75}
+@keyframes fall{from{transform:translateY(-120px)}to{transform:translateY(2300px)}}
+
+.wrap{position:relative;z-index:3;width:100%;height:100%;display:flex;flex-direction:column;padding:120px 230px 110px;text-align:center}
+
+.mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:30px;border-bottom:4px solid var(--gold);padding-bottom:14px}
+.mast .est{font-family:var(--f-mono);font-weight:800;font-size:var(--t-est);letter-spacing:.36em;color:var(--gold);text-transform:uppercase;white-space:nowrap}
+.mast .school{font-family:var(--f-display);font-size:var(--t-school);color:var(--cream);letter-spacing:.04em;line-height:1;white-space:nowrap}
+.mast .school em{color:var(--gold);font-style:normal}
+.mast .vol{font-family:var(--f-mono);font-weight:800;font-size:var(--t-vol);letter-spacing:.3em;color:var(--gold);text-transform:uppercase;white-space:nowrap}
+
+.head{flex:none;margin-top:30px}
+.head .ribbon{display:inline-block;background:var(--red);color:var(--cream);font-family:var(--f-mono);font-weight:800;font-size:var(--t-ribbon);letter-spacing:.36em;padding:16px 70px;text-transform:uppercase;box-shadow:0 0 0 4px var(--gold),0 0 0 8px var(--red)}
+.head h1{font-family:var(--f-display);font-size:var(--t-hero);line-height:.82;color:var(--cream);margin:18px 0 0;letter-spacing:.02em;text-shadow:0 12px 0 var(--ink),0 -5px 0 var(--gold)}
+.head h1 em{color:var(--gold);font-style:italic;display:inline-block;transform:rotate(-3deg)}
+.head .sub{font-family:var(--f-body);font-weight:700;font-style:italic;font-size:var(--t-herosub);color:var(--cream);margin:24px auto 0;max-width:2700px;line-height:1.2}
+
+.main{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:40px;margin-top:34px;text-align:left}
+.cd{background:var(--cream);color:var(--ink);padding:30px 36px;border:5px solid var(--ink);position:relative;display:flex;flex-direction:column;overflow:hidden;box-shadow:14px 14px 0 var(--gold)}
+.cd::before{content:'';position:absolute;top:-22px;left:50%;transform:translateX(-50%);width:80px;height:42px;background:var(--gold);border:4px solid var(--ink);border-radius:0 0 40px 40px}
+.cd .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-cardk);color:var(--red);text-transform:uppercase;letter-spacing:.3em}
+.cd h2{font-family:var(--f-display);font-size:var(--t-cardh);line-height:.84;margin:10px 0 0;color:var(--ink);letter-spacing:.01em}
+.cd h2 em{font-style:italic;color:var(--red);transform:rotate(-2deg);display:inline-block}
+.cd p{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-cardp);margin:16px 0 0;line-height:1.2}
+.cd .meta{margin-top:auto;padding-top:16px;font-family:var(--f-mono);font-weight:800;font-size:var(--t-cardm);text-transform:uppercase;letter-spacing:.2em;color:var(--red);display:flex;gap:18px;flex-wrap:wrap}
+.cd.feat{background:var(--red);color:var(--cream);box-shadow:14px 14px 0 var(--ink)}
+.cd.feat .k,.cd.feat h2 em,.cd.feat .meta{color:var(--gold)}
+.cd.feat h2{color:var(--cream);font-size:var(--t-cardhf)}
+
+.sked{flex:none;margin-top:34px;background:var(--ink);color:var(--cream);padding:20px 34px;border:4px solid var(--gold);display:flex;flex-direction:column;text-align:left}
+.sked .hdr{flex:none;display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px solid var(--gold);padding-bottom:8px}
+.sked .hdr h3{font-family:var(--f-display);font-size:var(--t-skedh);color:var(--gold);margin:0;letter-spacing:.04em}
+.sked .hdr .d{font-family:var(--f-mono);font-weight:800;font-size:var(--t-skedd);color:var(--cream);letter-spacing:.2em;text-transform:uppercase}
+.sked ul{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+.sked li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid var(--red);padding-left:18px}
+.sked li.today{border-left-color:var(--gold);background:linear-gradient(90deg,color-mix(in srgb,var(--gold) 16%,transparent),transparent 70%)}
+.sked li .d{font-family:var(--f-mono);font-weight:800;font-size:var(--t-skedd);color:var(--gold);letter-spacing:.24em;text-transform:uppercase}
+.sked li .e{font-family:var(--f-display);font-size:var(--t-skede);color:var(--cream);line-height:1;margin-top:6px;letter-spacing:.02em}
+.sked li .e em{font-style:italic;color:var(--gold)}
+.sked li .w{font-family:var(--f-mono);font-weight:600;font-size:var(--t-skedw);color:var(--cream);margin-top:6px;text-transform:uppercase;letter-spacing:.16em;opacity:.85}
+
+@media (orientation:portrait){
+  .stage[data-orient="port"] .wrap{padding:150px 150px 130px}
+  .stage[data-orient="port"]{--t-hero:calc(360px*var(--scale));--t-school:calc(120px*var(--scale))}
+  .stage[data-orient="port"] .main{grid-template-columns:1fr;grid-auto-rows:1fr}
+  .stage[data-orient="port"] .sked ul{grid-template-columns:repeat(2,1fr)}
+  .stage[data-orient="port"] .orn{width:104px;height:104px;font-size:60px}
+}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-christmas-v1"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#0e3a26</span><span data-field="theme.ink">#0a1a12</span>
+  <span data-field="theme.brand">#a82026</span><span data-field="theme.brand2">#0a1a12</span>
+  <span data-field="theme.accent">#d4a838</span><span data-field="theme.accent2">#0e3a26</span>
+  <span data-field="theme.pos">#1f5c3c</span><span data-field="theme.neg">#d83a3a</span>
+  <span data-field="theme.fDisplay">Bebas Neue</span><span data-field="theme.fBody">Fraunces</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
+</div>
+
+<div class="decor"><div class="hatch"></div><div class="snow" id="snow"></div></div>
+<div class="frame"></div>
+<div class="orn tl"><span data-field="orn.tl">'25</span></div>
+<div class="orn tr"><span data-field="orn.tr">★</span></div>
+<div class="orn bl"><span data-field="orn.bl">★</span></div>
+<div class="orn br"><span data-field="orn.br">DEC</span></div>
+
+<div class="wrap">
+  <header class="mast" data-widget="masthead">
+    <div class="est" data-field="masthead.est">est. 1924</div>
+    <div class="school"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div>
+    <div class="vol" data-field="masthead.vol">winter issue</div>
+  </header>
+
+  <section class="head" data-widget="headline">
+    <div class="ribbon" data-field="headline.kicker">★ winter formal · december 19 ★</div>
+    <h1 data-fit="single" data-fit-min="240" data-fit-max="520"><span data-field="headline.t1">Snow </span><em data-field="headline.t2">Ball.</em></h1>
+    <div class="sub" data-field="headline.sub">Tickets at the ASB window — $35 single, $60 couple — through Friday. Theme is "Midnight Forest." Toy drive ends Thursday; donation bins at every entrance.</div>
+  </section>
+
+  <div class="main">
+    <section class="cd" data-widget="tickets"><div class="k" data-field="tickets.k">★ formal tickets</div>
+      <h2><span data-field="tickets.t1">$35 </span><em data-field="tickets.t2">solo</em></h2>
+      <p data-field="tickets.p">Sales close Friday 3pm — no door sales. Couples $60. ASB window during all three lunches. Cash or card.</p>
+      <div class="meta"><span data-field="tickets.m1">deadline · Fri 12/12</span></div></section>
+    <section class="cd feat" data-widget="dance"><div class="k" data-field="dance.k">★ snow ball</div>
+      <h2><span data-field="dance.t1">Dec </span><em data-field="dance.t2">19.</em></h2>
+      <p data-field="dance.p">Doors 7:30pm at the field house · DJ Vega, photo booth, late dessert bar. Last entry 9pm. Bus pickup at midnight from lot B.</p>
+      <div class="meta"><span data-field="dance.m1">Fri 12/19 · 7:30pm</span><span data-field="dance.m2">field house</span></div></section>
+    <section class="cd" data-widget="toy"><div class="k" data-field="toy.k">★ toy drive</div>
+      <h2 data-field="toy.t">Bring one.</h2>
+      <p data-field="toy.p">New, unwrapped — drop in any red bin through Thursday. Goal: 1,200 toys. Top homeroom gets a pizza party in January.</p>
+      <div class="meta"><span data-field="toy.m1">deadline · Thu 12/18</span></div></section>
+  </div>
+
+  <section class="sked" data-widget="sked">
+    <div class="hdr"><h3 data-field="sked.h">★ winter week</h3><div class="d" data-field="sked.day">Mon 12/15 — Fri 12/19</div></div>
+    <ul data-week>
+      <li data-widget="sked.0" data-weekday="1"><div class="d" data-field="sked.0.d">MON</div><div class="e"><span data-field="sked.0.e1">Ugly </span><em data-field="sked.0.e2">sweater</em></div><div class="w" data-field="sked.0.w">spirit · all day</div></li>
+      <li data-widget="sked.1" data-weekday="3"><div class="d" data-field="sked.1.d">WED</div><div class="e"><span data-field="sked.1.e1">Choir </span><em data-field="sked.1.e2">concert</em></div><div class="w" data-field="sked.1.w">aud · 7pm · free</div></li>
+      <li data-widget="sked.2" data-weekday="4"><div class="d" data-field="sked.2.d">THU</div><div class="e"><span data-field="sked.2.e1">Toy </span><em data-field="sked.2.e2">drive ends</em></div><div class="w" data-field="sked.2.w">red bins · 3pm</div></li>
+      <li data-widget="sked.3" data-weekday="5"><div class="d" data-field="sked.3.d">FRI</div><div class="e"><span data-field="sked.3.e1">Snow </span><em data-field="sked.3.e2">Ball</em></div><div class="w" data-field="sked.3.w">field house · 7:30</div></li>
+    </ul>
+  </section>
+</div>
+
+</div></div></div>
+
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var S=document.getElementById('snow');if(S){for(var j=0;j<20;j++){var s=document.createElement('span');var sz=7+((j*5)%9);s.style.left=((j*43)%100)+'%';s.style.top=(-((j*227)%1400))+'px';s.style.width=sz+'px';s.style.height=sz+'px';s.style.animationDelay=((j*0.6)%9)+'s';S.appendChild(s);}}
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
+  function week(){document.querySelectorAll('[data-week]').forEach(function(ul){var demo=ul.getAttribute('data-demo-dow'),dow=demo!=null?+demo:new Date().getDay();ul.querySelectorAll('[data-weekday]').forEach(function(li){li.classList.toggle('today',+li.getAttribute('data-weekday')===dow);});});}
+  week();setInterval(week,600000);
+})();
+</script>
+
+<script id="holiday-bridge">(function(){function a(){var s=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-w'),10)||3840,h=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-h'),10)||2160,c=Math.min(window.innerWidth/s,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',c)}a();window.addEventListener('resize',a);function r(){var n=document.querySelectorAll('[data-field]'),s={},f=[];n.forEach(function(e){var k=e.getAttribute('data-field');if(!k||s[k])return;s[k]=1;var t=(e.textContent||'').trim();f.push({key:k,defaultText:t,multiline:/\n/.test(t)||t.length>80||e.tagName==='P'})});try{window.parent.postMessage({type:'holiday:ready',fields:f},window.location.origin)}catch(e){}}if(document.readyState==='complete'||document.readyState==='interactive')r();else document.addEventListener('DOMContentLoaded',r);document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document.body){if(n.nodeType===1&&n.hasAttribute&&n.hasAttribute('data-field')){try{window.parent.postMessage({type:'holiday:fieldClicked',key:n.getAttribute('data-field')},window.location.origin)}catch(e){}return}n=n.parentNode}});window.addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='holiday:setField'){var k=String(d.key||'');if(!k)return;var n=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\"')+'"]'),v=String(d.value==null?'':d.value);n.forEach(function(e){e.textContent=v})}})})();</script>
+<script src="_style-bridge.js?v=20260509"></script></body></html>

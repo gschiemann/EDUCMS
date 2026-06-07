@@ -1,0 +1,269 @@
+<!doctype html>
+<!-- ES CHRISTMAS — FLAGSHIP redesign. North-Pole rainbow-energy lobby: light-string
+     arc, animated snow, CSS trees + an illustrated gift-pile focal scene, OVERSIZED
+     layered headline, chunky hard-shadow cards. LIVE clock + days-to-break countdown +
+     advent today-door + spirit-week today-highlight. Canonical brand tokens, auto-fit,
+     portrait + landscape, SOLID ticker. Holiday bridge preserved verbatim. NO food panel. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Christmas · ES Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Caveat:wght@600;700&family=Mountains+of+Christmas:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;--scale:1;
+  /* canonical brand tokens — editable live via the [data-widget="theme"] block */
+  --brand:#c1272d;--brand2:#7a1a26;--accent:#e3a83b;--accent2:#1e6b3a;
+  --ink:#16223a;--bg:#16223a;--pos:#2e8a4a;--neg:#e54848;
+  --f-display:'Mountains of Christmas';--f-body:'Fredoka';--f-mono:'Caveat';
+  /* festive aliases resolve to the tokens, so editing a token re-tints the board */
+  --red:var(--brand);--berry:var(--brand2);--gold:var(--accent);--green:var(--accent2);
+  --green2:#2e8a4a;--cream:#fff8ea;--snow:#eaf4ff;
+  /* type scale — every size flexes with --scale */
+  --t-name:calc(108px*var(--scale));--t-sub:calc(52px*var(--scale));
+  --t-chipk:calc(38px*var(--scale));--t-chipv:calc(82px*var(--scale));
+  --t-kick:calc(66px*var(--scale));--t-hero:calc(300px*var(--scale));--t-herosub:calc(54px*var(--scale));
+  --t-cardk:calc(56px*var(--scale));--t-cardh:calc(104px*var(--scale));
+  --t-door:calc(78px*var(--scale));--t-meta:calc(46px*var(--scale));
+  --t-give:calc(118px*var(--scale));--t-givek:calc(56px*var(--scale));--t-givesub:calc(40px*var(--scale));
+  --t-evh:calc(88px*var(--scale));--t-evd:calc(44px*var(--scale));--t-eve:calc(50px*var(--scale));--t-evw:calc(32px*var(--scale));
+  --t-tick:calc(46px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#05070d;color:var(--ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:linear-gradient(180deg,#16223a 0%,#27406e 48%,#5a8ab8 100%)}
+
+/* ---- decorative layers (absolute, BEHIND the content wrap — never a blanket .stage>* rule) ---- */
+.decor{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden}
+.stripe{position:absolute;left:0;right:0;height:30px;background:repeating-linear-gradient(90deg,var(--red) 0,var(--red) 60px,var(--cream) 60px,var(--cream) 120px);z-index:5}
+.stripe.top{top:0}.stripe.bot{bottom:150px}
+.lights{position:absolute;top:30px;left:0;right:0;height:90px;z-index:4}
+.lights i{position:absolute;top:0;width:26px;height:26px;border-radius:50%;animation:tw 2.4s ease-in-out infinite}
+.lights i::after{content:'';position:absolute;top:-12px;left:50%;transform:translateX(-50%);width:4px;height:12px;background:#0c1730}
+.hills{position:absolute;left:0;right:0;bottom:150px;height:300px;background:radial-gradient(ellipse 1200px 320px at 18% 100%,var(--snow) 0,var(--snow) 60%,transparent 61%),radial-gradient(ellipse 1500px 260px at 68% 100%,var(--snow) 0,var(--snow) 60%,transparent 61%),radial-gradient(ellipse 1000px 220px at 96% 100%,var(--snow) 0,var(--snow) 60%,transparent 61%)}
+.snow span{position:absolute;background:#fff;border-radius:50%;animation:fall 9s linear infinite;opacity:.85}
+@keyframes fall{from{transform:translateY(-120px)}to{transform:translateY(2300px)}}
+@keyframes tw{0%,100%{opacity:1;filter:brightness(1.2)}50%{opacity:.55;filter:brightness(.8)}}
+.tree{position:absolute;bottom:230px;z-index:1;filter:drop-shadow(0 8px 0 rgba(0,0,0,.25))}
+.tree::before{content:'';position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:0;height:0;border-left:100px solid transparent;border-right:100px solid transparent;border-bottom:280px solid var(--green)}
+.tree::after{content:'';position:absolute;left:50%;bottom:-18px;transform:translateX(-50%);width:34px;height:40px;background:var(--berry);border-radius:4px}
+.t1{left:90px}.t1::before{border-left-width:120px;border-right-width:120px;border-bottom-width:340px}
+.t2{left:3520px}.t2::before{border-bottom-color:var(--green2)}
+.t3{left:430px;bottom:300px;transform:scale(.7)}
+/* illustrated gift-pile focal scene, bottom-center */
+.gifts{position:absolute;bottom:172px;left:50%;transform:translateX(-50%);width:760px;height:240px;z-index:1}
+.gifts .g{position:absolute;bottom:0;border-radius:8px}
+.gifts .g::before{content:'';position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:18px}
+.gifts .g::after{content:'';position:absolute;top:0;bottom:0;left:50%;transform:translateX(-50%);width:18px}
+.gifts .g1{left:60px;width:210px;height:200px;background:var(--red)}.gifts .g1::before,.gifts .g1::after{background:var(--gold)}
+.gifts .g2{left:300px;width:170px;height:150px;background:var(--green)}.gifts .g2::before,.gifts .g2::after{background:var(--cream)}
+.gifts .g3{left:500px;width:200px;height:175px;background:var(--gold)}.gifts .g3::before,.gifts .g3::after{background:var(--red)}
+.gifts .bow{position:absolute;top:-26px;width:54px;height:30px;background:var(--gold);border-radius:50% 50% 0 0}
+.gifts .b1{left:140px;background:var(--gold)}.gifts .b2{left:360px;background:var(--cream)}.gifts .b3{left:575px;background:var(--red)}
+
+/* ---- content wrap (the ONLY in-flow child; relative + z-index above decor) ---- */
+.wrap{position:relative;z-index:3;width:100%;height:100%;display:flex;flex-direction:column;padding:120px 64px 174px}
+
+.top{flex:none;display:flex;justify-content:space-between;align-items:center;gap:30px}
+.brand{display:flex;align-items:center;gap:30px;min-width:0}
+.wreath{width:150px;height:150px;flex:none;border-radius:50%;background:radial-gradient(circle,transparent 38%,var(--green) 39% 70%,transparent 71%);position:relative;box-shadow:0 10px 0 rgba(0,0,0,.22);background-size:cover;background-position:center}
+.wreath.has-img{background:none}
+.wreath::before{content:'';position:absolute;left:50%;top:-12px;transform:translateX(-50%);width:54px;height:44px;background:var(--red);clip-path:polygon(0 100%,50% 0,100% 100%,80% 50%,50% 100%,20% 50%);box-shadow:0 4px 0 var(--berry)}
+.wreath.has-img::before{display:none}
+.wreath b{position:absolute;width:18px;height:18px;background:var(--red);border-radius:50%}
+.wreath .b1{top:38%;left:14%}.wreath .b2{top:14%;right:18%}.wreath .b3{bottom:18%;left:32%}.wreath .b4{bottom:32%;right:18%}
+.wreath.has-img b{display:none}
+.brand .name{font-family:var(--f-display);font-weight:700;font-size:var(--t-name);color:var(--cream);line-height:.95;letter-spacing:-.01em;white-space:nowrap}
+.brand .sub{font-family:var(--f-mono);font-weight:700;font-size:var(--t-sub);color:var(--gold);margin-top:4px;line-height:1;white-space:nowrap}
+.chips{display:flex;gap:20px;flex:none}
+.chip{background:var(--cream);color:var(--ink);padding:18px 30px;border-radius:24px;min-width:230px;text-align:center;border:6px solid var(--red);box-shadow:0 8px 0 var(--green),0 14px 22px rgba(0,0,0,.3)}
+.chip .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-chipk);color:var(--red);line-height:1}
+.chip .v{font-family:var(--f-body);font-weight:700;font-size:var(--t-chipv);color:var(--ink);line-height:1;margin-top:4px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.chip.green{border-color:var(--green);box-shadow:0 8px 0 var(--red),0 14px 22px rgba(0,0,0,.3)}
+.chip.green .k{color:var(--green)}
+
+.hd{flex:none;text-align:center;margin:18px 0 6px}
+.hd .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-kick);color:var(--gold);letter-spacing:.03em}
+.hd h1{font-family:var(--f-display);font-weight:700;font-size:var(--t-hero);line-height:.82;color:var(--cream);margin:6px 0 0;letter-spacing:-.01em;text-shadow:7px 7px 0 var(--red),14px 14px 0 var(--green)}
+.hd .sub{font-family:var(--f-body);font-weight:600;font-size:var(--t-herosub);color:var(--cream);margin-top:18px;letter-spacing:.02em}
+
+.main{flex:1;min-height:0;display:grid;grid-template-columns:1480px 1fr;gap:40px;margin:20px 0;padding-bottom:24px}
+.card{border-radius:34px;border:10px solid var(--red);background:var(--cream);position:relative;overflow:hidden}
+.advent{padding:32px 38px;display:flex;flex-direction:column;box-shadow:0 16px 0 var(--green),0 30px 50px rgba(0,0,0,.38)}
+.advent .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-cardk);color:var(--green);line-height:1}
+.advent h2{font-family:var(--f-display);font-weight:700;font-size:var(--t-cardh);color:var(--ink);line-height:.9;margin:6px 0 0}
+.advent h2 em{font-style:normal;color:var(--red)}
+.advent .grid{flex:1;min-height:0;margin-top:24px;display:grid;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(4,1fr);gap:14px}
+.door{background:#fff;border:5px solid var(--green);border-radius:14px;display:grid;place-items:center;font-family:var(--f-display);font-weight:700;font-size:var(--t-door);color:var(--ink)}
+.door.open{background:var(--red);color:var(--cream);border-color:var(--gold)}
+.door.today{background:var(--gold);color:var(--ink);border-color:var(--red);box-shadow:0 6px 0 var(--red);transform:scale(1.04)}
+.advent .meta{flex:none;margin-top:18px;font-family:var(--f-mono);font-weight:700;font-size:var(--t-meta);color:var(--red);text-align:center}
+
+.rcol{min-width:0;display:grid;grid-template-rows:1fr 1.15fr;gap:40px}
+.give{border-color:var(--green);background:var(--red);color:var(--cream);padding:34px 40px;display:flex;flex-direction:column;justify-content:center;box-shadow:0 16px 0 var(--ink),0 30px 50px rgba(0,0,0,.4)}
+.give .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-givek);color:var(--gold)}
+.give h2{font-family:var(--f-display);font-weight:700;font-size:var(--t-give);line-height:.86;margin:4px 0 0;color:var(--cream)}
+.give h2 em{font-style:normal;color:var(--gold)}
+.give .bar{margin-top:auto;height:64px;border-radius:40px;background:rgba(255,255,255,.18);border:5px solid var(--cream);overflow:hidden;position:relative}
+.give .bar>i{position:absolute;top:0;bottom:0;left:0;width:68%;background:linear-gradient(90deg,var(--gold),var(--green2));border-radius:40px}
+.give .sub{font-family:var(--f-body);font-weight:600;font-size:var(--t-givesub);margin-top:16px;color:var(--cream)}
+.give .sub b{color:var(--gold)}
+
+.events{border-color:var(--green);padding:28px 34px;display:flex;flex-direction:column;box-shadow:0 16px 0 var(--red),0 30px 50px rgba(0,0,0,.34)}
+.events .hdr{flex:none;display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px dashed rgba(30,107,58,.4);padding-bottom:12px}
+.events .hdr h3{font-family:var(--f-display);font-weight:700;font-size:var(--t-evh);color:var(--ink);margin:0;line-height:1}
+.events .hdr h3 em{font-style:normal;color:var(--red)}
+.events .hdr .day{font-family:var(--f-mono);font-weight:700;font-size:var(--t-evd);color:var(--green)}
+.events ul{list-style:none;margin:16px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:18px;flex:1;min-height:0}
+.events li{display:flex;flex-direction:column;justify-content:center;background:#fff;color:var(--ink);border-radius:22px;padding:14px 20px;border:5px solid var(--red);position:relative}
+.events li.today{border-color:var(--green);box-shadow:0 8px 0 var(--green)}
+.events li .d{font-family:var(--f-mono);font-weight:700;font-size:var(--t-evd);color:var(--red);line-height:1}
+.events li .e{font-family:var(--f-body);font-weight:700;font-size:var(--t-eve);color:var(--ink);line-height:1;margin-top:6px;letter-spacing:-.01em}
+.events li .e em{font-style:normal;color:var(--green)}
+.events li .w{font-family:var(--f-body);font-weight:500;font-size:var(--t-evw);color:#5a4a3e;margin-top:6px;line-height:1.15}
+
+/* ---- SOLID ticker; tag sits ABOVE the scroll via z-index (no bleed-through) ---- */
+.ticker{position:absolute;bottom:0;left:0;right:0;height:150px;background:var(--green);display:flex;align-items:center;overflow:hidden;z-index:8;border-top:6px solid var(--gold)}
+.ticker .tag{position:relative;z-index:2;flex:none;background:var(--red);color:var(--cream);font-family:var(--f-display);font-weight:700;font-size:calc(58px*var(--scale));padding:0 40px;height:100%;display:flex;align-items:center;letter-spacing:.02em}
+.ticker .msg{position:relative;z-index:1;font-family:var(--f-body);font-weight:700;font-size:var(--t-tick);color:var(--cream);padding-left:40px;white-space:nowrap;letter-spacing:.05em;animation:sc 80s linear infinite}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* ---- PORTRAIT (2160×3840) ---- */
+@media (orientation:portrait){
+  .stage[data-orient="port"] .wrap{padding:150px 56px 178px}
+  .stage[data-orient="port"] .top{flex-direction:column;align-items:flex-start;gap:18px}
+  .stage[data-orient="port"]{--t-hero:calc(220px*var(--scale))}
+  .stage[data-orient="port"] .main{grid-template-columns:1fr;grid-template-rows:auto auto auto;gap:32px}
+  .stage[data-orient="port"] .rcol{grid-template-rows:auto auto}
+  .stage[data-orient="port"] .advent .grid{grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(4,1fr)}
+}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-es-christmas-v1" }/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+<!-- THEME (hidden, editable — one object re-skins the board) -->
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#16223a</span><span data-field="theme.ink">#16223a</span>
+  <span data-field="theme.brand">#c1272d</span><span data-field="theme.brand2">#7a1a26</span>
+  <span data-field="theme.accent">#e3a83b</span><span data-field="theme.accent2">#1e6b3a</span>
+  <span data-field="theme.pos">#2e8a4a</span><span data-field="theme.neg">#e54848</span>
+  <span data-field="theme.fDisplay">Mountains of Christmas</span><span data-field="theme.fBody">Fredoka</span><span data-field="theme.fMono">Caveat</span><span data-field="theme.scale">1</span>
+</div>
+
+<!-- decor (behind content) -->
+<div class="decor">
+  <div class="stripe top"></div><div class="stripe bot"></div>
+  <div class="lights" id="lights"></div>
+  <div class="hills"></div>
+  <div class="snow" id="snow"></div>
+  <div class="tree t1"></div><div class="tree t2"></div><div class="tree t3"></div>
+  <div class="gifts"><div class="g g1"></div><div class="g g2"></div><div class="g g3"></div><div class="bow b1"></div><div class="bow b2"></div><div class="bow b3"></div></div>
+</div>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand" data-widget="school">
+      <div class="wreath" data-imgslot="school.logo"><b class="b1"></b><b class="b2"></b><b class="b3"></b><b class="b4"></b></div>
+      <div class="info"><div class="name" data-fit="single" data-fit-min="56" data-fit-max="120" data-field="school.name">Maple Tree</div><div class="sub" data-field="school.sub">~ ho ho ho ~</div></div>
+    </div>
+    <div class="chips">
+      <div class="chip" data-widget="clock"><div class="k" data-field="clock.label">right now</div><div class="v" data-field="clock.time" data-live="clock">9:32</div></div>
+      <div class="chip green" data-widget="countdown"><div class="k" data-field="countdown.label">days till break</div><div class="v" data-field="countdown.value" data-countdown-to="Dec 19" data-demo="4">04</div></div>
+    </div>
+  </header>
+
+  <section class="hd" data-widget="headline">
+    <div class="k" data-field="headline.kicker">~ welcome to ~</div>
+    <h1 data-fit="single" data-fit-min="150" data-fit-max="300" data-field="headline.title">Merry Christmas</h1>
+    <div class="sub" data-field="headline.sub">Pajama day Friday · Concert Wed at 7 · Break starts Dec 19</div>
+  </section>
+
+  <div class="main">
+    <section class="card advent" data-widget="advent">
+      <div class="k" data-field="advent.k">~ countdown to break ~</div>
+      <h2><span data-field="advent.t1">Open a </span><em data-field="advent.t2">door</em></h2>
+      <div class="grid" data-advent data-advent-month="12" data-demo-day="15">
+        <div class="door" data-field="advent.d1">1</div><div class="door" data-field="advent.d2">2</div><div class="door" data-field="advent.d3">3</div><div class="door" data-field="advent.d4">4</div><div class="door" data-field="advent.d5">5</div><div class="door" data-field="advent.d6">6</div>
+        <div class="door" data-field="advent.d7">7</div><div class="door" data-field="advent.d8">8</div><div class="door" data-field="advent.d9">9</div><div class="door" data-field="advent.d10">10</div><div class="door" data-field="advent.d11">11</div><div class="door" data-field="advent.d12">12</div>
+        <div class="door" data-field="advent.d13">13</div><div class="door" data-field="advent.d14">14</div><div class="door" data-field="advent.d15">15</div><div class="door" data-field="advent.d16">16</div><div class="door" data-field="advent.d17">17</div><div class="door" data-field="advent.d18">18</div>
+        <div class="door" data-field="advent.d19">19</div><div class="door" data-field="advent.d20">20</div><div class="door" data-field="advent.d21">21</div><div class="door" data-field="advent.d22">22</div><div class="door" data-field="advent.d23">23</div><div class="door" data-field="advent.d24">24</div>
+      </div>
+      <div class="meta" data-field="advent.meta">~ today: bring a canned good for the food drive ~</div>
+    </section>
+
+    <div class="rcol">
+      <section class="card give" data-widget="giving">
+        <div class="k" data-field="giving.k">~ our holiday giving drive ~</div>
+        <h2><span data-field="giving.t1">Stuff the </span><em data-field="giving.t2">sleigh</em></h2>
+        <div class="bar"><i data-field="giving.fill" style="width:68%"></i></div>
+        <div class="sub"><b data-field="giving.count">684</b> <span data-field="giving.sub">cans collected · goal 1,000 · drop yours at the front office</span></div>
+      </section>
+
+      <section class="card events" data-widget="events">
+        <div class="hdr"><h3><span data-field="events.h1">Spirit </span><em data-field="events.h2">week</em></h3><div class="day" data-field="events.day">Mon Dec 15 — Fri Dec 19</div></div>
+        <ul data-week>
+          <li data-widget="events.0" data-weekday="1"><div class="d" data-field="events.0.d">Mon</div><div class="e"><span data-field="events.0.e1">Ugly </span><em data-field="events.0.e2">sweater</em></div><div class="w" data-field="events.0.w">All grades · prize at lunch</div></li>
+          <li data-widget="events.1" data-weekday="3"><div class="d" data-field="events.1.d">Wed</div><div class="e"><span data-field="events.1.e1">Winter </span><em data-field="events.1.e2">concert</em></div><div class="w" data-field="events.1.w">Gym · 7pm · families welcome</div></li>
+          <li data-widget="events.2" data-weekday="4"><div class="d" data-field="events.2.d">Thu</div><div class="e"><span data-field="events.2.e1">Class </span><em data-field="events.2.e2">parties</em></div><div class="w" data-field="events.2.w">After lunch · sign up to bring</div></li>
+          <li data-widget="events.3" data-weekday="5"><div class="d" data-field="events.3.d">Fri</div><div class="e"><span data-field="events.3.e1">Pajama </span><em data-field="events.3.e2">day</em></div><div class="w" data-field="events.3.w">Wear PJs · cocoa · early dismiss</div></li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="ticker" data-widget="ticker">
+  <div class="tag" data-field="ticker.tag">~ FA-LA-LA ~</div>
+  <div class="msg"><span data-field="ticker.message">★ Winter concert Wednesday 7pm in the gym — families welcome ★ Pajama day Friday — wear your coziest PJs and bring a canned good ★ Break starts after school Friday Dec 19 — see you back Jan 5 ★ Hot cocoa for everyone in the cafeteria all week ★ </span><span>★ Winter concert Wednesday 7pm in the gym — families welcome ★ Pajama day Friday — wear your coziest PJs and bring a canned good ★ Break starts after school Friday Dec 19 — see you back Jan 5 ★ Hot cocoa for everyone in the cafeteria all week ★ </span></div>
+</div>
+
+</div></div></div>
+
+<!-- flagship runtime: orient + scale, theme, image slots, auto-fit, live clock/countdown/advent/weekday -->
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+
+  // build twinkle lights + snow (decor only)
+  var L=document.getElementById('lights');if(L){var cols=['#e54848','#e3a83b','#2e8a4a','#5ab0ff','#fff8ea'];for(var i=0;i<48;i++){var b=document.createElement('i');b.style.left=(i/47*100)+'%';b.style.background=cols[i%5];b.style.boxShadow='0 0 18px '+cols[i%5];b.style.animationDelay=(i%6*0.4)+'s';L.appendChild(b);}}
+  var S=document.getElementById('snow');if(S){for(var j=0;j<26;j++){var s=document.createElement('span');var sz=8+Math.round((j*7)%14);s.style.left=((j*37)%100)+'%';s.style.top=(-((j*211)%1400))+'px';s.style.width=sz+'px';s.style.height=sz+'px';s.style.animationDelay=((j*0.5)%8)+'s';S.appendChild(s);}}
+
+  // theme tokens → CSS vars (live)
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
+
+  // image slots
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+
+  // auto-fit headlines
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
+
+  // live clock (HH:MM, CMS can pin by removing data-live)
+  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m;}
+  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});}
+  tick();setInterval(tick,15000);
+
+  // live "days till break" countdown (target in data-countdown-to, e.g. "Dec 19")
+  var DMON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  function days(){document.querySelectorAll('[data-countdown-to]').forEach(function(el){var dm=el.getAttribute('data-demo');if(dm!=null){var dn=+dm;el.textContent=(dn<10?'0':'')+dn;return;}var t=el.getAttribute('data-countdown-to').trim().toLowerCase().match(/([a-z]+)\s*(\d{1,2})/);if(!t||!(t[1].slice(0,3) in DMON))return;var now=new Date();now.setHours(0,0,0,0);var y=now.getFullYear(),target=new Date(y,DMON[t[1].slice(0,3)],+t[2]);if(target<now)target=new Date(y+1,DMON[t[1].slice(0,3)],+t[2]);var n=Math.round((target-now)/86400000);el.textContent=n<10?('0'+n):(''+n);});}
+  days();setInterval(days,3600000);
+
+  // advent: highlight today's door, mark earlier ones open (Dec; data-demo-day to preview)
+  function advent(){document.querySelectorAll('[data-advent]').forEach(function(box){var mo=+(box.getAttribute('data-advent-month')||12),now=new Date(),demo=box.getAttribute('data-demo-day'),day=demo!=null?+demo:(now.getMonth()+1===mo?now.getDate():0);box.querySelectorAll('.door').forEach(function(d,i){var n=i+1;d.classList.remove('open','today');if(!day)return;if(n<day)d.classList.add('open');else if(n===day)d.classList.add('today');});});}
+  advent();setInterval(advent,3600000);
+
+  // spirit-week: highlight today's weekday card (data-demo-dow to preview)
+  function week(){document.querySelectorAll('[data-week]').forEach(function(ul){var demo=ul.getAttribute('data-demo-dow'),dow=demo!=null?+demo:new Date().getDay();ul.querySelectorAll('[data-weekday]').forEach(function(li){li.classList.toggle('today',+li.getAttribute('data-weekday')===dow);});});}
+  week();setInterval(week,600000);
+})();
+</script>
+
+<!-- HOLIDAY BRIDGE — preserved verbatim from the production template (CI-enforced protocol) -->
+<script id="holiday-bridge">(function(){function a(){var s=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-w'),10)||3840,h=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-h'),10)||2160,c=Math.min(window.innerWidth/s,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',c)}a();window.addEventListener('resize',a);function r(){var n=document.querySelectorAll('[data-field]'),s={},f=[];n.forEach(function(e){var k=e.getAttribute('data-field');if(!k||s[k])return;s[k]=1;var t=(e.textContent||'').trim();f.push({key:k,defaultText:t,multiline:/\n/.test(t)||t.length>80||e.tagName==='P'})});try{window.parent.postMessage({type:'holiday:ready',fields:f},window.location.origin)}catch(e){}}if(document.readyState==='complete'||document.readyState==='interactive')r();else document.addEventListener('DOMContentLoaded',r);document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document.body){if(n.nodeType===1&&n.hasAttribute&&n.hasAttribute('data-field')){try{window.parent.postMessage({type:'holiday:fieldClicked',key:n.getAttribute('data-field')},window.location.origin)}catch(e){}return}n=n.parentNode}});window.addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='holiday:setField'){var k=String(d.key||'');if(!k)return;var n=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\"')+'"]'),v=String(d.value==null?'':d.value);n.forEach(function(e){e.textContent=v})}})})();</script>
+<script src="_style-bridge.js?v=20260509"></script></body></html>

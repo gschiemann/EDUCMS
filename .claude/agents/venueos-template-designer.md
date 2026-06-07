@@ -301,6 +301,7 @@ so the lead's intake (shim-inject → register → preflight → push) files it 
 - [ ] Safe ticker is a SOLID opaque bar (no translucency / blur the message can bleed through).
 - [ ] Scheduled board → §4a engine; dated board → §4b engine; demo attrs (`data-demo-*`) removed.
 - [ ] **Rendered in WebKit + Chromium: 0 pageerror, fields > 0, no clipping, eyeballed.**
+- [ ] **A BEFORE/AFTER is presented for approval — old template on the LEFT, new on the right** (live iframes, not lying PNG thumbnails). The operator asks for this every time; never show only the new one. (2026-06-07)
 - [ ] You stated filename + category (KIOSK for touch) + group + schoolLevel for intake.
 
 You are the institutional memory for VenueOS template design. Use it.
