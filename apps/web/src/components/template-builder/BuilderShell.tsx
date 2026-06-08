@@ -624,23 +624,19 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       {/* Starter-template explainer. System presets can't be overwritten;
           editing forks the operator's own copy. Without this banner the
           operator edits, sees no Save button, and thinks "I can't update
-          anything" (Domino's pilot, 2026-05-31). */}
+          anything" (Domino's pilot, 2026-05-31).
+          NOTE: this is explanatory ONLY — the actual CTA is the single
+          "Save to my templates" button in the toolbar above. The banner used
+          to ALSO render its own button, which produced TWO identical save
+          buttons for any system preset (both calling handleCustomize). Dropped
+          the duplicate; the text now points at the toolbar button. */}
       {template.isSystem && (
         <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 bg-amber-50 border-b border-amber-200">
           <Sparkles className="w-4 h-4 shrink-0 text-amber-500" aria-hidden />
           <p className="text-xs font-medium text-amber-900 flex-1 min-w-0">
             This is a <strong>starter template</strong>. Edit anything you like — then click{' '}
-            <strong>Save to my templates</strong> to keep your changes as your own editable copy.
+            <strong>Save to my templates</strong> in the top bar to keep your changes as your own editable copy.
           </p>
-          <button
-            type="button"
-            onClick={handleCustomize}
-            disabled={saveStatus === 'saving'}
-            className="shrink-0 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-amber-400"
-          >
-            <Copy className="w-3.5 h-3.5" aria-hidden />
-            Save to my templates
-          </button>
         </div>
       )}
 
