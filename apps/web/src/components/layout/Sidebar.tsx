@@ -462,14 +462,16 @@ export function Sidebar() {
                 // when the name is long enough to wrap.
                 className={cn(
                   'bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700',
-                  'line-clamp-2 leading-[1.1] break-words',
-                  // 2026-05-26 — "Los Angeles Dodgers" (19 chars) was
-                  // tripping the smaller font at >18 and looked tiny
-                  // next to the logo chip. Bumped threshold to >24
-                  // (covers names like "Los Medanos Community College")
-                  // and softened the shrink to text-base so the visual
-                  // weight stays consistent with the logo.
-                  brandName.length > 24 ? 'text-base' : 'text-xl',
+                  'line-clamp-3 leading-[1.1] break-words',
+                  // 2026-06-08 — a beta customer's "ARC Imaging Resources"
+                  // (21 chars) clipped to "ARC Imagin…": 21 ≤ the old >24
+                  // threshold kept it at text-xl, which overflows the narrow
+                  // header past 2 lines. The single-threshold approach has
+                  // been re-tuned 3× (18→24→…) and keeps breaking on the
+                  // next edge case. Replaced it with a graduated scale that
+                  // keeps names up to ~36 chars legible, and bumped the clamp
+                  // 2→3 so the final word is never cut.
+                  brandName.length > 28 ? 'text-sm' : brandName.length > 16 ? 'text-base' : 'text-xl',
                 )}
               >
                 {brandName}
