@@ -1,0 +1,168 @@
+<!doctype html>
+<!-- ES ST PATRICK'S v2 — "LUCKY DAY" CLEAN flagship for the little ones. ONE big lucky
+     greeting + a giant countdown, three simple event chips, lots of bright negative space.
+     Sunny-green field with a soft rainbow arc, a couple of swaying clovers + gold coins.
+     Every text = data-field, crest = data-imgslot, ALL color via canonical brand tokens
+     (school brand re-skins it). Auto-fit, portrait+landscape, bridge preserved. Deliberately
+     low-text for K-5: NO paragraph cards, NO multi-column schedule, NO ticker, THREE chips. -->
+<html lang="en"><head><meta charset="utf-8"/><title>St Patrick's · ES Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Caveat:wght@600;700&family=Sniglet:wght@800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;--scale:1;
+  /* St Patrick's palette, mapped onto the canonical brand tokens (light theme). */
+  --brand:#2e8a4a;--brand2:#1e5a32;--accent:#d6a020;--accent2:#ff7a3a;
+  --ink:#1a3020;--bg:#dff4df;--pos:#2e8a4a;--neg:#d8364a;
+  --f-display:'Sniglet';--f-head:'Caveat';--f-body:'Fredoka';--f-mono:'Caveat';
+  --green2:#4ab86a;--gold:#f0c040;--cream:#fff9e8;--card:#ffffff;
+  --red:#d8364a;--orange:#ff7a3a;--blue:#3a7ec4;--purple:#8a4fc4;
+  /* clean flagship: few elements, big type. everything >=60px on the 3840 stage. */
+  --t-school:calc(96px*var(--scale));--t-date:calc(60px*var(--scale));
+  --t-eyebrow:calc(78px*var(--scale));--t-hero:calc(500px*var(--scale));--t-sub:calc(84px*var(--scale));
+  --t-cdnum:calc(600px*var(--scale));--t-cdlabel:calc(66px*var(--scale));
+  --t-chipt:calc(104px*var(--scale));--t-chipm:calc(62px*var(--scale));--t-chipi:calc(132px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#7fc78f;color:var(--ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;
+  background:radial-gradient(ellipse 2400px 1600px at 50% -8%,#eafbe9 0%,#bdecc2 56%,var(--green2) 100%)}
+.stage::after{content:'';position:absolute;top:0;right:0;bottom:0;left:0;background-image:radial-gradient(rgba(46,138,74,.08) 3px,transparent 4px);background-size:34px 34px;pointer-events:none;z-index:1}
+
+/* SUBTLE decor — a soft rainbow arc, a couple of swaying clovers, a few gold coins, a grassy hem */
+.decor{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden}
+.rainbow{position:absolute;top:-120px;left:-220px;width:1300px;height:760px;border-radius:0 0 760px 760px;
+  background:repeating-radial-gradient(circle at 50% 0,var(--red) 0 96px,var(--orange) 96px 168px,var(--gold) 168px 240px,var(--green2) 240px 312px,var(--blue) 312px 384px,var(--purple) 384px 456px,transparent 456px 760px);
+  opacity:.4;filter:blur(2px)}
+.grass{position:absolute;left:-2%;right:-2%;bottom:0;height:230px;background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--brand) 86%,#0e4422));opacity:.92}
+.grass::before{content:'';position:absolute;left:0;right:0;top:-44px;height:78px;background:color-mix(in srgb,var(--brand) 86%,#0e4422);clip-path:polygon(0 100%,4% 0,8% 100%,12% 0,16% 100%,20% 24%,24% 100%,28% 0,32% 100%,36% 0,40% 100%,44% 24%,48% 100%,52% 0,56% 100%,60% 0,64% 100%,68% 24%,72% 100%,76% 0,80% 100%,84% 0,88% 100%,92% 24%,96% 100%,100% 0,100% 100%)}
+.clover{position:absolute;width:150px;height:150px;animation:sway 4s ease-in-out infinite}
+@keyframes sway{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(7deg)}}
+.clover .leaf{position:absolute;width:64px;height:64px;background:var(--brand);border-radius:50% 0 50% 50%;border:6px solid var(--ink);box-shadow:inset -8px -4px 0 rgba(0,0,0,.16)}
+.clover .l1{top:0;left:42px;transform:rotate(-45deg)}
+.clover .l2{top:42px;left:0;transform:rotate(-135deg)}
+.clover .l3{top:42px;right:0;transform:rotate(45deg)}
+.clover .l4{top:84px;left:42px;transform:rotate(135deg)}
+.clover::after{content:'';position:absolute;left:50%;top:62%;transform:translateX(-50%);width:9px;height:78px;background:var(--brand2)}
+.cv1{right:380px;bottom:170px;animation-delay:0s}
+.cv2{left:280px;bottom:160px;width:108px;height:108px;animation-delay:.6s}
+.cv2 .leaf{width:46px;height:46px}.cv2 .l1{left:31px}.cv2 .l2{top:31px}.cv2 .l3{top:31px}.cv2 .l4{top:62px;left:31px}
+.coin{position:absolute;width:104px;height:104px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff5b8,var(--gold) 52%,var(--accent) 100%);border:7px solid var(--accent);box-shadow:0 7px 0 rgba(0,0,0,.22);display:grid;place-items:center;font-family:var(--f-display);font-size:50px;color:var(--brand2)}
+.k1{bottom:180px;left:1240px;transform:rotate(-8deg)}
+.k2{bottom:150px;right:200px;width:80px;height:80px;font-size:38px;transform:rotate(12deg)}
+
+.wrap{position:relative;z-index:7;width:100%;height:100%;display:flex;flex-direction:column;padding:150px 200px 190px}
+
+/* slim masthead */
+.mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:40px}
+.mast .school{display:flex;align-items:center;gap:30px;min-width:0}
+.mast .crest{width:128px;height:128px;border-radius:50%;border:7px solid var(--brand);background:linear-gradient(135deg,var(--brand),var(--gold));background-size:cover;background-position:center;flex:none;display:grid;place-items:center;font-family:var(--f-display);font-size:calc(60px*var(--scale));color:#fff;overflow:hidden;box-shadow:0 8px 0 var(--brand2)}
+.mast .crest .ph{line-height:1}
+.mast .crest.has-img{border-color:var(--accent)}.mast .crest.has-img .ph{display:none}
+.mast .school .nm{font-family:var(--f-display);font-size:var(--t-school);color:var(--ink);letter-spacing:-.01em;line-height:1;white-space:nowrap}
+.mast .school .nm em{color:var(--brand);font-style:normal}
+.mast .date{font-family:var(--f-head);font-weight:700;font-size:var(--t-date);letter-spacing:.02em;color:var(--brand);white-space:nowrap;background:var(--card);border:5px solid var(--brand);border-radius:24px;padding:16px 36px;box-shadow:0 8px 0 var(--brand2)}
+
+/* hero takes the big middle: greeting + one line, with the countdown beside it */
+.hero{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:130px}
+.hero .l{min-width:0}
+.hero .eyebrow{font-family:var(--f-head);font-weight:700;font-size:var(--t-eyebrow);letter-spacing:.02em;color:var(--accent2);white-space:nowrap}
+.hero h1{font-family:var(--f-display);font-size:var(--t-hero);line-height:.84;color:var(--brand);margin:18px 0 0;letter-spacing:-.02em;text-shadow:10px 10px 0 var(--gold),20px 20px 0 var(--brand2)}
+.hero h1 em{color:var(--accent);font-style:normal}
+.hero .sub{font-family:var(--f-body);font-weight:600;font-size:var(--t-sub);color:var(--ink);margin-top:34px;line-height:1.14;max-width:1850px}
+.cd{flex:none;text-align:center;background:var(--card);border:8px solid var(--accent);border-radius:48px;padding:54px 72px;box-shadow:0 18px 0 var(--accent),0 30px 44px rgba(0,0,0,.16)}
+.cd .v{font-family:var(--f-display);font-size:var(--t-cdnum);line-height:.78;color:var(--brand);font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.cd .k{font-family:var(--f-head);font-weight:700;font-size:var(--t-cdlabel);letter-spacing:.02em;color:var(--accent2);margin-top:14px;white-space:nowrap}
+
+/* three simple event chips, one row along the bottom */
+.chips{flex:none;display:grid;grid-template-columns:repeat(3,1fr);gap:52px;margin-top:30px}
+.chip{background:var(--card);border:7px solid var(--brand);border-radius:38px;padding:46px 50px;display:flex;flex-direction:column;gap:16px;min-width:0;box-shadow:0 14px 0 var(--brand2)}
+.chip.b2{border-color:var(--accent);box-shadow:0 14px 0 var(--accent)}
+.chip.b3{border-color:var(--accent2);box-shadow:0 14px 0 color-mix(in srgb,var(--accent2) 70%,var(--ink))}
+.chip .icon{font-size:var(--t-chipi);line-height:.9}
+.chip .t{font-family:var(--f-display);font-size:var(--t-chipt);color:var(--brand);line-height:.9;letter-spacing:-.01em}
+.chip.b2 .t{color:var(--accent)}.chip.b3 .t{color:var(--accent2)}
+.chip .m{font-family:var(--f-head);font-weight:700;font-size:var(--t-chipm);letter-spacing:.01em;color:var(--accent2)}
+
+@media (orientation:portrait){
+  .stage[data-orient="port"] .wrap{padding:190px 130px 230px}
+  .stage[data-orient="port"]{--t-hero:calc(360px*var(--scale));--t-cdnum:calc(440px*var(--scale))}
+  .stage[data-orient="port"] .mast{flex-direction:column;align-items:center;text-align:center;gap:22px}
+  .stage[data-orient="port"] .mast .school{justify-content:center}
+  .stage[data-orient="port"] .hero{grid-template-columns:1fr;gap:70px;text-align:center}
+  .stage[data-orient="port"] .hero .sub{margin-left:auto;margin-right:auto}
+  .stage[data-orient="port"] .chips{grid-template-columns:1fr;gap:40px}
+}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-es-stpatricks-v2"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#dff4df</span><span data-field="theme.ink">#1a3020</span>
+  <span data-field="theme.brand">#2e8a4a</span><span data-field="theme.brand2">#1e5a32</span>
+  <span data-field="theme.accent">#d6a020</span><span data-field="theme.accent2">#ff7a3a</span>
+  <span data-field="theme.pos">#2e8a4a</span><span data-field="theme.neg">#d8364a</span>
+  <span data-field="theme.fDisplay">Sniglet</span><span data-field="theme.fHead">Caveat</span><span data-field="theme.fBody">Fredoka</span><span data-field="theme.fMono">Caveat</span><span data-field="theme.scale">1</span>
+</div>
+
+<div class="decor">
+  <div class="rainbow"></div>
+  <div class="grass"></div>
+  <div class="clover cv1"><div class="leaf l1"></div><div class="leaf l2"></div><div class="leaf l3"></div><div class="leaf l4"></div></div>
+  <div class="clover cv2"><div class="leaf l1"></div><div class="leaf l2"></div><div class="leaf l3"></div><div class="leaf l4"></div></div>
+  <div class="coin k1">$</div><div class="coin k2">$</div>
+</div>
+
+<div class="wrap">
+  <header class="mast" data-widget="masthead">
+    <div class="school"><div class="crest" data-imgslot="school.logo"><span class="ph" data-field="masthead.crest">MT</span></div><div class="nm"><span data-field="masthead.t1">Maple </span><em data-field="masthead.t2">Tree</em></div></div>
+    <div class="date" data-field="masthead.date" data-live="today" data-fit="single" data-fit-max="66">Tue · Mar 17</div>
+  </header>
+
+  <section class="hero">
+    <div class="l" data-widget="headline">
+      <div class="eyebrow" data-field="headline.kicker" data-fit="single" data-fit-max="92">~ feelin' lucky! ~</div>
+      <h1 data-fit="single" data-fit-min="200" data-fit-max="520"><span data-field="headline.t1">Lucky </span><em data-field="headline.t2">Day!</em></h1>
+      <div class="sub" data-field="headline.sub" data-fit data-fit-max="96">Wear green Tuesday or you might get pinched!</div>
+    </div>
+    <div class="cd" data-widget="countdown">
+      <div class="v" data-field="countdown.v" data-countdown-to="Mar 17" data-demo="1">1</div>
+      <div class="k" data-field="countdown.k" data-fit="single" data-fit-max="74">sleep till green day</div>
+    </div>
+  </section>
+
+  <div class="chips">
+    <div class="chip" data-widget="c0"><div class="icon" data-field="c0.icon">☘️</div><div class="t" data-field="c0.t" data-fit="single" data-fit-max="116">Wear Green</div><div class="m" data-field="c0.m" data-fit="single" data-fit-max="70">Tue · all day</div></div>
+    <div class="chip b2" data-widget="c1"><div class="icon" data-field="c1.icon">🪙</div><div class="t" data-field="c1.t" data-fit="single" data-fit-max="116">Trap Contest</div><div class="m" data-field="c1.m" data-fit="single" data-fit-max="70">Thu · library</div></div>
+    <div class="chip b3" data-widget="c2"><div class="icon" data-field="c2.icon">🌈</div><div class="t" data-field="c2.t" data-fit="single" data-fit-max="116">Class Parade</div><div class="m" data-field="c2.m" data-fit="single" data-fit-max="70">Tue · halls · 2:00</div></div>
+  </div>
+</div>
+
+</div></div></div>
+
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fHead:'--f-head',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||60),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
+  var DMON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],DDOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  function fillDates(){document.querySelectorAll('[data-live="today"]').forEach(function(el){if(el.hasAttribute('data-pin'))return;var d=new Date();el.textContent=DDOW[d.getDay()]+' · '+DMON[d.getMonth()]+' '+d.getDate();});}
+  fillDates();setInterval(fillDates,600000);
+  var DM={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  function days(){document.querySelectorAll('[data-countdown-to]').forEach(function(el){var dm=el.getAttribute('data-demo');if(dm!=null){el.textContent=(''+ +dm);return;}var t=el.getAttribute('data-countdown-to').trim().toLowerCase().match(/([a-z]+)\s*(\d{1,2})/);if(!t||!(t[1].slice(0,3) in DM))return;var now=new Date();now.setHours(0,0,0,0);var y=now.getFullYear(),target=new Date(y,DM[t[1].slice(0,3)],+t[2]);if(target<now)target=new Date(y+1,DM[t[1].slice(0,3)],+t[2]);var n=Math.round((target-now)/86400000);el.textContent=''+n;});}
+  days();setInterval(days,3600000);
+})();
+</script>
+
+<script id="holiday-bridge">(function(){function a(){var s=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-w'),10)||3840,h=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-h'),10)||2160,c=Math.min(window.innerWidth/s,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',c)}a();window.addEventListener('resize',a);function r(){var n=document.querySelectorAll('[data-field]'),s={},f=[];n.forEach(function(e){var k=e.getAttribute('data-field');if(!k||s[k])return;s[k]=1;var t=(e.textContent||'').trim();f.push({key:k,defaultText:t,multiline:/\n/.test(t)||t.length>80||e.tagName==='P'})});try{window.parent.postMessage({type:'holiday:ready',fields:f},window.location.origin)}catch(e){}}if(document.readyState==='complete'||document.readyState==='interactive')r();else document.addEventListener('DOMContentLoaded',r);document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document.body){if(n.nodeType===1&&n.hasAttribute&&n.hasAttribute('data-field')){try{window.parent.postMessage({type:'holiday:fieldClicked',key:n.getAttribute('data-field')},window.location.origin)}catch(e){}return}n=n.parentNode}});window.addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='holiday:setField'){var k=String(d.key||'');if(!k)return;var n=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\"')+'"]'),v=String(d.value==null?'':d.value);n.forEach(function(e){e.textContent=v})}})})();</script>
+<script src="_style-bridge.js?v=20260509"></script></body></html>

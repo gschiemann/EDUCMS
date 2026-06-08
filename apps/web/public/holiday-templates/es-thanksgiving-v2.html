@@ -1,0 +1,156 @@
+<!doctype html>
+<!-- ES THANKSGIVING v2 — "GRATEFUL" CLEAN flagship. ONE warm headline + a giant
+     countdown, three simple event chips, generous negative space. Cozy harvest sky.
+     Every text = data-field, crest = data-imgslot, ALL color via canonical brand tokens
+     (school brand re-skins it). Auto-fit, portrait+landscape, bridge preserved.
+     Elementary voice — warm, simple, playful, short words. NO paragraphs, NO schedule, NO ticker. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Thanksgiving · ES Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Sniglet:wght@800&family=Fredoka:opsz,wght@6..40,500;6..40,600&family=Caveat:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;--scale:1;
+  --brand:#c4502a;--brand2:#7a2e12;--accent:#e3a83b;--accent2:#5a7a3a;
+  --ink:#3a2418;--bg:#fff1d6;--pos:#5a7a3a;--neg:#c4502a;
+  --f-display:'Sniglet';--f-body:'Fredoka';--f-mono:'Caveat';
+  --cream:#fff1d6;--cream2:#f5e0b3;--mute:#7a4a26;
+  /* clean flagship: few elements, big type. everything >=60px on the 3840 stage. */
+  --t-school:calc(96px*var(--scale));--t-date:calc(64px*var(--scale));
+  --t-eyebrow:calc(74px*var(--scale));--t-hero:calc(560px*var(--scale));--t-sub:calc(84px*var(--scale));
+  --t-cdnum:calc(600px*var(--scale));--t-cdlabel:calc(66px*var(--scale));
+  --t-chipt:calc(104px*var(--scale));--t-chipm:calc(62px*var(--scale));--t-chipi:calc(132px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#1a0d04;color:var(--ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;
+  background:radial-gradient(1700px 1200px at 84% 12%,color-mix(in srgb,var(--accent) 60%,#fff7e2) 0%,transparent 60%),radial-gradient(2200px 1700px at 50% 130%,color-mix(in srgb,var(--brand) 24%,var(--cream2)),transparent 70%),linear-gradient(178deg,#fff7e2 0%,var(--cream) 46%,var(--cream2) 100%)}
+
+.decor{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden}
+.dots{position:absolute;top:0;right:0;bottom:0;left:0;background-image:radial-gradient(color-mix(in srgb,var(--mute) 14%,transparent) 2px,transparent 3px);background-size:46px 46px;z-index:1;opacity:.5}
+.sun{position:absolute;top:-160px;right:300px;width:660px;height:660px;border-radius:50%;
+  background:radial-gradient(circle at 40% 36%,#fff7e2 0%,color-mix(in srgb,var(--accent) 56%,#f6e4b0) 50%,color-mix(in srgb,var(--brand) 30%,#d8a85a) 92%);
+  box-shadow:0 0 200px color-mix(in srgb,var(--accent) 52%,transparent),0 0 380px color-mix(in srgb,var(--accent) 26%,transparent)}
+/* two big soft paper leaves, quietly drifting */
+.leaf{position:absolute;width:300px;height:300px;border-radius:54% 0 54% 54%;opacity:.42;filter:blur(.5px);animation:sway 9s ease-in-out infinite}
+.leaf::before{content:'';position:absolute;left:50%;top:14%;width:7px;height:64%;background:color-mix(in srgb,var(--brand2) 60%,transparent);transform:translateX(-50%);border-radius:6px}
+.leaf.a{left:120px;top:1520px;background:color-mix(in srgb,var(--brand) 80%,transparent);--r:-24deg;transform:rotate(-24deg);animation-delay:0s}
+.leaf.b{right:160px;top:1480px;width:240px;height:240px;background:color-mix(in srgb,var(--accent) 80%,transparent);--r:38deg;transform:rotate(38deg);animation-delay:1.4s}
+@keyframes sway{0%,100%{transform:translateY(0) rotate(var(--r,-24deg))}50%{transform:translateY(-26px) rotate(calc(var(--r,-24deg) + 6deg))}}
+.spark i{position:absolute;border-radius:50% 0 50% 50%;background:color-mix(in srgb,var(--accent) 80%,#fff);opacity:.5;transform:rotate(-30deg);animation:fall 7s ease-in-out infinite}
+@keyframes fall{0%{opacity:0;transform:translateY(-30px) rotate(-30deg)}20%{opacity:.6}100%{opacity:0;transform:translateY(120px) rotate(60deg)}}
+.vig{position:absolute;top:0;right:0;bottom:0;left:0;box-shadow:inset 0 0 460px color-mix(in srgb,var(--brand2) 26%,transparent);z-index:5}
+
+.wrap{position:relative;z-index:7;width:100%;height:100%;display:flex;flex-direction:column;padding:150px 200px 160px}
+
+/* slim masthead */
+.mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:40px}
+.mast .school{display:flex;align-items:center;gap:30px;min-width:0}
+.mast .crest{width:120px;height:120px;border-radius:50%;border:6px solid var(--brand);background:linear-gradient(135deg,var(--brand),var(--accent));background-size:cover;background-position:center;flex:none;display:grid;place-items:center;font-family:var(--f-display);font-size:calc(60px*var(--scale));color:#fff;overflow:hidden;box-shadow:0 8px 0 color-mix(in srgb,var(--brand2) 60%,transparent)}
+.mast .crest .ph{line-height:1}
+.mast .crest.has-img{border-color:var(--accent)}.mast .crest.has-img .ph{display:none}
+.mast .school .nm{font-family:var(--f-display);font-size:var(--t-school);color:var(--ink);letter-spacing:-.01em;line-height:1;white-space:nowrap}
+.mast .school .nm em{color:var(--brand);font-style:normal}
+.mast .date{font-family:var(--f-mono);font-weight:700;font-size:var(--t-date);letter-spacing:.04em;color:var(--brand);white-space:nowrap}
+
+/* hero takes the big middle: headline + one line, with the countdown beside it */
+.hero{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:130px}
+.hero .l{min-width:0}
+.hero .eyebrow{font-family:var(--f-mono);font-weight:700;font-size:var(--t-eyebrow);letter-spacing:.04em;color:var(--accent2);white-space:nowrap}
+.hero h1{font-family:var(--f-display);font-size:var(--t-hero);line-height:.84;color:var(--brand);margin:24px 0 0;letter-spacing:-.02em;text-shadow:12px 12px 0 #fff,26px 26px 0 var(--accent)}
+.hero h1 em{color:var(--accent2);font-style:normal;text-shadow:12px 12px 0 #fff}
+.hero .sub{font-family:var(--f-body);font-weight:600;font-size:var(--t-sub);color:var(--mute);margin-top:34px;line-height:1.14;max-width:1850px}
+.cd{flex:none;text-align:center}
+.cd .v{font-family:var(--f-display);font-size:var(--t-cdnum);line-height:.78;color:var(--ink);font-variant-numeric:tabular-nums;text-shadow:10px 10px 0 #fff,0 0 90px color-mix(in srgb,var(--accent) 55%,transparent)}
+.cd .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-cdlabel);letter-spacing:.04em;color:var(--brand);margin-top:14px;white-space:nowrap}
+
+/* three simple event chips, one row along the bottom */
+.chips{flex:none;display:grid;grid-template-columns:repeat(3,1fr);gap:52px;margin-top:30px}
+.chip{background:#fff;border:6px solid var(--brand);border-radius:36px;padding:46px 50px;display:flex;flex-direction:column;gap:16px;min-width:0;box-shadow:0 14px 0 color-mix(in srgb,var(--brand) 60%,var(--ink)),0 26px 36px rgba(58,36,24,.18)}
+.chip.b2{border-color:var(--accent);box-shadow:0 14px 0 color-mix(in srgb,var(--accent) 70%,var(--ink)),0 26px 36px rgba(58,36,24,.18)}
+.chip.b3{border-color:var(--accent2);box-shadow:0 14px 0 color-mix(in srgb,var(--accent2) 70%,var(--ink)),0 26px 36px rgba(58,36,24,.18)}
+.chip .icon{font-size:var(--t-chipi);line-height:.9}
+.chip .t{font-family:var(--f-display);font-size:var(--t-chipt);color:var(--brand);line-height:.9;letter-spacing:-.01em}
+.chip.b2 .t{color:var(--accent2)}.chip.b3 .t{color:var(--ink)}
+.chip .m{font-family:var(--f-mono);font-weight:700;font-size:var(--t-chipm);letter-spacing:.02em;color:var(--mute)}
+
+@media (orientation:portrait){
+  .stage[data-orient="port"] .wrap{padding:190px 130px 170px}
+  .stage[data-orient="port"]{--t-hero:calc(380px*var(--scale));--t-cdnum:calc(440px*var(--scale))}
+  .stage[data-orient="port"] .mast{flex-direction:column;align-items:center;text-align:center;gap:22px}
+  .stage[data-orient="port"] .mast .school{justify-content:center}
+  .stage[data-orient="port"] .hero{grid-template-columns:1fr;gap:70px;text-align:center}
+  .stage[data-orient="port"] .hero .sub{margin-left:auto;margin-right:auto}
+  .stage[data-orient="port"] .chips{grid-template-columns:1fr;gap:40px}
+}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-es-thanksgiving-v2"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#fff1d6</span><span data-field="theme.ink">#3a2418</span>
+  <span data-field="theme.brand">#c4502a</span><span data-field="theme.brand2">#7a2e12</span>
+  <span data-field="theme.accent">#e3a83b</span><span data-field="theme.accent2">#5a7a3a</span>
+  <span data-field="theme.pos">#5a7a3a</span><span data-field="theme.neg">#c4502a</span>
+  <span data-field="theme.fDisplay">Sniglet</span><span data-field="theme.fBody">Fredoka</span><span data-field="theme.fMono">Caveat</span><span data-field="theme.scale">1</span>
+</div>
+
+<div class="decor">
+  <div class="sun"></div>
+  <div class="leaf a"></div>
+  <div class="leaf b"></div>
+  <div class="spark" id="spark"></div>
+  <div class="dots"></div>
+  <div class="vig"></div>
+</div>
+
+<div class="wrap">
+  <header class="mast" data-widget="masthead">
+    <div class="school"><div class="crest" data-imgslot="school.logo"><span class="ph" data-field="masthead.crest">MT</span></div><div class="nm"><span data-field="masthead.t1">Maple </span><em data-field="masthead.t2">Tree</em></div></div>
+    <div class="date" data-field="masthead.date" data-fit="single" data-fit-max="72">Wed · Nov 26</div>
+  </header>
+
+  <section class="hero">
+    <div class="l" data-widget="headline">
+      <div class="eyebrow" data-field="headline.kicker" data-fit="single" data-fit-max="88">~ this thankful week ~</div>
+      <h1 data-fit="single" data-fit-min="200" data-fit-max="580"><span data-field="headline.t1">Give </span><em data-field="headline.t2">Thanks</em></h1>
+      <div class="sub" data-field="headline.sub" data-fit data-fit-max="96">A big feast, a happy break, and lots to be thankful for.</div>
+    </div>
+    <div class="cd" data-widget="countdown">
+      <div class="v" data-field="countdown.v" data-countdown-to="Nov 26" data-demo="2">2</div>
+      <div class="k" data-field="countdown.k" data-fit="single" data-fit-max="74">sleeps till the feast</div>
+    </div>
+  </section>
+
+  <div class="chips">
+    <div class="chip" data-widget="c0"><div class="icon" data-field="c0.icon">🍂</div><div class="t" data-field="c0.t" data-fit="single" data-fit-max="116">Leaf Writing</div><div class="m" data-field="c0.m" data-fit="single" data-fit-max="70">Mon · in homerooms</div></div>
+    <div class="chip b2" data-widget="c1"><div class="icon" data-field="c1.icon">🦃</div><div class="t" data-field="c1.t" data-fit="single" data-fit-max="116">Family Feast</div><div class="m" data-field="c1.m" data-fit="single" data-fit-max="70">Wed · Caf · 11:30</div></div>
+    <div class="chip b3" data-widget="c2"><div class="icon" data-field="c2.icon">🏡</div><div class="t" data-field="c2.t" data-fit="single" data-fit-max="116">No School</div><div class="m" data-field="c2.m" data-fit="single" data-fit-max="70">Thu &amp; Fri · back Mon</div></div>
+  </div>
+</div>
+
+</div></div></div>
+
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var SP=document.getElementById('spark');if(SP){for(var k2=0;k2<14;k2++){var d=document.createElement('i');var sz=20+((k2*13)%34);d.style.width=sz+'px';d.style.height=sz+'px';d.style.left=((k2*61)%100)+'%';d.style.top=(6+((k2*23)%30))+'%';d.style.animationDelay=((k2*0.5)%7)+'s';SP.appendChild(d);}}
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||60),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
+  var DMON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  function days(){document.querySelectorAll('[data-countdown-to]').forEach(function(el){var dm=el.getAttribute('data-demo');if(dm!=null){el.textContent=(''+ +dm);return;}var t=el.getAttribute('data-countdown-to').trim().toLowerCase().match(/([a-z]+)\s*(\d{1,2})/);if(!t||!(t[1].slice(0,3) in DMON))return;var now=new Date();now.setHours(0,0,0,0);var y=now.getFullYear(),target=new Date(y,DMON[t[1].slice(0,3)],+t[2]);if(target<now)target=new Date(y+1,DMON[t[1].slice(0,3)],+t[2]);var n=Math.round((target-now)/86400000);el.textContent=''+n;});}
+  days();setInterval(days,3600000);
+})();
+</script>
+
+<script id="holiday-bridge">(function(){function a(){var s=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-w'),10)||3840,h=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-h'),10)||2160,c=Math.min(window.innerWidth/s,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',c)}a();window.addEventListener('resize',a);function r(){var n=document.querySelectorAll('[data-field]'),s={},f=[];n.forEach(function(e){var k=e.getAttribute('data-field');if(!k||s[k])return;s[k]=1;var t=(e.textContent||'').trim();f.push({key:k,defaultText:t,multiline:/\n/.test(t)||t.length>80||e.tagName==='P'})});try{window.parent.postMessage({type:'holiday:ready',fields:f},window.location.origin)}catch(e){}}if(document.readyState==='complete'||document.readyState==='interactive')r();else document.addEventListener('DOMContentLoaded',r);document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document.body){if(n.nodeType===1&&n.hasAttribute&&n.hasAttribute('data-field')){try{window.parent.postMessage({type:'holiday:fieldClicked',key:n.getAttribute('data-field')},window.location.origin)}catch(e){}return}n=n.parentNode}});window.addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='holiday:setField'){var k=String(d.key||'');if(!k)return;var n=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\"')+'"]'),v=String(d.value==null?'':d.value);n.forEach(function(e){e.textContent=v})}})})();</script>
+<script src="_style-bridge.js?v=20260509"></script></body></html>
