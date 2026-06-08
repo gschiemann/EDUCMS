@@ -909,16 +909,29 @@ export default function TemplatesPage() {
                         friendly = 'Monthly free AI quota used up. Add your own provider key in Settings → AI provider, or wait until next month.';
                       } else if (code === 'AI_FAILURE_CAP_REACHED') {
                         friendly = 'Too many failed AI requests in the last hour. Wait an hour, or contact support if you think this is wrong.';
-                      } else if (status === 503 || raw.includes('not configured')) {
+                      } else if (raw.includes('not configured')) {
+                        // The ONLY true "no key on file" case — the backend
+                        // message is literally "AI is not configured…". (Was
+                        // previously `status === 503 || …`, which mislabeled
+                        // EVERY downstream 503 — bad key, empty/truncated
+                        // response, provider 4xx — as "not enabled", hiding
+                        // the real, fixable error from the operator.)
                         friendly = "AI isn't enabled for this site. Ask your administrator to add an API key in Settings → AI provider.";
-                      } else if (status === 429 || raw.includes('hourly') || raw.includes('rate-limited')) {
+                      } else if (raw.includes('rejected') || raw.includes('re-enter')) {
+                        friendly = e.message; // BYOK key invalid/expired — server msg is actionable
+                      } else if (status === 429 || raw.includes('hourly') || raw.includes('rate-limit')) {
                         friendly = "You've hit this hour's AI generation limit. Try again in a few minutes.";
-                      } else if (raw.includes('unparseable')) {
+                      } else if (raw.includes('empty response')) {
+                        friendly = e.message; // model truncated — server msg says how to fix (switch model / shorten)
+                      } else if (raw.includes('unparseable') || raw.includes('no usable')) {
                         friendly = 'The AI returned something unusable. Try rephrasing your prompt with more concrete details.';
-                      } else if (raw.includes('rejected')) {
-                        friendly = e.message; // BYOK 401 — already operator-friendly
                       } else if (raw.includes('unreachable')) {
                         friendly = 'Could not reach the AI service. Check your connection or retry.';
+                      } else if (status === 503 && e?.message) {
+                        // Any other backend 503: surface the server's own
+                        // (operator-friendly) message rather than a misleading
+                        // generic — e.g. "AI service responded 404."
+                        friendly = e.message;
                       }
                       setAiError(friendly);
                     }

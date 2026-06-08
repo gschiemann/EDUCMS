@@ -547,14 +547,19 @@ export class AiService {
             HttpStatus.PAYMENT_REQUIRED, // 402 — same as AI_CAP_REACHED, "pay to continue"
           );
         }
-        // 401 from a tenant BYOK key → it's invalid. Tell the operator
-        // exactly that so they re-paste in Settings instead of bouncing
-        // around looking for a config issue. Other statuses get a
-        // generic message (provider-specific debugging is not the
-        // operator's job).
-        if (out.errorStatus === 401 && resolved.source === 'tenant') {
+        // A bad BYOK key → tell the operator exactly that so they re-paste
+        // in Settings instead of hunting a phantom config issue. 401 = bad
+        // key; 403 = key valid but lacks access to that model; Google also
+        // signals a bad key as HTTP 400 with "API_KEY_INVALID" in the body.
+        // Other statuses get a generic message (provider-specific debugging
+        // is not the operator's job).
+        const keyRejected =
+          out.errorStatus === 401 ||
+          out.errorStatus === 403 ||
+          (out.errorStatus === 400 && /api[_ ]?key|API_KEY_INVALID|PERMISSION_DENIED/i.test(out.errorBody || ''));
+        if (keyRejected && resolved.source === 'tenant') {
           throw new ServiceUnavailableException(
-            `Your ${providerDisplayName(resolved.provider)} API key was rejected (401). Re-enter it in Settings → Integrations.`,
+            `Your ${providerDisplayName(resolved.provider)} API key was rejected (${out.errorStatus}). Re-enter it in Settings → Integrations.`,
           );
         }
         if (out.errorStatus === 429) {
@@ -804,9 +809,13 @@ export class AiService {
             HttpStatus.PAYMENT_REQUIRED,
           );
         }
-        if (out.errorStatus === 401 && resolved.source === 'tenant') {
+        const keyRejected =
+          out.errorStatus === 401 ||
+          out.errorStatus === 403 ||
+          (out.errorStatus === 400 && /api[_ ]?key|API_KEY_INVALID|PERMISSION_DENIED/i.test(out.errorBody || ''));
+        if (keyRejected && resolved.source === 'tenant') {
           throw new ServiceUnavailableException(
-            `Your ${providerDisplayName(resolved.provider)} API key was rejected. Re-enter it in Settings → Integrations.`,
+            `Your ${providerDisplayName(resolved.provider)} API key was rejected (${out.errorStatus}). Re-enter it in Settings → Integrations.`,
           );
         }
         if (out.errorStatus === 429) {
@@ -819,6 +828,16 @@ export class AiService {
       if (err instanceof ServiceUnavailableException) throw err;
       this.logger.error(`AI touch-template dispatch failed: ${err?.message}`);
       throw new ServiceUnavailableException('AI service unreachable.');
+    }
+
+    // Empty (but non-error) reply — e.g. a thinking model that exhausted
+    // its output budget, or a provider that returned no content. Give an
+    // actionable message instead of letting JSON.parse('') throw a cryptic
+    // "unparseable" error.
+    if (!raw || !raw.trim()) {
+      throw new ServiceUnavailableException(
+        'The AI model returned an empty response — it may have run out of output budget. Try a shorter prompt, or switch to a faster model like Gemini Flash in Settings → AI provider.',
+      );
     }
 
     const stripped = raw

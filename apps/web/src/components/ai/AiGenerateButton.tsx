@@ -393,10 +393,23 @@ function AiGenerateModal({
         setError(null);
       } else if (code === 'AI_FAILURE_CAP_REACHED' || (status === 429 && /failed AI/i.test(msg))) {
         setError('Too many failed AI requests in the last hour. Wait an hour, or contact support if you think this is wrong.');
-      } else if (status === 503 || /AI is not configured/i.test(msg)) {
+      } else if (/not configured/i.test(msg)) {
+        // The ONLY true "no key on file" case — backend message is literally
+        // "AI is not configured…". (Was `status === 503 || …`, which
+        // mislabeled EVERY downstream 503 — bad key, empty/truncated model
+        // reply, provider 4xx — as "not configured", hiding the real,
+        // fixable error from the operator.)
         setError('AI is not configured for this deployment. Ask your admin to add a provider key in Settings → AI provider, then try again.');
+      } else if (/rejected|re-enter/i.test(msg)) {
+        setError(msg); // BYOK key invalid/expired — server message is actionable
       } else if (status === 429 || /hourly AI cap|rate.?limit/i.test(msg)) {
         setError('Hit the hourly AI cap for this tenant. Try again in a bit, or upgrade for a higher cap.');
+      } else if (/empty response/i.test(msg)) {
+        setError(msg); // model truncated — server message says how to fix
+      } else if (status === 503 && msg) {
+        // Any other backend 503: surface the server's own (operator-friendly)
+        // message rather than a misleading generic.
+        setError(msg);
       } else {
         setError(msg || 'AI request failed. Try rephrasing your context.');
       }

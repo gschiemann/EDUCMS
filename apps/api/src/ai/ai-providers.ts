@@ -454,6 +454,34 @@ export async function dispatchAi(
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}` +
       `:generateContent`;
+    // ── Gemini 2.5 "thinking" handling (2026-06-08, BYOK launch fix) ──
+    // The 2.5 family (flash, flash-lite, pro) are REASONING models: they
+    // emit internal "thinking" tokens that count against maxOutputTokens.
+    // With a small budget (our paths use 10 / 300 / 1500) the model can
+    // spend the ENTIRE budget thinking and return finishReason=MAX_TOKENS
+    // with ZERO visible text — a 200 OK with an empty body. Downstream that
+    // empty reply becomes a confusing "unparseable / not enabled" error,
+    // and (worse) test-on-save treats the empty-but-OK reply as a PASS, so
+    // a 2.5 key SAVES yet every real generation silently fails. This was the
+    // root cause of "I added my Gemini key but AI still says not enabled."
+    //   • 2.5 Flash / Flash-Lite → disable thinking outright. Our tasks
+    //     (short snippets, alt-text, schema-anchored template JSON) need no
+    //     chain-of-thought; non-thinking Flash is faster + cheaper and never
+    //     truncates a small budget.
+    //   • 2.5 Pro → thinking can't be disabled (a min budget is enforced),
+    //     so give a generous output ceiling instead. Billing is on tokens
+    //     ACTUALLY emitted, not the ceiling, so a short reply still costs a
+    //     few cents — the cap only prevents truncation.
+    //   • Non-2.5 models (gemini-2.0-flash, …) don't think — left untouched.
+    const genConfig: Record<string, any> = {
+      temperature: TEMPERATURE,
+      maxOutputTokens: input.maxTokens,
+    };
+    if (/^gemini-2\.5-flash/.test(model)) {
+      genConfig.thinkingConfig = { thinkingBudget: 0 };
+    } else if (/^gemini-2\.5/.test(model)) {
+      genConfig.maxOutputTokens = Math.max(input.maxTokens, 8192);
+    }
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -463,7 +491,7 @@ export async function dispatchAi(
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: input.system }] },
         contents: [{ role: 'user', parts: [{ text: input.userPrompt }] }],
-        generationConfig: { maxOutputTokens: input.maxTokens, temperature: TEMPERATURE },
+        generationConfig: genConfig,
       }),
       // SECURITY (audit-B2 fix) — see fetch-timeout note above the
       // anthropic branch.
@@ -484,6 +512,23 @@ export async function dispatchAi(
     const text = Array.isArray(parts)
       ? parts.map((p: any) => p?.text ?? '').join('')
       : '';
+    if (!text.trim()) {
+      // 200 OK but no usable text. Almost always finishReason=MAX_TOKENS
+      // (thinking exhausted the budget — see the thinking note above) or a
+      // SAFETY / RECITATION block. Surface it as an error envelope rather
+      // than a silent '' so callers give the operator an actionable message
+      // instead of a cryptic parse failure, AND so test-on-save stops
+      // treating an empty reply as a valid key.
+      const finish =
+        json?.candidates?.[0]?.finishReason ||
+        json?.promptFeedback?.blockReason ||
+        'NO_TEXT';
+      return {
+        raw: '',
+        errorStatus: 502,
+        errorBody: `Gemini returned no text (finishReason=${finish}, model=${model})`,
+      };
+    }
     return { raw: text };
   }
 
