@@ -369,12 +369,17 @@ function normalizeCalendarEvents(value: unknown, maxEvents: number): CalendarEve
 // Master renderer — picks the right widget by type
 // ═══════════════════════════════════════════════════════
 
-export function WidgetPreview({ widgetType, config, width, height, live, onConfigChange }: {
+export function WidgetPreview({ widgetType, config, width, height, live, freeze, onConfigChange }: {
   widgetType: string;
   config: any;
   width: number;   // percentage width of zone
   height: number;  // percentage height of zone
   live?: boolean;  // true on the player page — enables autoplay, iframes, etc.
+  // Gallery-grid thumbnail flag. When true, EXTERNAL_HTML boards load with
+  // `freeze=1` so their baked shim renders ONE auto-fit frame then kills all
+  // timers/animations (near-zero CPU). NEVER set on the player, the builder,
+  // or the full-screen preview modal — those render the board fully live.
+  freeze?: boolean;
   // Optional inline-edit hook from the template builder (BuilderZone).
   // When provided, widgets that support drag-drop / inline upload can
   // call this to persist a config patch back up to the zone.
@@ -484,7 +489,7 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     // (this is the exact crash class that took the template
     // dashboard down before — a preset whose widgetType had no
     // renderer / a component that threw at import time).
-    case 'EXTERNAL_HTML': return <ExternalHtmlWidget config={cfg} />;
+    case 'EXTERNAL_HTML': return <ExternalHtmlWidget config={cfg} freeze={freeze} />;
     case 'RSS_FEED':     return <RSSWidget config={cfg} compact={compact} />;
     case 'SOCIAL_FEED':  return <SocialWidget config={cfg} />;
     case 'PLAYLIST':     return <PlaylistWidget config={cfg} />;
@@ -2765,7 +2770,7 @@ function QrCodeVariant({ config, bgColor, color }: { config: any; bgColor: strin
  * whole point: it makes adding 78 templates a zero-risk operation
  * for the dashboard.
  */
-function ExternalHtmlWidget({ config }: { config: any }) {
+function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean }) {
   const url = typeof config?.url === 'string' ? config.url.trim() : '';
 
   // Passthrough payload — base64url-encoded JSON on URL params:
@@ -2820,10 +2825,20 @@ function ExternalHtmlWidget({ config }: { config: any }) {
         /* ignore — fall through with whatever segments did encode */
       }
     }
-    if (segments.length === 0) return url;
-    const joiner = url.includes('?') ? '&' : '?';
-    return `${url}${joiner}${segments.join('&')}`;
-  }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.actionOverrides]);
+    let result = url;
+    if (segments.length > 0) {
+      const joiner = url.includes('?') ? '&' : '?';
+      result = `${url}${joiner}${segments.join('&')}`;
+    }
+    // Gallery-grid freeze: the baked shim (EDUCMS-SHIM-V6 / EDUCMS-CLICK-V2 /
+    // EDUCMS-FREEZE-V1 / kiosk _edit-shim.js) renders one auto-fit frame then
+    // kills all timers + animations. Only the gallery grid passes freeze; the
+    // preview modal, builder, and player render fully live.
+    if (freeze) {
+      result += `${result.includes('?') ? '&' : '?'}freeze=1`;
+    }
+    return result;
+  }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.actionOverrides, freeze]);
 
   // ── Live menu feed (CTS-style) ──────────────────────────────────
   // QSR / restaurant / bar menu boards feed live the same way the sports

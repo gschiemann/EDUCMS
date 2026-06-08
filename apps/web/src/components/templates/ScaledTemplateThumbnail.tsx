@@ -48,6 +48,14 @@ interface Props {
   bgColor?: string | null;
   /** Fallback max height for the scaled preview (px). */
   maxHeight?: number;
+  /**
+   * Gallery-grid freeze. When true, EXTERNAL_HTML board iframes load with
+   * `freeze=1` so their baked shim renders ONE auto-fit frame then kills all
+   * timers + animations (near-zero CPU). The grid passes `freeze` so dozens of
+   * mounted 4K board iframes can't peg the main thread; the full-screen preview
+   * modal renders a SINGLE board fully live, so it leaves freeze false.
+   */
+  freeze?: boolean;
 }
 
 /** Small class error-boundary — one broken widget can't blank the preview. */
@@ -77,40 +85,55 @@ function bgStyle(bgImage?: string | null, bgGradient?: string | null, bgColor?: 
 }
 
 export function ScaledTemplateThumbnail({
-  zones, screenWidth, screenHeight, bgImage, bgGradient, bgColor, maxHeight = 150,
+  zones, screenWidth, screenHeight, bgImage, bgGradient, bgColor, maxHeight = 150, freeze = false,
 }: Props) {
   const outerRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState<number>(0);
 
-  // IntersectionObserver gate — don't mount the widgets until the tile is
-  // actually near the viewport. Gallery pages render ~60 template cards at
-  // once; before this gate, every card mounted its full WidgetPreview tree
-  // (inline <style> blocks, keyframe animations, ResizeObservers) on initial
-  // paint even when it was 10 screens down. Now we render a cheap placeholder
-  // div until ~400px from the viewport, then hydrate the real widgets.
-  // Once mounted, stay mounted — remounting on scroll causes flicker.
+  // Two-way IntersectionObserver gate WITH HYSTERESIS — mount the widgets when
+  // the tile nears the viewport, and UNMOUNT them once it scrolls well past, so
+  // off-screen previews free their DOM / timers / iframes instead of piling up.
+  //
+  // Why this matters: the gallery renders ~114 EXTERNAL_HTML presets, each a
+  // LIVE sandboxed 4K board iframe (live clock setInterval + keyframe anims +
+  // scrolling ticker). The old gate mounted on first intersection and then
+  // `io.disconnect()`-ed ("stay mounted") — so as the operator scrolled, dozens
+  // of animating 4K iframes ACCUMULATED, pegged the main thread, and the browser
+  // showed "page unresponsive." Unmounting off-screen tiles caps the live count.
+  //
+  // Hysteresis: mount when within ~600px of the viewport; unmount only once
+  // MORE than ~1600px away. The 1000px gap between the two thresholds means
+  // normal scrolling never sits a tile on the boundary, so it can't thrash /
+  // flicker mount↔unmount. Both observers stay connected for the tile's life
+  // (no permanent disconnect), so a tile that scrolls back into view re-mounts.
   const [isVisible, setIsVisible] = useState(false);
   useEffect(() => {
     const el = outerRef.current;
     if (!el) return;
-    if (isVisible) return;
-    // SSR / old browsers: just show it.
+    // SSR / old browsers: just show it (and keep it shown).
     if (typeof IntersectionObserver === 'undefined') { setIsVisible(true); return; }
-    const io = new IntersectionObserver(
+    const mountIO = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
-          if (e.isIntersecting) {
-            setIsVisible(true);
-            io.disconnect();
-            break;
-          }
+          if (e.isIntersecting) { setIsVisible(true); break; }
         }
       },
-      { rootMargin: '400px 0px', threshold: 0 },
+      { rootMargin: '600px 0px', threshold: 0 },
     );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [isVisible]);
+    const unmountIO = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          // Not intersecting even the 1600px-expanded viewport → it's well
+          // off-screen → tear the widget subtree (incl. iframe) down.
+          if (!e.isIntersecting) { setIsVisible(false); break; }
+        }
+      },
+      { rootMargin: '1600px 0px', threshold: 0 },
+    );
+    mountIO.observe(el);
+    unmountIO.observe(el);
+    return () => { mountIO.disconnect(); unmountIO.disconnect(); };
+  }, []);
 
   useEffect(() => {
     const el = outerRef.current;
@@ -199,6 +222,7 @@ export function ScaledTemplateThumbnail({
                 width={zone.width}
                 height={zone.height}
                 live={false}
+                freeze={freeze}
               />
             </ZoneBoundary>
           </div>

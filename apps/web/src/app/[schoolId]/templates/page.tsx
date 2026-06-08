@@ -1355,6 +1355,9 @@ function TemplatePreviewModal({
           bgGradient={template.bgGradient}
           bgColor={template.bgColor}
           maxHeight={maxH}
+          // Full-screen preview = a SINGLE board → render it fully live (live
+          // clock, animations, ticker). Never freeze the modal.
+          freeze={false}
         />
       </div>
 
@@ -1771,6 +1774,10 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
           bgGradient={template.bgGradient}
           bgColor={template.bgColor}
           maxHeight={168}
+          // Gallery GRID: freeze EXTERNAL_HTML boards (one auto-fit frame, then
+          // timers/animations killed) so dozens of mounted 4K board iframes
+          // don't peg the main thread and hang the page.
+          freeze
         />
 
         {template.isSystem && (

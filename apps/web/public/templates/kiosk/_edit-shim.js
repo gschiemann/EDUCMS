@@ -14,6 +14,57 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 (function () {
   "use strict";
+
+  // ── Gallery FREEZE mode ──────────────────────────────────────────────
+  // When the kiosk URL carries `freeze=1` (the templates GALLERY GRID appends
+  // it — the preview modal / builder / player never do), render ONE correct
+  // frame then go idle: clear every timer + rAF the kiosk armed and inject an
+  // animation/transition-killing <style>. Near-zero ongoing CPU per off-screen
+  // iframe. Strict NO-OP unless freeze=1; undone if edit mode opens.
+  //
+  // NOTE on load order: this shim is inlined LAST (after kiosk-core.js + app.js),
+  // so the kiosk's startup timers ALREADY exist before our wrappers install.
+  // We therefore (a) wrap the timer globals to catch any timer armed AFTER us
+  // (e.g. inside Kiosk._render re-renders), AND (b) brute-force clear the whole
+  // integer-ID range at freeze time to catch the early ones. Clearing an unknown
+  // / already-fired id is a spec no-op, and in a frozen thumbnail stopping every
+  // timer is exactly the goal.
+  var FROZEN = (function () { try { return new URLSearchParams(location.search).get('freeze') === '1'; } catch (e) { return false; } })();
+  var _frzStyle = null;
+  function unfreeze() { if (_frzStyle) { try { if (_frzStyle.parentNode) _frzStyle.parentNode.removeChild(_frzStyle); } catch (e) {} _frzStyle = null; } }
+  (function () {
+    if (!FROZEN) return;
+    var ivs = [], tos = [], rafs = [];
+    var _si = window.setInterval, _st = window.setTimeout, _raf = window.requestAnimationFrame;
+    window.setInterval = function () { var id = _si.apply(window, arguments); try { ivs.push(id); } catch (e) {} return id; };
+    window.setTimeout = function () { var id = _st.apply(window, arguments); try { tos.push(id); } catch (e) {} return id; };
+    if (_raf) window.requestAnimationFrame = function (cb) { var id = _raf.call(window, cb); try { rafs.push(id); } catch (e) {} return id; };
+    function freezeNow() {
+      // restore the real timer fns first so nothing re-arms via our wrappers
+      window.setInterval = _si; window.setTimeout = _st; if (_raf) window.requestAnimationFrame = _raf;
+      try { for (var i = 0; i < ivs.length; i++) clearInterval(ivs[i]); } catch (e) {}
+      try { for (var j = 0; j < tos.length; j++) clearTimeout(tos[j]); } catch (e) {}
+      try { if (_raf) for (var k = 0; k < rafs.length; k++) cancelAnimationFrame(rafs[k]); } catch (e) {}
+      // brute-force sweep the integer-id range for the pre-shim kiosk timers
+      try {
+        var hi = _st(function () {}, 0);
+        if (typeof hi === 'number' && hi > 0) { var lo = hi > 100000 ? hi - 100000 : 0; for (var z = hi; z > lo; z--) { clearTimeout(z); clearInterval(z); } }
+      } catch (e) {}
+      if (!_frzStyle) {
+        try {
+          _frzStyle = document.createElement('style');
+          _frzStyle.setAttribute('data-educms-freeze', '1');
+          _frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));
+          (document.head || document.documentElement).appendChild(_frzStyle);
+        } catch (e) {}
+      }
+    }
+    // Settle window: let the kiosk's first render + auto-fit finish before we
+    // freeze. Scheduled via the REAL setTimeout so it isn't recorded/cleared.
+    _st(freezeNow, 1400);
+    window.__educmsFreezeNow = freezeNow;
+  }());
+
   var BRAND_MAP = {
     background: ['--bg', '--brand-bg'], surface: ['--surface', '--surface-2', '--brand-paper'],
     text: ['--text', '--brand-ink'], muted: ['--text-dim', '--text-mute'],
@@ -147,7 +198,7 @@
     addEventListener('message', function (e) {
       var d = e.data; if (!d || typeof d !== 'object') return;
       if (d.type === 'educms-overrides') { if (d.brand) state.brand = d.brand; if (d.text) state.text = d.text; if (d.textStyles) state.styles = d.textStyles; if (d.img) state.img = d.img; if (d.actions) state.actions = d.actions; applyAll(); }
-      else if (d.type === 'educms-edit-mode') { editMode = !!d.on; if (editMode) armEdit(); }
+      else if (d.type === 'educms-edit-mode') { editMode = !!d.on; if (editMode) { unfreeze(); armEdit(); } }
     });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();

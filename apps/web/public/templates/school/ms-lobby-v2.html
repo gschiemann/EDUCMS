@@ -95,8 +95,25 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
   .stage[data-orient="port"] .lunch .cap{flex:1}
 }
 </style>
-<script>/*EDUCMS-SHIM-V5*/(function(){try{
+<script>/*EDUCMS-SHIM-V6*/(function(){try{
 var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
 function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
 function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
 var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
@@ -112,7 +129,7 @@ function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.
 applyBrand(readParams().brand);
 if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
 try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
-addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode)armEdit();}}catch(_){}});
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
 }catch(e){}})();</script>
 </head><body>
 <div data-widget="theme" hidden>

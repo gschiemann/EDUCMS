@@ -50,7 +50,23 @@ const path = require('path');
 // 80 templates. No arg = every template under public/templates.
 const SUBDIR = process.argv[2] ? process.argv[2].replace(/^\/+|\/+$/g, '') : '';
 const ROOT = path.resolve(__dirname, '../public/templates', SUBDIR);
-const MARKER = 'EDUCMS-SHIM-V5';
+const MARKER = 'EDUCMS-SHIM-V6';
+// V6 = V5's apply + click-to-edit logic PLUS gallery FREEZE mode. When the
+// board URL carries `freeze=1` (the templates GALLERY GRID appends it — the
+// full-screen preview modal / builder / player never do), the shim renders ONE
+// correct auto-fit frame and then goes idle: it wraps setInterval / setTimeout /
+// requestAnimationFrame at the very top of the IIFE (installed BEFORE the board's
+// own <body> scripts run, so every timer the board starts — the live clock, the
+// auto-fit settle timers, any ticker rAF — is recorded), and after a generous
+// settle window (so auto-fit has finished) it clears every recorded timer/rAF
+// and injects `<style>*{animation:none!important;transition:none!important;}`.
+// Net: near-zero ongoing CPU per off-screen-but-mounted iframe, which kills the
+// "dozens of live 4K animating boards accumulate → page unresponsive" perf bug.
+// Freeze is a strict NO-OP when `freeze=1` is absent (the wrappers aren't even
+// installed), never touches brand/text/img/menu overrides (those are applied
+// synchronously / via postMessage, not via the recorded timers), and is undone
+// if the board is later put into edit mode (defensive — the grid never does).
+//
 // V5 = V4's apply logic (brand / text+styles / images with the flagship
 // `data-imgslot` convention + --c-*/--f-* theme tokens) PLUS the click-to-edit
 // protocol the PropertiesPanel already speaks: on `educms-edit-mode {on}` it
@@ -61,9 +77,9 @@ const MARKER = 'EDUCMS-SHIM-V5';
 // hot zones" — V4 only applied overrides INBOUND, it never reported clicks, so
 // every static signage / HS board was apply-only (no click-to-edit). V5 also
 // HTML-entity-decodes text overrides (so "Mix & Match" no longer renders the
-// literal "&amp;"). V4/V3/V2/V1 are removed + replaced (pure superset — zero
+// literal "&amp;"). V5/V4/V3/V2/V1 are removed + replaced (pure superset — zero
 // regression for the live player, which never enters edit mode).
-const OLD_MARKERS = ['EDUCMS-SHIM-V4', 'EDUCMS-SHIM-V3', 'EDUCMS-SHIM-V2', 'EDUCMS-BRAND-SHIM'];
+const OLD_MARKERS = ['EDUCMS-SHIM-V5', 'EDUCMS-SHIM-V4', 'EDUCMS-SHIM-V3', 'EDUCMS-SHIM-V2', 'EDUCMS-BRAND-SHIM'];
 
 // Inline runtime — minified, runs at end of <head> before first paint.
 // Reads `brand`, `text`, `textStyles`, `img` from URL params; applies
@@ -84,6 +100,23 @@ const OLD_MARKERS = ['EDUCMS-SHIM-V4', 'EDUCMS-SHIM-V3', 'EDUCMS-SHIM-V2', 'EDUC
 // the url() context.
 const SHIM = `<script>/*${MARKER}*/(function(){try{
 var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
 function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
 function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
 var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
@@ -99,7 +132,7 @@ function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.
 applyBrand(readParams().brand);
 if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
 try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
-addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode)armEdit();}}catch(_){}});
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
 }catch(e){}})();</script>`;
 
 function walk(dir) {
@@ -138,6 +171,18 @@ for (const file of files) {
   // them (two `educms-ready` + duplicate field-click messages). Skip them;
   // they're already editable via that file.
   if (/src=["'][^"']*_edit-shim\.js/.test(html)) {
+    skipped++;
+    continue;
+  }
+
+  // MENU boards (signage/{qsr,menus-pos,bar}) carry a HAND-CRAFTED EDUCMS-SHIM-V5
+  // whose applyMenu() overlays live per-location POS prices + auto-86 — load-
+  // bearing for the restaurant pilot and a capability this generic shim lacks.
+  // It shares the V5 marker, so now that V5 is in OLD_MARKERS this injector would
+  // STRIP applyMenu and replace it with the generic body. SKIP any board with
+  // applyMenu — its freeze handling + click-to-edit come from inject-click-shim.cjs
+  // (EDUCMS-CLICK-V2), which is purely additive and leaves applyMenu intact.
+  if (/applyMenu/.test(html)) {
     skipped++;
     continue;
   }
