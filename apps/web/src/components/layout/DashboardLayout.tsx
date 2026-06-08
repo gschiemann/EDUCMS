@@ -38,6 +38,43 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     }
   }, [tenant, setEmergencyActive]);
 
+  // ───────────────────────────────────────────────────────────────────
+  // 2026-06-08 — THE "every button needs two clicks" FIX.
+  //
+  // On a fresh page load (new tab, typed URL, or any full navigation),
+  // keyboard focus sits in the browser ADDRESS BAR — NOT in the document.
+  // (Verified live: on the dashboard, document.activeElement was <body> and
+  // document.hasFocus() was false on load.) Because of that, the operating
+  // system treats the user's FIRST click on the page as a focus-transfer —
+  // an "activate the window / move focus into the page" click — and SWALLOWS
+  // it: the click event never reaches the button. So every control needed
+  // two clicks (1st = hand the page focus, 2nd = actually act), and the
+  // tenant switcher "went dead." It was global (every account, every device,
+  // Chrome + Safari), never reproduced in automation (headless tools keep the
+  // window focused), and a tab the operator had already clicked in worked
+  // fine (it already had focus) while a brand-new tab didn't — the exact
+  // tell. The /login page never had this because it autofocuses an input;
+  // the dashboard never claimed focus at all.
+  //
+  // Fix: claim focus into the document on load + on every navigation by
+  // focusing the (tabIndex=-1) main region — but ONLY when nothing in the
+  // document already holds focus (activeElement is <body>/<html>, i.e. focus
+  // is in the browser chrome). That guard means we NEVER steal focus from an
+  // input the operator is typing in or a control they just focused.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const claimFocus = () => {
+      const ae = document.activeElement;
+      const somethingFocused = ae && ae !== document.body && ae !== document.documentElement;
+      if (somethingFocused) return; // a real element already holds focus — leave it
+      try { document.getElementById('main-content')?.focus({ preventScroll: true }); } catch { /* noop */ }
+    };
+    // Delay so we run AFTER the route's content mounts and after any
+    // page-level autofocus (which we must not override).
+    const t = setTimeout(claimFocus, 80);
+    return () => clearTimeout(t);
+  }, [pathname]);
+
   // The V2 template builder is a full-screen workspace — strip global chrome
   // (sidebar, top toolbar, decorative blobs) so it can use the entire viewport.
   const isFullscreenWorkspace = /\/templates\/builder\//.test(pathname);
@@ -158,6 +195,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             // blobs use -z-0 and still paint behind page content via DOM
             // order (they precede main in the tree) so nothing regresses.
             "flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 pb-24 md:pb-8 transition-all duration-300 relative",
+            // outline-none: we programmatically focus #main-content on load/nav
+            // (the two-click-bug fix) — never show a focus ring for that.
+            "outline-none focus:outline-none",
             isEmergencyActive ? "pointer-events-none opacity-50 blur-sm" : ""
           )}
         >
