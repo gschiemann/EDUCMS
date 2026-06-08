@@ -1863,6 +1863,7 @@ function Step2Template({
                       bgGradient={t.bgGradient}
                       bgColor={t.bgColor}
                       maxHeight={110}
+                      freeze
                     />
                   ) : (
                     <LayoutTemplate className="w-10 h-10 text-slate-300" />

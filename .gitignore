@@ -43,3 +43,20 @@ playwright-report/
 .vercel
 .mcp.json
 scratch/
+
+# Agent-tooling local config — NEVER commit. .codex/config.toml holds live
+# secrets (Supabase service_role JWT, DB password, Railway + GitHub tokens);
+# AGENTS.md is local agent scratch. Repo is PUBLIC — a stray `git add .`
+# must not publish these. (Added 2026-06-08, launch-readiness audit.)
+/.codex/
+/AGENTS.md
+
+# Backup tarballs (the documented `edu-cms-backup-*.tar.gz` procedure writes
+# these to repo root) + private keys/certs — never commit to a public repo.
+*.tar.gz
+*.tgz
+edu-cms-backup-*
+*.key
+*.pfx
+*.p12
+*.crt

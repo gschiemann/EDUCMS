@@ -449,6 +449,7 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
               bgGradient={entry.bgGradient}
               bgColor={entry.bgColor}
               maxHeight={180}
+              freeze
             />
           </div>
         </div>
@@ -469,6 +470,7 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
               bgGradient={entry.bgGradient}
               bgColor={entry.bgColor}
               maxHeight={40}
+              freeze
             />
           </div>
         </div>

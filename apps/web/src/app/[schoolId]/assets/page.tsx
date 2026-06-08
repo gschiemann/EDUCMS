@@ -1075,6 +1075,8 @@ export default function AssetsPage() {
                     <img
                       src={thumb}
                       alt={name}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       onLoad={(e) => {
                         const img = e.currentTarget;
