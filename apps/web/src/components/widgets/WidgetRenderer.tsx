@@ -3038,8 +3038,26 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
                 // but parked unfocused — arrow keys go to <body> of
                 // the React player which doesn't do spatial nav, so
                 // the user sees "remote does nothing."
+                //
+                // 2026-06-08 — CRITICAL: only steal focus on an actual
+                // full-screen DISPLAY SURFACE (kiosk player + sport
+                // boards). `live` is ALSO true in dashboard live previews
+                // and template thumbnails — and on the dashboard, pulling
+                // focus INTO this iframe broke EVERY subsequent click: the
+                // operator's next click on a sidebar link first had to
+                // return focus to the document (Safari/Chrome treat it as
+                // a "re-activate the page" click and swallow it), so every
+                // nav button needed TWO clicks and the tenant switcher
+                // went dead. (Reported by a beta operator; reproduced in a
+                // private tab with a brand-new non-admin user — i.e. not
+                // cache/session/role; it was this focus theft.) Remote-
+                // control spatial nav only exists on the display surfaces,
+                // so gate the focus() to those routes and never touch focus
+                // on the dashboard.
                 try {
-                  if (live && frame.contentWindow) frame.contentWindow.focus();
+                  const path = typeof window !== 'undefined' ? window.location.pathname : '';
+                  const onDisplaySurface = /^\/(player|board|overlay|ribbon|scorebug|panic)(\/|$)/.test(path);
+                  if (live && onDisplaySurface && frame.contentWindow) frame.contentWindow.focus();
                 } catch { /* cross-origin guard — shouldn't happen via proxy */ }
               }
             }).catch(() => { /* never block the iframe on injection */ });
