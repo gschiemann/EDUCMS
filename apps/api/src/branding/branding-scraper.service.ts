@@ -236,9 +236,16 @@ export class BrandingScraperService {
       )
     ) {
       const err: any = new Error(
-        'This site blocks automated tools (Cloudflare bot protection). ' +
-          'Try a smaller sub-page (e.g. the school&rsquo;s About page) — the homepage may be locked down, ' +
-          'or upload your logo + pick colors manually instead.',
+        // Plain text — this string is rendered as-is in the wizard (not JSX),
+        // so NO HTML entities (a literal "&rsquo;" showed up on screen). Also
+        // vertical-neutral: this is multi-vertical, the tenant may be a
+        // business, not a school. Cloudflare protection is intermittent, so a
+        // site that scraped fine before can be challenged on a later retry —
+        // that's expected, not a misconfiguration.
+        'This site blocks automated tools (Cloudflare bot protection), which can ' +
+          'happen intermittently even on a site that scanned fine before. ' +
+          'Try a smaller sub-page (e.g. the About or Contact page), or just upload ' +
+          'your logo + pick colors manually — no scan needed.',
       );
       err.name = 'BotProtectionError';
       err.status = htmlRes.status;
