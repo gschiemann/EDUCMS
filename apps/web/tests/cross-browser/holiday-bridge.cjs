@@ -75,6 +75,23 @@ async function waitForServer(port, timeoutMs = 15000) {
   throw new Error(`local HTTP server on port ${port} did not become ready in ${timeoutMs}ms: ${lastErr && lastErr.message}`);
 }
 
+// Poll page.evaluate(fn,arg) until it returns truthy, or timeout. Fixed
+// `delay()`+check races slow / parallel CI runners: the clean holiday boards
+// (3 webfonts + ember/fog animation) pushed WebKit past the old 80–150ms
+// budget, flaking Cross-Browser red on 2026-06-08 — including UNTOUCHED
+// originals that merely shared a 4-up batch. Polling asserts the same thing
+// but is robust to load. (Same reasoning as waitForServer above.)
+async function waitUntilTruthy(page, fn, arg, timeoutMs = 4000, intervalMs = 60) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    last = await page.evaluate(fn, arg);
+    if (last) return last;
+    await delay(intervalMs);
+  }
+  return last;
+}
+
 async function startServer() {
   const proc = spawn('python3', ['-m', 'http.server', String(PORT), '--directory', PUBLIC_DIR], {
     stdio: ['ignore', 'ignore', 'ignore'],
@@ -105,9 +122,8 @@ async function testOne(browser, template) {
 
     await page.goto(`${BASE}/holiday-templates/${template}.html`, { waitUntil: 'load' });
 
-    // Step 1 — holiday:ready
-    await delay(150);
-    const ready = await page.evaluate(() => window.__msgs.find((m) => m.type === 'holiday:ready'));
+    // Step 1 — holiday:ready (poll: webfonts + load can delay the post on CI)
+    const ready = await waitUntilTruthy(page, () => window.__msgs.find((m) => m.type === 'holiday:ready'), null, 8000);
     if (!ready) { fail(template, 'holiday:ready', 'never received'); return; }
     if (!Array.isArray(ready.fields) || ready.fields.length === 0) {
       fail(template, 'holiday:ready', `empty fields array`); return;
@@ -118,8 +134,7 @@ async function testOne(browser, template) {
     await page.evaluate(() => {
       window.postMessage({ type: 'template-set-hotspots', enabled: true }, window.location.origin);
     });
-    await delay(80);
-    const hotspotsOn = await page.evaluate(() => document.documentElement.getAttribute('data-hotspots-on'));
+    const hotspotsOn = await waitUntilTruthy(page, () => document.documentElement.getAttribute('data-hotspots-on') === '1' ? '1' : null, null, 4000);
     if (hotspotsOn !== '1') {
       fail(template, 'hotspots-on', `attribute = ${JSON.stringify(hotspotsOn)}`); return;
     }
@@ -149,8 +164,7 @@ async function testOne(browser, template) {
     await page.evaluate(() => { window.__msgs = []; });
     const firstFieldKey = outlineProbe.fieldKey;
     await page.click(`[data-field="${firstFieldKey}"]`, { force: true });
-    await delay(80);
-    const clickMsg = await page.evaluate(() => window.__msgs.find((m) => m.type === 'holiday:fieldClicked'));
+    const clickMsg = await waitUntilTruthy(page, () => window.__msgs.find((m) => m.type === 'holiday:fieldClicked'), null, 4000);
     if (!clickMsg) {
       fail(template, 'holiday:fieldClicked', 'no message after click'); return;
     }
@@ -166,7 +180,10 @@ async function testOne(browser, template) {
         styles: { [field]: { color: '#ff0000', fontSize: 99 } },
       }, window.location.origin);
     }, firstFieldKey);
-    await delay(80);
+    await waitUntilTruthy(page, (field) => {
+      const el = document.querySelector(`[data-field="${field.replace(/"/g, '\\"')}"]`);
+      return el && el.style.fontSize === '99px' ? true : null;
+    }, firstFieldKey, 4000);
     const afterStyles = await page.evaluate((field) => {
       const sel = `[data-field="${field.replace(/"/g, '\\"')}"]`;
       const el = document.querySelector(sel);
@@ -191,7 +208,7 @@ async function testOne(browser, template) {
     await page.evaluate(() => {
       window.postMessage({ type: 'template-set-hotspots', enabled: false }, window.location.origin);
     });
-    await delay(80);
+    await waitUntilTruthy(page, () => document.documentElement.getAttribute('data-hotspots-on') === null ? true : null, null, 4000);
     const hotspotsOff = await page.evaluate(() => {
       const attr = document.documentElement.getAttribute('data-hotspots-on');
       const el = document.querySelector('[data-field]');
@@ -221,9 +238,9 @@ async function testOne(browser, template) {
     console.log('Launching WebKit (Safari engine)...');
     const browser = await webkit.launch();
     try {
-      console.log(`Running ${TEMPLATES.length} templates in 4-way parallel batches...`);
-      for (let i = 0; i < TEMPLATES.length; i += 4) {
-        const batch = TEMPLATES.slice(i, i + 4);
+      console.log(`Running ${TEMPLATES.length} templates in 3-way parallel batches...`);
+      for (let i = 0; i < TEMPLATES.length; i += 3) {
+        const batch = TEMPLATES.slice(i, i + 3);
         await Promise.all(batch.map((t) => testOne(browser, t)));
         process.stdout.write('.');
       }
