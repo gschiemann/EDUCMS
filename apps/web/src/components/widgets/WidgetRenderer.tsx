@@ -3030,34 +3030,35 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
             // The shim itself is ~3KB minified — runs entirely inside
             // the iframe, no parent dependency.
             const frame = e.currentTarget as HTMLIFrameElement;
+            // 2026-06-08 (round 2) — gate the ENTIRE spatial-nav injection
+            // to real full-screen DISPLAY SURFACES (kiosk player + sport
+            // boards). This shim is ONLY for kiosk REMOTE-CONTROL arrow-key
+            // navigation. It was being injected into every WEBPAGE iframe —
+            // including dashboard live previews + template thumbnails (`live`
+            // is true there too). The shim does NOT just focus once: it
+            // auto-focuses an element inside the iframe on init AND re-focuses
+            // it via a MutationObserver every time the iframe content mutates
+            // (live clocks / animations tick constantly). On the dashboard
+            // that CONTINUOUSLY pulls keyboard focus INTO the preview iframe,
+            // so the operator's next click on a sidebar link first had to
+            // return focus to the document — Safari/Chrome treat that as a
+            // "re-activate the page" click and swallow it, so every nav button
+            // needed TWO clicks and the tenant switcher went dead. (Beta
+            // operator; reproduced in a private tab with a brand-new non-admin
+            // user — not cache/session/role.) Gating only the final focus()
+            // call (my first attempt) was not enough — the shim's own init +
+            // MutationObserver focus stayed. Never inject the shim at all on
+            // dashboard routes.
+            const path = typeof window !== 'undefined' ? window.location.pathname : '';
+            const onDisplaySurface = /^\/(player|board|overlay|ribbon|scorebug|panic)(\/|$)/.test(path);
+            if (!onDisplaySurface) return;
             import('./webpage-spatial-nav').then(({ injectSpatialNav }) => {
               if (injectSpatialNav(frame)) {
-                // Hand focus to the iframe so the next remote-control
-                // key press lands inside it (where the shim's keydown
-                // handler is bound). Without this the iframe is loaded
-                // but parked unfocused — arrow keys go to <body> of
-                // the React player which doesn't do spatial nav, so
-                // the user sees "remote does nothing."
-                //
-                // 2026-06-08 — CRITICAL: only steal focus on an actual
-                // full-screen DISPLAY SURFACE (kiosk player + sport
-                // boards). `live` is ALSO true in dashboard live previews
-                // and template thumbnails — and on the dashboard, pulling
-                // focus INTO this iframe broke EVERY subsequent click: the
-                // operator's next click on a sidebar link first had to
-                // return focus to the document (Safari/Chrome treat it as
-                // a "re-activate the page" click and swallow it), so every
-                // nav button needed TWO clicks and the tenant switcher
-                // went dead. (Reported by a beta operator; reproduced in a
-                // private tab with a brand-new non-admin user — i.e. not
-                // cache/session/role; it was this focus theft.) Remote-
-                // control spatial nav only exists on the display surfaces,
-                // so gate the focus() to those routes and never touch focus
-                // on the dashboard.
+                // Hand focus to the iframe so the next remote-control key
+                // press lands inside it (where the shim's keydown handler is
+                // bound). Display-surface only — gated above.
                 try {
-                  const path = typeof window !== 'undefined' ? window.location.pathname : '';
-                  const onDisplaySurface = /^\/(player|board|overlay|ribbon|scorebug|panic)(\/|$)/.test(path);
-                  if (live && onDisplaySurface && frame.contentWindow) frame.contentWindow.focus();
+                  if (live && frame.contentWindow) frame.contentWindow.focus();
                 } catch { /* cross-origin guard — shouldn't happen via proxy */ }
               }
             }).catch(() => { /* never block the iframe on injection */ });

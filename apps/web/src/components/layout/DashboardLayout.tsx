@@ -17,6 +17,7 @@ import { ProfileHydrator } from './ProfileHydrator';
 import { useTenantStatus } from '@/hooks/use-api';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 import { BrandStyleInjector } from '@/components/branding/BrandStyleInjector';
+import { ClickDiag } from './ClickDiag';
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const isEmergencyActive = useAppStore((state) => state.isEmergencyActive);
@@ -176,6 +177,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
       {isEmergencyActive && <EmergencyOverlay />}
       <AppDialogHost />
+      {/* Temporary click diagnostic — enable with ?clickdiag=1 (2026-06-08). */}
+      <ClickDiag />
     </div>
   );
 }
