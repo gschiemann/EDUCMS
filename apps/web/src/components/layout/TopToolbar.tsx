@@ -5,7 +5,7 @@ import { RoleGate } from '../RoleGate';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
 import { ShieldAlert, LogOut, Menu, UserCog } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter, useParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useTenantStatus } from '@/hooks/use-api';
 import { useState, useEffect } from 'react';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
@@ -16,7 +16,6 @@ import { ProfileEditModal } from './ProfileEditModal';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
 export function TopToolbar() {
-  const router = useRouter();
   const isEmergencyActive = useAppStore((state) => state.isEmergencyActive);
   const user = useAppStore((state) => state.user);
   // 2026-05-25 — resolve user.role through useTenantCopy so the
@@ -173,7 +172,7 @@ export function TopToolbar() {
                   <UserCog className="w-3.5 h-3.5 text-slate-400" /> Edit profile
                 </button>
                 <button
-                  onClick={() => { setShowUserMenu(false); logout(); router.push('/login'); }}
+                  onClick={() => { setShowUserMenu(false); logout(); window.location.replace('/login'); }}
                   className="w-full text-left px-4 py-2 text-xs font-medium text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-slate-100"
                 >
                   <LogOut className="w-3.5 h-3.5" /> Sign Out

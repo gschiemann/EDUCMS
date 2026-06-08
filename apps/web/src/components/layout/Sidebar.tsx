@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useParams, useRouter } from 'next/navigation';
+import { usePathname, useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import { useAppStore } from '@/lib/store';
@@ -31,7 +31,6 @@ export function Sidebar() {
   const logout = useAppStore((state) => state.logout);
   const mobileSidebarOpen = useAppStore((state) => state.mobileSidebarOpen);
   const setMobileSidebarOpen = useAppStore((state) => state.setMobileSidebarOpen);
-  const router = useRouter();
 
   // Client-only hydration gate — prevents SSR/client mismatch for user-dependent content
   const [mounted, setMounted] = useState(false);
@@ -677,7 +676,7 @@ export function Sidebar() {
               )}
             </div>
             <button
-              onClick={() => { logout(); router.push('/login'); }}
+              onClick={() => { logout(); window.location.replace('/login'); }}
               // P1 (mobile-UX audit 2026-05-29): was `p-1.5` ≈ 28px — below
               // the 44px touch minimum, and it's the only sign-out on the
               // mobile drawer. `min-w-[44px] min-h-[44px]` + centering gives a
