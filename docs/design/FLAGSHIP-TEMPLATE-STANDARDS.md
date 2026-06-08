@@ -15,6 +15,20 @@ Every template must let the school replace anything we designed specifically for
 If we designed something specific to the template's theme, the school must be able to
 swap it out. No exceptions, this template set or future ones.
 
+**Click-to-edit "hot zones" (2026-06-07).** "Swappable" also means the operator can
+CLICK an element on the board in the builder and have the Properties panel jump
+straight to that element's editor. This is driven by the injected shim
+(`EDUCMS-SHIM-V5` via `inject-shim-v2.cjs`; additive `inject-click-shim.cjs` for the
+`signage/{qsr,menus-pos,bar}` menu boards; kiosks use `kiosk/_edit-shim.js`) posting
+`educms-field-click {key,kind}` on click — it keys off your `data-field` /
+`data-imgslot` / `data-action` attributes, so §1's contract IS the hot-zone contract.
+**The shim is baked into the file** (the board renders in a null-origin sandboxed
+iframe React can't reach), so **after editing/redesigning ANY board you MUST re-run
+the injector for its subdir** or it ships with a stale apply-only shim and NO hot
+zones — the exact 2026-06-07 "none of the templates can be edited" regression.
+Confirm: `grep -L educms-field-click <board>` should be empty; verify in a real
+browser with `tests/e2e/external-html-clickedit.spec.ts`.
+
 **Person-features ALWAYS get a photo upload slot.** Any athlete-of-the-week, teacher/staff
 spotlight, student spotlight, senior spotlight, or "person of the week" feature must have a
 `data-imgslot` so the school can drop in that person's photo. A name + text with no photo
@@ -215,6 +229,7 @@ Design must be identical across the library. Before a template is "done", ALL of
 - [ ] Every logo/seal/crest/photo/dish/portrait/background = `data-imgslot` with placeholder + `has-img` hide rule.
 - [ ] Every piece of copy = `data-field`.
 - [ ] Hidden `[data-widget="theme"]` block exposes every color, every font family, and `--scale`; edits apply live.
+- [ ] **Click-to-edit shim current (V5).** After editing, re-ran `inject-shim-v2.cjs` (static) / `inject-click-shim.cjs` (menu boards); `grep -L educms-field-click` on the board is empty; click-to-edit verified in a real browser. A redesign that keeps a stale V4 shim = no hot zones.
 - [ ] Cafeteria (non-ES): real dish photos as swappable defaults, and item text MATCHES its photo.
 
 **Live behavior**

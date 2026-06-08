@@ -101,11 +101,78 @@ object then skins the entire library; do NOT invent `cBrand`/`cGold`/etc.):
   50px the box gives (bigger box / shorter default copy), never a clip.
 - Live clock fields: `data-field="clock.time" data-live="clock"`.
 
-**Do NOT hand-write the `EDUCMS-SHIM` block.** It (`EDUCMS-SHIM-V4`) is injected
+**Do NOT hand-write the `EDUCMS-SHIM` block.** It (`EDUCMS-SHIM-V5`) is injected
 at intake by `apps/web/scripts/inject-shim-v2.cjs`, which reads `?brand=`/`?text=`/
 `?textStyles=`/`?img=` URL params (base64-JSON) and applies them. Your job is to
 emit the markup contract above; the shim does the rest. Just never collide with a
 `/*EDUCMS-SHIM-*/` marker.
+
+### 1a. CLICK-TO-EDIT "hot zones" — the shim does TWO jobs, not one (2026-06-07)
+
+The shim is no longer apply-only. **V5 (the current marker) does BOTH:**
+
+1. **Apply** overrides INBOUND (brand / text / image / styles) — what V4 did.
+2. **Report clicks OUTBOUND** — the "hot zones" the operator demanded: in the
+   builder, hovering an editable element outlines it and **clicking it jumps the
+   Properties panel straight to that element's field editor**.
+
+The click side is a tiny protocol the builder's `PropertiesPanel` already speaks —
+the shim must post these (V5 does; you never hand-write it, but you MUST know the
+contract because your markup is what it walks):
+
+| message (iframe → parent) | when | drives |
+|---|---|---|
+| `educms-ready` | on load | panel re-arms after a remount |
+| `educms-field-click {key,kind}` | operator clicks a `[data-field]`/`[data-imgslot]`/`[data-action]` in edit mode | panel scrolls + focuses that field's row (`kind` = `text`/`img`/`action`) |
+| `educms-edit-mode {on}` (parent → iframe) | panel mounts | shim arms hover-outline + click-reporting (NEVER sent on the live player, so a live sign stays non-interactive) |
+
+**Why this is load-bearing for YOU:** the *whole reason* ~90 boards were
+"un-editable" (the 2026-06-07 complaint "none of the templates can be edited") was
+that they carried the **apply-only V4** shim — it never posted `educms-field-click`,
+so clicking did nothing. The render path is a **null-origin sandboxed `src`
+iframe**, so React CANNOT inject anything at render time — the click-to-edit code
+**must be baked into the file**. That is the injector's job, but it only works if:
+
+- **EVERY editable element has a `data-field` / `data-imgslot` / `data-action`**
+  (the shim's click walker keys off exactly these — same attributes as §1). No
+  attribute = no hot zone for that element. This is the same contract as
+  editability; get §1 right and hot-zones come free.
+
+### 1b. REDESIGNING AN EXISTING BOARD — re-run the injector or you SILENTLY revert it
+
+⚠️ **The trap that created the whole 2026-06-07 mess:** when you edit/redesign an
+existing board's HTML, the OLD shim block stays baked in. If that board still
+carries a stale `EDUCMS-SHIM-V4` (or you copied a board that did), your "update"
+ships an apply-only board with **no hot zones** — the exact regression we just
+spent a day fixing. So, after ANY edit to a `public/templates/**` board:
+
+```bash
+# Static boards (hs / signage / fitness) — replaces V4/V3/V2 in place with V5:
+node apps/web/scripts/inject-shim-v2.cjs hs
+node apps/web/scripts/inject-shim-v2.cjs signage
+node apps/web/scripts/inject-shim-v2.cjs fitness
+# Menu boards (signage/{qsr,menus-pos,bar}) carry a hand-crafted V5 with
+# applyMenu() (live per-location POS prices + auto-86) that must NOT be clobbered
+# — they get a SEPARATE additive click-only shim instead:
+node apps/web/scripts/inject-click-shim.cjs signage
+# Kiosks load the external kiosk/_edit-shim.js (apply + click + engine-render
+# hook) — the injectors SKIP any file that references it. Do not inline a shim there.
+```
+
+**Confirm every board reports clicks** (this is the sweep that proves it — a board
+with `0` here is a dead hot-zone):
+
+```bash
+cd apps/web/public/templates
+for f in $(find hs signage fitness -name "*.html"); do \
+  grep -qE "educms-field-click|src=[\"'][^\"']*_edit-shim" "$f" || echo "NO CLICK-TO-EDIT: $f"; done
+```
+
+**Verify it actually works in a real browser** (do not trust the grep alone):
+`pnpm --filter web exec playwright test tests/e2e/external-html-clickedit.spec.ts`
+(chromium + webkit) — it loads each board, arms edit-mode the way the panel does,
+clicks a real element, and asserts `educms-field-click` fires with that element's
+key. Holiday boards have their OWN bridge + test (`holiday-hotzone.spec.ts`).
 
 ---
 
@@ -295,6 +362,11 @@ so the lead's intake (shim-inject → register → preflight → push) files it 
 
 - [ ] Hidden `[data-widget="theme"]` block with the **canonical** token keys.
 - [ ] Every string is a `data-field`; every image a `data-imgslot`; headlines `data-fit`.
+- [ ] **Shim is current (V5) + reports clicks.** After editing, re-ran
+      `inject-shim-v2.cjs` (static) / `inject-click-shim.cjs` (menu boards); the
+      sweep shows no "NO CLICK-TO-EDIT" board; click-to-edit verified in a real
+      browser (`external-html-clickedit.spec.ts`). A redesigned board that ships a
+      stale V4 shim = no hot zones = the regression we just fixed. (2026-06-07)
 - [ ] Fixed-px sizing via `--t-*` `calc(...*var(--scale))` — zero `vw`/`vh`/`%` sizing.
 - [ ] Stage-scale scaffold + the proven runtime; clock live if present.
 - [ ] Landscape AND portrait both verified (`?o=portrait` / `?o=landscape`).

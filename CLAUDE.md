@@ -190,6 +190,29 @@ Any modification to emergency endpoints, payload validation, auth bypass logic, 
 
 Templates define screen layouts using **17 system presets** (in `apps/api/src/templates/system-presets.ts`, ~960 lines) plus custom teacher-created templates.
 
+### EXTERNAL_HTML signage boards + click-to-edit shim (read before editing ANY board — 2026-06-07)
+
+There are **three** template-editing architectures; do not confuse them:
+1. **React-zone presets** — zones rendered by `WidgetRenderer`; edited field-by-field in `PropertiesPanel`.
+2. **EXTERNAL_HTML boards** — the ~107 self-contained HTML files under `apps/web/public/templates/{hs,kiosk,signage,fitness}/`. Each is a full 3840×2160 (or 1920×1080 kiosk) document rendered in a **null-origin sandboxed `src` iframe** (`allow-scripts`, NO `allow-same-origin`). Because React **cannot reach into that iframe**, all editing must go through a **shim baked into the HTML file**.
+3. **Holiday boards** (`public/holiday-templates/`) — a SEPARATE `holiday:*` postMessage bridge; the panel sources fields **live** from the board (see `getHolidayLiveFields` in `HolidayWidget.tsx`), not a static schema.
+
+**The EXTERNAL_HTML shim does TWO jobs (since V5, 2026-06-07):** (a) apply overrides INBOUND (brand/text/image/styles), and (b) **report clicks OUTBOUND** — the "hot zones": click an element in the builder → the panel jumps to that element's field editor. The protocol the panel speaks: `educms-ready` (load) · `educms-edit-mode {on}` (panel→iframe, arms hover-outline + click-report; NEVER sent on the live player) · `educms-field-click {key,kind}` (iframe→panel, drives the jump). The walker keys off `data-field`/`data-imgslot`/`data-action` — so **every editable element needs one of those** (same contract as editability).
+
+**The shim is INJECTED, never hand-written.** Three injectors:
+- `apps/web/scripts/inject-shim-v2.cjs` → bakes **EDUCMS-SHIM-V5** (apply + click-to-edit) into static boards. Run per-subdir: `node apps/web/scripts/inject-shim-v2.cjs hs|signage|fitness`. Replaces V4/V3/V2 in place.
+- `apps/web/scripts/inject-click-shim.cjs` → an **additive** click-only shim for the 30 `signage/{qsr,menus-pos,bar}` MENU boards, whose hand-crafted V5 carries `applyMenu()` (live per-location POS price + auto-86) that must NOT be clobbered. `node apps/web/scripts/inject-click-shim.cjs signage`.
+- Kiosks load the external `public/templates/kiosk/_edit-shim.js` (apply + click + kiosk engine-render hook). The injectors **skip** any file referencing it (no double-shim).
+
+**⚠️ REDESIGN INVARIANT — the trap that caused the 2026-06-07 "none of the templates can be edited" fire:** when you edit/redesign an existing board, the OLD shim block stays baked in. A board left on the apply-only V4 shim is **un-editable by click**. So **after editing ANY `public/templates/**` board, re-run the injector for its subdir** (and `inject-click-shim.cjs` for menu boards). Confirm with the sweep + the real-browser tests:
+```bash
+cd apps/web/public/templates && for f in $(find hs signage fitness -name "*.html"); do \
+  grep -qE "educms-field-click|src=[\"'][^\"']*_edit-shim" "$f" || echo "NO CLICK-TO-EDIT: $f"; done
+pnpm --filter web exec playwright test tests/e2e/external-html-clickedit.spec.ts   # boards (chromium+webkit)
+pnpm --filter web exec playwright test tests/e2e/holiday-hotzone.spec.ts           # holiday boards
+```
+Full conventions (editability contract, brand tokens, auto-fit ≥50px floor, live engines, build checklist) live in `.claude/agents/venueos-template-designer.md` + `docs/design/FLAGSHIP-TEMPLATE-STANDARDS.md` — the binding spec for any template work.
+
 ### System Presets
 1. Sunny Meadow — Elementary Welcome (with layered CSS background + inline SVG)
 2. Lobby Welcome Board
