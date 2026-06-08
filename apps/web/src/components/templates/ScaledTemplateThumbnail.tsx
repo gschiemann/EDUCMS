@@ -84,11 +84,34 @@ function bgStyle(bgImage?: string | null, bgGradient?: string | null, bgColor?: 
   return s;
 }
 
+/** For a board preview (a single EXTERNAL_HTML zone), the path to its
+ *  pre-rendered static poster PNG under /templates/_thumbs/. The gallery grid
+ *  shows this instead of mounting a live 3840×2160 iframe per card — an <img>
+ *  is "just there" (one ~40KB cached image, no document/process), so the grid
+ *  loads instantly and re-filters with zero cost. Returns null when there's no
+ *  single EXTERNAL_HTML board url (zone-based templates render their widgets;
+ *  a custom board with no generated poster falls back to the live frame). */
+function posterFor(zones: Zone[]): string | null {
+  if (!zones || zones.length !== 1) return null;
+  const z = zones[0];
+  if (z.widgetType !== 'EXTERNAL_HTML') return null;
+  let cfg: any = z.defaultConfig;
+  if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { return null; } }
+  const url: unknown = cfg?.url;
+  if (typeof url !== 'string' || !url.startsWith('/templates/')) return null;
+  const clean = url.split('?')[0].split('#')[0];
+  if (!clean.endsWith('.html')) return null;
+  return clean.replace('/templates/', '/templates/_thumbs/').replace(/\.html$/, '.png');
+}
+
 export function ScaledTemplateThumbnail({
   zones, screenWidth, screenHeight, bgImage, bgGradient, bgColor, maxHeight = 150, freeze = false,
 }: Props) {
   const outerRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState<number>(0);
+  // If a board's static poster 404s (e.g. a custom board with no generated
+  // thumbnail), flip to the live-frame fallback below.
+  const [posterFailed, setPosterFailed] = useState(false);
 
   // Two-way IntersectionObserver gate WITH HYSTERESIS — mount the widgets when
   // the tile nears the viewport, and UNMOUNT them once it scrolls well past, so
@@ -180,6 +203,31 @@ export function ScaledTemplateThumbnail({
   const cardWidth = Math.max(1, Math.min(parentWidth || widthFromHeight, widthFromHeight));
   const cardHeight = cardWidth / aspect;
   const effectiveScale = scale > 0 ? scale : cardWidth / screenWidth;
+
+  // Gallery grid: render the lightweight static poster instead of a live iframe.
+  // `freeze` is true only for the grid (the full-screen preview + builder pass
+  // freeze=false and keep the live frame). If the poster 404s — e.g. a custom
+  // board with no generated thumbnail — onError flips to the live render below.
+  const posterUrl = freeze ? posterFor(zones) : null;
+  if (posterUrl && !posterFailed) {
+    return (
+      <div
+        ref={outerRef}
+        className="relative overflow-hidden rounded-lg border border-slate-200 shadow-sm mx-auto"
+        style={{ width: cardWidth, height: cardHeight, ...bgStyle(bgImage, bgGradient, bgColor) }}
+      >
+        <img
+          src={posterUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          onError={() => setPosterFailed(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
