@@ -524,12 +524,27 @@ export class BrandingScraperService {
       if (/\s/.test(trimmed)) return false; // multi-word → keep
       return /^(headlines?|news|schedule|scores?|roster|stats?|standings?|about|contact|home|menu|shop|store|gallery|photos?|videos?|tickets?|subscribe|login|search|more|live|events?|teams?|players?|results?|recap)$/i.test(trimmed);
     };
+    // 2026-06-08 — beta customer ARC Imaging scraped a tagline of
+    // "Shopping Cart: 0 Items" (the site's cart widget text, full of literal
+    // \n\t). A tagline is a slogan, never e-commerce / nav chrome. Reject the
+    // common cart / account / nav-control strings so they never reach the
+    // sidebar. (The whitespace-collapse below also kills the \n\t runs that
+    // made it render as a broken multi-line blob.)
+    const isEcommerceJunk = (s: string) => {
+      const lower = s.toLowerCase();
+      return (
+        /shopping cart|add to cart|your cart|view cart|empty cart|cart\s*:?\s*\d|\b\d+\s*items?\b|checkout|sign\s?in|log\s?in|create account|my account|wishlist|free shipping|skip to (?:main )?content|toggle (?:nav|menu)|main menu|search\.\.\.|view all|read more/i.test(lower)
+      );
+    };
     const tagline = taglineCandidates
-      .map((s) => s?.trim())
+      // Collapse internal whitespace (scraped hero/cart text is riddled with
+      // \n\t runs) BEFORE length + content checks so they operate on clean text.
+      .map((s) => s?.replace(/\s+/g, ' ').trim())
       .filter((s): s is string => !!s && s.length >= 5 && s.length <= 160)
       .filter((s) => !dnNorm || normalize(s) !== dnNorm)
       .filter((s) => !isBoilerplate(s))
       .filter((s) => !isSectionLabel(s))
+      .filter((s) => !isEcommerceJunk(s))
       .filter((s) => !dnNorm || !normalize(s).startsWith(dnNorm)) // "BPHS - Home of..." → strip "BPHS" prefix elsewhere; here just reject equal-prefix cases
       [0] || null;
 
