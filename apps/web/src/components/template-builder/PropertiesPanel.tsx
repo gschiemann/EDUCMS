@@ -131,6 +131,7 @@ import { SIGNAGE_TEMPLATES } from '@/components/widgets/signage-templates';
 // rendering. See feat(holiday) commit for extraction.
 import {
   holidayFieldSchemaFor,
+  getHolidayLiveFields,
   type HolidayVariant,
   type HolidayGradeLevel,
 } from '@/components/widgets/HolidayWidget';
@@ -7184,7 +7185,37 @@ function HolidayPanelExtras({
   styles?: FieldStyleMap;
   onStylesChange: (next: FieldStyleMap) => void;
 }) {
-  const schema = holidayFieldSchemaFor(variant, gradeLevel);
+  // Prefer the board's LIVE fields (single source of truth) over the
+  // drift-prone static HOLIDAY_FIELD_SCHEMA. Read the cache
+  // synchronously on mount to beat the iframe race, then re-read on
+  // every holiday:fields-loaded so a board that finishes loading after
+  // the panel mounted swaps its real fields in. Static schema is the
+  // fallback for the first paint before any board has reported. This is
+  // the fix for "none of the new templates have hot zones" — the
+  // rebuilt clean boards use new [data-field] keys (masthead.* /
+  // headline.* / countdown.* / c0-2.*) that the hand-maintained static
+  // map no longer matched, so panel sections + click-to-edit targets
+  // were stale.
+  const [liveSchema, setLiveSchema] = useState<ReturnType<typeof getHolidayLiveFields>>(
+    () => getHolidayLiveFields(variant, gradeLevel),
+  );
+  useEffect(() => {
+    const refresh = () => setLiveSchema(getHolidayLiveFields(variant, gradeLevel));
+    refresh(); // sync re-read on variant / grade change
+    window.addEventListener('holiday:fields-loaded', refresh);
+    return () => window.removeEventListener('holiday:fields-loaded', refresh);
+  }, [variant, gradeLevel]);
+
+  // theme.* is the hidden brand-token block at the END of every board —
+  // edited via the brand palette, never as raw hex/font text fields, so
+  // strip it (the static schema never listed those keys either). The
+  // inline annotation collapses the live/static union to one shape so
+  // the grouping code below stays cleanly typed.
+  const sourceSchema: { key: string; defaultText: string; multiline: boolean }[] =
+    (liveSchema && liveSchema.length > 0)
+      ? liveSchema
+      : holidayFieldSchemaFor(variant, gradeLevel);
+  const schema = sourceSchema.filter((f) => !f.key.startsWith('theme.'));
 
   if (schema.length === 0) {
     return (

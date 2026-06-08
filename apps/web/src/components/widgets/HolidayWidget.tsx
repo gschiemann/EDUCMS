@@ -81,9 +81,37 @@ export interface HolidayFieldSchema {
  * PropertiesPanel HOLIDAY case + the canvas click-to-edit flow can
  * react without HolidayWidget being passed an onChange callback.
  *
- *   holiday:fields-loaded — detail = { zoneId, fields: HolidayFieldSchema[] }
+ *   holiday:fields-loaded — detail = { zoneId, variant, gradeLevel, fields: HolidayFieldSchema[] }
  *   template-edit-field   — detail = { zoneId, fieldKey } (canvas standard)
  */
+
+/**
+ * Live-field cache — the board IS the source of truth for its own
+ * editable fields. On every `holiday:ready`, HolidayWidget stashes the
+ * fields the iframe posts here, keyed by `${gradeLevel}-${variant}`, so
+ * PropertiesPanel can read them SYNCHRONOUSLY on mount and beat the
+ * 2026-05-07 race (iframe loads before the panel's listener attaches).
+ *
+ * Why this kills a whole bug class: the static HOLIDAY_FIELD_SCHEMA
+ * below is hand-maintained and drifts every time a board's [data-field]
+ * set changes — which it did when the holiday boards were rebuilt clean
+ * (old keys like `sked.*` / `ticker.*` / `costume.*` vanished, replaced
+ * by `masthead.* / headline.* / countdown.* / c0.* / c1.* / c2.*`). A
+ * stale static schema made the panel render dead fields AND made
+ * click-to-edit hotspots find no matching panel section to scroll to
+ * (operator: "none of the new templates have hot zones"). Sourcing from
+ * the live board means rebuilt + future boards just work — no matching
+ * static entry required. The static map stays the fallback only for the
+ * first paint before any board iframe has reported in.
+ */
+const holidayLiveFieldCache = new Map<string, HolidayFieldSchema[]>();
+
+export function getHolidayLiveFields(
+  variant: string,
+  gradeLevel: string,
+): HolidayFieldSchema[] | null {
+  return holidayLiveFieldCache.get(`${gradeLevel}-${variant}`) ?? null;
+}
 
 export const HOLIDAY_VARIANTS: Array<{
   key: HolidayVariant;
@@ -148,9 +176,22 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
       if (iframeRef.current && e.source !== iframeRef.current.contentWindow) return;
       const d: any = e.data;
       if (d.type === 'holiday:ready' && Array.isArray(d.fields)) {
+        // Cache the board's live fields keyed by variant+gradeLevel so
+        // PropertiesPanel renders the REAL board fields (and the
+        // click-to-edit hotspot targets line up), not the drift-prone
+        // static schema. Written BEFORE the event dispatch so the
+        // panel's refresh-on-event read sees fresh data.
+        try {
+          holidayLiveFieldCache.set(
+            `${gradeLevel}-${variant}`,
+            (d.fields as HolidayFieldSchema[]).filter(
+              (x) => x && typeof x.key === 'string',
+            ),
+          );
+        } catch { /* swallow */ }
         // Tell anyone listening (PropertiesPanel) about the schema.
         window.dispatchEvent(new CustomEvent('holiday:fields-loaded', {
-          detail: { zoneId: getZoneId(), fields: d.fields as HolidayFieldSchema[] },
+          detail: { zoneId: getZoneId(), variant, gradeLevel, fields: d.fields as HolidayFieldSchema[] },
         }));
         // Re-flush any saved overrides on (re)load so user-typed text
         // persists across iframe reloads.
