@@ -488,9 +488,10 @@ function DoneCard({
       <div className="flex flex-col sm:flex-row gap-2 pt-2">
         {wentToTemplate && result.template && (
           <button
-            onClick={() =>
-              router.push(`/${schoolId}/templates/builder/${result.template!.id}`)
-            }
+            onClick={() => {
+              // Hard-nav (full load) — soft-nav into the builder doesn't render reliably.
+              window.location.href = `/${schoolId}/templates/builder/${result.template!.id}`;
+            }}
             className="flex-1 px-4 py-2.5 rounded-xl text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2"
             style={{ background: 'var(--brand-primary, #4f46e5)' }}
           >

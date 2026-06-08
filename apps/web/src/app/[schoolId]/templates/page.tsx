@@ -394,7 +394,9 @@ export default function TemplatesPage() {
       return;
     }
     if (useV2Builder && !t.isSystem) {
-      router.push(`/${params?.schoolId ?? ''}/templates/builder/${t.id}`);
+      // Hard-nav (full load) — soft-nav into the builder route doesn't render
+      // reliably; a full load does (see openTemplate note).
+      window.location.href = `/${params?.schoolId ?? ''}/templates/builder/${t.id}`;
     } else {
       setEditingTemplate(t);
     }
@@ -576,7 +578,12 @@ export default function TemplatesPage() {
       return;
     }
     if (source.isSystem) {
-      router.push(`/${params?.schoolId}/templates/builder/${source.id}`);
+      // Hard-nav (full load), NOT router.push. Soft-navigating into the heavy
+      // code-split builder route doesn't render reliably — operator: "it
+      // doesn't load the editor, but when I refresh I'm in the editor." A full
+      // load is exactly what that refresh does, and what the playlists page
+      // already uses to open the builder.
+      window.location.href = `/${params?.schoolId}/templates/builder/${source.id}`;
     } else {
       openInBuilder(source);
     }

@@ -214,7 +214,8 @@ function TestIntegrationsContent() {
           { method: 'POST', body: JSON.stringify({}) },
         );
         if (tpl?.id) {
-          router.push(`/${schoolId}/templates/builder/${tpl.id}`);
+          // Hard-nav (full load) — soft-nav into the builder doesn't render reliably.
+          window.location.href = `/${schoolId}/templates/builder/${tpl.id}`;
           return;
         }
       }
