@@ -1,0 +1,287 @@
+<!doctype html>
+<!-- ELEM CAFETERIA v1 · "CONFETTI POP!" — elementary Today's Lunch board.
+     Giant playful entrée hero in a chunky burst, confetti rain, bouncy headline,
+     live day/date (§4b), side bubbles, allergen key, one fun announcement.
+     Canonical theme tokens · auto-fit floor 60 · real dish photos w/ emoji fallback ·
+     portrait + landscape. MOCKUP — shim NOT injected (operator picks first). -->
+<html lang="en"><head><meta charset="utf-8"/><title>Today's Lunch · Confetti Pop</title>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Fredoka:wght@500;600;700&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  /* canonical brand tokens */
+  --bg:#fff3d6;--ink:#2b1a48;--brand:#ff5a8c;--brand2:#c8336a;--accent:#ffd23e;--accent2:#36c5f0;--pos:#3ad07a;--neg:#ff5670;
+  --f-display:'Baloo 2';--f-head:'Fredoka';--f-body:'Nunito';--f-mono:'Fredoka';
+  --scale:1;
+  /* bonus playful palette (derived) */
+  --grape:#7a5cff;--tang:#ff8a3d;--lime:#aee43a;--sky:#36c5f0;
+  --t-logo:calc(72px*var(--scale));--t-name:calc(72px*var(--scale));--t-sub:calc(38px*var(--scale));
+  --t-clock:calc(60px*var(--scale));
+  --t-eyebrow:calc(64px*var(--scale));--t-hello:calc(300px*var(--scale));--t-dayline:calc(82px*var(--scale));
+  --t-dishlbl:calc(48px*var(--scale));--t-dishname:calc(128px*var(--scale));
+  --t-sidelbl:calc(40px*var(--scale));--t-sidename:calc(74px*var(--scale));--t-sideico:calc(190px*var(--scale));
+  --t-allk:calc(40px*var(--scale));--t-allico:calc(78px*var(--scale));--t-alln:calc(46px*var(--scale));
+  --t-ann:calc(86px*var(--scale));--t-anntag:calc(60px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#ffe9ad;color:var(--ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;
+  background:
+    radial-gradient(circle at 16% 20%,color-mix(in srgb,var(--accent) 55%,transparent) 0 18%,transparent 19%),
+    radial-gradient(circle at 86% 70%,color-mix(in srgb,var(--accent2) 40%,transparent) 0 16%,transparent 17%),
+    linear-gradient(160deg,#fff6dd 0%,var(--bg) 55%,color-mix(in srgb,var(--accent) 35%,var(--bg)) 100%);
+  display:flex;flex-direction:column;padding:56px 70px 0}
+/* a fat dotted polka layer for texture */
+.stage::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background-image:radial-gradient(color-mix(in srgb,var(--brand) 16%,transparent) 14px,transparent 15px);
+  background-size:150px 150px;opacity:.5}
+.stage>.wrap{position:relative;z-index:3;display:flex;flex-direction:column;height:100%}
+
+/* confetti rain — CSS only, WebKit-safe (no regex / control chars) */
+.confetti{position:absolute;inset:0;z-index:2;pointer-events:none;overflow:hidden}
+.confetti i{position:absolute;top:-60px;width:36px;height:36px;border-radius:8px;opacity:.92;animation:fall linear infinite}
+.confetti i:nth-child(odd){border-radius:50%}
+@keyframes fall{0%{transform:translateY(-80px) rotate(0deg)}100%{transform:translateY(2280px) rotate(420deg)}}
+@keyframes wiggle{0%,100%{transform:rotate(-2.5deg)}50%{transform:rotate(2.5deg)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-26px)}}
+@keyframes pop{0%{transform:scale(1)}50%{transform:scale(1.04)}100%{transform:scale(1)}}
+
+/* HEADER */
+.head{flex:none;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.brand{display:flex;align-items:center;gap:30px;min-width:0}
+.brand .logo{width:140px;height:140px;flex:none;background:var(--accent2);background-size:cover;background-position:center;
+  display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:var(--t-logo);color:#fff;
+  border:8px solid #fff;border-radius:36px;box-shadow:0 14px 0 rgba(0,0,0,.14)}
+.brand .logo.has-img{font-size:0}
+.brand .name{font-family:var(--f-display);font-weight:800;font-size:var(--t-name);line-height:.95;color:var(--ink);white-space:nowrap}
+.brand .sub{font-family:var(--f-head);font-weight:600;font-size:var(--t-sub);color:var(--brand2);white-space:nowrap;margin-top:4px}
+.clockchip{flex:none;display:flex;align-items:center;gap:18px;background:#fff;border:7px solid var(--ink);border-radius:999px;padding:18px 40px;box-shadow:0 12px 0 rgba(0,0,0,.12)}
+.clockchip .dot{width:30px;height:30px;border-radius:50%;background:var(--pos);box-shadow:0 0 0 8px color-mix(in srgb,var(--pos) 30%,transparent)}
+.clockchip .t{font-family:var(--f-display);font-weight:800;font-size:var(--t-clock);color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+
+/* TITLE ROW */
+.titlerow{flex:none;text-align:center;margin:6px 0 14px}
+.titlerow .eyebrow{display:inline-block;font-family:var(--f-head);font-weight:700;font-size:var(--t-eyebrow);
+  color:#fff;background:var(--grape);padding:12px 46px;border-radius:999px;border:6px solid #fff;
+  box-shadow:0 10px 0 rgba(0,0,0,.16);transform:rotate(-1.5deg)}
+.titlerow h1{font-family:var(--f-display);font-weight:800;font-size:var(--t-hello);line-height:.84;margin:14px 0 0;
+  color:var(--brand);letter-spacing:.005em;text-shadow:0 10px 0 var(--brand2),0 14px 0 rgba(0,0,0,.12);animation:wiggle 5s ease-in-out infinite}
+.titlerow .dayline{display:inline-flex;align-items:center;gap:24px;margin-top:18px;font-family:var(--f-display);font-weight:700;font-size:var(--t-dayline);color:var(--ink)}
+.titlerow .dayline .pill{background:var(--accent);border:6px solid var(--ink);border-radius:22px;padding:8px 30px;box-shadow:0 9px 0 rgba(0,0,0,.14)}
+
+/* MAIN: hero entrée + side bubbles */
+.main{flex:1;min-height:0;display:grid;grid-template-columns:1.45fr 1fr;gap:46px;margin-bottom:26px}
+
+/* HERO entrée */
+.hero{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0}
+.hero .burst{position:relative;width:1000px;max-width:100%;aspect-ratio:1/1;display:grid;place-items:center;animation:bob 6s ease-in-out infinite;flex:none}
+/* sunburst spokes behind the food blob */
+.hero .burst::before{content:'';position:absolute;inset:-30px;border-radius:50%;
+  background:repeating-conic-gradient(from 0deg,var(--accent) 0deg 12deg,var(--tang) 12deg 24deg);
+  opacity:.85;animation:spin 60s linear infinite;filter:saturate(1.05)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hero .blob{position:relative;z-index:2;width:780px;height:780px;border-radius:50%;
+  background:#fff url("") center/cover no-repeat;border:18px solid #fff;
+  box-shadow:0 26px 0 rgba(0,0,0,.18),inset 0 0 0 10px color-mix(in srgb,var(--brand) 20%,transparent);
+  display:grid;place-items:center;overflow:hidden}
+.hero .blob .ic{font-size:420px;line-height:1;filter:drop-shadow(0 18px 30px rgba(0,0,0,.25))}
+.hero .blob.has-img .ic{display:none}
+.hero .tag{position:absolute;z-index:3;top:18px;left:50%;transform:translateX(-50%) rotate(-3deg);
+  font-family:var(--f-head);font-weight:700;font-size:var(--t-dishlbl);color:var(--ink);
+  background:var(--accent);border:6px solid var(--ink);border-radius:18px;padding:10px 34px;box-shadow:0 8px 0 rgba(0,0,0,.16);white-space:nowrap}
+.hero .dishname{position:relative;z-index:3;width:100%;text-align:center;margin-top:18px;
+  font-family:var(--f-display);font-weight:800;font-size:var(--t-dishname);line-height:.9;color:var(--ink);
+  text-shadow:0 6px 0 #fff,0 9px 0 rgba(0,0,0,.1)}
+
+/* SIDE BUBBLES (sides + fruit + milk) */
+.sides{display:flex;flex-direction:column;justify-content:center;gap:30px}
+.bub{display:flex;align-items:center;gap:36px;background:#fff;border:8px solid var(--ink);border-radius:48px;
+  padding:24px 40px;box-shadow:0 14px 0 rgba(0,0,0,.13);min-height:0}
+.bub .ic{width:200px;height:200px;flex:none;border-radius:36px;display:grid;place-items:center;
+  font-size:var(--t-sideico);background-size:cover;background-position:center;overflow:hidden}
+.bub .ic.has-img{font-size:0}
+.bub:nth-child(1) .ic{background-color:color-mix(in srgb,var(--lime) 45%,#fff)}
+.bub:nth-child(2) .ic{background-color:color-mix(in srgb,var(--tang) 40%,#fff)}
+.bub:nth-child(3) .ic{background-color:color-mix(in srgb,var(--brand) 30%,#fff)}
+.bub:nth-child(4) .ic{background-color:color-mix(in srgb,var(--sky) 45%,#fff)}
+.bub .txt{min-width:0;flex:1}
+.bub .lbl{font-family:var(--f-head);font-weight:700;font-size:var(--t-sidelbl);letter-spacing:.08em;text-transform:uppercase;color:var(--brand2)}
+.bub .nm{font-family:var(--f-display);font-weight:800;font-size:var(--t-sidename);line-height:.95;color:var(--ink);margin-top:4px}
+
+/* BOTTOM: allergen key + announcement */
+.foot{flex:none;display:grid;grid-template-columns:1fr auto;gap:36px;align-items:stretch;margin-bottom:40px}
+.allergens{display:flex;align-items:center;gap:30px;background:#fff;border:8px solid var(--ink);border-radius:40px;padding:22px 40px;box-shadow:0 12px 0 rgba(0,0,0,.12)}
+.allergens .ttl{font-family:var(--f-head);font-weight:700;font-size:var(--t-allk);letter-spacing:.06em;text-transform:uppercase;color:var(--brand2);white-space:nowrap}
+.allergens .item{display:flex;align-items:center;gap:16px}
+.allergens .item .chip{width:96px;height:96px;flex:none;border-radius:24px;display:grid;place-items:center;font-size:var(--t-allico);background:color-mix(in srgb,var(--accent) 40%,#fff);border:5px solid var(--ink)}
+.allergens .item .nm{font-family:var(--f-body);font-weight:800;font-size:var(--t-alln);color:var(--ink);white-space:nowrap}
+.announce{display:flex;align-items:center;gap:30px;background:var(--brand);border:8px solid var(--ink);border-radius:40px;padding:0 50px;box-shadow:0 12px 0 var(--brand2);animation:pop 3.5s ease-in-out infinite}
+.announce .star{font-size:var(--t-anntag);line-height:1;animation:bob 2.6s ease-in-out infinite}
+.announce .msg{font-family:var(--f-display);font-weight:800;font-size:var(--t-ann);line-height:.95;color:#fff;text-shadow:0 5px 0 var(--brand2);white-space:nowrap}
+
+/* ═══ PORTRAIT (2160×3840) ═══ */
+.stage[data-orient="port"]{padding:64px 64px 0}
+.stage[data-orient="port"] .main{grid-template-columns:1fr;grid-template-rows:auto auto;gap:40px}
+.stage[data-orient="port"] .hero .burst{width:1180px}
+.stage[data-orient="port"] .hero .blob{width:920px;height:920px}
+.stage[data-orient="port"] .sides{flex-direction:row;flex-wrap:wrap}
+.stage[data-orient="port"] .bub{flex:1 1 44%}
+.stage[data-orient="port"] .foot{grid-template-columns:1fr;grid-auto-rows:auto;gap:30px}
+.stage[data-orient="port"]{--t-hello:calc(220px*var(--scale));--t-dishname:calc(140px*var(--scale))}
+</style>
+<script>/*EDUCMS-SHIM-V5*/(function(){try{
+var editMode=false;
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode)armEdit();}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#fff3d6</span><span data-field="theme.ink">#2b1a48</span>
+  <span data-field="theme.brand">#ff5a8c</span><span data-field="theme.brand2">#c8336a</span>
+  <span data-field="theme.accent">#ffd23e</span><span data-field="theme.accent2">#36c5f0</span>
+  <span data-field="theme.pos">#3ad07a</span><span data-field="theme.neg">#ff5670</span>
+  <span data-field="theme.fDisplay">Baloo 2</span><span data-field="theme.fHead">Fredoka</span><span data-field="theme.fBody">Nunito</span><span data-field="theme.fMono">Fredoka</span><span data-field="theme.scale">1</span>
+</div>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+  <div class="confetti" id="confetti" aria-hidden="true"></div>
+  <div class="wrap">
+
+    <header class="head">
+      <div class="brand" data-widget="school">
+        <div class="logo" data-imgslot="school.logo" data-field="school.initials">M</div>
+        <div class="col" style="min-width:0">
+          <div class="name" data-fit="single" data-fit-min="60" data-fit-max="72" data-field="school.name">Maple Grove Elementary</div>
+          <div class="sub" data-fit="single" data-fit-min="60" data-fit-max="38" data-field="school.sub">Yum! Lunch is served</div>
+        </div>
+      </div>
+      <div class="clockchip"><span class="dot"></span><span class="t" data-field="clock.time" data-live="clock">11:45 AM</span></div>
+    </header>
+
+    <section class="titlerow" data-widget="title">
+      <div class="eyebrow" data-fit="single" data-fit-min="60" data-fit-max="64" data-field="title.eyebrow">★ In the cafeteria today ★</div>
+      <h1 data-fit="single" data-fit-min="120" data-fit-max="300" data-field="title.big">Today's Lunch!</h1>
+      <div class="dayline">
+        <span data-field="title.daytext">It's</span>
+        <span class="pill" data-fit="single" data-fit-min="60" data-fit-max="82" data-field="today.day" data-live="weekdayname">Wednesday</span>
+        <span class="pill" data-fit="single" data-fit-min="60" data-fit-max="82" data-field="today.date" data-live="today">Jun 3</span>
+      </div>
+    </section>
+
+    <div class="main">
+      <!-- HERO ENTRÉE -->
+      <section class="hero" data-widget="entree">
+        <div class="burst">
+          <div class="tag" data-fit="single" data-fit-min="60" data-fit-max="48" data-field="entree.label">Main dish</div>
+          <div class="blob" data-imgslot="entree.img" data-img="https://www.themealdb.com/images/media/meals/lrfdwz1764438393.jpg">
+            <div class="ic" data-field="entree.emoji">🍕</div>
+          </div>
+        </div>
+        <div class="dishname" data-fit="single" data-fit-min="80" data-fit-max="150" data-field="entree.name">Cheesy Pizza</div>
+      </section>
+
+      <!-- SIDES + FRUIT + MILK -->
+      <section class="sides" data-widget="sides">
+        <div class="bub" data-widget="side.0">
+          <div class="ic" data-imgslot="side.0.img" data-img="https://www.themealdb.com/images/media/meals/1550441882.jpg"><span data-field="side.0.emoji">🥔</span></div>
+          <div class="txt"><div class="lbl" data-field="side.0.label">Side</div><div class="nm" data-fit="single" data-fit-min="60" data-fit-max="74" data-field="side.0.name">Roasted Potatoes</div></div>
+        </div>
+        <div class="bub" data-widget="side.1">
+          <div class="ic" data-imgslot="side.1.img" data-img="https://www.themealdb.com/images/media/meals/m0p0j81765568742.jpg"><span data-field="side.1.emoji">🥦</span></div>
+          <div class="txt"><div class="lbl" data-field="side.1.label">Veggie</div><div class="nm" data-fit="single" data-fit-min="60" data-fit-max="74" data-field="side.1.name">Garden Broccoli</div></div>
+        </div>
+        <div class="bub" data-widget="side.2">
+          <div class="ic" data-imgslot="fruit.img"><span data-field="fruit.emoji">🍎</span></div>
+          <div class="txt"><div class="lbl" data-field="fruit.label">Fruit</div><div class="nm" data-fit="single" data-fit-min="60" data-fit-max="74" data-field="fruit.name">Crunchy Apple</div></div>
+        </div>
+        <div class="bub" data-widget="side.3">
+          <div class="ic" data-imgslot="milk.img"><span data-field="milk.emoji">🥛</span></div>
+          <div class="txt"><div class="lbl" data-field="milk.label">Drink</div><div class="nm" data-fit="single" data-fit-min="60" data-fit-max="74" data-field="milk.name">Cold Milk</div></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="foot">
+      <div class="allergens" data-widget="allergens">
+        <div class="ttl" data-field="allergens.title">Look for:</div>
+        <div class="item"><div class="chip" data-field="all.0.ico">🌾</div><div class="nm" data-fit="single" data-fit-min="60" data-fit-max="46" data-field="all.0.name">Wheat</div></div>
+        <div class="item"><div class="chip" data-field="all.1.ico">🥛</div><div class="nm" data-fit="single" data-fit-min="60" data-fit-max="46" data-field="all.1.name">Milk</div></div>
+        <div class="item"><div class="chip" data-field="all.2.ico">🥚</div><div class="nm" data-fit="single" data-fit-min="60" data-fit-max="46" data-field="all.2.name">Egg</div></div>
+        <div class="item"><div class="chip" data-field="all.3.ico">🥜</div><div class="nm" data-fit="single" data-fit-min="60" data-fit-max="46" data-field="all.3.name">Nut-free</div></div>
+      </div>
+      <div class="announce" data-widget="announce">
+        <span class="star" data-field="announce.emoji">🎉</span>
+        <span class="msg" data-fit="single" data-fit-min="60" data-fit-max="86" data-field="announce.message">Pizza Friday is coming!</span>
+      </div>
+    </div>
+
+  </div>
+</div></div></div>
+
+<script>
+/* CONFETTI builder — plain JS, no regex literals / control chars (WebKit-safe) */
+(function(){
+  var box=document.getElementById('confetti');if(!box)return;
+  var cols=['var(--brand)','var(--accent)','var(--accent2)','var(--grape)','var(--tang)','var(--lime)','var(--pos)'];
+  var N=26,html='';
+  for(var i=0;i<N;i++){
+    var left=Math.round((i/N)*100+(i%3)*2);
+    var dur=(7+(i%6)*1.6).toFixed(1);
+    var delay=(-(i%9)*1.3).toFixed(1);
+    var size=22+(i%4)*10;
+    var c=cols[i%cols.length];
+    html+='<i style="left:'+left+'%;width:'+size+'px;height:'+size+'px;background:'+c+';animation-duration:'+dur+'s;animation-delay:'+delay+'s"></i>';
+  }
+  box.innerHTML=html;
+})();
+</script>
+<script>
+/* STAGE SCALE + THEME + IMG + AUTO-FIT + CLOCK — proven engine */
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fHead:'--f-head',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();new MutationObserver(applyTheme).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||60),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.stage'),{subtree:true,childList:true,characterData:true});
+  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m+' '+(d.getHours()<12?'AM':'PM');}
+  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});}
+  tick();setInterval(tick,15000);
+})();
+</script>
+<script>
+/* LIVE DATE + WEEKDAY NAME (§4b-style) — defaults to local date, CMS-overridable via data-pin */
+(function(){
+  var DMON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var DDOW=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  function fmtD(d){return DMON[d.getMonth()]+' '+d.getDate();}
+  function fill(){var base=new Date();
+    document.querySelectorAll('[data-live="today"]').forEach(function(el){if(!el.hasAttribute('data-pin'))el.textContent=fmtD(base);});
+    document.querySelectorAll('[data-live="weekdayname"]').forEach(function(el){if(!el.hasAttribute('data-pin'))el.textContent=DDOW[base.getDay()];});
+  }
+  fill();setInterval(fill,600000);
+})();
+</script>
+</body></html>

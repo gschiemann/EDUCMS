@@ -163,7 +163,7 @@ const _RETIRED_SUNNY_MEADOW_BG = (() => {
   return `url("data:image/svg+xml;utf8,${encoded}") no-repeat center / 100% 100%, linear-gradient(180deg, #9FDCFF 0%, #BFE8FF 30%, #FFF1B8 65%, #FFD8A8 100%)`;
 })();
 
-export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
+const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   // ════════════════════════════════════════════════════════════════
   // 2026-04-20 cleanup — removed 18 legacy theme-based presets so the
   // gallery only shows the curated animated full-screen scenes. The
@@ -2246,4 +2246,47 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     screenWidth: 1920, screenHeight: 1080, bgColor: '#eef4f1',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/kiosk/vet.html' } }],
   },
+];
+
+// ─── Modern K-12 school boards (2026-06-07) ──────────────────────────────
+// EXTERNAL_HTML rebuilds that REPLACE the legacy skeuomorphic React themed
+// presets (Animated / Storybook / Scrapbook hallway+cafeteria + the MS lobby
+// pack). Big type, 60px auto-fit floor, generous whitespace, full brand-token
+// theming, click-to-edit hot-zones (V5 shim). One file handles both
+// orientations via ?o=. The originals they replace are filtered out below.
+const MODERN_SCHOOL_PRESETS: SystemPreset[] = [
+  // Elementary — Today's Schedule (replaces Animated/Storybook/Scrapbook Hallway)
+  { id: 'preset-school-elem-schedule-1', name: '📅 Daily Schedule — Color Blocks', description: 'Modern elementary daily schedule — bold color-block period rows, oversized type, live current-period highlight, clock + weather + attendance tiles. Bright, playful, legible from across the hall.', category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY', screenWidth: 3840, screenHeight: 2160, bgColor: '#4338ca', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/elem-schedule-v1.html' } }] },
+  { id: 'preset-school-elem-schedule-2', name: '📅 Daily Schedule — Soft Cards', description: 'Modern elementary daily schedule — soft rounded cards on a light airy canvas, pastel accents, numbered periods, gentle current-period halo. Calm and friendly.', category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY', screenWidth: 3840, screenHeight: 2160, bgColor: '#f1f5ff', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/elem-schedule-v2.html' } }] },
+  { id: 'preset-school-elem-schedule-3', name: '📅 Daily Schedule — Editorial Rail', description: 'Modern elementary daily schedule — strong color side-rail with clock/weather/attendance, clean editorial schedule list, floating current-period card. Crisp and confident.', category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY', screenWidth: 3840, screenHeight: 2160, bgColor: '#ffffff', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/elem-schedule-v3.html' } }] },
+  // Elementary — Today's Lunch (replaces Animated Food Truck / Storybook / Scrapbook Cafeteria)
+  { id: 'preset-school-elem-lunch-1', name: "🍱 Today's Lunch — Confetti Pop", description: 'Fun elementary lunch board — giant entrée photo in a confetti sunburst, bouncy headline, colorful side bubbles, swappable dish photos, allergen key. Joyful and BIG.', category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY', screenWidth: 3840, screenHeight: 2160, bgColor: '#fef3c7', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/elem-lunch-v1.html' } }] },
+  { id: 'preset-school-elem-lunch-2', name: "🍱 Today's Lunch — Lunch Buddies", description: 'Fun elementary lunch board — a friendly waving mascot introduces the menu from a speech bubble, bold color-block menu cards, this-week strip with today auto-highlighted. Swappable dish photos.', category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY', screenWidth: 3840, screenHeight: 2160, bgColor: '#ffffff', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/elem-lunch-v2.html' } }] },
+  { id: 'preset-school-elem-lunch-3', name: "🍱 Today's Lunch — Lunch Tray", description: 'Fun elementary lunch board — a bright top-down cafeteria tray with compartment wells holding each dish photo, live "lunch bell in __" countdown. Swappable dish photos + allergen key.', category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY', screenWidth: 3840, screenHeight: 2160, bgColor: '#faf7ef', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/elem-lunch-v3.html' } }] },
+  // Middle School — Lobby Welcome (replaces Paper/Homeroom/Greenhouse/Field Notes/Atlas/Arcade)
+  { id: 'preset-school-ms-lobby-1', name: '🎒 Lobby Welcome — Bold', description: 'Modern middle-school lobby — vibrant full-bleed hero, giant WELCOME, day/date chip, announcement ribbon, color-tabbed club cards, lunch tile, live clock. Energetic school spirit.', category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE', screenWidth: 3840, screenHeight: 2160, bgColor: '#1e40af', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/ms-lobby-v1.html' } }] },
+  { id: 'preset-school-ms-lobby-2', name: '🎒 Lobby Welcome — Light', description: 'Modern middle-school lobby — airy light canvas, huge WELCOME, soft white club cards with accent tabs, announcement band, full-width lunch hero. Clean and premium.', category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE', screenWidth: 3840, screenHeight: 2160, bgColor: '#eef2ff', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/ms-lobby-v2.html' } }] },
+  { id: 'preset-school-ms-lobby-3', name: '🎒 Lobby Welcome — Dark', description: 'Modern middle-school lobby — confident near-black canvas with a vivid lime accent, date-forward hero, numbered club cards, bold lunch tile. Cool and contemporary.', category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE', screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0a0a', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/ms-lobby-v3.html' } }] },
+];
+
+// Legacy skeuomorphic React themed presets the modern boards above replace —
+// filtered OUT of the shipped catalog (operator: "total disasters, redo them").
+// The widget code remains (harmless); only the gallery presets are retired.
+// NOT retired (separate next batch): MS_PLAYLIST/STUDIO + the HS themed lobby
+// pack (HS_ZINE/HS_BLUEPRINT/HS_YEARBOOK).
+const RETIRED_LEGACY_WIDGET_TYPES = new Set<string>([
+  'ANIMATED_HALLWAY_SCHEDULE', 'ANIMATED_HALLWAY_SCHEDULE_PORTRAIT',
+  'STORYBOOK_HALLWAY', 'STORYBOOK_HALLWAY_PORTRAIT',
+  'SCRAPBOOK_HALLWAY', 'SCRAPBOOK_HALLWAY_PORTRAIT',
+  'ANIMATED_CAFETERIA_FOODTRUCK', 'ANIMATED_CAFETERIA_FOODTRUCK_PORTRAIT',
+  'STORYBOOK_CAFETERIA', 'STORYBOOK_CAFETERIA_PORTRAIT',
+  'SCRAPBOOK_CAFETERIA', 'SCRAPBOOK_CAFETERIA_PORTRAIT',
+  'MS_PAPER', 'MS_PAPER_PORTRAIT', 'MS_HOMEROOM', 'MS_HOMEROOM_PORTRAIT',
+  'MS_GREENHOUSE', 'MS_GREENHOUSE_PORTRAIT', 'MS_FIELDNOTES', 'MS_FIELDNOTES_PORTRAIT',
+  'MS_ATLAS', 'MS_ATLAS_PORTRAIT', 'MS_ARCADE', 'MS_ARCADE_PORTRAIT',
+]);
+
+export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
+  ...RAW_SYSTEM_PRESETS.filter((p) => !(p.zones || []).some((z) => RETIRED_LEGACY_WIDGET_TYPES.has(z.widgetType))),
+  ...MODERN_SCHOOL_PRESETS,
 ];

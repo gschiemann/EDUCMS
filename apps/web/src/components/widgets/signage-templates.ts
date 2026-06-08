@@ -101,4 +101,15 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   { id: "preset-sig-qsr-08", name: "QSR · Rewards", group: "QSR", url: "/templates/signage/qsr/08-rewards.html" },
   { id: "preset-sig-qsr-09", name: "QSR · Hours", group: "QSR", url: "/templates/signage/qsr/09-hours-location.html" },
   { id: "preset-sig-qsr-10", name: "QSR · Now Hiring", group: "QSR", url: "/templates/signage/qsr/10-now-hiring.html" },
+  // Modern K-12 school boards (2026-06-07) — EXTERNAL_HTML rebuilds of the
+  // legacy skeuomorphic themed widgets. Big type, 60px floor, click-to-edit.
+  { id: "preset-school-elem-schedule-1", name: "Elementary · Daily Schedule — Color Blocks", group: "Elementary", url: "/templates/school/elem-schedule-v1.html" },
+  { id: "preset-school-elem-schedule-2", name: "Elementary · Daily Schedule — Soft Cards", group: "Elementary", url: "/templates/school/elem-schedule-v2.html" },
+  { id: "preset-school-elem-schedule-3", name: "Elementary · Daily Schedule — Editorial Rail", group: "Elementary", url: "/templates/school/elem-schedule-v3.html" },
+  { id: "preset-school-elem-lunch-1", name: "Elementary · Today's Lunch — Confetti Pop", group: "Elementary", url: "/templates/school/elem-lunch-v1.html" },
+  { id: "preset-school-elem-lunch-2", name: "Elementary · Today's Lunch — Lunch Buddies", group: "Elementary", url: "/templates/school/elem-lunch-v2.html" },
+  { id: "preset-school-elem-lunch-3", name: "Elementary · Today's Lunch — Lunch Tray", group: "Elementary", url: "/templates/school/elem-lunch-v3.html" },
+  { id: "preset-school-ms-lobby-1", name: "Middle School · Lobby Welcome — Bold", group: "Middle School", url: "/templates/school/ms-lobby-v1.html" },
+  { id: "preset-school-ms-lobby-2", name: "Middle School · Lobby Welcome — Light", group: "Middle School", url: "/templates/school/ms-lobby-v2.html" },
+  { id: "preset-school-ms-lobby-3", name: "Middle School · Lobby Welcome — Dark", group: "Middle School", url: "/templates/school/ms-lobby-v3.html" },
 ];

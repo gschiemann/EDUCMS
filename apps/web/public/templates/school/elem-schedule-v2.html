@@ -1,0 +1,268 @@
+<!doctype html>
+<!-- ELEM · HALLWAY SCHEDULE v2 — "SOFT CARDS". Modern elementary: light airy canvas,
+     soft rounded pastel cards, GENEROUS whitespace, gentle shadows, a calm cheerful
+     palette. Live period auto-highlights (§4a engine). Friendly clock / weather /
+     attendance cards + ONE announcement line. Contemporary + uncluttered (Apple-clean
+     but playful), NOT skeuomorphic. Canonical theme tokens, auto-fit 60px floor,
+     logo slot, portrait+landscape. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Today's Schedule</title>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  --bg:#f4f7fb;--ink:#283044;--brand:#3f8cff;--brand2:#2266d6;--accent:#ff8a5c;--accent2:#5fd0a8;--pos:#34c27a;--neg:#ff5670;
+  --card:#ffffff;--soft:#e9eef6;--mute:#8a93a8;
+  --f-display:'Baloo 2';--f-head:'Baloo 2';--f-body:'Quicksand';--f-mono:'Quicksand';
+  --scale:1;
+  --t-logo:calc(78px*var(--scale));--t-school:calc(64px*var(--scale));--t-sub:calc(38px*var(--scale));
+  --t-clock:calc(80px*var(--scale));--t-clockk:calc(34px*var(--scale));
+  --t-eyebrow:calc(44px*var(--scale));--t-title:calc(150px*var(--scale));--t-date:calc(52px*var(--scale));
+  --t-tilek:calc(36px*var(--scale));--t-tilev:calc(108px*var(--scale));
+  --t-rowtime:calc(58px*var(--scale));--t-rowname:calc(82px*var(--scale));--t-rowmeta:calc(42px*var(--scale));--t-rownum:calc(56px*var(--scale));--t-rowstat:calc(34px*var(--scale));
+  --t-ann:calc(58px*var(--scale));--t-anntag:calc(40px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#0a0c11;color:var(--ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;
+  background:
+    radial-gradient(1600px 1000px at 90% -10%, color-mix(in srgb,var(--brand) 12%,transparent), transparent 60%),
+    radial-gradient(1400px 900px at -8% 110%, color-mix(in srgb,var(--accent2) 16%,transparent), transparent 60%),
+    var(--bg);
+  display:flex;flex-direction:column;padding:80px 100px 0;box-shadow:0 80px 200px rgba(0,0,0,.5)}
+.stage>*{position:relative;z-index:1}
+@keyframes softpulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--brand) 36%,transparent)}50%{box-shadow:0 0 0 18px color-mix(in srgb,var(--brand) 0%,transparent)}}
+
+/* HEADER */
+.head{flex:none;height:172px;display:flex;align-items:center;justify-content:space-between;gap:48px}
+.brand{display:flex;align-items:center;gap:34px;min-width:0}
+.brand .logo{width:148px;height:148px;flex:none;background:var(--brand);background-size:cover;background-position:center;display:grid;place-items:center;
+  font-family:var(--f-display);font-weight:800;font-size:var(--t-logo);color:#fff;border-radius:46px;box-shadow:0 18px 44px color-mix(in srgb,var(--brand) 45%,transparent)}
+.brand .logo.has-img{font-size:0}
+.brand .who{min-width:0}
+.brand .who .name{font-family:var(--f-display);font-weight:800;font-size:var(--t-school);line-height:1;letter-spacing:-.01em;white-space:nowrap}
+.brand .who .sub{font-family:var(--f-body);font-weight:600;font-size:var(--t-sub);color:var(--mute);margin-top:8px;white-space:nowrap}
+.clockcard{flex:none;background:var(--card);border-radius:40px;padding:24px 46px;text-align:right;box-shadow:0 18px 50px rgba(40,48,68,.1)}
+.clockcard .k{font-family:var(--f-body);font-weight:700;font-size:var(--t-clockk);letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+.clockcard .v{font-family:var(--f-display);font-weight:800;font-size:var(--t-clock);color:var(--ink);font-variant-numeric:tabular-nums;line-height:1;margin-top:6px}
+
+/* TOP STRIP — title + weather + attendance, all soft cards */
+.top{flex:none;display:grid;grid-template-columns:1fr 380px 380px;gap:36px;margin:36px 0 30px}
+.titlecard{background:var(--card);border-radius:54px;padding:54px 60px;box-shadow:0 22px 60px rgba(40,48,68,.08);display:flex;flex-direction:column;justify-content:center}
+.titlecard .eyebrow{font-family:var(--f-body);font-weight:700;font-size:var(--t-eyebrow);letter-spacing:.08em;text-transform:uppercase;color:var(--brand)}
+.titlecard h1{font-family:var(--f-display);font-weight:800;font-size:var(--t-title);line-height:.9;letter-spacing:-.02em;margin:8px 0 0;color:var(--ink)}
+.titlecard h1 em{font-style:normal;color:var(--accent)}
+.titlecard .date{font-family:var(--f-display);font-weight:700;font-size:var(--t-date);color:var(--mute);margin-top:14px}
+.tile{border-radius:54px;padding:46px 50px;display:flex;flex-direction:column;justify-content:center;box-shadow:0 22px 60px rgba(40,48,68,.08)}
+.tile.weather{background:color-mix(in srgb,var(--accent2) 18%,var(--card))}
+.tile.att{background:color-mix(in srgb,var(--brand) 14%,var(--card))}
+.tile .k{font-family:var(--f-body);font-weight:700;font-size:var(--t-tilek);letter-spacing:.06em;text-transform:uppercase;color:var(--ink);opacity:.7;display:flex;align-items:center;gap:14px}
+.tile .ico{font-size:calc(50px*var(--scale));line-height:1}
+.tile .v{font-family:var(--f-display);font-weight:800;font-size:var(--t-tilev);line-height:.92;letter-spacing:-.03em;font-variant-numeric:tabular-nums;margin-top:6px}
+.tile.weather .v{color:#1c9f74}
+.tile.att .v{color:var(--brand2)}
+.tile .c{font-family:var(--f-body);font-weight:600;font-size:var(--t-tilek);color:var(--ink);opacity:.65;margin-top:4px}
+
+/* SCHEDULE — soft white pills, numbered chips, plenty of air */
+.sched{flex:1;min-height:0;display:flex;flex-direction:column;gap:24px;padding-bottom:18px}
+.row{flex:1;min-height:0;background:var(--card);border-radius:46px;display:grid;grid-template-columns:auto auto 1fr auto auto;align-items:center;gap:46px;
+  padding:0 54px;box-shadow:0 16px 44px rgba(40,48,68,.07)}
+.row .num{width:96px;height:96px;flex:none;border-radius:30px;background:var(--soft);color:var(--mute);display:grid;place-items:center;
+  font-family:var(--f-display);font-weight:800;font-size:var(--t-rownum)}
+.row .time{font-family:var(--f-display);font-weight:700;font-size:var(--t-rowtime);color:var(--brand);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:340px}
+.row .nm{font-family:var(--f-display);font-weight:800;font-size:var(--t-rowname);line-height:.94;letter-spacing:-.015em;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .meta{font-family:var(--f-body);font-weight:600;font-size:var(--t-rowmeta);color:var(--mute);text-align:right;white-space:nowrap}
+.row .stat{display:none}
+/* DONE — soft check, dimmed */
+.row.done{opacity:.5}
+.row.done .num{background:color-mix(in srgb,var(--pos) 20%,var(--card));color:var(--pos)}
+.row.done .num span{display:none} .row.done .num::after{content:'✓'}
+/* LIVE — gentle brand-tinted card, soft halo, colored number */
+.row.now{background:color-mix(in srgb,var(--brand) 10%,var(--card));box-shadow:0 0 0 5px color-mix(in srgb,var(--brand) 28%,transparent),0 20px 50px rgba(40,48,68,.12)}
+.row.now .num{background:var(--brand);color:#fff;animation:softpulse 1.8s ease-in-out infinite}
+.row.now .nm{color:var(--brand2)}
+.row.now .stat{display:inline-flex;align-items:center;gap:12px;font-family:var(--f-body);font-weight:700;font-size:var(--t-rowstat);letter-spacing:.08em;
+  text-transform:uppercase;color:#fff;background:var(--accent);border-radius:99px;padding:12px 26px;white-space:nowrap}
+
+/* ANNOUNCEMENT — single soft pill bar, opaque, NOT a dense ticker */
+.ann{flex:none;height:150px;margin:0 0 0;background:var(--ink);border-radius:46px 46px 0 0;display:flex;align-items:center;gap:36px;padding:0 56px}
+.ann .tag{flex:none;background:var(--accent);color:#fff;font-family:var(--f-display);font-weight:800;font-size:var(--t-anntag);border-radius:99px;padding:14px 36px;display:flex;align-items:center;gap:14px}
+.ann .tag::before{content:'✨';font-size:calc(40px*var(--scale))}
+.ann .msg{font-family:var(--f-display);font-weight:700;font-size:var(--t-ann);color:#fff;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+
+/* ═══ PORTRAIT ═══ */
+.stage[data-orient="port"]{padding:72px 72px 0}
+.stage[data-orient="port"] .head{height:auto;flex-wrap:wrap;gap:28px}
+.stage[data-orient="port"] .top{grid-template-columns:1fr 1fr;grid-auto-rows:auto}
+.stage[data-orient="port"] .titlecard{grid-column:1 / -1}
+.stage[data-orient="port"]{--t-title:calc(128px*var(--scale))}
+.stage[data-orient="port"] .row{grid-template-columns:auto auto 1fr auto;gap:32px}
+.stage[data-orient="port"] .row .meta{display:none}
+.stage[data-orient="port"] .row .time{min-width:280px}
+</style>
+<script>/*EDUCMS-SHIM-V5*/(function(){try{
+var editMode=false;
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode)armEdit();}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#f4f7fb</span><span data-field="theme.ink">#283044</span>
+  <span data-field="theme.brand">#3f8cff</span><span data-field="theme.brand2">#2266d6</span>
+  <span data-field="theme.accent">#ff8a5c</span><span data-field="theme.accent2">#5fd0a8</span>
+  <span data-field="theme.pos">#34c27a</span><span data-field="theme.neg">#ff5670</span>
+  <span data-field="theme.fDisplay">Baloo 2</span><span data-field="theme.fHead">Baloo 2</span><span data-field="theme.fBody">Quicksand</span><span data-field="theme.fMono">Quicksand</span><span data-field="theme.scale">1</span>
+</div>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+  <header class="head">
+    <div class="brand" data-widget="school">
+      <div class="logo" data-imgslot="school.logo" data-field="school.initials">SC</div>
+      <div class="who">
+        <div class="name" data-fit="single" data-fit-min="60" data-fit-max="64" data-field="school.name">Sunny Creek Elementary</div>
+        <div class="sub" data-fit="single" data-fit-min="60" data-fit-max="38" data-field="school.sub">Where every day is a fresh start</div>
+      </div>
+    </div>
+    <div class="clockcard"><div class="k" data-field="clock.label">Right now</div><div class="v" data-field="clock.time" data-live="clock">8:25</div></div>
+  </header>
+
+  <section class="top">
+    <div class="titlecard">
+      <div class="eyebrow" data-fit="single" data-fit-min="60" data-fit-max="44" data-field="hero.eyebrow">Good morning!</div>
+      <h1 data-fit="single" data-fit-min="80" data-fit-max="150"><span data-field="hero.t1">Today's </span><em data-field="hero.t2">Schedule</em></h1>
+      <div class="date"><span data-field="today.date" data-live="today">Monday, June 8</span></div>
+    </div>
+    <div class="tile weather" data-widget="weather">
+      <div class="k"><span class="ico">⛅</span><span data-fit="single" data-fit-min="60" data-fit-max="36" data-field="weather.label">Outside</span></div>
+      <div class="v" data-field="weather.temp">71°</div>
+      <div class="c" data-fit="single" data-fit-min="60" data-fit-max="36" data-field="weather.cond">Partly sunny</div>
+    </div>
+    <div class="tile att" data-widget="att">
+      <div class="k"><span class="ico">🙌</span><span data-fit="single" data-fit-min="60" data-fit-max="36" data-field="att.label">Here today</span></div>
+      <div class="v" data-field="att.pct">96%</div>
+      <div class="c" data-fit="single" data-fit-min="60" data-fit-max="36" data-field="att.cap">Way to show up!</div>
+    </div>
+  </section>
+
+  <section class="sched" data-schedule data-sched-item=".row" data-sched-time=".time" data-sched-active="now" data-sched-done="done" data-sched-status=".stat" data-demo-min="600">
+    <div class="row" data-widget="p.0">
+      <div class="num"><span>1</span></div>
+      <div class="time" data-field="p.0.time">7:50 – 8:35</div>
+      <div class="nm" data-fit="single" data-fit-min="60" data-fit-max="82" data-field="p.0.name">Morning Meeting</div>
+      <div class="meta" data-fit="single" data-fit-min="60" data-fit-max="42" data-field="p.0.meta">Room 12 · Ms. Diaz</div>
+      <div class="stat"></div>
+    </div>
+    <div class="row" data-widget="p.1">
+      <div class="num"><span>2</span></div>
+      <div class="time" data-field="p.1.time">8:35 – 9:30</div>
+      <div class="nm" data-fit="single" data-fit-min="60" data-fit-max="82" data-field="p.1.name">Math</div>
+      <div class="meta" data-fit="single" data-fit-min="60" data-fit-max="42" data-field="p.1.meta">Room 12 · Ms. Diaz</div>
+      <div class="stat"></div>
+    </div>
+    <div class="row" data-widget="p.2">
+      <div class="num"><span>3</span></div>
+      <div class="time" data-field="p.2.time">9:30 – 10:25</div>
+      <div class="nm" data-fit="single" data-fit-min="60" data-fit-max="82" data-field="p.2.name">Reading &amp; Writing</div>
+      <div class="meta" data-fit="single" data-fit-min="60" data-fit-max="42" data-field="p.2.meta">Room 12 · Ms. Diaz</div>
+      <div class="stat"></div>
+    </div>
+    <div class="row" data-widget="p.3">
+      <div class="num"><span>4</span></div>
+      <div class="time" data-field="p.3.time">10:25 – 11:10</div>
+      <div class="nm" data-fit="single" data-fit-min="60" data-fit-max="82" data-field="p.3.name">Science Lab</div>
+      <div class="meta" data-fit="single" data-fit-min="60" data-fit-max="42" data-field="p.3.meta">Room 8 · Mr. Park</div>
+      <div class="stat"></div>
+    </div>
+    <div class="row" data-widget="p.4">
+      <div class="num"><span>5</span></div>
+      <div class="time" data-field="p.4.time">11:10 – 11:55</div>
+      <div class="nm" data-fit="single" data-fit-min="60" data-fit-max="82" data-field="p.4.name">Lunch &amp; Recess</div>
+      <div class="meta" data-fit="single" data-fit-min="60" data-fit-max="42" data-field="p.4.meta">Cafeteria · Yard A</div>
+      <div class="stat"></div>
+    </div>
+    <div class="row" data-widget="p.5">
+      <div class="num"><span>6</span></div>
+      <div class="time" data-field="p.5.time">12:00 – 12:50</div>
+      <div class="nm" data-fit="single" data-fit-min="60" data-fit-max="82" data-field="p.5.name">Physical Education</div>
+      <div class="meta" data-fit="single" data-fit-min="60" data-fit-max="42" data-field="p.5.meta">Gym · Coach Reed</div>
+      <div class="stat"></div>
+    </div>
+  </section>
+
+  <div class="ann" data-widget="ann">
+    <div class="tag" data-field="ann.tag">Today</div>
+    <div class="msg" data-fit="single" data-fit-min="60" data-fit-max="58" data-field="ann.message">Picture day is Thursday — wear your best smile! Library books are due Friday.</div>
+  </div>
+
+</div></div></div>
+
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fHead:'--f-head',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();new MutationObserver(applyTheme).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||60),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.stage'),{subtree:true,childList:true,characterData:true});
+  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m+' '+(d.getHours()<12?'AM':'PM');}
+  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});}
+  tick();setInterval(tick,15000);
+})();
+</script>
+<script>
+/* LIVE SCHEDULE ENGINE — ties each item's highlight to its period time. Standard across all scheduled boards. */
+(function(){
+  function parseMin(t){if(!t)return null;t=(''+t).replace(/[–—]/g,'-');var m=t.match(/(\d{1,2}):(\d{2})/g);if(!m)return null;function toMin(s){var p=s.split(':'),h=+p[0],mm=+p[1];if(h<7)h+=12;return h*60+mm;}return{start:toMin(m[0]),end:m[1]?toMin(m[1]):toMin(m[0])+50};}
+  function fmt(min){var h=Math.floor(min/60),m=min%60;var ap=h>=12?'p':'a';h=h%12;if(h===0)h=12;return h+':'+(m<10?'0':'')+m+ap;}
+  function run(){document.querySelectorAll('[data-schedule]').forEach(function(box){
+    var itemSel=box.getAttribute('data-sched-item')||'.row',timeSel=box.getAttribute('data-sched-time'),actCls=box.getAttribute('data-sched-active')||'now',doneCls=box.getAttribute('data-sched-done')||'done',statSel=box.getAttribute('data-sched-status');
+    var rows=[].slice.call(box.querySelectorAll(itemSel));
+    var periods=rows.map(function(r){var dt=r.getAttribute('data-time');if(dt)return parseMin(dt);var t=timeSel?r.querySelector(timeSel):null;return parseMin(t?t.textContent:'');});
+    var d=new Date(),nowMin=d.getHours()*60+d.getMinutes();
+    var demo=box.getAttribute('data-demo-min');var first=periods.find(function(p){return p;}),last=[].concat(periods).reverse().find(function(p){return p;});
+    if(demo!=null&&(!first||nowMin<first.start||(last&&nowMin>=last.end)))nowMin=+demo;
+    var curIdx=-1;for(var i=0;i<periods.length;i++){if(periods[i]&&nowMin>=periods[i].start&&nowMin<periods[i].end){curIdx=i;break;}}
+    var nextIdx=-1;if(curIdx<0){for(var j=0;j<periods.length;j++){if(periods[j]&&nowMin<periods[j].start){nextIdx=j;break;}}}else{nextIdx=curIdx+1;}
+    rows.forEach(function(r,i){var p=periods[i],s=statSel?r.querySelector(statSel):null;r.classList.remove(actCls,doneCls);if(!p){if(s)s.textContent='';return;}
+      if(i===curIdx){r.classList.add(actCls);if(s)s.textContent='● Now';}
+      else if(nowMin>=p.end){r.classList.add(doneCls);if(s)s.textContent='Done';}
+      else if(i===nextIdx){if(s)s.textContent='Up next';}
+      else{if(s)s.textContent='Starts '+fmt(p.start);}});
+  });}
+  run();setInterval(run,30000);
+  document.querySelectorAll('[data-schedule]').forEach(function(b){new MutationObserver(run).observe(b,{subtree:true,childList:true,characterData:true,attributes:true});});
+})();
+</script>
+<script>
+(function(){
+  var DMON=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var DDOW=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  function fmtD(d){return DDOW[d.getDay()]+', '+DMON[d.getMonth()]+' '+d.getDate();}
+  function fillDates(){var base=new Date();
+    document.querySelectorAll('[data-live="today"]').forEach(function(el){if(!el.hasAttribute('data-pin'))el.textContent=fmtD(base);});}
+  fillDates();setInterval(fillDates,600000);
+})();
+</script>
+</body></html>
