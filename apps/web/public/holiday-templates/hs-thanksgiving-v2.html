@@ -1,10 +1,9 @@
 <!doctype html>
-<!-- HS THANKSGIVING v2 — "HARVEST DUSK". Premium deep-maroon/amber/gold dusk sky with low
-     harvest-moon glow, a wheat-field band, drifting leaves + bokeh + vignette; a giant brandable
-     "GIVE THANKS" headline, a huge days-off countdown, a gratitude rail, refined harvest cards,
-     live pre-break week. Every text = data-field, crest = data-imgslot, ALL color via canonical
-     brand tokens (school brand re-skins it). Auto-fit, portrait+landscape, SOLID ticker, live
-     clock/countdown/weekday. Bridge preserved. NO food panel. -->
+<!-- HS THANKSGIVING v2 — "HARVEST DUSK" CLEAN flagship. ONE dominant headline + a giant
+     countdown, three simple event chips, generous negative space. Deep maroon/amber harvest
+     dusk with a low harvest-moon glow. Every text = data-field, crest = data-imgslot, ALL
+     color via canonical brand tokens (school brand re-skins it). Auto-fit, portrait+landscape,
+     bridge preserved. Deliberately low-text: NO body paragraphs, NO dense schedule, NO ticker. -->
 <html lang="en"><head><meta charset="utf-8"/><title>Thanksgiving · HS Lobby</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
@@ -14,102 +13,72 @@
   --ink:#f3e6cc;--bg:#2a100c;--pos:#7a8a3a;--neg:#c4452a;
   --f-display:'Bebas Neue';--f-body:'Fraunces';--f-mono:'JetBrains Mono';
   --cream:#f6ecd6;--mute:#cda87e;
-  --t-est:calc(52px*var(--scale));--t-school:calc(116px*var(--scale));--t-vol:calc(52px*var(--scale));
-  --t-chipk:calc(50px*var(--scale));--t-chipv:calc(82px*var(--scale));
-  --t-ribbon:calc(56px*var(--scale));--t-hero:calc(440px*var(--scale));--t-herosub:calc(62px*var(--scale));
-  --t-bignum:calc(420px*var(--scale));--t-bignumk:calc(54px*var(--scale));
-  --t-grk:calc(52px*var(--scale));--t-grh:calc(80px*var(--scale));--t-gri:calc(60px*var(--scale));
-  --t-cardk:calc(52px*var(--scale));--t-cardh:calc(92px*var(--scale));--t-cardp:calc(60px*var(--scale));--t-cardm:calc(52px*var(--scale));
-  --t-skedh:calc(72px*var(--scale));--t-skedd:calc(52px*var(--scale));--t-skede:calc(64px*var(--scale));--t-skedw:calc(50px*var(--scale));
-  --t-tick:calc(56px*var(--scale));
+  /* clean flagship: few elements, big type. everything >=60px on the 3840 stage. */
+  --t-school:calc(96px*var(--scale));--t-date:calc(64px*var(--scale));
+  --t-eyebrow:calc(72px*var(--scale));--t-hero:calc(560px*var(--scale));--t-sub:calc(84px*var(--scale));
+  --t-cdnum:calc(600px*var(--scale));--t-cdlabel:calc(66px*var(--scale));
+  --t-chipt:calc(104px*var(--scale));--t-chipm:calc(62px*var(--scale));--t-chipi:calc(132px*var(--scale));
 }
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#160805;color:var(--ink);font-family:var(--f-body),serif}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#160805;color:var(--cream);font-family:var(--f-body),serif}
 .viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
 .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
 .stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;
-  background:radial-gradient(1500px 1050px at 76% 10%,color-mix(in srgb,var(--accent) 62%,#fff) 0%,color-mix(in srgb,var(--accent) 30%,transparent) 30%,transparent 60%),linear-gradient(178deg,color-mix(in srgb,var(--brand) 42%,#2a100c) 0%,var(--bg) 30%,color-mix(in srgb,var(--brand2) 70%,var(--bg)) 76%,var(--brand2) 100%)}
+  background:radial-gradient(1500px 1100px at 80% 12%,color-mix(in srgb,var(--accent) 60%,#fff) 0%,color-mix(in srgb,var(--accent) 28%,transparent) 30%,transparent 60%),radial-gradient(2000px 1500px at 50% 130%,color-mix(in srgb,var(--brand) 28%,var(--bg)),transparent 66%),linear-gradient(178deg,color-mix(in srgb,var(--brand) 38%,var(--bg)) 0%,var(--bg) 40%,color-mix(in srgb,var(--brand2) 72%,var(--bg)) 78%,var(--brand2) 100%)}
 
 .decor{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden}
-.moon{position:absolute;top:-150px;right:260px;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 88%,#fff),color-mix(in srgb,var(--accent) 55%,transparent) 52%,transparent 70%);filter:blur(2px)}
-.field{position:absolute;left:-4%;right:-4%;bottom:104px;height:560px}
-.field i{position:absolute;bottom:0;border-radius:50% 50% 0 0/100% 100% 0 0;filter:blur(.5px)}
-.field .h1{left:-6%;width:66%;height:440px;background:color-mix(in srgb,var(--brand) 70%,#2a0e08)}
-.field .h2{right:-8%;width:72%;height:360px;background:color-mix(in srgb,var(--brand2) 60%,#3a120a)}
-.field .h3{left:22%;width:58%;height:280px;background:color-mix(in srgb,var(--brand2) 88%,#1c0a06)}
-.wheat{position:absolute;left:0;right:0;bottom:104px;height:340px;opacity:.5;background:repeating-linear-gradient(86deg,transparent 0 22px,color-mix(in srgb,var(--accent) 40%,transparent) 22px 24px);-webkit-mask:linear-gradient(0deg,#000 0%,transparent 75%);mask:linear-gradient(0deg,#000 0%,transparent 75%)}
-.leaf{position:absolute;width:30px;height:24px;background:color-mix(in srgb,var(--accent) 72%,var(--brand));border-radius:0 70% 0 70%;opacity:.9;animation:drift 10s linear infinite;box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--brand2) 60%,transparent)}
-.leaf.b{background:color-mix(in srgb,var(--brand) 78%,#fff)}
-@keyframes drift{0%{transform:translate(0,-120px) rotate(0)}100%{transform:translate(160px,2300px) rotate(420deg)}}
-.bokeh i{position:absolute;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 80%,#fff),transparent 70%);opacity:.5;animation:pulse 6s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:.2;transform:scale(1)}50%{opacity:.55;transform:scale(1.25)}}
-.vig{position:absolute;top:0;right:0;bottom:0;left:0;box-shadow:inset 0 0 380px rgba(0,0,0,.6)}
+.scan{position:absolute;top:0;right:0;bottom:0;left:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.02) 0 1px,transparent 1px 6px);z-index:6}
+.moon{position:absolute;top:-120px;right:300px;width:640px;height:640px;border-radius:50%;
+  background:radial-gradient(circle at 40% 36%,#fff6e2 0%,color-mix(in srgb,var(--accent) 60%,#f3e2b8) 50%,color-mix(in srgb,var(--brand) 30%,#caa060) 92%);
+  box-shadow:0 0 180px color-mix(in srgb,var(--accent) 52%,transparent),0 0 360px color-mix(in srgb,var(--brand) 24%,transparent)}
+.fog{position:absolute;left:-6%;right:-6%;bottom:0;height:560px;z-index:1}
+.fog i{position:absolute;bottom:-60px;border-radius:50% 50% 0 0/100% 100% 0 0;filter:blur(3px)}
+.fog .f1{left:-4%;width:64%;height:420px;background:color-mix(in srgb,var(--brand) 60%,#2a0e08);opacity:.55}
+.fog .f2{right:-6%;width:70%;height:330px;background:color-mix(in srgb,var(--brand2) 60%,#3a120a);opacity:.5}
+.spark i{position:absolute;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 90%,#fff),transparent 70%);opacity:.5;animation:emb 6s ease-in-out infinite}
+@keyframes emb{0%,100%{opacity:.18;transform:translateY(0) scale(1)}50%{opacity:.6;transform:translateY(-44px) scale(1.3)}}
+.vig{position:absolute;top:0;right:0;bottom:0;left:0;box-shadow:inset 0 0 460px rgba(0,0,0,.62);z-index:5}
 
-.wrap{position:relative;z-index:3;width:100%;height:100%;display:flex;flex-direction:column;padding:84px 180px 140px}
-.mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:30px;border-bottom:3px solid color-mix(in srgb,var(--accent) 60%,transparent);padding-bottom:14px}
-.mast .est{font-family:var(--f-mono);font-weight:800;font-size:var(--t-est);letter-spacing:.32em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
-.mast .school{display:flex;align-items:center;gap:22px}
-.mast .crest{width:92px;height:92px;border-radius:50%;border:3px solid var(--accent);background:linear-gradient(135deg,var(--brand),var(--accent));background-size:cover;background-position:center;flex:none}
-.mast .crest.has-img{border-color:var(--accent)}
+.wrap{position:relative;z-index:7;width:100%;height:100%;display:flex;flex-direction:column;padding:150px 200px 160px}
+
+/* slim masthead */
+.mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:40px}
+.mast .school{display:flex;align-items:center;gap:30px;min-width:0}
+.mast .crest{width:120px;height:120px;border-radius:50%;border:3px solid var(--accent);background:linear-gradient(135deg,var(--brand),var(--accent));background-size:cover;background-position:center;flex:none;display:grid;place-items:center;font-family:var(--f-display);font-size:calc(66px*var(--scale));color:#1c0a06;overflow:hidden}
+.mast .crest .ph{line-height:1}
+.mast .crest.has-img{border-color:var(--accent)}.mast .crest.has-img .ph{display:none}
 .mast .school .nm{font-family:var(--f-display);font-size:var(--t-school);color:var(--cream);letter-spacing:.04em;line-height:1;white-space:nowrap}
 .mast .school .nm em{color:var(--accent);font-style:normal}
-.mast .vol{font-family:var(--f-mono);font-weight:800;font-size:var(--t-vol);letter-spacing:.28em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+.mast .date{font-family:var(--f-mono);font-weight:800;font-size:var(--t-date);letter-spacing:.2em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
 
-.hero{flex:none;display:grid;grid-template-columns:1fr auto;align-items:center;gap:40px;margin-top:12px}
-.hero .l .ribbon{display:inline-block;background:var(--brand);color:var(--cream);font-family:var(--f-mono);font-weight:800;font-size:var(--t-ribbon);letter-spacing:.28em;padding:12px 50px;text-transform:uppercase;box-shadow:0 0 0 3px var(--accent),0 12px 34px rgba(0,0,0,.45)}
-.hero .l h1{font-family:var(--f-display);font-size:var(--t-hero);line-height:.8;color:var(--cream);margin:12px 0 0;letter-spacing:.01em;text-shadow:0 8px 0 var(--brand2),0 0 60px color-mix(in srgb,var(--accent) 40%,transparent)}
-.hero .l h1 em{color:var(--accent);font-style:normal}
-.hero .l .sub{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-herosub);color:var(--mute);margin-top:16px;line-height:1.18;max-width:1900px}
-.bignum{flex:none;text-align:center;background:var(--brand);color:var(--cream);border-radius:40px;padding:24px 56px;box-shadow:0 18px 0 var(--brand2),0 34px 50px rgba(0,0,0,.4);border:3px solid var(--accent)}
-.bignum .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-bignumk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
-.bignum .v{font-family:var(--f-display);font-size:var(--t-bignum);line-height:.82;font-variant-numeric:tabular-nums}
+/* hero takes the big middle: headline + one line, with the countdown beside it */
+.hero{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:130px}
+.hero .l{min-width:0}
+.hero .eyebrow{font-family:var(--f-mono);font-weight:800;font-size:var(--t-eyebrow);letter-spacing:.3em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+.hero h1{font-family:var(--f-display);font-size:var(--t-hero);line-height:.8;color:var(--cream);margin:24px 0 0;letter-spacing:.01em;text-shadow:16px 16px 0 var(--brand2),34px 34px 0 var(--brand)}
+.hero h1 em{color:var(--accent);font-style:italic;text-shadow:16px 16px 0 var(--brand2)}
+.hero .sub{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-sub);color:var(--cream);margin-top:34px;line-height:1.14;max-width:1850px;opacity:.95}
+.cd{flex:none;text-align:center}
+.cd .v{font-family:var(--f-display);font-size:var(--t-cdnum);line-height:.74;color:var(--cream);font-variant-numeric:tabular-nums;text-shadow:0 0 90px color-mix(in srgb,var(--accent) 55%,transparent)}
+.cd .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-cdlabel);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-top:14px;white-space:nowrap}
 
-.midrow{flex:1;min-height:0;display:grid;grid-template-columns:1.25fr 2fr;gap:36px;margin-top:18px}
-.grat{position:relative;background:linear-gradient(160deg,color-mix(in srgb,var(--brand) 36%,transparent),rgba(0,0,0,.28));border:3px solid var(--accent);border-radius:24px;padding:28px 34px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.1)}
-.grat::before{content:'';position:absolute;top:0;left:0;right:0;height:6px;background:var(--accent);box-shadow:0 0 24px var(--accent)}
-.grat .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-grk);color:var(--accent);text-transform:uppercase;letter-spacing:.24em}
-.grat h2{font-family:var(--f-display);font-size:var(--t-grh);line-height:.86;margin:6px 0 14px;color:var(--cream);letter-spacing:.02em}
-.grat h2 em{font-style:italic;color:var(--accent)}
-.grat ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px;flex:1;justify-content:center}
-.grat li{display:flex;align-items:center;gap:18px;font-family:var(--f-body);font-weight:700;font-style:italic;font-size:var(--t-gri);color:var(--cream);line-height:1.05;border-left:4px solid var(--accent);padding-left:18px}
-.grat li b{font-family:var(--f-mono);font-weight:800;font-style:normal;font-size:calc(52px*var(--scale));color:var(--accent);letter-spacing:.08em}
-
-.cards{display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);gap:36px}
-.cd{position:relative;background:linear-gradient(160deg,rgba(246,236,214,.08),rgba(0,0,0,.2));border:3px solid color-mix(in srgb,var(--accent) 70%,transparent);border-radius:24px;padding:26px 32px;display:flex;flex-direction:column;overflow:hidden;box-shadow:12px 12px 0 color-mix(in srgb,var(--brand) 60%,transparent),0 18px 40px rgba(0,0,0,.35)}
-.cd.b2{box-shadow:12px 12px 0 color-mix(in srgb,var(--accent2) 70%,transparent),0 18px 40px rgba(0,0,0,.35)}
-.cd.b3{box-shadow:12px 12px 0 color-mix(in srgb,var(--pos) 70%,transparent),0 18px 40px rgba(0,0,0,.35)}
-.cd.b4{box-shadow:12px 12px 0 color-mix(in srgb,var(--accent) 70%,transparent),0 18px 40px rgba(0,0,0,.35)}
-.cd .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-cardk);color:var(--accent);text-transform:uppercase;letter-spacing:.22em}
-.cd h2{font-family:var(--f-display);font-size:var(--t-cardh);line-height:.84;margin:6px 0 0;color:var(--cream);letter-spacing:.02em}
-.cd h2 em{font-style:italic;color:var(--accent)}
-.cd p{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-cardp);margin:10px 0 0;line-height:1.16;color:var(--mute)}
-.cd .m{margin-top:auto;padding-top:12px;font-family:var(--f-mono);font-weight:800;font-size:var(--t-cardm);text-transform:uppercase;letter-spacing:.08em;color:var(--accent);display:flex;gap:18px;flex-wrap:wrap}
-
-.sked{flex:none;margin-top:16px;background:var(--brand2);color:var(--cream);border-radius:22px;padding:20px 32px;display:flex;flex-direction:column;box-shadow:10px 10px 0 var(--brand),0 20px 50px rgba(0,0,0,.4);border:2px solid color-mix(in srgb,var(--accent) 60%,transparent)}
-.sked .hdr{flex:none;display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px dashed color-mix(in srgb,var(--accent) 70%,transparent);padding-bottom:10px}
-.sked .hdr h3{font-family:var(--f-display);font-size:var(--t-skedh);color:var(--accent);margin:0;letter-spacing:.04em}
-.sked .hdr .d{font-family:var(--f-mono);font-weight:800;font-size:var(--t-skedd);color:var(--cream);letter-spacing:.18em;text-transform:uppercase}
-.sked ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,1fr);gap:24px}
-.sked li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid color-mix(in srgb,var(--brand) 80%,transparent);padding:4px 0 4px 18px}
-.sked li.today{border-left-color:var(--accent);background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 20%,transparent),transparent 72%)}
-.sked li .d{font-family:var(--f-mono);font-weight:800;font-size:var(--t-skedd);color:var(--accent);letter-spacing:.22em;text-transform:uppercase}
-.sked li .e{font-family:var(--f-display);font-size:var(--t-skede);color:var(--cream);line-height:1;margin-top:6px;letter-spacing:.02em}
-.sked li .e em{font-style:italic;color:var(--accent)}
-.sked li .w{font-family:var(--f-mono);font-weight:600;font-size:var(--t-skedw);color:var(--mute);margin-top:6px;text-transform:uppercase;letter-spacing:.14em}
-
-.ticker{position:absolute;bottom:0;left:0;right:0;height:150px;background:var(--brand);display:flex;align-items:center;overflow:hidden;z-index:8;border-top:5px solid var(--accent)}
-.ticker .tag{position:relative;z-index:2;flex:none;background:var(--brand2);color:var(--accent);font-family:var(--f-display);font-size:calc(56px*var(--scale));padding:0 40px;height:100%;display:flex;align-items:center;letter-spacing:.04em}
-.ticker .msg{position:relative;z-index:1;font-family:var(--f-body);font-weight:700;font-style:italic;font-size:var(--t-tick);color:var(--cream);padding-left:40px;white-space:nowrap;animation:sc 80s linear infinite}
-@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+/* three simple event chips, one row along the bottom */
+.chips{flex:none;display:grid;grid-template-columns:repeat(3,1fr);gap:52px;margin-top:30px}
+.chip{background:rgba(74,22,14,.5);border:2px solid color-mix(in srgb,var(--accent) 55%,transparent);border-radius:30px;padding:46px 50px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.chip.b2{border-color:color-mix(in srgb,var(--brand) 60%,transparent)}
+.chip .icon{font-size:var(--t-chipi);line-height:.9}
+.chip .t{font-family:var(--f-display);font-size:var(--t-chipt);color:var(--accent);line-height:.88;letter-spacing:.01em}
+.chip.b2 .t{color:var(--cream)}.chip.b3 .t{color:var(--accent2)}
+.chip .m{font-family:var(--f-mono);font-weight:700;font-size:var(--t-chipm);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
 
 @media (orientation:portrait){
-  .stage[data-orient="port"] .wrap{padding:140px 120px 156px}
-  .stage[data-orient="port"]{--t-hero:calc(300px*var(--scale));--t-bignum:calc(300px*var(--scale))}
-  .stage[data-orient="port"] .mast{flex-direction:column;align-items:flex-start;gap:14px}
-  .stage[data-orient="port"] .hero{grid-template-columns:1fr;gap:24px}
-  .stage[data-orient="port"] .midrow{grid-template-columns:1fr;grid-auto-rows:auto}
-  .stage[data-orient="port"] .cards{grid-template-rows:auto}
-  .stage[data-orient="port"] .sked ul{grid-template-columns:repeat(2,1fr)}
+  .stage[data-orient="port"] .wrap{padding:190px 130px 170px}
+  .stage[data-orient="port"]{--t-hero:calc(380px*var(--scale));--t-cdnum:calc(440px*var(--scale))}
+  .stage[data-orient="port"] .mast{flex-direction:column;align-items:center;text-align:center;gap:22px}
+  .stage[data-orient="port"] .mast .school{justify-content:center}
+  .stage[data-orient="port"] .hero{grid-template-columns:1fr;gap:70px;text-align:center}
+  .stage[data-orient="port"] .hero .sub{margin-left:auto;margin-right:auto}
+  .stage[data-orient="port"] .chips{grid-template-columns:1fr;gap:40px}
 }
 </style></head><body>
 <script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-thanksgiving-v1"}/*EDITMODE-END*/;</script>
@@ -125,64 +94,35 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 
 <div class="decor">
   <div class="moon"></div>
-  <div class="field"><i class="h1"></i><i class="h2"></i><i class="h3"></i></div>
-  <div class="wheat"></div>
-  <div class="bokeh" id="bokeh"></div>
-  <div id="leaves"></div>
+  <div class="fog"><i class="f1"></i><i class="f2"></i></div>
+  <div class="spark" id="spark"></div>
+  <div class="scan"></div>
   <div class="vig"></div>
 </div>
 
 <div class="wrap">
   <header class="mast" data-widget="masthead">
-    <div class="est" data-field="masthead.est" data-fit="single" data-fit-max="56">autumn · 2026</div>
-    <div class="school"><div class="crest" data-imgslot="school.logo"></div><div class="nm" data-fit="single" data-fit-max="116"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div></div>
-    <div class="vol" data-field="masthead.vol" data-fit="single" data-fit-max="56">harvest edition</div>
+    <div class="school"><div class="crest" data-imgslot="school.logo"><span class="ph" data-field="masthead.crest">BH</span></div><div class="nm"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div></div>
+    <div class="date" data-field="masthead.date" data-fit="single" data-fit-max="72">Wed · Nov 25</div>
   </header>
 
   <section class="hero">
     <div class="l" data-widget="headline">
-      <div class="ribbon" data-field="headline.kicker" data-fit="single" data-fit-max="60">★ harvest week · gratitude · gravy ★</div>
-      <h1 data-fit="single" data-fit-min="220" data-fit-max="440"><span data-field="headline.t1">Give </span><em data-field="headline.t2">Thanks</em></h1>
-      <div class="sub" data-field="headline.sub" data-fit data-fit-max="60">Three days off, one feast, and the smallest break of the year — but we'll take it. The senior food drive blew past goal, the turkey trot loops the fields Wednesday, and school resumes Monday Nov 30.</div>
+      <div class="eyebrow" data-field="headline.kicker" data-fit="single" data-fit-max="86">★ Harvest Week</div>
+      <h1 data-fit="single" data-fit-min="200" data-fit-max="600"><span data-field="headline.t1">Give </span><em data-field="headline.t2">Thanks</em></h1>
+      <div class="sub" data-field="headline.sub" data-fit data-fit-max="96">Food drive, turkey trot, and three days off. Be good to your people.</div>
     </div>
-    <div class="bignum" data-widget="countdown"><div class="k" data-field="countdown.k" data-fit="single" data-fit-max="58">days off</div><div class="v" data-field="countdown.v" data-countdown-to="Nov 25" data-demo="3" data-fit="single" data-fit-min="120" data-fit-max="420">3</div></div>
+    <div class="cd" data-widget="countdown">
+      <div class="v" data-field="countdown.v" data-countdown-to="Nov 25" data-demo="3">3</div>
+      <div class="k" data-field="countdown.k" data-fit="single" data-fit-max="74">days off ahead</div>
+    </div>
   </section>
 
-  <div class="midrow">
-    <section class="grat" data-widget="grat">
-      <div class="k" data-field="grat.k" data-fit="single" data-fit-max="56">★ what we're thankful for</div>
-      <h2 data-fit="single" data-fit-max="80"><span data-field="grat.h1">The </span><em data-field="grat.h2">Bobcat family</em></h2>
-      <ul>
-        <li data-fit data-fit-max="60"><b data-field="grat.0.n">01</b><span data-field="grat.0.t">Friday-night lights and a section that never sits down</span></li>
-        <li data-fit data-fit-max="60"><b data-field="grat.1.n">02</b><span data-field="grat.1.t">Teachers who stay late and email back at 9pm</span></li>
-        <li data-fit data-fit-max="60"><b data-field="grat.2.n">03</b><span data-field="grat.2.t">A cafeteria crew that fed 8,400 cans to the food bank</span></li>
-        <li data-fit data-fit-max="60"><b data-field="grat.3.n">04</b><span data-field="grat.3.t">Three days off to rest, eat, and be with our people</span></li>
-      </ul>
-    </section>
-
-    <div class="cards">
-      <section class="cd" data-widget="c0"><div class="k" data-field="c0.k" data-fit="single" data-fit-max="56">★ canned food drive</div><h2 data-fit="single" data-fit-max="92"><span data-field="c0.h1">8,400 </span><em data-field="c0.h2">cans</em></h2><p data-field="c0.p" data-fit data-fit-max="60">Goal smashed by Tuesday. Top homeroom wins a pancake breakfast in December. Drop-offs continue at the front office.</p><div class="m" data-fit="single" data-fit-max="56"><span data-field="c0.m1">deadline · Fri 11/22 3pm</span></div></section>
-      <section class="cd b2" data-widget="c1"><div class="k" data-field="c1.k" data-fit="single" data-fit-max="56">★ turkey trot 5k</div><h2 data-fit="single" data-fit-max="92"><span data-field="c1.h1">Wed </span><em data-field="c1.h2">7am</em></h2><p data-field="c1.p" data-fit data-fit-max="60">Route loops the practice fields out to Maple Ave. PE credit under 40 min. Costumes encouraged — Coach Rivera paces the back.</p><div class="m" data-fit="single" data-fit-max="56"><span data-field="c1.m1">Wed 11/25 · field A</span></div></section>
-      <section class="cd b3" data-widget="c2"><div class="k" data-field="c2.k" data-fit="single" data-fit-max="56">★ the break</div><h2 data-fit="single" data-fit-max="92"><span data-field="c2.h1">3 </span><em data-field="c2.h2">days off</em></h2><p data-field="c2.p" data-fit data-fit-max="60">No school Wed–Fri. Office closed Thu and Fri. PowerSchool grades posted Tuesday before close.</p><div class="m" data-fit="single" data-fit-max="56"><span data-field="c2.m1">Wed 11/25 — Fri 11/27</span></div></section>
-      <section class="cd b4" data-widget="c3"><div class="k" data-field="c3.k" data-fit="single" data-fit-max="56">★ teacher pie vote</div><h2 data-fit="single" data-fit-max="92"><span data-field="c3.h1">Pecan </span><em data-field="c3.h2">wins</em></h2><p data-field="c3.p" data-fit data-fit-max="60">Pecan over apple by 12 in the runoff. Bake-off Tuesday in the caf — winning teacher takes the pan home.</p><div class="m" data-fit="single" data-fit-max="56"><span data-field="c3.m1">Tue 11/24 · caf · 12:30</span></div></section>
-    </div>
+  <div class="chips">
+    <div class="chip" data-widget="c0"><div class="icon" data-field="c0.icon">🥫</div><div class="t" data-field="c0.t" data-fit="single" data-fit-max="116">Food Drive</div><div class="m" data-field="c0.m" data-fit="single" data-fit-max="70">Ends Fri · 8,400 cans</div></div>
+    <div class="chip b2" data-widget="c1"><div class="icon" data-field="c1.icon">🦃</div><div class="t" data-field="c1.t" data-fit="single" data-fit-max="116">Turkey Trot</div><div class="m" data-field="c1.m" data-fit="single" data-fit-max="70">Wed 7 AM · Field A</div></div>
+    <div class="chip b3" data-widget="c2"><div class="icon" data-field="c2.icon">🍁</div><div class="t" data-field="c2.t" data-fit="single" data-fit-max="116">The Break</div><div class="m" data-field="c2.m" data-fit="single" data-fit-max="70">Back Mon · Nov 30</div></div>
   </div>
-
-  <section class="sked" data-widget="sked">
-    <div class="hdr"><h3 data-field="sked.h" data-fit="single" data-fit-max="76">★ harvest week</h3><div class="d" data-field="sked.day" data-fit="single" data-fit-max="54">Mon 11/23 — Fri 11/27</div></div>
-    <ul data-week>
-      <li data-widget="sked.0" data-weekday="1"><div class="d" data-field="sked.0.d" data-fit="single" data-fit-max="54">MON</div><div class="e" data-fit="single" data-fit-max="64"><span data-field="sked.0.e1">Food </span><em data-field="sked.0.e2">drive</em></div><div class="w" data-field="sked.0.w" data-fit="single" data-fit-max="52">cans · all day · office</div></li>
-      <li data-widget="sked.1" data-weekday="2"><div class="d" data-field="sked.1.d" data-fit="single" data-fit-max="54">TUE</div><div class="e" data-fit="single" data-fit-max="64"><span data-field="sked.1.e1">Pie </span><em data-field="sked.1.e2">vote</em></div><div class="w" data-field="sked.1.w" data-fit="single" data-fit-max="52">caf · 12:30</div></li>
-      <li data-widget="sked.2" data-weekday="3"><div class="d" data-field="sked.2.d" data-fit="single" data-fit-max="54">WED</div><div class="e" data-fit="single" data-fit-max="64"><span data-field="sked.2.e1">Turkey </span><em data-field="sked.2.e2">trot</em></div><div class="w" data-field="sked.2.w" data-fit="single" data-fit-max="52">field A · 7am</div></li>
-      <li data-widget="sked.3" data-weekday="3"><div class="d" data-field="sked.3.d" data-fit="single" data-fit-max="54">WED</div><div class="e" data-fit="single" data-fit-max="64"><span data-field="sked.3.e1">Half </span><em data-field="sked.3.e2">day</em></div><div class="w" data-field="sked.3.w" data-fit="single" data-fit-max="52">dismiss · 12:15</div></li>
-      <li data-widget="sked.4" data-weekday="1"><div class="d" data-field="sked.4.d" data-fit="single" data-fit-max="54">MON</div><div class="e" data-fit="single" data-fit-max="64"><span data-field="sked.4.e1">Back </span><em data-field="sked.4.e2">to it</em></div><div class="w" data-field="sked.4.w" data-fit="single" data-fit-max="52">classes resume · 11/30</div></li>
-    </ul>
-  </section>
-</div>
-
-<div class="ticker" data-widget="ticker">
-  <div class="tag" data-field="ticker.tag">~ HARVEST WEEK ~</div>
-  <div class="msg"><span data-field="ticker.message">★ Turkey trot Wednesday 7am — route loops field A out to Maple Ave ★ Canned food drive ends Friday 3pm — top homeroom wins a pancake breakfast ★ Teacher pie bake-off Tuesday 12:30 in the cafeteria ★ Half day Wednesday — dismiss at 12:15, no school Thu–Fri ★ Classes resume Monday Nov 30 ★ Have a safe and grateful break, Bobcats ★ </span><span>★ Turkey trot Wednesday 7am — route loops field A out to Maple Ave ★ Canned food drive ends Friday 3pm — top homeroom wins a pancake breakfast ★ Teacher pie bake-off Tuesday 12:30 in the cafeteria ★ Half day Wednesday — dismiss at 12:15, no school Thu–Fri ★ Classes resume Monday Nov 30 ★ Have a safe and grateful break, Bobcats ★ </span></div>
 </div>
 
 </div></div></div>
@@ -193,24 +133,18 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
   function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
   function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
   window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
-  var BK=document.getElementById('bokeh');if(BK){for(var k2=0;k2<22;k2++){var d=document.createElement('i');var sz=18+((k2*13)%70);d.style.width=sz+'px';d.style.height=sz+'px';d.style.left=((k2*53)%100)+'%';d.style.top=((k2*31)%62)+'%';d.style.animationDelay=((k2*0.5)%6)+'s';BK.appendChild(d);}}
-  var LV=document.getElementById('leaves');if(LV){for(var m=0;m<22;m++){var lf=document.createElement('div');lf.className='leaf'+(m%2?' b':'');lf.style.left=((m*43)%100)+'%';lf.style.top=(-((m*123)%900))+'px';lf.style.animationDelay=((m*0.6)%10)+'s';lf.style.animationDuration=(8+(m%5))+'s';lf.style.transform='scale('+(0.7+(m%4)/5)+')';LV.appendChild(lf);}}
+  var SP=document.getElementById('spark');if(SP){for(var k2=0;k2<22;k2++){var d=document.createElement('i');var sz=8+((k2*11)%24);d.style.width=sz+'px';d.style.height=sz+'px';d.style.left=((k2*53)%100)+'%';d.style.top=(42+((k2*29)%52))+'%';d.style.animationDelay=((k2*0.45)%6)+'s';SP.appendChild(d);}}
   var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
   function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
   applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
   document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
-  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||50),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||60),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
   function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
   setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
   new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
-  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m;}
-  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});}
-  tick();setInterval(tick,15000);
   var DMON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
   function days(){document.querySelectorAll('[data-countdown-to]').forEach(function(el){var dm=el.getAttribute('data-demo');if(dm!=null){el.textContent=(''+ +dm);return;}var t=el.getAttribute('data-countdown-to').trim().toLowerCase().match(/([a-z]+)\s*(\d{1,2})/);if(!t||!(t[1].slice(0,3) in DMON))return;var now=new Date();now.setHours(0,0,0,0);var y=now.getFullYear(),target=new Date(y,DMON[t[1].slice(0,3)],+t[2]);if(target<now)target=new Date(y+1,DMON[t[1].slice(0,3)],+t[2]);var n=Math.round((target-now)/86400000);el.textContent=''+n;});}
   days();setInterval(days,3600000);
-  function week(){document.querySelectorAll('[data-week]').forEach(function(ul){var demo=ul.getAttribute('data-demo-dow'),dow=demo!=null?+demo:new Date().getDay();ul.querySelectorAll('[data-weekday]').forEach(function(li){li.classList.toggle('today',+li.getAttribute('data-weekday')===dow);});});}
-  week();setInterval(week,600000);
 })();
 </script>
 

@@ -1,10 +1,10 @@
 <!doctype html>
-<!-- HS ST PATRICK'S v2 — "EMERALD & GOLD · LUCKY 17". Deep emerald field with a luminous
-     gold-shimmer arc, layered floating clovers + drifting gold dust + vignette; an oversized
-     BRANDABLE gold-foil headline + a huge days-to-17th countdown, refined gold-ruled cards, live
-     lucky-week schedule. Every text = data-field, crest = data-imgslot, ALL color (incl. the
-     foil) via canonical brand tokens so a school brand re-skins it. Auto-fit, portrait+landscape,
-     SOLID ticker, live clock/countdown/weekday. Bridge preserved. NO food panel. -->
+<!-- HS ST PATRICK'S v2 — "EMERALD & GOLD" CLEAN flagship. ONE dominant gold-foil headline + a
+     giant countdown, three simple event chips, generous negative space. Deep emerald field with a
+     soft luminous gold arc + one slow drifting clover + gold dust. Every text = data-field, crest =
+     data-imgslot, ALL color via canonical brand tokens (school brand re-skins it). Auto-fit,
+     portrait+landscape, bridge preserved. Deliberately low-text: NO body paragraphs, NO dense
+     schedule, NO ticker. -->
 <html lang="en"><head><meta charset="utf-8"/><title>St Patrick's · HS Lobby</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
@@ -16,13 +16,11 @@
   --cream:#f3ffe8;--mute:#8fc0a0;
   --gold-lite:color-mix(in srgb,var(--accent) 42%,#fff);
   --gold-dark:color-mix(in srgb,var(--accent) 58%,#000);
-  --t-est:calc(50px*var(--scale));--t-school:calc(116px*var(--scale));--t-vol:calc(50px*var(--scale));
-  --t-chipk:calc(50px*var(--scale));--t-chipv:calc(78px*var(--scale));
-  --t-ribbon:calc(52px*var(--scale));--t-hero:calc(460px*var(--scale));--t-herosub:calc(62px*var(--scale));
-  --t-bignum:calc(440px*var(--scale));--t-bignumk:calc(56px*var(--scale));
-  --t-cardk:calc(50px*var(--scale));--t-cardh:calc(108px*var(--scale));--t-cardp:calc(60px*var(--scale));--t-cardm:calc(50px*var(--scale));
-  --t-skedh:calc(70px*var(--scale));--t-skedd:calc(50px*var(--scale));--t-skede:calc(60px*var(--scale));--t-skedw:calc(50px*var(--scale));
-  --t-tick:calc(52px*var(--scale));
+  /* clean flagship: few elements, big type. everything >=60px on the 3840 stage. */
+  --t-school:calc(96px*var(--scale));--t-date:calc(64px*var(--scale));
+  --t-eyebrow:calc(72px*var(--scale));--t-hero:calc(540px*var(--scale));--t-sub:calc(84px*var(--scale));
+  --t-cdnum:calc(600px*var(--scale));--t-cdlabel:calc(66px*var(--scale));
+  --t-chipt:calc(104px*var(--scale));--t-chipm:calc(62px*var(--scale));--t-chipi:calc(132px*var(--scale));
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#021810;color:var(--cream);font-family:var(--f-body),serif}
@@ -32,96 +30,65 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
   background:radial-gradient(1500px 1100px at 50% -6%,color-mix(in srgb,var(--accent) 30%,var(--brand)) 0%,transparent 52%),radial-gradient(1900px 1500px at 80% 120%,color-mix(in srgb,var(--brand) 70%,#0a4a28),transparent 64%),linear-gradient(178deg,color-mix(in srgb,var(--brand) 60%,#0a4a28) 0%,var(--brand2) 56%,#031b10 100%)}
 
 .decor{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden}
-.arc{position:absolute;top:-340px;left:50%;transform:translateX(-50%);width:2600px;height:1400px;border-radius:50%;
-  background:radial-gradient(ellipse at 50% 0%,color-mix(in srgb,var(--accent) 60%,transparent) 0%,transparent 56%);opacity:.55;filter:blur(2px)}
-.shim{position:absolute;top:-200px;left:-30%;right:-30%;height:900px;background:linear-gradient(100deg,transparent 20%,color-mix(in srgb,var(--accent) 28%,transparent) 48%,transparent 76%);mix-blend-mode:screen;animation:sweep 9s ease-in-out infinite}
-@keyframes sweep{0%,100%{transform:translateX(-10%)}50%{transform:translateX(10%)}}
-.clover{position:absolute;z-index:1;opacity:.9}
-.clover .l{position:absolute;width:1px;height:1px;border-radius:50% 0 50% 50%;background:currentColor}
-.clover .l1{transform:rotate(-45deg) scale(1)}.clover .l2{transform:rotate(-135deg)}.clover .l3{transform:rotate(45deg)}.clover .l4{transform:rotate(135deg)}
-.big-clover{top:80px;right:-80px;width:1000px;height:1000px;color:color-mix(in srgb,var(--brand) 80%,#0c5a30);opacity:.5;filter:drop-shadow(24px 24px 0 rgba(0,0,0,.25));animation:spin 60s linear infinite}
-.big-clover .l{width:440px;height:440px;border-radius:50% 0 50% 50%}
-.big-clover .l1{top:0;left:280px}.big-clover .l2{top:280px;left:0}.big-clover .l3{top:280px;right:0}.big-clover .l4{top:560px;left:280px}
+.scan{position:absolute;top:0;right:0;bottom:0;left:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.02) 0 1px,transparent 1px 6px);z-index:6}
+.arc{position:absolute;top:-360px;left:50%;transform:translateX(-50%);width:2600px;height:1400px;border-radius:50%;
+  background:radial-gradient(ellipse at 50% 0%,color-mix(in srgb,var(--accent) 54%,transparent) 0%,transparent 56%);opacity:.5;filter:blur(2px)}
+.clover{position:absolute;z-index:1}
+.clover .l{position:absolute;border-radius:50% 0 50% 50%;background:currentColor}
+.big-clover{top:60px;right:-180px;width:920px;height:920px;color:color-mix(in srgb,var(--brand) 80%,#0c5a30);opacity:.42;filter:drop-shadow(22px 22px 0 rgba(0,0,0,.22));animation:spin 70s linear infinite}
+.big-clover .l{width:400px;height:400px}
+.big-clover .l1{top:0;left:260px;transform:rotate(-45deg)}.big-clover .l2{top:260px;left:0;transform:rotate(-135deg)}.big-clover .l3{top:260px;right:0;transform:rotate(45deg)}.big-clover .l4{top:520px;left:260px;transform:rotate(135deg)}
 @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
-.float i{position:absolute;color:var(--accent);font-size:60px;opacity:.4;animation:rise 12s linear infinite}
-@keyframes rise{0%{transform:translateY(40px) rotate(0);opacity:0}12%{opacity:.5}100%{transform:translateY(-2300px) rotate(360deg);opacity:0}}
-.dust i{position:absolute;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);opacity:.6;animation:tw 4s ease-in-out infinite}
-@keyframes tw{0%,100%{opacity:.8;transform:scale(1)}50%{opacity:.2;transform:scale(.4)}}
-.vig{position:absolute;top:0;right:0;bottom:0;left:0;box-shadow:inset 0 0 420px rgba(0,0,0,.6)}
+.spark i{position:absolute;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 90%,#fff),transparent 70%);opacity:.5;animation:emb 6s ease-in-out infinite}
+@keyframes emb{0%,100%{opacity:.18;transform:translateY(0) scale(1)}50%{opacity:.65;transform:translateY(-44px) scale(1.3)}}
+.vig{position:absolute;top:0;right:0;bottom:0;left:0;box-shadow:inset 0 0 460px rgba(0,0,0,.6);z-index:5}
 
-.wrap{position:relative;z-index:3;width:100%;height:100%;display:flex;flex-direction:column;padding:104px 180px 150px}
-.mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:30px;border-bottom:3px solid color-mix(in srgb,var(--accent) 60%,transparent);padding-bottom:14px}
-.mast .est{font-family:var(--f-mono);font-weight:800;font-size:var(--t-est);letter-spacing:.32em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
-.mast .school{display:flex;align-items:center;gap:22px}
-.mast .crest{width:92px;height:92px;border-radius:50%;border:3px solid var(--accent);background:linear-gradient(135deg,var(--brand),var(--accent2));background-size:cover;background-position:center;flex:none;display:grid;place-items:center;font-family:var(--f-display);font-size:calc(50px*var(--scale));color:var(--brand2);overflow:hidden}
+.wrap{position:relative;z-index:7;width:100%;height:100%;display:flex;flex-direction:column;padding:150px 200px 160px}
+
+/* slim masthead */
+.mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:40px}
+.mast .school{display:flex;align-items:center;gap:30px;min-width:0}
+.mast .crest{width:120px;height:120px;border-radius:50%;border:3px solid var(--accent);background:linear-gradient(135deg,var(--brand),var(--accent2));background-size:cover;background-position:center;flex:none;display:grid;place-items:center;font-family:var(--f-display);font-size:calc(66px*var(--scale));color:var(--brand2);overflow:hidden}
 .mast .crest .ph{line-height:1}
-.mast .crest.has-img{border-color:var(--accent)}
-.mast .crest.has-img .ph{display:none}
+.mast .crest.has-img{border-color:var(--accent)}.mast .crest.has-img .ph{display:none}
 .mast .school .nm{font-family:var(--f-display);font-size:var(--t-school);color:var(--cream);letter-spacing:.04em;line-height:1;white-space:nowrap}
 .mast .school .nm em{color:var(--accent);font-style:normal}
-.mast .vol{font-family:var(--f-mono);font-weight:800;font-size:var(--t-vol);letter-spacing:.28em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
-.chips{display:flex;gap:18px;flex:none}
-.chip{background:rgba(6,50,28,.7);border:2px solid var(--accent);border-radius:22px;padding:12px 24px;text-align:center;min-width:180px}
-.chip .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-chipk);color:var(--accent);text-transform:uppercase;letter-spacing:.12em;line-height:1}
-.chip .v{font-family:var(--f-display);font-size:var(--t-chipv);color:var(--cream);line-height:1;margin-top:2px;font-variant-numeric:tabular-nums}
+.mast .date{font-family:var(--f-mono);font-weight:800;font-size:var(--t-date);letter-spacing:.2em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
 
-.hero{flex:none;display:grid;grid-template-columns:1fr auto;align-items:center;gap:40px;margin-top:18px}
-.hero .l .ribbon{display:inline-block;background:var(--brand);color:var(--cream);font-family:var(--f-mono);font-weight:800;font-size:var(--t-ribbon);letter-spacing:.28em;padding:12px 50px;text-transform:uppercase;box-shadow:0 0 0 3px var(--accent)}
-.hero .l h1{font-family:var(--f-display);font-size:var(--t-hero);line-height:.8;margin:12px 0 0;letter-spacing:.02em;
+/* hero takes the big middle: headline + one line, with the countdown beside it */
+.hero{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:130px}
+.hero .l{min-width:0}
+.hero .eyebrow{font-family:var(--f-mono);font-weight:800;font-size:var(--t-eyebrow);letter-spacing:.3em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+.hero h1{font-family:var(--f-display);font-size:var(--t-hero);line-height:.8;margin:24px 0 0;letter-spacing:.02em;
   background:linear-gradient(178deg,var(--gold-lite) 0%,var(--accent) 42%,var(--gold-dark) 60%,var(--accent) 74%,var(--gold-lite) 100%);
   -webkit-background-clip:text;background-clip:text;color:transparent;
-  filter:drop-shadow(0 8px 0 rgba(0,0,0,.45)) drop-shadow(0 0 60px color-mix(in srgb,var(--accent) 45%,transparent))}
-.hero .l h1 em{font-style:italic;
+  filter:drop-shadow(0 10px 0 rgba(0,0,0,.45)) drop-shadow(0 0 70px color-mix(in srgb,var(--accent) 45%,transparent))}
+.hero h1 em{font-style:italic;
   background:linear-gradient(178deg,color-mix(in srgb,var(--accent2) 30%,#fff),var(--accent2) 60%,color-mix(in srgb,var(--accent2) 50%,#000));
-  -webkit-background-clip:text;background-clip:text}
-.hero .l .sub{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-herosub);color:var(--cream);margin-top:16px;line-height:1.18;max-width:1700px}
-.bignum{flex:none;text-align:center;background:var(--brand);color:var(--cream);border-radius:40px;padding:24px 56px;box-shadow:0 18px 0 var(--brand2),0 34px 50px rgba(0,0,0,.45);border:3px solid var(--accent)}
-.bignum .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-bignumk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
-.bignum .v{font-family:var(--f-display);font-size:var(--t-bignum);line-height:.82;font-variant-numeric:tabular-nums;color:var(--cream)}
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .sub{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-sub);color:var(--cream);margin-top:34px;line-height:1.14;max-width:1850px;opacity:.95}
+.cd{flex:none;text-align:center}
+.cd .v{font-family:var(--f-display);font-size:var(--t-cdnum);line-height:.74;color:var(--cream);font-variant-numeric:tabular-nums;text-shadow:0 0 90px color-mix(in srgb,var(--accent) 55%,transparent)}
+.cd .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-cdlabel);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-top:14px;white-space:nowrap}
 
-.main{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,1fr);gap:36px;margin-top:30px}
-.cd{position:relative;background:rgba(8,52,30,.78);border:2px solid var(--accent);border-radius:24px;padding:24px 34px;display:flex;flex-direction:column;overflow:hidden;box-shadow:12px 12px 0 var(--brand2)}
-.cd::before{content:'';position:absolute;top:0;left:0;right:0;height:6px;background:linear-gradient(90deg,var(--gold-lite),var(--accent),var(--gold-dark))}
-.cd.feat{background:var(--accent);color:var(--brand2);border-color:var(--cream)}
-.cd.feat::before{background:linear-gradient(90deg,var(--brand2),var(--brand),var(--brand2))}
-.cd .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-cardk);color:var(--accent);text-transform:uppercase;letter-spacing:.24em}
-.cd.feat .k{color:var(--brand2)}
-.cd h2{font-family:var(--f-display);font-size:var(--t-cardh);line-height:.84;margin:8px 0 0;color:var(--cream);letter-spacing:.01em}
-.cd.feat h2{color:var(--brand2);font-size:calc(124px*var(--scale))}
-.cd h2 em{font-style:italic;color:var(--accent)}
-.cd.feat h2 em{color:var(--brand)}
-.cd p{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-cardp);margin:12px 0 0;line-height:1.18;color:var(--cream);flex:1 1 0;min-height:0;overflow:hidden}
-.cd.feat p{color:var(--brand2)}
-.cd .m{margin-top:auto;padding-top:14px;font-family:var(--f-mono);font-weight:800;font-size:var(--t-cardm);text-transform:uppercase;letter-spacing:.18em;color:var(--accent);border-top:1px dashed color-mix(in srgb,var(--accent) 60%,transparent);padding-top:14px}
-.cd.feat .m{color:var(--brand2);border-color:color-mix(in srgb,var(--brand2) 60%,transparent)}
-
-.sked{flex:none;margin-top:26px;background:var(--brand2);color:var(--cream);border-radius:22px;padding:20px 32px;display:flex;flex-direction:column;box-shadow:10px 10px 0 var(--brand);border:2px solid var(--accent)}
-.sked .hdr{flex:none;display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px dashed color-mix(in srgb,var(--accent) 70%,transparent);padding-bottom:10px}
-.sked .hdr h3{font-family:var(--f-display);font-size:var(--t-skedh);color:var(--accent);margin:0;letter-spacing:.04em}
-.sked .hdr .d{font-family:var(--f-mono);font-weight:800;font-size:var(--t-skedd);color:var(--cream);letter-spacing:.18em;text-transform:uppercase}
-.sked ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
-.sked li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid color-mix(in srgb,var(--brand) 90%,var(--accent2));padding:4px 0 4px 18px}
-.sked li.today{border-left-color:var(--accent);background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 18%,transparent),transparent 72%)}
-.sked li .d{font-family:var(--f-mono);font-weight:800;font-size:var(--t-skedd);color:var(--accent);letter-spacing:.22em;text-transform:uppercase}
-.sked li .e{font-family:var(--f-display);font-size:var(--t-skede);color:var(--cream);line-height:1;margin-top:6px;letter-spacing:.02em}
-.sked li .e em{font-style:italic;color:var(--accent)}
-.sked li .w{font-family:var(--f-mono);font-weight:600;font-size:var(--t-skedw);color:color-mix(in srgb,var(--cream) 78%,transparent);margin-top:6px;text-transform:uppercase;letter-spacing:.14em}
-
-.ticker{position:absolute;bottom:0;left:0;right:0;height:150px;background:var(--accent);display:flex;align-items:center;overflow:hidden;z-index:8;border-top:5px solid var(--brand)}
-.ticker .tag{position:relative;z-index:2;flex:none;background:var(--brand2);color:var(--accent);font-family:var(--f-display);font-size:calc(56px*var(--scale));padding:0 40px;height:100%;display:flex;align-items:center;letter-spacing:.04em}
-.ticker .msg{position:relative;z-index:1;font-family:var(--f-body);font-weight:700;font-style:italic;font-size:var(--t-tick);color:var(--brand2);padding-left:40px;white-space:nowrap;animation:sc 80s linear infinite}
-@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+/* three simple event chips, one row along the bottom */
+.chips{flex:none;display:grid;grid-template-columns:repeat(3,1fr);gap:52px;margin-top:30px}
+.chip{background:rgba(8,52,30,.62);border:2px solid color-mix(in srgb,var(--brand) 60%,transparent);border-radius:30px;padding:46px 50px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.chip.b2{border-color:color-mix(in srgb,var(--accent) 60%,transparent)}
+.chip .icon{font-size:var(--t-chipi);line-height:.9}
+.chip .t{font-family:var(--f-display);font-size:var(--t-chipt);color:var(--accent);line-height:.88;letter-spacing:.01em}
+.chip.b2 .t{color:var(--accent2)}.chip.b3 .t{color:var(--cream)}
+.chip .m{font-family:var(--f-mono);font-weight:700;font-size:var(--t-chipm);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
 
 @media (orientation:portrait){
-  .stage[data-orient="port"] .wrap{padding:140px 120px 156px}
-  .stage[data-orient="port"]{--t-hero:calc(300px*var(--scale));--t-bignum:calc(320px*var(--scale))}
-  .stage[data-orient="port"] .big-clover{top:60px;right:-200px;width:760px;height:760px}
-  .stage[data-orient="port"] .mast{flex-wrap:wrap;justify-content:center;gap:18px 40px;text-align:center}
-  .stage[data-orient="port"] .mast .est,.stage[data-orient="port"] .mast .vol{order:3;flex:1 1 100%;text-align:center}
-  .stage[data-orient="port"] .mast .school{order:2;flex:1 1 100%;justify-content:center}
-  .stage[data-orient="port"] .hero{grid-template-columns:1fr;gap:24px}
-  .stage[data-orient="port"] .main{grid-template-columns:1fr;grid-auto-rows:1fr}
-  .stage[data-orient="port"] .sked ul{grid-template-columns:repeat(2,1fr)}
+  .stage[data-orient="port"] .wrap{padding:190px 130px 170px}
+  .stage[data-orient="port"]{--t-hero:calc(380px*var(--scale));--t-cdnum:calc(440px*var(--scale))}
+  .stage[data-orient="port"] .big-clover{top:40px;right:-260px;width:700px;height:700px}
+  .stage[data-orient="port"] .mast{flex-direction:column;align-items:center;text-align:center;gap:22px}
+  .stage[data-orient="port"] .mast .school{justify-content:center}
+  .stage[data-orient="port"] .hero{grid-template-columns:1fr;gap:70px;text-align:center}
+  .stage[data-orient="port"] .hero .sub{margin-left:auto;margin-right:auto}
+  .stage[data-orient="port"] .chips{grid-template-columns:1fr;gap:40px}
 }
 </style></head><body>
 <script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-stpatricks-v2"}/*EDITMODE-END*/;</script>
@@ -137,49 +104,35 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 
 <div class="decor">
   <div class="arc"></div>
-  <div class="shim"></div>
   <div class="clover big-clover"><i class="l l1"></i><i class="l l2"></i><i class="l l3"></i><i class="l l4"></i></div>
-  <div class="float" id="float"></div>
-  <div class="dust" id="dust"></div>
+  <div class="spark" id="spark"></div>
+  <div class="scan"></div>
   <div class="vig"></div>
 </div>
 
 <div class="wrap">
   <header class="mast" data-widget="masthead">
-    <div class="est" data-field="masthead.est" data-fit="single" data-fit-max="50">march · wear green</div>
-    <div class="school"><div class="crest" data-imgslot="school.logo"><span class="ph" data-field="masthead.crest">BH</span></div><div class="nm" data-fit="single" data-fit-max="116"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div></div>
-    <div class="vol" data-field="masthead.vol" data-fit="single" data-fit-max="50">lucky edition</div>
+    <div class="school"><div class="crest" data-imgslot="school.logo"><span class="ph" data-field="masthead.crest">BH</span></div><div class="nm"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div></div>
+    <div class="date" data-field="masthead.date" data-fit="single" data-fit-max="72">Tue · Mar 17</div>
   </header>
 
   <section class="hero">
     <div class="l" data-widget="headline">
-      <div class="ribbon" data-field="headline.kicker" data-fit="single" data-fit-max="52">★ wear green all week · tue 17 mar ★</div>
-      <h1 data-fit="single" data-fit-min="220" data-fit-max="460"><span data-field="headline.t1">Lucky </span><em data-field="headline.t2">17.</em></h1>
-      <div class="sub" data-field="headline.sub" data-fit data-fit-max="62">School colors are emerald all week — gold lockers earn spirit points. ASB hosts cash trivia at lunch Tuesday, then the parade and pep rally roll out before the spring game Friday.</div>
+      <div class="eyebrow" data-field="headline.kicker" data-fit="single" data-fit-max="86">★ Wear Green All Week</div>
+      <h1 data-fit="single" data-fit-min="200" data-fit-max="560"><span data-field="headline.t1">Happy St. </span><em data-field="headline.t2">Patrick's</em></h1>
+      <div class="sub" data-field="headline.sub" data-fit data-fit-max="96">Gold lockers earn spirit points, then the parade and pep rally roll out.</div>
     </div>
-    <div class="bignum" data-widget="countdown"><div class="k" data-field="countdown.k" data-fit="single" data-fit-max="56">days to 17th</div><div class="v" data-field="countdown.v" data-countdown-to="Mar 17" data-demo="3">3</div></div>
+    <div class="cd" data-widget="countdown">
+      <div class="v" data-field="countdown.v" data-countdown-to="Mar 17" data-demo="3">3</div>
+      <div class="k" data-field="countdown.k" data-fit="single" data-fit-max="74">days to the 17th</div>
+    </div>
   </section>
 
-  <div class="main">
-    <section class="cd" data-widget="c0"><div class="k" data-field="c0.k" data-fit="single" data-fit-max="50">★ quad trivia</div><h2 data-fit data-fit-max="108"><span data-field="c0.t1">$50 </span><em data-field="c0.t2">cash</em></h2><p data-field="c0.p" data-fit data-fit-max="60">Five rounds of Irish lore and general spirit. Teams of 3 — sign up at lunch by the senior bench. Top team takes the cash, second gets pizza for a week.</p><div class="m" data-field="c0.m" data-fit="single" data-fit-max="50">Tue · quad · 12:05</div></section>
-    <section class="cd feat" data-widget="c1"><div class="k" data-field="c1.k" data-fit="single" data-fit-max="50">★ pep parade</div><h2 data-fit data-fit-max="124"><span data-field="c1.t1">Main </span><em data-field="c1.t2">hall</em></h2><p data-field="c1.p" data-fit data-fit-max="60">Marching band leads down the main hall to the front-lawn pep rally. Spring sports captains introduced. Bring noise — Tuesday after 7th period.</p><div class="m" data-field="c1.m" data-fit="single" data-fit-max="50">Tue · 2pm · hall → lawn</div></section>
-    <section class="cd" data-widget="c2"><div class="k" data-field="c2.k" data-fit="single" data-fit-max="50">★ dress code</div><h2 data-fit data-fit-max="108"><span data-field="c2.t1">Wear </span><em data-field="c2.t2">green</em></h2><p data-field="c2.p" data-fit data-fit-max="60">Any shade counts — you won't get pinched at school, but you'll lose homeroom spirit points. Free pins at the front office for the unprepared.</p><div class="m" data-field="c2.m" data-fit="single" data-fit-max="50">Tue · all day</div></section>
+  <div class="chips">
+    <div class="chip" data-widget="c0"><div class="icon" data-field="c0.icon">🍀</div><div class="t" data-field="c0.t" data-fit="single" data-fit-max="116">Quad Trivia</div><div class="m" data-field="c0.m" data-fit="single" data-fit-max="70">Tue · Quad · 12:05</div></div>
+    <div class="chip b2" data-widget="c1"><div class="icon" data-field="c1.icon">🥁</div><div class="t" data-field="c1.t" data-fit="single" data-fit-max="116">Pep Parade</div><div class="m" data-field="c1.m" data-fit="single" data-fit-max="70">Tue · 2 PM · Main Hall</div></div>
+    <div class="chip b3" data-widget="c2"><div class="icon" data-field="c2.icon">💚</div><div class="t" data-field="c2.t" data-fit="single" data-fit-max="116">Wear Green</div><div class="m" data-field="c2.m" data-fit="single" data-fit-max="70">All Day · Spirit Points</div></div>
   </div>
-
-  <section class="sked" data-widget="sked">
-    <div class="hdr"><h3 data-field="sked.h" data-fit="single" data-fit-max="70">★ lucky week</h3><div class="d" data-field="sked.day" data-fit="single" data-fit-max="50">Mon 3/16 — Fri 3/20</div></div>
-    <ul data-week>
-      <li data-widget="sked.0" data-weekday="1"><div class="d" data-field="sked.0.d" data-fit="single" data-fit-max="50">MON</div><div class="e" data-fit data-fit-max="60"><span data-field="sked.0.e1">Cap </span><em data-field="sked.0.e2">decor</em></div><div class="w" data-field="sked.0.w" data-fit data-fit-max="50">homeroom doors all day</div></li>
-      <li data-widget="sked.1" data-weekday="2"><div class="d" data-field="sked.1.d" data-fit="single" data-fit-max="50">TUE</div><div class="e" data-fit data-fit-max="60"><span data-field="sked.1.e1">Quad </span><em data-field="sked.1.e2">trivia</em></div><div class="w" data-field="sked.1.w" data-fit data-fit-max="50">$50 prize · teams of 3</div></li>
-      <li data-widget="sked.2" data-weekday="2"><div class="d" data-field="sked.2.d" data-fit="single" data-fit-max="50">TUE</div><div class="e" data-fit data-fit-max="60"><span data-field="sked.2.e1">Pep </span><em data-field="sked.2.e2">parade</em></div><div class="w" data-field="sked.2.w" data-fit data-fit-max="50">main hall · band leads</div></li>
-      <li data-widget="sked.3" data-weekday="5"><div class="d" data-field="sked.3.d" data-fit="single" data-fit-max="50">FRI</div><div class="e" data-fit data-fit-max="60"><span data-field="sked.3.e1">Spring </span><em data-field="sked.3.e2">game</em></div><div class="w" data-field="sked.3.w" data-fit data-fit-max="50">field · home opener</div></li>
-    </ul>
-  </section>
-</div>
-
-<div class="ticker" data-widget="ticker">
-  <div class="tag" data-field="ticker.tag">~ TOP O' THE MORNIN' ~</div>
-  <div class="msg"><span data-field="ticker.message">★ Wear green all week — gold lockers earn spirit points ★ Quad trivia Tuesday noon — $50 cash, teams of 3 ★ Pep parade Tuesday 2pm — band leads main hall to the lawn ★ Spring game Friday — home opener ★ Pins free at the front office ★ </span><span>★ Wear green all week — gold lockers earn spirit points ★ Quad trivia Tuesday noon — $50 cash, teams of 3 ★ Pep parade Tuesday 2pm — band leads main hall to the lawn ★ Spring game Friday — home opener ★ Pins free at the front office ★ </span></div>
 </div>
 
 </div></div></div>
@@ -190,24 +143,18 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
   function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
   function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
   window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
-  var FL=document.getElementById('float');if(FL){var GL=['☘','✦','☘','✶'];for(var k1=0;k1<14;k1++){var c1=document.createElement('i');c1.textContent=GL[k1%GL.length];c1.style.left=((k1*53)%100)+'%';c1.style.bottom=(-((k1*70)%400))+'px';c1.style.fontSize=(42+(k1%5)*14)+'px';c1.style.animationDelay=((k1*0.85)%12)+'s';c1.style.animationDuration=(10+(k1%5))+'s';FL.appendChild(c1);}}
-  var DU=document.getElementById('dust');if(DU){for(var k2=0;k2<28;k2++){var d=document.createElement('i');d.style.left=((k2*37)%100)+'%';d.style.top=((k2*43)%100)+'%';d.style.animationDelay=((k2*0.4)%4)+'s';DU.appendChild(d);}}
+  var SP=document.getElementById('spark');if(SP){for(var k2=0;k2<22;k2++){var d=document.createElement('i');var sz=8+((k2*11)%24);d.style.width=sz+'px';d.style.height=sz+'px';d.style.left=((k2*53)%100)+'%';d.style.top=(42+((k2*29)%52))+'%';d.style.animationDelay=((k2*0.45)%6)+'s';SP.appendChild(d);}}
   var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
   function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
   applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
   document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
-  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||50),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||60),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
   function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
   setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
   new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
-  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m;}
-  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});}
-  tick();setInterval(tick,15000);
   var DMON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
   function days(){document.querySelectorAll('[data-countdown-to]').forEach(function(el){var dm=el.getAttribute('data-demo');if(dm!=null){el.textContent=(''+ +dm);return;}var t=el.getAttribute('data-countdown-to').trim().toLowerCase().match(/([a-z]+)\s*(\d{1,2})/);if(!t||!(t[1].slice(0,3) in DMON))return;var now=new Date();now.setHours(0,0,0,0);var y=now.getFullYear(),target=new Date(y,DMON[t[1].slice(0,3)],+t[2]);if(target<now)target=new Date(y+1,DMON[t[1].slice(0,3)],+t[2]);var n=Math.round((target-now)/86400000);el.textContent=''+n;});}
   days();setInterval(days,3600000);
-  function week(){document.querySelectorAll('[data-week]').forEach(function(ul){var demo=ul.getAttribute('data-demo-dow'),dow=demo!=null?+demo:new Date().getDay();ul.querySelectorAll('[data-weekday]').forEach(function(li){li.classList.toggle('today',+li.getAttribute('data-weekday')===dow);});});}
-  week();setInterval(week,600000);
 })();
 </script>
 
