@@ -97,6 +97,11 @@ function posterFor(zones: Zone[]): string | null {
   if (z.widgetType !== 'EXTERNAL_HTML') return null;
   let cfg: any = z.defaultConfig;
   if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { return null; } }
+  // A customized board — operator applied brand / text / image / style
+  // overrides — must render LIVE (frozen iframe with ?brand=/?text=/?img=) so
+  // those show. The static poster is the pristine default look and would mask
+  // the customization (e.g. "Apply brand did nothing" in the gallery).
+  if (cfg && (cfg.brand || cfg.textOverrides || cfg.imageOverrides || cfg._styles)) return null;
   const url: unknown = cfg?.url;
   if (typeof url !== 'string' || !url.startsWith('/templates/')) return null;
   const clean = url.split('?')[0].split('#')[0];

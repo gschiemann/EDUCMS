@@ -751,6 +751,28 @@ export class BrandingController {
           if (accent && (mode === 'override' || cfg.accentColor === undefined)) {
             patch.accentColor = accent;
           }
+          // 2026-06-08 — THE "branding doesn't work" fix. EXTERNAL_HTML signage
+          // boards (the entire school / HS / signage gallery) ignore
+          // color/fontFamily/accentColor — they render a self-contained iframe
+          // that re-skins from `cfg.brand`, which ExternalHtmlWidget forwards as
+          // `?brand=` and the baked shim's applyBrand() maps onto its --brand-*
+          // CSS vars (BRAND_MAP keys: primary/accent/text/surface/background/
+          // muted/fontDisplay/fontBody). Until now Apply-Brand set keys these
+          // boards never read, so it did NOTHING visible on any board template.
+          // Build the token map from the tenant palette + fonts and stamp it.
+          if (z.widgetType === 'EXTERNAL_HTML' && (mode === 'override' || cfg.brand === undefined)) {
+            const brandTokens: Record<string, string> = {};
+            if (palette.primary) brandTokens.primary = palette.primary;
+            if (accent) brandTokens.accent = accent;
+            if (ink) brandTokens.text = ink;
+            if (surface) brandTokens.surface = surface;
+            if (palette.primary || surface) brandTokens.background = palette.primary || surface;
+            const mutedVal = palette.muted || palette.ink2 || palette.ink3;
+            if (mutedVal) brandTokens.muted = mutedVal;
+            if (fontHeading) brandTokens.fontDisplay = fontHeading;
+            if (fontBody) brandTokens.fontBody = fontBody;
+            if (Object.keys(brandTokens).length > 0) patch.brand = brandTokens;
+          }
           // fontBody not currently consumed but kept on the zone so a
           // future "apply body font separately" toggle can pick it up.
           if (Object.keys(patch).length === 0) continue;
