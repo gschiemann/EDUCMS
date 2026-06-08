@@ -1,97 +1,172 @@
 <!doctype html>
-<!-- HS CHRISTMAS — varsity letter-jacket / vintage holiday department-store -->
-<html><head><meta charset="utf-8"/><title>Winter Formal · HS Lobby</title>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
-<style>:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--green:#0e3a26;--green2:#1f5c3c;--red:#a82026;--red2:#d83a3a;--cream:#f5e8c4;--gold:#d4a838;--ink:#0a1a12;--snow:#fbf3e0}
-html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;font-family:'Fraunces',serif;color:var(--cream)}
-.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
-.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--green);box-shadow:0 80px 200px rgba(0,0,0,.6)}
-.stage::before{content:'';position:absolute;inset:0;background-image:repeating-linear-gradient(45deg,rgba(212,168,56,.06) 0 2px,transparent 2px 32px),repeating-linear-gradient(-45deg,rgba(212,168,56,.06) 0 2px,transparent 2px 32px);pointer-events:none}
-/* fancy double border */
-.frame{position:absolute;inset:30px;border:5px solid var(--gold);pointer-events:none;z-index:5}
-.frame::before{content:'';position:absolute;inset:14px;border:1px solid var(--gold);opacity:.6}
-.frame::after{content:'';position:absolute;inset:24px;border:3px double var(--gold)}
-/* corner ornaments */
-.orn{position:absolute;width:120px;height:120px;border:4px solid var(--gold);background:var(--red);z-index:6;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue';font-size:80px;color:var(--gold);transform:rotate(45deg);box-shadow:inset 0 0 0 2px var(--gold)}
-.orn span{transform:rotate(-45deg)}
-.orn.tl{top:80px;left:80px}.orn.tr{top:80px;right:80px}.orn.bl{bottom:120px;left:80px}.orn.br{bottom:120px;right:80px}
-/* masthead */
-.mast{position:absolute;top:120px;left:280px;right:280px;height:160px;display:flex;align-items:center;justify-content:space-between;border-bottom:4px solid var(--gold);padding-bottom:16px;z-index:5}
-.mast .est{font-family:'JetBrains Mono';font-weight:800;font-size:34px;letter-spacing:.4em;color:var(--gold);text-transform:uppercase}
-.mast .school{font-family:'Bebas Neue';font-size:140px;color:var(--cream);letter-spacing:.04em;line-height:1}
-.mast .school em{color:var(--gold)}
-.mast .vol{font-family:'JetBrains Mono';font-weight:800;font-size:34px;letter-spacing:.32em;color:var(--gold);text-align:right;text-transform:uppercase}
-/* main */
-.head{position:absolute;top:340px;left:280px;right:280px;text-align:center;z-index:4}
-.head .ribbon{display:inline-block;background:var(--red);color:var(--cream);font-family:'JetBrains Mono';font-weight:800;font-size:42px;letter-spacing:.4em;padding:18px 80px;text-transform:uppercase;box-shadow:0 0 0 4px var(--gold),0 0 0 8px var(--red)}
-.head h1{font-family:'Bebas Neue';font-size:560px;line-height:.85;color:var(--cream);margin:30px 0 0;letter-spacing:.02em;text-shadow:0 14px 0 var(--ink),0 -6px 0 var(--gold)}
-.head h1 em{color:var(--gold);font-style:italic;display:inline-block;transform:rotate(-3deg)}
-.head .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:72px;color:var(--cream);margin:34px auto 0;max-width:2400px;line-height:1.22}
-/* cards */
-.grid{position:absolute;top:1280px;left:200px;right:200px;height:520px;display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:36px;z-index:3}
-.cd{background:var(--cream);color:var(--ink);padding:32px 36px;border:5px solid var(--ink);position:relative;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--gold)}
-.cd::before{content:'';position:absolute;top:-22px;left:50%;transform:translateX(-50%);width:80px;height:44px;background:var(--gold);border:4px solid var(--ink);border-radius:0 0 40px 40px}
-.cd .k{font-family:'JetBrains Mono';font-weight:800;font-size:34px;color:var(--red);text-transform:uppercase;letter-spacing:.32em}
-.cd h2{font-family:'Bebas Neue';font-size:148px;line-height:.85;margin:10px 0 0;color:var(--ink);letter-spacing:.01em}
-.cd h2 em{font-style:italic;color:var(--red);transform:rotate(-2deg);display:inline-block}
-.cd.feat{background:var(--red);color:var(--cream);box-shadow:14px 14px 0 var(--ink)}
-.cd.feat .k{color:var(--gold)}
-.cd.feat h2{color:var(--cream);font-size:180px}.cd.feat h2 em{color:var(--gold)}
-.cd p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:42px;margin:18px 0 0;line-height:1.22}
-.cd .meta{margin-top:auto;padding-top:18px;font-family:'JetBrains Mono';font-weight:800;font-size:30px;text-transform:uppercase;letter-spacing:.22em;color:var(--red);display:flex;gap:20px;flex-wrap:wrap}
-.cd.feat .meta{color:var(--gold)}
-/* schedule */
-.sked{position:absolute;top:1830px;left:200px;right:200px;height:230px;background:var(--ink);color:var(--cream);padding:20px 32px;border:4px solid var(--gold);z-index:3;display:flex;flex-direction:column}
-.sked .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px solid var(--gold);padding-bottom:8px}
-.sked .hdr h3{font-family:'Bebas Neue';font-size:80px;color:var(--gold);margin:0;letter-spacing:.04em}
-.sked .hdr .d{font-family:'JetBrains Mono';font-weight:800;font-size:32px;color:var(--cream);letter-spacing:.22em;text-transform:uppercase}
-.sked ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
-.sked li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid var(--red);padding-left:18px}
-.sked li .d{font-family:'JetBrains Mono';font-weight:800;font-size:32px;color:var(--gold);letter-spacing:.26em;text-transform:uppercase}
-.sked li .e{font-family:'Bebas Neue';font-size:64px;color:var(--cream);line-height:1;margin-top:6px;letter-spacing:.02em}
-.sked li .e em{font-style:italic;color:var(--gold)}
-.sked li .w{font-family:'JetBrains Mono';font-weight:600;font-size:28px;color:var(--cream);margin-top:6px;text-transform:uppercase;letter-spacing:.18em;opacity:.85}</style></head><body>
-<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-christmas-v1"}/*EDITMODE-END*/;</script>
-<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
-<div class="frame"></div>
-<div class="orn tl"><span data-field="orn.tl">'25</span></div>
-<div class="orn tr"><span data-field="orn.tr">★</span></div>
-<div class="orn bl"><span data-field="orn.bl">★</span></div>
-<div class="orn br"><span data-field="orn.br">DEC</span></div>
-<div class="mast" data-widget="masthead">
-<div class="est" data-field="masthead.est">est. 1924</div>
-<div class="school"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div>
-<div class="vol" data-field="masthead.vol">winter issue</div>
+<!-- HS · CHRISTMAS — TEEN REDESIGN. Dark neon-frost: kinetic iridescent "SNOW BALL"
+     headline, countdown to the dance, frosted-glass event bento (tickets / the night /
+     toy drive), winter-week strip w/ live weekday. Tokens, image slots, auto-fit, live
+     clock + dates, portrait. No food. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Snow Ball · High School</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Sora:wght@600;700;800&family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;--scale:1;
+  --bg:#070b18;--ink:#eaf2ff;--ice:#7fe8ff;--violet:#8b5cff;--pink:#ff5cc8;--gold:#ffd76b;--frost:#cfe8ff;
+  --brand:var(--ice);--accent:var(--violet);
+  --f-display:'Anton';--f-head:'Sora';--f-body:'Inter';
+  --t-name:calc(40px*var(--scale));--t-sub:calc(28px*var(--scale));--t-clock:calc(56px*var(--scale));
+  --t-eyebrow:calc(50px*var(--scale));--t-hero:calc(560px*var(--scale));--t-lede:calc(50px*var(--scale));
+  --t-cdlbl:calc(34px*var(--scale));--t-cdnum:calc(170px*var(--scale));--t-cdunit:calc(38px*var(--scale));
+  --t-cardk:calc(38px*var(--scale));--t-cardbig:calc(120px*var(--scale));--t-cardh:calc(76px*var(--scale));--t-cardp:calc(52px*var(--scale));--t-cardmeta:calc(38px*var(--scale));
+  --t-wkh:calc(46px*var(--scale));--t-wkd:calc(42px*var(--scale));--t-wke:calc(60px*var(--scale));--t-wkw:calc(38px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;color:var(--ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--bg);box-shadow:0 80px 200px rgba(0,0,0,.65)}
+.glow{position:absolute;top:-20%;right:-20%;bottom:-20%;left:-20%;z-index:0;filter:blur(70px);opacity:.65}
+.glow i{position:absolute;border-radius:50%;mix-blend-mode:screen;animation:fl 17s ease-in-out infinite}
+.glow .g1{width:2200px;height:1400px;background:radial-gradient(ellipse,var(--violet),transparent 60%);top:-300px;left:-200px}
+.glow .g2{width:1900px;height:1300px;background:radial-gradient(ellipse,var(--ice),transparent 60%);top:-200px;right:-200px;animation-delay:-6s}
+.glow .g3{width:1700px;height:1200px;background:radial-gradient(ellipse,var(--pink),transparent 62%);bottom:-300px;left:35%;animation-delay:-10s}
+@keyframes fl{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(140px,90px) scale(1.14)}}
+.snow{position:absolute;top:0;right:0;bottom:0;left:0;z-index:1;pointer-events:none}
+.snow i{position:absolute;top:-30px;background:#fff;border-radius:50%;opacity:.7;animation:sn linear infinite}
+@keyframes sn{to{transform:translateY(2220px)}}
+.grid-lines{position:absolute;top:0;right:0;bottom:0;left:0;z-index:1;opacity:.14;pointer-events:none;background-image:linear-gradient(rgba(127,232,255,.4) 1px,transparent 1px),linear-gradient(90deg,rgba(127,232,255,.4) 1px,transparent 1px);background-size:120px 120px;mask:radial-gradient(ellipse 70% 60% at 50% 40%,#000,transparent)}
+.stage>.wrap{position:absolute;top:0;right:0;bottom:0;left:0;z-index:3;display:flex;flex-direction:column;padding:56px 72px 118px}
+
+.bar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:30px}
+.bar .id{display:flex;align-items:center;gap:24px;min-width:0}
+.bar .mark{width:96px;height:96px;flex:none;border-radius:22px;background:rgba(255,255,255,.08);backdrop-filter:blur(14px);border:2px solid rgba(127,232,255,.3);display:grid;place-items:center;font-size:50px;background-size:cover;background-position:center}
+.bar .mark.has-img{font-size:0}
+.bar .nm{font-family:var(--f-head);font-weight:800;font-size:var(--t-name);letter-spacing:-.01em;white-space:nowrap}
+.bar .nm small{display:block;font-family:var(--f-body);font-weight:600;font-size:var(--t-sub);letter-spacing:.2em;text-transform:uppercase;color:var(--ice);margin-top:4px}
+.bar .clock{font-family:var(--f-display);font-size:var(--t-clock);color:#fff;background:rgba(255,255,255,.06);backdrop-filter:blur(14px);border:2px solid rgba(127,232,255,.28);padding:12px 34px;border-radius:999px;white-space:nowrap;flex:none;letter-spacing:.02em}
+.bar .clock b{color:var(--gold)}
+
+.hero{flex:none;text-align:center;margin-top:14px}
+.hero .eyebrow{display:inline-block;font-family:var(--f-head);font-weight:800;font-size:var(--t-eyebrow);letter-spacing:.16em;text-transform:uppercase;color:#04101f;background:linear-gradient(90deg,var(--ice),var(--violet));padding:14px 40px;border-radius:999px}
+.hero h1{font-family:var(--f-display);font-size:var(--t-hero);line-height:.78;letter-spacing:.01em;margin:6px 0 0;text-transform:uppercase;background:linear-gradient(180deg,#fff 0%,var(--ice) 42%,var(--violet) 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 30px 90px rgba(139,92,255,.5))}
+.hero h1 em{font-style:italic;background:linear-gradient(180deg,var(--gold),var(--pink));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero .lede{font-family:var(--f-body);font-weight:600;font-size:var(--t-lede);color:var(--frost);margin-top:18px;max-width:2600px;margin-left:auto;margin-right:auto;line-height:1.2}
+
+.bento{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:30px;margin:30px 0}
+.card{position:relative;border-radius:34px;overflow:hidden;background:rgba(255,255,255,.06);backdrop-filter:blur(22px);border:2px solid rgba(255,255,255,.16);padding:42px 46px;display:flex;flex-direction:column;box-shadow:0 30px 70px rgba(0,0,0,.4)}
+.card .k{font-family:var(--f-head);font-weight:800;font-size:var(--t-cardk);letter-spacing:.16em;text-transform:uppercase;color:var(--ice)}
+.card .big{font-family:var(--f-display);font-size:var(--t-cardbig);line-height:.86;color:#fff;letter-spacing:.01em;margin:10px 0 0}
+.card .big em{font-style:italic;color:var(--gold)}
+.card h2{font-family:var(--f-display);font-size:var(--t-cardh);line-height:.9;margin:10px 0 0;color:#fff;letter-spacing:.01em;text-transform:uppercase}
+.card p{font-family:var(--f-body);font-weight:500;font-size:var(--t-cardp);color:var(--frost);margin:18px 0 0;line-height:1.26}
+.card .meta{font-family:var(--f-head);font-weight:700;font-size:var(--t-cardmeta);letter-spacing:.1em;text-transform:uppercase;color:var(--gold);margin-top:auto;padding-top:20px}
+.card.hot{background:linear-gradient(160deg,rgba(139,92,255,.4),rgba(255,92,200,.25));border-color:rgba(255,92,200,.4);align-items:center;text-align:center;justify-content:center}
+.card.hot .cdnum{font-family:var(--f-display);font-size:var(--t-cdnum);line-height:.82;color:#fff;letter-spacing:.01em;margin:6px 0;text-shadow:0 0 60px rgba(127,232,255,.6)}
+.card.hot .cdlbl{font-family:var(--f-head);font-weight:800;font-size:var(--t-cdlbl);letter-spacing:.16em;text-transform:uppercase;color:var(--ice)}
+.card.hot .cdunit{font-family:var(--f-head);font-weight:700;font-size:var(--t-cdunit);letter-spacing:.1em;text-transform:uppercase;color:var(--gold)}
+
+.week{flex:none;background:rgba(255,255,255,.05);backdrop-filter:blur(16px);border:2px solid rgba(255,255,255,.14);border-radius:28px;padding:26px 34px;margin-bottom:34px}
+.week .h{font-family:var(--f-head);font-weight:800;font-size:var(--t-wkh);letter-spacing:.04em;color:#fff;display:flex;align-items:baseline;gap:18px;margin-bottom:14px}
+.week .h span{font-family:var(--f-body);font-weight:600;font-size:var(--t-wkw);color:var(--ice);letter-spacing:.12em;text-transform:uppercase}
+.week ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(5,1fr);gap:18px}
+.week li{padding:16px 22px;border-left:5px solid var(--ice);background:rgba(255,255,255,.04);border-radius:0 16px 16px 0}
+.week li .d{font-family:var(--f-head);font-weight:700;font-size:var(--t-wkd);color:var(--ice);line-height:1}
+.week li .e{font-family:var(--f-display);font-size:var(--t-wke);color:#fff;line-height:1;margin-top:8px;letter-spacing:.01em;text-transform:uppercase}
+.week li .e em{font-style:italic;color:var(--gold)}
+.week li .w{font-family:var(--f-body);font-weight:500;font-size:var(--t-wkw);color:var(--frost);margin-top:8px}
+.week li.today{border-left-color:var(--pink);background:rgba(255,92,200,.16)}
+.week li.today .e em{color:var(--pink)}
+
+@keyframes scr{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.ticker{position:absolute;bottom:0;left:0;right:0;height:84px;z-index:6;background:#04101f;border-top:3px solid var(--ice);display:flex;align-items:center;overflow:hidden}
+.ticker .tag{flex:none;background:linear-gradient(90deg,var(--ice),var(--violet));color:#04101f;font-family:var(--f-display);font-size:calc(44px*var(--scale));padding:0 36px;height:100%;display:flex;align-items:center;white-space:nowrap;letter-spacing:.04em}
+.ticker .msg{font-family:var(--f-body);font-weight:600;font-size:calc(38px*var(--scale));padding-left:36px;white-space:nowrap;animation:scr 80s linear infinite;color:#fff}
+.ticker .msg .star{color:var(--gold);margin:0 22px}
+
+.stage[data-orient="port"] .bento{grid-template-columns:1fr;grid-auto-rows:1fr}
+.stage[data-orient="port"] .week ul{grid-template-columns:repeat(2,1fr)}
+.stage[data-orient="port"]{--t-hero:calc(300px*var(--scale))}
+</style></head><body>
+<div data-widget="theme" hidden>
+  <span data-field="theme.brand">#7fe8ff</span><span data-field="theme.accent">#8b5cff</span><span data-field="theme.bg">#070b18</span><span data-field="theme.ink">#eaf2ff</span>
+  <span data-field="theme.fDisplay">Anton</span><span data-field="theme.fBody">Inter</span><span data-field="theme.scale">1</span>
 </div>
-<div class="head" data-widget="headline">
-<div class="ribbon" data-field="headline.kicker">★ winter formal · december 19 ★</div>
-<h1><span data-field="headline.t1">Snow </span><em data-field="headline.t2">Ball.</em></h1>
-<div class="sub" data-field="headline.sub">Tickets at the ASB window — $35 single, $60 couple — through Friday. Theme is "Midnight Forest." Toy drive ends Thursday; donation bins at every entrance.</div>
-</div>
-<div class="grid">
-<div class="cd" data-widget="tickets"><div class="k" data-field="tickets.k">★ formal tickets</div>
-<h2><span data-field="tickets.t1">$35 </span><em data-field="tickets.t2">solo</em></h2>
-<p data-field="tickets.p">Sales close Friday 3pm — no door sales. Couples $60. ASB window during all three lunches. Cash or card.</p>
-<div class="meta"><span data-field="tickets.m1">deadline · Fri 12/12</span></div></div>
-<div class="cd feat" data-widget="dance"><div class="k" data-field="dance.k">★ snow ball</div>
-<h2><span data-field="dance.t1">Dec </span><em data-field="dance.t2">19.</em></h2>
-<p data-field="dance.p">Doors 7:30pm at the field house · DJ Vega, photo booth, late dessert bar. Last entry 9pm. Bus pickup at midnight from lot B.</p>
-<div class="meta"><span data-field="dance.m1">Fri 12/19 · 7:30pm</span><span data-field="dance.m2">field house</span></div></div>
-<div class="cd" data-widget="toy"><div class="k" data-field="toy.k">★ toy drive</div>
-<h2 data-field="toy.t">Bring one.</h2>
-<p data-field="toy.p">New, unwrapped — drop in any red bin through Thursday. Goal: 1,200 toys. Top homeroom gets a pizza party in January.</p>
-<div class="meta"><span data-field="toy.m1">deadline · Thu 12/18</span></div></div>
-</div>
-<div class="sked" data-widget="sked">
-<div class="hdr"><h3 data-field="sked.h">★ winter week</h3><div class="d" data-field="sked.day">Mon 12/15 — Fri 12/19</div></div>
-<ul>
-<li data-widget="sked.0"><div class="d" data-field="sked.0.d">MON</div><div class="e"><span data-field="sked.0.e1">Ugly </span><em data-field="sked.0.e2">sweater</em></div><div class="w" data-field="sked.0.w">spirit · all day</div></li>
-<li data-widget="sked.1"><div class="d" data-field="sked.1.d">WED</div><div class="e"><span data-field="sked.1.e1">Choir </span><em data-field="sked.1.e2">concert</em></div><div class="w" data-field="sked.1.w">aud · 7pm · free</div></li>
-<li data-widget="sked.2"><div class="d" data-field="sked.2.d">THU</div><div class="e"><span data-field="sked.2.e1">Toy </span><em data-field="sked.2.e2">drive ends</em></div><div class="w" data-field="sked.2.w">red bins · 3pm</div></li>
-<li data-widget="sked.3"><div class="d" data-field="sked.3.d">FRI</div><div class="e"><span data-field="sked.3.e1">Snow </span><em data-field="sked.3.e2">Ball</em></div><div class="w" data-field="sked.3.w">field house · 7:30</div></li>
-</ul>
-</div>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+  <div class="glow" aria-hidden="true"><i class="g1"></i><i class="g2"></i><i class="g3"></i></div>
+  <div class="grid-lines" aria-hidden="true"></div>
+  <div class="snow" id="snow" aria-hidden="true"></div>
+
+  <div class="wrap">
+    <div class="bar">
+      <div class="id" data-widget="school"><div class="mark" data-imgslot="school.logo">❄</div><div class="nm" data-field="school.name">Banner High<small data-field="school.sub">Winter 2026</small></div></div>
+      <div class="clock" data-widget="clock"><span data-field="clock.label">NOW</span> · <b data-field="clock.time" data-live="time">8:42</b></div>
+    </div>
+
+    <div class="hero" data-widget="headline">
+      <span class="eyebrow" data-field="headline.eyebrow">Winter Formal · December 19</span>
+      <h1 data-fit="single" data-fit-min="300" data-fit-max="560"><span data-field="headline.t1">Snow </span><em data-field="headline.t2">Ball</em></h1>
+      <div class="lede" data-field="headline.lede">Theme: "Midnight Forest." Tickets at the ASB window through Friday — grab yours before they're gone.</div>
+    </div>
+
+    <div class="bento">
+      <article class="card" data-widget="tickets">
+        <div class="k" data-field="tickets.k">★ Formal tickets</div>
+        <div class="big"><span data-field="tickets.big1">$35 </span><em data-field="tickets.big2">solo</em></div>
+        <p data-field="tickets.p">Couples $60. Sales close Friday 3pm — no door sales. ASB window during all three lunches, cash or card.</p>
+        <div class="meta" data-field="tickets.meta">Deadline · Fri 12/12</div>
+      </article>
+
+      <article class="card hot" data-widget="countdown">
+        <div class="cdlbl" data-field="countdown.label">★ The night is in</div>
+        <div class="cdnum" data-field="countdown.value">9</div>
+        <div class="cdunit" data-field="countdown.unit">days · Fri 12/19 · 7:30pm</div>
+        <p data-field="countdown.p" style="color:#fff">Doors 7:30 at the field house · DJ Vega · photo booth · late dessert bar. Last entry 9pm.</p>
+      </article>
+
+      <article class="card" data-widget="toydrive">
+        <div class="k" data-field="toydrive.k">★ Toy drive</div>
+        <h2 data-field="toydrive.h">Bring one.</h2>
+        <p data-field="toydrive.p">New, unwrapped — drop in any red bin through Thursday. Goal: 1,200 toys. Top homeroom wins a pizza party in January.</p>
+        <div class="meta" data-field="toydrive.meta">Deadline · Thu 12/18</div>
+      </article>
+    </div>
+
+    <section class="week" data-widget="events" data-demo-dow="3">
+      <div class="h"><span data-field="events.title">Winter Week</span><span data-field="events.range" data-live="weekrange">this week</span></div>
+      <ul>
+        <li data-weekday="1"><div class="d" data-field="events.0.d">Mon</div><div class="e"><span data-field="events.0.e1">Ugly </span><em data-field="events.0.e2">sweater</em></div><div class="w" data-field="events.0.w">Spirit · all day</div></li>
+        <li data-weekday="2"><div class="d" data-field="events.1.d">Tue</div><div class="e"><span data-field="events.1.e1">Toy </span><em data-field="events.1.e2">drive</em></div><div class="w" data-field="events.1.w">Red bins · every entrance</div></li>
+        <li data-weekday="3"><div class="d" data-field="events.2.d">Wed</div><div class="e"><span data-field="events.2.e1">Choir </span><em data-field="events.2.e2">concert</em></div><div class="w" data-field="events.2.w">Aud · 7pm · free</div></li>
+        <li data-weekday="4"><div class="d" data-field="events.3.d">Thu</div><div class="e"><span data-field="events.3.e1">Drive </span><em data-field="events.3.e2">ends</em></div><div class="w" data-field="events.3.w">Last bins out · 3pm</div></li>
+        <li data-weekday="5"><div class="d" data-field="events.4.d">Fri</div><div class="e"><span data-field="events.4.e1">Snow </span><em data-field="events.4.e2">Ball</em></div><div class="w" data-field="events.4.w">Field house · 7:30</div></li>
+      </ul>
+    </section>
+  </div>
+
+  <div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">❄ Snow Ball</div><div class="msg"><span data-field="ticker.message">Tickets close Friday 3pm at the ASB window — $35 solo / $60 couple · Theme is Midnight Forest · Toy drive ends Thursday, drop new unwrapped toys in red bins · Doors 7:30 at the field house, last entry 9pm</span><span class="star">❄</span><span data-field="ticker.message2">Tickets close Friday 3pm at the ASB window — $35 solo / $60 couple · Theme is Midnight Forest · Toy drive ends Thursday, drop new unwrapped toys in red bins · Doors 7:30 at the field house, last entry 9pm</span></div></div>
+
 </div></div></div>
-<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var THEME={brand:'--brand',accent:'--accent',bg:'--bg',ink:'--ink',fDisplay:'--f-display',fBody:'--f-body',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  var th=document.querySelector('[data-widget="theme"]');applyTheme();new MutationObserver(applyTheme).observe(th,{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.style.backgroundSize='cover';el.style.backgroundPosition='center';el.classList.add('has-img');}});
+  function fitOne(el){var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';if(el.scrollWidth<=el.clientWidth+1){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  var sn=document.getElementById('snow'),H='';for(var i=0;i<60;i++){H+='<i style="left:'+(Math.random()*100)+'%;width:'+(3+Math.random()*9)+'px;height:'+(3+Math.random()*9)+'px;animation-duration:'+(7+Math.random()*8)+'s;animation-delay:'+(-Math.random()*12)+'s;opacity:'+(.3+Math.random()*.5)+'"></i>';}sn.innerHTML=H;
+  var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function mondayOf(d){var x=new Date(d),g=x.getDay();x.setDate(x.getDate()+(g===0?-6:1-g));x.setHours(0,0,0,0);return x;}
+  function tick(){var d=new Date(),h=d.getHours(),m=d.getMinutes(),h12=h%12||12;document.querySelectorAll('[data-live="time"]').forEach(function(el){el.textContent=h12+':'+(m<10?'0':'')+m;});
+    var demo=document.querySelector('[data-widget="events"]').getAttribute('data-demo-dow');var dow=demo!=null?+demo:d.getDay();
+    document.querySelectorAll('.week li').forEach(function(li){li.classList.toggle('today',+li.getAttribute('data-weekday')===dow);});
+    var mon=mondayOf(d),fri=new Date(mon);fri.setDate(mon.getDate()+4);document.querySelectorAll('[data-live="weekrange"]').forEach(function(el){if(!el.hasAttribute('data-pin'))el.textContent=MON[mon.getMonth()]+' '+mon.getDate()+'–'+fri.getDate();});}
+  tick();setInterval(tick,10000);
+})();
+</script>
+
 <script id="holiday-bridge">(function(){function a(){var s=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-w'),10)||3840,h=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-h'),10)||2160,c=Math.min(window.innerWidth/s,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',c)}a();window.addEventListener('resize',a);function r(){var n=document.querySelectorAll('[data-field]'),s={},f=[];n.forEach(function(e){var k=e.getAttribute('data-field');if(!k||s[k])return;s[k]=1;var t=(e.textContent||'').trim();f.push({key:k,defaultText:t,multiline:/\n/.test(t)||t.length>80||e.tagName==='P'})});try{window.parent.postMessage({type:'holiday:ready',fields:f},window.location.origin)}catch(e){}}if(document.readyState==='complete'||document.readyState==='interactive')r();else document.addEventListener('DOMContentLoaded',r);document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document.body){if(n.nodeType===1&&n.hasAttribute&&n.hasAttribute('data-field')){try{window.parent.postMessage({type:'holiday:fieldClicked',key:n.getAttribute('data-field')},window.location.origin)}catch(e){}return}n=n.parentNode}});window.addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='holiday:setField'){var k=String(d.key||'');if(!k)return;var n=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\"')+'"]'),v=String(d.value==null?'':d.value);n.forEach(function(e){e.textContent=v})}})})();</script>
-<script src="_style-bridge.js?v=20260509"></script></body></html>
+<script src="_style-bridge.js?v=20260509"></script>
+</body></html>
