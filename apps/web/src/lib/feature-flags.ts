@@ -9,6 +9,17 @@ export const FLAGS = {
 
 export type FlagKey = (typeof FLAGS)[keyof typeof FLAGS];
 
+// Intended default per flag when the provider doesn't define it. The builder
+// + auto-branding are core/default-ON; if GrowthBook is ready but a flag is
+// undefined there, `getBooleanValue(flag, false)` would wrongly return false
+// (this once disabled the whole template builder). Default to the real intent.
+const FLAG_DEFAULTS: Record<string, boolean> = {
+  [FLAGS.TEMPLATE_BUILDER_V2]: true,
+  [FLAGS.AUTO_BRANDING]: true,
+  [FLAGS.EMERGENCY_NEW_UI]: false,
+  [FLAGS.SIS_INTEGRATION]: false,
+};
+
 /**
  * Evaluate a feature flag.
  *
@@ -22,9 +33,10 @@ export type FlagKey = (typeof FLAGS)[keyof typeof FLAGS];
  * NOTE: The web-sdk client is synchronous — no awaiting needed.
  */
 export function isFeatureEnabled(flag: FlagKey): boolean {
+  const intendedDefault = FLAG_DEFAULTS[flag] ?? false;
   if (isOpenFeatureReady()) {
     try {
-      return getOpenFeatureClient().getBooleanValue(flag, false);
+      return getOpenFeatureClient().getBooleanValue(flag, intendedDefault);
     } catch {
       // Defensive: fall through to env fallback
     }
@@ -36,9 +48,13 @@ export function isFeatureEnabled(flag: FlagKey): boolean {
     case FLAGS.EMERGENCY_NEW_UI:
       return process.env.NEXT_PUBLIC_FF_EMERGENCY_NEW_UI === 'true';
     case FLAGS.TEMPLATE_BUILDER_V2:
-      // Default ON — the builder is the main editing experience and
-      // every preset's Customize button routes here.
-      if (process.env.NEXT_PUBLIC_FF_TEMPLATE_BUILDER_V2 === 'false') return false;
+      // ALWAYS ON — the builder is THE editing experience; every preset's
+      // Customize button routes through it. The old `NEXT_PUBLIC_FF_..._V2`
+      // kill-switch was a foot-gun: .env.example shipped it ='false', so any
+      // environment seeded from the example silently disabled Customize — it
+      // bounced straight back to the template list ("builder never launches").
+      // Removed. To gate it in future, use GrowthBook (operator-toggleable),
+      // not a build-time env var.
       return true;
     case FLAGS.SIS_INTEGRATION:
       return process.env.NEXT_PUBLIC_FF_SIS_INTEGRATION === 'true';

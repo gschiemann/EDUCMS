@@ -58,6 +58,13 @@ class GrowthBookWebProvider implements Provider {
         errorCode: ErrorCode.PROVIDER_NOT_READY,
       };
     }
+    // A flag GrowthBook doesn't define makes isOn() return false, which would
+    // silently override an intended default-ON (this disabled the template
+    // builder once). Honor the caller's default for unknown features.
+    const res = this.gb.evalFeature(flagKey);
+    if (!res || res.source === 'unknownFeature') {
+      return { value: defaultValue, reason: StandardResolutionReasons.DEFAULT };
+    }
     return {
       value: this.gb.isOn(flagKey),
       reason: StandardResolutionReasons.TARGETING_MATCH,
