@@ -31,6 +31,42 @@ interface BuildInfo {
   shaFull?: string | null;
 }
 
+/**
+ * 2026-06-08 — Reload that ACTUALLY clears the stale shell.
+ *
+ * The old code just called window.location.reload(), which — when a
+ * stale dashboard service worker was still controlling the page — got
+ * served the SAME stale app shell straight back out of CacheStorage.
+ * That's why operators reported "reloading doesn't help, I have to
+ * clear my cache." This version, before reloading:
+ *   1. pulls the freshly-deployed service worker (registration.update)
+ *      and tells any waiting worker to take over immediately, and
+ *   2. deletes the dashboard's own CacheStorage entries (edu-shell-*),
+ *      so the post-reload fetch can't be answered from the stale cache.
+ * Scoped to edu-shell-* so the kiosk player's offline store (same
+ * origin) is never wiped. Best-effort: any failure still reloads.
+ */
+async function freshReload() {
+  try {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        try { await reg.update(); } catch { /* non-fatal */ }
+        try { reg.waiting?.postMessage({ type: 'SKIP_WAITING' }); } catch { /* non-fatal */ }
+      }
+    }
+    if (typeof caches !== 'undefined') {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys.filter((k) => k.startsWith('edu-shell-')).map((k) => caches.delete(k)),
+      );
+    }
+  } catch {
+    // Best-effort — reload regardless so the operator is never stuck.
+  }
+  window.location.reload();
+}
+
 export function StaleBundleWatcher() {
   // Bake-time SHA — read once at module load. Same logic as the
   // player's drift check: NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA is auto-
@@ -90,7 +126,7 @@ export function StaleBundleWatcher() {
   useEffect(() => {
     if (!stale || reloadCountdownSec === null) return;
     if (reloadCountdownSec <= 0) {
-      window.location.reload();
+      void freshReload();
       return;
     }
     const t = setTimeout(() => setReloadCountdownSec((s) => (s == null ? null : s - 1)), 1000);
@@ -116,7 +152,7 @@ export function StaleBundleWatcher() {
         <div className="flex gap-2 mt-2">
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={() => void freshReload()}
             className="px-3 py-1.5 text-[11px] font-bold rounded-lg text-white"
             style={{ background: 'var(--brand-primary, #4f46e5)' }}
           >

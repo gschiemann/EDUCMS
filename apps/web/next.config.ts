@@ -55,6 +55,26 @@ const nextConfig: NextConfig = {
         // Vercel defaults give it a public, max-age=0 already, but
         // some Android System WebView builds ignore that and use a
         // stale-while-revalidate heuristic. Make it explicit.
+        //
+        // 2026-06-08 — BOTH service workers need this. Originally only
+        // /sw-player.js (kiosk) carried it; the dashboard's /sw.js was
+        // left on Vercel's default, so Safari/Chrome could hold a stale
+        // dashboard SW across deploys. A stale dashboard SW kept serving
+        // an old cached app shell from CacheStorage — which a normal
+        // reload can't escape (only "clear site data" does). That was
+        // the root of the "I have to click everything twice / clear my
+        // cache after every update" report. Explicit no-store on /sw.js
+        // means the browser always revalidates the SW script and adopts
+        // a freshly-deployed version on the next load. The matching
+        // sources MUST stay separate objects (Next matches one source
+        // per entry).
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, must-revalidate, max-age=0' },
+          { key: 'Service-Worker-Allowed', value: '/' },
+        ],
+      },
+      {
         source: '/sw-player.js',
         headers: [
           { key: 'Cache-Control', value: 'no-store, must-revalidate, max-age=0' },
