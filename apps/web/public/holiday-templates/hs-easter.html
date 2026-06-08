@@ -1,93 +1,153 @@
 <!doctype html>
-<!-- HS EASTER — Bauhaus geometric pastel · spring break gallery -->
-<html><head><meta charset="utf-8"/><title>Spring Break · HS Lobby</title>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@500;700;800&family=Bebas+Neue&display=swap" rel="stylesheet">
-<style>:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--cream:#fbf3e0;--lilac:#c8b0e0;--mint:#a8d8b0;--peach:#f4b890;--sky:#90b8d8;--yolk:#f4c850;--ink:#1a0e1c;--pink:#e890b0}
-html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;font-family:'JetBrains Mono',monospace;color:var(--ink)}
-.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
-.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--cream);box-shadow:0 80px 200px rgba(0,0,0,.5)}
-/* big bauhaus shapes */
-.shapes{position:absolute;inset:0;z-index:1;pointer-events:none}
-.s{position:absolute;border:5px solid var(--ink)}
-.s1{top:200px;right:60px;width:900px;height:900px;background:var(--peach);border-radius:50% 50% 48% 48%/55% 55% 45% 45%;box-shadow:18px 18px 0 var(--ink)}
-.s1::before{content:'';position:absolute;inset:0;border-radius:inherit;background:repeating-linear-gradient(45deg,transparent 0 30px,rgba(26,14,28,.18) 30px 36px)}
-.s2{top:1450px;left:60px;width:540px;height:540px;border-radius:50%;background:var(--mint);box-shadow:18px 18px 0 var(--ink)}
-.s2::after{content:'';position:absolute;top:50%;left:0;right:0;height:0;border-top:5px solid var(--ink)}
-.s3{top:1380px;right:1200px;width:380px;height:380px;background:var(--lilac);transform:rotate(45deg);box-shadow:14px 14px 0 var(--ink)}
-.s4{top:140px;left:80px;width:360px;height:360px;background:var(--yolk);border-radius:50%;box-shadow:14px 14px 0 var(--ink)}
-.s4::before{content:'';position:absolute;inset:60px;border-radius:50%;border:5px solid var(--ink)}
-/* mast */
-.mast{position:absolute;top:90px;left:520px;right:1080px;height:120px;display:flex;flex-direction:column;justify-content:center;z-index:5}
-.mast .name{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:120px;color:var(--ink);line-height:.85;letter-spacing:-.03em}
-.mast .sub{font-family:'JetBrains Mono';font-weight:800;font-size:36px;color:var(--pink);text-transform:uppercase;letter-spacing:.32em;margin-top:12px}
-/* head */
-.head{position:absolute;top:340px;left:60px;right:60px;z-index:4}
-.head .kicker{font-family:'JetBrains Mono';font-weight:800;font-size:42px;letter-spacing:.36em;color:var(--ink);text-transform:uppercase;margin-bottom:18px;background:var(--mint);display:inline-block;padding:12px 26px;border:4px solid var(--ink);box-shadow:6px 6px 0 var(--ink)}
-.head h1{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:440px;line-height:.82;color:var(--ink);margin:14px 0 0;letter-spacing:-.04em}
-.head h1 em{font-style:italic;color:var(--peach);text-shadow:14px 14px 0 var(--ink)}
-.head h1 .alt{color:var(--lilac);text-shadow:14px 14px 0 var(--ink)}
-.head .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:72px;color:var(--ink);margin-top:34px;max-width:2200px;line-height:1.22}
-/* cards */
-.grid{position:absolute;top:1240px;left:680px;right:60px;height:560px;display:grid;grid-template-columns:1fr 1fr;gap:32px;z-index:3}
-.cd{padding:32px 36px;border:5px solid var(--ink);display:flex;flex-direction:column;background:var(--cream);box-shadow:14px 14px 0 var(--ink)}
-.cd .k{font-family:'JetBrains Mono';font-weight:800;font-size:34px;text-transform:uppercase;letter-spacing:.32em;color:var(--pink)}
-.cd h2{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:140px;line-height:.82;margin:10px 0 0;color:var(--ink);letter-spacing:-.03em}
-.cd h2 em{color:var(--peach)}
-.cd p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:42px;margin:18px 0 0;line-height:1.22}
-.cd .meta{margin-top:auto;padding-top:14px;font-family:'JetBrains Mono';font-weight:800;font-size:30px;text-transform:uppercase;letter-spacing:.22em;color:var(--pink);display:flex;gap:20px;flex-wrap:wrap;border-top:3px solid var(--ink);padding-top:14px}
-.cd.feat{background:var(--ink);color:var(--cream);grid-column:1/-1}
-.cd.feat .k{color:var(--yolk)}
-.cd.feat h2{color:var(--cream);font-size:180px}.cd.feat h2 em{color:var(--yolk)}
-.cd.feat p{color:var(--cream);opacity:.92}
-.cd.feat .meta{color:var(--yolk);border-color:var(--yolk)}
-/* sked */
-.sked{position:absolute;top:1840px;left:60px;right:60px;height:240px;background:var(--cream);border:5px solid var(--ink);padding:20px 32px;z-index:3;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--ink)}
-.sked .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px solid var(--ink);padding-bottom:8px}
-.sked .hdr h3{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:80px;color:var(--ink);margin:0}
-.sked .hdr h3 em{color:var(--peach)}
-.sked .hdr .d{font-family:'JetBrains Mono';font-weight:800;font-size:32px;color:var(--ink);letter-spacing:.22em;text-transform:uppercase;opacity:.85}
-.sked ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
-.sked li{display:flex;flex-direction:column;justify-content:center;border-left:5px solid var(--peach);padding-left:18px}
-.sked li .d{font-family:'JetBrains Mono';font-weight:800;font-size:32px;color:var(--pink);letter-spacing:.26em;text-transform:uppercase}
-.sked li .e{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:58px;color:var(--ink);line-height:1;margin-top:6px}
-.sked li .e em{color:var(--peach)}
-.sked li .w{font-family:'JetBrains Mono';font-weight:600;font-size:28px;color:var(--ink);margin-top:6px;text-transform:uppercase;letter-spacing:.18em;opacity:.85}</style></head><body>
+<!-- HS EASTER/SPRING v2 — "SPRING BREAK · DAWN HORIZON" CLEAN flagship. ONE dominant headline +
+     a giant countdown, three simple event chips, generous negative space. Light dawn-gradient sky
+     with a low sun glow, rolling-hill band, drifting blossom petals + soft bokeh. Every text =
+     data-field, crest = data-imgslot, ALL color via canonical brand tokens (school brand re-skins
+     it). Auto-fit, portrait+landscape, bridge preserved.
+     Deliberately low-text: NO body paragraphs, NO dense schedule, NO ticker. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Spring Break · HS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;--scale:1;
+  --brand:#e0607a;--brand2:#7a2e44;--accent:#f2a83a;--accent2:#4fae6b;
+  --ink:#3a2336;--bg:#fdeede;--pos:#4fae6b;--neg:#e0607a;
+  --f-display:'Bebas Neue';--f-body:'Fraunces';--f-mono:'JetBrains Mono';
+  --cream:#fff7ec;--mute:#9a7d86;
+  /* clean flagship: few elements, big type. everything >=60px on the 3840 stage. */
+  --t-school:calc(96px*var(--scale));--t-date:calc(64px*var(--scale));
+  --t-eyebrow:calc(72px*var(--scale));--t-hero:calc(560px*var(--scale));--t-sub:calc(84px*var(--scale));
+  --t-cdnum:calc(600px*var(--scale));--t-cdlabel:calc(66px*var(--scale));
+  --t-chipt:calc(104px*var(--scale));--t-chipm:calc(62px*var(--scale));--t-chipi:calc(132px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#1a1016;color:var(--ink);font-family:var(--f-body),serif}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;
+  background:radial-gradient(1400px 1000px at 78% 8%,color-mix(in srgb,var(--accent) 60%,#fff) 0%,transparent 58%),linear-gradient(178deg,color-mix(in srgb,var(--accent) 24%,var(--cream)) 0%,var(--cream) 30%,color-mix(in srgb,var(--brand) 22%,var(--cream)) 78%,color-mix(in srgb,var(--accent2) 30%,var(--cream)) 100%)}
+
+.decor{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden}
+.sun{position:absolute;top:-160px;right:240px;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 85%,#fff),color-mix(in srgb,var(--accent) 55%,transparent) 55%,transparent 72%);filter:blur(2px)}
+.hills{position:absolute;left:-4%;right:-4%;bottom:0;height:560px;z-index:1}
+.hills i{position:absolute;bottom:0;border-radius:50% 50% 0 0/100% 100% 0 0}
+.hills .h1{left:-6%;width:64%;height:440px;background:color-mix(in srgb,var(--accent2) 60%,#2a6e44);opacity:.9}
+.hills .h2{right:-8%;width:70%;height:350px;background:color-mix(in srgb,var(--accent2) 78%,#3a8a55);opacity:.92}
+.hills .h3{left:24%;width:56%;height:270px;background:color-mix(in srgb,var(--accent2) 90%,#56b06e)}
+.petal{position:absolute;width:30px;height:23px;background:color-mix(in srgb,var(--brand) 72%,#fff);border-radius:60% 0 60% 0;opacity:.85;animation:drift 9s linear infinite;z-index:2}
+@keyframes drift{0%{transform:translate(0,-120px) rotate(0)}100%{transform:translate(160px,2400px) rotate(360deg)}}
+.bokeh i{position:absolute;border-radius:50%;background:radial-gradient(circle,#fff,transparent 70%);opacity:.5;animation:pulse 6s ease-in-out infinite;z-index:1}
+@keyframes pulse{0%,100%{opacity:.25;transform:scale(1)}50%{opacity:.6;transform:scale(1.25)}}
+
+.wrap{position:relative;z-index:7;width:100%;height:100%;display:flex;flex-direction:column;padding:150px 200px 160px}
+
+/* slim masthead */
+.mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:40px}
+.mast .school{display:flex;align-items:center;gap:30px;min-width:0}
+.mast .crest{width:120px;height:120px;border-radius:50%;border:3px solid var(--brand);background:linear-gradient(135deg,var(--brand),var(--accent2));background-size:cover;background-position:center;flex:none;display:grid;place-items:center;font-family:var(--f-display);font-size:calc(66px*var(--scale));color:#fff;overflow:hidden}
+.mast .crest .ph{line-height:1}
+.mast .crest.has-img{border-color:var(--accent)}.mast .crest.has-img .ph{display:none}
+.mast .school .nm{font-family:var(--f-display);font-size:var(--t-school);color:var(--ink);letter-spacing:.04em;line-height:1;white-space:nowrap}
+.mast .school .nm em{color:var(--brand);font-style:normal}
+.mast .date{font-family:var(--f-mono);font-weight:800;font-size:var(--t-date);letter-spacing:.2em;color:var(--brand2);text-transform:uppercase;white-space:nowrap}
+
+/* hero takes the big middle: headline + one line, with the countdown beside it */
+.hero{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:130px}
+.hero .l{min-width:0}
+.hero .eyebrow{font-family:var(--f-mono);font-weight:800;font-size:var(--t-eyebrow);letter-spacing:.3em;color:var(--brand2);text-transform:uppercase;white-space:nowrap}
+.hero h1{font-family:var(--f-display);font-size:var(--t-hero);line-height:.8;color:var(--brand);margin:24px 0 0;letter-spacing:.01em;text-shadow:14px 14px 0 color-mix(in srgb,var(--brand) 26%,transparent),28px 28px 0 color-mix(in srgb,var(--accent2) 30%,transparent)}
+.hero h1 em{color:var(--accent2);font-style:italic;text-shadow:14px 14px 0 color-mix(in srgb,var(--accent) 34%,transparent)}
+.hero .sub{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-sub);color:var(--brand2);margin-top:34px;line-height:1.14;max-width:1850px;opacity:.95}
+.cd{flex:none;text-align:center}
+.cd .v{font-family:var(--f-display);font-size:var(--t-cdnum);line-height:.74;color:var(--ink);font-variant-numeric:tabular-nums;text-shadow:14px 14px 0 color-mix(in srgb,var(--accent) 60%,transparent)}
+.cd .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-cdlabel);letter-spacing:.18em;text-transform:uppercase;color:var(--brand);margin-top:14px;white-space:nowrap}
+
+/* three simple event chips, one row along the bottom */
+.chips{flex:none;display:grid;grid-template-columns:repeat(3,1fr);gap:52px;margin-top:30px}
+.chip{background:rgba(255,255,255,.7);border:2px solid color-mix(in srgb,var(--brand) 55%,transparent);border-radius:30px;padding:46px 50px;display:flex;flex-direction:column;gap:16px;min-width:0;box-shadow:0 18px 44px rgba(120,60,80,.12)}
+.chip.b2{border-color:color-mix(in srgb,var(--accent2) 55%,transparent)}
+.chip.b3{border-color:color-mix(in srgb,var(--accent) 60%,transparent)}
+.chip .icon{font-size:var(--t-chipi);line-height:.9}
+.chip .t{font-family:var(--f-display);font-size:var(--t-chipt);color:var(--brand);line-height:.88;letter-spacing:.01em}
+.chip.b2 .t{color:var(--accent2)}.chip.b3 .t{color:var(--ink)}
+.chip .m{font-family:var(--f-mono);font-weight:700;font-size:var(--t-chipm);letter-spacing:.08em;text-transform:uppercase;color:var(--brand2)}
+
+@media (orientation:portrait){
+  .stage[data-orient="port"] .wrap{padding:190px 130px 170px}
+  .stage[data-orient="port"]{--t-hero:calc(380px*var(--scale));--t-cdnum:calc(440px*var(--scale))}
+  .stage[data-orient="port"] .mast{flex-direction:column;align-items:center;text-align:center;gap:22px}
+  .stage[data-orient="port"] .mast .school{justify-content:center}
+  .stage[data-orient="port"] .hero{grid-template-columns:1fr;gap:70px;text-align:center}
+  .stage[data-orient="port"] .hero .sub{margin-left:auto;margin-right:auto}
+  .stage[data-orient="port"] .chips{grid-template-columns:1fr;gap:40px}
+}
+</style></head><body>
 <script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-easter-v1"}/*EDITMODE-END*/;</script>
-<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
-<div class="shapes"><div class="s s4"></div><div class="s s1"></div><div class="s s2"></div><div class="s s3"></div></div>
-<div class="mast" data-widget="school">
-<div class="name" data-field="school.name">Banner High</div>
-<div class="sub" data-field="school.sub">spring issue · vol XV</div>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+
+<div class="decor">
+  <div class="sun"></div>
+  <div class="hills"><i class="h1"></i><i class="h2"></i><i class="h3"></i></div>
+  <div class="bokeh" id="bokeh"></div>
+  <div id="petals"></div>
 </div>
-<div class="head" data-widget="headline">
-<div class="kicker" data-field="headline.kicker">★ spring break · march 28 → april 5 ★</div>
-<h1><span data-field="headline.t1">Out </span><em data-field="headline.t2">of </em><span class="alt" data-field="headline.t3">office.</span></h1>
-<div class="sub" data-field="headline.sub">Nine days off — return Monday April 6. AP review packets posted to Schoology Friday. SAT prep continues virtually. Drive safe.</div>
+
+<div class="wrap">
+  <header class="mast" data-widget="masthead">
+    <div class="school"><div class="crest" data-imgslot="school.logo"><span class="ph" data-field="masthead.crest">BH</span></div><div class="nm"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div></div>
+    <div class="date" data-field="masthead.date" data-fit="single" data-fit-max="72">Fri · Mar 27</div>
+  </header>
+
+  <section class="hero">
+    <div class="l" data-widget="headline">
+      <div class="eyebrow" data-field="headline.kicker" data-fit="single" data-fit-max="86">★ Mar 28 – Apr 5</div>
+      <h1 data-fit="single" data-fit-min="200" data-fit-max="580"><span data-field="headline.t1">Spring </span><em data-field="headline.t2">Break</em></h1>
+      <div class="sub" data-field="headline.sub" data-fit data-fit-max="96">Rest up, Bobcats — back Monday April 6.</div>
+    </div>
+    <div class="cd" data-widget="countdown">
+      <div class="v" data-field="countdown.v" data-countdown-to="Mar 28" data-demo="9">9</div>
+      <div class="k" data-field="countdown.k" data-fit="single" data-fit-max="74">days off</div>
+    </div>
+  </section>
+
+  <div class="chips">
+    <div class="chip" data-widget="c0"><div class="icon" data-field="c0.icon">🎒</div><div class="t" data-field="c0.t" data-fit="single" data-fit-max="116">Last Day</div><div class="m" data-field="c0.m" data-fit="single" data-fit-max="70">Fri · Out 3:15</div></div>
+    <div class="chip b2" data-widget="c1"><div class="icon" data-field="c1.icon">📚</div><div class="t" data-field="c1.t" data-fit="single" data-fit-max="116">AP Review</div><div class="m" data-field="c1.m" data-fit="single" data-fit-max="70">Schoology · Fri 4PM</div></div>
+    <div class="chip b3" data-widget="c2"><div class="icon" data-field="c2.icon">🌷</div><div class="t" data-field="c2.t" data-fit="single" data-fit-max="116">We're Back</div><div class="m" data-field="c2.m" data-fit="single" data-fit-max="70">Mon Apr 6 · 8:05</div></div>
+  </div>
 </div>
-<div class="grid">
-<div class="cd feat" data-widget="break"><div class="k" data-field="break.k">★ closure</div>
-<h2><span data-field="break.t1">9 </span><em data-field="break.t2">days off.</em></h2>
-<p data-field="break.p">School closed Mar 28–Apr 5. Office staffed Mon–Wed for transcript pickup. Custodial/grounds on full week — keep the lot south clear.</p>
-<div class="meta"><span data-field="break.m1">Sat 3/28 — Sun 4/5</span><span data-field="break.m2">return Mon 4/6</span></div></div>
-<div class="cd" data-widget="ap"><div class="k" data-field="ap.k">★ ap review</div>
-<h2><span data-field="ap.t1">38 </span><em data-field="ap.t2">days.</em></h2>
-<p data-field="ap.p">AP exams begin May 3. Review packets drop Friday on Schoology. Optional study sessions Tuesday + Thursday over break — virtual.</p>
-<div class="meta"><span data-field="ap.m1">virtual · 10am tue/thu</span></div></div>
-<div class="cd" data-widget="prom"><div class="k" data-field="prom.k">★ prom</div>
-<h2 data-field="prom.t">May 16.</h2>
-<p data-field="prom.p">Tickets go on sale April 8 for $85. Theme reveal at the post-break assembly. Senior gallery wall in the commons opens that week.</p>
-<div class="meta"><span data-field="prom.m1">tickets · Apr 8</span></div></div>
-</div>
-<div class="sked" data-widget="sked">
-<div class="hdr"><h3><span data-field="sked.h1">★ pre-break </span><em data-field="sked.h2">week</em></h3><div class="d" data-field="sked.day">Mon 3/23 — Fri 3/27</div></div>
-<ul>
-<li data-widget="sked.0"><div class="d" data-field="sked.0.d">TUE</div><div class="e"><span data-field="sked.0.e1">Senior </span><em data-field="sked.0.e2">photos</em></div><div class="w" data-field="sked.0.w">commons · all day</div></li>
-<li data-widget="sked.1"><div class="d" data-field="sked.1.d">WED</div><div class="e"><span data-field="sked.1.e1">Spring </span><em data-field="sked.1.e2">play</em></div><div class="w" data-field="sked.1.w">aud · 7pm · $5</div></li>
-<li data-widget="sked.2"><div class="d" data-field="sked.2.d">THU</div><div class="e"><span data-field="sked.2.e1">Spirit </span><em data-field="sked.2.e2">rally</em></div><div class="w" data-field="sked.2.w">gym · 1pm</div></li>
-<li data-widget="sked.3"><div class="d" data-field="sked.3.d">FRI</div><div class="e"><span data-field="sked.3.e1">Out </span><em data-field="sked.3.e2">at 3:15</em></div><div class="w" data-field="sked.3.w">break begins · drive safe</div></li>
-</ul>
+
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#fdeede</span><span data-field="theme.ink">#3a2336</span>
+  <span data-field="theme.brand">#e0607a</span><span data-field="theme.brand2">#7a2e44</span>
+  <span data-field="theme.accent">#f2a83a</span><span data-field="theme.accent2">#4fae6b</span>
+  <span data-field="theme.pos">#4fae6b</span><span data-field="theme.neg">#e0607a</span>
+  <span data-field="theme.fDisplay">Bebas Neue</span><span data-field="theme.fBody">Fraunces</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
 </div>
 </div></div></div>
-<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var BK=document.getElementById('bokeh');if(BK){for(var k2=0;k2<22;k2++){var d=document.createElement('i');var sz=18+((k2*13)%70);d.style.width=sz+'px';d.style.height=sz+'px';d.style.left=((k2*53)%100)+'%';d.style.top=((k2*31)%60)+'%';d.style.animationDelay=((k2*0.5)%6)+'s';BK.appendChild(d);}}
+  var PE=document.getElementById('petals');if(PE){for(var m=0;m<18;m++){var pt=document.createElement('div');pt.className='petal';pt.style.left=((m*47)%100)+'%';pt.style.top=(-((m*123)%900))+'px';pt.style.animationDelay=((m*0.6)%9)+'s';pt.style.animationDuration=(7+(m%5))+'s';pt.style.transform='scale('+(0.7+(m%4)/5)+')';PE.appendChild(pt);}}
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||60),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
+  var DMON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  function days(){document.querySelectorAll('[data-countdown-to]').forEach(function(el){var dm=el.getAttribute('data-demo');if(dm!=null){el.textContent=(''+ +dm);return;}var t=el.getAttribute('data-countdown-to').trim().toLowerCase().match(/([a-z]+)\s*(\d{1,2})/);if(!t||!(t[1].slice(0,3) in DMON))return;var now=new Date();now.setHours(0,0,0,0);var y=now.getFullYear(),target=new Date(y,DMON[t[1].slice(0,3)],+t[2]);if(target<now)target=new Date(y+1,DMON[t[1].slice(0,3)],+t[2]);var n=Math.round((target-now)/86400000);el.textContent=''+n;});}
+  days();setInterval(days,3600000);
+})();
+</script>
+
 <script id="holiday-bridge">(function(){function a(){var s=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-w'),10)||3840,h=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-h'),10)||2160,c=Math.min(window.innerWidth/s,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',c)}a();window.addEventListener('resize',a);function r(){var n=document.querySelectorAll('[data-field]'),s={},f=[];n.forEach(function(e){var k=e.getAttribute('data-field');if(!k||s[k])return;s[k]=1;var t=(e.textContent||'').trim();f.push({key:k,defaultText:t,multiline:/\n/.test(t)||t.length>80||e.tagName==='P'})});try{window.parent.postMessage({type:'holiday:ready',fields:f},window.location.origin)}catch(e){}}if(document.readyState==='complete'||document.readyState==='interactive')r();else document.addEventListener('DOMContentLoaded',r);document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document.body){if(n.nodeType===1&&n.hasAttribute&&n.hasAttribute('data-field')){try{window.parent.postMessage({type:'holiday:fieldClicked',key:n.getAttribute('data-field')},window.location.origin)}catch(e){}return}n=n.parentNode}});window.addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='holiday:setField'){var k=String(d.key||'');if(!k)return;var n=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\"')+'"]'),v=String(d.value==null?'':d.value);n.forEach(function(e){e.textContent=v})}})})();</script>
 <script src="_style-bridge.js?v=20260509"></script></body></html>

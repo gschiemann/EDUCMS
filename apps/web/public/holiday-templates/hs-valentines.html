@@ -1,94 +1,156 @@
 <!doctype html>
-<!-- HS VALENTINES — risograph indie zine, deadpan teen humor -->
-<html><head><meta charset="utf-8"/><title>Valentine's · HS Lobby</title>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,900&family=JetBrains+Mono:wght@500;700;800&family=Bebas+Neue&display=swap" rel="stylesheet">
-<style>:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--pink:#ff6a98;--pink2:#ffb0c8;--red:#e0203a;--cream:#fff0e8;--ink:#1c0a18;--blue:#1c40c8;--peach:#ffd0b0}
-html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;font-family:'Fraunces',serif;color:var(--ink)}
-.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
-.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--cream);box-shadow:0 80px 200px rgba(0,0,0,.5)}
-.stage::before{content:'';position:absolute;inset:0;background:radial-gradient(rgba(255,106,152,.18) 1.4px,transparent 1.5px);background-size:8px 8px;mix-blend-mode:multiply;pointer-events:none}
-/* big spinning hearts */
-.heart{position:absolute;width:200px;height:200px;background:var(--pink);transform:rotate(-45deg);z-index:1}
-.heart::before,.heart::after{content:'';position:absolute;width:200px;height:200px;background:var(--pink);border-radius:50%}
-.heart::before{top:-100px;left:0}.heart::after{top:0;left:100px}
-.h1{top:160px;left:40px;width:280px;height:280px;background:var(--red)}.h1::before,.h1::after{width:280px;height:280px;background:var(--red)}.h1::before{top:-140px}.h1::after{left:140px}
-.h2{bottom:160px;right:80px;width:260px;height:260px;background:var(--blue);transform:rotate(-30deg)}.h2::before,.h2::after{width:260px;height:260px;background:var(--blue)}.h2::before{top:-130px}.h2::after{left:130px}
-.h3{top:280px;right:200px;width:160px;height:160px;background:var(--pink);transform:rotate(-60deg)}.h3::before,.h3::after{width:160px;height:160px;background:var(--pink)}.h3::before{top:-80px}.h3::after{left:80px}
-/* mast */
-.mast{position:absolute;top:60px;left:80px;right:80px;height:170px;display:flex;justify-content:space-between;align-items:center;border-bottom:6px solid var(--ink);padding-bottom:24px;z-index:5}
-.brand .name{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:108px;color:var(--ink);line-height:.85;letter-spacing:-.03em}
-.brand .sub{font-family:'JetBrains Mono';font-weight:800;font-size:36px;color:var(--red);text-transform:uppercase;letter-spacing:.32em;margin-top:10px}
-.chips{display:flex;gap:36px}.chip{text-align:right}.chip .k{font-family:'JetBrains Mono';font-weight:800;font-size:30px;color:var(--ink);letter-spacing:.28em;text-transform:uppercase;opacity:.7}
-.chip .v{font-family:'Bebas Neue';font-size:80px;color:var(--ink);line-height:1;margin-top:6px}
-/* head */
-.head{position:absolute;top:260px;left:80px;right:80px;z-index:4}
-.head .kicker{font-family:'JetBrains Mono';font-weight:800;font-size:42px;letter-spacing:.36em;color:var(--blue);text-transform:uppercase;margin-bottom:18px}
-.head h1{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:420px;line-height:.82;color:var(--ink);margin:0;letter-spacing:-.04em;text-shadow:14px 14px 0 var(--pink),28px 28px 0 var(--blue)}
-.head h1 em{color:var(--red);font-style:italic;text-shadow:14px 14px 0 var(--pink)}
-.head .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:72px;color:var(--ink);margin-top:34px;max-width:2400px;line-height:1.22}
-/* cards */
-.grid{position:absolute;top:1240px;left:80px;right:80px;height:560px;display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:36px;z-index:3}
-.cd{padding:32px 36px;border:5px solid var(--ink);display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:14px 14px 0 var(--ink)}
-.cd.a{background:var(--peach)}.cd.b{background:var(--red);color:var(--cream)}.cd.c{background:var(--blue);color:var(--cream)}
-.cd .k{font-family:'JetBrains Mono';font-weight:800;font-size:34px;text-transform:uppercase;letter-spacing:.32em}
-.cd.a .k{color:var(--red)}.cd.b .k{color:var(--cream);opacity:.85}.cd.c .k{color:var(--cream);opacity:.85}
-.cd h2{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:128px;line-height:.82;margin:10px 0 0;letter-spacing:-.03em}
-.cd.a h2{color:var(--ink)}.cd.a h2 em{color:var(--red)}
-.cd.b h2{color:var(--cream);font-size:168px}.cd.b h2 em{color:#ffe0e8}
-.cd.c h2{color:var(--cream)}.cd.c h2 em{color:var(--pink2)}
-.cd p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:42px;margin:18px 0 0;line-height:1.22}
-.cd .meta{margin-top:auto;padding-top:18px;font-family:'JetBrains Mono';font-weight:800;font-size:30px;text-transform:uppercase;letter-spacing:.22em;display:flex;gap:20px;flex-wrap:wrap}
-.cd.a .meta{color:var(--red)}.cd.b .meta,.cd.c .meta{color:var(--cream);opacity:.9}
-/* sked */
-.sked{position:absolute;top:1840px;left:80px;right:80px;height:240px;background:var(--ink);color:var(--cream);padding:20px 32px;z-index:3;display:flex;flex-direction:column}
-.sked .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px solid var(--pink);padding-bottom:8px}
-.sked .hdr h3{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:80px;color:var(--pink);margin:0}
-.sked .hdr .d{font-family:'JetBrains Mono';font-weight:800;font-size:32px;color:var(--cream);letter-spacing:.22em;text-transform:uppercase}
-.sked ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
-.sked li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid var(--pink);padding-left:18px}
-.sked li .d{font-family:'JetBrains Mono';font-weight:800;font-size:32px;color:var(--pink);letter-spacing:.26em;text-transform:uppercase}
-.sked li .e{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:54px;color:var(--cream);line-height:1;margin-top:6px}
-.sked li .e em{color:var(--pink)}
-.sked li .w{font-family:'JetBrains Mono';font-weight:600;font-size:28px;color:var(--cream);margin-top:6px;text-transform:uppercase;letter-spacing:.18em;opacity:.85}</style></head><body>
-<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-valentines-v1"}/*EDITMODE-END*/;</script>
-<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
-<div class="heart h1"></div><div class="heart h2"></div><div class="heart h3"></div>
-<div class="mast">
-<div class="brand" data-widget="school"><div class="name" data-field="school.name">Banner High</div><div class="sub" data-field="school.sub">cupid issue · vol XIII</div></div>
-<div class="chips">
-<div class="chip" data-widget="clock"><div class="k" data-field="clock.label">period</div><div class="v" data-field="clock.time">10:14</div></div>
-<div class="chip" data-widget="countdown"><div class="k" data-field="countdown.label">candygram cutoff</div><div class="v" data-field="countdown.value">02d</div></div>
+<!-- HS VALENTINES v2 — "SWEETHEART" CLEAN flagship. ONE dominant headline + a giant
+     countdown, three simple event chips, generous negative space. Velvet burgundy + gold ground.
+     Every text = data-field, crest = data-imgslot, ALL color via canonical brand tokens
+     (school brand re-skins it). Auto-fit, portrait+landscape, bridge preserved.
+     Deliberately low-text: NO body paragraphs, NO dense schedule, NO ticker. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Valentine's · HS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;--scale:1;
+  --brand:#d4445f;--brand2:#5a0f24;--accent:#e8b94a;--accent2:#a8204a;
+  --ink:#fff0f3;--bg:#2a0612;--pos:#4fae6b;--neg:#d4445f;
+  --f-display:'Bebas Neue';--f-body:'Fraunces';--f-mono:'JetBrains Mono';
+  --cream:#fff4ef;--mute:#c89aa6;
+  /* clean flagship: few elements, big type. everything >=60px on the 3840 stage. */
+  --t-school:calc(96px*var(--scale));--t-date:calc(64px*var(--scale));
+  --t-eyebrow:calc(72px*var(--scale));--t-hero:calc(560px*var(--scale));--t-sub:calc(84px*var(--scale));
+  --t-cdnum:calc(600px*var(--scale));--t-cdlabel:calc(66px*var(--scale));
+  --t-chipt:calc(104px*var(--scale));--t-chipm:calc(62px*var(--scale));--t-chipi:calc(132px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#150208;color:var(--ink);font-family:var(--f-body),serif}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;
+  background:radial-gradient(1600px 1200px at 82% 14%,color-mix(in srgb,var(--accent) 38%,var(--brand2)) 0%,transparent 56%),radial-gradient(2000px 1600px at 12% 124%,color-mix(in srgb,var(--brand) 40%,var(--brand2)),transparent 64%),linear-gradient(168deg,color-mix(in srgb,var(--brand) 28%,var(--bg)) 0%,var(--bg) 44%,var(--brand2) 100%)}
+
+.decor{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden}
+.scan{position:absolute;top:0;right:0;bottom:0;left:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 6px);z-index:6}
+.glow{position:absolute;top:-200px;right:240px;width:720px;height:720px;border-radius:50%;
+  background:radial-gradient(circle,color-mix(in srgb,var(--accent) 56%,transparent) 0%,transparent 66%);filter:blur(10px)}
+.sheen{position:absolute;left:-10%;right:-10%;bottom:-6%;height:48%;background:linear-gradient(0deg,color-mix(in srgb,var(--brand) 40%,transparent),transparent);filter:blur(30px)}
+.heart{position:absolute;width:120px;height:120px;opacity:.42;filter:drop-shadow(0 0 22px color-mix(in srgb,var(--brand) 60%,transparent));animation:rise 14s linear infinite}
+.heart::before,.heart::after{content:'';position:absolute;top:0;width:60px;height:96px;background:color-mix(in srgb,var(--brand) 78%,#fff);border-radius:60px 60px 0 0}
+.heart::before{left:60px;transform:rotate(-45deg);transform-origin:0 100%}
+.heart::after{right:60px;transform:rotate(45deg);transform-origin:100% 100%}
+.heart.g::before,.heart.g::after{background:color-mix(in srgb,var(--accent) 72%,#fff)}
+@keyframes rise{0%{transform:translateY(2300px) rotate(-8deg) scale(var(--s,1));opacity:0}10%{opacity:.5}90%{opacity:.34}100%{transform:translateY(-260px) rotate(8deg) scale(var(--s,1));opacity:0}}
+.spark i{position:absolute;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 90%,#fff),transparent 70%);opacity:.5;animation:emb 6s ease-in-out infinite}
+@keyframes emb{0%,100%{opacity:.16;transform:translateY(0) scale(1)}50%{opacity:.55;transform:translateY(-40px) scale(1.3)}}
+.vig{position:absolute;top:0;right:0;bottom:0;left:0;box-shadow:inset 0 0 520px rgba(8,1,4,.78);z-index:5}
+
+.wrap{position:relative;z-index:7;width:100%;height:100%;display:flex;flex-direction:column;padding:150px 200px 160px}
+
+/* slim masthead */
+.mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:40px}
+.mast .school{display:flex;align-items:center;gap:30px;min-width:0}
+.mast .crest{width:120px;height:120px;border-radius:50%;border:3px solid var(--brand);background:linear-gradient(135deg,var(--brand),var(--accent));background-size:cover;background-position:center;flex:none;display:grid;place-items:center;font-family:var(--f-display);font-size:calc(66px*var(--scale));color:#1a0208;overflow:hidden}
+.mast .crest .ph{line-height:1}
+.mast .crest.has-img{border-color:var(--accent)}.mast .crest.has-img .ph{display:none}
+.mast .school .nm{font-family:var(--f-display);font-size:var(--t-school);color:var(--ink);letter-spacing:.04em;line-height:1;white-space:nowrap}
+.mast .school .nm em{color:var(--brand);font-style:normal}
+.mast .date{font-family:var(--f-mono);font-weight:800;font-size:var(--t-date);letter-spacing:.2em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+
+/* hero takes the big middle: headline + one line, with the countdown beside it */
+.hero{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:130px}
+.hero .l{min-width:0}
+.hero .eyebrow{font-family:var(--f-mono);font-weight:800;font-size:var(--t-eyebrow);letter-spacing:.3em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+.hero h1{font-family:var(--f-display);font-size:var(--t-hero);line-height:.8;color:var(--brand);margin:24px 0 0;letter-spacing:.01em;text-shadow:16px 16px 0 var(--brand2),34px 34px 0 var(--accent2)}
+.hero h1 em{color:var(--accent);font-style:italic;text-shadow:16px 16px 0 var(--brand2)}
+.hero .sub{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-sub);color:var(--ink);margin-top:34px;line-height:1.14;max-width:1850px;opacity:.95}
+.cd{flex:none;text-align:center}
+.cd .v{font-family:var(--f-display);font-size:var(--t-cdnum);line-height:.74;color:var(--ink);font-variant-numeric:tabular-nums;text-shadow:0 0 90px color-mix(in srgb,var(--accent) 55%,transparent)}
+.cd .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-cdlabel);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-top:14px;white-space:nowrap}
+
+/* three simple event chips, one row along the bottom */
+.chips{flex:none;display:grid;grid-template-columns:repeat(3,1fr);gap:52px;margin-top:30px}
+.chip{background:color-mix(in srgb,var(--brand2) 52%,transparent);border:2px solid color-mix(in srgb,var(--brand) 55%,transparent);border-radius:30px;padding:46px 50px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.chip.b2{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+.chip .icon{font-size:var(--t-chipi);line-height:.9}
+.chip .t{font-family:var(--f-display);font-size:var(--t-chipt);color:var(--brand);line-height:.88;letter-spacing:.01em}
+.chip.b2 .t{color:var(--accent)}.chip.b3 .t{color:var(--ink)}
+.chip .m{font-family:var(--f-mono);font-weight:700;font-size:var(--t-chipm);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+
+@media (orientation:portrait){
+  .stage[data-orient="port"] .wrap{padding:190px 130px 170px}
+  .stage[data-orient="port"]{--t-hero:calc(380px*var(--scale));--t-cdnum:calc(440px*var(--scale))}
+  .stage[data-orient="port"] .mast{flex-direction:column;align-items:center;text-align:center;gap:22px}
+  .stage[data-orient="port"] .mast .school{justify-content:center}
+  .stage[data-orient="port"] .hero{grid-template-columns:1fr;gap:70px;text-align:center}
+  .stage[data-orient="port"] .hero .sub{margin-left:auto;margin-right:auto}
+  .stage[data-orient="port"] .chips{grid-template-columns:1fr;gap:40px}
+}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-valentines-v2"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+
+<div class="decor">
+  <div class="glow"></div>
+  <div class="sheen"></div>
+  <div id="hearts"></div>
+  <div class="spark" id="spark"></div>
+  <div class="scan"></div>
+  <div class="vig"></div>
 </div>
+
+<div class="wrap">
+  <header class="mast" data-widget="masthead">
+    <div class="school"><div class="crest" data-imgslot="school.logo"><span class="ph" data-field="masthead.crest">BH</span></div><div class="nm"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div></div>
+    <div class="date" data-field="masthead.date" data-fit="single" data-fit-max="72">Sat · Feb 15</div>
+  </header>
+
+  <section class="hero">
+    <div class="l" data-widget="headline">
+      <div class="eyebrow" data-field="headline.kicker" data-fit="single" data-fit-max="86">♥ Sweetheart Week</div>
+      <h1 data-fit="single" data-fit-min="200" data-fit-max="600"><span data-field="headline.t1">Happy </span><em data-field="headline.t2">Valentine's</em></h1>
+      <div class="sub" data-field="headline.sub" data-fit data-fit-max="96">Candygrams, the Sweetheart Dance, and Singles Night in the library.</div>
+    </div>
+    <div class="cd" data-widget="countdown">
+      <div class="v" data-field="countdown.v" data-countdown-to="Feb 15" data-demo="5">5</div>
+      <div class="k" data-field="countdown.k" data-fit="single" data-fit-max="74">days to the dance</div>
+    </div>
+  </section>
+
+  <div class="chips">
+    <div class="chip" data-widget="c0"><div class="icon" data-field="c0.icon">💌</div><div class="t" data-field="c0.t" data-fit="single" data-fit-max="116">Candygrams</div><div class="m" data-field="c0.m" data-fit="single" data-fit-max="70">$2 · deadline Thu 2/13</div></div>
+    <div class="chip b2" data-widget="c1"><div class="icon" data-field="c1.icon">💃</div><div class="t" data-field="c1.t" data-fit="single" data-fit-max="116">Sweetheart Dance</div><div class="m" data-field="c1.m" data-fit="single" data-fit-max="70">Sat · Gym · 8 PM</div></div>
+    <div class="chip b3" data-widget="c2"><div class="icon" data-field="c2.icon">🍕</div><div class="t" data-field="c2.t" data-fit="single" data-fit-max="116">Singles Night</div><div class="m" data-field="c2.m" data-fit="single" data-fit-max="70">Fri · Library · 3:30</div></div>
+  </div>
 </div>
-<div class="head" data-widget="headline">
-<div class="kicker" data-field="headline.kicker">★ asb candygrams · ½ off through wed ★</div>
-<h1><span data-field="headline.t1">Be </span><em data-field="headline.t2">mine?</em></h1>
-<div class="sub" data-field="headline.sub">Anonymous candygrams delivered Friday during 4th period — $2 each at the ASB window. Sweetheart dance Saturday 8pm in the gym, no theme this year, just vibes.</div>
-</div>
-<div class="grid">
-<div class="cd a" data-widget="grams"><div class="k" data-field="grams.k">★ candygrams</div>
-<h2><span data-field="grams.t1">$2 </span><em data-field="grams.t2">each.</em></h2>
-<p data-field="grams.p">Anonymous or signed. ASB window during lunches. Half-price three-pack through Wednesday. Delivered 4th period Friday — yes even to the office.</p>
-<div class="meta"><span data-field="grams.m1">deadline · Thu 2/13 3pm</span></div></div>
-<div class="cd b" data-widget="dance"><div class="k" data-field="dance.k">★ sweetheart dance</div>
-<h2><span data-field="dance.t1">Sat </span><em data-field="dance.t2">8pm.</em></h2>
-<p data-field="dance.p">Gym, no theme, real DJ, $10 at the door — $8 with a candygram receipt. Single, paired, group of friends, all welcome. Last entry 10pm.</p>
-<div class="meta"><span data-field="dance.m1">Sat 2/15 · 8–11pm</span><span data-field="dance.m2">main gym</span></div></div>
-<div class="cd c" data-widget="single"><div class="k" data-field="single.k">★ singles awareness</div>
-<h2 data-field="single.t">Pizza & a movie.</h2>
-<p data-field="single.p">Friday after school in the library — Spider-Verse, free pizza, ASB hosting. Open to anyone single, partnered, or just hungry.</p>
-<div class="meta"><span data-field="single.m1">Fri 2/14 · 3:30 · library</span></div></div>
-</div>
-<div class="sked" data-widget="sked">
-<div class="hdr"><h3 data-field="sked.h">★ heart week</h3><div class="d" data-field="sked.day">Mon 2/10 — Sat 2/15</div></div>
-<ul>
-<li data-widget="sked.0"><div class="d" data-field="sked.0.d">MON</div><div class="e"><span data-field="sked.0.e1">Pink </span><em data-field="sked.0.e2">day</em></div><div class="w" data-field="sked.0.w">spirit · all day</div></li>
-<li data-widget="sked.1"><div class="d" data-field="sked.1.d">WED</div><div class="e"><span data-field="sked.1.e1">Gram </span><em data-field="sked.1.e2">deadline</em></div><div class="w" data-field="sked.1.w">asb window · 3pm</div></li>
-<li data-widget="sked.2"><div class="d" data-field="sked.2.d">FRI</div><div class="e"><span data-field="sked.2.e1">Pizza </span><em data-field="sked.2.e2">+ movie</em></div><div class="w" data-field="sked.2.w">library · 3:30 free</div></li>
-<li data-widget="sked.3"><div class="d" data-field="sked.3.d">SAT</div><div class="e"><span data-field="sked.3.e1">Sweetheart </span><em data-field="sked.3.e2">dance</em></div><div class="w" data-field="sked.3.w">gym · 8pm $10</div></li>
-</ul>
+
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#2a0612</span><span data-field="theme.ink">#fff0f3</span>
+  <span data-field="theme.brand">#d4445f</span><span data-field="theme.brand2">#5a0f24</span>
+  <span data-field="theme.accent">#e8b94a</span><span data-field="theme.accent2">#a8204a</span>
+  <span data-field="theme.pos">#4fae6b</span><span data-field="theme.neg">#d4445f</span>
+  <span data-field="theme.fDisplay">Bebas Neue</span><span data-field="theme.fBody">Fraunces</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
 </div>
 </div></div></div>
-<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var HE=document.getElementById('hearts');if(HE){for(var m=0;m<14;m++){var ht=document.createElement('div');ht.className='heart'+((m%3===0)?' g':'');ht.style.left=((m*61)%98)+'%';ht.style.setProperty('--s',(0.5+(m%5)/6).toFixed(2));ht.style.animationDelay=((m*0.95)%14)+'s';ht.style.animationDuration=(12+(m%6))+'s';HE.appendChild(ht);}}
+  var SP=document.getElementById('spark');if(SP){for(var k2=0;k2<20;k2++){var d=document.createElement('i');var sz=8+((k2*11)%24);d.style.width=sz+'px';d.style.height=sz+'px';d.style.left=((k2*53)%100)+'%';d.style.top=(40+((k2*29)%54))+'%';d.style.animationDelay=((k2*0.45)%6)+'s';SP.appendChild(d);}}
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||60),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
+  var DMON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  function days(){document.querySelectorAll('[data-countdown-to]').forEach(function(el){var dm=el.getAttribute('data-demo');if(dm!=null){el.textContent=(''+ +dm);return;}var t=el.getAttribute('data-countdown-to').trim().toLowerCase().match(/([a-z]+)\s*(\d{1,2})/);if(!t||!(t[1].slice(0,3) in DMON))return;var now=new Date();now.setHours(0,0,0,0);var y=now.getFullYear(),target=new Date(y,DMON[t[1].slice(0,3)],+t[2]);if(target<now)target=new Date(y+1,DMON[t[1].slice(0,3)],+t[2]);var n=Math.round((target-now)/86400000);el.textContent=''+n;});}
+  days();setInterval(days,3600000);
+})();
+</script>
+
 <script id="holiday-bridge">(function(){function a(){var s=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-w'),10)||3840,h=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-h'),10)||2160,c=Math.min(window.innerWidth/s,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',c)}a();window.addEventListener('resize',a);function r(){var n=document.querySelectorAll('[data-field]'),s={},f=[];n.forEach(function(e){var k=e.getAttribute('data-field');if(!k||s[k])return;s[k]=1;var t=(e.textContent||'').trim();f.push({key:k,defaultText:t,multiline:/\n/.test(t)||t.length>80||e.tagName==='P'})});try{window.parent.postMessage({type:'holiday:ready',fields:f},window.location.origin)}catch(e){}}if(document.readyState==='complete'||document.readyState==='interactive')r();else document.addEventListener('DOMContentLoaded',r);document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document.body){if(n.nodeType===1&&n.hasAttribute&&n.hasAttribute('data-field')){try{window.parent.postMessage({type:'holiday:fieldClicked',key:n.getAttribute('data-field')},window.location.origin)}catch(e){}return}n=n.parentNode}});window.addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='holiday:setField'){var k=String(d.key||'');if(!k)return;var n=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\"')+'"]'),v=String(d.value==null?'':d.value);n.forEach(function(e){e.textContent=v})}})})();</script>
 <script src="_style-bridge.js?v=20260509"></script></body></html>

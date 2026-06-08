@@ -1,118 +1,156 @@
 <!doctype html>
-<!-- MS HALLOWEEN — graphic horror-zine, costume contest. -->
-<html><head><meta charset="utf-8"/><title>Halloween · MS Lobby</title>
-<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;600;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&family=Creepster&display=swap" rel="stylesheet">
+<!-- MS HALLOWEEN v2 — "AFTER DARK" CLEAN flagship. ONE dominant headline + a giant countdown,
+     three simple event chips, generous negative space. Modern spooky: deep purple→charcoal ground,
+     orange moon glow, toxic-green accents, drifting bats. Every text = data-field, crest =
+     data-imgslot, ALL color via canonical brand tokens (school brand re-skins it). Auto-fit,
+     portrait+landscape, bridge preserved. Deliberately low-text: NO body paragraphs, NO dense
+     schedule, NO ticker, NO more than 3 chips. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Halloween · MS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Creepster&family=Figtree:wght@500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
-:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;
-  --bg:#1a0a14;--bg2:#2a0e1c;--orange:#ff7a18;--orange2:#ffaa3a;--bone:#f4e8d0;--blood:#a01828;--purple:#5a2a78;--toxic:#7aff5a;--ink:#0a0408}
-html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;color:var(--bone);font-family:'Figtree',sans-serif}
-.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;--scale:1;
+  --brand:#ff7a18;--brand2:#7a1010;--accent:#7aff5a;--accent2:#7c3aed;
+  --ink:#f7ecd8;--bg:#160a1e;--pos:#7aff5a;--neg:#ff4d4d;
+  --f-display:'Creepster';--f-body:'Figtree';--f-mono:'JetBrains Mono';
+  --night:#160a1e;--night2:#0a0410;--cream:#f7ecd8;--mute:#c9a8d8;
+  /* clean flagship: few elements, big type. everything >=60px on the 3840 stage. */
+  --t-school:calc(108px*var(--scale));--t-date:calc(64px*var(--scale));
+  --t-eyebrow:calc(72px*var(--scale));--t-hero:calc(560px*var(--scale));--t-sub:calc(84px*var(--scale));
+  --t-cdnum:calc(600px*var(--scale));--t-cdlabel:calc(66px*var(--scale));
+  --t-chipt:calc(104px*var(--scale));--t-chipm:calc(62px*var(--scale));--t-chipi:calc(132px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#0a0410;color:var(--cream);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
 .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
-.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--bg);box-shadow:0 80px 200px rgba(0,0,0,.5)}
-.stage::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,122,24,.04) 1px,transparent 2px),repeating-linear-gradient(0deg,transparent 0 4px,rgba(0,0,0,.18) 4px 5px);background-size:6px 6px,100% 5px;pointer-events:none}
-/* DRIPS */
-.drip{position:absolute;top:0;left:0;right:0;height:60px;background:var(--blood);clip-path:polygon(0 0,100% 0,100% 60%,98% 80%,96% 50%,93% 90%,90% 60%,86% 100%,82% 70%,78% 95%,74% 50%,70% 88%,66% 60%,62% 100%,58% 70%,54% 50%,50% 90%,46% 60%,42% 88%,38% 50%,34% 100%,30% 70%,26% 88%,22% 60%,18% 95%,14% 70%,10% 50%,6% 88%,2% 60%,0 90%);z-index:6}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;
+  background:radial-gradient(900px 900px at 82% 12%,color-mix(in srgb,var(--brand) 70%,#fff) 0%,color-mix(in srgb,var(--brand) 40%,transparent) 30%,transparent 50%),radial-gradient(1300px 1000px at 10% 96%,color-mix(in srgb,var(--accent2) 50%,var(--bg)) 0%,transparent 56%),linear-gradient(165deg,color-mix(in srgb,var(--accent2) 30%,var(--bg)) 0%,var(--bg) 46%,#0a0410 100%)}
 
-.top{position:absolute;top:80px;left:60px;right:60px;height:170px;display:flex;justify-content:space-between;align-items:flex-start;z-index:5;padding-top:60px}
-.brand{display:flex;align-items:center;gap:24px}
-.logo{width:140px;height:140px;background:var(--orange);clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%);display:grid;place-items:center;color:var(--ink);font-family:'Fraunces',serif;font-weight:900;font-size:96px;font-style:italic;line-height:.9;border:6px solid var(--bone);box-shadow:8px 8px 0 var(--blood)}
-.brand .info .name{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:108px;color:var(--bone);line-height:.95;letter-spacing:-.02em}
-.brand .info .sub{font-family:'Figtree';font-weight:700;font-size:40px;color:var(--orange);letter-spacing:.16em;text-transform:uppercase;margin-top:8px}
-.chips{display:flex;gap:16px}
-.chip{background:var(--bone);color:var(--ink);padding:14px 28px;border-radius:6px;min-width:230px;text-align:center;border:4px solid var(--ink);box-shadow:6px 6px 0 var(--orange)}
-.chip .k{font-family:'Figtree';font-weight:800;font-size:32px;color:var(--blood);text-transform:uppercase;letter-spacing:.16em}
-.chip .v{font-family:'Fraunces',serif;font-weight:900;font-size:80px;line-height:1;color:var(--ink);font-style:italic;margin-top:4px}
-.chip.spook{background:var(--blood);color:var(--bone);box-shadow:6px 6px 0 var(--purple)}.chip.spook .k{color:var(--orange2)}.chip.spook .v{color:var(--bone)}
+.decor{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden}
+.scan{position:absolute;top:0;right:0;bottom:0;left:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.02) 0 1px,transparent 1px 6px);z-index:6}
+.moon{position:absolute;top:-40px;right:300px;width:560px;height:560px;border-radius:50%;
+  background:radial-gradient(circle at 38% 35%,#fff 0%,color-mix(in srgb,var(--brand) 60%,#fff3d8) 40%,color-mix(in srgb,var(--brand) 80%,#caa060) 92%);
+  box-shadow:0 0 160px color-mix(in srgb,var(--brand) 55%,transparent),0 0 320px color-mix(in srgb,var(--brand) 32%,transparent)}
+.moon::before{content:'';position:absolute;top:30%;left:25%;width:70px;height:52px;background:rgba(140,70,20,.30);border-radius:50%;box-shadow:108px 36px 0 -16px rgba(140,70,20,.28),52px 100px 0 -8px rgba(140,70,20,.26)}
+.bat{position:absolute;width:140px;height:72px;z-index:1;animation:flap 3s ease-in-out infinite}
+.bat i{position:absolute;top:12px;width:72px;height:46px;background:var(--night2);border-radius:60% 60% 0 60%}
+.bat i.l{left:0;transform:rotate(18deg)}.bat i.r{right:0;transform:scaleX(-1) rotate(18deg)}
+.bat b{position:absolute;left:60px;top:8px;width:28px;height:46px;background:var(--night2);border-radius:50% 50% 40% 40%}
+@keyframes flap{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.55)}}
+.spark i{position:absolute;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 90%,#fff),transparent 70%);opacity:.5;animation:emb 6s ease-in-out infinite}
+@keyframes emb{0%,100%{opacity:.18;transform:translateY(0) scale(1)}50%{opacity:.65;transform:translateY(-44px) scale(1.3)}}
+.vig{position:absolute;top:0;right:0;bottom:0;left:0;box-shadow:inset 0 0 520px rgba(0,0,0,.78);z-index:5}
 
-.hd{position:absolute;top:380px;left:60px;right:60px;z-index:4;text-align:left;padding-left:80px}
-.hd .k{font-family:'Figtree';font-weight:800;font-size:50px;color:var(--toxic);text-transform:uppercase;letter-spacing:.3em;margin-bottom:18px}
-.hd h1{font-family:'Creepster',cursive;font-weight:400;font-size:480px;line-height:.82;color:var(--orange);margin:0;letter-spacing:.01em;text-shadow:14px 14px 0 var(--blood),28px 28px 0 var(--purple)}
-.hd .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:76px;color:var(--bone);margin-top:34px;max-width:2400px;line-height:1.18}
+.wrap{position:relative;z-index:7;width:100%;height:100%;display:flex;flex-direction:column;padding:150px 200px 160px}
 
-/* main row */
-.row{position:absolute;top:1200px;left:60px;right:60px;height:540px;display:grid;grid-template-columns:1.5fr 1.4fr 1fr;gap:40px;z-index:3}
-.cell{background:var(--bone);color:var(--ink);border-radius:12px;padding:34px 40px;position:relative;border:6px solid var(--ink);box-shadow:10px 10px 0 var(--orange);overflow:hidden;display:flex;flex-direction:column}
-.cell.dark{background:var(--ink);color:var(--orange);box-shadow:10px 10px 0 var(--blood);border-color:var(--orange)}
-.cell .k{font-family:'Figtree';font-weight:800;font-size:36px;text-transform:uppercase;letter-spacing:.2em;color:var(--blood)}
-.cell.dark .k{color:var(--toxic)}
-.cell h2{font-family:'Fraunces',serif;font-weight:900;font-size:120px;line-height:.88;margin:10px 0 0;font-style:italic;letter-spacing:-.02em}
-.cell h2 em{font-style:italic;color:var(--orange)}
-.cell.dark h2 em{color:var(--bone)}
-.cell p{font-family:'Figtree';font-weight:600;font-size:42px;margin:18px 0 0;line-height:1.3;color:#3a1a20}
-.cell.dark p{color:var(--bone)}
-.cell .meta{margin-top:auto;padding-top:18px;font-family:'Figtree';font-weight:800;font-size:36px;text-transform:uppercase;letter-spacing:.16em;color:var(--blood);display:flex;gap:24px;flex-wrap:wrap}
-.cell.dark .meta{color:var(--orange2)}
+/* slim masthead */
+.mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:40px}
+.mast .school{display:flex;align-items:center;gap:30px;min-width:0}
+.mast .crest{width:120px;height:120px;clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%);background:linear-gradient(135deg,var(--brand),var(--accent2));background-size:cover;background-position:center;flex:none;display:grid;place-items:center;font-family:var(--f-display);font-size:calc(70px*var(--scale));color:#05030a;overflow:hidden;box-shadow:6px 6px 0 var(--brand2)}
+.mast .crest .ph{line-height:1}
+.mast .crest.has-img .ph{display:none}
+.mast .school .nm{font-family:var(--f-display);font-size:var(--t-school);color:var(--cream);letter-spacing:.02em;line-height:1;white-space:nowrap;text-shadow:0 0 24px color-mix(in srgb,var(--brand) 50%,transparent)}
+.mast .school .nm em{color:var(--brand);font-style:normal}
+.mast .date{font-family:var(--f-mono);font-weight:800;font-size:var(--t-date);letter-spacing:.2em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
 
-/* bottom — schedule strip */
-.events{position:absolute;top:1770px;left:60px;right:60px;height:280px;background:var(--ink);border:6px solid var(--orange);border-radius:8px;padding:24px 32px;z-index:3;display:flex;flex-direction:column;box-shadow:10px 10px 0 var(--blood)}
-.events .hdr{display:flex;justify-content:space-between;align-items:baseline}
-.events .hdr h3{font-family:'Creepster',cursive;font-size:80px;color:var(--orange);margin:0;letter-spacing:.04em}
-.events .hdr .day{font-family:'Figtree';font-weight:800;font-size:36px;color:var(--toxic);text-transform:uppercase;letter-spacing:.2em}
-.events ul{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:18px;flex:1}
-.events li{display:flex;flex-direction:column;justify-content:center;background:var(--bg2);border:3px solid var(--orange);padding:10px 18px;border-radius:6px}
-.events li .d{font-family:'Figtree';font-weight:800;font-size:32px;color:var(--toxic);text-transform:uppercase;letter-spacing:.2em}
-.events li .e{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:50px;color:var(--bone);line-height:1;margin-top:6px}
-.events li .e em{font-style:italic;color:var(--orange)}
-.events li .w{font-family:'Figtree';font-weight:600;font-size:26px;color:var(--orange2);margin-top:6px;text-transform:uppercase;letter-spacing:.16em}
+/* hero takes the big middle: headline + one line, with the countdown beside it */
+.hero{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:130px}
+.hero .l{min-width:0}
+.hero .eyebrow{font-family:var(--f-mono);font-weight:800;font-size:var(--t-eyebrow);letter-spacing:.3em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+.hero h1{font-family:var(--f-display);font-size:var(--t-hero);line-height:.82;color:var(--brand);margin:24px 0 0;letter-spacing:.01em;text-shadow:0 0 50px color-mix(in srgb,var(--brand) 60%,transparent),16px 16px 0 var(--brand2),34px 34px 0 var(--accent2)}
+.hero h1 em{color:var(--accent);font-style:normal;text-shadow:16px 16px 0 var(--brand2)}
+.hero .sub{font-family:var(--f-body);font-weight:700;font-size:var(--t-sub);color:var(--mute);margin-top:34px;line-height:1.14;max-width:1850px;opacity:.95}
+.cd{flex:none;text-align:center}
+.cd .v{font-family:var(--f-display);font-size:var(--t-cdnum);line-height:.74;color:var(--cream);font-variant-numeric:tabular-nums;text-shadow:0 0 90px color-mix(in srgb,var(--brand) 55%,transparent)}
+.cd .k{font-family:var(--f-mono);font-weight:800;font-size:var(--t-cdlabel);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-top:14px;white-space:nowrap}
 
-.ticker{position:absolute;bottom:0;left:0;right:0;height:90px;background:var(--orange);color:var(--ink);display:flex;align-items:center;overflow:hidden;z-index:5;border-top:6px solid var(--blood)}
-.ticker .tag{background:var(--ink);color:var(--orange2);font-family:'Creepster',cursive;font-size:50px;padding:0 36px;height:100%;display:flex;align-items:center;flex-shrink:0}
-.ticker .msg{font-family:'Figtree';font-weight:800;font-size:38px;padding-left:36px;white-space:nowrap;letter-spacing:.16em;text-transform:uppercase;animation:sc 80s linear infinite}
-@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+/* three simple event chips, one row along the bottom */
+.chips{flex:none;display:grid;grid-template-columns:repeat(3,1fr);gap:52px;margin-top:30px}
+.chip{background:rgba(20,12,32,.55);border:2px solid color-mix(in srgb,var(--brand) 55%,transparent);border-radius:30px;padding:46px 50px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.chip.b2{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+.chip .icon{font-size:var(--t-chipi);line-height:.9}
+.chip .t{font-family:var(--f-display);font-size:var(--t-chipt);color:var(--brand);line-height:.88;letter-spacing:.01em}
+.chip.b2 .t{color:var(--accent)}.chip.b3 .t{color:var(--cream)}
+.chip .m{font-family:var(--f-mono);font-weight:700;font-size:var(--t-chipm);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+
+@media (orientation:portrait){
+  .stage[data-orient="port"] .wrap{padding:190px 130px 170px}
+  .stage[data-orient="port"]{--t-hero:calc(360px*var(--scale));--t-cdnum:calc(440px*var(--scale))}
+  .stage[data-orient="port"] .mast{flex-direction:column;align-items:center;text-align:center;gap:22px}
+  .stage[data-orient="port"] .mast .school{justify-content:center}
+  .stage[data-orient="port"] .hero{grid-template-columns:1fr;gap:70px;text-align:center}
+  .stage[data-orient="port"] .hero .sub{margin-left:auto;margin-right:auto}
+  .stage[data-orient="port"] .chips{grid-template-columns:1fr;gap:40px}
+}
 </style></head><body>
-<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-ms-halloween-v1" }/*EDITMODE-END*/;</script>
-<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
-<div class="drip"></div>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-ms-halloween-v1"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
 
-<div class="top">
-<div class="brand" data-widget="school"><div class="logo">B</div>
-<div class="info"><div class="name" data-field="school.name">Banner Middle</div><div class="sub" data-field="school.sub">a haunted weekly · vol 03</div></div></div>
-<div class="chips">
-<div class="chip" data-widget="clock"><div class="k" data-field="clock.label">period 03</div><div class="v" data-field="clock.time">9:42</div></div>
-<div class="chip spook" data-widget="countdown"><div class="k" data-field="countdown.label">days till</div><div class="v" data-field="countdown.value">02</div></div>
-</div>
-</div>
 
-<div class="hd" data-widget="headline">
-<div class="k" data-field="headline.kicker">★ Bears After Dark · costume contest 31st ★</div>
-<h1 data-field="headline.title">Boo.</h1>
-<div class="sub" data-field="headline.sub">Dance Friday in the gym 7–10pm · costumes encouraged · no scary masks during school day</div>
+<div class="decor">
+  <div class="moon"></div>
+  <div id="bats"></div>
+  <div class="spark" id="spark"></div>
+  <div class="scan"></div>
+  <div class="vig"></div>
 </div>
 
-<div class="row">
-<div class="cell" data-widget="contest">
-<div class="k" data-field="contest.k">★ costume contest</div>
-<h2><span data-field="contest.t1">Three </span><em data-field="contest.t2">categories</em></h2>
-<p data-field="contest.p">Best group · Most original · Best DIY. Submit team names in homeroom by Thursday — judging on the dance floor at 8:30.</p>
-<div class="meta"><span data-field="contest.m1">prize: pizza party</span><span data-field="contest.m2">judge: Mr. Park</span></div>
-</div>
-<div class="cell dark" data-widget="lunch">
-<div class="k" data-field="lunch.k">★ today's lunch</div>
-<h2><span data-field="lunch.t1">Mummy </span><em data-field="lunch.t2">dogs</em></h2>
-<p data-field="lunch.p">All-beef hot dog wrapped in pastry · jack-o-lantern fries · pumpkin chocolate-chip cookie · apple cider · vegan ghost-mac at line C.</p>
-<div class="meta"><span data-field="lunch.m1">$3.75 · all lines</span><span data-field="lunch.m2">veg avail</span></div>
-</div>
-<div class="cell" data-widget="rules">
-<div class="k" data-field="rules.k">★ costume rules</div>
-<h2 data-field="rules.t">Read me.</h2>
-<p data-field="rules.p">No masks during school day · no fake weapons · keep it school-appropriate · no full face paint that hides identity.</p>
-<div class="meta"><span data-field="rules.m1">questions? front office</span></div>
-</div>
+<div class="wrap">
+  <header class="mast" data-widget="masthead">
+    <div class="school"><div class="crest" data-imgslot="school.logo"><span class="ph" data-field="masthead.crest">BM</span></div><div class="nm"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">Middle</em></div></div>
+    <div class="date" data-field="masthead.date" data-fit="single" data-fit-max="72">Fri · Oct 31</div>
+  </header>
+
+  <section class="hero">
+    <div class="l" data-widget="headline">
+      <div class="eyebrow" data-field="headline.kicker" data-fit="single" data-fit-max="86">★ Bears After Dark</div>
+      <h1 data-fit="single" data-fit-min="200" data-fit-max="600"><span data-field="headline.t1">Happy </span><em data-field="headline.t2">Halloween</em></h1>
+      <div class="sub" data-field="headline.sub" data-fit data-fit-max="96">Costumes, the dance, and a spooky movie night.</div>
+    </div>
+    <div class="cd" data-widget="countdown">
+      <div class="v" data-field="countdown.v" data-countdown-to="Oct 31" data-demo="2">2</div>
+      <div class="k" data-field="countdown.k" data-fit="single" data-fit-max="74">nights to the 31st</div>
+    </div>
+  </section>
+
+  <div class="chips">
+    <div class="chip" data-widget="c0"><div class="icon" data-field="c0.icon">🎃</div><div class="t" data-field="c0.t" data-fit="single" data-fit-max="116">Costume Contest</div><div class="m" data-field="c0.m" data-fit="single" data-fit-max="70">Dance · Judged 8:30</div></div>
+    <div class="chip b2" data-widget="c1"><div class="icon" data-field="c1.icon">👻</div><div class="t" data-field="c1.t" data-fit="single" data-fit-max="116">The Dance</div><div class="m" data-field="c1.m" data-fit="single" data-fit-max="70">Gym · Fri · 7–10 PM</div></div>
+    <div class="chip b3" data-widget="c2"><div class="icon" data-field="c2.icon">🍿</div><div class="t" data-field="c2.t" data-fit="single" data-fit-max="116">Movie Night</div><div class="m" data-field="c2.m" data-fit="single" data-fit-max="70">Caf · Thu · 6 PM</div></div>
+  </div>
 </div>
 
-<div class="events" data-widget="events">
-<div class="hdr"><h3 data-field="events.h">★ this week ★</h3><div class="day" data-field="events.day">Mon Oct 28 — Fri Nov 1</div></div>
-<ul>
-<li data-widget="events.0"><div class="d" data-field="events.0.d">Tue</div><div class="e"><span data-field="events.0.e1">Pumpkin </span><em data-field="events.0.e2">painting</em></div><div class="w" data-field="events.0.w">cafeteria · lunch · all grades</div></li>
-<li data-widget="events.1"><div class="d" data-field="events.1.d">Wed</div><div class="e"><span data-field="events.1.e1">Spirit </span><em data-field="events.1.e2">orange</em></div><div class="w" data-field="events.1.w">wear orange · all day</div></li>
-<li data-widget="events.2"><div class="d" data-field="events.2.d">Thu</div><div class="e"><span data-field="events.2.e1">Movie </span><em data-field="events.2.e2">night</em></div><div class="w" data-field="events.2.w">caf · 6pm · Hocus Pocus · $3</div></li>
-<li data-widget="events.3"><div class="d" data-field="events.3.d">Fri</div><div class="e"><span data-field="events.3.e1">The </span><em data-field="events.3.e2">dance</em></div><div class="w" data-field="events.3.w">gym · 7–10 · costumes welcome</div></li>
-</ul>
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#160a1e</span><span data-field="theme.ink">#f7ecd8</span>
+  <span data-field="theme.brand">#ff7a18</span><span data-field="theme.brand2">#7a1010</span>
+  <span data-field="theme.accent">#7aff5a</span><span data-field="theme.accent2">#7c3aed</span>
+  <span data-field="theme.pos">#7aff5a</span><span data-field="theme.neg">#ff4d4d</span>
+  <span data-field="theme.fDisplay">Creepster</span><span data-field="theme.fBody">Figtree</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
 </div>
-
-<div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">BANNER AFTER DARK</div><div class="msg"><span data-field="ticker.message">★ Costume contest at the dance — submit team names by Thursday in homeroom ★ NO MASKS or full face paint during the school day — costume rules in the office ★ Movie night Thursday — Hocus Pocus in the cafeteria 6pm $3 ★ Mummy dogs and pumpkin cookies on the menu all week ★ </span><span>★ Costume contest at the dance — submit team names by Thursday in homeroom ★ NO MASKS or full face paint during the school day — costume rules in the office ★ Movie night Thursday — Hocus Pocus in the cafeteria 6pm $3 ★ Mummy dogs and pumpkin cookies on the menu all week ★ </span></div></div>
-
 </div></div></div>
-<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var BA=document.getElementById('bats');if(BA){var bp=[[10,16],[22,9],[80,14],[88,30],[16,30]];for(var k3=0;k3<bp.length;k3++){var b=document.createElement('div');b.className='bat';b.style.left=bp[k3][0]+'%';b.style.top=bp[k3][1]+'%';b.style.transform='scale('+(0.7+(k3%4)/5).toFixed(2)+')';b.style.animationDelay=((k3*0.4)%3)+'s';b.style.animationDuration=(2.4+(k3%3)*0.6)+'s';b.innerHTML='<i class="l"></i><i class="r"></i><b></b>';BA.appendChild(b);}}
+  var SP=document.getElementById('spark');if(SP){for(var k2=0;k2<22;k2++){var d=document.createElement('i');var sz=8+((k2*11)%24);d.style.width=sz+'px';d.style.height=sz+'px';d.style.left=((k2*53)%100)+'%';d.style.top=(42+((k2*29)%52))+'%';d.style.animationDelay=((k2*0.45)%6)+'s';SP.appendChild(d);}}
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||60),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
+  var DMON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  function days(){document.querySelectorAll('[data-countdown-to]').forEach(function(el){var dm=el.getAttribute('data-demo');if(dm!=null){el.textContent=(''+ +dm);return;}var t=el.getAttribute('data-countdown-to').trim().toLowerCase().match(/([a-z]+)\s*(\d{1,2})/);if(!t||!(t[1].slice(0,3) in DMON))return;var now=new Date();now.setHours(0,0,0,0);var y=now.getFullYear(),target=new Date(y,DMON[t[1].slice(0,3)],+t[2]);if(target<now)target=new Date(y+1,DMON[t[1].slice(0,3)],+t[2]);var n=Math.round((target-now)/86400000);el.textContent=''+n;});}
+  days();setInterval(days,3600000);
+})();
+</script>
+
 <script id="holiday-bridge">(function(){function a(){var s=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-w'),10)||3840,h=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-h'),10)||2160,c=Math.min(window.innerWidth/s,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',c)}a();window.addEventListener('resize',a);function r(){var n=document.querySelectorAll('[data-field]'),s={},f=[];n.forEach(function(e){var k=e.getAttribute('data-field');if(!k||s[k])return;s[k]=1;var t=(e.textContent||'').trim();f.push({key:k,defaultText:t,multiline:/\n/.test(t)||t.length>80||e.tagName==='P'})});try{window.parent.postMessage({type:'holiday:ready',fields:f},window.location.origin)}catch(e){}}if(document.readyState==='complete'||document.readyState==='interactive')r();else document.addEventListener('DOMContentLoaded',r);document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document.body){if(n.nodeType===1&&n.hasAttribute&&n.hasAttribute('data-field')){try{window.parent.postMessage({type:'holiday:fieldClicked',key:n.getAttribute('data-field')},window.location.origin)}catch(e){}return}n=n.parentNode}});window.addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='holiday:setField'){var k=String(d.key||'');if(!k)return;var n=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\"')+'"]'),v=String(d.value==null?'':d.value);n.forEach(function(e){e.textContent=v})}})})();</script>
 <script src="_style-bridge.js?v=20260509"></script></body></html>

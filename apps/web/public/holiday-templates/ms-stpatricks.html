@@ -1,87 +1,153 @@
 <!doctype html>
-<!-- MS ST PATRICKS — bold riso green/gold poster. -->
-<html><head><meta charset="utf-8"/><title>St Patrick's · MS Lobby</title>
-<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet">
-<style>:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--green:#1e6b3a;--green2:#2e8a4a;--gold:#e8c040;--cream:#fff5d8;--ink:#0a2010;--orange:#ff8a3a}
-html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;color:var(--ink);font-family:'Figtree',sans-serif}
-.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
-.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--green);box-shadow:0 80px 200px rgba(0,0,0,.5);color:var(--cream)}
-.stage::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(232,192,64,.12) 2px,transparent 3px);background-size:24px 24px;mix-blend-mode:screen;pointer-events:none}
-.bigclover{position:absolute;top:160px;right:80px;width:1100px;height:1100px;z-index:1;filter:drop-shadow(20px 20px 0 var(--ink));opacity:.85}
-.bigclover .l{position:absolute;width:480px;height:480px;background:var(--gold);border-radius:50% 0 50% 50%}
-.bigclover .l1{top:0;left:300px;transform:rotate(-45deg)}.bigclover .l2{top:300px;left:0;transform:rotate(-135deg)}.bigclover .l3{top:300px;right:0;transform:rotate(45deg)}.bigclover .l4{top:600px;left:300px;transform:rotate(135deg)}
-.top{position:absolute;top:60px;left:80px;right:80px;height:140px;display:flex;justify-content:space-between;align-items:flex-end;border-bottom:6px solid var(--gold);padding-bottom:24px;z-index:5}
-.brand{display:flex;align-items:flex-end;gap:24px}.brand .name{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:120px;color:var(--cream);line-height:.85;letter-spacing:-.03em}
-.brand .sub{font-family:'Figtree';font-weight:700;font-size:38px;color:var(--gold);text-transform:uppercase;letter-spacing:.24em;padding-bottom:22px;border-left:4px solid var(--gold);padding-left:24px}
-.chips{display:flex;gap:30px;align-items:flex-end}.chip{padding:8px 0;text-align:right}
-.chip .k{font-family:'Figtree';font-weight:800;font-size:30px;color:var(--gold);text-transform:uppercase;letter-spacing:.24em;line-height:1}
-.chip .v{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:80px;color:var(--cream);line-height:1;margin-top:6px}
-.hd{position:absolute;top:300px;left:80px;right:80px;z-index:4}
-.hd .k{font-family:'Figtree';font-weight:800;font-size:44px;color:var(--gold);text-transform:uppercase;letter-spacing:.32em;margin-bottom:18px}
-.hd h1{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:380px;line-height:.82;color:var(--cream);margin:0;letter-spacing:-.04em;text-shadow:14px 14px 0 var(--ink)}
-.hd h1 em{font-style:italic;color:var(--gold)}
-.hd .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:72px;color:var(--cream);margin-top:34px;max-width:2200px;line-height:1.22}
-.grid{position:absolute;top:1180px;left:80px;right:80px;height:540px;display:grid;grid-template-columns:1.4fr 2fr 1.2fr;gap:48px;z-index:3}
-.cell{background:var(--cream);color:var(--ink);padding:32px 36px;border:5px solid var(--ink);overflow:hidden;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--gold)}
-.cell .k{font-family:'Figtree';font-weight:800;font-size:34px;text-transform:uppercase;letter-spacing:.28em;color:var(--green2)}
-.cell h2{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:108px;line-height:.85;margin:10px 0 0;letter-spacing:-.03em}
-.cell h2 em{font-style:italic;color:var(--green2)}
-.cell p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:42px;margin:18px 0 0;line-height:1.22}
-.cell .meta{margin-top:auto;padding-top:18px;font-family:'Figtree';font-weight:800;font-size:32px;text-transform:uppercase;letter-spacing:.2em;color:var(--green2);display:flex;gap:24px;flex-wrap:wrap}
-.cell.feat{background:var(--gold);color:var(--ink);box-shadow:14px 14px 0 var(--ink)}
-.cell.feat h2{font-size:140px}.cell.feat h2 em{color:var(--green)}
-.events{position:absolute;top:1750px;left:80px;right:80px;height:300px;background:var(--ink);color:var(--cream);padding:24px 32px;border:5px solid var(--gold);z-index:3;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--gold)}
-.events .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px dashed var(--gold);padding-bottom:10px}
-.events .hdr h3{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:80px;color:var(--gold);margin:0}
-.events .hdr .day{font-family:'Figtree';font-weight:800;font-size:34px;color:var(--cream);text-transform:uppercase;letter-spacing:.2em}
-.events ul{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
-.events li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid var(--gold);padding-left:18px}
-.events li .d{font-family:'Figtree';font-weight:800;font-size:32px;color:var(--gold);text-transform:uppercase;letter-spacing:.24em}
-.events li .e{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:54px;color:var(--cream);line-height:1;margin-top:6px}
-.events li .e em{font-style:italic;color:var(--gold)}
-.events li .w{font-family:'Figtree';font-weight:600;font-size:28px;color:var(--cream);margin-top:6px;text-transform:uppercase;letter-spacing:.16em}
-.ticker{position:absolute;bottom:0;left:0;right:0;height:90px;background:var(--gold);color:var(--ink);display:flex;align-items:center;overflow:hidden;z-index:5;border-top:5px solid var(--ink)}
-.ticker .tag{background:var(--ink);color:var(--gold);font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:50px;padding:0 36px;height:100%;display:flex;align-items:center;flex-shrink:0}
-.ticker .msg{font-family:'Figtree';font-weight:800;font-size:38px;padding-left:36px;white-space:nowrap;letter-spacing:.16em;text-transform:uppercase;animation:sc 80s linear infinite}
-@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}</style></head><body>
-<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-ms-stpatricks-v1" }/*EDITMODE-END*/;</script>
-<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
-<div class="bigclover"><div class="l l1"></div><div class="l l2"></div><div class="l l3"></div><div class="l l4"></div></div>
-<div class="top">
-<div class="brand" data-widget="school"><div class="name" data-field="school.name">Banner Middle</div><div class="sub" data-field="school.sub">lucky issue · vol 11</div></div>
-<div class="chips">
-<div class="chip" data-widget="clock"><div class="k" data-field="clock.label">period</div><div class="v" data-field="clock.time">10:14</div></div>
-<div class="chip" data-widget="countdown"><div class="k" data-field="countdown.label">parade in</div><div class="v" data-field="countdown.value">01</div></div>
+<!-- MS ST PATRICK'S v2 — "LUCKY US" CLEAN poster. ONE dominant italic headline + a giant
+     countdown, three simple event chips, generous negative space. Bright-to-deep green riso field
+     with a soft halftone dot wash + one big slow spinning clover + gold dust. Every text =
+     data-field, crest = data-imgslot, ALL color via canonical brand tokens (school brand re-skins
+     it). Auto-fit, portrait+landscape, bridge preserved. Deliberately low-text: NO body paragraphs,
+     NO dense schedule, NO ticker. -->
+<html lang="en"><head><meta charset="utf-8"/><title>St Patrick's · MS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;700;800;900&family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;--scale:1;
+  --brand:#1e8a47;--brand2:#06321c;--accent:#e8c040;--accent2:#43c277;
+  --ink:#0a2410;--bg:#1e8a47;--pos:#43c277;--neg:#ff6a3a;
+  --f-display:'Fraunces';--f-head:'Figtree';--f-body:'Fraunces';--f-mono:'JetBrains Mono';
+  --cream:#fff5d8;--mute:#9bd2ad;
+  /* clean flagship: few elements, big type. everything >=60px on the 3840 stage. */
+  --t-school:calc(96px*var(--scale));--t-date:calc(64px*var(--scale));
+  --t-eyebrow:calc(72px*var(--scale));--t-hero:calc(560px*var(--scale));--t-sub:calc(84px*var(--scale));
+  --t-cdnum:calc(560px*var(--scale));--t-cdlabel:calc(66px*var(--scale));
+  --t-chipt:calc(108px*var(--scale));--t-chipm:calc(62px*var(--scale));--t-chipi:calc(132px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#062110;color:var(--cream);font-family:var(--f-body),serif}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;
+  background:linear-gradient(168deg,color-mix(in srgb,var(--accent2) 50%,var(--brand)) 0%,var(--brand) 40%,var(--brand2) 100%)}
+
+.decor{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden}
+.halftone{position:absolute;top:0;right:0;bottom:0;left:0;background-image:radial-gradient(color-mix(in srgb,var(--accent) 48%,transparent) 3px,transparent 4px);background-size:34px 34px;mix-blend-mode:screen;opacity:.5}
+.clover{position:absolute;z-index:1}
+.clover .l{position:absolute;border-radius:50% 0 50% 50%;background:currentColor}
+.big-clover{top:60px;right:-150px;width:940px;height:940px;color:var(--accent);opacity:.5;filter:drop-shadow(20px 20px 0 var(--brand2));animation:spin 70s linear infinite}
+.big-clover .l{width:410px;height:410px}
+.big-clover .l1{top:0;left:260px;transform:rotate(-45deg)}.big-clover .l2{top:260px;left:0;transform:rotate(-135deg)}.big-clover .l3{top:260px;right:0;transform:rotate(45deg)}.big-clover .l4{top:520px;left:260px;transform:rotate(135deg)}
+.big-clover .stem{position:absolute;bottom:-120px;left:466px;width:22px;height:180px;background:var(--accent);transform:rotate(8deg);border-radius:12px}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.spark i{position:absolute;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 90%,#fff),transparent 70%);opacity:.5;animation:emb 6s ease-in-out infinite}
+@keyframes emb{0%,100%{opacity:.18;transform:translateY(0) scale(1)}50%{opacity:.6;transform:translateY(-44px) scale(1.3)}}
+.vig{position:absolute;top:0;right:0;bottom:0;left:0;box-shadow:inset 0 0 440px rgba(0,0,0,.42);z-index:5}
+
+.wrap{position:relative;z-index:7;width:100%;height:100%;display:flex;flex-direction:column;padding:150px 200px 160px}
+
+/* slim masthead */
+.mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:40px}
+.mast .school{display:flex;align-items:center;gap:30px;min-width:0}
+.mast .crest{width:120px;height:120px;border-radius:24px;border:4px solid var(--accent);background:linear-gradient(135deg,var(--accent),var(--cream));background-size:cover;background-position:center;flex:none;display:grid;place-items:center;font-family:var(--f-display);font-weight:900;font-style:italic;font-size:calc(60px*var(--scale));color:var(--brand2);overflow:hidden}
+.mast .crest .ph{line-height:1}
+.mast .crest.has-img{border-color:var(--accent)}.mast .crest.has-img .ph{display:none}
+.mast .school .nm{font-family:var(--f-display);font-weight:900;font-style:italic;font-size:var(--t-school);color:var(--cream);line-height:.85;letter-spacing:-.03em;white-space:nowrap}
+.mast .school .nm em{color:var(--accent);font-style:italic}
+.mast .date{font-family:var(--f-head);font-weight:800;font-size:var(--t-date);letter-spacing:.2em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+
+/* hero takes the big middle: headline + one line, with the countdown beside it */
+.hero{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:120px}
+.hero .l{min-width:0}
+.hero .eyebrow{font-family:var(--f-head);font-weight:800;font-size:var(--t-eyebrow);letter-spacing:.28em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+.hero h1{font-family:var(--f-display);font-weight:900;font-style:italic;font-size:var(--t-hero);line-height:.82;color:var(--cream);margin:24px 0 0;letter-spacing:-.04em;text-shadow:16px 16px 0 var(--brand2)}
+.hero h1 em{font-style:italic;color:var(--accent)}
+.hero .sub{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-sub);color:var(--cream);margin-top:34px;line-height:1.14;max-width:1850px;opacity:.95}
+.cd{flex:none;text-align:center;background:var(--accent);color:var(--brand2);border-radius:40px;padding:44px 64px;box-shadow:16px 16px 0 var(--brand2)}
+.cd .v{font-family:var(--f-display);font-weight:900;font-style:italic;font-size:var(--t-cdnum);line-height:.8;color:var(--brand2);font-variant-numeric:tabular-nums}
+.cd .k{font-family:var(--f-head);font-weight:800;font-size:var(--t-cdlabel);letter-spacing:.16em;text-transform:uppercase;color:var(--brand);margin-top:10px;white-space:nowrap}
+
+/* three simple event chips, one row along the bottom */
+.chips{flex:none;display:grid;grid-template-columns:repeat(3,1fr);gap:52px;margin-top:30px}
+.chip{background:var(--cream);color:var(--ink);border:5px solid var(--brand2);border-radius:10px;padding:42px 46px;display:flex;flex-direction:column;gap:14px;min-width:0;box-shadow:14px 14px 0 var(--accent)}
+.chip.b2{background:var(--accent);box-shadow:14px 14px 0 var(--brand2)}
+.chip .icon{font-size:var(--t-chipi);line-height:.9}
+.chip .t{font-family:var(--f-display);font-weight:900;font-style:italic;font-size:var(--t-chipt);color:var(--ink);line-height:.86;letter-spacing:-.03em}
+.chip .m{font-family:var(--f-head);font-weight:800;font-size:var(--t-chipm);letter-spacing:.06em;text-transform:uppercase;color:var(--brand)}
+.chip.b2 .m{color:var(--brand2)}
+
+@media (orientation:portrait){
+  .stage[data-orient="port"] .wrap{padding:190px 130px 170px}
+  .stage[data-orient="port"]{--t-hero:calc(380px*var(--scale));--t-cdnum:calc(380px*var(--scale))}
+  .stage[data-orient="port"] .big-clover{top:40px;right:-260px;width:700px;height:700px}
+  .stage[data-orient="port"] .mast{flex-direction:column;align-items:center;text-align:center;gap:22px}
+  .stage[data-orient="port"] .mast .school{justify-content:center}
+  .stage[data-orient="port"] .hero{grid-template-columns:1fr;gap:70px;text-align:center}
+  .stage[data-orient="port"] .hero .sub{margin-left:auto;margin-right:auto}
+  .stage[data-orient="port"] .chips{grid-template-columns:1fr;gap:40px}
+}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-ms-stpatricks-v2"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+
+<div class="decor">
+  <div class="halftone"></div>
+  <div class="clover big-clover"><i class="l l1"></i><i class="l l2"></i><i class="l l3"></i><i class="l l4"></i><i class="stem"></i></div>
+  <div class="spark" id="spark"></div>
+  <div class="vig"></div>
 </div>
+
+<div class="wrap">
+  <header class="mast" data-widget="masthead">
+    <div class="school"><div class="crest" data-imgslot="school.logo"><span class="ph" data-field="masthead.crest">BM</span></div><div class="nm"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">Middle</em></div></div>
+    <div class="date" data-field="masthead.date" data-fit="single" data-fit-max="72">Tue · Mar 17</div>
+  </header>
+
+  <section class="hero">
+    <div class="l" data-widget="headline">
+      <div class="eyebrow" data-field="headline.kicker" data-fit="single" data-fit-max="86">★ Wear Green Tuesday</div>
+      <h1 data-fit="single" data-fit-min="200" data-fit-max="580"><span data-field="headline.t1">Lucky </span><em data-field="headline.t2">Us.</em></h1>
+      <div class="sub" data-field="headline.sub" data-fit data-fit-max="96">Hallway parade Tuesday at 2 PM and a pot-of-gold raffle all week!</div>
+    </div>
+    <div class="cd" data-widget="countdown">
+      <div class="v" data-field="countdown.v" data-countdown-to="Mar 17" data-demo="1">1</div>
+      <div class="k" data-field="countdown.k" data-fit="single" data-fit-max="74">days to the 17th</div>
+    </div>
+  </section>
+
+  <div class="chips">
+    <div class="chip" data-widget="c0"><div class="icon" data-field="c0.icon">🪙</div><div class="t" data-field="c0.t" data-fit="single" data-fit-max="120">Gold Raffle</div><div class="m" data-field="c0.m" data-fit="single" data-fit-max="70">$1 · ASB Table</div></div>
+    <div class="chip b2" data-widget="c1"><div class="icon" data-field="c1.icon">🥁</div><div class="t" data-field="c1.t" data-fit="single" data-fit-max="120">Hall Parade</div><div class="m" data-field="c1.m" data-fit="single" data-fit-max="70">Tue · 2 PM · 6th Leads</div></div>
+    <div class="chip b3" data-widget="c2"><div class="icon" data-field="c2.icon">💚</div><div class="t" data-field="c2.t" data-fit="single" data-fit-max="120">Wear Green</div><div class="m" data-field="c2.m" data-fit="single" data-fit-max="70">Or Get Pinched!</div></div>
+  </div>
 </div>
-<div class="hd" data-widget="headline"><div class="k" data-field="headline.kicker">★ wear green tuesday or get pinched ★</div>
-<h1><span data-field="headline.t1">Lucky </span><em data-field="headline.t2">us.</em></h1>
-<div class="sub" data-field="headline.sub">Hallway parade Tuesday 2pm · ASB pot-of-gold raffle all week · spirit dress code: emerald or gold.</div></div>
-<div class="grid">
-<div class="cell" data-widget="raffle"><div class="k" data-field="raffle.k">★ pot-of-gold raffle</div>
-<h2><span data-field="raffle.t1">Win a </span><em data-field="raffle.t2">prize</em></h2>
-<p data-field="raffle.p">Buy tickets at the ASB table — proceeds fund spring dance. Top prize: $50 gift card. Drawing Friday at lunch in the cafeteria.</p>
-<div class="meta"><span data-field="raffle.m1">$1 each · $5 for 6</span></div></div>
-<div class="cell feat" data-widget="parade"><div class="k" data-field="parade.k">★ hallway parade</div>
-<h2><span data-field="parade.t1">March </span><em data-field="parade.t2">17.</em></h2>
-<p data-field="parade.p">Sixth grade leads · seventh in middle · eighth in back. Costumes welcome — no fake beards in classrooms please. ASB hands out shamrock pins at the start.</p>
-<div class="meta"><span data-field="parade.m1">Tue Mar 17 · 2pm</span><span data-field="parade.m2">main hall</span></div></div>
-<div class="cell" data-widget="dresscode"><div class="k" data-field="dresscode.k">★ dress code</div>
-<h2 data-field="dresscode.t">Wear green.</h2>
-<p data-field="dresscode.p">Emerald, lime, hunter, neon — all greens count. No green? Grab a shamrock sticker at the front office before first period.</p>
-<div class="meta"><span data-field="dresscode.m1">free stickers · office</span></div></div>
+
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#1e8a47</span><span data-field="theme.ink">#0a2410</span>
+  <span data-field="theme.brand">#1e8a47</span><span data-field="theme.brand2">#06321c</span>
+  <span data-field="theme.accent">#e8c040</span><span data-field="theme.accent2">#43c277</span>
+  <span data-field="theme.pos">#43c277</span><span data-field="theme.neg">#ff6a3a</span>
+  <span data-field="theme.fDisplay">Fraunces</span><span data-field="theme.fHead">Figtree</span><span data-field="theme.fBody">Fraunces</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
 </div>
-<div class="events" data-widget="events">
-<div class="hdr"><h3 data-field="events.h">★ lucky week</h3><div class="day" data-field="events.day">Mon Mar 16 — Fri Mar 20</div></div>
-<ul>
-<li data-widget="events.0"><div class="d" data-field="events.0.d">Mon</div><div class="e"><span data-field="events.0.e1">Raffle </span><em data-field="events.0.e2">opens</em></div><div class="w" data-field="events.0.w">ASB table · all lunches</div></li>
-<li data-widget="events.1"><div class="d" data-field="events.1.d">Tue</div><div class="e"><span data-field="events.1.e1">Wear </span><em data-field="events.1.e2">green</em></div><div class="w" data-field="events.1.w">spirit day · pinches happen</div></li>
-<li data-widget="events.2"><div class="d" data-field="events.2.d">Tue</div><div class="e"><span data-field="events.2.e1">The </span><em data-field="events.2.e2">parade</em></div><div class="w" data-field="events.2.w">main hall · 2pm · 6th leads</div></li>
-<li data-widget="events.3"><div class="d" data-field="events.3.d">Fri</div><div class="e"><span data-field="events.3.e1">Raffle </span><em data-field="events.3.e2">drawing</em></div><div class="w" data-field="events.3.w">caf · lunch · top prize $50</div></li>
-</ul>
-</div>
-<div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">TOP O' THE MORNIN'</div><div class="msg"><span data-field="ticker.message">★ Wear green Tuesday — pinches if you forget, pins free at the office ★ Hallway parade Tuesday 2pm — 6th grade leads ★ Pot-of-gold raffle drawing Friday at lunch ★ Green eggs and ham on the menu Tuesday ★ </span><span>★ Wear green Tuesday — pinches if you forget, pins free at the office ★ Hallway parade Tuesday 2pm — 6th grade leads ★ Pot-of-gold raffle drawing Friday at lunch ★ Green eggs and ham on the menu Tuesday ★ </span></div></div>
 </div></div></div>
-<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var SP=document.getElementById('spark');if(SP){for(var k2=0;k2<22;k2++){var d=document.createElement('i');var sz=8+((k2*11)%24);d.style.width=sz+'px';d.style.height=sz+'px';d.style.left=((k2*53)%100)+'%';d.style.top=(42+((k2*29)%52))+'%';d.style.animationDelay=((k2*0.45)%6)+'s';SP.appendChild(d);}}
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fHead:'--f-head',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();var tb=document.querySelector('[data-widget="theme"]');if(tb)new MutationObserver(function(){applyTheme();autofit();}).observe(tb,{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||60),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.wrap'),{subtree:true,childList:true,characterData:true});
+  var DMON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  function days(){document.querySelectorAll('[data-countdown-to]').forEach(function(el){var dm=el.getAttribute('data-demo');if(dm!=null){el.textContent=(''+ +dm);return;}var t=el.getAttribute('data-countdown-to').trim().toLowerCase().match(/([a-z]+)\s*(\d{1,2})/);if(!t||!(t[1].slice(0,3) in DMON))return;var now=new Date();now.setHours(0,0,0,0);var y=now.getFullYear(),target=new Date(y,DMON[t[1].slice(0,3)],+t[2]);if(target<now)target=new Date(y+1,DMON[t[1].slice(0,3)],+t[2]);var n=Math.round((target-now)/86400000);el.textContent=''+n;});}
+  days();setInterval(days,3600000);
+})();
+</script>
+
 <script id="holiday-bridge">(function(){function a(){var s=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-w'),10)||3840,h=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--stage-h'),10)||2160,c=Math.min(window.innerWidth/s,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',c)}a();window.addEventListener('resize',a);function r(){var n=document.querySelectorAll('[data-field]'),s={},f=[];n.forEach(function(e){var k=e.getAttribute('data-field');if(!k||s[k])return;s[k]=1;var t=(e.textContent||'').trim();f.push({key:k,defaultText:t,multiline:/\n/.test(t)||t.length>80||e.tagName==='P'})});try{window.parent.postMessage({type:'holiday:ready',fields:f},window.location.origin)}catch(e){}}if(document.readyState==='complete'||document.readyState==='interactive')r();else document.addEventListener('DOMContentLoaded',r);document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document.body){if(n.nodeType===1&&n.hasAttribute&&n.hasAttribute('data-field')){try{window.parent.postMessage({type:'holiday:fieldClicked',key:n.getAttribute('data-field')},window.location.origin)}catch(e){}return}n=n.parentNode}});window.addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='holiday:setField'){var k=String(d.key||'');if(!k)return;var n=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\"')+'"]'),v=String(d.value==null?'':d.value);n.forEach(function(e){e.textContent=v})}})})();</script>
 <script src="_style-bridge.js?v=20260509"></script></body></html>
