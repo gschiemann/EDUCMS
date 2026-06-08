@@ -110,6 +110,20 @@ const SIG_INDUSTRY_VERTICAL: Record<string, string> = {
   hospitality: 'HOSPITALITY',
   'menus-pos': 'RESTAURANT',
   qsr: 'QSR',
+  // 2026-06-08 new-industry signage handoff. church→WORSHIP, gym→GYM,
+  // office→CORPORATE, clinic→HEALTHCARE map cleanly to existing launch
+  // verticals. veterinary / real-estate / museum have NO dedicated vertical
+  // yet, so they are PROVISIONALLY tagged to the nearest existing vertical so
+  // the boards surface rather than being stranded invisible. Promote to
+  // dedicated VETERINARY / REAL_ESTATE / MUSEUM verticals (verticals.ts + the
+  // §14 per-vertical copy) when the product adds them.
+  church: 'WORSHIP',
+  veterinary: 'HEALTHCARE',
+  gym: 'GYM',
+  'real-estate': 'CORPORATE',
+  museum: 'HOSPITALITY',
+  office: 'CORPORATE',
+  clinic: 'HEALTHCARE',
 };
 SYSTEM_TEMPLATE_PRESETS.forEach((p) => {
   const m = p.id.match(/^preset-sig-(.+)-\d+$/);

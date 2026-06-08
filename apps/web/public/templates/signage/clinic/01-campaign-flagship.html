@@ -1,0 +1,115 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Clinic · Today</title><style>
+:root{
+  /* rebrand here */
+  --bg:#0e3a3a;--bg2:#0a2a2a;--paper:#f4faf8;--fg:#0a2424;--mute:#5f8484;--rule:rgba(255,255,255,.14);
+  --primary:#36c9a8;--accent:#ffd166;--accent2:#7fd1ff;--good:#46d39a;--ink-on:#063030;
+  --font-display:"Bricolage Grotesque","Hanken Grotesk",system-ui,sans-serif;--font-grotesk:"Hanken Grotesk",system-ui,sans-serif;--font-mono:"JetBrains Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:radial-gradient(120% 120% at 25% 10%,#11504c 0%,var(--bg) 50%,var(--bg2) 100%);color:#eafaf6;transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+/* big soft cross motif */
+.stage::before{content:"";position:absolute;right:-160px;top:-160px;width:1200px;height:1200px;border-radius:120px;background:conic-gradient(from 45deg,rgba(54,201,168,.10),transparent 25%,rgba(54,201,168,.10) 50%,transparent 75%,rgba(54,201,168,.10));pointer-events:none}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:auto 1fr auto;padding:84px 92px;row-gap:52px}
+
+.top{display:flex;align-items:center;gap:30px}
+.logo{width:112px;height:112px;flex:none;border-radius:28px;background:var(--primary);display:grid;place-items:center;color:var(--ink-on)}
+.logo svg{width:58px;height:58px}
+.brand .n{font:700 80px/.9 var(--font-display);letter-spacing:-.02em}
+.brand .t{font:600 36px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;color:rgba(234,250,246,.6);margin-top:8px}
+.open{margin-left:auto;display:inline-flex;align-items:center;gap:16px;font:700 38px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;color:var(--good)}
+.open::before{content:"";width:20px;height:20px;border-radius:50%;background:var(--good);animation:p 1.6s infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(70,211,154,.55)}70%{box-shadow:0 0 0 20px rgba(70,211,154,0)}100%{box-shadow:0 0 0 0 rgba(70,211,154,0)}}
+.clock{font:700 84px/1 var(--font-display);font-variant-numeric:tabular-nums;margin-left:34px}
+
+/* HERO campaign — the dominant element (poster, not a data grid) */
+.hero{position:relative;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;text-align:left}
+.hero .eyebrow{display:inline-flex;align-items:center;gap:18px;background:var(--accent);color:var(--ink-on);font:800 42px/1 var(--font-grotesk);letter-spacing:.04em;padding:22px 44px;border-radius:999px}
+.hero h1{font:700 340px/.82 var(--font-display);letter-spacing:-.04em;margin:36px 0 0;color:#fff;text-shadow:0 40px 120px rgba(0,0,0,.3)}
+.hero h1 em{font-style:normal;color:var(--primary)}
+.hero .sub{font:600 76px/1.12 var(--font-grotesk);color:rgba(234,250,246,.92);margin-top:32px;max-width:42ch}
+.hero .row{display:flex;gap:24px;margin-top:48px;flex-wrap:wrap}
+.hero .chip{display:inline-flex;align-items:center;gap:18px;background:rgba(255,255,255,.1);border:2px solid var(--rule);border-radius:24px;padding:28px 44px;font:700 52px/1 var(--font-grotesk)}
+.hero .chip svg{width:46px;height:46px;color:var(--primary)}
+.hero .chip b{color:var(--accent2)}
+
+/* live strip along the bottom — secondary, thin, distinct */
+.strip{display:grid;grid-template-columns:1.1fr 1fr 1fr 1fr;gap:30px}
+.cell{background:rgba(255,255,255,.07);border:2px solid var(--rule);border-radius:32px;padding:34px 44px;display:flex;flex-direction:column;gap:10px;backdrop-filter:blur(10px)}
+.cell.now{background:var(--primary);border:none;color:var(--ink-on)}
+.cell .l{font:700 34px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;color:rgba(234,250,246,.6)}
+.cell.now .l{color:rgba(6,48,48,.65)}
+.cell .v{font:700 96px/.9 var(--font-display);letter-spacing:-.02em}
+.cell .d{font:600 38px/1.1 var(--font-grotesk);color:rgba(234,250,246,.7)}
+.cell.now .d{color:rgba(6,48,48,.8)}
+.stage[data-orient="portrait"] .hero h1{font-size:240px}
+.stage[data-orient="portrait"] .hero .sub{font-size:60px}
+.stage[data-orient="portrait"] .strip{grid-template-columns:repeat(2,1fr)}
+</style><script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div class="stage" id="stage"><div class="frame">
+
+  <header class="top" data-widget="brand">
+    <div class="logo" data-widget="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7z"/></svg></div>
+    <div class="brand"><div class="n" data-field="brand.name">Riverside Community Clinic</div><div class="t" data-field="brand.tag">Walk-ins welcome today</div></div>
+    <div class="open">Open</div>
+    <div class="clock" data-source="local-time" data-widget="clock"><span data-field="clock.hhmm">9:14 AM</span></div>
+  </header>
+
+  <main class="hero" data-widget="campaign" data-source="cms" data-feed="/api/clinic/campaign">
+    <span class="eyebrow" data-field="camp.eyebrow">● This week · no appointment needed</span>
+    <h1><span data-field="camp.t1">Flu shots,</span> <em data-field="camp.t2">free.</em></h1>
+    <div class="sub" data-field="camp.sub">Protect your whole family before the season hits. Covered by most insurance — and free if you’re not covered.</div>
+    <div class="row">
+      <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><span data-field="camp.c1">Mon–Fri · <b>8 AM – 6 PM</b></span></span>
+      <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7-4.5-7-10a7 7 0 0 1 14 0c0 5.5-7 10-7 10Z"/><circle cx="12" cy="11" r="2.5"/></svg><span data-field="camp.c2">Room 2 · <b>2nd floor</b></span></span>
+      <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span data-field="camp.c3">Just <b>check in below</b></span></span>
+    </div>
+  </main>
+
+  <section class="strip" data-widget="queue" data-source="epic" data-feed="/api/clinic/queue" data-refresh="5s">
+    <div class="cell now" data-widget="q.now"><div class="l" data-field="q.now.l">Now serving</div><div class="v" data-field="q.now.v">A-118</div><div class="d" data-field="q.now.d">Window 3</div></div>
+    <div class="cell" data-widget="q.next"><div class="l" data-field="q.next.l">Up next</div><div class="v" data-field="q.next.v">A-119</div><div class="d" data-field="q.next.d">Please listen for your number</div></div>
+    <div class="cell" data-widget="q.wait"><div class="l" data-field="q.wait.l">Walk-in wait</div><div class="v" data-field="q.wait.v">~18 min</div><div class="d" data-field="q.wait.d">9 people ahead</div></div>
+    <div class="cell" data-widget="q.tip"><div class="l" data-field="q.tip.l">Pharmacy</div><div class="v" style="font-size:64px" data-field="q.tip.v">Open till 8</div><div class="d" data-field="q.tip.d">Level 1 · by the entrance</div></div>
+  </section>
+
+</div></div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();
+function clk(){var d=new Date(),h=d.getHours(),m=d.getMinutes(),ap=h<12?'AM':'PM';h=h%12||12;document.querySelectorAll('[data-field="clock.hhmm"]').forEach(function(e){e.textContent=h+':'+(m<10?'0':'')+m+' '+ap;});}clk();setInterval(clk,10000);
+})();</script></body></html>

@@ -1,0 +1,142 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Gym · Floor Board</title><style>
+:root{
+  /* rebrand here */
+  --bg:#0c0e12;--paper:#151921;--fg:#f4f7fb;--mute:#8b96a6;--rule:rgba(255,255,255,.1);
+  --primary:#e8ff3a;--primary2:#b6e000;--accent:#ff5a36;--accent2:#37d6ff;--good:#37e08a;
+  --font-display:"Anton",system-ui,sans-serif;--font-grotesk:"Hanken Grotesk",system-ui,sans-serif;--font-mono:"JetBrains Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:radial-gradient(140% 120% at 85% -10%,#1a2030 0%,var(--bg) 55%);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.stage::before{content:"";position:absolute;top:0;right:0;bottom:0;left:0;background:repeating-linear-gradient(90deg,rgba(255,255,255,.02) 0 2px,transparent 2px 120px);pointer-events:none}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:auto auto 1fr auto;padding:76px 84px;row-gap:40px}
+
+.top{display:flex;align-items:center;gap:32px;border-bottom:3px solid var(--rule);padding-bottom:28px}
+.logo{width:120px;height:120px;flex:none;border-radius:24px;background:var(--primary);display:grid;place-items:center;color:#0c0e12;transform:skewX(-6deg)}
+.logo svg{width:62px;height:62px;transform:skewX(6deg)}
+.brand .n{font:400 92px/.84 var(--font-display);letter-spacing:.01em;text-transform:uppercase}
+.brand .t{font:700 38px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;color:var(--mute);margin-top:10px}
+.live{margin-left:auto;display:inline-flex;align-items:center;gap:16px;font:700 38px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--good)}
+.live::before{content:"";width:20px;height:20px;border-radius:50%;background:var(--good);animation:p 1.5s infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(55,224,138,.6)}70%{box-shadow:0 0 0 20px rgba(55,224,138,0)}100%{box-shadow:0 0 0 0 rgba(55,224,138,0)}}
+.clock{font:400 92px/1 var(--font-display);font-variant-numeric:tabular-nums;margin-left:36px}
+
+/* occupancy strip */
+.occ{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:36px}
+.occ .big{background:linear-gradient(135deg,var(--primary),var(--primary2));border-radius:44px;padding:44px 56px;color:#0c0e12;display:flex;align-items:center;gap:44px;position:relative;overflow:hidden}
+.occ .big .l{font:700 40px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;opacity:.7}
+.occ .big .pct{font:400 220px/.82 var(--font-display);letter-spacing:-.01em}
+.occ .ring{margin-left:auto;width:200px;height:200px;border-radius:50%;flex:none;background:conic-gradient(#0c0e12 0 62%,rgba(12,14,18,.18) 62% 100%);display:grid;place-items:center}
+.occ .ring::after{content:"";width:140px;height:140px;border-radius:50%;background:var(--primary)}
+.occ .ring b{position:absolute;font:400 64px/1 var(--font-display);color:#0c0e12}
+.occ .stat{background:var(--paper);border:3px solid var(--rule);border-radius:44px;padding:40px 48px;display:flex;flex-direction:column;justify-content:center;gap:10px}
+.occ .stat .l{font:700 36px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;color:var(--mute)}
+.occ .stat .v{font:400 132px/.84 var(--font-display);color:var(--fg);letter-spacing:-.01em}
+.occ .stat .v em{font-style:normal;color:var(--accent2)}
+.occ .stat.warm .v{color:var(--accent)}
+
+/* class schedule */
+.classes{background:var(--paper);border:3px solid var(--rule);border-radius:48px;padding:48px 56px;display:flex;flex-direction:column;min-height:0}
+.classes .h{display:flex;align-items:baseline;justify-content:space-between;border-bottom:3px solid var(--rule);padding-bottom:24px}
+.classes .h .ttl{font:400 84px/.86 var(--font-display);text-transform:uppercase;letter-spacing:.01em}
+.classes .h .sub{font:700 36px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;color:var(--primary)}
+.clist{display:flex;flex-direction:column;flex:1;min-height:0}
+.crow{display:grid;grid-template-columns:280px 1fr auto auto;align-items:center;gap:40px;flex:1;border-bottom:2px solid var(--rule)}
+.crow:last-child{border-bottom:0}
+.crow.now{background:linear-gradient(90deg,rgba(232,255,58,.14),transparent 70%);margin:0 -56px;padding:0 56px;border-radius:8px}
+.ctime{font:400 76px/.9 var(--font-display);letter-spacing:-.01em}
+.crow.now .ctime{color:var(--primary)}
+.ctime small{display:block;font:700 32px/1 var(--font-grotesk);letter-spacing:.1em;color:var(--mute);text-transform:uppercase;margin-top:6px}
+.cname{font:700 72px/1 var(--font-grotesk);letter-spacing:-.01em}
+.cname small{display:block;font:600 40px/1.1 var(--font-grotesk);color:var(--mute);margin-top:8px}
+.croom{font:700 44px/1 var(--font-grotesk);color:var(--accent2);letter-spacing:.04em;white-space:nowrap}
+.cspots{font:700 36px/1 var(--font-grotesk);letter-spacing:.08em;text-transform:uppercase;padding:18px 30px;border-radius:999px;white-space:nowrap}
+.cspots.live{background:var(--primary);color:#0c0e12}
+.cspots.open{background:rgba(55,224,138,.16);color:var(--good)}
+.cspots.full{background:rgba(255,90,54,.16);color:var(--accent)}
+
+.foot{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:36px;border-top:3px solid var(--rule);padding-top:30px}
+.fc{border:3px solid var(--rule);border-radius:36px;padding:32px 44px;display:flex;flex-direction:column;gap:8px;background:var(--paper)}
+.fc.hot{background:var(--accent);border:none}
+.fc .l{font:700 34px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;color:var(--mute)}
+.fc.hot .l{color:rgba(255,255,255,.82)}
+.fc .v{font:700 56px/1.05 var(--font-grotesk);letter-spacing:-.01em}
+.fc.hot .v{color:#fff;font:600 46px/1.16 var(--font-grotesk)}
+.stage[data-orient="portrait"] .occ{grid-template-columns:1fr}
+.stage[data-orient="portrait"] .crow{grid-template-columns:210px 1fr auto}
+.stage[data-orient="portrait"] .crow .croom{display:none}
+</style><script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div class="stage" id="stage"><div class="frame">
+
+  <header class="top" data-widget="brand">
+    <div class="logo" data-widget="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 9.5h-1V8a1 1 0 0 0-1-1h-1a1 1 0 0 0-1 1v1.5h-7V8a1 1 0 0 0-1-1h-1a1 1 0 0 0-1 1v1.5h-1a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h1V16a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1.5h7V16a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1.5h1a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1Z"/></svg></div>
+    <div class="brand"><div class="n" data-field="brand.name">Ironworks Fitness</div><div class="t" data-field="brand.tag">Floor board · live</div></div>
+    <div class="live">Live</div>
+    <div class="clock" data-source="local-time" data-widget="clock"><span data-field="clock.hhmm">5:42 PM</span></div>
+  </header>
+
+  <section class="occ" data-widget="occupancy" data-source="kiosk-api" data-feed="/api/gym/occupancy" data-refresh="10s">
+    <div class="big"><div><div class="l" data-field="occ.label">Gym capacity now</div><div class="pct"><span data-field="occ.pct">62</span>%</div></div>
+      <div class="ring" data-field="occ.ringpct" aria-hidden="true"><b data-field="occ.count">124</b></div></div>
+    <div class="stat"><div class="l" data-field="occ.s1l">Best time to lift</div><div class="v" data-field="occ.s1v">After <em>8 PM</em></div></div>
+    <div class="stat warm"><div class="l" data-field="occ.s2l">Busiest area</div><div class="v" data-field="occ.s2v">Free weights</div></div>
+  </section>
+
+  <section class="classes" data-widget="schedule" data-source="kiosk-api" data-feed="/api/gym/classes" data-refresh="30s">
+    <div class="h"><div class="ttl" data-field="sched.title">Today’s classes</div><div class="sub" data-field="sched.note">Reserve at the app</div></div>
+    <div class="clist">
+      <div class="crow now" data-widget="sched.0"><div class="ctime" data-field="sched.0.time">5:30<small>now</small></div><div class="cname" data-field="sched.0.name">Power Hour HIIT<small data-field="sched.0.coach">Coach Maya · 45 min</small></div><div class="croom" data-field="sched.0.room">Studio A</div><div class="cspots live" data-field="sched.0.spots">In session</div></div>
+      <div class="crow" data-widget="sched.1"><div class="ctime" data-field="sched.1.time">6:30<small>pm</small></div><div class="cname" data-field="sched.1.name">Spin &amp; Sprint<small data-field="sched.1.coach">Coach Dev · 50 min</small></div><div class="croom" data-field="sched.1.room">Cycle Rm</div><div class="cspots open" data-field="sched.1.spots">7 spots left</div></div>
+      <div class="crow" data-widget="sched.2"><div class="ctime" data-field="sched.2.time">7:00<small>pm</small></div><div class="cname" data-field="sched.2.name">Vinyasa Flow<small data-field="sched.2.coach">Coach Priya · 60 min</small></div><div class="croom" data-field="sched.2.room">Studio B</div><div class="cspots open" data-field="sched.2.spots">12 spots left</div></div>
+      <div class="crow" data-widget="sched.3"><div class="ctime" data-field="sched.3.time">7:30<small>pm</small></div><div class="cname" data-field="sched.3.name">Olympic Lifting<small data-field="sched.3.coach">Coach Theo · 60 min</small></div><div class="croom" data-field="sched.3.room">Platform</div><div class="cspots full" data-field="sched.3.spots">Waitlist</div></div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <div class="fc hot" data-widget="promo"><div class="l" data-field="promo.label">Challenge of the month</div><div class="v" data-field="promo.text">100 Mile Club — log your miles at the front desk. Top 3 win a free month.</div></div>
+    <div class="fc" data-widget="hours"><div class="l" data-field="hours.label">Open today</div><div class="v" data-field="hours.value">5 AM – 11 PM</div></div>
+    <div class="fc" data-widget="cta"><div class="l" data-field="cta.label">New here?</div><div class="v" data-field="cta.value">Free intro at the desk</div></div>
+  </footer>
+
+</div></div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();
+/* occupancy ring reads occ.pct */
+function ring(){var p=parseFloat((document.querySelector('[data-field="occ.pct"]')||{}).textContent)||62;var r=document.querySelector('.ring');if(r)r.style.background='conic-gradient(#0c0e12 0 '+p+'%,rgba(12,14,18,.18) '+p+'% 100%)';}ring();
+function clk(){var d=new Date(),h=d.getHours(),m=d.getMinutes(),ap=h<12?'AM':'PM';h=h%12||12;document.querySelectorAll('[data-field="clock.hhmm"]').forEach(function(e){e.textContent=h+':'+(m<10?'0':'')+m+' '+ap;});}clk();setInterval(clk,10000);
+})();</script></body></html>

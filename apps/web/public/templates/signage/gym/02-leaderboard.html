@@ -1,0 +1,131 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Gym · Leaderboard</title><style>
+:root{
+  --bg:#0a0b0e;--paper:#14161c;--fg:#f4f7fb;--mute:#838fa0;--rule:rgba(255,255,255,.1);
+  --primary:#e8ff3a;--gold:#ffce4f;--silver:#cfd6e0;--bronze:#e0925a;--accent:#37d6ff;--good:#37e08a;
+  --font-display:"Anton",system-ui,sans-serif;--font-grotesk:"Hanken Grotesk",system-ui,sans-serif;--font-mono:"JetBrains Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:radial-gradient(130% 120% at 50% -10%,#16181f 0%,var(--bg) 55%);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.stage::before{content:"";position:absolute;top:0;right:0;bottom:0;left:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.02) 0 2px,transparent 2px 130px);pointer-events:none}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-columns:1.1fr 1fr;grid-template-rows:auto 1fr;column-gap:60px;row-gap:48px;padding:80px 88px}
+
+.top{grid-column:1/-1;display:flex;align-items:center;gap:32px;border-bottom:3px solid var(--rule);padding-bottom:30px}
+.logo{width:116px;height:116px;flex:none;border-radius:24px;background:var(--primary);display:grid;place-items:center;color:#0a0b0e;transform:skewX(-6deg)}
+.logo svg{width:60px;height:60px;transform:skewX(6deg)}
+.brand .n{font:400 92px/.84 var(--font-display);text-transform:uppercase;letter-spacing:.01em}
+.brand .t{font:700 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute);margin-top:10px}
+.month{margin-left:auto;background:var(--primary);color:#0a0b0e;font:400 56px/1 var(--font-display);padding:20px 44px;border-radius:18px;text-transform:uppercase}
+
+/* champion spotlight (left) */
+.champ{position:relative;border-radius:48px;overflow:hidden;background:linear-gradient(160deg,#2a2c10,#0e0f08);border:3px solid rgba(232,255,58,.4);display:flex;flex-direction:column;justify-content:flex-end;padding:64px 68px}
+.champ::before{content:"#1";position:absolute;top:-40px;right:-10px;font:400 540px/1 var(--font-display);color:rgba(232,255,58,.08)}
+.champ .photo{position:absolute;top:0;right:0;bottom:0;left:0;background-size:cover;background-position:center}
+.champ .photo.placeholder{background:linear-gradient(160deg,#3a3d18,#15160c)}
+.champ .scrim{position:absolute;top:0;right:0;bottom:0;left:0;background:linear-gradient(180deg,transparent 30%,rgba(8,9,6,.9))}
+.champ .crown{position:absolute;top:56px;left:64px;display:inline-flex;align-items:center;gap:18px;background:var(--gold);color:#1a1400;font:800 38px/1 var(--font-grotesk);letter-spacing:.1em;text-transform:uppercase;padding:20px 36px;border-radius:999px}
+.champ .crown svg{width:42px;height:42px}
+.champ .b{position:relative}
+.champ .k{font:700 40px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--primary)}
+.champ .nm{font:400 200px/.82 var(--font-display);text-transform:uppercase;margin:16px 0 0}
+.champ .stat{display:flex;gap:48px;margin-top:28px}
+.champ .stat .s{display:flex;flex-direction:column}
+.champ .stat .sv{font:400 110px/.86 var(--font-display);color:var(--primary)}
+.champ .stat .sl{font:700 34px/1 var(--font-grotesk);letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-top:8px}
+
+/* leaderboard (right) */
+.board{background:var(--paper);border:3px solid var(--rule);border-radius:48px;padding:48px 52px;display:flex;flex-direction:column;min-height:0}
+.board .h{display:flex;align-items:baseline;justify-content:space-between;border-bottom:3px solid var(--rule);padding-bottom:24px}
+.board .h .ttl{font:400 78px/.86 var(--font-display);text-transform:uppercase}
+.board .h .sub{font:700 34px/1 var(--font-grotesk);letter-spacing:.14em;text-transform:uppercase;color:var(--primary)}
+.lb{display:flex;flex-direction:column;flex:1;min-height:0}
+.lb .r{display:grid;grid-template-columns:120px 1fr auto;align-items:center;gap:32px;flex:1;border-bottom:2px solid var(--rule)}
+.lb .r:last-child{border-bottom:0}
+.rk{font:400 96px/.86 var(--font-display);color:var(--mute);text-align:center}
+.lb .r.g1 .rk{color:var(--gold)}.lb .r.g2 .rk{color:var(--silver)}.lb .r.g3 .rk{color:var(--bronze)}
+.who{display:flex;align-items:center;gap:28px;min-width:0}
+.av{width:104px;height:104px;flex:none;border-radius:50%;background:#22252e;border:3px solid var(--rule);background-size:cover;background-position:center;display:grid;place-items:center;color:var(--mute);font:800 40px/1 var(--font-grotesk)}
+.nm2{font:700 64px/1 var(--font-grotesk);letter-spacing:-.01em}
+.nm2 small{display:block;font:600 36px/1 var(--font-grotesk);color:var(--mute);margin-top:8px}
+.pts{text-align:right;white-space:nowrap}
+.pts .pv{font:400 84px/.86 var(--font-display)}
+.pts .pl{font:700 30px/1 var(--font-grotesk);letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-top:6px}
+.delta{display:inline-block;font:700 30px/1 var(--font-grotesk);padding:10px 20px;border-radius:999px;margin-left:18px;vertical-align:middle}
+.delta.up{background:rgba(55,224,138,.16);color:var(--good)}
+.delta.flat{background:rgba(255,255,255,.08);color:var(--mute)}
+.stage[data-orient="portrait"] .frame{grid-template-columns:1fr;grid-template-rows:auto auto 1fr}
+.stage[data-orient="portrait"] .champ{min-height:1100px}
+.stage[data-orient="portrait"] .lb .r{grid-template-columns:110px 1fr auto}
+</style><script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div class="stage" id="stage"><div class="frame">
+
+  <header class="top" data-widget="brand">
+    <div class="logo" data-widget="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 9.5h-1V8a1 1 0 0 0-1-1h-1a1 1 0 0 0-1 1v1.5h-7V8a1 1 0 0 0-1-1h-1a1 1 0 0 0-1 1v1.5h-1a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h1V16a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1.5h7V16a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1.5h1a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1Z"/></svg></div>
+    <div class="brand"><div class="n" data-field="brand.name">Ironworks Fitness</div><div class="t" data-field="brand.tag">100 Mile Club · leaderboard</div></div>
+    <div class="month" data-field="brand.month">June</div>
+  </header>
+
+  <section class="champ" data-widget="champion" data-source="cms" data-feed="/api/gym/champion">
+    <div class="crown" data-field="champ.tag"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 8l4 4 5-7 5 7 4-4v9H3z"/></svg> Leader</div>
+    <div class="photo placeholder" data-imgslot="champ.photo" aria-hidden="true"></div>
+    <div class="scrim"></div>
+    <div class="b">
+      <div class="k" data-field="champ.k">Member of the month</div>
+      <div class="nm" data-field="champ.name">Renee O.</div>
+      <div class="stat"><div class="s"><div class="sv" data-field="champ.s1v">142</div><div class="sl" data-field="champ.s1l">Miles logged</div></div>
+        <div class="s"><div class="sv" data-field="champ.s2v">26</div><div class="sl" data-field="champ.s2l">Day streak</div></div>
+        <div class="s"><div class="sv" data-field="champ.s3v">18</div><div class="sl" data-field="champ.s3l">Classes</div></div></div>
+    </div>
+  </section>
+
+  <section class="board" data-widget="leaderboard" data-source="cms" data-feed="/api/gym/leaderboard" data-refresh="60s">
+    <div class="h"><div class="ttl" data-field="lb.title">Top movers</div><div class="sub" data-field="lb.note">Updated hourly</div></div>
+    <div class="lb">
+      <div class="r g1" data-widget="lb.0"><div class="rk">1</div><div class="who"><div class="av" data-imgslot="lb.0.photo" data-field="lb.0.ini">RO</div><div class="nm2" data-field="lb.0.name">Renee O.<small data-field="lb.0.team">Team Sunrise</small></div></div><div class="pts"><div class="pv" data-field="lb.0.pts">142<span class="delta up" data-field="lb.0.delta">▲ leader</span></div><div class="pl" data-field="lb.0.unit">miles</div></div></div>
+      <div class="r g2" data-widget="lb.1"><div class="rk">2</div><div class="who"><div class="av" data-imgslot="lb.1.photo" data-field="lb.1.ini">DK</div><div class="nm2" data-field="lb.1.name">Dev K.<small data-field="lb.1.team">Team Iron</small></div></div><div class="pts"><div class="pv" data-field="lb.1.pts">128<span class="delta up" data-field="lb.1.delta">▲ 2</span></div><div class="pl" data-field="lb.1.unit">miles</div></div></div>
+      <div class="r g3" data-widget="lb.2"><div class="rk">3</div><div class="who"><div class="av" data-imgslot="lb.2.photo" data-field="lb.2.ini">MA</div><div class="nm2" data-field="lb.2.name">Maya A.<small data-field="lb.2.team">Team Sunrise</small></div></div><div class="pts"><div class="pv" data-field="lb.2.pts">119<span class="delta flat" data-field="lb.2.delta">— held</span></div><div class="pl" data-field="lb.2.unit">miles</div></div></div>
+      <div class="r" data-widget="lb.3"><div class="rk">4</div><div class="who"><div class="av" data-imgslot="lb.3.photo" data-field="lb.3.ini">TJ</div><div class="nm2" data-field="lb.3.name">Theo J.<small data-field="lb.3.team">Team Iron</small></div></div><div class="pts"><div class="pv" data-field="lb.3.pts">104<span class="delta up" data-field="lb.3.delta">▲ 3</span></div><div class="pl" data-field="lb.3.unit">miles</div></div></div>
+      <div class="r" data-widget="lb.4"><div class="rk">5</div><div class="who"><div class="av" data-imgslot="lb.4.photo" data-field="lb.4.ini">PB</div><div class="nm2" data-field="lb.4.name">Priya B.<small data-field="lb.4.team">Team Flow</small></div></div><div class="pts"><div class="pv" data-field="lb.4.pts">97<span class="delta up" data-field="lb.4.delta">▲ 1</span></div><div class="pl" data-field="lb.4.unit">miles</div></div></div>
+    </div>
+  </section>
+
+</div></div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();
+document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img');if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');if(el.classList.contains('placeholder'))el.classList.remove('placeholder');el.textContent='';}});
+})();</script></body></html>

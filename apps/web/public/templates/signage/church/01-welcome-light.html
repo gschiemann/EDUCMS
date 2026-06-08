@@ -1,0 +1,125 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Church (Light) · Welcome</title><style>
+:root{
+  --bg:#0b0e1e;--bg2:#06080f;--cream:#f4ead2;--ink:#0b0e1e;--mute:#a99e84;--gold:#d9b46a;--gold2:#b08c3e;
+  --ruby:#b8324a;--sapphire:#2f5aa8;--emerald:#2f7d5a;--amber:#d98a2b;--violet:#6a4ba0;
+  --font-display:"Cormorant Garamond",Georgia,serif;--font-grotesk:"Hanken Grotesk",system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:radial-gradient(120% 92% at 50% 122%,#2a2238 0%,var(--bg) 44%,var(--bg2) 100%);color:var(--cream);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+/* shafts of light from above */
+.stage::before{content:"";position:absolute;top:-260px;left:50%;transform:translateX(-50%);width:2600px;height:2000px;background:conic-gradient(from 200deg at 50% 0,transparent 0,rgba(217,180,106,.12) 7%,transparent 14%,rgba(217,180,106,.09) 24%,transparent 32%,rgba(217,180,106,.12) 42%,transparent 50%,rgba(217,180,106,.08) 60%,transparent 68%);pointer-events:none}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:auto 1fr auto;padding:70px 96px 60px}
+
+.bar{display:flex;align-items:center;gap:28px}
+.crest{width:96px;height:96px;flex:none;border:2px solid var(--gold);border-radius:50%;display:grid;place-items:center;color:var(--gold)}
+.crest svg{width:48px;height:48px}
+.bar .nm{font:600 54px/.92 var(--font-display)}
+.bar .nm small{display:block;font:600 26px/1 var(--font-grotesk);letter-spacing:.28em;text-transform:uppercase;color:var(--mute);margin-top:8px}
+.bar .when{margin-left:auto;text-align:right}
+.bar .when .d{font:500 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--gold)}
+.bar .when .h{font:500 44px/1.05 var(--font-display);color:var(--cream);margin-top:8px}
+
+/* hero with rose window */
+.hero{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative}
+.rose{width:440px;height:440px;border-radius:50%;position:relative;flex:none;
+  background:conic-gradient(from 0deg,var(--ruby),var(--amber),var(--emerald),var(--sapphire),var(--violet),var(--ruby));
+  box-shadow:0 0 90px rgba(217,180,106,.4),0 30px 80px rgba(0,0,0,.5);border:8px solid var(--gold2)}
+/* leading: spokes + rings */
+.rose::before{content:"";position:absolute;top:0;right:0;bottom:0;left:0;border-radius:50%;
+  background:repeating-conic-gradient(from 0deg,transparent 0 28deg,rgba(8,9,15,.62) 28deg 30deg),
+    radial-gradient(circle,transparent 56px,rgba(8,9,15,.6) 58px 64px,transparent 66px,transparent 120px,rgba(8,9,15,.5) 122px 128px,transparent 130px,transparent 180px,rgba(8,9,15,.5) 182px 190px,transparent 192px)}
+.rose::after{content:"";position:absolute;left:50%;top:50%;width:90px;height:90px;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,#fff6dc,var(--gold) 60%,var(--gold2));box-shadow:0 0 50px rgba(255,240,200,.8)}
+.hero .ornament{display:inline-flex;align-items:center;gap:28px;color:var(--gold);font:500 36px/1 var(--font-grotesk);letter-spacing:.34em;text-transform:uppercase;margin-top:54px}
+.hero .ornament::before,.hero .ornament::after{content:"";width:180px;height:1px;background:linear-gradient(90deg,transparent,var(--gold))}
+.hero .ornament::after{background:linear-gradient(90deg,var(--gold),transparent)}
+.hero h1{font:600 300px/.82 var(--font-display);font-style:italic;letter-spacing:-.015em;margin:18px 0 0;color:var(--cream);text-shadow:0 0 80px rgba(217,180,106,.25)}
+.hero h1 em{font-style:italic;color:var(--gold)}
+.hero .verse{font:500 64px/1.34 var(--font-display);font-style:italic;color:rgba(244,234,210,.84);margin-top:36px;max-width:36ch}
+.hero .ref{font:600 34px/1 var(--font-grotesk);letter-spacing:.22em;text-transform:uppercase;color:var(--mute);margin-top:22px}
+
+/* service ledger — hairline gold columns, no boxes */
+.ledger{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--gold2);padding-top:40px}
+.svc{text-align:center;padding:0 36px;border-left:1px solid rgba(217,180,106,.28)}
+.svc:first-child{border-left:0}
+.svc .l{font:600 30px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.svc .v{font:600 96px/.9 var(--font-display);color:var(--gold);margin:14px 0 10px}
+.svc .d{font:500 40px/1.16 var(--font-grotesk);color:var(--cream)}
+
+.stage[data-orient="portrait"] .hero h1{font-size:200px}
+.stage[data-orient="portrait"] .rose{width:360px;height:360px}
+.stage[data-orient="portrait"] .ledger{grid-template-columns:repeat(2,1fr);row-gap:40px}
+.stage[data-orient="portrait"] .svc:nth-child(3){border-left:0}
+</style><script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div class="stage" id="stage"><div class="frame">
+
+  <header class="bar" data-widget="brand">
+    <div class="crest" data-widget="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 2v20M5 9h14M8 22h8"/></svg></div>
+    <div class="nm"><span data-field="brand.name">Grace Community Church</span><small data-field="brand.tag">Est. 1947 · all are welcome</small></div>
+    <div class="when" data-widget="date" data-source="local-time"><div class="d" data-field="date.dow">Sunday Morning</div><div class="h" data-field="date.h">June 8</div></div>
+  </header>
+
+  <main class="hero" data-widget="welcome" data-source="cms" data-feed="/api/church/welcome">
+    <div class="rose" aria-hidden="true"></div>
+    <span class="ornament" data-field="wel.pre">Welcome home</span>
+    <h1><span data-field="wel.t1">Come as you </span><em data-field="wel.t2">are.</em></h1>
+    <div class="verse" data-field="wel.verse">“Come to me, all who are weary and burdened, and I will give you rest.”</div>
+    <div class="ref" data-field="wel.ref">Matthew 11:28</div>
+  </main>
+
+  <section class="ledger" data-widget="services" data-source="cms" data-feed="/api/church/services">
+    <div class="svc" data-widget="svc.0"><div class="l" data-field="svc.0.l">Now gathering</div><div class="v" data-field="svc.0.v">9:00</div><div class="d" data-field="svc.0.d">Traditional · Sanctuary</div></div>
+    <div class="svc" data-widget="svc.1"><div class="l" data-field="svc.1.l">Next service</div><div class="v" data-field="svc.1.v">11:00</div><div class="d" data-field="svc.1.d">Modern · Main Hall</div></div>
+    <div class="svc" data-widget="svc.2"><div class="l" data-field="svc.2.l">Children</div><div class="v" data-field="svc.2.v">All AM</div><div class="d" data-field="svc.2.d">Check-in · East Wing</div></div>
+    <div class="svc" data-widget="svc.3"><div class="l" data-field="svc.3.l">Wednesday</div><div class="v" data-field="svc.3.v">6:30</div><div class="d" data-field="svc.3.d">Prayer &amp; Study</div></div>
+  </section>
+
+</div></div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();
+var DOW=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function dt(){var d=new Date();document.querySelectorAll('[data-field="date.h"]').forEach(function(e){if(!e.hasAttribute('data-pin'))e.textContent=MON[d.getMonth()]+' '+d.getDate();});}dt();setInterval(dt,60000);
+})();</script>
+<style id="church-light">
+:root{--bg:#f7f0e2;--bg2:#ece1cd;--cream:#2c2518;--ink:#2c2518;--mute:#8a7c61;--gold:#b1873a;--gold2:#8f6c2a}
+.stage{background:radial-gradient(125% 100% at 50% -12%,#fffaf0 0%,#f7f0e2 46%,#efe4d0 100%)}
+.stage::before{mix-blend-mode:multiply;opacity:.55}
+.crest{border-color:var(--gold);color:var(--gold)}
+.ledger{border-top-color:var(--gold2)}.svc{border-left-color:rgba(177,135,58,.3)}
+</style>
+</body></html>

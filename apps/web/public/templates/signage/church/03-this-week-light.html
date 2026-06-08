@@ -1,0 +1,136 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Church (Light) · This Week</title><style>
+:root{
+  --bg:#0c0f1f;--bg2:#070912;--cream:#f4ead2;--ink:#0c0f1f;--mute:#a99e84;--gold:#d9b46a;--gold2:#b08c3e;
+  --ruby:#b8324a;--sapphire:#2f5aa8;--emerald:#2f7d5a;--amber:#d98a2b;--violet:#6a4ba0;
+  --font-display:"Cormorant Garamond",Georgia,serif;--font-grotesk:"Hanken Grotesk",system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:radial-gradient(120% 90% at 50% 118%,#2a2336 0%,var(--bg) 42%,var(--bg2) 100%);color:var(--cream);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+/* faint cathedral light from above */
+.stage::before{content:"";position:absolute;top:-200px;left:50%;transform:translateX(-50%);width:2200px;height:1600px;background:radial-gradient(ellipse at 50% 0,rgba(217,180,106,.14),transparent 62%);pointer-events:none}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:auto auto 1fr auto;padding:74px 96px 64px;row-gap:30px}
+
+/* masthead */
+.bar{display:flex;align-items:center;gap:28px}
+.crest{width:96px;height:96px;flex:none;border:2px solid var(--gold);border-radius:50%;display:grid;place-items:center;color:var(--gold)}
+.crest svg{width:48px;height:48px}
+.bar .nm{font:600 56px/.92 var(--font-display);letter-spacing:.01em}
+.bar .nm small{display:block;font:600 26px/1 var(--font-grotesk);letter-spacing:.28em;text-transform:uppercase;color:var(--mute);margin-top:8px}
+.bar .rng{margin-left:auto;font:500 40px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;color:var(--gold)}
+
+/* soaring title */
+.title{text-align:center}
+.title .ornament{display:inline-flex;align-items:center;gap:28px;color:var(--gold);font:500 34px/1 var(--font-grotesk);letter-spacing:.34em;text-transform:uppercase}
+.title .ornament::before,.title .ornament::after{content:"";width:160px;height:1px;background:linear-gradient(90deg,transparent,var(--gold))}
+.title .ornament::after{background:linear-gradient(90deg,var(--gold),transparent)}
+.title h1{font:600 200px/.82 var(--font-display);font-style:italic;letter-spacing:-.01em;margin:14px 0 0;color:var(--cream)}
+.title h1 em{font-style:italic;color:var(--gold)}
+
+/* the windows */
+.windows{display:grid;grid-template-columns:repeat(5,1fr);gap:40px;min-height:0;align-items:stretch}
+.win{position:relative;clip-path:polygon(0% 100%,0% 24%,50% 0%,100% 24%,100% 100%);background:linear-gradient(180deg,var(--gold),var(--gold2));display:flex;filter:drop-shadow(0 24px 40px rgba(0,0,0,.5))}
+.pane{position:absolute;top:7px;right:7px;bottom:7px;left:7px;clip-path:polygon(0% 100%,0% 24%,50% 0%,100% 24%,100% 100%);display:flex;flex-direction:column;overflow:hidden;background:var(--bg2)}
+/* stained-glass upper */
+.glass{position:relative;height:46%;overflow:hidden}
+.win.d0 .glass{background:radial-gradient(circle at 50% 64%,#ffd98a,var(--amber) 40%,#7a3a12 100%)}
+.win.d1 .glass{background:radial-gradient(circle at 50% 64%,#9fc1ff,var(--sapphire) 42%,#16306a 100%)}
+.win.d2 .glass{background:radial-gradient(circle at 50% 64%,#8fe3b6,var(--emerald) 42%,#123f2c 100%)}
+.win.d3 .glass{background:radial-gradient(circle at 50% 64%,#ff9fb0,var(--ruby) 42%,#5a1422 100%)}
+.win.d4 .glass{background:radial-gradient(circle at 50% 64%,#c4a8ff,var(--violet) 42%,#2a1a52 100%)}
+/* leaded came lines + rosette */
+.glass::before{content:"";position:absolute;top:0;right:0;bottom:0;left:0;background:
+  radial-gradient(circle at 50% 64%,transparent 70px,rgba(8,9,18,.55) 72px,transparent 80px),
+  radial-gradient(circle at 50% 64%,transparent 130px,rgba(8,9,18,.45) 132px,transparent 142px),
+  linear-gradient(90deg,transparent 49.4%,rgba(8,9,18,.5) 49.7%,rgba(8,9,18,.5) 50.3%,transparent 50.6%),
+  linear-gradient(0deg,transparent 49.4%,rgba(8,9,18,.4) 49.7%,rgba(8,9,18,.4) 50.3%,transparent 50.6%)}
+.glass::after{content:"";position:absolute;left:50%;top:64%;width:54px;height:54px;transform:translate(-50%,-50%) rotate(45deg);background:rgba(244,234,210,.9);box-shadow:0 0 30px rgba(255,240,200,.7)}
+/* plaque */
+.plaque{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px 22px 30px;border-top:3px solid var(--gold2)}
+.plaque .dn{font:600 78px/.86 var(--font-display);color:var(--gold)}
+.plaque .dd{font:700 24px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute);margin-top:6px}
+.plaque .e{font:600 50px/1.04 var(--font-display);color:var(--cream);margin-top:22px}
+.plaque .m{font:500 28px/1.22 var(--font-grotesk);color:var(--mute);margin-top:12px}
+.plaque .t{margin-top:18px;font:600 36px/1 var(--font-display);font-style:italic;color:var(--gold)}
+/* today */
+.win.today{background:linear-gradient(180deg,#ffe6a6,var(--gold))}
+.win.today .pane{box-shadow:inset 0 0 0 3px var(--gold)}
+.win.today::after{content:"This Sunday";position:absolute;top:30%;left:50%;transform:translateX(-50%);background:var(--ruby);color:#fff;font:700 24px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;padding:14px 26px;border-radius:999px;z-index:3;white-space:nowrap;box-shadow:0 10px 24px rgba(0,0,0,.4)}
+
+.foot{text-align:center;font:500 46px/1.3 var(--font-display);font-style:italic;color:var(--mute)}
+.foot b{color:var(--gold);font-weight:600;font-style:normal}
+
+.stage[data-orient="portrait"] .title h1{font-size:150px}
+.stage[data-orient="portrait"] .windows{grid-template-columns:repeat(2,1fr);gap:48px}
+.stage[data-orient="portrait"] .win:nth-child(5){grid-column:1/-1}
+</style><script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div class="stage" id="stage"><div class="frame">
+
+  <header class="bar" data-widget="brand">
+    <div class="crest" data-widget="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 2v20M5 9h14M8 22h8"/></svg></div>
+    <div class="nm"><span data-field="brand.name">Grace Community Church</span><small data-field="brand.tag">Est. 1947 · all are welcome</small></div>
+    <div class="rng" data-field="brand.range" data-live="weekrange">June 8 – 14</div>
+  </header>
+
+  <div class="title"><span class="ornament" data-field="title.pre">✦ Gather with us ✦</span><h1><span data-field="title.t1">This </span><em data-field="title.t2">Week</em></h1></div>
+
+  <section class="windows" data-widget="week" data-source="cms" data-feed="/api/church/week" data-refresh="120s">
+    <article class="win d0 today" data-widget="wk.0" data-weekday="0"><div class="pane"><div class="glass"></div><div class="plaque"><div class="dn" data-field="wk.0.dn">Sun</div><div class="dd" data-field="wk.0.dd">Worship</div><div class="e" data-field="wk.0.e">Sunday Services</div><div class="m" data-field="wk.0.m">Sanctuary &amp; Main Hall</div><div class="t" data-field="wk.0.t">9 &amp; 11 AM</div></div></div></article>
+    <article class="win d1" data-widget="wk.1" data-weekday="2"><div class="pane"><div class="glass"></div><div class="plaque"><div class="dn" data-field="wk.1.dn">Tue</div><div class="dd" data-field="wk.1.dd">Study</div><div class="e" data-field="wk.1.e">Women's Bible Study</div><div class="m" data-field="wk.1.m">Rm 204 · childcare</div><div class="t" data-field="wk.1.t">9:30 AM</div></div></div></article>
+    <article class="win d2" data-widget="wk.2" data-weekday="3"><div class="pane"><div class="glass"></div><div class="plaque"><div class="dn" data-field="wk.2.dn">Wed</div><div class="dd" data-field="wk.2.dd">Midweek</div><div class="e" data-field="wk.2.e">Prayer &amp; Youth</div><div class="m" data-field="wk.2.m">Sanctuary · the Loft</div><div class="t" data-field="wk.2.t">6:30 PM</div></div></div></article>
+    <article class="win d3" data-widget="wk.3" data-weekday="5"><div class="pane"><div class="glass"></div><div class="plaque"><div class="dn" data-field="wk.3.dn">Fri</div><div class="dd" data-field="wk.3.dd">Family</div><div class="e" data-field="wk.3.e">Movie on the Lawn</div><div class="m" data-field="wk.3.m">Bring a blanket</div><div class="t" data-field="wk.3.t">8:00 PM</div></div></div></article>
+    <article class="win d4" data-widget="wk.4" data-weekday="6"><div class="pane"><div class="glass"></div><div class="plaque"><div class="dn" data-field="wk.4.dn">Sat</div><div class="dd" data-field="wk.4.dd">Serve</div><div class="e" data-field="wk.4.e">Food Bank Serve Day</div><div class="m" data-field="wk.4.m">Meet in the lot</div><div class="t" data-field="wk.4.t">8:30 AM</div></div></div></article>
+  </section>
+
+  <footer class="foot" data-widget="foot"><span data-field="foot.text">There is a place for you here. <b>New?</b> Stop by the Welcome Tent in the lobby.</span></footer>
+
+</div></div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function mondayOf(d){var x=new Date(d),g=x.getDay();x.setDate(x.getDate()+(g===0?-6:1-g));x.setHours(0,0,0,0);return x;}
+function dt(){var d=new Date(),mon=mondayOf(d),sun=new Date(mon);sun.setDate(mon.getDate()+6);document.querySelectorAll('[data-live="weekrange"]').forEach(function(e){if(!e.hasAttribute('data-pin'))e.textContent=MON[mon.getMonth()]+' '+mon.getDate()+' – '+sun.getDate();});}dt();setInterval(dt,60000);
+})();</script>
+<style id="church-light">
+:root{--bg:#f7f0e2;--bg2:#ece1cd;--cream:#2c2518;--ink:#2c2518;--mute:#8a7c61;--gold:#b1873a;--gold2:#8f6c2a}
+.stage{background:radial-gradient(125% 100% at 50% -12%,#fffaf0 0%,#f7f0e2 46%,#efe4d0 100%)}
+.stage::before{mix-blend-mode:multiply;opacity:.55}
+.crest{border-color:var(--gold);color:var(--gold)}
+.pane{background:#fffaf0}.glass::before{filter:none}.foot b{color:var(--gold)}
+</style>
+</body></html>

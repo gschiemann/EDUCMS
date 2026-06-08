@@ -1,0 +1,109 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Church · Prayer Wall</title><style>
+:root{
+  --bg:#0a0d1c;--bg2:#05070e;--cream:#f4ead2;--ink:#0a0d1c;--mute:#a99e84;--gold:#d9b46a;--gold2:#a8843a;
+  --ruby:#b8324a;--sapphire:#2f5aa8;--emerald:#2f7d5a;--amber:#d98a2b;--violet:#6a4ba0;
+  --font-display:"Cormorant Garamond",Georgia,serif;--font-hand:"Caveat",cursive;--font-grotesk:"Hanken Grotesk",system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:radial-gradient(120% 92% at 50% 122%,#241d33 0%,var(--bg) 44%,var(--bg2) 100%);color:var(--cream);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.stage::before{content:"";position:absolute;top:-240px;left:50%;transform:translateX(-50%);width:2400px;height:1800px;background:radial-gradient(ellipse at 50% 0,rgba(217,180,106,.12),transparent 60%);pointer-events:none}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:auto 1fr auto;padding:70px 96px 60px;row-gap:40px}
+
+.bar{display:flex;align-items:center;gap:26px}
+.crest{width:90px;height:90px;flex:none;border:2px solid var(--gold);border-radius:50%;display:grid;place-items:center;color:var(--gold)}
+.crest svg{width:46px;height:46px}
+.bar .nm{font:600 52px/.92 var(--font-display)}
+.bar .nm small{display:block;font:600 30px/1 var(--font-grotesk);letter-spacing:.24em;text-transform:uppercase;color:var(--mute);margin-top:8px}
+.bar .verse{margin-left:auto;text-align:right}
+.bar .verse .v{font:600 52px/1 var(--font-display);font-style:italic;color:var(--gold)}
+.bar .verse .r{font:600 30px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute);margin-top:10px}
+
+/* candle-glow votive wall */
+.wall{min-height:0;display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:40px}
+.note{position:relative;display:flex;flex-direction:column;justify-content:center;border-radius:24px;padding:56px 56px 52px;
+  background:linear-gradient(180deg,rgba(244,234,210,.07),rgba(244,234,210,.03));border:1px solid rgba(217,180,106,.3);
+  box-shadow:0 20px 44px rgba(0,0,0,.4),inset 0 0 60px rgba(217,180,106,.04)}
+/* lit votive flame at top-left of each card */
+.note::before{content:"";position:absolute;top:-18px;left:48px;width:28px;height:40px;border-radius:50% 50% 46% 46%/62% 62% 40% 40%;
+  background:radial-gradient(circle at 50% 70%,#fff3c4,var(--amber) 55%,var(--ruby));box-shadow:0 0 28px 6px rgba(224,138,43,.6);animation:flick 3s ease-in-out infinite}
+@keyframes flick{0%,100%{transform:scale(1) translateY(0);opacity:.95}50%{transform:scale(1.12) translateY(-2px);opacity:1}}
+.note .q{font:700 80px/1.2 var(--font-hand);color:var(--cream);letter-spacing:.01em}
+.note .by{font:600 46px/1 var(--font-grotesk);letter-spacing:.04em;color:var(--gold);margin-top:32px}
+.note .pc{font:600 42px/1 var(--font-grotesk);color:var(--mute);margin-top:18px}
+.note .pc b{color:var(--emerald);font-weight:700}
+.note.joy{border-color:rgba(47,125,90,.5)}.note.joy .by{color:var(--emerald)}
+
+.foot{display:flex;align-items:center;gap:48px;border-top:1px solid var(--gold2);padding-top:40px}
+.foot .ic{width:84px;height:84px;flex:none;border:2px solid var(--gold);border-radius:50%;display:grid;place-items:center;color:var(--gold)}
+.foot .ic svg{width:42px;height:42px}
+.foot .t{font:600 56px/1.1 var(--font-display)}
+.foot .t small{display:block;font:500 40px/1.2 var(--font-grotesk);color:var(--mute);margin-top:8px}
+.foot .cta{margin-left:auto;font:600 44px/1.2 var(--font-grotesk);text-align:right;color:var(--gold)}
+.foot .cta small{display:block;font:500 36px/1.2 var(--font-grotesk);color:var(--mute);margin-top:8px}
+
+.stage[data-orient="portrait"] .wall{grid-template-columns:repeat(2,1fr)}
+.stage[data-orient="portrait"] .foot{flex-wrap:wrap;gap:28px}
+.stage[data-orient="portrait"] .foot .cta{margin-left:0}
+</style><script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div class="stage" id="stage"><div class="frame">
+
+  <header class="bar" data-widget="brand">
+    <div class="crest" data-widget="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 2v20M5 9h14M8 22h8"/></svg></div>
+    <div class="nm"><span data-field="brand.name">Grace Community Church</span><small data-field="brand.tag">The Prayer Wall</small></div>
+    <div class="verse"><div class="v" data-field="brand.v">“Carry one another’s burdens.”</div><div class="r" data-field="brand.r">Galatians 6:2</div></div>
+  </header>
+
+  <section class="wall" data-widget="prayers" data-source="cms" data-feed="/api/church/prayers" data-refresh="30s">
+    <div class="note" data-widget="pr.0"><div class="q" data-field="pr.0.q">For my grandmother’s surgery Thursday — steady hands and a calm heart.</div><div class="by" data-field="pr.0.by">— The Alvarez family</div><div class="pc" data-field="pr.0.c">◆ <b>42</b> praying with you</div></div>
+    <div class="note joy" data-widget="pr.1"><div class="q" data-field="pr.1.q">Thanksgiving! Baby Ruth came home healthy this week. God is good.</div><div class="by" data-field="pr.1.by">— The Okwu family</div><div class="pc" data-field="pr.1.c">◆ <b>96</b> rejoicing</div></div>
+    <div class="note" data-widget="pr.2"><div class="q" data-field="pr.2.q">Starting a new job Monday — grateful &amp; nervous. Pray for courage.</div><div class="by" data-field="pr.2.by">— Marcus T.</div><div class="pc" data-field="pr.2.c">◆ <b>28</b> praying with you</div></div>
+    <div class="note" data-widget="pr.3"><div class="q" data-field="pr.3.q">For peace in our city, and the families on Maple St. after the fire.</div><div class="by" data-field="pr.3.by">— Anonymous</div><div class="pc" data-field="pr.3.c">◆ <b>64</b> praying with you</div></div>
+    <div class="note" data-widget="pr.4"><div class="q" data-field="pr.4.q">For my son deployed overseas — safety and a swift return home.</div><div class="by" data-field="pr.4.by">— Diane M.</div><div class="pc" data-field="pr.4.c">◆ <b>71</b> praying with you</div></div>
+    <div class="note" data-widget="pr.5"><div class="q" data-field="pr.5.q">Healing for a friend in treatment — that she feels surrounded by love.</div><div class="by" data-field="pr.5.by">— Hope &amp; Lin</div><div class="pc" data-field="pr.5.c">◆ <b>53</b> praying with you</div></div>
+  </section>
+
+  <footer class="foot" data-widget="cta">
+    <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.6-7-10.2A4.8 4.8 0 0 1 12 7a4.8 4.8 0 0 1 7 3.8C19 16.4 12 21 12 21Z"/></svg></div>
+    <div class="t" data-field="cta.t">Add your prayer<small data-field="cta.s">Text PRAY to 55555, or use a card at any seat.</small></div>
+    <div class="cta" data-field="cta.r">Our team prays over every request.<small data-field="cta.rs">Need prayer now? Team is front-right after service.</small></div>
+  </footer>
+
+</div></div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();})();</script></body></html>

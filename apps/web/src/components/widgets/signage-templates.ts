@@ -101,6 +101,27 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   { id: "preset-sig-qsr-08", name: "QSR · Rewards", group: "QSR", url: "/templates/signage/qsr/08-rewards.html" },
   { id: "preset-sig-qsr-09", name: "QSR · Hours", group: "QSR", url: "/templates/signage/qsr/09-hours-location.html" },
   { id: "preset-sig-qsr-10", name: "QSR · Now Hiring", group: "QSR", url: "/templates/signage/qsr/10-now-hiring.html" },
+  // New industry signage (2026-06-08 designer handoff) — church, veterinary,
+  // gym, real-estate, museum, office, clinic. Single-file EXTERNAL_HTML with the
+  // V6 click-to-edit shim, Taurus-safe (inset→longhand), landscape + portrait.
+  { id: "preset-sig-church-01", name: "Church · Welcome", group: "Church", url: "/templates/signage/church/01-welcome-flagship.html" },
+  { id: "preset-sig-church-02", name: "Church · Welcome (Light)", group: "Church", url: "/templates/signage/church/01-welcome-light.html" },
+  { id: "preset-sig-church-03", name: "Church · Series", group: "Church", url: "/templates/signage/church/02-series.html" },
+  { id: "preset-sig-church-04", name: "Church · Series (Light)", group: "Church", url: "/templates/signage/church/02-series-light.html" },
+  { id: "preset-sig-church-05", name: "Church · This Week", group: "Church", url: "/templates/signage/church/03-this-week.html" },
+  { id: "preset-sig-church-06", name: "Church · This Week (Light)", group: "Church", url: "/templates/signage/church/03-this-week-light.html" },
+  { id: "preset-sig-church-07", name: "Church · Next Steps & Give", group: "Church", url: "/templates/signage/church/04-next-steps-give.html" },
+  { id: "preset-sig-church-08", name: "Church · Next Steps & Give (Light)", group: "Church", url: "/templates/signage/church/04-next-steps-give-light.html" },
+  { id: "preset-sig-church-09", name: "Church · Prayer Wall", group: "Church", url: "/templates/signage/church/05-prayer-wall.html" },
+  { id: "preset-sig-church-10", name: "Church · Prayer Wall (Light)", group: "Church", url: "/templates/signage/church/05-prayer-wall-light.html" },
+  { id: "preset-sig-veterinary-01", name: "Veterinary · Waiting Room", group: "Veterinary", url: "/templates/signage/veterinary/01-waiting-room-flagship.html" },
+  { id: "preset-sig-veterinary-02", name: "Veterinary · Adoptable Pets", group: "Veterinary", url: "/templates/signage/veterinary/02-adopt-gallery.html" },
+  { id: "preset-sig-gym-01", name: "Gym · Floor Board", group: "Gym", url: "/templates/signage/gym/01-floor-board-flagship.html" },
+  { id: "preset-sig-gym-02", name: "Gym · Leaderboard", group: "Gym", url: "/templates/signage/gym/02-leaderboard.html" },
+  { id: "preset-sig-real-estate-01", name: "Real Estate · Availability", group: "Real Estate", url: "/templates/signage/real-estate/01-availability-flagship.html" },
+  { id: "preset-sig-museum-01", name: "Museum · Today", group: "Museum", url: "/templates/signage/museum/01-today-flagship.html" },
+  { id: "preset-sig-office-01", name: "Office · Room Grid", group: "Office", url: "/templates/signage/office/01-room-grid-flagship.html" },
+  { id: "preset-sig-clinic-01", name: "Clinic · Campaign", group: "Clinic", url: "/templates/signage/clinic/01-campaign-flagship.html" },
   // Modern K-12 school boards (2026-06-07) — EXTERNAL_HTML rebuilds of the
   // legacy skeuomorphic themed widgets. Big type, 60px floor, click-to-edit.
   { id: "preset-school-elem-schedule-1", name: "Elementary · Daily Schedule — Color Blocks", group: "Elementary", url: "/templates/school/elem-schedule-v1.html" },

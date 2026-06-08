@@ -1,0 +1,140 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Museum · Today</title><style>
+:root{
+  /* rebrand here */
+  --bg:#120f1a;--paper:#1b1726;--fg:#f5f1ea;--mute:#9a8fb0;--rule:rgba(255,255,255,.12);
+  --primary:#d9b06a;--primary2:#b88f47;--accent:#c8537e;--accent2:#5fb8c8;--good:#6fce9a;
+  --font-display:"Fraunces",Georgia,serif;--font-grotesk:"Hanken Grotesk",system-ui,sans-serif;--font-mono:"JetBrains Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:radial-gradient(120% 110% at 20% -10%,#241d33 0%,var(--bg) 58%);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-columns:1.25fr 1fr;grid-template-rows:auto 1fr auto;column-gap:56px;row-gap:44px;padding:80px 88px}
+
+.top{grid-column:1/-1;display:flex;align-items:center;gap:36px;border-bottom:2px solid var(--rule);padding-bottom:30px}
+.logo{width:120px;height:120px;flex:none;border-radius:18px;background:var(--primary);display:grid;place-items:center;color:#1a140a}
+.logo svg{width:62px;height:62px}
+.brand .n{font:600 96px/.84 var(--font-display);font-style:italic;letter-spacing:-.01em}
+.brand .t{font:600 36px/1 var(--font-grotesk);letter-spacing:.24em;text-transform:uppercase;color:var(--mute);margin-top:10px}
+.date{margin-left:auto;text-align:right}
+.date .d{font:600 40px/1 var(--font-grotesk);letter-spacing:.1em;text-transform:uppercase;color:var(--primary)}
+.date .h{font:600 64px/1.05 var(--font-display);margin-top:8px}
+
+/* featured exhibition */
+.feature{grid-row:2;position:relative;border-radius:48px;overflow:hidden;background:#0e0b16;display:flex;flex-direction:column;justify-content:flex-end;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+.feature .photo{position:absolute;top:0;right:0;bottom:0;left:0;background-size:cover;background-position:center}
+.feature .photo.placeholder{background:linear-gradient(160deg,#3a2f4f,#1a1428);display:grid;place-items:center}
+.feature .photo.placeholder svg{width:260px;height:260px;opacity:.2}
+.feature .scrim{position:absolute;top:0;right:0;bottom:0;left:0;background:linear-gradient(180deg,rgba(18,15,26,.1) 25%,rgba(18,15,26,.92))}
+.feature .pill{position:absolute;top:48px;left:48px;background:var(--accent);color:#fff;font:700 34px/1 var(--font-grotesk);letter-spacing:.12em;text-transform:uppercase;padding:18px 34px;border-radius:999px}
+.feature .b{position:relative;padding:64px 72px}
+.feature .k{font:600 38px/1 var(--font-grotesk);letter-spacing:.22em;text-transform:uppercase;color:var(--primary)}
+.feature .nm{font:600 152px/.86 var(--font-display);font-style:italic;letter-spacing:-.01em;margin:14px 0 0}
+.feature .meta{font:500 50px/1.3 var(--font-display);color:rgba(245,241,234,.88);margin-top:24px;max-width:30ch}
+.feature .where{display:inline-flex;align-items:center;gap:18px;margin-top:28px;font:700 44px/1 var(--font-grotesk);color:var(--accent2)}
+
+/* today's program */
+.prog{grid-row:2;background:var(--paper);border:2px solid var(--rule);border-radius:48px;padding:52px 56px;display:flex;flex-direction:column;min-height:0}
+.prog .h{display:flex;align-items:baseline;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:26px}
+.prog .h .ttl{font:600 80px/.86 var(--font-display);font-style:italic}
+.prog .h .sub{font:600 34px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;color:var(--good)}
+.plist{display:flex;flex-direction:column;flex:1;min-height:0}
+.prow{display:grid;grid-template-columns:230px 1fr auto;align-items:center;gap:36px;flex:1;border-bottom:1px solid var(--rule)}
+.prow:last-child{border-bottom:0}
+.prow.now{background:linear-gradient(90deg,rgba(217,176,106,.14),transparent 70%);margin:0 -56px;padding:0 56px}
+.ptime{font:600 64px/.9 var(--font-display);color:var(--primary)}
+.ptime small{display:block;font:700 28px/1 var(--font-grotesk);letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-top:6px}
+.pname{font:700 56px/1.02 var(--font-grotesk);letter-spacing:-.01em}
+.pname small{display:block;font:500 38px/1.1 var(--font-grotesk);color:var(--mute);margin-top:8px}
+.ploc{font:700 40px/1 var(--font-grotesk);color:var(--accent2);white-space:nowrap}
+.pbadge{font:700 30px/1 var(--font-grotesk);letter-spacing:.12em;text-transform:uppercase;padding:14px 26px;border-radius:999px;white-space:nowrap;background:var(--primary);color:#1a140a}
+
+.foot{grid-column:1/-1;display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:36px;border-top:2px solid var(--rule);padding-top:32px}
+.fc{border:2px solid var(--rule);border-radius:36px;padding:34px 48px;display:flex;flex-direction:column;gap:10px;background:var(--paper)}
+.fc.feat{background:var(--accent);border:none}
+.fc .l{font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.fc.feat .l{color:rgba(255,255,255,.82)}
+.fc .v{font:600 58px/1.04 var(--font-display)}
+.fc.feat .v{color:#fff;font:600 48px/1.14 var(--font-display);font-style:italic}
+.stage[data-orient="portrait"] .frame{grid-template-columns:1fr;grid-template-rows:auto auto 1fr auto}
+.stage[data-orient="portrait"] .feature{grid-row:2;min-height:1100px}
+.stage[data-orient="portrait"] .prog{grid-row:3}
+.stage[data-orient="portrait"] .foot{grid-row:4}
+</style><script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div class="stage" id="stage"><div class="frame">
+
+  <header class="top" data-widget="brand">
+    <div class="logo" data-widget="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9 12 4l9 5M5 9v9m4-9v9m6-9v9m4-9v9M3 19h18"/></svg></div>
+    <div class="brand"><div class="n" data-field="brand.name">Hartley Museum of Art</div><div class="t" data-field="brand.tag">Today at the museum</div></div>
+    <div class="date" data-widget="date" data-source="local-time"><div class="d" data-field="date.dow">Saturday · June 7</div><div class="h" data-field="date.hours">Open 10 AM – 6 PM</div></div>
+  </header>
+
+  <section class="feature" data-widget="feature" data-source="cms" data-feed="/api/museum/feature">
+    <div class="pill" data-field="feat.pill">Now showing</div>
+    <div class="photo placeholder" data-imgslot="feat.photo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="#fff"><path d="M4 4h16v13H4zM2 20h20M8 9l2.5 3L13 9.5 17 14H7z"/></svg></div>
+    <div class="scrim"></div>
+    <div class="b">
+      <div class="k" data-field="feat.kicker">Special exhibition · East Wing</div>
+      <div class="nm" data-field="feat.name">Light &amp; Time</div>
+      <div class="meta" data-field="feat.meta">Impressionist masters and the fleeting hour — 80 works, four countries, one golden afternoon.</div>
+      <div class="where" data-field="feat.where">◷ Through September 14 · Gallery 7</div>
+    </div>
+  </section>
+
+  <section class="prog" data-widget="program" data-source="cms" data-feed="/api/museum/today" data-refresh="60s">
+    <div class="h"><div class="ttl" data-field="prog.title">Today’s program</div><div class="sub" data-field="prog.note">Free with admission</div></div>
+    <div class="plist">
+      <div class="prow now" data-widget="prog.0"><div class="ptime" data-field="prog.0.time">11:00<small>now</small></div><div class="pname" data-field="prog.0.name">Guided tour: Light &amp; Time<small data-field="prog.0.by">with curator A. Reyes · 45 min</small></div><div class="ploc" data-field="prog.0.loc">Gallery 7</div></div>
+      <div class="prow" data-widget="prog.1"><div class="ptime" data-field="prog.1.time">1:30<small>pm</small></div><div class="pname" data-field="prog.1.name">Family art lab: Make a sun print<small data-field="prog.1.by">all ages · drop in</small></div><div class="ploc" data-field="prog.1.loc">Studio</div></div>
+      <div class="prow" data-widget="prog.2"><div class="ptime" data-field="prog.2.time">3:00<small>pm</small></div><div class="pname" data-field="prog.2.name">Gallery talk: Color &amp; the eye<small data-field="prog.2.by">Dr. M. Osei · 30 min</small></div><div class="ploc" data-field="prog.2.loc">Gallery 3</div></div>
+      <div class="prow" data-widget="prog.3"><div class="ptime" data-field="prog.3.time">5:00<small>pm</small></div><div class="pname" data-field="prog.3.name">Sunset string quartet<small data-field="prog.3.by">Hartley Ensemble · ticketed</small></div><div class="ploc" data-field="prog.3.loc">Atrium</div></div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <div class="fc feat" data-widget="member"><div class="l" data-field="mem.label">Members</div><div class="v" data-field="mem.text">Light &amp; Time preview tonight, 6–8 PM — wine, music, and the galleries to yourselves.</div></div>
+    <div class="fc" data-widget="cafe"><div class="l" data-field="cafe.label">Garden café</div><div class="v" data-field="cafe.value">Open till 5 · Level 2</div></div>
+    <div class="fc" data-widget="wifi"><div class="l" data-field="wifi.label">Free Wi-Fi</div><div class="v" data-field="wifi.value">Hartley-Guest</div></div>
+  </footer>
+
+</div></div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();
+document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img');if(v){el.style.backgroundImage='url("'+v+'")';el.classList.remove('placeholder');}});
+var DOW=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function dt(){var d=new Date();document.querySelectorAll('[data-field="date.dow"]').forEach(function(e){if(!e.hasAttribute('data-pin'))e.textContent=DOW[d.getDay()]+' · '+MON[d.getMonth()]+' '+d.getDate();});}dt();setInterval(dt,60000);
+})();</script></body></html>

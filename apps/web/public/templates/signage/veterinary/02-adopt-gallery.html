@@ -1,0 +1,132 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Veterinary · Adopt</title><style>
+:root{
+  /* rebrand here */
+  --bg:#f3ede2;--paper:#fffaf2;--fg:#2a1d14;--mute:#8a7766;--rule:rgba(42,29,20,.12);
+  --primary:#2f7d52;--accent:#e0852f;--accent2:#c25b3a;--good:#2f7d52;--heart:#e0567a;
+  --font-display:"Quicksand",system-ui,sans-serif;--font-grotesk:"Hanken Grotesk",system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:radial-gradient(140% 120% at 15% -10%,#fbf6ec 0%,var(--bg) 55%);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:auto 1fr auto;padding:76px 84px;row-gap:44px}
+
+.top{display:flex;align-items:center;gap:32px;border-bottom:3px solid var(--rule);padding-bottom:26px}
+.logo{width:116px;height:116px;flex:none;border-radius:50%;background:var(--heart);display:grid;place-items:center;color:#fff;box-shadow:0 12px 0 rgba(42,29,20,.08)}
+.logo svg{width:60px;height:60px}
+.brand .n{font:700 84px/.9 var(--font-display);letter-spacing:-.01em}
+.brand .t{font:600 38px/1 var(--font-grotesk);letter-spacing:.06em;color:var(--mute);margin-top:8px}
+.hbig{margin-left:auto;text-align:right}
+.hbig .k{font:700 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--heart)}
+.hbig .v{font:700 96px/.88 var(--font-display);letter-spacing:-.02em;margin-top:8px}
+.hbig .v em{font-style:normal;color:var(--heart)}
+
+/* headline ribbon */
+.ribbon{grid-row:1;display:none}
+
+/* the adoptable gallery — photo-card grid (distinct concept) */
+.gallery{display:grid;grid-template-columns:repeat(4,1fr);gap:40px;min-height:0}
+.pet{position:relative;border-radius:44px;overflow:hidden;background:var(--paper);border:3px solid var(--rule);display:flex;flex-direction:column;box-shadow:0 18px 0 rgba(42,29,20,.06)}
+.pet .photo{position:relative;flex:1;min-height:0;background-size:cover;background-position:center;border-bottom:3px solid var(--rule)}
+.pet .photo.placeholder{display:grid;place-items:center}
+.pet:nth-child(1) .photo.placeholder{background:linear-gradient(160deg,#ffd9a8,#e0852f)}
+.pet:nth-child(2) .photo.placeholder{background:linear-gradient(160deg,#bfe3c8,#2f7d52)}
+.pet:nth-child(3) .photo.placeholder{background:linear-gradient(160deg,#f6c6b0,#c25b3a)}
+.pet:nth-child(4) .photo.placeholder{background:linear-gradient(160deg,#cfe0f0,#5f86b8)}
+.pet .photo.placeholder svg{width:150px;height:150px;fill:rgba(255,255,255,.55)}
+.pet .heart{position:absolute;top:32px;right:32px;width:84px;height:84px;border-radius:50%;background:rgba(255,255,255,.92);display:grid;place-items:center;color:var(--heart);box-shadow:0 8px 20px rgba(0,0,0,.18)}
+.pet .heart svg{width:44px;height:44px}
+.pet .age{position:absolute;top:32px;left:32px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);color:#fff;font:700 34px/1 var(--font-grotesk);padding:16px 28px;border-radius:999px}
+.pet .b{padding:36px 40px 40px}
+.pet .nm{font:700 76px/.92 var(--font-display);letter-spacing:-.01em}
+.pet .br{font:600 38px/1.1 var(--font-grotesk);color:var(--mute);margin-top:8px}
+.pet .note{font:500 36px/1.25 var(--font-grotesk);color:var(--fg);margin-top:18px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pet .tag{display:inline-block;margin-top:20px;font:700 32px/1 var(--font-grotesk);letter-spacing:.08em;text-transform:uppercase;padding:14px 26px;border-radius:999px;background:rgba(47,125,82,.14);color:var(--primary)}
+.pet .tag.bond{background:rgba(224,86,122,.14);color:var(--heart)}
+
+.foot{display:grid;grid-template-columns:1.6fr 1fr;gap:36px;border-top:3px solid var(--rule);padding-top:30px}
+.fc{border:3px solid var(--rule);border-radius:36px;padding:34px 48px;display:flex;align-items:center;gap:28px;background:var(--paper)}
+.fc.hot{background:var(--heart);border:none;color:#fff}
+.fc svg{width:56px;height:56px;flex:none}
+.fc .l{font:700 32px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;color:var(--mute)}
+.fc.hot .l{color:rgba(255,255,255,.82)}
+.fc .v{font:700 56px/1.05 var(--font-display);letter-spacing:-.01em}
+.fc.hot .v{font:600 46px/1.14 var(--font-display)}
+.stage[data-orient="portrait"] .gallery{grid-template-columns:repeat(2,1fr)}
+.stage[data-orient="portrait"] .foot{grid-template-columns:1fr}
+</style><script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div class="stage" id="stage"><div class="frame">
+
+  <header class="top" data-widget="brand">
+    <div class="logo" data-widget="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.6-7-10.2A4.8 4.8 0 0 1 12 7a4.8 4.8 0 0 1 7 3.8C19 16.4 12 21 12 21Z"/></svg></div>
+    <div class="brand"><div class="n" data-field="brand.name">Maple Street Veterinary</div><div class="t" data-field="brand.tag">Adoption partners · take one home</div></div>
+    <div class="hbig" data-widget="counter"><div class="k" data-field="cnt.label">Adopted with us</div><div class="v"><em data-field="cnt.value">312</em> <span data-field="cnt.unit">friends &amp; counting</span></div></div>
+  </header>
+
+  <section class="gallery" data-widget="adoptables" data-source="cms" data-feed="/api/vet/adoptables" data-refresh="120s">
+    <article class="pet" data-widget="pet.0">
+      <div class="photo placeholder" data-imgslot="pet.0.photo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 12c-2.8 0-6 3.4-6 6.3 0 1.9 1.5 2.7 3.2 2.1 1-.35 1.9-.6 2.8-.6s1.8.25 2.8.6c1.7.6 3.2-.2 3.2-2.1 0-2.9-3.2-6.3-6-6.3Zm-7.5.5c1.4 0 2.5-1.3 2.5-3S5.9 6.5 4.5 6.5 2 7.8 2 9.5s1.1 3 2.5 3Zm15 0c1.4 0 2.5-1.3 2.5-3S20.9 6.5 19.5 6.5 17 7.8 17 9.5s1.1 3 2.5 3ZM9 8c1.3 0 2.3-1.3 2.3-3S10.3 2 9 2 6.7 3.3 6.7 5 7.7 8 9 8Zm6 0c1.3 0 2.3-1.3 2.3-3S16.3 2 15 2s-2.3 1.3-2.3 3S13.7 8 15 8Z"/></svg></div>
+      <div class="age" data-field="pet.0.age">2 yrs</div><div class="heart"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.6-7-10.2A4.8 4.8 0 0 1 12 7a4.8 4.8 0 0 1 7 3.8C19 16.4 12 21 12 21Z"/></svg></div>
+      <div class="b"><div class="nm" data-field="pet.0.name">Scout</div><div class="br" data-field="pet.0.breed">Lab mix · neutered male</div><div class="note" data-field="pet.0.note">Goofy, gentle, and great with kids. Knows sit &amp; shake already!</div><span class="tag" data-field="pet.0.tag">Ready today</span></div>
+    </article>
+    <article class="pet" data-widget="pet.1">
+      <div class="photo placeholder" data-imgslot="pet.1.photo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 12c-2.8 0-6 3.4-6 6.3 0 1.9 1.5 2.7 3.2 2.1 1-.35 1.9-.6 2.8-.6s1.8.25 2.8.6c1.7.6 3.2-.2 3.2-2.1 0-2.9-3.2-6.3-6-6.3Zm-7.5.5c1.4 0 2.5-1.3 2.5-3S5.9 6.5 4.5 6.5 2 7.8 2 9.5s1.1 3 2.5 3Zm15 0c1.4 0 2.5-1.3 2.5-3S20.9 6.5 19.5 6.5 17 7.8 17 9.5s1.1 3 2.5 3ZM9 8c1.3 0 2.3-1.3 2.3-3S10.3 2 9 2 6.7 3.3 6.7 5 7.7 8 9 8Zm6 0c1.3 0 2.3-1.3 2.3-3S16.3 2 15 2s-2.3 1.3-2.3 3S13.7 8 15 8Z"/></svg></div>
+      <div class="age" data-field="pet.1.age">4 yrs</div><div class="heart"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.6-7-10.2A4.8 4.8 0 0 1 12 7a4.8 4.8 0 0 1 7 3.8C19 16.4 12 21 12 21Z"/></svg></div>
+      <div class="b"><div class="nm" data-field="pet.1.name">Olive</div><div class="br" data-field="pet.1.breed">Tabby · spayed female</div><div class="note" data-field="pet.1.note">A calm lap cat who purrs the moment you sit down. Litter-trained.</div><span class="tag" data-field="pet.1.tag">Ready today</span></div>
+    </article>
+    <article class="pet" data-widget="pet.2">
+      <div class="photo placeholder" data-imgslot="pet.2.photo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 12c-2.8 0-6 3.4-6 6.3 0 1.9 1.5 2.7 3.2 2.1 1-.35 1.9-.6 2.8-.6s1.8.25 2.8.6c1.7.6 3.2-.2 3.2-2.1 0-2.9-3.2-6.3-6-6.3Zm-7.5.5c1.4 0 2.5-1.3 2.5-3S5.9 6.5 4.5 6.5 2 7.8 2 9.5s1.1 3 2.5 3Zm15 0c1.4 0 2.5-1.3 2.5-3S20.9 6.5 19.5 6.5 17 7.8 17 9.5s1.1 3 2.5 3ZM9 8c1.3 0 2.3-1.3 2.3-3S10.3 2 9 2 6.7 3.3 6.7 5 7.7 8 9 8Zm6 0c1.3 0 2.3-1.3 2.3-3S16.3 2 15 2s-2.3 1.3-2.3 3S13.7 8 15 8Z"/></svg></div>
+      <div class="age" data-field="pet.2.age">6 mo</div><div class="heart"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.6-7-10.2A4.8 4.8 0 0 1 12 7a4.8 4.8 0 0 1 7 3.8C19 16.4 12 21 12 21Z"/></svg></div>
+      <div class="b"><div class="nm" data-field="pet.2.name">Pip</div><div class="br" data-field="pet.2.breed">Terrier pup · male</div><div class="note" data-field="pet.2.note">All ears and energy. Will need a patient family and a yard to zoom in.</div><span class="tag" data-field="pet.2.tag">Ready today</span></div>
+    </article>
+    <article class="pet" data-widget="pet.3">
+      <div class="photo placeholder" data-imgslot="pet.3.photo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 12c-2.8 0-6 3.4-6 6.3 0 1.9 1.5 2.7 3.2 2.1 1-.35 1.9-.6 2.8-.6s1.8.25 2.8.6c1.7.6 3.2-.2 3.2-2.1 0-2.9-3.2-6.3-6-6.3Zm-7.5.5c1.4 0 2.5-1.3 2.5-3S5.9 6.5 4.5 6.5 2 7.8 2 9.5s1.1 3 2.5 3Zm15 0c1.4 0 2.5-1.3 2.5-3S20.9 6.5 19.5 6.5 17 7.8 17 9.5s1.1 3 2.5 3ZM9 8c1.3 0 2.3-1.3 2.3-3S10.3 2 9 2 6.7 3.3 6.7 5 7.7 8 9 8Zm6 0c1.3 0 2.3-1.3 2.3-3S16.3 2 15 2s-2.3 1.3-2.3 3S13.7 8 15 8Z"/></svg></div>
+      <div class="age" data-field="pet.3.age">7 yrs</div><div class="heart"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.6-7-10.2A4.8 4.8 0 0 1 12 7a4.8 4.8 0 0 1 7 3.8C19 16.4 12 21 12 21Z"/></svg></div>
+      <div class="b"><div class="nm" data-field="pet.3.name">Duke &amp; Daisy</div><div class="br" data-field="pet.3.breed">Bonded senior pair</div><div class="note" data-field="pet.3.note">Two old souls who must go home together. Quiet, house-trained, devoted.</div><span class="tag bond" data-field="pet.3.tag">♥ Bonded pair</span></div>
+    </article>
+  </section>
+
+  <footer class="foot">
+    <div class="fc hot" data-widget="cta"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.6-7-10.2A4.8 4.8 0 0 1 12 7a4.8 4.8 0 0 1 7 3.8C19 16.4 12 21 12 21Z"/></svg><div><div class="l" data-field="cta.label">Meet them today</div><div class="v" data-field="cta.value">Ask the front desk for a meet-&amp;-greet room — no appointment needed.</div></div></div>
+    <div class="fc" data-widget="info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg><div><div class="l" data-field="info.label">Every adoption includes</div><div class="v" data-field="info.value">Spay/neuter · chip · first shots</div></div></div>
+  </footer>
+
+</div></div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();
+document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img');if(v){el.style.backgroundImage='url("'+v+'")';el.classList.remove('placeholder');}});
+})();</script></body></html>

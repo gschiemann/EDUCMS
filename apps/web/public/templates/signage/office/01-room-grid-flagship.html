@@ -1,0 +1,117 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Workplace · Rooms</title><style>
+:root{
+  /* rebrand here */
+  --bg:#eef1f6;--paper:#ffffff;--fg:#11161f;--mute:#69748a;--rule:#dde3ec;
+  --primary:#3b5bff;--free:#1f9d63;--soon:#d98a1f;--busy:#c2473d;--ink2:#aab4c6;
+  --font-display:"Space Grotesk",system-ui,sans-serif;--font-grotesk:"Hanken Grotesk",system-ui,sans-serif;--font-mono:"JetBrains Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:auto auto 1fr;padding:80px 88px;row-gap:48px}
+
+.top{display:flex;align-items:center;gap:32px}
+.logo{width:108px;height:108px;flex:none;border-radius:26px;background:var(--primary);display:grid;place-items:center;color:#fff}
+.logo svg{width:54px;height:54px}
+.brand .n{font:700 80px/.9 var(--font-display);letter-spacing:-.02em}
+.brand .t{font:600 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute);margin-top:8px}
+.floor{margin-left:auto;display:flex;align-items:center;gap:20px;background:var(--paper);border:2px solid var(--rule);border-radius:999px;padding:18px 40px;font:700 48px/1 var(--font-display);letter-spacing:-.01em}
+.floor svg{width:40px;height:40px;color:var(--primary)}
+.clock{font:600 84px/1 var(--font-display);font-variant-numeric:tabular-nums;margin-left:32px}
+
+/* legend / summary strip */
+.summary{display:flex;align-items:center;gap:24px}
+.scount{flex:1;display:flex;align-items:baseline;gap:24px;background:var(--paper);border:2px solid var(--rule);border-radius:32px;padding:32px 44px}
+.scount .big{font:700 120px/.82 var(--font-display);letter-spacing:-.03em;color:var(--free)}
+.scount .lbl{font:600 44px/1.1 var(--font-grotesk);color:var(--mute)}
+.scount .lbl b{color:var(--fg);font-weight:800}
+.legend{display:flex;gap:18px}
+.lg{display:flex;align-items:center;gap:14px;background:var(--paper);border:2px solid var(--rule);border-radius:999px;padding:20px 32px;font:700 38px/1 var(--font-grotesk)}
+.lg .dot{width:26px;height:26px;border-radius:50%}
+.lg.free .dot{background:var(--free)}.lg.soon .dot{background:var(--soon)}.lg.busy .dot{background:var(--busy)}
+
+/* the room grid — the whole point */
+.grid{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:1fr;gap:36px;min-height:0}
+.room{position:relative;border-radius:40px;padding:48px 52px;display:flex;flex-direction:column;background:var(--paper);border:3px solid var(--rule);overflow:hidden;box-shadow:0 14px 0 rgba(17,22,31,.04)}
+.room::before{content:"";position:absolute;left:0;top:0;bottom:0;width:18px}
+.room.free::before{background:var(--free)}.room.soon::before{background:var(--soon)}.room.busy::before{background:var(--busy)}
+.room.free{background:linear-gradient(135deg,#eafaf1,#fff)}
+.room.busy{background:linear-gradient(135deg,#fceceA,#fff)}
+.rname{font:700 76px/.92 var(--font-display);letter-spacing:-.02em}
+.rcap{font:600 38px/1 var(--font-grotesk);color:var(--mute);margin-top:12px;display:flex;align-items:center;gap:14px}
+.rcap svg{width:34px;height:34px}
+.rstatus{margin-top:auto;display:flex;flex-direction:column;gap:6px}
+.rstatus .s{font:800 64px/1 var(--font-display);letter-spacing:-.01em}
+.room.free .rstatus .s{color:var(--free)}.room.soon .rstatus .s{color:var(--soon)}.room.busy .rstatus .s{color:var(--busy)}
+.rstatus .d{font:600 40px/1.15 var(--font-grotesk);color:var(--mute)}
+.rtag{position:absolute;top:44px;right:48px;font:800 30px/1 var(--font-grotesk);letter-spacing:.12em;text-transform:uppercase;padding:14px 26px;border-radius:999px}
+.room.free .rtag{background:var(--free);color:#fff}.room.soon .rtag{background:var(--soon);color:#fff}.room.busy .rtag{background:var(--busy);color:#fff}
+.stage[data-orient="portrait"] .grid{grid-template-columns:repeat(2,1fr)}
+.stage[data-orient="portrait"] .summary{flex-direction:column;align-items:stretch}
+.stage[data-orient="portrait"] .legend{justify-content:center}
+</style><script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div class="stage" id="stage"><div class="frame">
+
+  <header class="top" data-widget="brand">
+    <div class="logo" data-widget="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/></svg></div>
+    <div class="brand"><div class="n" data-field="brand.name">Northpoint · West Tower</div><div class="t" data-field="brand.tag">Meeting rooms · live</div></div>
+    <div class="floor" data-widget="floor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 2 9l10 6 10-6zM2 15l10 6 10-6"/></svg><span data-field="floor.name">Floor 11</span></div>
+    <div class="clock" data-source="local-time" data-widget="clock"><span data-field="clock.hhmm">10:24 AM</span></div>
+  </header>
+
+  <section class="summary" data-widget="summary" data-source="gsuite" data-feed="/api/rooms/summary" data-refresh="30s">
+    <div class="scount"><span class="big" data-field="sum.free">5</span><span class="lbl"><b data-field="sum.freeword">rooms free</b> right now<br>on this floor — grab one</span></div>
+    <div class="legend"><span class="lg free"><span class="dot"></span>Free</span><span class="lg soon"><span class="dot"></span>Free soon</span><span class="lg busy"><span class="dot"></span>In use</span></div>
+  </section>
+
+  <section class="grid" data-widget="rooms" data-source="gsuite" data-feed="/api/rooms" data-refresh="20s">
+    <div class="room free" data-widget="room.0"><div class="rtag" data-field="room.0.tag">Free</div><div class="rname" data-field="room.0.name">Cedar</div><div class="rcap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5M16 11a3 3 0 1 0-1-5.8"/></svg><span data-field="room.0.cap">Seats 6 · screen</span></div><div class="rstatus"><div class="s" data-field="room.0.s">Open now</div><div class="d" data-field="room.0.d">Free until 1:00 PM</div></div></div>
+    <div class="room busy" data-widget="room.1"><div class="rtag" data-field="room.1.tag">In use</div><div class="rname" data-field="room.1.name">Birch</div><div class="rcap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/></svg><span data-field="room.1.cap">Seats 12 · VC</span></div><div class="rstatus"><div class="s" data-field="room.1.s">Busy</div><div class="d" data-field="room.1.d">Design review · til 11:30</div></div></div>
+    <div class="room free" data-widget="room.2"><div class="rtag" data-field="room.2.tag">Free</div><div class="rname" data-field="room.2.name">Aspen</div><div class="rcap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/></svg><span data-field="room.2.cap">Seats 4 · phone</span></div><div class="rstatus"><div class="s" data-field="room.2.s">Open now</div><div class="d" data-field="room.2.d">Free until 12:00 PM</div></div></div>
+    <div class="room soon" data-widget="room.3"><div class="rtag" data-field="room.3.tag">Soon</div><div class="rname" data-field="room.3.name">Maple</div><div class="rcap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/></svg><span data-field="room.3.cap">Seats 8 · screen</span></div><div class="rstatus"><div class="s" data-field="room.3.s">Free in 15 min</div><div class="d" data-field="room.3.d">Standup ends 10:40</div></div></div>
+    <div class="room busy" data-widget="room.4"><div class="rtag" data-field="room.4.tag">In use</div><div class="rname" data-field="room.4.name">Willow</div><div class="rcap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/></svg><span data-field="room.4.cap">Seats 20 · town hall</span></div><div class="rstatus"><div class="s" data-field="room.4.s">Busy</div><div class="d" data-field="room.4.d">All-hands · til 12:30</div></div></div>
+    <div class="room free" data-widget="room.5"><div class="rtag" data-field="room.5.tag">Free</div><div class="rname" data-field="room.5.name">Fern</div><div class="rcap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/></svg><span data-field="room.5.cap">Seats 2 · focus</span></div><div class="rstatus"><div class="s" data-field="room.5.s">Open now</div><div class="d" data-field="room.5.d">Free all morning</div></div></div>
+    <div class="room free" data-widget="room.6"><div class="rtag" data-field="room.6.tag">Free</div><div class="rname" data-field="room.6.name">Sage</div><div class="rcap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/></svg><span data-field="room.6.cap">Seats 6 · screen</span></div><div class="rstatus"><div class="s" data-field="room.6.s">Open now</div><div class="d" data-field="room.6.d">Free until 2:00 PM</div></div></div>
+    <div class="room soon" data-widget="room.7"><div class="rtag" data-field="room.7.tag">Soon</div><div class="rname" data-field="room.7.name">Olive</div><div class="rcap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/></svg><span data-field="room.7.cap">Seats 10 · VC</span></div><div class="rstatus"><div class="s" data-field="room.7.s">Free in 30 min</div><div class="d" data-field="room.7.d">1:1s end 10:55</div></div></div>
+  </section>
+
+</div></div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();
+function clk(){var d=new Date(),h=d.getHours(),m=d.getMinutes(),ap=h<12?'AM':'PM';h=h%12||12;document.querySelectorAll('[data-field="clock.hhmm"]').forEach(function(e){e.textContent=h+':'+(m<10?'0':'')+m+' '+ap;});}clk();setInterval(clk,10000);
+})();</script></body></html>
