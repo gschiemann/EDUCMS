@@ -2,6 +2,19 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
+  // Inline the deploy's git SHA into the CLIENT bundle so the StaleBundleWatcher
+  // (stale-tab detection) and the bug reporter's `buildSha` telemetry actually
+  // have a value to read. Vercel injects VERCEL_GIT_COMMIT_SHA at build time; the
+  // NEXT_PUBLIC_ prefix is what makes Next inline it to the browser. Without this
+  // the client reads of NEXT_PUBLIC_BUILD_SHA were always undefined — so we
+  // couldn't tell a stale tab from a live bug (the 2026-06-08 Safari fire).
+  // Empty on local builds, which is fine — only prod needs it.
+  env: {
+    NEXT_PUBLIC_BUILD_SHA:
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      process.env.NEXT_PUBLIC_BUILD_SHA ||
+      '',
+  },
   // Allow the API domain for images
   images: {
     remotePatterns: [
