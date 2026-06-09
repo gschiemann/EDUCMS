@@ -314,7 +314,21 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
             sortOrder: i,
             defaultConfig: z.defaultConfig,
             touchAction: z.touchAction ?? null,
-            sceneId: z.sceneId ? (sceneNameToNewId.get(z.sceneId) ?? null) : null,
+            // 2026-06-09 — THE real "editor save failed" bug (RBAC was already
+            // fixed; this is a separate frontend leak). srcDefault is seeded
+            // with the '__will-resolve-after__' sentinel before the new
+            // template's scenes are fetched; if that resolution doesn't
+            // complete (new template had no scene to map, or the scenes
+            // fetch threw — it's in a best-effort try/catch), the sentinel
+            // would leak into this PUT and the zones endpoint 400s with
+            // "Zones reference scene ids that don't belong to this template".
+            // Guard it: an unresolved/sentinel scene falls back to null
+            // ("shared"), never a bogus id.
+            sceneId: (() => {
+              if (!z.sceneId) return null;
+              const mapped = sceneNameToNewId.get(z.sceneId);
+              return mapped && mapped !== '__will-resolve-after__' ? mapped : null;
+            })(),
           })),
         });
       }
