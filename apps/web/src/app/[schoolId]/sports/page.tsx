@@ -36,7 +36,9 @@ const TEAM_COLORS = ['#4f46e5', '#dc2626', '#0891b2', '#16a34a', '#d97706', '#7c
 export default function SportsPage() {
   return (
     <RoleGate
-      allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER']}
+      // 2026-06-09 — operator: "lock viewer out of the sports, only admin and
+      // editor." RESTRICTED_VIEWER removed → Sports is admin + Editor only.
+      allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR']}
       fallback={
         <div className="text-center py-24 text-sm text-slate-500">
           You don&rsquo;t have permission to view game day.

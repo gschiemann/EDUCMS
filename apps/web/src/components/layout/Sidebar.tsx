@@ -228,6 +228,11 @@ export function Sidebar() {
   // /menu is still reachable by typing the URL for other verticals.
   const isMenuVertical =
     mounted && (tenantCopyForBrand.vertical === 'RESTAURANT' || tenantCopyForBrand.vertical === 'RETAIL');
+  // Sports is admin + Editor only (operator 2026-06-09: "lock viewer out of
+  // the sports, only admin and editor"). Hide the nav entry for a
+  // RESTRICTED_VIEWER; the /sports routes also RoleGate them out by URL.
+  // Hydration-safe: gated together with isSportsVertical's `mounted`.
+  const sportsAllowed = isSportsVertical && user?.role !== 'RESTRICTED_VIEWER';
   const navItems = [
     { name: 'Dashboard', href: hrefFor('/dashboard'), icon: LayoutDashboard },
     // Floor-plans is now a tab inside Screens (List | Floor Plans toggle),
@@ -240,7 +245,7 @@ export function Sidebar() {
     // Sports (live scoreboard + game-day control) — only for
     // SPORTS-vertical tenants. K-12 / GYM / RESTAURANT / etc. don't
     // see it. /sports is still reachable by typing the URL.
-    ...(isSportsVertical
+    ...(sportsAllowed
       ? [{ name: 'Sports', href: hrefFor('/sports'), icon: Trophy }]
       : []),
     // Menu & pricing (multi-location price book + 86) — RESTAURANT /
