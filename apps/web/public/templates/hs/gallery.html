@@ -1,0 +1,290 @@
+<!doctype html>
+<!-- HS · GALLERY (MUSEUM WALL LABELS) — FLAGSHIP. A full museum wall, edge to edge:
+     a large framed "featured acquisition" with linen mat + brass plaque filling the
+     left column top-to-bottom; a right column that stacks a museum identity block
+     (crest, "Now on view", exhibition title, dates) + an hours/admission plaque, an
+     "Also on view" wall-label list distributed to fill its height, and a Docent's Note
+     pull-quote; a quiet running "Today at the school" label at the foot.
+     Cream plaster wall, EB Garamond / Cormorant, Roman numerals, hairline rules, brass.
+     Canonical brand tokens, auto-fit (>=50px), live clock, portrait + landscape.
+     NOTE: the click-to-edit shim is injected by the build (inject-shim-v2.cjs); none is hand-written here. -->
+<html lang="en"><head><meta charset="utf-8"/><title>The Gallery · Today</title>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Cormorant+Garamond:ital,wght@0,600;0,700;1,500;1,600&family=Inter:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  /* canonical brand tokens — gallery cream + ink + brass */
+  --bg:#f1ece1;--ink:#211d17;--brand:#7a2018;--brand2:#561410;--accent:#9a7b35;--accent2:#3f4a3a;--pos:#3f5e44;--neg:#7a2018;
+  --wall:#f3eee3;--wall2:#e7e0d1;--plaque:#fbf8f0;--ink2:#6b6052;--rule:#c9bfa9;--brass:#a8842c;--brass2:#7c5f18;
+  --f-display:'Cormorant Garamond';--f-head:'Cormorant Garamond';--f-serif:'EB Garamond';--f-body:'EB Garamond';--f-mono:'Inter';
+  --scale:1;
+  --t-inst:calc(50px*var(--scale));--t-gal:calc(108px*var(--scale));--t-galsub:calc(52px*var(--scale));
+  --t-clocklbl:calc(50px*var(--scale));--t-clock:calc(80px*var(--scale));
+  --t-eyebrow:calc(50px*var(--scale));
+  /* featured plaque */
+  --t-fnum:calc(52px*var(--scale));--t-ftitle:calc(170px*var(--scale));--t-fattr:calc(72px*var(--scale));--t-fmedium:calc(54px*var(--scale));--t-fbody:calc(54px*var(--scale));
+  --t-plaqcap:calc(50px*var(--scale));
+  /* hours plaque */
+  --t-hrk:calc(50px*var(--scale));--t-hrv:calc(56px*var(--scale));
+  /* wall-label list */
+  --t-plnum:calc(52px*var(--scale));--t-pltitle:calc(72px*var(--scale));--t-plattr:calc(52px*var(--scale));
+  /* docent */
+  --t-docent:calc(58px*var(--scale));--t-docentk:calc(50px*var(--scale));
+  /* foot ticker */
+  --t-foot:calc(54px*var(--scale));--t-foottag:calc(50px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#d8d0c0;color:var(--ink);font-family:var(--f-body),serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden;background:#cfc6b4}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;display:flex;flex-direction:column;padding:84px 104px 72px;
+  background:
+    radial-gradient(130% 100% at 50% -5%, #f8f3ea 0%, #f1ece1 52%, #e6dfcf 100%);
+  box-shadow:inset 0 0 240px rgba(120,100,60,.12)}
+/* very faint plaster tooth + a soft floor shadow line so the wall has depth */
+.stage::before{content:'';position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;z-index:0;opacity:.5;background:
+  radial-gradient(circle at 30% 40%, rgba(120,100,60,.05) 0 1px, transparent 2px) 0 0/22px 22px}
+.stage::after{content:'';position:absolute;left:0;right:0;bottom:0;height:200px;pointer-events:none;z-index:0;background:linear-gradient(to top, rgba(80,62,30,.10), transparent)}
+.stage>*{position:relative;z-index:1}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* HEADER — institution rule line across the top */
+.head{flex:none;display:flex;align-items:flex-end;justify-content:space-between;gap:60px;border-bottom:2px solid var(--rule);padding-bottom:24px}
+.head .who{min-width:0;flex:1 1 auto}
+.head .inst{max-width:100%;font-family:var(--f-mono);font-weight:600;font-size:var(--t-inst);letter-spacing:.34em;text-transform:uppercase;color:var(--accent)}
+.head .galline{font-family:var(--f-serif);font-style:italic;font-size:var(--t-galsub);color:var(--ink2);margin-top:10px;letter-spacing:.01em}
+.head .right{text-align:right;flex:none;display:flex;align-items:flex-end;gap:64px}
+.head .right .seal{width:118px;height:118px;flex:none;border-radius:50%;border:3px solid var(--brass);background:radial-gradient(circle at 50% 38%, #fbf8f0, #efe7d6);background-size:cover;background-position:center;display:grid;place-items:center;box-shadow:0 14px 30px rgba(60,45,20,.22), inset 0 0 0 7px rgba(168,132,44,.16)}
+.head .right .seal .si{font-family:var(--f-display);font-style:italic;font-weight:700;font-size:54px;color:var(--brass2)}
+.head .right .seal.has-img .si{display:none}
+.head .right .seal.has-img{border-width:0;box-shadow:0 14px 30px rgba(60,45,20,.22)}
+.head .right .clk{text-align:right}
+.head .right .clk .k{font-family:var(--f-mono);font-weight:600;font-size:var(--t-clocklbl);letter-spacing:.30em;text-transform:uppercase;color:var(--accent)}
+.head .right .clk .v{font-family:var(--f-display);font-weight:600;font-size:var(--t-clock);color:var(--ink);margin-top:2px;font-variant-numeric:tabular-nums;line-height:1}
+
+/* MAIN — featured (left) fills full height + info column (right) */
+.main{flex:1;min-height:0;display:grid;grid-template-columns:1.42fr 1fr;gap:96px;margin-top:48px}
+
+/* ── FEATURED ARTWORK — full-height framed hero ── */
+.feat{min-height:0;display:flex;flex-direction:column}
+.feat .frame{flex:1;min-height:0;position:relative;
+  /* ornate museum frame: brass outer, dark rabbet, then linen mat */
+  background:linear-gradient(135deg,#cbab53 0%,#a8842c 38%,#7c5f18 100%);
+  padding:30px;border-radius:3px;
+  box-shadow:0 60px 110px rgba(50,38,16,.34), 0 10px 0 rgba(120,95,30,.30), inset 0 0 0 3px rgba(255,245,210,.35)}
+/* the mat is a flex column: artwork on top, brass plaque band beneath it (no overlap) */
+.feat .mat{position:absolute;top:30px;right:30px;bottom:30px;left:30px;background:#f6f1e6;padding:48px;
+  display:flex;flex-direction:column;gap:42px;
+  box-shadow:inset 0 0 0 2px #e4dcc8, inset 0 0 46px rgba(120,100,60,.12)}
+.feat .photo{flex:1;min-height:0;position:relative;background:#ddd4c1 center/cover no-repeat;
+  box-shadow:inset 0 0 0 1px rgba(60,45,20,.18), 0 18px 40px rgba(50,38,16,.30)}
+.feat .photo .ph{position:absolute;top:0;right:0;bottom:0;left:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;color:var(--ink2);text-align:center;padding:40px}
+.feat .photo .ph .gl{font-family:var(--f-display);font-style:italic;font-weight:700;font-size:220px;line-height:.8;color:#b9ad93}
+.feat .photo .ph .cap{font-family:var(--f-mono);font-weight:600;font-size:var(--t-plaqcap);letter-spacing:.26em;text-transform:uppercase;color:#a99c82}
+.feat .photo.has-img .ph{display:none}
+/* brass acquisition plaque — its own band along the bottom of the mat */
+.feat .plaque{flex:none;background:linear-gradient(160deg,#b89544,#8a6c20);
+  border-radius:3px;padding:34px 46px 40px;color:#fff7e6;
+  box-shadow:0 22px 44px rgba(50,38,16,.34), inset 0 2px 0 rgba(255,245,210,.45), inset 0 0 0 1px rgba(70,52,10,.5)}
+.feat .plaque .pline{display:flex;align-items:baseline;gap:30px;flex-wrap:wrap}
+.feat .plaque .pnum{font-family:var(--f-mono);font-weight:600;font-size:var(--t-fnum);letter-spacing:.26em;color:#f6e4b6}
+.feat .plaque .peye{font-family:var(--f-mono);font-weight:600;font-size:var(--t-eyebrow);letter-spacing:.16em;text-transform:uppercase;color:#eddcaf}
+.feat .plaque h1{margin:10px 0 0;font-family:var(--f-display);font-weight:700;font-style:italic;font-size:var(--t-ftitle);line-height:1.16;letter-spacing:-.005em;color:#fffaf0;text-wrap:balance;text-shadow:0 3px 0 rgba(60,40,8,.32)}
+.feat .plaque .attr{font-family:var(--f-serif);font-style:italic;font-size:var(--t-fattr);color:#f6e9c8;margin-top:12px}
+.feat .plaque .medium{font-family:var(--f-serif);font-size:var(--t-fmedium);color:#ecdcaf;margin-top:18px;letter-spacing:.015em;border-top:1px solid rgba(246,228,182,.4);padding-top:18px}
+
+/* ── INFO COLUMN (right) — identity / hours / labels / docent ── */
+.col{min-height:0;display:flex;flex-direction:column;gap:40px}
+
+/* identity block */
+.ident{flex:none}
+.ident .eye{font-family:var(--f-mono);font-weight:600;font-size:var(--t-eyebrow);letter-spacing:.30em;text-transform:uppercase;color:var(--brand)}
+.ident .ex{margin:8px 0 0;font-family:var(--f-display);font-weight:700;font-style:italic;font-size:var(--t-gal);line-height:1.14;letter-spacing:-.005em;color:var(--ink)}
+.ident .dates{font-family:var(--f-serif);font-style:italic;font-size:var(--t-galsub);color:var(--ink2);margin-top:12px;letter-spacing:.01em}
+
+/* hours / admission plaque — hairline framed */
+.hours{flex:none;background:var(--plaque);border:1px solid var(--rule);box-shadow:0 18px 36px rgba(60,45,20,.14), inset 0 0 0 4px #fff;padding:30px 36px;display:grid;grid-template-columns:1fr 1fr;gap:24px 40px}
+.hours .hr{min-width:0;display:flex;flex-direction:column;border-left:3px solid var(--brass);padding-left:20px}
+.hours .hr .k{font-family:var(--f-mono);font-weight:600;font-size:var(--t-hrk);letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.hours .hr .v{font-family:var(--f-serif);font-size:var(--t-hrv);color:var(--ink);margin-top:6px;line-height:1.06}
+
+/* also-on-view list — fills remaining height */
+.also{flex:1;min-height:0;display:flex;flex-direction:column}
+.also .colhd{flex:none;font-family:var(--f-mono);font-weight:600;font-size:var(--t-eyebrow);letter-spacing:.28em;text-transform:uppercase;color:var(--accent);border-bottom:2px solid var(--rule);padding-bottom:16px}
+.labels{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;padding:6px 0}
+.lab{display:grid;grid-template-columns:auto 1fr;gap:30px;align-items:baseline;padding:14px 0;border-bottom:1px solid var(--rule)}
+.lab:last-child{border-bottom:none}
+.lab .pn{font-family:var(--f-mono);font-weight:600;font-size:var(--t-plnum);letter-spacing:.10em;color:var(--brass2);padding-top:6px}
+.lab .pt{min-width:0;font-family:var(--f-display);font-weight:700;font-style:italic;font-size:var(--t-pltitle);line-height:1;letter-spacing:-.005em;color:var(--ink)}
+.lab .pt .pa{display:block;font-family:var(--f-serif);font-style:italic;font-weight:500;font-size:var(--t-plattr);color:var(--ink2);margin-top:7px;letter-spacing:.015em}
+
+/* docent's note — framed pull-quote */
+.docent{flex:none;background:var(--plaque);border:1px solid var(--rule);padding:30px 38px 38px;position:relative;box-shadow:0 24px 46px rgba(60,45,20,.16)}
+.docent::before{content:'';position:absolute;top:-2px;left:38px;width:150px;height:6px;background:var(--brass)}
+.docent .q{font-family:var(--f-serif);font-style:italic;font-size:var(--t-docent);line-height:1.18;color:#3a342a}
+.docent .by{font-family:var(--f-mono);font-weight:600;font-size:var(--t-docentk);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-top:16px}
+
+/* FOOTER — running label (solid bar, opaque) */
+.foot{flex:none;margin-top:40px;border-top:2px solid var(--rule);padding-top:24px;display:flex;align-items:center;gap:40px;overflow:hidden}
+.foot .now{font-family:var(--f-mono);font-weight:600;font-size:var(--t-foottag);letter-spacing:.24em;text-transform:uppercase;color:var(--brand);flex:none;z-index:2}
+.foot .run{flex:1;min-width:0;overflow:hidden;display:flex;align-items:center}
+.foot .run .msg{font-family:var(--f-serif);font-style:italic;font-size:var(--t-foot);white-space:nowrap;color:var(--ink2);animation:sc 96s linear infinite}
+.foot .run .msg .sep{color:var(--brass2);margin:0 28px;font-style:normal}
+
+/* ═══ PORTRAIT ═══ */
+.stage[data-orient="port"]{padding:90px 90px 64px}
+.stage[data-orient="port"] .main{grid-template-columns:1fr;grid-template-rows:1.25fr 1fr;gap:64px}
+.stage[data-orient="port"] .feat .frame{padding:30px}
+.stage[data-orient="port"] .feat .mat{top:30px;right:30px;bottom:30px;left:30px;padding:44px}
+.stage[data-orient="port"] .feat .photo{top:74px;right:74px;bottom:74px;left:74px}
+.stage[data-orient="port"] .feat .plaque{left:100px;right:100px;bottom:100px}
+.stage[data-orient="port"]{--t-ftitle:calc(140px*var(--scale));--t-gal:calc(96px*var(--scale))}
+.stage[data-orient="port"] .col{gap:34px}
+/* portrait header: stack the seal+clock onto their own row so the institution line never collides with them */
+.stage[data-orient="port"] .head{flex-wrap:wrap;align-items:flex-end;row-gap:18px}
+.stage[data-orient="port"] .head .who{flex:1 1 100%;order:2}
+.stage[data-orient="port"] .head .right{order:1;flex:1 1 100%;justify-content:space-between;align-items:center;gap:0;border-bottom:1px solid var(--rule);padding-bottom:18px}
+.stage[data-orient="port"] .head .right .clk{text-align:right}
+.stage[data-orient="port"]{--t-inst:calc(46px*var(--scale))}
+</style>
+<script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#f1ece1</span><span data-field="theme.ink">#211d17</span>
+  <span data-field="theme.brand">#7a2018</span><span data-field="theme.brand2">#561410</span>
+  <span data-field="theme.accent">#9a7b35</span><span data-field="theme.accent2">#3f4a3a</span>
+  <span data-field="theme.pos">#3f5e44</span><span data-field="theme.neg">#7a2018</span>
+  <span data-field="theme.fDisplay">Cormorant Garamond</span><span data-field="theme.fHead">Cormorant Garamond</span><span data-field="theme.fBody">EB Garamond</span><span data-field="theme.fMono">Inter</span><span data-field="theme.scale">1</span>
+</div>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+
+  <header class="head">
+    <div class="who" data-widget="masthead">
+      <div class="inst" data-fit="single" data-fit-min="50" data-fit-max="56" data-field="masthead.inst">Westridge High School · The Atrium Gallery</div>
+      <div class="galline" data-field="masthead.sub">A revolving exhibition of student life, on view in the main hall</div>
+    </div>
+    <div class="right">
+      <div class="seal" data-imgslot="school.seal"><div class="si" data-field="school.initials">W</div></div>
+      <div class="clk" data-widget="clock"><div class="k" data-field="clock.label">Now</div><div class="v" data-field="clock.time" data-live="clock">9:48</div></div>
+    </div>
+  </header>
+
+  <div class="main">
+
+    <!-- FEATURED ACQUISITION — fills the left column top to bottom -->
+    <section class="feat" data-widget="feature">
+      <div class="frame">
+        <div class="mat">
+          <div class="photo" data-imgslot="feature.photo">
+            <div class="ph">
+              <div class="gl" data-field="feature.glyph">✦</div>
+              <div class="cap" data-field="feature.phcap">Add the production photo</div>
+            </div>
+          </div>
+          <div class="plaque">
+            <div class="pline"><span class="pnum" data-field="feature.num">No. XLI</span><span class="peye" data-field="feature.eyebrow">Featured today · Theater Department</span></div>
+            <h1 data-fit data-fit-min="50" data-fit-max="150" data-field="feature.title">Our Town</h1>
+            <div class="attr" data-fit="single" data-fit-min="50" data-fit-max="72" data-field="feature.attr">Directed by D. Avila · senior cast, 2026</div>
+            <div class="medium" data-field="feature.medium">Three acts · PAC Theater · curtain 7:30 pm · whs.gofan</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INFO COLUMN -->
+    <aside class="col">
+
+      <div class="ident" data-widget="ident">
+        <div class="eye" data-field="ident.eye">Now on view</div>
+        <div class="ex" data-fit data-fit-min="50" data-fit-max="120" data-field="ident.exhibit">This Season at Westridge</div>
+        <div class="dates" data-field="ident.dates">A rotating collection · refreshed each morning</div>
+      </div>
+
+      <div class="hours" data-widget="hours">
+        <div class="hr"><div class="k" data-field="hours.0.k">Gallery hours</div><div class="v" data-field="hours.0.v">7:30 – 4:00, daily</div></div>
+        <div class="hr"><div class="k" data-field="hours.1.k">Admission</div><div class="v" data-field="hours.1.v">Open to all · always free</div></div>
+        <div class="hr"><div class="k" data-field="hours.2.k">Location</div><div class="v" data-field="hours.2.v">Main hall · west atrium</div></div>
+        <div class="hr"><div class="k" data-field="hours.3.k">Curator</div><div class="v" data-field="hours.3.v">Fine Arts Department</div></div>
+      </div>
+
+      <div class="also" data-widget="labels">
+        <div class="colhd" data-field="labels.title">Also on view</div>
+        <div class="labels">
+          <div class="lab"><div class="pn" data-field="lab.0.n">XLII</div><div class="pt" data-field="lab.0.t">Robotics, Regional Finalists<span class="pa" data-field="lab.0.a">Engineering wing · trophy case, second floor</span></div></div>
+          <div class="lab"><div class="pn" data-field="lab.1.n">XLIII</div><div class="pt" data-field="lab.1.t">Senior Portrait Salon<span class="pa" data-field="lab.1.a">Photography II · library landing</span></div></div>
+          <div class="lab"><div class="pn" data-field="lab.2.n">XLIV</div><div class="pt" data-field="lab.2.t">The Courtyard Mural<span class="pa" data-field="lab.2.a">Art Club · unveiling Friday at lunch</span></div></div>
+          <div class="lab"><div class="pn" data-field="lab.3.n">XLV</div><div class="pt" data-field="lab.3.t">Jazz Ensemble, Winter Set<span class="pa" data-field="lab.3.a">Band room · open rehearsal Thursday</span></div></div>
+        </div>
+      </div>
+
+      <div class="docent" data-widget="docent">
+        <div class="q" data-fit data-fit-min="50" data-fit-max="58" data-field="docent.note">"Linger in the third act — it is the closest a student production comes to holding its breath with the room."</div>
+        <div class="by" data-field="docent.by">— Ms. Patel, Humanities</div>
+      </div>
+
+    </aside>
+
+  </div>
+
+  <footer class="foot" data-widget="ticker">
+    <div class="now" data-field="ticker.tag">Today at the school</div>
+    <div class="run"><div class="msg"><span data-field="ticker.message">Picture-day retakes Thursday in the gym lobby</span><span class="sep">·</span><span data-field="ticker.message2">Varsity volleyball at Lakeside, six o'clock</span><span class="sep">·</span><span data-field="ticker.message3">FAFSA help every Tuesday in counseling</span><span class="sep">·</span><span data-field="ticker.message4">Library open until five through midterms</span><span class="sep">·</span><span>Picture-day retakes Thursday in the gym lobby</span><span class="sep">·</span><span>Varsity volleyball at Lakeside, six o'clock</span><span class="sep">·</span><span>FAFSA help every Tuesday in counseling</span><span class="sep">·</span><span>Library open until five through midterms</span><span class="sep">·</span></div></div>
+  </footer>
+
+</div></div></div>
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fHead:'--f-head',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();new MutationObserver(applyTheme).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||50),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.stage'),{subtree:true,childList:true,characterData:true});
+  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m;}
+  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});}
+  tick();setInterval(tick,15000);
+})();
+</script>
+</body></html>

@@ -1,158 +1,144 @@
 <!doctype html>
-<!-- HS · HALL BULLETIN — FLAGSHIP. Multi-zone editorial board (bigger), with the
-     right column as a corner-peel rotator that flips through the overflow content
-     (Breaking / Principal / Clubs). Persistent masthead+clock, live bell rail, ticker.
-     Tokenized theme, hero photo slot, no clamped text, portrait + landscape. -->
-<html lang="en"><head><meta charset="utf-8"/><title>Hallway · Bulletin</title>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,700;1,9..144,900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<!-- HS · BULLETIN BOARD (HALLWAY CORK) — FLAGSHIP. A real cork board: speckled cork
+     texture, a wooden frame, pinned index cards with push-pins + washi-tape corners
+     + slight rotation + layered drop shadows. ONE big spotlight card, a photo card
+     with a real photo slot, a short stack of announcement cards, a live "today's
+     bells" card, and a paper banner ticker. Canonical brand tokens, auto-fit (>=50px),
+     live clock + live schedule engine, portrait + landscape.
+     NOTE: the click-to-edit shim is injected by the build (inject-shim-v2.cjs); none is hand-written here. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Hallway · Cork Bulletin</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Archivo:wght@700;800;900&family=Inter:wght@500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
 <style>
 :root{
   --stage-w:3840px;--stage-h:2160px;--stage-scale:1;
-  --c-paper:#f5eee1;--c-paper2:#ece2d0;--c-card:#fffdf8;--c-ink:#171310;--c-ink2:#5d564b;--c-rule:#d6cab2;
-  --c-brand:#b8331f;--c-brand2:#7a1f12;--c-gold:#b78a2e;
-  --f-display:'Fraunces';--f-body:'Inter';--f-mono:'JetBrains Mono';
-  --scale:1;--dwell:8s;
-  --t-seal:calc(62px*var(--scale));--t-title:calc(150px*var(--scale));--t-titlesub:calc(32px*var(--scale));
-  --t-issue:calc(34px*var(--scale));--t-date:calc(78px*var(--scale));--t-vol:calc(28px*var(--scale));
-  --t-chipk:calc(34px*var(--scale));--t-chipv:calc(96px*var(--scale));
-  --t-eyebrow:calc(40px*var(--scale));--t-h1:calc(134px*var(--scale));--t-lede:calc(56px*var(--scale));
-  --t-metak:calc(34px*var(--scale));--t-metav:calc(64px*var(--scale));
-  --t-ptag:calc(38px*var(--scale));--t-ph:calc(112px*var(--scale));--t-pbody:calc(50px*var(--scale));--t-pk:calc(32px*var(--scale));--t-pv:calc(56px*var(--scale));
-  --t-clubnm:calc(60px*var(--scale));--t-clubsub:calc(34px*var(--scale));--t-clubwhen:calc(36px*var(--scale));
-  --t-raillbl:calc(32px*var(--scale));--t-railday:calc(60px*var(--scale));--t-railp:calc(26px*var(--scale));--t-railnm:calc(42px*var(--scale));--t-railt:calc(28px*var(--scale));
-  --t-ticker:calc(38px*var(--scale));
-  --ease:cubic-bezier(.16,1,.3,1);
+  /* canonical brand tokens */
+  --bg:#b6863f;--ink:#241a10;--brand:#c0392b;--brand2:#8c241a;--accent:#2e7d4f;--accent2:#1f5fa8;--pos:#2e7d4f;--neg:#c0392b;
+  --card:#fffdf6;--card2:#fff6e0;--ink2:#6a5d49;--cork:#bb8a45;--cork2:#a5783a;--frame:#6f4a23;--frame2:#4f3417;
+  --f-display:'Archivo';--f-head:'Archivo';--f-hand:'Caveat';--f-body:'Inter';--f-mono:'JetBrains Mono';
+  --scale:1;
+  --t-pin:calc(54px*var(--scale));--t-mast:calc(118px*var(--scale));--t-masth:calc(34px*var(--scale));
+  --t-clocklbl:calc(30px*var(--scale));--t-clock:calc(96px*var(--scale));
+  --t-tape:calc(34px*var(--scale));
+  --t-spoteye:calc(40px*var(--scale));--t-spoth:calc(150px*var(--scale));--t-spotlede:calc(56px*var(--scale));--t-spotmk:calc(30px*var(--scale));--t-spotmv:calc(60px*var(--scale));
+  --t-cardtag:calc(34px*var(--scale));--t-cardh:calc(82px*var(--scale));--t-cardbody:calc(46px*var(--scale));--t-cardfoot:calc(40px*var(--scale));
+  --t-photocap:calc(46px*var(--scale));
+  --t-belllbl:calc(32px*var(--scale));--t-bellday:calc(56px*var(--scale));--t-bellp:calc(30px*var(--scale));--t-bellnm:calc(44px*var(--scale));--t-bellt:calc(34px*var(--scale));
+  --t-ticker:calc(46px*var(--scale));
 }
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#1c1814;color:var(--c-ink);font-family:var(--f-body),sans-serif}
-.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#3a2713;color:var(--ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden;background:#2a1c0e}
 .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
-.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--c-paper);box-shadow:0 80px 200px rgba(0,0,0,.65);
-  display:flex;flex-direction:column;padding:48px 64px 0}
-.stage::before{content:'';position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg, rgba(0,0,0,.014) 0 1px, transparent 1px 3px)}
-@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.25}}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;display:flex;flex-direction:column;
+  /* wooden frame */
+  background:linear-gradient(150deg,var(--frame),var(--frame2));padding:54px}
+/* cork surface */
+.cork{flex:1;min-height:0;position:relative;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;padding:60px 64px 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255,255,255,.05) 0 2px, transparent 3px) 0 0/26px 26px,
+    radial-gradient(circle at 70% 60%, rgba(70,45,18,.18) 0 2px, transparent 3px) 9px 13px/31px 31px,
+    radial-gradient(circle at 45% 80%, rgba(70,45,18,.12) 0 1px, transparent 2px) 4px 7px/19px 19px,
+    linear-gradient(160deg,var(--cork),var(--cork2));
+  box-shadow:inset 0 0 80px rgba(60,38,15,.45),inset 0 6px 18px rgba(0,0,0,.25)}
+.stage>*{position:relative;z-index:1}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.3}}
 @keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
-/* MASTHEAD */
-.mast{flex:none;display:flex;justify-content:space-between;align-items:flex-end;border-bottom:7px solid var(--c-ink);padding-bottom:20px;gap:40px}
-.mast .left{display:flex;align-items:center;gap:30px;min-width:0}
-.seal{width:150px;height:150px;flex:none;background:var(--c-ink);color:var(--c-paper);display:grid;place-items:center;text-align:center;line-height:1;font-family:var(--f-display);font-weight:900;font-size:var(--t-seal)}
-.seal .est{display:block;font-family:var(--f-mono);font-weight:500;font-size:17px;color:var(--c-gold);letter-spacing:.2em;margin-top:8px}
-.seal.has-img>div{display:none}.seal.has-img{background-size:cover;background-position:center;border-radius:14px}
-.title{font-family:var(--f-display);font-weight:900;font-style:italic;font-size:var(--t-title);line-height:.82;letter-spacing:-.025em}
-.title .sub{display:block;font-family:var(--f-mono);font-style:normal;font-weight:500;font-size:var(--t-titlesub);color:var(--c-brand);letter-spacing:.24em;text-transform:uppercase;margin-top:14px}
-.mast .right{display:flex;align-items:flex-end;gap:10px;flex-direction:column;flex:none}
-.mast .issue{font-family:var(--f-mono);font-weight:700;font-size:var(--t-issue);letter-spacing:.2em;color:var(--c-ink2);text-transform:uppercase}
-.mast .date{font-family:var(--f-display);font-weight:900;font-size:var(--t-date);line-height:.9}
-.mast .vol{font-family:var(--f-mono);font-weight:500;font-size:var(--t-vol);letter-spacing:.16em;color:var(--c-ink2);text-transform:uppercase}
+/* shared card chrome — pinned index card */
+.pin{position:absolute;top:-22px;left:50%;transform:translateX(-50%);width:54px;height:54px;border-radius:50%;z-index:5;
+  background:radial-gradient(circle at 36% 32%, #ff8a7a, var(--brand) 46%, var(--brand2) 100%);
+  box-shadow:0 10px 16px rgba(0,0,0,.4), inset -4px -5px 8px rgba(0,0,0,.35), inset 4px 4px 7px rgba(255,255,255,.5)}
+.pin::after{content:'';position:absolute;top:20px;left:50%;transform:translateX(-50%);width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.85)}
+.tape{position:absolute;z-index:5;width:200px;height:62px;background:rgba(255,247,200,.62);box-shadow:0 4px 12px rgba(0,0,0,.18);font-family:var(--f-hand);font-weight:700;font-size:var(--t-tape);color:#7a6a3a;display:grid;place-items:center;letter-spacing:.02em}
+.tape.tl{top:-26px;left:-40px;transform:rotate(-24deg)}
+.tape.tr{top:-26px;right:-40px;transform:rotate(20deg)}
 
-/* CHIPS */
-.chips{flex:none;display:grid;grid-template-columns:repeat(4,1fr);gap:22px;margin-top:24px}
-.chip{background:var(--c-paper2);border:3px solid var(--c-ink);border-radius:8px;padding:20px 28px;display:flex;align-items:center;justify-content:space-between;gap:18px}
-.chip .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-chipk);letter-spacing:.14em;text-transform:uppercase;color:var(--c-ink2);line-height:1.1}
-.chip .v{font-family:var(--f-display);font-weight:900;font-size:var(--t-chipv);line-height:1;letter-spacing:-.02em;white-space:nowrap}
-.chip.lit{background:var(--c-ink);border-color:var(--c-ink)} .chip.lit .k{color:var(--c-gold)} .chip.lit .v{color:var(--c-paper)}
-.chip.brand{background:var(--c-brand);border-color:var(--c-brand2)} .chip.brand .k{color:rgba(255,255,255,.78)} .chip.brand .v{color:#fff}
-.chip .v.dot::after{content:'';display:inline-block;width:16px;height:16px;background:var(--c-brand);border-radius:50%;margin-left:12px;vertical-align:middle;animation:blink 1.4s steps(2) infinite}
+/* MASTHEAD — a wooden header sign pinned to the cork */
+.mast{flex:none;display:flex;align-items:center;justify-content:space-between;gap:40px;background:var(--card);border-radius:10px;padding:30px 48px;
+  box-shadow:0 22px 44px rgba(40,24,8,.45);transform:rotate(-.5deg);position:relative;border-bottom:10px solid var(--brand)}
+.mast .pin{background:radial-gradient(circle at 36% 32%, #9be0b0, var(--accent) 46%, #1d5a38 100%)}
+.mast .pin::after{background:rgba(255,255,255,.85)}
+.mast .ttl{font-family:var(--f-display);font-weight:900;font-size:var(--t-mast);line-height:.9;letter-spacing:-.02em;text-transform:uppercase;color:var(--ink);white-space:nowrap}
+.mast .ttl .sub{display:block;font-family:var(--f-hand);font-weight:700;font-style:normal;font-size:var(--t-masth);color:var(--brand);letter-spacing:.01em;text-transform:none;margin-top:8px}
+.mast .clock{text-align:right;flex:none;line-height:1}
+.mast .clock .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-clocklbl);letter-spacing:.18em;text-transform:uppercase;color:var(--ink2)}
+.mast .clock .v{font-family:var(--f-display);font-weight:900;font-size:var(--t-clock);color:var(--brand);margin-top:6px;font-variant-numeric:tabular-nums;line-height:1}
 
-/* MAIN */
-.main{flex:1;min-height:0;display:grid;grid-template-columns:1.58fr 1fr;gap:26px;margin:24px 0}
+/* PINBOARD GRID */
+.board{flex:1;min-height:0;display:grid;grid-template-columns:1.45fr 1fr;grid-template-rows:1.35fr 1fr;gap:54px 60px;padding:54px 24px 24px}
 
-/* HERO SPOTLIGHT (static, big) */
-.hero{background:var(--c-card);border:3px solid var(--c-ink);border-radius:10px;display:flex;flex-direction:row;overflow:hidden;min-height:0}
-.hero .photo{flex:0 0 45%;min-height:0;background:linear-gradient(135deg,#3d2a1e,#7a4a2a 55%,#a8703a);background-size:cover;background-position:center;position:relative;overflow:hidden}
-.hero .photo::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent 0 90px,rgba(255,255,255,.05) 90px 92px)}
-.hero .badge{position:absolute;top:28px;left:28px;z-index:2;background:var(--c-brand);color:#fff;padding:14px 26px;border-radius:6px;font-family:var(--f-mono);font-weight:700;font-size:28px;letter-spacing:.16em;text-transform:uppercase;display:flex;align-items:center;gap:12px}
-.hero .badge::before{content:'';width:16px;height:16px;background:#fff;border-radius:50%;animation:blink 1.4s steps(2) infinite}
-.hero .pcap{position:absolute;left:0;right:0;bottom:0;z-index:2;display:flex;justify-content:space-between;padding:26px 32px;background:linear-gradient(0deg,rgba(0,0,0,.6),transparent);color:#fff}
-.hero .pcap .pill{font-family:var(--f-mono);font-weight:700;font-size:24px;letter-spacing:.14em;text-transform:uppercase;background:#fff;color:var(--c-ink);padding:8px 16px;border-radius:5px}
-.hero .body{flex:1;min-width:0;min-height:0;padding:48px 60px;display:flex;flex-direction:column;gap:22px;justify-content:center}
-.hero .hwrap{flex:2;min-height:0;display:flex}
-.hero .lwrap{flex:1;min-height:0;display:flex}
-.hero .eyebrow{font-family:var(--f-mono);font-weight:700;font-size:var(--t-eyebrow);letter-spacing:.24em;text-transform:uppercase;color:var(--c-brand);display:flex;align-items:center;gap:18px}
-.hero .eyebrow::after{content:'';height:3px;flex:1;background:var(--c-brand);opacity:.4}
-.hero h1{margin:0;width:100%;height:100%;overflow:hidden;display:flex;flex-direction:column;justify-content:center;padding:.08em 0;font-family:var(--f-display);font-weight:900;font-style:italic;font-size:var(--t-h1);line-height:1.0;letter-spacing:-.03em;text-wrap:balance}
-.hero .lede{margin:0;width:100%;height:100%;overflow:hidden;display:flex;flex-direction:column;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:var(--t-lede);line-height:1.18;color:var(--c-ink2);text-wrap:pretty}
-.hero .meta{display:flex;gap:44px;margin-top:4px;border-top:3px solid var(--c-ink);padding-top:20px;flex-wrap:wrap}
-.hero .meta .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-metak);letter-spacing:.16em;text-transform:uppercase;color:var(--c-ink2)}
-.hero .meta .v{font-family:var(--f-display);font-weight:900;font-size:var(--t-metav);line-height:1;margin-top:6px}
-.hero .meta .v.brand{color:var(--c-brand)}
+/* the card base */
+.card{position:relative;background:var(--card);border-radius:8px;box-shadow:0 26px 50px rgba(40,24,8,.42);display:flex;flex-direction:column;min-height:0;min-width:0}
+.card .pin{top:-22px}
 
-/* RIGHT PANEL — corner-peel rotator */
-.rpanel{position:relative;min-height:0;perspective:2800px;perspective-origin:20% 0%}
-.rp{position:absolute;inset:0;display:flex;flex-direction:column;overflow:hidden;border:3px solid var(--c-ink);border-radius:10px;background:var(--c-card);
-  transform-origin:0 0;backface-visibility:hidden;-webkit-backface-visibility:hidden;opacity:0;visibility:hidden}
-.rp.under{opacity:1;visibility:visible;z-index:1;transform:none}
-.rp.active{opacity:1;visibility:visible;z-index:2;transform:none}
-.rp.turning{opacity:1;visibility:visible;z-index:3;animation:cornerPeel 1s cubic-bezier(.5,.03,.3,1) both;box-shadow:0 40px 120px rgba(23,19,16,.5)}
-@keyframes cornerPeel{0%{transform:rotate3d(.45,1,0,0deg)}100%{transform:rotate3d(.45,1,0,-176deg)}}
-.rp .curl{position:absolute;inset:0;z-index:6;pointer-events:none;opacity:0;background:
-  radial-gradient(120% 120% at 0% 0%, rgba(255,255,255,.5) 0%, rgba(255,255,255,0) 18%),
-  linear-gradient(135deg, rgba(20,14,10,.0) 30%, rgba(20,14,10,.18) 70%, rgba(20,14,10,.5) 100%)}
-.rp.turning .curl{animation:curlShade 1s ease both}
-@keyframes curlShade{0%{opacity:0}25%{opacity:1}100%{opacity:1}}
-/* dog-ear hint on the resting page (top-left) */
-.rp.active::before{content:'';position:absolute;top:0;left:0;z-index:5;border-width:0 46px 46px 0;border-style:solid;border-color:transparent var(--c-paper2) transparent transparent;filter:drop-shadow(-3px 3px 4px rgba(0,0,0,.18))}
+/* SPOTLIGHT — big, spans left, two rows */
+.spot{grid-row:1 / span 2;padding:56px 60px;transform:rotate(-1deg);border-top:14px solid var(--brand)}
+.spot .eye{font-family:var(--f-mono);font-weight:700;font-size:var(--t-spoteye);letter-spacing:.18em;text-transform:uppercase;color:var(--brand);display:flex;align-items:center;gap:18px}
+.spot .eye::before{content:'';width:46px;height:8px;background:var(--brand)}
+.spot .hwrap{flex:2.2;min-height:0;display:flex;margin:14px 0 6px}
+.spot h1{margin:0;width:100%;height:100%;overflow:hidden;display:flex;flex-direction:column;justify-content:center;font-family:var(--f-display);font-weight:900;font-size:var(--t-spoth);line-height:.94;letter-spacing:-.025em;text-transform:uppercase;text-wrap:balance}
+.spot .lwrap{flex:1.1;min-height:0;display:flex}
+.spot .lede{margin:0;width:100%;height:100%;overflow:hidden;display:flex;flex-direction:column;justify-content:center;font-family:var(--f-hand);font-weight:700;font-size:var(--t-spotlede);line-height:1.12;color:#43382a}
+.spot .meta{flex:none;display:flex;gap:54px;flex-wrap:wrap;border-top:3px dashed #d9cba8;padding-top:26px;margin-top:8px}
+.spot .meta .mk{font-family:var(--f-mono);font-weight:700;font-size:var(--t-spotmk);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2)}
+.spot .meta .mv{font-family:var(--f-display);font-weight:900;font-size:var(--t-spotmv);line-height:1;margin-top:6px;white-space:nowrap}
+.spot .meta .mv.brand{color:var(--brand)}
 
-.rp .ptag{flex:none;display:flex;align-items:center;gap:18px;padding:38px 44px 0}
-.rp .ptag .tg{font-family:var(--f-mono);font-weight:700;font-size:var(--t-ptag);letter-spacing:.2em;text-transform:uppercase;color:var(--c-brand);display:inline-flex;align-items:center;gap:14px}
-.rp .ptag .tg::before{content:'';width:40px;height:7px;background:currentColor}
-.rp .ptag .num{margin-left:auto;font-family:var(--f-mono);font-weight:700;font-size:var(--t-pk);letter-spacing:.16em;color:var(--c-ink2)}
-.rp .pmid{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:20px;padding:18px 44px}
-.rp .pmid h2{flex:2;min-height:0;width:100%;overflow:hidden;display:flex;flex-direction:column;justify-content:center;margin:0;padding:0;font-family:var(--f-display);font-weight:900;font-style:italic;font-size:var(--t-ph);line-height:.98;letter-spacing:-.025em;text-wrap:balance}
-.rp .pmid .pbody{flex:1;min-height:0;width:100%;overflow:hidden;display:flex;flex-direction:column;justify-content:center;margin:0;padding:0;font-family:var(--f-display);font-weight:700;font-size:var(--t-pbody);line-height:1.18;color:var(--c-ink2);text-wrap:pretty}
-.rp h2{margin:0;padding:18px 44px 0;font-family:var(--f-display);font-weight:900;font-style:italic;font-size:var(--t-ph);line-height:.9;letter-spacing:-.025em;text-wrap:balance}
-.rp .pbody{margin:0;padding:22px 44px 0;font-family:var(--f-display);font-weight:700;font-size:var(--t-pbody);line-height:1.2;color:var(--c-ink2);text-wrap:pretty}
-.rp .pfoot{margin-top:auto;flex:none;display:flex;gap:44px;padding:28px 44px 38px;border-top:3px solid var(--c-ink);flex-wrap:wrap}
-.rp .pfoot .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-pk);letter-spacing:.14em;text-transform:uppercase;color:var(--c-ink2)}
-.rp .pfoot .v{font-family:var(--f-display);font-weight:900;font-size:var(--t-pv);line-height:1;margin-top:6px}
-.rp.brand{background:var(--c-brand);border-color:var(--c-brand2);color:#fff}
-.rp.brand .ptag .tg{color:#ffd9b3}.rp.brand .pbody{color:rgba(255,255,255,.92)}.rp.brand .pfoot{border-color:rgba(255,255,255,.35)}.rp.brand .pfoot .k{color:rgba(255,255,255,.72)}.rp.brand .pfoot .v{color:#fff}.rp.brand .ptag .num{color:rgba(255,255,255,.72)}.rp.brand.active::before{border-color:transparent var(--c-brand2) transparent transparent}
-.rp.ink{background:var(--c-ink);border-color:var(--c-ink);color:var(--c-paper)}
-.rp.ink .ptag .tg{color:var(--c-gold)}.rp.ink .pbody{color:rgba(245,238,225,.82)}.rp.ink .pfoot{border-color:rgba(245,238,225,.25)}.rp.ink .pfoot .k{color:rgba(245,238,225,.6)}.rp.ink .pfoot .v{color:#fff}.rp.ink .ptag .num{color:rgba(245,238,225,.6)}.rp.ink.active::before{border-color:transparent #2a2018 transparent transparent}
-/* clubs page */
-.rp.clubs .clist{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-evenly;padding:6px 44px 28px}
-.rp.clubs .cl{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:24px;border-bottom:2px dashed var(--c-rule);padding:4px 0}
-.rp.clubs .cl:last-child{border-bottom:0}
-.rp.clubs .cn{font-family:var(--f-mono);font-weight:700;font-size:var(--t-pk);color:var(--c-brand);letter-spacing:.1em}
-.rp.clubs .cnm{font-family:var(--f-display);font-weight:900;font-size:var(--t-clubnm);line-height:1;letter-spacing:-.02em}
-.rp.clubs .cnm .sub{display:block;font-family:var(--f-body);font-weight:500;font-size:var(--t-clubsub);color:var(--c-ink2);letter-spacing:0;margin-top:6px}
-.rp.clubs .cwhen{font-family:var(--f-mono);font-weight:700;font-size:var(--t-clubwhen);letter-spacing:.06em;text-transform:uppercase;text-align:right;white-space:nowrap}
-.rp.clubs .cwhen .rm{display:block;color:var(--c-ink2);font-weight:500;margin-top:6px}
-.rp-dots{position:absolute;right:24px;bottom:24px;z-index:7;display:flex;gap:16px}
-.rp-dots i{width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.18);transition:background .4s,transform .4s}
-.rp-dots i.on{background:var(--c-brand);transform:scale(1.2)}
-.rp.ink .rp-dots i{background:rgba(255,255,255,.22)} .rp.ink .rp-dots i.on{background:var(--c-gold)}
+/* PHOTO card (top-right) — real photo slot */
+.photo{overflow:hidden;transform:rotate(1.4deg);padding:18px 18px 0}
+.photo .pic{flex:1;min-height:0;border-radius:5px;background:linear-gradient(135deg,#3d2a1e,#7a4a2a 55%,#a8703a);background-size:cover;background-position:center;position:relative;overflow:hidden}
+.photo .pic::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent 0 120px,rgba(255,255,255,.05) 120px 122px)}
+.photo .pic .ph{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--f-display);font-weight:900;font-size:120px;color:rgba(255,255,255,.85)}
+.photo.has-img .pic .ph,.photo .pic.has-img .ph{display:none}
+.photo .cap{flex:none;padding:24px 14px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.photo .cap .t{font-family:var(--f-hand);font-weight:700;font-size:var(--t-photocap);color:#43382a;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.photo .cap .pill{flex:none;font-family:var(--f-mono);font-weight:700;font-size:calc(var(--t-photocap)*.62);letter-spacing:.12em;text-transform:uppercase;background:var(--accent);color:#fff;padding:8px 16px;border-radius:6px}
 
-/* BELL RAIL */
-.rail{flex:none;height:188px;background:var(--c-ink);color:var(--c-paper);display:flex;border:3px solid var(--c-ink);border-radius:10px;overflow:hidden}
-.rail .lbl{flex:0 0 330px;background:var(--c-brand);display:flex;flex-direction:column;justify-content:center;padding:0 30px;color:#fff;overflow:hidden}
-.rail .lbl .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-raillbl);letter-spacing:.18em;text-transform:uppercase;color:#ffd9b3}
-.rail .lbl .v{font-family:var(--f-display);font-weight:900;font-style:italic;font-size:var(--t-railday);line-height:.92;margin-top:6px}
-.rail ul{flex:1;list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(8,1fr)}
-.rail li{position:relative;display:flex;flex-direction:column;justify-content:center;padding:0 20px;border-right:1px solid rgba(245,238,225,.15)}
-.rail li:last-child{border-right:0}
-.rail li.now{background:rgba(183,138,46,.2)} .rail li.now::before{content:'';position:absolute;top:0;left:0;right:0;height:7px;background:var(--c-gold)}
-.rail .rp2{font-family:var(--f-mono);font-weight:700;font-size:var(--t-railp);letter-spacing:.14em;text-transform:uppercase;color:var(--c-gold)}
-.rail .rnm{font-family:var(--f-display);font-weight:900;font-size:var(--t-railnm);line-height:1;margin-top:4px}
-.rail .rt{font-family:var(--f-mono);font-weight:500;font-size:var(--t-railt);color:rgba(245,238,225,.7);margin-top:6px}
-.rail li.now .rnm{color:#fff} .rail li.now .rt{color:var(--c-gold)}
+/* NOTE card (bottom-right) — announcement */
+.note{padding:44px 48px;transform:rotate(-1.4deg);background:var(--card2);border-left:14px solid var(--accent2)}
+.note .tag{font-family:var(--f-mono);font-weight:700;font-size:var(--t-cardtag);letter-spacing:.16em;text-transform:uppercase;color:var(--accent2);display:flex;align-items:center;gap:14px}
+.note .tag::before{content:'';width:18px;height:18px;border-radius:50%;background:var(--accent2)}
+.note .hwrap{flex:1.3;min-height:0;display:flex;margin:12px 0 4px}
+.note h2{margin:0;width:100%;height:100%;overflow:hidden;display:flex;flex-direction:column;justify-content:center;font-family:var(--f-display);font-weight:900;font-size:var(--t-cardh);line-height:.96;letter-spacing:-.02em;text-wrap:balance}
+.note .bwrap{flex:1;min-height:0;display:flex}
+.note .body{margin:0;width:100%;height:100%;overflow:hidden;display:flex;flex-direction:column;justify-content:center;font-family:var(--f-body);font-weight:600;font-size:var(--t-cardbody);line-height:1.16;color:#4a3f30}
+.note .foot{flex:none;margin-top:auto;padding-top:18px;display:flex;gap:40px;flex-wrap:wrap}
+.note .foot .fk{font-family:var(--f-mono);font-weight:700;font-size:calc(var(--t-cardfoot)*.62);letter-spacing:.12em;text-transform:uppercase;color:var(--ink2)}
+.note .foot .fv{font-family:var(--f-display);font-weight:900;font-size:var(--t-cardfoot);margin-top:4px;color:var(--accent2);white-space:nowrap}
 
-/* TICKER (bleed fixed) */
-.ticker{flex:none;height:88px;margin:24px -64px 0;background:var(--c-ink);color:var(--c-paper);display:flex;align-items:stretch;overflow:hidden;border-top:6px solid var(--c-brand)}
-.ticker .tag{position:relative;z-index:3;flex:none;background:var(--c-brand);color:#fff;font-family:var(--f-mono);font-weight:700;font-size:30px;padding:0 38px;display:flex;align-items:center;letter-spacing:.18em;text-transform:uppercase;box-shadow:14px 0 22px rgba(23,19,16,.6)}
+/* BELL card lives in the ticker row's left? No — keep grid 2x2; bells become a wide strip below */
+/* TODAY'S BELLS strip — pinned paper card spanning full width */
+.bells{flex:none;margin:40px 24px 0;position:relative;background:var(--card);border-radius:8px;box-shadow:0 22px 44px rgba(40,24,8,.4);transform:rotate(.4deg);display:flex;overflow:hidden;border-bottom:10px solid var(--brand)}
+.bells .pin{top:-22px;left:90px;transform:none}
+.bells .pin.r{left:auto;right:90px}
+.bells .lbl{flex:0 0 320px;background:var(--brand);color:#fff;display:flex;flex-direction:column;justify-content:center;padding:24px 36px}
+.bells .lbl .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-belllbl);letter-spacing:.16em;text-transform:uppercase;color:#ffd9d2}
+.bells .lbl .v{font-family:var(--f-display);font-weight:900;font-size:var(--t-bellday);line-height:.95;margin-top:6px}
+.bells ul{flex:1;list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(6,1fr)}
+.bells li{position:relative;display:flex;flex-direction:column;justify-content:center;padding:22px 22px;border-right:2px dashed #e2d4b4}
+.bells li:last-child{border-right:0}
+.bells li.now{background:#fff3ef}.bells li.now::before{content:'';position:absolute;top:0;left:0;right:0;height:8px;background:var(--brand)}
+.bells .bp{font-family:var(--f-mono);font-weight:700;font-size:var(--t-bellp);letter-spacing:.1em;text-transform:uppercase;color:var(--brand)}
+.bells .bn{font-family:var(--f-display);font-weight:900;font-size:var(--t-bellnm);line-height:1;margin-top:4px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bells .bt{font-family:var(--f-mono);font-weight:600;font-size:var(--t-bellt);color:var(--ink2);margin-top:6px}
+.bells li.now .bn{color:var(--brand)}
+
+/* TICKER — a paper banner stapled across the bottom rail (solid, opaque) */
+.ticker{position:relative;flex:none;height:96px;margin:40px -64px 0;background:var(--brand);color:#fff;display:flex;align-items:stretch;overflow:hidden;border-top:6px solid var(--brand2)}
+.ticker .tag{position:relative;z-index:3;flex:none;background:#fff;color:var(--brand);font-family:var(--f-display);font-weight:900;font-size:40px;padding:0 40px;display:flex;align-items:center;letter-spacing:.06em;text-transform:uppercase;box-shadow:16px 0 26px rgba(60,20,14,.4)}
 .ticker .scroll{position:relative;z-index:1;flex:1;overflow:hidden;display:flex;align-items:center}
-.ticker .msg{font-family:var(--f-mono);font-weight:500;font-size:var(--t-ticker);padding-left:38px;white-space:nowrap;letter-spacing:.1em;text-transform:uppercase;animation:sc 80s linear infinite}
-.ticker .star{color:var(--c-gold);margin:0 22px}
+.ticker .msg{font-family:var(--f-body);font-weight:700;font-size:var(--t-ticker);padding-left:40px;white-space:nowrap;letter-spacing:.02em;animation:sc 84s linear infinite}
+.ticker .msg .star{margin:0 24px;opacity:.85}
 
 /* ═══ PORTRAIT ═══ */
-.stage[data-orient="port"] .main{grid-template-columns:1fr;grid-template-rows:auto 1fr}
-.stage[data-orient="port"] .chips{grid-template-columns:repeat(2,1fr)}
-.stage[data-orient="port"] .rail{height:auto}
-.stage[data-orient="port"] .rail ul{grid-template-columns:repeat(4,1fr);grid-auto-rows:1fr}
-.stage[data-orient="port"] .rail li{padding:22px 20px;border-bottom:1px solid rgba(245,238,225,.15)}
-.stage[data-orient="port"]{--t-title:calc(128px*var(--scale))}
-</style><script>/*EDUCMS-SHIM-V6*/(function(){try{
+.stage[data-orient="port"] .board{grid-template-columns:1fr;grid-template-rows:auto auto auto;gap:48px}
+.stage[data-orient="port"] .spot{grid-row:auto}
+.stage[data-orient="port"] .bells ul{grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr}
+.stage[data-orient="port"] .bells li{border-bottom:2px dashed #e2d4b4}
+.stage[data-orient="port"]{--t-mast:calc(96px*var(--scale))}
+.stage[data-orient="port"] .ticker{margin:40px -54px 0}
+</style>
+<script>/*EDUCMS-SHIM-V6*/(function(){try{
 var editMode=false;
 // ── Gallery FREEZE mode ──────────────────────────────────────────────
 // Installed FIRST (this script is at end of <head>, before the board's own
@@ -190,97 +176,70 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
 }catch(e){}})();</script>
 </head><body>
 <div data-widget="theme" hidden>
-  <span data-field="theme.cPaper">#f5eee1</span><span data-field="theme.cInk">#171310</span>
-  <span data-field="theme.cBrand">#b8331f</span><span data-field="theme.cGold">#b78a2e</span>
-  <span data-field="theme.fDisplay">Fraunces</span><span data-field="theme.fBody">Inter</span>
-  <span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
+  <span data-field="theme.bg">#b6863f</span><span data-field="theme.ink">#241a10</span>
+  <span data-field="theme.brand">#c0392b</span><span data-field="theme.brand2">#8c241a</span>
+  <span data-field="theme.accent">#2e7d4f</span><span data-field="theme.accent2">#1f5fa8</span>
+  <span data-field="theme.pos">#2e7d4f</span><span data-field="theme.neg">#c0392b</span>
+  <span data-field="theme.fDisplay">Archivo</span><span data-field="theme.fHead">Archivo</span><span data-field="theme.fBody">Inter</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
 </div>
 
 <div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+ <div class="cork">
 
-  <header class="mast">
-    <div class="left">
-      <div class="seal" data-widget="school"><div><span data-field="school.initials">WHS</span><span class="est" data-field="school.est">EST. 1956</span></div></div>
-      <h1 class="title" data-widget="masthead"><span data-field="masthead.title">The Bulletin</span><span class="sub" data-field="masthead.sub">Westridge High · daily edition</span></h1>
-    </div>
-    <div class="right" data-widget="issue">
-      <div class="issue" data-field="issue.label" data-live="weekday">Tuesday Morning</div>
-      <div class="date" data-field="issue.date" data-live="date">Oct. 14</div>
-      <div class="vol" data-field="issue.vol">Vol. 68 · No. 41</div>
-    </div>
+  <header class="mast" data-widget="masthead">
+    <div class="pin"></div>
+    <div class="ttl" data-fit="single" data-fit-min="50" data-fit-max="118" data-field="masthead.title">Wildcat Bulletin<span class="sub" data-field="masthead.sub">Westridge High · what's happening today</span></div>
+    <div class="clock" data-widget="clock"><div class="k" data-field="clock.label">Right now</div><div class="v" data-field="clock.time" data-live="clock">8:42</div></div>
   </header>
 
-  <section class="chips">
-    <div class="chip lit" data-widget="clock"><div class="k" data-field="clock.label">Right now</div><div class="v dot" data-field="clock.time" data-live="clock">8:42</div></div>
-    <div class="chip" data-widget="bellnow"><div class="k" data-field="bellnow.label">Period</div><div class="v" data-field="bellnow.value" data-live="period">2nd</div></div>
-    <div class="chip" data-widget="weather"><div class="k" data-field="weather.label">Outside · Sunny</div><div class="v" data-field="weather.temp">61°</div></div>
-    <div class="chip brand" data-widget="countdown"><div class="k" data-field="countdown.label">Homecoming in</div><div class="v" data-field="countdown.value">9 days</div></div>
-  </section>
+  <div class="board">
 
-  <div class="main">
-    <article class="hero" data-widget="spotlight">
-      <div class="body">
-        <div class="eyebrow"><span data-field="spotlight.badge">Today's Spotlight</span> · <span data-field="spotlight.eyebrow">Theater Department presents</span></div>
-        <div class="hwrap"><h1 data-fit data-fit-min="80" data-fit-max="210" data-field="spotlight.headline">Our Town opens Friday — three nights only.</h1></div>
-        <div class="lwrap"><p class="lede" data-fit data-fit-min="40" data-fit-max="86" data-field="spotlight.lede">28 student actors, six weeks of rehearsal, a hand-painted New Hampshire skyline. Mr. Avila's senior cast closes the season.</p></div>
-        <div class="meta">
-          <div><div class="k">Where</div><div class="v" data-field="spotlight.where">PAC theater</div></div>
-          <div><div class="k">Curtain</div><div class="v">7:30 pm</div></div>
-          <div><div class="k">Run time</div><div class="v">2h 10m</div></div>
-          <div><div class="k">Director</div><div class="v">D. Avila</div></div>
-          <div><div class="k">Tickets</div><div class="v brand" data-field="spotlight.credit">whs.gofan · $8</div></div>
-        </div>
+    <article class="card spot" data-widget="spotlight">
+      <div class="pin"></div>
+      <div class="tape tl" data-field="spotlight.tape">today!</div>
+      <div class="eye" data-field="spotlight.eye">Today's spotlight · Theater Dept.</div>
+      <div class="hwrap"><h1 data-fit data-fit-min="70" data-fit-max="210" data-field="spotlight.headline">"Our Town" opens Friday — three nights only.</h1></div>
+      <div class="lwrap"><p class="lede" data-fit data-fit-min="42" data-fit-max="78" data-field="spotlight.lede">28 student actors, six weeks of rehearsal, a hand-painted New Hampshire skyline. Mr. Avila's senior cast closes the season.</p></div>
+      <div class="meta">
+        <div><div class="mk" data-field="spotlight.k0">Where</div><div class="mv" data-field="spotlight.where">PAC Theater</div></div>
+        <div><div class="mk" data-field="spotlight.k1">Curtain</div><div class="mv" data-field="spotlight.curtain">7:30 pm</div></div>
+        <div><div class="mk" data-field="spotlight.k2">Tickets</div><div class="mv brand" data-field="spotlight.tickets">whs.gofan · $8</div></div>
       </div>
     </article>
 
-    <div class="rpanel" id="rpanel">
-      <!-- A · Breaking -->
-      <article class="rp brand" data-widget="ann1">
-        <div class="curl"></div>
-        <div class="ptag"><span class="tg" data-field="ann1.tag">Breaking · this week</span><span class="num">1 / 3</span></div>
-        <div class="pmid"><h2 data-fit data-fit-min="60" data-fit-max="150" data-field="ann1.headline">Cap &amp; gown orders close Friday at 3.</h2>
-        <p class="pbody" data-fit data-fit-min="36" data-fit-max="74" data-field="ann1.body">Last call, seniors. Forms are with Ms. Patel in the front office — late orders add a $35 rush fee.</p></div>
-        <div class="pfoot"><div><div class="k">Deadline</div><div class="v">Fri · Oct 17</div></div><div><div class="k">Where</div><div class="v">Front office · 102</div></div></div>
-      </article>
-      <!-- B · Principal -->
-      <article class="rp ink" data-widget="ann2">
-        <div class="curl"></div>
-        <div class="ptag"><span class="tg" data-field="ann2.tag">From the Principal</span><span class="num">2 / 3</span></div>
-        <div class="pmid"><h2 data-fit data-fit-min="60" data-fit-max="150" data-field="ann2.headline">Late-bus passes are back.</h2>
-        <p class="pbody" data-fit data-fit-min="36" data-fit-max="74" data-field="ann2.body">Activity buses run the full schedule today. Grab a pass from your coach or advisor by first period.</p></div>
-        <div class="pfoot"><div><div class="k">When</div><div class="v">Daily · Mon–Thu</div></div><div><div class="k">Loads</div><div class="v">Door 7 · 5:45</div></div></div>
-      </article>
-      <!-- C · Clubs -->
-      <article class="rp clubs" data-widget="clubs">
-        <div class="curl"></div>
-        <div class="ptag"><span class="tg" data-field="clubs.title">Today after school</span><span class="num">3 / 3</span></div>
-        <div class="clist">
-          <div class="cl" data-widget="clubs.0"><div class="cn" data-field="clubs.0.n">01</div><div class="cnm"><span data-field="clubs.0.nm">Robotics — build night</span><span class="sub" data-field="clubs.0.sub">Coach Reyes · all grades</span></div><div class="cwhen"><span data-field="clubs.0.t">3:30 — 6:00</span><span class="rm" data-field="clubs.0.r">Eng. lab · 214</span></div></div>
-          <div class="cl" data-widget="clubs.1"><div class="cn" data-field="clubs.1.n">02</div><div class="cnm"><span data-field="clubs.1.nm">Model UN</span><span class="sub" data-field="clubs.1.sub">Position-paper workshop</span></div><div class="cwhen"><span data-field="clubs.1.t">3:15 — 4:45</span><span class="rm" data-field="clubs.1.r">Library</span></div></div>
-          <div class="cl" data-widget="clubs.2"><div class="cn" data-field="clubs.2.n">03</div><div class="cnm"><span data-field="clubs.2.nm">Black Student Union</span><span class="sub" data-field="clubs.2.sub">Open-mic prep · sign up</span></div><div class="cwhen"><span data-field="clubs.2.t">3:30 — 5:00</span><span class="rm" data-field="clubs.2.r">Black box · 118</span></div></div>
-          <div class="cl" data-widget="clubs.3"><div class="cn" data-field="clubs.3.n">04</div><div class="cnm"><span data-field="clubs.3.nm">Jazz Band</span><span class="sub" data-field="clubs.3.sub">Sectionals · rhythm</span></div><div class="cwhen"><span data-field="clubs.3.t">3:30 — 5:30</span><span class="rm" data-field="clubs.3.r">Band room</span></div></div>
-        </div>
-      </article>
-      <div class="rp-dots" id="rpdots"></div>
-    </div>
+    <article class="card photo" data-widget="photocard">
+      <div class="pin"></div>
+      <div class="pic" data-imgslot="photocard.photo"><div class="ph" data-field="photocard.initials">📸</div></div>
+      <div class="cap"><div class="t" data-field="photocard.caption">Robotics took 2nd at regionals</div><div class="pill" data-field="photocard.pill">Go Cats</div></div>
+    </article>
+
+    <article class="card note" data-widget="note">
+      <div class="pin"></div>
+      <div class="tag" data-field="note.tag">From the front office</div>
+      <div class="hwrap"><h2 data-fit data-fit-min="56" data-fit-max="112" data-field="note.headline">Cap &amp; gown orders close Friday at 3.</h2></div>
+      <div class="bwrap"><p class="body" data-fit data-fit-min="40" data-fit-max="64" data-field="note.body">Last call, seniors — forms are with Ms. Patel. Late orders add a $35 rush fee, so don't wait.</p></div>
+      <div class="foot"><div><div class="fk" data-field="note.k0">Deadline</div><div class="fv" data-field="note.deadline">Fri · Oct 17</div></div><div><div class="fk" data-field="note.k1">Where</div><div class="fv" data-field="note.where">Room 102</div></div></div>
+    </article>
+
   </div>
 
-  <section class="rail" data-widget="bell">
-    <div class="lbl"><div class="k" data-field="bell.label">Today's bells</div><div class="v" data-fit="single" data-fit-min="28" data-fit-max="64" data-field="bell.day">A · regular</div></div>
-    <ul>
-      <li data-widget="bell.0"><div class="rp2" data-field="bell.0.p">P1</div><div class="rnm" data-field="bell.0.n">Period 1</div><div class="rt" data-field="bell.0.t">7:50–8:38</div></li>
-      <li data-widget="bell.1"><div class="rp2" data-field="bell.1.p">P2</div><div class="rnm" data-field="bell.1.n">Period 2</div><div class="rt" data-field="bell.1.t">8:42–9:30</div></li>
-      <li data-widget="bell.2"><div class="rp2" data-field="bell.2.p">P3</div><div class="rnm" data-field="bell.2.n">Period 3</div><div class="rt" data-field="bell.2.t">9:34–10:22</div></li>
-      <li data-widget="bell.3"><div class="rp2" data-field="bell.3.p">P4</div><div class="rnm" data-field="bell.3.n">Advisory</div><div class="rt" data-field="bell.3.t">10:26–10:54</div></li>
-      <li data-widget="bell.4"><div class="rp2" data-field="bell.4.p">P5</div><div class="rnm" data-field="bell.4.n">Lunch A</div><div class="rt" data-field="bell.4.t">10:58–11:34</div></li>
-      <li data-widget="bell.5"><div class="rp2" data-field="bell.5.p">P6</div><div class="rnm" data-field="bell.5.n">Period 4</div><div class="rt" data-field="bell.5.t">11:38–12:26</div></li>
-      <li data-widget="bell.6"><div class="rp2" data-field="bell.6.p">P7</div><div class="rnm" data-field="bell.6.n">Period 5</div><div class="rt" data-field="bell.6.t">12:30–1:18</div></li>
-      <li data-widget="bell.7"><div class="rp2" data-field="bell.7.p">P8</div><div class="rnm" data-field="bell.7.n">Period 6</div><div class="rt" data-field="bell.7.t">1:22–2:30</div></li>
+  <section class="bells" data-widget="bell">
+    <div class="pin"></div><div class="pin r"></div>
+    <div class="lbl"><div class="k" data-field="bell.label">Today's bells</div><div class="v" data-fit="single" data-fit-min="50" data-fit-max="56" data-field="bell.day">A · regular</div></div>
+    <ul data-schedule data-sched-item="li" data-sched-time=".bt" data-sched-active="now" data-sched-done="done">
+      <li data-widget="bell.0"><div class="bp" data-field="bell.0.p">P1</div><div class="bn" data-field="bell.0.n">Period 1</div><div class="bt" data-field="bell.0.t">7:50–8:38</div></li>
+      <li data-widget="bell.1"><div class="bp" data-field="bell.1.p">P2</div><div class="bn" data-field="bell.1.n">Period 2</div><div class="bt" data-field="bell.1.t">8:42–9:30</div></li>
+      <li data-widget="bell.2"><div class="bp" data-field="bell.2.p">P3</div><div class="bn" data-field="bell.2.n">Period 3</div><div class="bt" data-field="bell.2.t">9:34–10:22</div></li>
+      <li data-widget="bell.3"><div class="bp" data-field="bell.3.p">P4</div><div class="bn" data-field="bell.3.n">Lunch A</div><div class="bt" data-field="bell.3.t">10:58–11:34</div></li>
+      <li data-widget="bell.4"><div class="bp" data-field="bell.4.p">P5</div><div class="bn" data-field="bell.4.n">Period 4</div><div class="bt" data-field="bell.4.t">11:38–12:26</div></li>
+      <li data-widget="bell.5"><div class="bp" data-field="bell.5.p">P6</div><div class="bn" data-field="bell.5.n">Period 5</div><div class="bt" data-field="bell.5.t">12:30–1:18</div></li>
     </ul>
   </section>
 
+ </div>
+
   <div class="ticker" data-widget="ticker">
-    <div class="tag" data-field="ticker.tag">In other news</div>
+    <div class="tag" data-field="ticker.tag">Pinned</div>
     <div class="scroll"><div class="msg"><span data-field="ticker.message">Picture-day retakes Thursday in the gym lobby · Varsity volleyball at Lakeside 6 pm — fan bus loads at 4:45 · FAFSA help every Tuesday in counseling · Lost &amp; found cleared Friday · Library open till 5 through midterms</span><span class="star">★</span><span data-field="ticker.message2">Picture-day retakes Thursday in the gym lobby · Varsity volleyball at Lakeside 6 pm — fan bus loads at 4:45 · FAFSA help every Tuesday in counseling · Lost &amp; found cleared Friday · Library open till 5 through midterms</span><span class="star">★</span></div></div>
   </div>
 
@@ -288,63 +247,44 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
 <script>
 (function(){
   var root=document.documentElement,stage=document.getElementById('stage');
-  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();}
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
   function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
   window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
-
-  var THEME={cPaper:'--c-paper',cInk:'--c-ink',cBrand:'--c-brand',cGold:'--c-gold',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fHead:'--f-head',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
   function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
   applyTheme();new MutationObserver(applyTheme).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
   document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
-
-  /* ── AUTO-FIT: scale font so text fills its box (bigger when short, smaller when long).
-     Tag an element data-fit (multiline) or data-fit="single" (one line, width-only),
-     with optional data-fit-min / data-fit-max (px on the 3840 stage). Re-runs on
-     resize and whenever the CMS edits the text. ── */
-  function fitOne(el){
-    var single=el.getAttribute('data-fit')==='single';
-    var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);
-    if(single)el.style.whiteSpace='nowrap';
-    var lo=min,hi=max,best=min;
-    for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';
-      var okW=el.scrollWidth<=el.clientWidth+1, okH=single?true:el.scrollHeight<=el.clientHeight+1;
-      if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}
-    el.style.fontSize=best+'px';
-  }
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||50),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
   function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
-  window.addEventListener('resize',function(){setTimeout(autofit,60);});
-  setTimeout(autofit,120);setTimeout(autofit,500);
-  new MutationObserver(function(){autofit();}).observe(document.querySelector('.stage'),{subtree:true,childList:true,characterData:true});
-
-  var BELLS=[['7:50','8:38'],['8:42','9:30'],['9:34','10:22'],['10:26','10:54'],['10:58','11:34'],['11:38','12:26'],['12:30','13:18'],['13:22','14:30']];
-  var ORD=['1st','2nd','3rd','4th','5th','6th','7th','8th'];
-  var DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],MON=['Jan.','Feb.','Mar.','Apr.','May','June','July','Aug.','Sept.','Oct.','Nov.','Dec.'];
-  function toMin(s){var p=s.split(':');return (+p[0])*60+(+p[1]);}
-  function f12(m){m=((m%1440)+1440)%1440;var h=Math.floor(m/60),x=m%60,h12=h%12||12;return h12+':'+(x<10?'0':'')+x;}
-  function setLive(n,v){document.querySelectorAll('[data-live="'+n+'"]').forEach(function(el){el.textContent=v;});}
-  function tick(){var now=new Date(),nm=now.getHours()*60+now.getMinutes(),ap=now.getHours()<12?'Morning':'Afternoon';
-    setLive('clock',f12(nm));setLive('weekday',DAYS[now.getDay()]+' '+ap);setLive('date',MON[now.getMonth()]+' '+now.getDate());
-    var idx=-1;for(var i=0;i<BELLS.length;i++){if(nm>=toMin(BELLS[i][0])&&nm<toMin(BELLS[i][1])){idx=i;break;}}
-    setLive('period',idx>=0?ORD[idx]:'—');
-    document.querySelectorAll('.rail li').forEach(function(li,i){li.classList.toggle('now',i===idx);});}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.stage'),{subtree:true,childList:true,characterData:true});
+  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m;}
+  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});}
   tick();setInterval(tick,15000);
-
-  /* corner-peel rotator scoped to the right panel */
-  var pages=[].slice.call(document.querySelectorAll('#rpanel .rp'));
-  var dwrap=document.getElementById('rpdots');
-  pages.forEach(function(_,i){var d=document.createElement('i');if(i===0)d.className='on';dwrap.appendChild(d);});
-  var dots=[].slice.call(dwrap.children);
-  var idx=0,busy=false,timer=null;
-  function dwell(){var v=getComputedStyle(root).getPropertyValue('--dwell');return (parseFloat(v)||8)*1000;}
-  function show(n){var prev=idx,next=(n+pages.length)%pages.length;if(next===prev||busy)return;busy=true;idx=next;
-    var A=pages[prev],B=pages[idx];
-    B.classList.remove('active');B.classList.add('under');
-    A.classList.remove('active');A.classList.add('turning');
-    dots.forEach(function(d,i){d.classList.toggle('on',i===idx);});
-    setTimeout(function(){A.classList.remove('turning');B.classList.remove('under');B.classList.add('active');busy=false;},1000);
-  }
-  function loop(){clearTimeout(timer);timer=setTimeout(function(){show(idx+1);loop();},dwell());}
-  pages[0].classList.add('active');loop();
+})();
+</script>
+<script>
+/* LIVE SCHEDULE ENGINE — ties each item's highlight to its period time. Standard across all scheduled boards. */
+(function(){
+  function parseMin(t){if(!t)return null;t=(''+t).replace(/[–—]/g,'-');var m=t.match(/(\d{1,2}):(\d{2})/g);if(!m)return null;function toMin(s){var p=s.split(':'),h=+p[0],mm=+p[1];if(h<7)h+=12;return h*60+mm;}return{start:toMin(m[0]),end:m[1]?toMin(m[1]):toMin(m[0])+50};}
+  function fmt(min){var h=Math.floor(min/60),m=min%60;var ap=h>=12?'p':'a';h=h%12;if(h===0)h=12;return h+':'+(m<10?'0':'')+m+ap;}
+  function run(){document.querySelectorAll('[data-schedule]').forEach(function(box){
+    var itemSel=box.getAttribute('data-sched-item')||'.row',timeSel=box.getAttribute('data-sched-time'),actCls=box.getAttribute('data-sched-active')||'now',doneCls=box.getAttribute('data-sched-done')||'done',statSel=box.getAttribute('data-sched-status');
+    var rows=[].slice.call(box.querySelectorAll(itemSel));
+    var periods=rows.map(function(r){var dt=r.getAttribute('data-time');if(dt)return parseMin(dt);var t=timeSel?r.querySelector(timeSel):null;return parseMin(t?t.textContent:'');});
+    var d=new Date(),nowMin=d.getHours()*60+d.getMinutes();
+    var demo=box.getAttribute('data-demo-min');var first=periods.find(function(p){return p;}),last=[].concat(periods).reverse().find(function(p){return p;});
+    if(demo!=null&&(!first||nowMin<first.start||(last&&nowMin>=last.end)))nowMin=+demo;
+    var curIdx=-1;for(var i=0;i<periods.length;i++){if(periods[i]&&nowMin>=periods[i].start&&nowMin<periods[i].end){curIdx=i;break;}}
+    var nextIdx=-1;if(curIdx<0){for(var j=0;j<periods.length;j++){if(periods[j]&&nowMin<periods[j].start){nextIdx=j;break;}}}else{nextIdx=curIdx+1;}
+    rows.forEach(function(r,i){var p=periods[i],s=statSel?r.querySelector(statSel):null;r.classList.remove(actCls,doneCls);if(!p){if(s)s.textContent='';return;}
+      if(i===curIdx){r.classList.add(actCls);if(s)s.textContent='● Now';}
+      else if(nowMin>=p.end){r.classList.add(doneCls);if(s)s.textContent='Done';}
+      else if(i===nextIdx){if(s)s.textContent='Up next';}
+      else{if(s)s.textContent='Starts '+fmt(p.start);}});
+  });}
+  run();setInterval(run,30000);
+  document.querySelectorAll('[data-schedule]').forEach(function(b){new MutationObserver(run).observe(b,{subtree:true,childList:true,characterData:true,attributeFilter:['data-time']});});
 })();
 </script>
 </body></html>
