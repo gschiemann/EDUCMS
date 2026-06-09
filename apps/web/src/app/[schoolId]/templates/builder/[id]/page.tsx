@@ -6,6 +6,7 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { useTemplate } from '@/hooks/use-api';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { BuilderShell } from '@/components/template-builder/BuilderShell';
+import { useUIStore } from '@/store/ui-store';
 import type { Template } from '@/components/template-builder/types';
 
 export default function TemplateBuilderV2Page() {
@@ -15,6 +16,14 @@ export default function TemplateBuilderV2Page() {
   const schoolId = params?.schoolId ?? '';
 
   const flagOn = isFeatureEnabled(FLAGS.TEMPLATE_BUILDER_V2);
+  // 2026-06-09 — a RESTRICTED_VIEWER is read-only. The gallery's Edit/
+  // Duplicate buttons are already disabled for them, but the builder
+  // route is directly URL-navigable, so a viewer could land here and get
+  // the full editor (Save 403s server-side, but the surface is misleading
+  // — operator: "a viewer can actually edit a template"). The server is
+  // the real guard (every template mutation 403s for this role); this is
+  // the matching client gate. Bounce viewers back to the read-only gallery.
+  const isViewer = useUIStore((s) => s.user?.role) === 'RESTRICTED_VIEWER';
   const { data, isLoading, error } = useTemplate(templateId);
 
   // 2026-05-04 — operator: "when you hit discard on a template it
@@ -40,12 +49,12 @@ export default function TemplateBuilderV2Page() {
   }, [isErrorState]);
 
   useEffect(() => {
-    if (!flagOn) {
+    if (!flagOn || isViewer) {
       router.replace(`/${schoolId}/templates`);
     }
-  }, [flagOn, router, schoolId]);
+  }, [flagOn, isViewer, router, schoolId]);
 
-  if (!flagOn) {
+  if (!flagOn || isViewer) {
     return (
       <div className="fixed inset-0 bg-white flex items-center justify-center">
         <Loader2 className="w-5 h-5 animate-spin text-slate-400" aria-hidden />

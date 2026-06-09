@@ -373,6 +373,12 @@ export default function TemplatesPage() {
   const tenantCopy = useTenantCopy();
 
   const openInBuilder = useCallback((t: Template) => {
+    // 2026-06-09 — read-only guard. A RESTRICTED_VIEWER must never reach
+    // any editor surface (gallery Edit buttons are already disabled; this
+    // also covers the inline <TemplateBuilder> path + any programmatic
+    // caller). The server is the real guard — every template mutation 403s
+    // for this role — this just keeps the read-only UX honest.
+    if (isViewer) return;
     // 2026-05-29 (mobile P1) — the template layout builder (both the V2
     // route and the legacy <TemplateBuilder> portal) is desktop/tablet-
     // landscape only; DashboardLayout gates the V2 route behind a
@@ -400,7 +406,7 @@ export default function TemplatesPage() {
     } else {
       setEditingTemplate(t);
     }
-  }, [useV2Builder, router, params?.schoolId]);
+  }, [useV2Builder, router, params?.schoolId, isViewer]);
 
   // Create form state
   const [newName, setNewName] = useState('');
