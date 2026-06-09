@@ -44,7 +44,14 @@ export class SchedulesController {
   }
 
   @Post()
-  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  // CONTRIBUTOR (Editor) may STAGE schedules, but only as drafts — see the
+  // willBeActive override below. Publishing a schedule live (isActive=true)
+  // stays an admin action, or happens automatically when an admin approves
+  // the Editor's submission (submissions.controller flips isActive→true).
+  // This is the publish gate: Editor stages → admin reviews → goes live.
+  // (2026-06-09 — operator: "editor … won't let them publish … should say
+  // send for review".)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async create(
     @Request() req: any,
     @Body(new ZodValidationPipe(ScheduleCreateSchema)) body: ScheduleCreateInput,
@@ -87,7 +94,11 @@ export class SchedulesController {
       }
     }
 
-    const willBeActive = body.isActive !== false;
+    // CONTRIBUTOR (Editor) schedules are ALWAYS staged as drafts — they
+    // cannot push content live directly. An admin activates on approval
+    // (or directly). Everyone else honors the requested isActive flag.
+    const isContributor = req.user?.role === AppRole.CONTRIBUTOR;
+    const willBeActive = !isContributor && body.isActive !== false;
 
     // Only displace other active schedules when THIS schedule is going
     // live. A saved-draft schedule should not knock the currently-

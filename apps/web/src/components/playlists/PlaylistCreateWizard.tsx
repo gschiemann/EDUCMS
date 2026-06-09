@@ -98,7 +98,9 @@ import {
   useCreatePlaylist,
   useReorderPlaylistItems,
   useCreateSchedule,
+  useCreateSubmission,
 } from '@/hooks/use-api';
+import { useUIStore } from '@/store/ui-store';
 import { useQueryClient } from '@tanstack/react-query';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
@@ -392,7 +394,14 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   const createPlaylist = useCreatePlaylist();
   const saveItems = useReorderPlaylistItems();
   const createSchedule = useCreateSchedule();
+  const createSubmission = useCreateSubmission();
   const qc = useQueryClient();
+
+  // An Editor (CONTRIBUTOR) can build + stage but can't publish to screens
+  // directly — picking screens routes the final step to Submit-for-Review
+  // instead of going live. Admins publish immediately.
+  const isContributor = useUIStore((s) => s.user?.role) === 'CONTRIBUTOR';
+  const willSubmitForReview = isContributor && selectedScreenIds.size > 0;
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   // Seed-once guard for the "create playlist from selected assets" handoff.
@@ -817,6 +826,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
       //      on the operator's "Activate immediately" toggle.
       //    - If no screens picked: skip schedule creation (operator chose
       //      to assign later from the playlist detail view).
+      let draftScheduleIds: string[] = [];
       if (selectedScreenIds.size > 0) {
         const computeStartTime = (): string => {
           if (!schedStartDate) return new Date().toISOString();
@@ -841,7 +851,34 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
           isActive: activateImmediately,
         }));
         // Run in parallel — schedules are independent, no cross-row deps.
-        await Promise.all(schedules.map((s) => createSchedule.mutateAsync(s)));
+        // For an Editor these are staged INACTIVE server-side (the publish
+        // gate); capture their ids to bundle into the review submission.
+        const createdScheds = await Promise.all(schedules.map((s) => createSchedule.mutateAsync(s)));
+        draftScheduleIds = createdScheds.map((s: any) => s?.id).filter(Boolean);
+      }
+
+      // 3b. Editor (CONTRIBUTOR) publishing → Submit for Review instead of
+      //     going live. The schedules just created are inactive drafts;
+      //     bundle them + the playlist into a submission. An admin's approval
+      //     flips the schedules to isActive=true (publishes). Admins skip
+      //     this — their schedules already went live above.
+      if (willSubmitForReview) {
+        await createSubmission.mutateAsync({
+          playlistIds: [playlistId],
+          scheduleIds: draftScheduleIds,
+          note: `Requesting publish of "${name.trim()}" to ${selectedScreenIds.size} screen${selectedScreenIds.size === 1 ? '' : 's'}.`,
+          // notifyUserIds omitted → backend notifies every admin in the tenant.
+        });
+        qc.invalidateQueries({ queryKey: ['playlists'] });
+        setCreating(false);
+        await appAlert({
+          title: 'Sent for review',
+          message:
+            'Your playlist was created and sent to an administrator to review and publish. You’ll be notified once it’s approved.',
+          tone: 'info',
+        });
+        onClose();
+        return;
       }
 
       // 4. Refresh the playlists dashboard cache + the per-id cache so
@@ -1070,6 +1107,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
               schedTimeEnd={schedTimeEnd}
               schedStartDate={schedStartDate}
               schedEndDate={schedEndDate}
+              willSubmitForReview={willSubmitForReview}
             />
           )}
         </div>
@@ -1137,12 +1175,12 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
                 {creating ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Creating…
+                    {willSubmitForReview ? 'Sending…' : 'Creating…'}
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4 mr-2" />
-                    Create Playlist
+                    {willSubmitForReview ? 'Create & Send for Review' : 'Create Playlist'}
                   </>
                 )}
               </button>
@@ -2463,6 +2501,7 @@ function Step5Review({
   schedTimeEnd,
   schedStartDate,
   schedEndDate,
+  willSubmitForReview,
 }: {
   name: string;
   kind: PlaylistKind;
@@ -2475,6 +2514,7 @@ function Step5Review({
   schedTimeEnd: string;
   schedStartDate: string;
   schedEndDate: string;
+  willSubmitForReview?: boolean;
 }) {
   const scheduleLabel = (() => {
     if (activate) {
@@ -2499,8 +2539,8 @@ function Step5Review({
           <Sparkles className="w-5 h-5 text-indigo-600" />
         </div>
         <div>
-          <p className="text-base font-bold text-slate-800">Ready to create</p>
-          <p className="text-xs text-slate-500">Double-check the summary below, then hit Create Playlist.</p>
+          <p className="text-base font-bold text-slate-800">{willSubmitForReview ? 'Ready to send for review' : 'Ready to create'}</p>
+          <p className="text-xs text-slate-500">{willSubmitForReview ? 'Double-check the summary, then send it to an admin to review and publish.' : 'Double-check the summary below, then hit Create Playlist.'}</p>
         </div>
       </div>
 

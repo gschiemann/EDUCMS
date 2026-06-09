@@ -56,7 +56,7 @@ describe('RbacGuard', () => {
       jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([AppRole.SCHOOL_ADMIN]);
       
       const ctx = createMockContext({ role: AppRole.CONTRIBUTOR });
-      expect(() => guard.canActivate(ctx)).toThrow('Access denied');
+      expect(() => guard.canActivate(ctx)).toThrow("don't have permission");
     });
   });
 
@@ -124,7 +124,7 @@ describe('RbacGuard', () => {
     it('is DENIED a mutation (POST) to the same endpoint', () => {
       jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(contentRead);
       const ctx = createMockContext({ role: AppRole.RESTRICTED_VIEWER, schoolId: 'sch-1' }, {}, {}, {}, 'POST');
-      expect(() => guard.canActivate(ctx)).toThrow('Access denied');
+      expect(() => guard.canActivate(ctx)).toThrow("don't have permission");
     });
 
     it('is DENIED reading an ADMIN-only endpoint (CONTRIBUTOR not in required roles)', () => {
@@ -132,7 +132,7 @@ describe('RbacGuard', () => {
         AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN,
       ]);
       const ctx = createMockContext({ role: AppRole.RESTRICTED_VIEWER, schoolId: 'sch-1' }, {}, {}, {}, 'GET');
-      expect(() => guard.canActivate(ctx)).toThrow('Access denied');
+      expect(() => guard.canActivate(ctx)).toThrow("don't have permission");
     });
 
     it('read access is still tenancy-scoped to its own school', () => {

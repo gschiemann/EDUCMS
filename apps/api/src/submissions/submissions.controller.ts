@@ -103,6 +103,18 @@ export class SubmissionsController {
         select: { id: true },
       });
       validReviewers = admins.map((a) => a.id);
+    } else {
+      // No explicit reviewer picked (e.g. the playlist wizard's Editor
+      // "Send for Review" flow has no reviewer step) → notify EVERY admin in
+      // the tenant so the submission can't sit unseen in the queue.
+      const admins = await this.prisma.client.user.findMany({
+        where: {
+          tenantId,
+          role: { in: [AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN] },
+        },
+        select: { id: true },
+      });
+      validReviewers = admins.map((a) => a.id);
     }
 
     const submission = await this.prisma.client.submission.create({

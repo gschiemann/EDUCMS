@@ -96,7 +96,15 @@ export class RbacGuard implements CanActivate {
       typedUser.role === AppRole.SUPER_ADMIN ||
       viewerMayRead;
     if (!hasRole) {
-      throw new ForbiddenException(`Access denied. Requires one of: ${requiredRoles.join(', ')}`);
+      // Vertical-neutral, user-facing message. Don't leak raw role enum
+      // names (SCHOOL_ADMIN etc.) into the UI — VenueOS is multi-vertical
+      // (sports / retail / restaurants / worship…), so "School Admin" is
+      // wrong copy for most tenants. (2026-06-09 — operator: "it's using
+      // school admin names in the text and we aren't school only anymore.")
+      // The required roles are still recorded server-side for debugging.
+      throw new ForbiddenException(
+        "You don't have permission to do this. Ask an administrator if you need access.",
+      );
     }
 
     // Default Super Admin pass
