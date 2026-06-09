@@ -74,20 +74,35 @@ export function ServiceWorkerRegistrar() {
       return;
     }
 
-    // In dev, Next's hot-reload + the SW's fetch handler argue with
-    // each other (asset paths shift between renders). Easier to just
-    // gate registration on production. Operators can still test the
-    // PWA install flow via `pnpm preview` / `pnpm build && next start`.
-    if (process.env.NODE_ENV !== 'production') return;
-
-    // Register quietly. Failures are non-fatal — the app still works
-    // online without the SW.
+    // 2026-06-08 — Dashboard service worker DISABLED. It caused a recurring
+    // class of bugs: stale bundles after deploys, and (today) an unresponsive
+    // worker that wedged Next.js client-side navigation (clicks did nothing;
+    // only a hard refresh worked). For an admin dashboard that bypasses /api/,
+    // offline support was never useful — the risk far outweighs the benefit.
+    //
+    // We no longer register it. Instead, ACTIVELY unregister any existing
+    // dashboard worker and purge its caches so every client that loads this
+    // build sheds the worker immediately and returns to plain network. Only
+    // the dashboard SW (scriptURL .../sw.js) is touched — never the kiosk
+    // player's sw-player.js. (public/sw.js is itself a self-destruct stub now,
+    // covering clients that don't reach this code.)
     navigator.serviceWorker
-      .register('/sw.js', { scope: '/' })
-      .catch((err) => {
-        // eslint-disable-next-line no-console
-        console.warn('[sw] dashboard service worker registration failed', err);
-      });
+      .getRegistrations()
+      .then((regs) => {
+        for (const r of regs) {
+          try {
+            if (r.active && /\/sw\.js(\?|$)/.test(r.active.scriptURL)) {
+              r.unregister().catch(() => {});
+            }
+          } catch { /* noop */ }
+        }
+      })
+      .catch(() => { /* noop */ });
+    if (typeof caches !== 'undefined') {
+      caches.keys()
+        .then((keys) => keys.filter((k) => k.startsWith('edu-shell-')).forEach((k) => { caches.delete(k).catch(() => {}); }))
+        .catch(() => {});
+    }
   }, [pathname]);
 
   // 2026-06-08 — force a service-worker update check whenever the tab
