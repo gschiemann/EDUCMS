@@ -1273,12 +1273,17 @@ export default function TemplatesPage() {
           // is the only entry point for canvas-size overrides — it
           // routes through AdaptForLedModal which duplicates at the
           // chosen W×H before opening the builder.
-          onCustomize={previewTemplate.isSystem ? () => {
+          // 2026-06-09 — a RESTRICTED_VIEWER is read-only, so don't render
+          // Customize/Edit at all (operator: "the viewer can click customize
+          // but it just returns them to the main page… better to remove the
+          // button"). Hiding the action beats letting them click into a gated
+          // route that bounces back. They keep the read-only preview.
+          onCustomize={!isViewer && previewTemplate.isSystem ? () => {
             const t = previewTemplate;
             setPreviewTemplate(null);
             openTemplate(t);
           } : undefined}
-          onEdit={!previewTemplate.isSystem ? () => {
+          onEdit={!isViewer && !previewTemplate.isSystem ? () => {
             const t = previewTemplate;
             setPreviewTemplate(null);
             openTemplate(t);
