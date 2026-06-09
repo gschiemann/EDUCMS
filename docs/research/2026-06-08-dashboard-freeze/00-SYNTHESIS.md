@@ -55,6 +55,25 @@ The operator's heavy account cannot be reproduced remotely without their credent
 - Standalone headless-browser repro (Playwright): mount Leaflet + markercluster with 150 `divIcon`+popup markers, measure the longest main-thread task **without** `chunkedLoading` (expected: hundreds of ms to seconds) vs **with** `chunkedLoading` (expected: no single long task — sliced). This proves the fix empirically, account-independent.
 - After deploy, re-run live forensics on a heavy-enough surface and confirm `getRegistrations()` no longer hangs and there are no recurring long tasks.
 
+## OUTCOME — fix landed + empirically verified (commit b0254e7f, 2026-06-08)
+
+Shipped in `b0254e7f`:
+- **ScreenMap.tsx** — `chunkedLoading:true` + bulk `addLayers()` (yields to the event loop); a content-signature gate that skips the rebuild when nothing visible changed (kills the per-poll rebuild); `onScreenClick` read from a ref (no longer a rebuild trigger); lazy popups.
+- **bug-ringbuffers.ts** — global `window.fetch` wrapper now bypasses Next `/_next/`+`?_rsc=` requests entirely and captures error bodies fire-and-forget (was `await clone.text()` on the nav path).
+- **ServiceWorkerRegistrar.tsx** — unregister the disabled SW once on mount (was `getRegistrations()` per-nav); removed the per-focus update check.
+- **DashboardLayout.tsx** — reverted the `1e0b0314` focus-claim effect.
+
+**Empirical verification (headless Chromium, `scratch/freeze-repro/`, 500 markers × 12 polls — the real 10s cadence):**
+
+| | first build | total main-thread block over 12 polls |
+|---|---|---|
+| OLD (rebuild every poll) | 48ms | **188ms** |
+| NEW (signature-gate + chunkedLoading) | 5ms | **5ms** |
+
+→ **97% less main-thread blocking; 11 of 12 rebuilds eliminated.** Headless on a fast CPU understates it; a real client (heavier SVG icons, real paint, slower CPU, possibly >500 markers) sees per-build cost in the hundreds-of-ms-to-seconds range, i.e. seconds-of-freeze-every-10s → none.
+
+Cannot be reproduced on the operator's exact account remotely (no SUPER_ADMIN login on live; the test account is too light to freeze), so verification is: convergent 5-agent root cause + live CPU-block evidence (dead `setTimeout`) + this mechanism repro. Operator must load the new bundle once (a hard refresh) to receive it.
+
 ## Reconciling Agent 2 (CPU block) vs Agent 5 (I/O starvation) — BOTH are right, and they are complementary
 
 Agent 5 argued the dashboard has no 45s synchronous CPU loop and that the hang is I/O starvation from a still-wedged OLD service worker in the operator's browser (the kill-switch hasn't reached them). Agent 2 argued it's the fleet-map CPU block.
