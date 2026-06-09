@@ -166,9 +166,7 @@ const DEFAULT_FAVICON = '/favicon.ico?v=3';
  */
 function setBrandFavicon(href: string) {
   if (typeof document === 'undefined') return;
-  document
-    .querySelectorAll('link[rel~="icon"]:not([data-brand="1"])')
-    .forEach((el) => el.remove());
+  // Ensure our single brand-controlled icon link exists and points at `href`.
   let link = document.querySelector<HTMLLinkElement>('link[rel="icon"][data-brand="1"]');
   if (!link) {
     link = document.createElement('link');
@@ -177,6 +175,25 @@ function setBrandFavicon(href: string) {
     document.head.appendChild(link);
   }
   link.href = href;
+
+  // Make our icon authoritative WITHOUT detaching the other <link rel="icon">
+  // nodes. ⚠️ Those are rendered by Next/React into <head> and are REACT-MANAGED.
+  // The old code did `.forEach((el) => el.remove())` — detaching them. React's
+  // head reconciler still holds a fiber whose stateNode is that now-orphaned
+  // node, so on the NEXT client navigation React runs commitDeletion →
+  // `node.parentNode.removeChild(node)` with `parentNode === null` →
+  // "TypeError: null is not an object (… parentNode.removeChild)". That throw
+  // unmounts the whole React root, and the app's error recovery HARD-RELOADS
+  // the page. In WebKit/Safari it fired on ~every other navigation (Chrome
+  // silently tolerated it) — the real, days-long "every menu click needs two
+  // clicks / it just reloads" bug, reproduced + fixed in WebKit (0 crashes,
+  // every nav a clean single-click soft-nav once we stop detaching).
+  // So: point the other icon links at the same href instead of removing them.
+  document
+    .querySelectorAll<HTMLLinkElement>('link[rel~="icon"]:not([data-brand="1"])')
+    .forEach((el) => {
+      if (el.getAttribute('href') !== href) el.setAttribute('href', href);
+    });
 }
 
 function applyBranding(b: TenantBranding | null) {
