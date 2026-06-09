@@ -314,6 +314,14 @@ function installFetchWrapper(): void {
     const started = Date.now();
     const method = (init?.method || (typeof input !== 'string' && 'method' in input ? input.method : 'GET') || 'GET').toUpperCase();
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    // 2026-06-08: NEVER instrument Next.js internal / RSC navigation requests.
+    // The App Router drives client-side navigation with fetch() to `?_rsc=…`
+    // URLs and loads code via `/_next/…` chunks. Buffering those (possibly
+    // streamed) bodies on the return path stalls navigation — the bug reporter
+    // must not sit on the critical nav path. Pass straight through, untouched.
+    if (/\/_next\//.test(url) || /[?&]_rsc=/.test(url)) {
+      return origFetch(input as RequestInfo, init);
+    }
     try {
       // Cast through Request/URL/string union — TS's lib.dom.d.ts
       // typings for fetch's first arg are overloaded in a way that
@@ -322,25 +330,29 @@ function installFetchWrapper(): void {
       // browser fetch implementation accepts the same union we declare.
       const res = await origFetch(input as RequestInfo, init);
       if (res.status >= 400) {
-        // Try to capture a snippet of the body for triage WITHOUT
-        // consuming it — clone() so the caller still gets a fresh
-        // response body.
-        let message: string | undefined;
+        // Capture a body snippet for triage FIRE-AND-FORGET — clone() so the
+        // caller still gets a fresh body, and never `await` the read before
+        // returning the response (awaiting here added latency to every failed
+        // request on the main thread, heavier the more requests a page makes).
         try {
           const clone = res.clone();
-          const text = await clone.text();
-          message = text ? truncate(text, NETWORK_MSG_MAX) : undefined;
+          clone.text().then(
+            (text) => push(networkFailures, {
+              ts: started, method, url: truncate(url, BREADCRUMB_LABEL_MAX),
+              status: res.status, durationMs: Date.now() - started,
+              message: text ? truncate(text, NETWORK_MSG_MAX) : undefined,
+            }),
+            () => push(networkFailures, {
+              ts: started, method, url: truncate(url, BREADCRUMB_LABEL_MAX),
+              status: res.status, durationMs: Date.now() - started, message: undefined,
+            }),
+          );
         } catch {
-          message = undefined;
+          push(networkFailures, {
+            ts: started, method, url: truncate(url, BREADCRUMB_LABEL_MAX),
+            status: res.status, durationMs: Date.now() - started, message: undefined,
+          });
         }
-        push(networkFailures, {
-          ts: started,
-          method,
-          url: truncate(url, BREADCRUMB_LABEL_MAX),
-          status: res.status,
-          durationMs: Date.now() - started,
-          message,
-        });
       }
       return res;
     } catch (err) {

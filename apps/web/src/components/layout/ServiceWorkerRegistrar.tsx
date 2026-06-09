@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from 'react';
-import { usePathname } from 'next/navigation';
 
 /**
  * Registers the dashboard's service worker on mount (Phase 1 of
@@ -19,7 +18,6 @@ import { usePathname } from 'next/navigation';
  * builds.
  */
 export function ServiceWorkerRegistrar() {
-  const pathname = usePathname() || '';
 
   // 2026-06-01 — auto-recover from deploy/chunk skew. After a deploy the JS
   // chunk filenames change; a page already open in the browser still points
@@ -62,18 +60,6 @@ export function ServiceWorkerRegistrar() {
     if (typeof window === 'undefined') return;
     if (!('serviceWorker' in navigator)) return;
 
-    // Don't register on routes that have their own SW or shouldn't
-    // get one (player has sw-player.js, panic / login are immersive
-    // surfaces).
-    if (
-      pathname.startsWith('/player') ||
-      pathname.startsWith('/panic') ||
-      pathname.startsWith('/login') ||
-      pathname.startsWith('/signup')
-    ) {
-      return;
-    }
-
     // 2026-06-08 — Dashboard service worker DISABLED. It caused a recurring
     // class of bugs: stale bundles after deploys, and (today) an unresponsive
     // worker that wedged Next.js client-side navigation (clicks did nothing;
@@ -103,49 +89,9 @@ export function ServiceWorkerRegistrar() {
         .then((keys) => keys.filter((k) => k.startsWith('edu-shell-')).forEach((k) => { caches.delete(k).catch(() => {}); }))
         .catch(() => {});
     }
-  }, [pathname]);
-
-  // 2026-06-08 — force a service-worker update check whenever the tab
-  // regains focus (throttled to once/60s). Why this matters for the
-  // "stale dashboard after a deploy" report:
-  //
-  // By spec the browser only re-fetches /sw.js on navigation at most
-  // once per 24h — so a tab left open across a deploy can keep running
-  // the OLD service worker (and its old cached shell) for up to a day.
-  // Calling registration.update() bypasses that throttle and pulls the
-  // freshly-deployed SW immediately. The new SW self-skipWaits +
-  // purges the old CacheStorage on activate (see public/sw.js), so the
-  // next reload — whether the operator's own, or the StaleBundleWatcher
-  // countdown — lands on fresh code with NO manual cache clearing.
-  //
-  // Runs once (deps: []) so we don't stack listeners on every nav.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!('serviceWorker' in navigator)) return;
-    if (process.env.NODE_ENV !== 'production') return;
-
-    let lastUpdate = 0;
-    const maybeUpdate = () => {
-      if (document.visibilityState !== 'visible') return;
-      const now = Date.now();
-      if (now - lastUpdate < 60_000) return; // throttle: at most once/min
-      lastUpdate = now;
-      navigator.serviceWorker
-        .getRegistration()
-        .then((reg) => reg?.update())
-        .catch(() => { /* non-fatal */ });
-    };
-
-    document.addEventListener('visibilitychange', maybeUpdate);
-    window.addEventListener('focus', maybeUpdate);
-    // Kick one check shortly after mount too (covers the tab that was
-    // already focused when a deploy landed).
-    const kick = setTimeout(maybeUpdate, 10_000);
-    return () => {
-      document.removeEventListener('visibilitychange', maybeUpdate);
-      window.removeEventListener('focus', maybeUpdate);
-      clearTimeout(kick);
-    };
+    // Run ONCE on mount (deps: []), not on every navigation. The previous
+    // [pathname] version called getRegistrations() on every client nav —
+    // pure overhead, and it hangs ~45s per nav if a worker is wedged.
   }, []);
 
   return null;

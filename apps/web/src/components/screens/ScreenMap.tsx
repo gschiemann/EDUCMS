@@ -339,6 +339,34 @@ function InvalidateSizeOnShow() {
 // Lives at module scope (outside React) so the iconCreateFunction closure can read it.
 const markerStatusMap = new WeakMap<L.Marker, StatusKey>();
 
+/** Build a pin's popup HTML. Called lazily (on popupopen) so we don't assemble
+ *  ~150 strings synchronously on every marker rebuild. */
+function buildPopupHtml(s: ScreenForMap, status: StatusKey): string {
+  const meta = STATUS_META[status];
+  const geoSourceBadge =
+    s.geoSource === 'tenant'
+      ? `<div style="font-size:10px;font-weight:600;margin-bottom:4px;background:#eef2ff;color:#4338ca;border-radius:4px;padding:2px 6px;display:inline-block;" title="No per-screen pin yet — showing the building location.">Building location</div>`
+      : '';
+  const pingLine = s.lastPingAt
+    ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">Last ping ${new Date(s.lastPingAt).toLocaleString()}</div>`
+    : '';
+  const addrLine = s.address
+    ? `<div style="font-size:11px;color:#64748b;margin-bottom:4px;">${s.address}</div>`
+    : '';
+  // Emergency-readiness detail lives HERE (the pin popup), not the map key —
+  // so the glance legend stays clean but the life-safety signal is one click away.
+  const detail = onlineDetail(s);
+  const detailLine = detail
+    ? `<div style="font-size:10px;font-weight:600;color:${detail.color};margin-bottom:6px;">${detail.text}</div>`
+    : '';
+  return `
+        <div style="font-size:12px;min-width:180px;">
+          <div style="font-weight:700;color:#1e293b;margin-bottom:4px;">${s.name}</div>
+          <div style="font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:10px;color:${meta.color};margin-bottom:6px;">${meta.label}</div>
+          ${detailLine}${addrLine}${geoSourceBadge}${pingLine}
+        </div>`;
+}
+
 function MarkerClusterLayer({
   screens,
   emergencyActive,
@@ -352,6 +380,18 @@ function MarkerClusterLayer({
 }) {
   const map = useMap();
   const clusterGroupRef = useRef<L.MarkerClusterGroup | null>(null);
+  // Keep onScreenClick in a ref so its identity (which changes on every fleet
+  // poll because the parent rebuilds the callback) does NOT retrigger the
+  // expensive marker rebuild effect below. 2026-06-08 freeze fix.
+  const onScreenClickRef = useRef(onScreenClick);
+  useEffect(() => { onScreenClickRef.current = onScreenClick; }, [onScreenClick]);
+  // Signature of the last-built marker set. The fleet/screens queries repoll
+  // every 10–30s and hand us a NEW screens array each time even when nothing
+  // visible changed (only lastPingAt ticks). Without this guard we used to
+  // clearLayers() + rebuild all ~150 markers on every poll — a multi-second
+  // synchronous main-thread block that froze the whole dashboard (clicks
+  // queued, nav/switcher/"Control Game" went dead, getRegistrations() hung).
+  const lastSigRef = useRef<string>('');
 
   useEffect(() => {
     // Build the cluster group once.
@@ -360,6 +400,13 @@ function MarkerClusterLayer({
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
       zoomToBoundsOnClick: true,
+      // chunkedLoading time-slices marker insertion via addLayers() so a large
+      // fleet (~150 markers) is added in batches that YIELD to the event loop,
+      // instead of one uninterrupted task that starves clicks/timers. The single
+      // highest-leverage line of the 2026-06-08 dashboard-freeze fix.
+      chunkedLoading: true,
+      chunkInterval: 200,
+      chunkDelay: 50,
       iconCreateFunction: (cluster: L.MarkerCluster) => {
         const markers: L.Marker[] = cluster.getAllChildMarkers();
         // Find the worst status in this cluster using the WeakMap tag.
@@ -392,65 +439,62 @@ function MarkerClusterLayer({
     };
   }, [map]);
 
-  // Rebuild markers whenever screens / filter / emergencyActive changes.
+  // Rebuild markers whenever screens / filter / emergencyActive changes —
+  // but ONLY when the visible marker set actually changed. The fleet/screens
+  // queries repoll every 10–30s and hand us a fresh `screens` array each time
+  // (lastPingAt ticks) even when nothing on the map changed. We compute a
+  // cheap signature first and bail before any DOM work if it matches, then add
+  // markers in one chunked, event-loop-yielding addLayers() call. 2026-06-08.
   useEffect(() => {
     const group = clusterGroupRef.current;
     if (!group) return;
-    group.clearLayers();
 
     const q = query.trim().toLowerCase();
 
+    // First pass: select the visible screens + their status, and build a cheap
+    // signature. No DOM / Leaflet work here.
+    const visible: Array<{ s: ScreenForMap; status: StatusKey }> = [];
+    let sig = emergencyActive ? 'E|' : '|';
     for (const s of screens) {
       if (s.latitude == null || s.longitude == null) continue;
-
-      // Filter: if a query is active, hide non-matching screens by skipping.
       if (q) {
         const haystack = `${s.name} ${s.address ?? ''}`.toLowerCase();
         if (!haystack.includes(q)) continue;
       }
-
       const status = classifyScreen(s, emergencyActive);
-      const icon = buildIcon(status);
-      const meta = STATUS_META[status];
+      visible.push({ s, status });
+      sig += `${s.id}:${s.latitude.toFixed(5)},${s.longitude.toFixed(5)}:${status}:${s.name}|`;
+    }
 
-      const marker = L.marker([s.latitude, s.longitude], { icon });
+    // Nothing the map cares about changed → skip the expensive clear+rebuild.
+    if (sig === lastSigRef.current) return;
+    lastSigRef.current = sig;
+
+    group.clearLayers();
+
+    const markers: L.Marker[] = [];
+    for (const { s, status } of visible) {
+      const icon = buildIcon(status);
+      const marker = L.marker([s.latitude!, s.longitude!], { icon });
       // Tag with status so iconCreateFunction can find the worst status per cluster.
       markerStatusMap.set(marker, status);
 
-      // Build popup HTML (keep consistent with the old <Popup> content).
-      const geoSourceBadge =
-        s.geoSource === 'tenant'
-          ? `<div style="font-size:10px;font-weight:600;margin-bottom:4px;background:#eef2ff;color:#4338ca;border-radius:4px;padding:2px 6px;display:inline-block;" title="No per-screen pin yet — showing the building location.">Building location</div>`
-          : '';
-      const pingLine = s.lastPingAt
-        ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">Last ping ${new Date(s.lastPingAt).toLocaleString()}</div>`
-        : '';
-      const addrLine = s.address
-        ? `<div style="font-size:11px;color:#64748b;margin-bottom:4px;">${s.address}</div>`
-        : '';
-      // Emergency-readiness detail lives HERE (the pin popup), not the map key —
-      // so the glance legend stays clean but the life-safety signal is one click away.
-      const detail = onlineDetail(s);
-      const detailLine = detail
-        ? `<div style="font-size:10px;font-weight:600;color:${detail.color};margin-bottom:6px;">${detail.text}</div>`
-        : '';
+      // Popup content is built LAZILY (only when the pin is actually opened) so
+      // we don't synchronously assemble ~150 HTML strings on every rebuild.
+      marker.bindPopup(() => buildPopupHtml(s, status), { maxWidth: 240 });
 
-      const popupHtml = `
-        <div style="font-size:12px;min-width:180px;">
-          <div style="font-weight:700;color:#1e293b;margin-bottom:4px;">${s.name}</div>
-          <div style="font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:10px;color:${meta.color};margin-bottom:6px;">${meta.label}</div>
-          ${detailLine}${addrLine}${geoSourceBadge}${pingLine}
-        </div>`;
+      // Read the click handler from a ref so a new onScreenClick identity each
+      // poll doesn't force a rebuild (it's not in this effect's deps).
+      marker.on('click', () => onScreenClickRef.current?.(s.id));
 
-      marker.bindPopup(popupHtml, { maxWidth: 240 });
-
-      if (onScreenClick) {
-        marker.on('click', () => onScreenClick(s.id));
-      }
-
-      group.addLayer(marker);
+      markers.push(marker);
     }
-  }, [screens, emergencyActive, query, onScreenClick]);
+
+    // Bulk insert. With chunkedLoading:true the cluster group processes these in
+    // time-sliced batches that yield to the event loop, so the main thread stays
+    // responsive even with a large fleet.
+    group.addLayers(markers);
+  }, [screens, emergencyActive, query]);
 
   return null;
 }

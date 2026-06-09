@@ -38,42 +38,15 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     }
   }, [tenant, setEmergencyActive]);
 
-  // ───────────────────────────────────────────────────────────────────
-  // 2026-06-08 — THE "every button needs two clicks" FIX.
-  //
-  // On a fresh page load (new tab, typed URL, or any full navigation),
-  // keyboard focus sits in the browser ADDRESS BAR — NOT in the document.
-  // (Verified live: on the dashboard, document.activeElement was <body> and
-  // document.hasFocus() was false on load.) Because of that, the operating
-  // system treats the user's FIRST click on the page as a focus-transfer —
-  // an "activate the window / move focus into the page" click — and SWALLOWS
-  // it: the click event never reaches the button. So every control needed
-  // two clicks (1st = hand the page focus, 2nd = actually act), and the
-  // tenant switcher "went dead." It was global (every account, every device,
-  // Chrome + Safari), never reproduced in automation (headless tools keep the
-  // window focused), and a tab the operator had already clicked in worked
-  // fine (it already had focus) while a brand-new tab didn't — the exact
-  // tell. The /login page never had this because it autofocuses an input;
-  // the dashboard never claimed focus at all.
-  //
-  // Fix: claim focus into the document on load + on every navigation by
-  // focusing the (tabIndex=-1) main region — but ONLY when nothing in the
-  // document already holds focus (activeElement is <body>/<html>, i.e. focus
-  // is in the browser chrome). That guard means we NEVER steal focus from an
-  // input the operator is typing in or a control they just focused.
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const claimFocus = () => {
-      const ae = document.activeElement;
-      const somethingFocused = ae && ae !== document.body && ae !== document.documentElement;
-      if (somethingFocused) return; // a real element already holds focus — leave it
-      try { document.getElementById('main-content')?.focus({ preventScroll: true }); } catch { /* noop */ }
-    };
-    // Delay so we run AFTER the route's content mounts and after any
-    // page-level autofocus (which we must not override).
-    const t = setTimeout(claimFocus, 80);
-    return () => clearTimeout(t);
-  }, [pathname]);
+  // 2026-06-08 — REVERTED the "claim document focus on nav" effect that used to
+  // live here (commit 1e0b0314). It was based on a misdiagnosis: the real
+  // "every button needs two clicks / Control Game won't launch" cause is a
+  // data-scaling main-thread FREEZE (the fleet map rebuilding ~150 markers
+  // synchronously every poll — see ScreenMap.tsx + docs/research/
+  // 2026-06-08-dashboard-freeze/). `activeElement===body` / `hasFocus()===false`
+  // are *symptoms* of the blocked thread (queued events), not the cause, so
+  // programmatically focusing #main-content fixed nothing and added per-nav
+  // focus churn. Removed.
 
   // The V2 template builder is a full-screen workspace — strip global chrome
   // (sidebar, top toolbar, decorative blobs) so it can use the entire viewport.
