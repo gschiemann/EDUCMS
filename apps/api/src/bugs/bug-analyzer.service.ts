@@ -487,6 +487,16 @@ export class BugAnalyzerService {
     } else {
       parts.push('(no browser info)');
     }
+    // Build SHA the operator's tab was running — critical for telling a
+    // stale-tab report ("bug may already be fixed; hard-refresh") from a live
+    // bug on the current bundle.
+    if (captured?.buildSha) {
+      const short = (s?: string) => (s ? s.slice(0, 12) : '(unknown)');
+      parts.push(`- frontend build: ${short(captured.buildSha)}` +
+        (captured.buildLiveSha ? ` (live deploy: ${short(captured.buildLiveSha)})` : '') +
+        (captured.buildIsStale === true ? ' ⚠️ STALE TAB — operator was NOT on the current bundle; may already be fixed by a hard-refresh'
+          : captured.buildIsStale === false ? ' ✓ on the current bundle (live bug)' : ''));
+    }
     parts.push('');
 
     if (Array.isArray(captured?.consoleEntries) && captured.consoleEntries.length) {

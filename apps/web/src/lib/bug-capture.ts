@@ -66,15 +66,43 @@ export interface CapturedBugBundle {
  */
 export async function captureBugBundle(input: CaptureBugInput = {}): Promise<CapturedBugBundle> {
   const captured = buildCapturedContext(input.description);
-  let screenshotBase64: string | undefined;
-  try {
-    screenshotBase64 = await captureScreenshot();
-  } catch (err) {
-    // Don't throw — bug submission must work without a screenshot too.
-    console.warn('[bug-capture] screenshot failed', err);
-    screenshotBase64 = undefined;
-  }
+  // Run the screenshot + live-build check in parallel — both are best-effort
+  // and neither must block (or fail) bug submission.
+  const [screenshotBase64] = await Promise.all([
+    captureScreenshot().catch((err) => {
+      console.warn('[bug-capture] screenshot failed', err);
+      return undefined as string | undefined;
+    }),
+    enrichWithLiveBuild(captured),
+  ]);
   return { captured, screenshotBase64 };
+}
+
+/**
+ * Best-effort: fetch the live deployment's SHA (/api/build-info) and stamp
+ * `buildLiveSha` + `buildIsStale` so a reviewer can tell at a glance whether
+ * the operator was on a stale bundle (bug maybe already fixed → hard-refresh)
+ * vs the current one (live bug). Never throws; on offline/timeout we just keep
+ * `buildSha` alone. Mutates `captured` in place.
+ */
+async function enrichWithLiveBuild(captured: BugCapturedContext): Promise<void> {
+  if (typeof window === 'undefined' || !captured.buildSha) return;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 2500);
+    const res = await fetch('/api/build-info', { cache: 'no-store', signal: ctrl.signal });
+    clearTimeout(t);
+    const info = (await res.json()) as { sha?: string; shaFull?: string };
+    const liveSha = info.shaFull || info.sha;
+    if (!liveSha) return;
+    captured.buildLiveSha = liveSha;
+    // Compare on a common prefix — client SHA is the full 40-char, build-info's
+    // `sha` is a 12-char short form, `shaFull` is the full one.
+    const n = Math.min(captured.buildSha.length, liveSha.length, 12);
+    captured.buildIsStale = captured.buildSha.slice(0, n) !== liveSha.slice(0, n);
+  } catch {
+    /* offline / aborted — buildSha alone still identifies the bundle */
+  }
 }
 
 // ─── Captured context (sync — instantaneous) ─────────────────────────
@@ -96,7 +124,22 @@ function buildCapturedContext(description?: string): BugCapturedContext {
     consoleEntries: ring.consoleEntries,
     reactQuery: ring.reactQuery,
     featureFlags: getFeatureFlagSnapshot(),
+    buildSha: getBuildSha(),
   };
+}
+
+/**
+ * Git SHA the running FRONTEND bundle was built from — baked in at build time
+ * (same env the StaleBundleWatcher / build-info use). Empty string in local dev
+ * where the env isn't set. Captured so a reviewer can instantly tell a
+ * "stale tab on an old bundle" report from a "live bug on the current bundle".
+ */
+function getBuildSha(): string {
+  return (
+    process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ||
+    process.env.NEXT_PUBLIC_BUILD_SHA ||
+    ''
+  );
 }
 
 function getReporterIdentity(): BugCapturedContext['reporter'] {

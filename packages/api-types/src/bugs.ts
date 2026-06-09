@@ -153,6 +153,16 @@ export interface BugCapturedContext {
   reactQuery: BugReactQueryEntry[];
   /** Any feature flag values (GrowthBook etc.) the client was using. */
   featureFlags?: Record<string, unknown>;
+  /** Git SHA the operator's FRONTEND bundle was built from (baked in at
+   *  build time via NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA / NEXT_PUBLIC_BUILD_SHA).
+   *  Lets a reviewer tell a stale-tab report from a live-bundle bug. */
+  buildSha?: string;
+  /** The live deployment's SHA at submit time (best-effort fetch of
+   *  /api/build-info). Undefined when offline / the fetch failed. */
+  buildLiveSha?: string;
+  /** true ⇔ buildSha and buildLiveSha disagree — the operator's tab was on a
+   *  stale bundle (so the bug may already be fixed; have them hard-refresh). */
+  buildIsStale?: boolean;
 }
 
 // ─── Server-side enrichment ───────────────────────────────────────

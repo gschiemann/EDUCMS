@@ -614,6 +614,14 @@ function ContextSections({ bug }: { bug: BugDetail }) {
             ['Viewport', `${c.browser.viewport.w} × ${c.browser.viewport.h}`],
             ['DPR', String(c.browser.dpr)],
             ['Chromium', c.browser.chromiumMajor ? `v${c.browser.chromiumMajor}` : 'Not Chromium'],
+            ...(c.buildSha
+              ? [['Build', `${c.buildSha.slice(0, 12)}${
+                  c.buildLiveSha ? ` (live: ${c.buildLiveSha.slice(0, 12)})` : ''
+                }${
+                  c.buildIsStale === true ? '  ⚠️ STALE TAB — may already be fixed (hard-refresh)'
+                    : c.buildIsStale === false ? '  ✓ current bundle' : ''
+                }`] as [string, string]]
+              : []),
           ]}
         />
       </CollapsibleSection>
