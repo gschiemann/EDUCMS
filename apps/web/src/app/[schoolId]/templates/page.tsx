@@ -32,6 +32,7 @@ import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useUIStore } from '@/store/ui-store';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 
@@ -710,7 +711,10 @@ export default function TemplatesPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 max-md:flex-wrap max-md:w-full max-md:items-stretch">
-            <ApplyBrandButton disabled={isViewer} className="max-md:flex-1 max-md:basis-[calc(50%-0.25rem)]" />
+            {/* 2026-06-09 — operator: "5 buttons up here is crazy, get rid of
+                json import and brand all templates." Brand-apply lives in the
+                Branding wizard; the PDF/Canva "Import design" below is the real
+                importer (the .json import was removed too). */}
             {/* 2026-05-25 — Operator wanted design imports surfaced
                 INSIDE Templates ("its not a setting its a feature").
                 Distinct from the existing "Import .educms-template.json"
@@ -724,23 +728,29 @@ export default function TemplatesPage() {
             >
               <FileText className="w-5 h-5" /> Import design
             </button>
-            {/* Import a template exported from another account. Subdued
-                outline style so it doesn't compete with the primary CTAs. */}
-            <button
-              onClick={handleImportClick}
-              disabled={isViewer}
-              title={isViewer ? 'Read-only — viewer role' : 'Import a template from a .educms-template.json file'}
-              className="px-4 py-3 bg-white/10 text-white font-bold text-sm rounded-xl border border-white/30 hover:bg-white/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed max-md:flex-1 max-md:basis-[calc(50%-0.25rem)]"
-            >
-              <Upload className="w-5 h-5" /> Import .json
-            </button>
             {/* Phase D3 — AI generate button. Sits next to "New Template"
                 so operators discover it without it stealing the primary
                 CTA. The platform/BYOK key check happens server-side; if
                 AI isn't configured the API returns a friendly 503 that
                 this button surfaces via the modal's error pane. */}
             <button
-              onClick={() => { setShowAiGenerate(true); setAiError(null); }}
+              onClick={async () => {
+                setAiError(null);
+                // 2026-06-09 — operator: "if no AI enabled we need to tell the
+                // user to contact their admin when they click on it." Check AI
+                // status first; only open the generator when a key exists.
+                const src = await getAiStatusSource();
+                if (src === 'none') {
+                  await appAlert({
+                    title: 'AI isn’t enabled yet',
+                    message:
+                      'This account doesn’t have an AI provider set up. Ask your administrator to enable AI in Settings → AI, then try again.',
+                    tone: 'info',
+                  });
+                  return;
+                }
+                setShowAiGenerate(true);
+              }}
               disabled={isViewer}
               title={isViewer ? 'Read-only — viewer role' : 'Describe a touch template, get a working draft'}
               className="px-4 py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed max-md:flex-1 max-md:basis-[calc(50%-0.25rem)] max-md:hover:scale-100"

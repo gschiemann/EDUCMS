@@ -77,7 +77,7 @@ type AiStatusSource = 'platform' | 'tenant' | 'none';
 let __aiStatusCache: { source: AiStatusSource; fetchedAt: number } | null = null;
 let __aiStatusInflight: Promise<AiStatusSource> | null = null;
 const AI_STATUS_TTL_MS = 60_000;
-async function getAiStatusSource(): Promise<AiStatusSource> {
+export async function getAiStatusSource(): Promise<AiStatusSource> {
   const now = Date.now();
   if (__aiStatusCache && now - __aiStatusCache.fetchedAt < AI_STATUS_TTL_MS) {
     return __aiStatusCache.source;
