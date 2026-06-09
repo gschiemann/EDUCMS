@@ -309,6 +309,35 @@ Safari for months. Local dev was Chrome-only so we never saw it.
    add a paragraph to `reference_recurring_failure_patterns.md` (in
    memory) so the next agent doesn't rediscover it.
 
+6. **NEVER imperatively detach a DOM node that React rendered** —
+   especially `<head>` `<link>`/`<meta>`/`<title>` under React 19 +
+   Next App Router (metadata/float reconciliation manages those nodes).
+   `document.querySelector('link[rel=icon]').remove()` /
+   `parentNode.removeChild(reactNode)` leaves React holding a fiber
+   whose `stateNode.parentNode` is now `null`; the **next client
+   navigation** runs React `commitDeletion` →
+   `node.parentNode.removeChild(node)` → `TypeError: null is not an
+   object (… parentNode.removeChild)`, which unmounts the **whole root**
+   and the app hard-reloads. **WebKit/Safari throws; Chromium silently
+   tolerates it.** This was the multi-day "every menu click needs two
+   clicks / it just reloads" bug (2026-06-08, `BrandStyleInjector`
+   deleting the Next-emitted favicon links — fix `ddb64dab`). If you
+   must override a React-rendered node, **mutate it in place** (set
+   `href`/attributes) or render your own separate node — never `.remove()`
+   React's. Audit any `querySelector(...).remove()` / `removeChild` that
+   can hit a node React owns. See recurring-failure-patterns #12.
+
+7. **When a customer reports a UI bug you CANNOT reproduce in Chrome,
+   switch to WebKit/Safari IMMEDIATELY** (Playwright `webkit`), and
+   **read the in-app bug telemetry FIRST**: `SELECT captured_context FROM
+   bugs ORDER BY created_at DESC` carries the real browser (`->browser->
+   userAgent`), the page, console entries, network failures and React
+   Query state from the operator's actual session. On 2026-06-08 that
+   one row (Safari 27, `/assets`, 0 console errors, all data loaded) is
+   what finally cracked a bug I'd chased ~7 times in Chrome. "Works in
+   Chrome" ≠ correct — Rule #1 (test WebKit before done) applies to
+   INTERACTIVITY, not just rendering.
+
 ## Deploy reliability (Railway + Vercel)
 
 Every Railway redeploy must come up without hand-holding. Below is how to verify and recover.
