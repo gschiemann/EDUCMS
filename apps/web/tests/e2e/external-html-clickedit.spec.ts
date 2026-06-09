@@ -33,6 +33,12 @@ import { test, expect, type Page } from '@playwright/test';
 
 const BOARDS = [
   '/templates/hs/varsity.html',
+  // Flagship rebuilds + React→EXTERNAL_HTML conversions (2026-06-08 designer batch).
+  '/templates/hs/broadcast.html',
+  '/templates/hs/yearbook.html',
+  '/templates/hs/achievement.html',
+  '/templates/hs/morning-news.html',
+  '/templates/hs/bell-schedule.html',
   '/templates/hs/caf-today.html',
   '/templates/hs/hall-bulletin.html',
   '/templates/signage/corporate/01-lobby-welcome-flagship.html',

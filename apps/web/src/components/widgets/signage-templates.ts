@@ -35,6 +35,11 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   { id: "preset-hs-gallery", name: "Gallery — Museum Wall Labels", group: "High School", url: "/templates/hs/gallery.html" },
   { id: "preset-hs-blueprint", name: "Blueprint — Technical Drawing", group: "High School", url: "/templates/hs/blueprint.html" },
   { id: "preset-hs-zine", name: "Zine — Cut & Paste Student Rag", group: "High School", url: "/templates/hs/zine.html" },
+  // React→EXTERNAL_HTML conversions (2026-06-08 designer batch) — universal school
+  // boards rebuilt as flagship single-file HTML (live schedule engine + photo slots).
+  { id: "preset-bell-schedule", name: "Bell Schedule — Live Board", group: "School", url: "/templates/hs/bell-schedule.html" },
+  { id: "preset-morning-news", name: "Morning News — Daily Rundown", group: "School", url: "/templates/hs/morning-news.html" },
+  { id: "preset-achievement-showcase", name: "Achievement Showcase — Wall of Fame", group: "School", url: "/templates/hs/achievement.html" },
   { id: "preset-sig-bar-01", name: "Bar · Tap List", group: "Bar", url: "/templates/signage/bar/01-tap-list-flagship.html" },
   { id: "preset-sig-bar-02", name: "Bar · Cocktails", group: "Bar", url: "/templates/signage/bar/02-cocktail-menu.html" },
   { id: "preset-sig-bar-03", name: "Bar · Bottle List", group: "Bar", url: "/templates/signage/bar/03-bottle-list.html" },

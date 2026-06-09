@@ -459,7 +459,7 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   {
     id: 'preset-hs-varsity',
     name: '🏟️ Varsity — Athletic Department',
-    description: 'Game-day scoreboard lobby: jersey chest greeting, game-of-the-week card, coach spotlight, pep-rally announcement, pennants, PA-system ticker.',
+    description: 'Stadium jumbotron lobby: LED scoreboard header, big game-of-the-week VS matchup with team crests, LED records strip, athlete-of-the-week spotlight (photo), sponsor strip, PA-system ticker.',
     category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0d1b3d',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/varsity.html' } }],
@@ -467,7 +467,7 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   {
     id: 'preset-hs-broadcast',
     name: '📺 Broadcast — Campus News Desk',
-    description: 'Newsroom lower-thirds lobby: ON AIR indicator, lower-third headline, forecast panel, featured guest of the week, breaking-story card, bottom crawl ticker.',
+    description: 'Broadcast graphics package: network bug + pulsing ON AIR + timecode, signature lower-third headline graphic, teacher-of-the-week guest card (photo), breaking-news box, clock + forecast bugs, bottom news crawl.',
     category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0b1025',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/broadcast.html' } }],
@@ -475,7 +475,7 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   {
     id: 'preset-hs-yearbook',
     name: '📰 Yearbook — Editorial Magazine',
-    description: 'Magazine-spread lobby: serif masthead, drop-cap italic lede, photo feature with caption, featured portrait pull-quote, calendar folio footer, wire ticker.',
+    description: 'Editorial magazine spread: serif masthead + issue folio, big cover-story photo with caption overlay, drop-cap italic lede, oversized pull-quote, featured portrait + masthead credits, wire ticker.',
     category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#f7f3ea',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/yearbook.html' } }],
@@ -998,29 +998,37 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#fef3c7',
     zones: [{ name: 'Scene', widgetType: 'ANIMATED_HALLWAY_SCHEDULE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
+  // 🔔/📺/🏆 — converted to flagship EXTERNAL_HTML (2026-06-08 designer batch).
+  // Were React widgets (ANIMATED_BELL_SCHEDULE / _MORNING_NEWS /
+  // _ACHIEVEMENT_SHOWCASE); rebuilt as self-contained 3840×2160 boards under
+  // public/templates/hs/ with the V6 click-to-edit shim, canonical brand tokens,
+  // auto-fit (≥50px floor), photo slots, and the §4a live schedule engine
+  // (bell-schedule + morning-news). The orphaned React widgets are left in place
+  // (out of scope) but no preset points at them anymore. Matching `— Portrait`
+  // presets still use the React portrait widgets (left as-is).
   {
     id: 'preset-bell-schedule',
     name: '🔔 Animated Bell Schedule',
-    description: 'Live bell-schedule board — current period highlighted, countdown to next bell, progress bar, period timeline.',
+    description: 'Live bell-schedule board — big NOW clock, current-period hero with live countdown to the next bell + progress bar, full-day period timeline that lights the live period.',
     category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
-    screenWidth: 3840, screenHeight: 2160, bgColor: '#0f172a',
-    zones: [{ name: 'Scene', widgetType: 'ANIMATED_BELL_SCHEDULE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0b1224',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/bell-schedule.html' } }],
   },
   {
     id: 'preset-morning-news',
     name: '📺 Animated Morning News',
-    description: 'TV-newsroom daily digest — breaking-news stories with time chips, REC indicator, anchor desk feel.',
+    description: 'TV-newsroom daily digest — REC studio bar, breaking banner, top-story hero with photo slot, live "Today\'s Rundown" with time chips, forecast strip, news crawl.',
     category: 'LOBBY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
-    screenWidth: 3840, screenHeight: 2160, bgColor: '#0b1220',
-    zones: [{ name: 'Scene', widgetType: 'ANIMATED_MORNING_NEWS', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#070c1e',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/morning-news.html' } }],
   },
   {
     id: 'preset-achievement-showcase',
     name: '🏆 Animated Achievement Showcase',
-    description: 'Award ceremony scene — medals, honor-roll columns, stats, student-of-the-week spotlight with citation.',
+    description: 'Award-ceremony wall of fame — gold/silver/bronze podium, student-of-the-week hero with photo slot + citation, honor-roll columns, stat chips, ovation ticker.',
     category: 'LOBBY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
-    screenWidth: 3840, screenHeight: 2160, bgColor: '#fef3c7',
-    zones: [{ name: 'Scene', widgetType: 'ANIMATED_ACHIEVEMENT_SHOWCASE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#1a1206',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/achievement.html' } }],
   },
   // Scrapbook + Storybook retagged ELEMENTARY (was UNIVERSAL) —
   // polaroid/washi-tape and illuminated-drop-cap aesthetics read as

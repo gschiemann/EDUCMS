@@ -1,0 +1,215 @@
+<!doctype html>
+<!-- HS · ACHIEVEMENT SHOWCASE — FLAGSHIP (EXTERNAL_HTML build 2026-06-08). Award-ceremony
+     wall of fame: trophy-case header, podium of 3 medals (Gold/Silver/Bronze), STUDENT OF
+     THE WEEK hero (photo slot + citation), honor-roll columns, stat chips, ovation ticker.
+     Canonical brand schema, auto-fit (≥50px floor), logo + photo slots, live clock, safe
+     opaque ticker, portrait. -->
+<html lang="en"><head><meta charset="utf-8"/><title>Wall of Fame · Achievements</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@700;800;900&family=Inter:wght@500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  --bg:#1a1206;--ink:#fff7e6;--brand:#b8860b;--brand2:#7a560a;--accent:#ffd23d;--accent2:#5b3fb0;--pos:#36d27e;--neg:#ff5670;
+  --bg2:#241808;--panel:#2e2009;--ink2:#cdb98a;--rule:rgba(255,210,61,.2);
+  --gold:#ffd23d;--silver:#d9e2ec;--bronze:#e08a4a;
+  --f-display:'Anton';--f-head:'Archivo';--f-body:'Inter';--f-mono:'JetBrains Mono';
+  --scale:1;
+  --t-logo:calc(60px*var(--scale));--t-name:calc(56px*var(--scale));--t-sub:calc(28px*var(--scale));--t-clock:calc(56px*var(--scale));
+  --t-podk:calc(30px*var(--scale));--t-podmedal:calc(96px*var(--scale));--t-podname:calc(58px*var(--scale));--t-podcat:calc(28px*var(--scale));
+  --t-sotwtag:calc(34px*var(--scale));--t-sotwname:calc(150px*var(--scale));--t-sotwgrade:calc(44px*var(--scale));--t-sotwcite:calc(48px*var(--scale));--t-sotwmono:calc(30px*var(--scale));
+  --t-statv:calc(108px*var(--scale));--t-statk:calc(28px*var(--scale));
+  --t-hrh:calc(36px*var(--scale));--t-hrname:calc(46px*var(--scale));--t-hrnote:calc(28px*var(--scale));
+  --t-ticker:calc(54px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#0c0803;color:var(--ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% -6%,#2c1f08 0%,#1a1206 55%,#0c0803 100%);box-shadow:0 80px 200px rgba(0,0,0,.7);display:flex;flex-direction:column;padding:38px 56px 0}
+.stage>.wrap,.stage>.ticker{position:relative;z-index:1}
+/* spotlight rays + confetti dots */
+.stage::before{content:'';position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;z-index:0;background:
+  conic-gradient(from 180deg at 50% -10%,transparent 0deg,rgba(255,210,61,.08) 8deg,transparent 16deg,rgba(255,210,61,.06) 24deg,transparent 32deg,rgba(255,210,61,.08) 40deg,transparent 48deg),
+  radial-gradient(circle at 12% 20%,rgba(255,210,61,.10),transparent 6%),radial-gradient(circle at 88% 16%,rgba(91,63,176,.16),transparent 8%)}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.3}}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes shine{0%,100%{filter:brightness(1)}50%{filter:brightness(1.25)}}
+.wrap{flex:1;min-height:0;display:flex;flex-direction:column}
+
+/* ── trophy-case header ── */
+.head{flex:none;height:148px;display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:24px}
+.brand{display:flex;align-items:center;gap:24px;min-width:0}
+.brand .logo{width:106px;height:106px;flex:none;background:linear-gradient(150deg,var(--gold),var(--brand2));background-size:cover;background-position:center;display:grid;place-items:center;font-family:var(--f-display);font-size:var(--t-logo);color:#2a1c05;border:5px solid var(--gold);border-radius:16px;box-shadow:0 10px 0 var(--brand2)}
+.brand .logo.has-img{font-size:0}
+.brand .name{font-family:var(--f-display);font-size:var(--t-name);letter-spacing:.01em;text-transform:uppercase;line-height:1.1;white-space:nowrap;overflow:hidden}
+.brand .sub{font-family:var(--f-mono);font-weight:700;font-size:var(--t-sub);letter-spacing:.2em;color:var(--gold);text-transform:uppercase;white-space:nowrap;margin-top:6px}
+.head .crown{display:flex;align-items:center;gap:18px;font-family:var(--f-display);font-size:var(--t-clock);color:var(--gold);letter-spacing:.04em;font-variant-numeric:tabular-nums}
+.head .crown .tr{font-size:1.2em;animation:shine 3s ease-in-out infinite}
+
+/* ── podium (3 medals) ── */
+.podium{flex:none;display:grid;grid-template-columns:1fr 1.12fr 1fr;gap:24px;align-items:end;margin-bottom:24px}
+.pod{border-radius:20px 20px 0 0;border:5px solid var(--ink);border-bottom:0;text-align:center;padding:22px 24px;position:relative;overflow:hidden;color:#241405}
+.pod .medal{font-family:var(--f-display);font-size:var(--t-podmedal);line-height:.8}
+.pod .place{position:absolute;top:14px;left:18px;font-family:var(--f-mono);font-weight:700;font-size:var(--t-podk);letter-spacing:.1em;text-transform:uppercase;opacity:.7}
+.pod .cat{font-family:var(--f-mono);font-weight:700;font-size:var(--t-podcat);letter-spacing:.14em;text-transform:uppercase;margin-top:8px;opacity:.85}
+.pod .pname{font-family:var(--f-display);font-size:var(--t-podname);line-height:.9;text-transform:uppercase;margin-top:6px;overflow:hidden}
+.pod.g{background:linear-gradient(180deg,var(--gold),#e0a91f);height:300px;box-shadow:0 0 60px rgba(255,210,61,.4)}
+.pod.s{background:linear-gradient(180deg,var(--silver),#a9b6c6);height:250px}
+.pod.b{background:linear-gradient(180deg,var(--bronze),#b56a2f);height:250px;color:#2a1405}
+
+/* ── mid: student of the week hero + honor roll ── */
+.mid{flex:1;min-height:0;display:grid;grid-template-columns:1.65fr 1fr;gap:26px;margin-bottom:24px}
+.sotw{background:linear-gradient(135deg,var(--accent2) 0%,#3a2580 100%);border:6px solid var(--gold);border-radius:28px;box-shadow:0 14px 0 var(--brand2);display:grid;grid-template-columns:auto 1fr;overflow:hidden;color:#fff;min-width:0;position:relative}
+.sotw::after{content:'★ ★ ★';position:absolute;top:16px;right:26px;font-family:var(--f-display);font-size:36px;color:var(--gold);letter-spacing:.3em;opacity:.7}
+.sotw .photo{width:420px;background:linear-gradient(150deg,#7b62d6,#2a1a66);background-size:cover;background-position:center;position:relative;display:grid;place-items:center;border-right:6px solid var(--gold)}
+.sotw .photo .mono{font-family:var(--f-mono);font-weight:700;font-size:var(--t-sotwmono);color:#2a1a66;background:var(--gold);padding:10px 18px;border-radius:8px}
+.sotw .photo.has-img .mono{display:none}
+.sotw .photo .rib{position:absolute;bottom:0;left:0;right:0;text-align:center;font-family:var(--f-head);font-weight:900;font-size:var(--t-sotwmono);background:rgba(0,0,0,.55);padding:12px 8px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
+.sotw .body{padding:34px 42px;display:flex;flex-direction:column;min-width:0}
+.sotw .tag{font-family:var(--f-mono);font-weight:700;font-size:var(--t-sotwtag);letter-spacing:.18em;color:var(--gold);text-transform:uppercase;display:flex;align-items:center;gap:14px}
+.sotw .tag::before{content:'🏆'}
+.sotw h2{font-family:var(--f-display);font-size:var(--t-sotwname);line-height:.84;margin:12px 0 0;text-transform:uppercase;text-shadow:4px 4px 0 rgba(0,0,0,.3);overflow:hidden}
+.sotw .grade{font-family:var(--f-head);font-weight:800;font-size:var(--t-sotwgrade);color:var(--gold);margin-top:8px;line-height:1.1}
+.sotw .cite{font-family:var(--f-body);font-weight:500;font-style:italic;font-size:var(--t-sotwcite);color:#e8e0ff;margin-top:18px;line-height:1.28;flex:1;min-height:0;overflow:hidden}
+.sotw .chips{flex:none;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;border-top:4px solid rgba(255,255,255,.28);padding-top:20px;margin-top:18px}
+.sotw .chips .c{text-align:center}
+.sotw .chips .v{font-family:var(--f-display);font-size:var(--t-statv);line-height:1;color:var(--gold)}
+.sotw .chips .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-statk);letter-spacing:.1em;color:rgba(255,255,255,.82);text-transform:uppercase;margin-top:4px}
+.honor{background:var(--bg2);border:6px solid var(--gold);border-radius:28px;box-shadow:0 14px 0 var(--brand2);display:flex;flex-direction:column;overflow:hidden}
+.honor .hh{flex:none;height:82px;background:linear-gradient(90deg,var(--gold),#e0a91f);display:flex;align-items:center;justify-content:center;gap:14px}
+.honor .hh .k{font-family:var(--f-display);font-size:var(--t-sotwtag);letter-spacing:.06em;text-transform:uppercase;color:#2a1c05}
+.honor .list{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-evenly;padding:8px 32px}
+.hr{display:flex;align-items:center;gap:20px;padding:6px 0;border-bottom:3px dashed var(--rule)}
+.hr:last-child{border-bottom:0}
+.hr .rank{width:64px;height:64px;flex:none;border-radius:50%;background:var(--panel);border:3px solid var(--gold);display:grid;place-items:center;font-family:var(--f-display);font-size:calc(38px*var(--scale));color:var(--gold)}
+.hr .who{min-width:0;flex:1}
+.hr .who .n{font-family:var(--f-head);font-weight:900;font-size:var(--t-hrname);color:var(--ink);line-height:1;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hr .who .note{font-family:var(--f-mono);font-weight:600;font-size:var(--t-hrnote);color:var(--ink2);letter-spacing:.08em;text-transform:uppercase;margin-top:4px}
+.hr .badge{font-family:var(--f-display);font-size:var(--t-hrname);color:var(--gold);white-space:nowrap}
+
+/* ── ovation ticker (solid opaque) ── */
+.ticker{position:relative;flex:none;height:106px;margin:0 -56px;background:linear-gradient(90deg,var(--brand),var(--brand2));display:flex;align-items:center;overflow:hidden;border-top:6px solid var(--gold)}
+.ticker .tag{position:relative;z-index:2;flex:none;background:var(--gold);color:#2a1c05;font-family:var(--f-display);font-size:54px;padding:0 44px;height:100%;display:flex;align-items:center;letter-spacing:.04em;text-transform:uppercase}
+.ticker .msg{font-family:var(--f-head);font-weight:800;font-size:var(--t-ticker);padding-left:44px;white-space:nowrap;letter-spacing:.04em;text-transform:uppercase;animation:sc 92s linear infinite;color:#fff7e6}
+.ticker .msg .star{color:var(--gold);margin:0 24px}
+
+@media (orientation:portrait){
+  .stage[data-orient="port"] .podium{grid-template-columns:1fr 1fr 1fr}
+  .stage[data-orient="port"] .mid{grid-template-columns:1fr;grid-template-rows:1.25fr 1fr}
+  .stage[data-orient="port"]{--t-sotwname:calc(110px*var(--scale))}
+}
+</style>
+<script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#1a1206</span><span data-field="theme.ink">#fff7e6</span>
+  <span data-field="theme.brand">#b8860b</span><span data-field="theme.brand2">#7a560a</span>
+  <span data-field="theme.accent">#ffd23d</span><span data-field="theme.accent2">#5b3fb0</span>
+  <span data-field="theme.pos">#36d27e</span><span data-field="theme.neg">#ff5670</span>
+  <span data-field="theme.fDisplay">Anton</span><span data-field="theme.fHead">Archivo</span><span data-field="theme.fBody">Inter</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
+</div>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
+ <div class="wrap">
+
+  <header class="head">
+    <div class="brand" data-widget="school">
+      <div class="logo" data-imgslot="school.logo" data-field="school.initials">W</div>
+      <div class="col" style="min-width:0"><div class="name" data-fit="single" data-fit-min="50" data-fit-max="56" data-field="school.name">Westridge Wall of Fame</div><div class="sub" data-field="school.sub">Honors &amp; Achievements · This Week</div></div>
+    </div>
+    <div class="crown" data-widget="clock"><span class="tr">🏆</span><span data-field="clock.time" data-live="clock">2:14 PM</span></div>
+  </header>
+
+  <section class="podium" data-widget="podium">
+    <div class="pod s" data-widget="pod.1"><div class="place" data-field="pod.1.place">2nd</div><div class="medal" data-field="pod.1.medal">🥈</div><div class="cat" data-field="pod.1.cat">Science Olympiad</div><div class="pname" data-fit="single" data-fit-min="50" data-fit-max="58" data-field="pod.1.name">Robotics Team</div></div>
+    <div class="pod g" data-widget="pod.0"><div class="place" data-field="pod.0.place">1st</div><div class="medal" data-field="pod.0.medal">🥇</div><div class="cat" data-field="pod.0.cat">State Debate Final</div><div class="pname" data-fit="single" data-fit-min="50" data-fit-max="58" data-field="pod.0.name">Speech &amp; Debate</div></div>
+    <div class="pod b" data-widget="pod.2"><div class="place" data-field="pod.2.place">3rd</div><div class="medal" data-field="pod.2.medal">🥉</div><div class="cat" data-field="pod.2.cat">Regional Art Show</div><div class="pname" data-fit="single" data-fit-min="50" data-fit-max="58" data-field="pod.2.name">Studio Art</div></div>
+  </section>
+
+  <div class="mid">
+    <div class="sotw" data-widget="sotw">
+      <div class="photo" data-imgslot="sotw.photo"><div class="mono" data-field="sotw.mono">[ photo ]</div><div class="rib" data-field="sotw.rib">Class of '26</div></div>
+      <div class="body">
+        <div class="tag" data-field="sotw.tag">Student of the Week</div>
+        <h2 data-fit="single" data-fit-min="50" data-fit-max="150" data-field="sotw.name">Daniel Okonkwo</h2>
+        <div class="grade" data-field="sotw.grade">Senior · 4.0 GPA · National Merit Finalist</div>
+        <div class="cite" data-fit data-fit-min="50" data-fit-max="54" data-field="sotw.cite">"Nominated by Mr. Alvarez for organizing the peer-tutoring program — 60 students, every lunch period, all year. Leadership you can measure."</div>
+        <div class="chips">
+          <div class="c"><div class="v" data-field="sotw.s1">4.0</div><div class="k" data-field="sotw.k1">GPA</div></div>
+          <div class="c"><div class="v" data-field="sotw.s2">12</div><div class="k" data-field="sotw.k2">AP exams</div></div>
+          <div class="c"><div class="v" data-field="sotw.s3">300+</div><div class="k" data-field="sotw.k3">Service hrs</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="honor" data-widget="honor">
+      <div class="hh"><span class="k" data-field="honor.title">Honor Roll · Top of the Class</span></div>
+      <div class="list">
+        <div class="hr" data-widget="hr.0"><div class="rank" data-field="hr.0.rank">1</div><div class="who"><div class="n" data-field="hr.0.n">Aisha Rahman</div><div class="note" data-field="hr.0.note">Valedictorian · 4.0</div></div><div class="badge" data-field="hr.0.badge">★</div></div>
+        <div class="hr" data-widget="hr.1"><div class="rank" data-field="hr.1.rank">2</div><div class="who"><div class="n" data-field="hr.1.n">Leo Martinez</div><div class="note" data-field="hr.1.note">Salutatorian · 3.98</div></div><div class="badge" data-field="hr.1.badge">★</div></div>
+        <div class="hr" data-widget="hr.2"><div class="rank" data-field="hr.2.rank">3</div><div class="who"><div class="n" data-field="hr.2.n">Grace Chen</div><div class="note" data-field="hr.2.note">AP Scholar · 3.97</div></div><div class="badge" data-field="hr.2.badge">★</div></div>
+        <div class="hr" data-widget="hr.3"><div class="rank" data-field="hr.3.rank">4</div><div class="who"><div class="n" data-field="hr.3.n">Omar Haddad</div><div class="note" data-field="hr.3.note">Principal's List · 3.96</div></div><div class="badge" data-field="hr.3.badge">★</div></div>
+      </div>
+    </div>
+  </div>
+
+ </div>
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">Bravo</div>
+    <div class="msg"><span data-field="ticker.message">Congratulations to our state debate champions · 38 students named to the AP Scholar list · the robotics team advances to nationals in April · winter honor-roll assembly Friday 9th period in the auditorium · nominate a Student of the Week at the front office · 14 seniors earned college scholarships this month</span><span class="star">★</span><span data-field="ticker.message2">Congratulations to our state debate champions · 38 students named to the AP Scholar list · the robotics team advances to nationals in April · winter honor-roll assembly Friday 9th period in the auditorium · nominate a Student of the Week at the front office · 14 seniors earned college scholarships this month</span></div>
+  </div>
+
+</div></div></div>
+<script>
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
+  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
+  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fHead:'--f-head',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  applyTheme();new MutationObserver(applyTheme).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||50),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
+  new MutationObserver(autofit).observe(document.querySelector('.stage'),{subtree:true,childList:true,characterData:true});
+  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m+' '+(d.getHours()<12?'AM':'PM');}
+  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});}
+  tick();setInterval(tick,15000);
+})();
+</script>
+</body></html>
