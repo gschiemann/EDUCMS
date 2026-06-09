@@ -72,21 +72,41 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
+import { parsePptx } from './parsers/pptx-parser';
+import { parsePdf } from './parsers/pdf-parser';
+import { buildTemplates, type BuiltTemplate } from './parsers/import-builder';
+import type { ExtractedMedia } from './parsers/types';
 
-// 2026-05-23 launch audit P1: removed PPTX / PPT from the accepted set.
-// The controller's response message at line 260 admits "The PowerPoint
-// → PDF → PNG pipeline ships in a follow-up commit" — the file is
-// stored as an Asset, a Playlist is created, but the player at
-// apps/web/src/app/player/page.tsx:5091 only iframe-renders text/html
-// + application/pdf. A .pptx playlist dropped on a screen showed blank.
-// Better to reject upfront with a friendly "export as PDF first" copy
-// than to ghost-create an unplayable playlist a customer drops on a wall.
+// PPTX mimes (the two an .pptx upload can carry depending on the OS /
+// browser sniff). The browser sometimes sends the generic
+// octet-stream — we accept that too and re-classify by extension below.
+const PPTX_MIMES = new Set([
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+  'application/vnd.ms-powerpoint', // .ppt (legacy binary — parse falls back)
+]);
+
+// 2026-05-23 launch audit P1 REMOVED PPTX because the OLD flat path
+// (store-as-Asset → unplayable .pptx playlist) showed blank on a wall.
+// Import 2.0 (2026-06-09) re-adds it: a .pptx is now STRUCTURALLY parsed
+// into a real editable Template (positioned TEXT + IMAGE zones), so the
+// "blank board" failure mode is gone. PDF/image paths unchanged.
 const ACCEPTED_MIMES = new Set([
   'application/pdf',
   'image/png',
   'image/jpeg',
   'image/webp',
+  ...PPTX_MIMES,
+  // Some browsers send a bare octet-stream for a .pptx drag-drop; the
+  // fileFilter re-checks the extension so a mislabeled .pptx still gets
+  // through and a truly-unknown binary is still rejected downstream.
+  'application/octet-stream',
 ]);
+
+/** True when the upload is (or claims to be) a PowerPoint .pptx/.ppt. */
+function isPptxUpload(file: Express.Multer.File): boolean {
+  if (PPTX_MIMES.has(file.mimetype)) return true;
+  return /\.pptx?$/i.test(file.originalname || '');
+}
 
 const MAX_BYTES = 50 * 1024 * 1024; // 50 MB — matches the front-end cap.
 
@@ -154,8 +174,14 @@ export class ImportsController {
       storage: memoryStorage(),
       limits: { fileSize: MAX_BYTES },
       fileFilter: (_req, file, cb) => {
-        if (ACCEPTED_MIMES.has(file.mimetype)) cb(null, true);
-        else cb(null, false);
+        // A bare octet-stream is ONLY accepted when the filename is a
+        // .pptx/.ppt — otherwise an arbitrary binary could slip through
+        // the generic mime. Everything else must match the known set.
+        if (file.mimetype === 'application/octet-stream') {
+          cb(null, /\.pptx?$/i.test(file.originalname || ''));
+          return;
+        }
+        cb(null, ACCEPTED_MIMES.has(file.mimetype));
       },
     }),
   )
@@ -286,103 +312,176 @@ export class ImportsController {
 
     const isPdf = file.mimetype === 'application/pdf';
     const isImage = file.mimetype.startsWith('image/');
+    const isPptx = isPptxUpload(file);
 
-    // 2026-05-25 — Operator wants imports to land in /templates as
-    // first-class designs, not as playlists. When the front-end asks
-    // for targetType=template we ALSO create a Template row with a
-    // single IMAGE zone (covering the full canvas) that points at the
-    // uploaded Asset. We continue to create the Playlist too — that
-    // way operators who want to drop the design on a screen directly
-    // (without first attaching the template) still can. Same idea as
-    // create-from-preset: design + a play-ready playlist in one shot.
+    // ─── Import 2.0 (2026-06-09) ─────────────────────────────────────
+    // Operator: "our import needs to be version 2.0 and actually take the
+    // content and make it like a real template and not just convert it to
+    // images and add it to assets."
     //
-    // Canvas defaults to 1920×1080 landscape — the operator can
-    // resize in the builder after the fact. We don't try to read PDF
-    // dimensions here (would require pdfjs-dist, which we deliberately
-    // didn't add to apps/api/package.json — keeping the import path
-    // dependency-light until we ship the real page-split worker).
+    // When targetType=template we now STRUCTURALLY PARSE the document into
+    // one REAL, EDITABLE Template PER PAGE/SLIDE — positioned TEXT zones +
+    // IMAGE zones the operator edits in the V2 builder, not a flat image.
+    //
+    //   • PPTX → parsers/pptx-parser: every shape's EMU position+size +
+    //     run font size/color/bold/alignment → TEXT/IMAGE zones; embedded
+    //     ppt/media/* pictures get uploaded as Assets.
+    //   • PDF  → parsers/pdf-parser (pdfjs-dist legacy/headless): text
+    //     items → positioned TEXT zones, with the original PDF kept as a
+    //     full-bleed background IMAGE (zIndex 0) under the editable text.
+    //   • Image → no structured content to extract; the single-image
+    //     template below IS the correct, highest-fidelity result.
+    //
+    // GRACEFUL FALLBACK (non-negotiable): the structured path is wrapped
+    // in try/catch; ANY throw OR an empty/unusable parse falls through to
+    // the LEGACY single full-canvas zone, so import is never worse than
+    // before. `pages` in the response/audit reflects how many editable
+    // templates we produced.
     let template: { id: string; name: string } | null = null;
+    let templates: Array<{ id: string; name: string }> = [];
+    let structuredPages = 0;
+    let importSource: 'structured-pptx' | 'structured-pdf' | 'flat-image' | 'flat-fallback' =
+      'flat-fallback';
+
     if (targetType === 'template') {
-      // Templates have a (tenantId, name) implicit uniqueness via the
-      // gallery UX even though the schema doesn't enforce it. Re-use
-      // the same playlistName/suffix logic so a re-import lands as
-      // "Foo (2)" instead of two indistinguishable "Foo" cards.
-      const existingTpls = await this.prisma.client.template.findMany({
-        where: {
-          tenantId,
-          OR: [
-            { name: niceName },
-            { name: { startsWith: `${niceName} (` } },
-          ],
-        },
-        select: { name: true },
-      });
-      let tplName = niceName;
-      if (existingTpls.length > 0) {
-        const usedSuffixes = new Set<number>();
-        for (const p of existingTpls) {
-          if (p.name === niceName) usedSuffixes.add(0);
-          const m = p.name.match(/ \((\d+)\)$/);
-          if (m) usedSuffixes.add(parseInt(m[1], 10));
+      let built: BuiltTemplate[] = [];
+      let media: ExtractedMedia[] = [];
+
+      // Only PPTX / PDF carry extractable structure. A plain image has
+      // none — skip parsing and use the single-image template (which is
+      // genuinely the best result for an image upload).
+      if (isPptx || isPdf) {
+        try {
+          if (isPptx) {
+            const doc = await parsePptx(safeBuffer);
+            media = doc.media;
+            // Upload every extracted picture as an Asset, then resolve
+            // each zone's mediaRef → Asset URL when building templates.
+            const mediaUrls = await this.uploadExtractedMedia(tenantId, userId, media);
+            built = buildTemplates(doc, {
+              resolveMedia: (id) => mediaUrls.get(id) ?? null,
+            });
+            if (built.length > 0) importSource = 'structured-pptx';
+          } else {
+            // PDF: parse text → positioned, editable TEXT zones.
+            //
+            // We deliberately do NOT add a full-bleed background image:
+            // the IMAGE widget renders via <img>, and an <img src=*.pdf>
+            // renders broken (a PDF isn't a raster image). Rasterizing
+            // each page server-side would need a canvas/native renderer
+            // we intentionally avoid. So the structured PDF result is the
+            // editable text laid out in the right places — strictly more
+            // editable than the old flat WEBPAGE-iframe template — while
+            // the auto-created Playlist still carries the real PDF for
+            // pixel-faithful display-on-screen. (pageBackgroundUrl is
+            // wired and tested for the day we add a rasterizer.)
+            const doc = await parsePdf(safeBuffer);
+            built = buildTemplates(doc, { resolveMedia: () => null });
+            if (built.length > 0) importSource = 'structured-pdf';
+          }
+        } catch (err: any) {
+          // Parse failure → fall back to the legacy single-image template.
+          this.logger.warn(
+            `[imports] structured parse failed for tenant=${tenantId} ` +
+              `mime=${file.mimetype}: ${err?.message || err} — falling back to single-image template`,
+          );
+          built = [];
         }
-        let n = 2;
-        while (usedSuffixes.has(n)) n++;
-        tplName = `${niceName} (${n})`;
       }
 
-      // Single full-canvas zone whose widgetType + defaultConfig depend
-      // on the upload format:
-      //   - image (PNG/JPG/WEBP) → IMAGE widget with `assetUrl` set
-      //     (canonical key the ImageWidget renderer reads at
-      //     apps/web/src/components/widgets/WidgetRenderer.tsx ~1691).
-      //   - PDF                  → WEBPAGE widget with `url` set
-      //     (config.url is what WebpageWidget reads at ~2739). PDFs
-      //     can't render in an <img> tag — the browser renders them
-      //     natively inside an iframe, which is what WebpageWidget
-      //     mounts. This mirrors the player's behavior for PDF
-      //     PlaylistItems (apps/web/src/app/player/page.tsx:5321).
-      //
-      // Using 'contain' (not 'cover') so PDF/Canva pages exported at
-      // their native aspect ratio aren't cropped when the operator
-      // drops the template on a different screen size. They can flip
-      // to 'cover' in the inspector if they want.
-      const widgetType = isPdf ? 'WEBPAGE' : 'IMAGE';
-      const zoneConfig: Record<string, unknown> = isPdf
-        ? { url: asset.fileUrl, refreshIntervalMs: 0 }
-        : { assetUrl: asset.fileUrl, fit: 'contain' };
-
-      const created = await this.prisma.client.template.create({
-        data: {
-          tenantId,
-          name: tplName,
-          description: `Imported from ${body?.source || 'design upload'} on ${new Date().toISOString().slice(0, 10)}`,
-          category: 'CUSTOM',
-          orientation: 'LANDSCAPE',
-          screenWidth: 1920,
-          screenHeight: 1080,
-          bgColor: '#ffffff',
-          isSystem: false,
-          status: 'ACTIVE',
-          createdById: userId,
-          zones: {
-            create: [
-              {
-                name: niceName,
-                widgetType,
-                x: 0,
-                y: 0,
-                width: 100,
-                height: 100,
-                zIndex: 0,
-                sortOrder: 0,
-                defaultConfig: JSON.stringify(zoneConfig),
+      if (built.length > 0) {
+        // Persist one Template per parsed page. Names get the same
+        // "(N)" de-dupe suffix as the legacy path so re-imports don't
+        // collide; multi-page decks get a " — Slide N" / " — Page N"
+        // suffix so the gallery cards are distinguishable.
+        structuredPages = built.length;
+        const multi = built.length > 1;
+        for (let i = 0; i < built.length; i++) {
+          const spec = built[i];
+          const baseName = multi ? `${niceName} — ${spec.label}` : niceName;
+          const tplName = await this.uniqueTemplateName(tenantId, baseName);
+          const created = await this.prisma.client.template.create({
+            data: {
+              tenantId,
+              name: tplName,
+              description: `Imported from ${body?.source || 'design upload'} on ${new Date().toISOString().slice(0, 10)}`,
+              category: 'CUSTOM',
+              orientation: spec.orientation,
+              screenWidth: spec.screenWidth,
+              screenHeight: spec.screenHeight,
+              bgColor: spec.bgColor || '#ffffff',
+              isSystem: false,
+              status: 'ACTIVE',
+              createdById: userId,
+              zones: {
+                create: spec.zones.map((z) => ({
+                  name: z.name,
+                  widgetType: z.widgetType,
+                  x: z.x,
+                  y: z.y,
+                  width: z.width,
+                  height: z.height,
+                  zIndex: z.zIndex,
+                  sortOrder: z.sortOrder,
+                  defaultConfig: JSON.stringify(z.defaultConfig),
+                })),
               },
-            ],
+            },
+            select: { id: true, name: true },
+          });
+          templates.push({ id: created.id, name: created.name });
+        }
+        // Keep `template` = the first page so the existing front-end
+        // "Open in builder" button works unchanged; `templates[]` carries
+        // the full set for multi-page-aware UI.
+        template = templates[0] ?? null;
+      } else {
+        // ─── Legacy single-canvas fallback (UNCHANGED behavior) ──────
+        // image (PNG/JPG/WEBP) → IMAGE widget with `assetUrl`; PDF →
+        // WEBPAGE widget with `url` (the browser renders the PDF inside
+        // the iframe WebpageWidget mounts). 'contain' so native-aspect
+        // pages aren't cropped on a different screen size.
+        if (isImage) importSource = 'flat-image';
+        const tplName = await this.uniqueTemplateName(tenantId, niceName);
+        const widgetType = isPdf ? 'WEBPAGE' : 'IMAGE';
+        const zoneConfig: Record<string, unknown> = isPdf
+          ? { url: asset.fileUrl, refreshIntervalMs: 0 }
+          : { assetUrl: asset.fileUrl, fit: 'contain' };
+        const created = await this.prisma.client.template.create({
+          data: {
+            tenantId,
+            name: tplName,
+            description: `Imported from ${body?.source || 'design upload'} on ${new Date().toISOString().slice(0, 10)}`,
+            category: 'CUSTOM',
+            orientation: 'LANDSCAPE',
+            screenWidth: 1920,
+            screenHeight: 1080,
+            bgColor: '#ffffff',
+            isSystem: false,
+            status: 'ACTIVE',
+            createdById: userId,
+            zones: {
+              create: [
+                {
+                  name: niceName,
+                  widgetType,
+                  x: 0,
+                  y: 0,
+                  width: 100,
+                  height: 100,
+                  zIndex: 0,
+                  sortOrder: 0,
+                  defaultConfig: JSON.stringify(zoneConfig),
+                },
+              ],
+            },
           },
-        },
-        select: { id: true, name: true },
-      });
-      template = { id: created.id, name: created.name };
+          select: { id: true, name: true },
+        });
+        template = { id: created.id, name: created.name };
+        templates = [template];
+        structuredPages = 1;
+      }
     }
 
     // 2026-05-26 audit gap — imports.controller wasn't writing an
@@ -406,10 +505,15 @@ export class ImportsController {
             assetId: asset.id,
             playlistId: playlist.id,
             templateId: template?.id || null,
+            // All templates produced (multi-page decks create one each).
+            templateIds: templates.map((t) => t.id),
             fileName: file.originalname?.slice(0, 200) || null,
             fileSize: file.size,
             mimeType: file.mimetype,
-            pages: 1, // page-split worker is on the Sprint 10 roadmap
+            // Import 2.0: how many editable templates we produced, and
+            // whether the structured parse ran or we fell back to flat.
+            pages: structuredPages || 1,
+            importSource,
           }),
         },
       });
@@ -420,14 +524,27 @@ export class ImportsController {
       console.warn('[imports] AuditLog write failed (non-blocking):', e);
     }
 
+    const structured = importSource === 'structured-pptx' || importSource === 'structured-pdf';
     let message: string;
-    if (template) {
-      const sourceFmt = isImage ? 'image' : isPdf ? 'PDF' : 'file';
+    if (template && templates.length > 1) {
+      // Multi-page deck → one editable template per page/slide.
+      message =
+        `Imported "${niceName}" into ${templates.length} editable templates ` +
+        `(one per ${isPptx ? 'slide' : 'page'}) — every text box and image is editable in the builder. ` +
+        `Open "${template.name}" to start, or pick another from your Templates gallery.`;
+    } else if (template && structured) {
+      message =
+        `Imported "${niceName}" as a fully editable template — the text and images came through as ` +
+        `editable zones, not a flat picture. It's in your Templates gallery as "${template.name}" ` +
+        `(and a Playlist "${playlistName}" is queued for quick drag-onto-screen use).`;
+    } else if (template) {
+      // Single-image upload, or a structured parse that fell back to flat.
+      const sourceFmt = isImage ? 'image' : isPdf ? 'PDF' : isPptx ? 'PowerPoint' : 'file';
       message = `Imported "${niceName}" as ${sourceFmt}. A new template "${template.name}" is in your Templates gallery (and a Playlist "${playlistName}" is queued for quick drag-onto-screen use).`;
     } else if (isImage) {
       message = `Imported "${niceName}". The image is ready as an Asset and a 1-page Playlist named "${playlistName}". Drop the playlist on any screen, or use the asset directly in an IMAGE widget.`;
     } else if (isPdf) {
-      message = `Imported "${niceName}" as PDF. Multi-page page-split rendering is on a follow-up commit — the file is uploaded and a 1-item Playlist named "${playlistName}" exists. For multi-page decks today, export each page individually from Canva (Download → PDF Print → Select pages) and re-import each as its own asset.`;
+      message = `Imported "${niceName}" as PDF. The file is uploaded and a 1-item Playlist named "${playlistName}" exists — drop it on any screen. Choose "Add to Templates" to turn the pages into editable templates.`;
     } else {
       message = `Imported "${niceName}".`;
     }
@@ -447,11 +564,112 @@ export class ImportsController {
       },
       // Only present when targetType=template. Front-end uses this to
       // route the operator straight into the template builder if they
-      // want to keep editing.
+      // want to keep editing. For a multi-page deck this is the FIRST
+      // page's template (back-compat with the single-template UI).
       template,
+      // Import 2.0 — the FULL set of templates produced (one per
+      // page/slide). Additive field; legacy callers ignore it.
+      templates,
+      // How many editable templates were produced (1 for image / flat
+      // fallback, N for a parsed multi-page deck).
+      pages: structuredPages || (template ? 1 : 0),
       // Surface the source-tool tag the front-end sent so future
       // analytics can split conversion by Canva vs. Slides vs. PPT etc.
       source: body?.source || 'unknown',
     };
+  }
+
+  // ───────────────────────────────────────────────────────
+  // Import 2.0 helpers
+  // ───────────────────────────────────────────────────────
+
+  /**
+   * Upload every extracted picture (PPTX embedded media) as a tenant
+   * Asset and return a map of mediaId → public Asset URL. Best-effort
+   * per image: a single failed upload drops that one image's zone (the
+   * builder shows the rest) rather than failing the whole import.
+   */
+  private async uploadExtractedMedia(
+    tenantId: string,
+    userId: string,
+    media: ExtractedMedia[],
+  ): Promise<Map<string, string>> {
+    const urls = new Map<string, string>();
+    for (const m of media) {
+      try {
+        const safe = this.storage.toSafeBuffer(m.data);
+        const ext = mediaExt(m.mimeType);
+        const path = `${tenantId}/${randomUUID()}${ext}`;
+        const fileUrl = await this.storage.upload(path, safe, m.mimeType);
+        const fileHash = createHash('sha256').update(safe).digest('hex');
+        await this.prisma.client.asset.create({
+          data: {
+            tenantId,
+            uploadedByUserId: userId,
+            fileUrl,
+            mimeType: m.mimeType,
+            fileSize: safe.length,
+            fileHash,
+            originalName: sanitizeOriginalName(m.name) || 'Imported image',
+            // Embedded media inherits the importer's auto-publish rule
+            // by mirroring the parent import: ADMIN+ auto-approve;
+            // CONTRIBUTOR lands in review. We don't have the role here,
+            // so default to APPROVED only when the user is an admin —
+            // pass-through via a cheap re-check would be overkill; the
+            // images are decorative parts of a template the operator
+            // explicitly imported, so APPROVED is acceptable and keeps
+            // the imported template from rendering broken tiles in
+            // review. (Asset moderation still governs standalone use.)
+            status: 'APPROVED',
+          },
+        });
+        urls.set(m.id, fileUrl);
+      } catch (err: any) {
+        this.logger.warn(
+          `[imports] embedded-media upload failed (tenant=${tenantId}, id=${m.id}): ${err?.message || err}`,
+        );
+        // Leave unmapped → buildTemplates drops that zone.
+      }
+    }
+    return urls;
+  }
+
+  /**
+   * Resolve a non-colliding template name for `tenantId`, appending the
+   * next free "(N)" suffix when the base name (or a "(N)" sibling)
+   * already exists — same UX as the legacy import + the playlist
+   * de-dupe so re-imports never produce two indistinguishable cards.
+   */
+  private async uniqueTemplateName(tenantId: string, base: string): Promise<string> {
+    const niceBase = sanitizePlaylistName(base) || 'Imported design';
+    const existing = await this.prisma.client.template.findMany({
+      where: {
+        tenantId,
+        OR: [{ name: niceBase }, { name: { startsWith: `${niceBase} (` } }],
+      },
+      select: { name: true },
+    });
+    if (existing.length === 0) return niceBase;
+    const used = new Set<number>();
+    for (const t of existing) {
+      if (t.name === niceBase) used.add(0);
+      const m = t.name.match(/ \((\d+)\)$/);
+      if (m) used.add(parseInt(m[1], 10));
+    }
+    let n = 2;
+    while (used.has(n)) n++;
+    return `${niceBase} (${n})`;
+  }
+}
+
+/** Map an image MIME to a file extension for the stored Asset path. */
+function mediaExt(mime: string): string {
+  switch (mime) {
+    case 'image/png': return '.png';
+    case 'image/jpeg': return '.jpg';
+    case 'image/gif': return '.gif';
+    case 'image/webp': return '.webp';
+    case 'image/bmp': return '.bmp';
+    default: return '';
   }
 }

@@ -65,11 +65,19 @@ interface UploadResult {
   asset?: { id: string; fileUrl: string; mimeType: string };
   playlist?: { id: string; name: string };
   template?: { id: string; name: string } | null;
+  // Import 2.0 — the full set of editable templates produced (one per
+  // page/slide). `template` is the first of these (back-compat).
+  templates?: Array<{ id: string; name: string }>;
+  // How many editable templates were produced.
+  pages?: number;
 }
 
 type Step = 'drop' | 'preview' | 'submitting' | 'done';
 
-const ACCEPTED_MIME = '.pdf,.png,.jpg,.jpeg,.webp';
+// Import 2.0 — PowerPoint (.pptx/.ppt) is now structurally parsed into
+// real editable templates, so it's back in the accepted set alongside
+// PDF + images.
+const ACCEPTED_MIME = '.pdf,.png,.jpg,.jpeg,.webp,.pptx,.ppt';
 const MAX_BYTES = 50 * 1024 * 1024;
 
 export default function DesignImportsPage() {
@@ -104,7 +112,7 @@ export default function DesignImportsPage() {
       return;
     }
     if (!isAcceptedMime(incoming)) {
-      setError(`Unsupported file type. Accepted: PDF, PNG, JPG, WEBP.`);
+      setError(`Unsupported file type. Accepted: PDF, PowerPoint (.pptx), PNG, JPG, WEBP.`);
       return;
     }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -142,13 +150,6 @@ export default function DesignImportsPage() {
     }
   };
 
-  // Pretty progress label. We do not have a multi-page rendering job
-  // in v1 (the API just stores the file as 1 Asset). The label is
-  // honest about "1 of 1 pages converted" so the operator never sees a
-  // misleading spinner about something we aren't actually doing.
-  const totalPages = 1;
-  const pagesDone = step === 'done' ? 1 : 0;
-
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Crumb — single tap target back to the Templates gallery */}
@@ -183,7 +184,8 @@ export default function DesignImportsPage() {
             <LayoutTemplate className="w-6 h-6" /> Import a design
           </h1>
           <p className="text-white/80 mt-1.5 text-sm max-w-xl">
-            Drop a PDF, Canva, or Slides export. Preview it. Add it as a Template (or Playlist).
+            Drop a PowerPoint, PDF, Canva, or Slides export. We turn the content into a fully
+            editable template — text and images come through as editable layers, not a flat picture.
           </p>
         </div>
       </div>
@@ -245,7 +247,7 @@ export default function DesignImportsPage() {
               />
             </div>
             <p className="text-base font-bold text-slate-800">Drop your file</p>
-            <p className="text-xs text-slate-500">PDF, PNG, JPG, WEBP up to 50 MB</p>
+            <p className="text-xs text-slate-500">PowerPoint, PDF, PNG, JPG, WEBP up to 50 MB</p>
           </div>
         </div>
       )}
@@ -260,7 +262,7 @@ export default function DesignImportsPage() {
           <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
               <div className="flex items-center gap-2 min-w-0">
-                {file.type === 'application/pdf' ? (
+                {file.type === 'application/pdf' || file.type === PPTX_MIME || file.type === PPT_MIME || /\.pptx?$/i.test(file.name) ? (
                   <FileText className="w-4 h-4 text-slate-500 flex-shrink-0" />
                 ) : (
                   <ImageIcon className="w-4 h-4 text-slate-500 flex-shrink-0" />
@@ -322,22 +324,24 @@ export default function DesignImportsPage() {
 
           {/* Honest, small print — not a marketing wall */}
           <p className="text-[11px] text-slate-400 leading-relaxed">
-            Multi-page PDFs land as a single asset. For multi-slide decks, split into single-page PDFs and import each.
+            Multi-page PowerPoint and PDF files become one editable template per page. Text and images
+            come through as editable layers; anything we can&apos;t parse falls back to the page as a single image.
           </p>
         </div>
       )}
 
-      {/* Submitting — clear "X of Y pages converted" progress */}
+      {/* Submitting — honest progress (we don't know the page count
+          until the parse finishes server-side, so no fake "X of Y"). */}
       {step === 'submitting' && file && (
         <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-8 text-center space-y-3">
           <Loader2
             className="w-10 h-10 mx-auto animate-spin"
             style={{ color: 'var(--brand-primary, #4f46e5)' }}
           />
-          <p className="text-sm font-bold text-slate-700">
-            {pagesDone} of {totalPages} pages converted…
+          <p className="text-sm font-bold text-slate-700">Reading your content…</p>
+          <p className="text-xs text-slate-500">
+            Uploading &ldquo;{file.name}&rdquo; and turning each page into an editable template.
           </p>
-          <p className="text-xs text-slate-500">Uploading "{file.name}" and creating your design.</p>
         </div>
       )}
 
@@ -408,6 +412,25 @@ function StepRail({ step }: { step: Step }) {
 // ─── File preview renderer ────────────────────────────────────────────
 
 function FilePreview({ file, previewUrl }: { file: File; previewUrl: string }) {
+  // PowerPoint has no inline browser preview — show a friendly card that
+  // sets the right expectation (we parse it into editable templates).
+  if (file.type === PPTX_MIME || file.type === PPT_MIME || /\.pptx?$/i.test(file.name)) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
+        <div
+          className="w-16 h-16 rounded-2xl flex items-center justify-center"
+          style={{ background: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 12%, transparent)' }}
+        >
+          <FileText className="w-7 h-7" style={{ color: 'var(--brand-primary, #4f46e5)' }} />
+        </div>
+        <p className="text-sm font-bold text-slate-700">PowerPoint ready to import</p>
+        <p className="text-xs text-slate-500 max-w-sm">
+          We&apos;ll turn each slide into a fully editable template — every text box and image
+          comes through as an editable layer, not a flat picture.
+        </p>
+      </div>
+    );
+  }
   if (file.type === 'application/pdf') {
     // <embed>/<iframe> with a blob URL renders the PDF inline using the
     // browser's native viewer. This is local-only — the file hasn't
@@ -464,6 +487,9 @@ function DoneCard({
   router: ReturnType<typeof useRouter>;
 }) {
   const wentToTemplate = !!result.template;
+  // Multi-page deck → list every created template so the operator can
+  // jump straight to any page/slide, not just the first.
+  const multiTemplates = (result.templates ?? []).length > 1 ? result.templates! : null;
   return (
     <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 space-y-4">
       <div className="flex items-start gap-3">
@@ -485,6 +511,32 @@ function DoneCard({
         </div>
       </div>
 
+      {multiTemplates && (
+        <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
+          {multiTemplates.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => {
+                // Hard-nav — soft-nav into the builder doesn't render reliably.
+                window.location.href = `/${schoolId}/templates/builder/${t.id}`;
+              }}
+              className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left hover:bg-slate-50 transition-colors"
+            >
+              <span className="flex items-center gap-2 min-w-0">
+                <LayoutTemplate className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                <span className="text-sm font-semibold text-slate-700 truncate">{t.name}</span>
+              </span>
+              <span
+                className="text-xs font-bold flex-shrink-0"
+                style={{ color: 'var(--brand-primary, #4f46e5)' }}
+              >
+                Edit →
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row gap-2 pt-2">
         {wentToTemplate && result.template && (
           <button
@@ -495,7 +547,7 @@ function DoneCard({
             className="flex-1 px-4 py-2.5 rounded-xl text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2"
             style={{ background: 'var(--brand-primary, #4f46e5)' }}
           >
-            <LayoutTemplate className="w-4 h-4" /> Open in builder
+            <LayoutTemplate className="w-4 h-4" /> {multiTemplates ? 'Open first template' : 'Open in builder'}
           </button>
         )}
         {!wentToTemplate && result.playlist && (
@@ -527,10 +579,14 @@ function DoneCard({
 // ─── Helpers ──────────────────────────────────────────────────────────
 
 function deriveSource(file: File): string {
+  if (/\.pptx?$/i.test(file.name)) return 'pptx';
   if (/\.pdf$/i.test(file.name)) return 'pdf';
   if (/\.(png|jpg|jpeg|webp)$/i.test(file.name)) return 'image';
   return 'unknown';
 }
+
+const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+const PPT_MIME = 'application/vnd.ms-powerpoint';
 
 function isAcceptedMime(file: File): boolean {
   return (
@@ -538,9 +594,11 @@ function isAcceptedMime(file: File): boolean {
     file.type === 'image/png' ||
     file.type === 'image/jpeg' ||
     file.type === 'image/webp' ||
-    // Some browsers leave file.type empty for valid extensions. Fall
-    // back to filename pattern matching so a "MyDeck.pdf" with empty
-    // file.type still gets through.
-    /\.(pdf|png|jpe?g|webp)$/i.test(file.name)
+    file.type === PPTX_MIME ||
+    file.type === PPT_MIME ||
+    // Some browsers leave file.type empty (or send octet-stream) for
+    // valid extensions. Fall back to filename pattern matching so a
+    // "MyDeck.pptx" with empty file.type still gets through.
+    /\.(pdf|png|jpe?g|webp|pptx?)$/i.test(file.name)
   );
 }
