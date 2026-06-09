@@ -750,7 +750,13 @@ export class TemplatesController {
   // ───────────────────────────────────────────────────────
 
   @Post()
-  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  // CONTRIBUTOR (Editor) creates templates in their OWN tenant — the body
+  // tenantId is ignored; `create` stamps `tenantId: req.user.tenantId`. This
+  // is content-building, NOT publishing (a template reaches a screen only via
+  // a playlist + schedule, which stays gated). Without this, the builder's
+  // "Save as copy" 403'd for Editors. (2026-06-09 — operator: "editor role
+  // tries to save a template and it fails to save".)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async create(
     @Request() req: any,
     @Body(new ZodValidationPipe(TemplateCreateSchema)) body: TemplateCreateInput,
@@ -1309,7 +1315,13 @@ export class TemplatesController {
   // ───────────────────────────────────────────────────────
 
   @Put(':id')
-  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  // CONTRIBUTOR (Editor) may update their OWN, non-system templates: the
+  // method below is tenant-scoped (findFirst {id, tenantId: req.user.tenantId})
+  // AND throws on isSystem, so an Editor still can't touch system presets or
+  // another tenant's templates. This is the metadata write the builder's
+  // handleSave() hits FIRST — it was admin-only, so every Editor save 403'd
+  // before the zones ever wrote. (2026-06-09 — "editor … fails to save".)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async update(
     @Request() req: any,
     @Param('id') id: string,
