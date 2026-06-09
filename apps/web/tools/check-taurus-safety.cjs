@@ -36,6 +36,23 @@ const SCAN_DIRS = [
 ];
 const BASELINE_FILE = path.join(__dirname, 'taurus-safety-baseline.json');
 
+// 2026-06-09 full-audit gate-gap fix: the EXTERNAL_HTML signage boards under
+// public/templates + public/holiday-templates render on the SAME player the
+// React widgets do — including NovaStar Taurus LED walls — but were NEVER in
+// the scanner's scope (SCAN_DIRS is all apps/web/src; FILE_RE excludes .html).
+// The `inset` shorthand collapses a positioned box to 0×0 on Chromium 83, so
+// a board that uses it is invisible on Taurus. We swept all boards to longhand
+// (309 declarations across 57 files), so the board baseline is ZERO — this
+// pass locks that in: any `inset:`/`inset-*` that re-enters a board fails CI.
+// Scoped to the inset patterns ONLY: boards legitimately use gap/backdrop/
+// aspect-ratio/color-mix for standard LCD signage (CLAUDE.md rule #10 SCOPE),
+// and inset is the one with a zero-regression spec-identical longhand fix.
+const HTML_SCAN_DIRS = [
+  path.join('apps', 'web', 'public', 'templates'),
+  path.join('apps', 'web', 'public', 'holiday-templates'),
+];
+const HTML_FILE_RE = /\.html$/;
+
 // Patterns that compile to Chromium-83-incompatible CSS at runtime.
 // Heuristic; counts may include grid `gap` (acceptable on Chromium 83) — the
 // ratchet still works because grid gap is also non-regressing.
@@ -94,6 +111,13 @@ const PATTERNS = {
   insetTw: /\binset-(?:x-|y-)?(?:px|\d|\[)/g,
 };
 
+// Restricted pattern set for the HTML signage boards — inset only (see
+// HTML_SCAN_DIRS note above for why the others are intentionally excluded).
+const HTML_PATTERNS = {
+  insetCss: PATTERNS.insetCss,
+  insetTw: PATTERNS.insetTw,
+};
+
 const FILE_RE = /\.(tsx?|jsx?|css|scss)$/;
 
 // Strip `//` line comments and `/* … */` block comments before pattern
@@ -111,11 +135,19 @@ function stripComments(src) {
     .replace(/\/\/[^\n]*/g, ' ');      // line comments
 }
 
-function scanFile(absPath) {
-  const text = stripComments(fs.readFileSync(absPath, 'utf8'));
+// HTML uses `<!-- … -->` comments, not `//` / `/* … */`. The JS stripComments
+// would nuke from a `//` (e.g. inside a `https://` URL) to end-of-line and
+// could hide a real `inset:` after it — a false NEGATIVE. So HTML files get an
+// HTML-comment-only stripper.
+function stripHtmlComments(src) {
+  return src.replace(/<!--[\s\S]*?-->/g, ' ');
+}
+
+function scanFile(absPath, patterns = PATTERNS, stripper = stripComments) {
+  const text = stripper(fs.readFileSync(absPath, 'utf8'));
   const out = {};
   let any = false;
-  for (const [name, re] of Object.entries(PATTERNS)) {
+  for (const [name, re] of Object.entries(patterns)) {
     re.lastIndex = 0;
     const m = text.match(re);
     if (m && m.length) { out[name] = m.length; any = true; }
@@ -123,16 +155,17 @@ function scanFile(absPath) {
   return any ? out : null;
 }
 
-function walk(absDir, repoRel, out) {
+function walk(absDir, repoRel, out, opts = {}) {
+  const { patterns = PATTERNS, fileRe = FILE_RE, stripper = stripComments } = opts;
   if (!fs.existsSync(absDir)) return;
   for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
     const abs = path.join(absDir, entry.name);
     const rel = path.posix.join(repoRel, entry.name);
     if (entry.isDirectory()) {
       if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
-      walk(abs, rel, out);
-    } else if (entry.isFile() && FILE_RE.test(entry.name)) {
-      const counts = scanFile(abs);
+      walk(abs, rel, out, opts);
+    } else if (entry.isFile() && fileRe.test(entry.name)) {
+      const counts = scanFile(abs, patterns, stripper);
       if (counts) out[rel] = counts;
     }
   }
@@ -142,6 +175,14 @@ function scanAll() {
   const out = {};
   for (const d of SCAN_DIRS) {
     walk(path.join(REPO_ROOT, d), d.replace(/\\/g, '/'), out);
+  }
+  // EXTERNAL_HTML signage boards — inset-only pass (see HTML_SCAN_DIRS note).
+  for (const d of HTML_SCAN_DIRS) {
+    walk(path.join(REPO_ROOT, d), d.replace(/\\/g, '/'), out, {
+      patterns: HTML_PATTERNS,
+      fileRe: HTML_FILE_RE,
+      stripper: stripHtmlComments,
+    });
   }
   // Stable ordering for deterministic baseline writes.
   return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));

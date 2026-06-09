@@ -8,12 +8,12 @@ Welcome! This guide walks you through your first end-to-end demo of EDU CMS. No 
 
 Two accounts are ready for you. Either works for everything in this guide — pick whichever you like.
 
-| Email | Password |
-|---|---|
-| `chuck@agceducation.com` | `12345678` |
-| `larry@agceducation.com` | `12345678` |
+> **Your sign-in details were sent to you separately** (secure email / text from
+> your VenueOS contact). We don't print live passwords in this guide — it lives in
+> a public repository. If you don't have your credentials, reply to your onboarding
+> email or contact your VenueOS administrator and we'll send them right over.
 
-Both sign in at **https://venue-os.app/login**.
+Both accounts sign in at **https://venue-os.app/login**.
 
 > Keep this guide open on one side of your screen and the browser on the other. You'll be flipping between tabs, so a little screen real estate helps.
 
@@ -39,8 +39,8 @@ In about 20 minutes you'll sign in, turn a second browser tab into a pretend "ha
 ## Step 1 — Sign In
 
 1. In Chrome, go to **https://venue-os.app/login**.
-2. In the **Email** field, type `chuck@agceducation.com` (or `larry@…`).
-3. In the **Password** field, type `12345678`.
+2. In the **Email** field, type the email address we sent you.
+3. In the **Password** field, type the password we sent you.
 4. **Check the box labeled "Remember me"** before clicking sign in. This keeps you logged in for the full demo so you don't have to retype the password on every tab.
 5. Click the **Sign In** button.
 
@@ -162,7 +162,7 @@ A **Playlist** is the sequence of content that rotates on a screen. We'll mix yo
 This is the heart of what makes EDU CMS different. If something happens at your school, any authorized staff member can lock down every screen in seconds from their phone.
 
 1. On your **phone**, open a browser and go to **https://venue-os.app/panic**.
-2. Sign in with the same account (`chuck@agceducation.com` / `12345678`).
+2. Sign in with the same account credentials we sent you.
 3. **Check the box labeled "Keep me logged in"** before submitting.
 
 > **Why this box matters:** in a real emergency — an active intruder, a severe weather warning — you do not want to be fumbling with passwords while running. This check keeps your phone pre-authenticated so the panic button is a single long-press away whenever you need it. Treat it the same way you'd treat a fire alarm pull — always ready.

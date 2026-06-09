@@ -60,3 +60,14 @@ edu-cms-backup-*
 *.pfx
 *.p12
 *.crt
+*.bat
+diff.txt
+git_stat.txt
+AUDIT_*.txt
+MORNING_SUMMARY*.txt
+/check.mjs
+/check2.mjs
+/test-blob.mjs
+/test-uint8.mjs
+/sunny-meadow-preview.html
+/lockdown-alert-*.png

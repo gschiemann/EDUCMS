@@ -22,7 +22,7 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#0a0c11;color:var(--c-ink);font-family:var(--f-body),sans-serif}
-.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
 .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
 .stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;
   background:radial-gradient(2400px 1500px at 16% -12%, color-mix(in srgb,var(--c-brand) 9%,transparent), transparent 60%),var(--c-bg);

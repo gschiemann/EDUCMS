@@ -6,14 +6,14 @@
 :root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;
   --cream:#fff1d6;--cream2:#f5e0b3;--rust:#c4502a;--rust2:#e57b3a;--gold:#e3a83b;--ink:#3a2418;--green:#5a7a3a;--brown:#7a4a26;--plum:#7a3550}
 html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;color:var(--ink);font-family:'Fredoka',sans-serif}
-.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
 .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
 .stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:radial-gradient(ellipse at top,#fff5dc 0%,var(--cream) 50%,#f0d5a0 100%);box-shadow:0 80px 200px rgba(0,0,0,.5)}
-.stage::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(122,74,38,.04) 2px,transparent 3px);background-size:20px 20px;pointer-events:none}
+.stage::before{content:'';position:absolute;top:0;right:0;bottom:0;left:0;background-image:radial-gradient(rgba(122,74,38,.04) 2px,transparent 3px);background-size:20px 20px;pointer-events:none}
 
 /* SCATTERED LEAVES */
 .leaf{position:absolute;width:120px;height:120px;border-radius:50% 0 50% 50%;transform:rotate(-30deg);opacity:.85;z-index:1}
-.leaf::before{content:'';position:absolute;inset:14% 14% 14% 14%;border-radius:50% 0 50% 50%;background:rgba(255,255,255,.18)}
+.leaf::before{content:'';position:absolute;top:14%;right:14%;bottom:14%;left:14%;border-radius:50% 0 50% 50%;background:rgba(255,255,255,.18)}
 .l1{top:140px;left:240px;background:var(--rust)}
 .l2{top:300px;left:1340px;background:var(--gold);transform:rotate(40deg);width:90px;height:90px}
 .l3{top:120px;left:2240px;background:var(--rust2);transform:rotate(-60deg)}

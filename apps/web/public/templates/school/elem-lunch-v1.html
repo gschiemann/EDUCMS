@@ -25,7 +25,7 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#ffe9ad;color:var(--ink);font-family:var(--f-body),sans-serif}
-.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
 .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
 .stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;
   background:
@@ -34,13 +34,13 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
     linear-gradient(160deg,#fff6dd 0%,var(--bg) 55%,color-mix(in srgb,var(--accent) 35%,var(--bg)) 100%);
   display:flex;flex-direction:column;padding:56px 70px 0}
 /* a fat dotted polka layer for texture */
-.stage::before{content:'';position:absolute;inset:0;pointer-events:none;
+.stage::before{content:'';position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;
   background-image:radial-gradient(color-mix(in srgb,var(--brand) 16%,transparent) 14px,transparent 15px);
   background-size:150px 150px;opacity:.5}
 .stage>.wrap{position:relative;z-index:3;display:flex;flex-direction:column;height:100%}
 
 /* confetti rain — CSS only, WebKit-safe (no regex / control chars) */
-.confetti{position:absolute;inset:0;z-index:2;pointer-events:none;overflow:hidden}
+.confetti{position:absolute;top:0;right:0;bottom:0;left:0;z-index:2;pointer-events:none;overflow:hidden}
 .confetti i{position:absolute;top:-60px;width:36px;height:36px;border-radius:8px;opacity:.92;animation:fall linear infinite}
 .confetti i:nth-child(odd){border-radius:50%}
 @keyframes fall{0%{transform:translateY(-80px) rotate(0deg)}100%{transform:translateY(2280px) rotate(420deg)}}
@@ -78,7 +78,7 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 .hero{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0}
 .hero .burst{position:relative;width:1000px;max-width:100%;aspect-ratio:1/1;display:grid;place-items:center;animation:bob 6s ease-in-out infinite;flex:none}
 /* sunburst spokes behind the food blob */
-.hero .burst::before{content:'';position:absolute;inset:-30px;border-radius:50%;
+.hero .burst::before{content:'';position:absolute;top:-30px;right:-30px;bottom:-30px;left:-30px;border-radius:50%;
   background:repeating-conic-gradient(from 0deg,var(--accent) 0deg 12deg,var(--tang) 12deg 24deg);
   opacity:.85;animation:spin 60s linear infinite;filter:saturate(1.05)}
 @keyframes spin{to{transform:rotate(360deg)}}

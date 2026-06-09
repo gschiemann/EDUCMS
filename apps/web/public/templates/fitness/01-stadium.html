@@ -13,7 +13,7 @@
 <style>
   :root { --stage-w: 3840px; --stage-h: 2160px; --stage-scale: 1; }
   html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#000; }
-  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .viewport { position:fixed; top:0;right:0;bottom:0;left:0; display:grid; place-items:center; overflow:hidden; }
   .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
   .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.7); overflow:hidden; }
 
@@ -26,7 +26,7 @@
     color:var(--ink); font-family:'Outfit', system-ui, sans-serif;
   }
   .stage::before {
-    content:''; position:absolute; inset:0; pointer-events:none;
+    content:''; position:absolute; top:0;right:0;bottom:0;left:0; pointer-events:none;
     background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 1px, transparent 1px 4px);
   }
 
@@ -48,13 +48,13 @@
     background:linear-gradient(180deg, #1a1d24, #0c0e13);
     border:3px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,.6); }
   .tv .crt {
-    position:absolute; inset:0;
+    position:absolute; top:0;right:0;bottom:0;left:0;
     background:
       radial-gradient(1600px 900px at 50% 40%, rgba(0,212,255,.16), transparent 60%),
       linear-gradient(180deg, #0a0d14 0%, #1a2030 50%, #0a0d14 100%);
   }
   .tv .crt::after {
-    content:''; position:absolute; inset:0;
+    content:''; position:absolute; top:0;right:0;bottom:0;left:0;
     background: repeating-linear-gradient(0deg, rgba(255,255,255,.04) 0 2px, transparent 2px 6px);
     mix-blend-mode:screen;
   }
@@ -84,7 +84,7 @@
   .nowplay .row { display:flex; gap:32px; align-items:center; }
   .nowplay .art { width:220px; height:220px; border-radius:14px; flex:none;
     background:linear-gradient(135deg,#d7ff1e 0%, #79e600 100%); position:relative; overflow:hidden; }
-  .nowplay .art::after { content:'♫'; position:absolute; inset:0; display:grid; place-items:center;
+  .nowplay .art::after { content:'♫'; position:absolute; top:0;right:0;bottom:0;left:0; display:grid; place-items:center;
     font-family:'Archivo Black'; font-size:200px; color:rgba(0,0,0,.85); }
   .nowplay .meta .ti { font-family:'Archivo Black'; font-size:80px; line-height:.95; letter-spacing:-.02em; }
   .nowplay .meta .ar { font-family:'Outfit'; font-weight:400; font-size:42px; color:var(--muted); margin-top:10px; }

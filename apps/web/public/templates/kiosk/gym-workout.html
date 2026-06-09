@@ -112,7 +112,7 @@ html, body {
 /* ═══ STAGE & SCREEN SYSTEM ════════════════════════════════════════════════ */
 .kiosk {
   position: fixed;
-  inset: 0;
+  top:0;right:0;bottom:0;left:0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -125,7 +125,7 @@ html, body {
    rAF/keyframes are throttled. Motion is a transition enhancement only. */
 .screen {
   position: absolute;
-  inset: 0;
+  top:0;right:0;bottom:0;left:0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -282,7 +282,7 @@ html, body {
 }
 .media::after {
   content: "";
-  position: absolute; inset: 0;
+  position: absolute; top:0;right:0;bottom:0;left:0;
   background-image:
     linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
@@ -305,7 +305,7 @@ html, body {
 }
 .media__tag svg { width: 1.3em; height: 1.3em; opacity: .85; }
 .media__scrim {
-  position: absolute; inset: 0;
+  position: absolute; top:0;right:0;bottom:0;left:0;
   background: linear-gradient(0deg, rgba(6,8,14,.78) 0%, rgba(6,8,14,.05) 45%, transparent 70%);
   z-index: 1;
 }
@@ -379,7 +379,7 @@ html, body {
 
 /* ═══ SHEET / MODAL ════════════════════════════════════════════════════════ */
 .scrim {
-  position: absolute; inset: 0; z-index: 20;
+  position: absolute; top:0;right:0;bottom:0;left:0; z-index: 20;
   background: rgba(4,6,12,.62);
   backdrop-filter: blur(calc(var(--u)*1.2));
   opacity: 0; pointer-events: none;
@@ -413,9 +413,9 @@ html, body {
 
 /* ═══ VIDEO REGION ═════════════════════════════════════════════════════════ */
 .video { position: relative; overflow: hidden; background: #05070c; }
-.video .media { position: absolute; inset: 0; }
+.video .media { position: absolute; top:0;right:0;bottom:0;left:0; }
 .video__play {
-  position: absolute; inset: 0; margin: auto;
+  position: absolute; top:0;right:0;bottom:0;left:0; margin: auto;
   width: calc(var(--u)*14); height: calc(var(--u)*14);
   display: grid; place-items: center;
   border: none; border-radius: 50%;
@@ -460,11 +460,11 @@ html, body {
   transform: translate(-50%, -50%); z-index: 5;
 }
 .here::before {
-  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  content: ""; position: absolute; top:0;right:0;bottom:0;left:0; border-radius: 50%;
   background: var(--accent); box-shadow: 0 0 0 calc(var(--u)*.5) #fff, var(--sh-2);
 }
 .here::after {
-  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  content: ""; position: absolute; top:0;right:0;bottom:0;left:0; border-radius: 50%;
   background: var(--accent); animation: pingPulse 1.8s var(--ease-out) infinite;
 }
 @keyframes pingPulse { 0%{ transform: scale(1); opacity: .6 } 100%{ transform: scale(3.4); opacity: 0 } }
@@ -498,15 +498,15 @@ html, body {
 
 /* ═══ ATTRACT / IDLE SCREEN ════════════════════════════════════════════════ */
 .attract {
-  position: absolute; inset: 0; z-index: 40;
+  position: absolute; top:0;right:0;bottom:0;left:0; z-index: 40;
   display: flex; flex-direction: column; justify-content: flex-end;
   background: var(--bg);
   opacity: 0; pointer-events: none;
   transition: opacity 600ms var(--ease);
 }
 .attract.is-on { opacity: 1; pointer-events: auto; }
-.attract__bg { position: absolute; inset: 0; }
-.attract__bg .media { position: absolute; inset: calc(var(--u)*-4); animation: kenburns 22s ease-in-out infinite alternate; }
+.attract__bg { position: absolute; top:0;right:0;bottom:0;left:0; }
+.attract__bg .media { position: absolute; top:calc(var(--u)*-4);right:calc(var(--u)*-4);bottom:calc(var(--u)*-4);left:calc(var(--u)*-4); animation: kenburns 22s ease-in-out infinite alternate; }
 @keyframes kenburns { from{ transform: scale(1) translate(0,0) } to{ transform: scale(1.12) translate(-2%, -2%) } }
 .attract__body { position: relative; z-index: 2; padding: var(--s-8) var(--s-7); }
 .attract__cta {
@@ -815,7 +815,7 @@ html, body {
 .gw-startbar{ position:absolute; left:0; right:0; bottom:0; background:var(--bg-2); display:flex; align-items:center; gap:var(--s-4); padding:var(--s-4) var(--s-6); border-top:1px solid var(--line) }
 
 /* LIVE TIMER */
-.gw-timer{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; padding:var(--s-5) var(--s-6) var(--s-7); transition:background var(--dur) }
+.gw-timer{ position:absolute; top:0;right:0;bottom:0;left:0; display:flex; flex-direction:column; align-items:center; padding:var(--s-5) var(--s-6) var(--s-7); transition:background var(--dur) }
 .gw-timer.is-work{ background:radial-gradient(80% 60% at 50% 0%, color-mix(in srgb,var(--accent) 16%,var(--bg)), var(--bg)) }
 .gw-timer.is-rest{ background:radial-gradient(80% 60% at 50% 0%, color-mix(in srgb,var(--accent-2) 18%,var(--bg)), var(--bg)) }
 .gw-timer.is-ready{ background:var(--bg) }
@@ -828,7 +828,7 @@ html, body {
 .gw-ring circle{ fill:none; stroke-width:2.4 } .gw-ring__bg{ stroke:var(--surface-2) }
 .gw-ring__fg{ stroke:var(--accent); stroke-linecap:round; transition:stroke-dasharray .98s linear }
 .gw-timer.is-rest .gw-ring__fg{ stroke:var(--accent-2) }
-.gw-ring__c{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center }
+.gw-ring__c{ position:absolute; top:0;right:0;bottom:0;left:0; display:flex; flex-direction:column; align-items:center; justify-content:center }
 .gw-ring__time{ font-family:var(--font-display); font-weight:800; font-size:calc(var(--u)*18); line-height:.9; color:var(--text); font-variant-numeric:tabular-nums }
 .gw-ring__unit{ font-family:var(--font-mono); color:var(--text-mute); letter-spacing:.2em; text-transform:uppercase }
 .gw-timer__move{ text-align:center; margin-bottom:var(--s-4) }
@@ -1003,7 +1003,7 @@ html, body {
       var k = document.createElement('div');
       k.className = 'kiosk';
       this.stage = document.createElement('div');
-      this.stage.style.cssText = 'position:absolute;inset:0';
+      this.stage.style.cssText = 'position:absolute;top:0;right:0;bottom:0;left:0';
       k.appendChild(this.stage);
 
       // attract layer
