@@ -98,7 +98,22 @@ async function login(page) {
       await page.evaluate(() => { window.__navMarker = 'ALIVE'; });
       const before = page.url();
       const crashBefore = crashes.length;
-      await link.click({ timeout: 6000 }).catch((e) => failures.push(`/${target}: click failed — ${e.message.slice(0, 80)}`));
+      // This runs right after a Vercel deploy, so the first paint can be a
+      // cold serverless render — the sidebar link may take >6s to become
+      // interactive in WebKit. Scroll-into-view + 12s + one retry before
+      // recording a failure. The canary's job is catching React crashes +
+      // full-reloads (asserted below), NOT penalising a slow click.
+      let clicked = false;
+      for (let a = 0; a < 2 && !clicked; a++) {
+        try {
+          await link.scrollIntoViewIfNeeded({ timeout: 4000 }).catch(() => {});
+          await link.click({ timeout: 12000 });
+          clicked = true;
+        } catch (e) {
+          if (a === 1) failures.push(`/${target}: click failed — ${e.message.slice(0, 80)}`);
+          else await page.waitForTimeout(1500);
+        }
+      }
       await page.waitForTimeout(2200);
       const after = page.url();
       const survived = await page.evaluate(() => window.__navMarker === 'ALIVE');
