@@ -134,7 +134,12 @@ export class PlaylistsController {
   }
 
   @Post()
-  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  // CONTRIBUTOR (the "Editor" tier) can CREATE a playlist to build content —
+  // creating one does NOT publish it to any screen (publishing/scheduling is a
+  // separate admin-only action the Editor reaches via Submit-for-Review).
+  // Without this the editor role was half-crippled: it could edit existing
+  // playlists but not start a new one. 2026-06-09 RBAC/reviewer rework.
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async create(@Request() req: any, @Body(new ZodValidationPipe(PlaylistCreateSchema)) body: PlaylistCreateInput) {
     await this.prisma.ensurePlaylistMetadataColumns();
 

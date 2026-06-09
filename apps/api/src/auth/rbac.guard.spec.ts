@@ -13,7 +13,7 @@ describe('RbacGuard', () => {
     guard = new RbacGuard(reflector);
   });
 
-  const createMockContext = (user: Partial<RequestUser>, params = {}, query = {}, body = {}) => {
+  const createMockContext = (user: Partial<RequestUser>, params = {}, query = {}, body = {}, method = 'GET') => {
     return {
       getHandler: jest.fn(),
       getClass: jest.fn(),
@@ -23,6 +23,7 @@ describe('RbacGuard', () => {
           params,
           query,
           body,
+          method,
         }),
       }),
     } as unknown as ExecutionContext;
@@ -95,13 +96,49 @@ describe('RbacGuard', () => {
 
     it('Teacher (Contributor) succeeds when accessing their own school', () => {
       jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([AppRole.CONTRIBUTOR]);
-      
+
       const ctx = createMockContext(
         { role: AppRole.CONTRIBUTOR, schoolId: 'sch-1' },
         { schoolId: 'sch-1' }
       );
-      
+
       expect(guard.canActivate(ctx)).toBe(true);
+    });
+  });
+
+  // 2026-06-09 RBAC/reviewer rework — RESTRICTED_VIEWER (the "Viewer" tier) is
+  // read-only but must be able to SEE content (previously hard-403'd → empty
+  // Assets/Templates/Playlists). The guard lets it READ (GET/HEAD) any endpoint
+  // a CONTRIBUTOR may read, and nothing more.
+  describe('Viewer read access (RESTRICTED_VIEWER)', () => {
+    const contentRead = [
+      AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR,
+    ];
+
+    it('can READ (GET) an endpoint a CONTRIBUTOR may read', () => {
+      jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(contentRead);
+      const ctx = createMockContext({ role: AppRole.RESTRICTED_VIEWER, schoolId: 'sch-1' }, {}, {}, {}, 'GET');
+      expect(guard.canActivate(ctx)).toBe(true);
+    });
+
+    it('is DENIED a mutation (POST) to the same endpoint', () => {
+      jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(contentRead);
+      const ctx = createMockContext({ role: AppRole.RESTRICTED_VIEWER, schoolId: 'sch-1' }, {}, {}, {}, 'POST');
+      expect(() => guard.canActivate(ctx)).toThrow('Access denied');
+    });
+
+    it('is DENIED reading an ADMIN-only endpoint (CONTRIBUTOR not in required roles)', () => {
+      jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([
+        AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN,
+      ]);
+      const ctx = createMockContext({ role: AppRole.RESTRICTED_VIEWER, schoolId: 'sch-1' }, {}, {}, {}, 'GET');
+      expect(() => guard.canActivate(ctx)).toThrow('Access denied');
+    });
+
+    it('read access is still tenancy-scoped to its own school', () => {
+      jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(contentRead);
+      const ctx = createMockContext({ role: AppRole.RESTRICTED_VIEWER, schoolId: 'sch-1' }, { schoolId: 'sch-99' }, {}, {}, 'GET');
+      expect(() => guard.canActivate(ctx)).toThrow('User isolated to own school');
     });
   });
 });

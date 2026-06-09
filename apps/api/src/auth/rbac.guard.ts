@@ -74,8 +74,27 @@ export class RbacGuard implements CanActivate {
       return true;
     }
 
-    // 1. Check if user holds the explicitly required role (or SUPER_ADMIN overrides)
-    const hasRole = requiredRoles.includes(typedUser.role) || typedUser.role === AppRole.SUPER_ADMIN;
+    // 1. Check if user holds the explicitly required role (or SUPER_ADMIN overrides).
+    //
+    // VIEWER READ ACCESS (2026-06-09): RESTRICTED_VIEWER is a read-only role.
+    // Rather than list it on every GET — and risk pasting it onto a mutation
+    // that happens to share the same role array — we let it READ (safe HTTP
+    // methods only) any endpoint a CONTRIBUTOR can already read. Mutations stay
+    // blocked: they aren't GET/HEAD, and RESTRICTED_VIEWER appears in NO
+    // mutation's @RequireRoles. Admin-only reads (e.g. the review queue, whose
+    // @RequireRoles omits CONTRIBUTOR) also stay blocked. The tenancy-scope
+    // check below still isolates the viewer to their own school. This un-breaks
+    // "a viewer sees no assets, playlists or templates" (those lists 403'd)
+    // WITHOUT widening any write access.
+    const method = String(req.method || 'GET').toUpperCase();
+    const viewerMayRead =
+      typedUser.role === AppRole.RESTRICTED_VIEWER &&
+      (method === 'GET' || method === 'HEAD') &&
+      requiredRoles.includes(AppRole.CONTRIBUTOR);
+    const hasRole =
+      requiredRoles.includes(typedUser.role) ||
+      typedUser.role === AppRole.SUPER_ADMIN ||
+      viewerMayRead;
     if (!hasRole) {
       throw new ForbiddenException(`Access denied. Requires one of: ${requiredRoles.join(', ')}`);
     }
