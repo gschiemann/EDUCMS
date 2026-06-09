@@ -21,6 +21,7 @@
     "test:celebrations": "node tests/cross-browser/celebrations-bridge.cjs",
     "test:kiosk-shim": "node tests/cross-browser/kiosk-edit-shim.cjs",
     "test:prod-smoke": "node tests/cross-browser/prod-smoke.cjs",
+    "test:webkit-nav": "node tests/cross-browser/webkit-nav-smoke.cjs",
     "test:e2e": "playwright test --config playwright.config.ts",
     "test:e2e:emergency-path": "playwright test --config playwright.config.ts tests/e2e/emergency-path.spec.ts",
     "test:e2e:widget-render": "playwright test --config playwright.config.ts tests/e2e/widget-render.spec.ts"

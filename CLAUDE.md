@@ -290,6 +290,13 @@ Safari for months. Local dev was Chrome-only so we never saw it.
    (18 templates × 5 protocol assertions = 90 in WebKit). It runs in
    under a minute. CI runs it on every push + PR via
    `.github/workflows/cross-browser.yml` and blocks merge on red.
+   For the **authed dashboard's client-side navigation** (the surface the
+   2026-06-08 favicon-crash class lived in), `pnpm --filter web run
+   test:webkit-nav` logs into the live deploy in WebKit, clicks the sidebar
+   nav, and fails on any React `removeChild`/`parentNode` crash or a
+   click that full-reloads instead of soft-navigating. CI runs it on push
+   to master via the `webkit-nav` job in `.github/workflows/prod-smoke.yml`
+   (live-login, so it's post-deploy — the same window as prod-smoke).
 2. **No "minified" inline JS unless you've verified it parses in WebKit.**
    Tools that emit JS (minifiers, bundlers, hand-rolled scripts) are
    the usual culprit class. Run the script through Safari Develop →

@@ -84,3 +84,51 @@ jobs:
             apps/web/tests/cross-browser/prod-smoke-report.json
           if-no-files-found: ignore
           retention-days: 14
+
+  # WebKit (Safari engine) dashboard-navigation canary. Runs PARALLEL to the
+  # Chromium prod-smoke. Catches the class that burned days on 2026-06-08: a
+  # WebKit-only React crash ("TypeError: null is not an object (… parentNode
+  # .removeChild)") from BrandStyleInjector detaching React-managed <head>
+  # favicon links → "every menu click needs two clicks / it just reloads" in
+  # Safari, invisible to Chrome-only CI + local dev (fixed in ddb64dab). This is
+  # the standing WebKit-INTERACTIVITY guard CLAUDE.md's cross-browser section
+  # calls for — the existing WebKit jobs only check static templates + the
+  # /player render, never the authed dashboard's client-side navigation.
+  webkit-nav:
+    name: WebKit dashboard nav (favicon-crash canary)
+    runs-on: ubuntu-latest
+    # WebKit cold-install of ~160 system deps is the slow part (3-7 min); the
+    # nav smoke itself runs in well under a minute. Cap at 15 to absorb it.
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 9.0.0 }
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-webkit-${{ hashFiles('apps/web/package.json') }}
+
+      - name: Install Playwright WebKit (with system deps)
+        run: pnpm --filter web exec playwright install --with-deps webkit
+
+      - name: Run WebKit dashboard-nav smoke
+        # Seed SUPER_ADMIN (public, Springfield-Elementary-isolated) — same as
+        # prod-smoke. FAILS on any React removeChild/parentNode crash or a
+        # sidebar click that full-reloads instead of client-side navigating.
+        env:
+          WEBKIT_NAV_BASE: https://venue-os.app
+          WEBKIT_NAV_EMAIL: admin@springfield.edu
+          WEBKIT_NAV_PASSWORD: admin123
+        run: pnpm --filter web run test:webkit-nav
