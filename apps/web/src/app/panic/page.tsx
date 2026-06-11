@@ -157,38 +157,41 @@ export default function MobilePanicPage() {
     async function verifySession() {
       const token = storeToken;
       if (!token) { router.push('/login?redirect=/panic'); return; }
+      // LIFE-SAFETY: role-gate the UI BEFORE showing the trigger grid. A user
+      // without authority who held for 3s would get a server 403 + misleading
+      // "Session expired" copy — dangerous during a real lockdown.
+      const gateOn = (user: typeof storeUser, why?: string) => {
+        setVerifiedUser(user);
+        setVerifiedToken(token);
+        if (!hasPanicAuthority(user)) { setPhase('unauthorized'); return; }
+        setPhase('idle');
+        announce('Emergency trigger panel ready. Press and hold any button for 3 seconds to broadcast.');
+      };
       try {
-        const res = await fetch(`${API_URL}/users`, { headers: { Authorization: `Bearer ${token}` } });
-        if (res.ok && storeUser) {
-          // LIFE-SAFETY (audit P0 #3): role gate the UI BEFORE showing
-          // the trigger grid. A CONTRIBUTOR who lands here would hold for
-          // 3s, get back a server 403, and see misleading "Session
-          // expired" copy — dangerous during a real lockdown.
-          if (!hasPanicAuthority(storeUser)) {
-            setVerifiedUser(storeUser);
-            setVerifiedToken(token);
-            setPhase('unauthorized');
-            return;
-          }
-          setVerifiedUser(storeUser);
-          setVerifiedToken(token);
-          setPhase('idle');
-          announce('Emergency trigger panel ready. Press and hold any button for 3 seconds to broadcast.');
+        // Validate the session against an endpoint EVERY authenticated role
+        // can reach. This was `/users` (the admin-only list) — so a
+        // CONTRIBUTOR with canTriggerPanic, exactly the delegated staff this
+        // page exists for, got a 403, fell through the ok-check (403 isn't
+        // res.ok and doesn't throw), and was bounced to /login, never able to
+        // reach the trigger grid (2026-06-09 Fable mobile audit, life-safety).
+        // /users/me also returns the LIVE role + canTriggerPanic, so the
+        // authority gate reflects the current DB row, not a stale JWT/store.
+        const res = await fetch(`${API_URL}/users/me`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) {
+          const me = await res.json().catch(() => null);
+          const liveUser = me && typeof me === 'object' ? { ...storeUser, ...me } : storeUser;
+          gateOn(liveUser);
           return;
         }
+        // 401 = token genuinely invalid/expired → must re-authenticate.
+        if (res.status === 401) { router.push('/login?redirect=/panic'); return; }
+        // Any other status (e.g. transient 5xx) on a token we hold: do NOT
+        // strand a valid session mid-emergency — gate on the cached user.
+        if (storeUser) { gateOn(storeUser); return; }
       } catch {
-        if (storeUser) {
-          if (!hasPanicAuthority(storeUser)) {
-            setVerifiedUser(storeUser);
-            setVerifiedToken(token);
-            setPhase('unauthorized');
-            return;
-          }
-          setVerifiedUser(storeUser);
-          setVerifiedToken(token);
-          setPhase('idle');
-          return;
-        }
+        // Network error (offline): a held token + cached user is enough to
+        // show the grid; the trigger itself is server-authoritative.
+        if (storeUser) { gateOn(storeUser); return; }
       }
       router.push('/login?redirect=/panic');
     }

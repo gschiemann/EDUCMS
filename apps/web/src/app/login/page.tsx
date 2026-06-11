@@ -91,9 +91,18 @@ function LoginContent() {
     // otherwise hard-redirect to their home dashboard.
     const userSlug = data.user.tenantSlug || data.user.tenantId;
     const homeUrl = `/${userSlug}/dashboard`;
+    // Known-safe GLOBAL routes: not tenant-slug-prefixed, but safe post-login
+    // destinations because they re-resolve the caller's own context (no
+    // cross-tenant data). EXACT match only — '/panic' is allowed, '/panic-x'
+    // or '/panic?next=//evil' are not — so the 2026-05-03 open-redirect /
+    // cross-tenant-bleed guard still holds. /panic is life-safety: re-login
+    // mid-emergency must land back on the trigger page, not the dashboard
+    // (2026-06-09 Fable mobile audit — login was dropping ?redirect=/panic).
+    const SAFE_GLOBAL_REDIRECTS = ['/panic'];
     const safeRedirect =
       redirectTarget &&
       (redirectTarget === '/' ||
+        SAFE_GLOBAL_REDIRECTS.includes(redirectTarget) ||
         redirectTarget.startsWith(`/${userSlug}/`) ||
         redirectTarget.startsWith(`/${userSlug}?`))
         ? redirectTarget
