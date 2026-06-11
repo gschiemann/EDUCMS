@@ -573,7 +573,16 @@ export class AiService {
       }
       raw = out.raw;
     } catch (err: any) {
-      if (err instanceof ServiceUnavailableException) throw err;
+      // Re-throw ANY intentional HttpException untouched — not just
+      // ServiceUnavailableException. The structured 402 out-of-credit
+      // envelope thrown above (code: AI_PROVIDER_OUT_OF_CREDIT) is a plain
+      // HttpException; the old `instanceof ServiceUnavailableException` guard
+      // let it fall through to the generic 503 below, so the AI-P0-1
+      // generate-time disambiguation was dead code (2026-06-09 Fable audit).
+      // ServiceUnavailableException/BadRequestException both extend
+      // HttpException, so every prior 503/400 path still surfaces; only raw
+      // network failures (plain Error from dispatchAi) become "unreachable".
+      if (err instanceof HttpException) throw err;
       this.logger.error(`AI dispatch failed: ${err?.message}`);
       throw new ServiceUnavailableException('AI service unreachable.');
     }
@@ -825,7 +834,11 @@ export class AiService {
       }
       raw = out.raw;
     } catch (err: any) {
-      if (err instanceof ServiceUnavailableException) throw err;
+      // Same fix as the content-generate path: re-throw ANY HttpException
+      // (incl. the structured 402 AI_PROVIDER_OUT_OF_CREDIT thrown above)
+      // instead of only ServiceUnavailableException, which downgraded it to
+      // the generic 503 here (2026-06-09 Fable audit — second dead-code site).
+      if (err instanceof HttpException) throw err;
       this.logger.error(`AI touch-template dispatch failed: ${err?.message}`);
       throw new ServiceUnavailableException('AI service unreachable.');
     }

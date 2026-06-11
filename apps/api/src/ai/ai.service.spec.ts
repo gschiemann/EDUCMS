@@ -203,4 +203,35 @@ describe('AiService — P1-14 Redis-backed rate limits', () => {
     // The monthly cap is unaffected by P1-14 — still Postgres-backed.
     expect(tenantsById.get('t1').aiPlatformUsageCount).toBe(1);
   });
+
+  // 2026-06-09 Fable pre-launch audit — regression pin for the AI-P0-1
+  // dead-code bug. The structured 402 out-of-credit envelope is thrown
+  // INSIDE the dispatch try, but the catch only re-threw
+  // ServiceUnavailableException, so the 402 was silently downgraded to a
+  // generic 503 "AI service unreachable" — an operator out of BYOK credit
+  // saw "outage" instead of "add credit", and the shipped AI-P0-1 fix was
+  // dead code. This pins that the 402 + code now propagates from generate().
+  // Pre-fix this test fails (503, message "unreachable", no code).
+  it('surfaces provider out-of-credit as a 402 AI_PROVIDER_OUT_OF_CREDIT, not a generic 503', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    // Anthropic out-of-credit signature: HTTP 400 + "credit balance is too low".
+    dispatchMock.mockResolvedValue({
+      raw: '',
+      errorStatus: 400,
+      errorBody:
+        '{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API"}',
+    });
+    const { service } = buildService(fake);
+
+    await expect(
+      service.generate({ tenantId: 't1', intent: 'announcement', context: 'spring sale' }),
+    ).rejects.toMatchObject({
+      status: 402,
+      response: expect.objectContaining({
+        code: 'AI_PROVIDER_OUT_OF_CREDIT',
+        provider: 'anthropic',
+      }),
+    });
+  });
 });
