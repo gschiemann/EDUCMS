@@ -77,3 +77,36 @@ export type {
   CtsSport,
   SerialSettings,
 } from './console-profiles';
+
+// ── 2026-06-11 real-wire decode layer (first-customer hardening) ─────
+// Shared channel-grid + configurable F872 water-polo extraction, the
+// REAL legacy-CTS framing (validated vs real captures), and the
+// Gen7/WA-2 RS-485 decoder for the WTTC (pending venue capture).
+export {
+  createGrid,
+  gridLine,
+  gridText,
+  extractWaterPolo,
+  resolveWaterPoloMap,
+  emptySnapshot,
+  F872_WATER_POLO_MAP,
+} from './grid';
+export type {
+  ChannelGrid,
+  ChannelLine,
+  DigitSlice,
+  EjectSlot,
+  WaterPoloChannelMap,
+} from './grid';
+export { ClassicCtsDecoder, encodeClassicLine, CLASSIC_SERIAL } from './classic';
+export {
+  Gen7Parser,
+  encodeGen7ModulePacket,
+  remapByte,
+  scrambleByte,
+  freshScramblerState,
+  GEN7_SERIAL,
+  GEN7_INIT_SEQUENCE,
+  GEN7_MAPPINGS,
+} from './gen7';
+export type { Gen7ParserOptions, ScramblerState } from './gen7';
