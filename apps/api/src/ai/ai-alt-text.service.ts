@@ -649,6 +649,20 @@ export class AiAltTextService {
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}` +
       `:generateContent`;
+    // 2026-06-09 Fable audit — Gemini 2.5 "thinking" handling. Mirror the
+    // content-generate fix in ai-providers.ts: the 2.5 family emits internal
+    // reasoning tokens that count against maxOutputTokens, so a flat 300-token
+    // budget gets fully consumed by thinking → finishReason=MAX_TOKENS, empty
+    // text, and alt-text silently returns null. This callsite was MISSED by
+    // the original 2.5 fix and was broken for the only live BYOK (Gemini)
+    // tenant. 2.5-flash → disable thinking; 2.5-pro (can't disable) → give a
+    // large budget so the caption survives; non-2.5 → untouched.
+    const genConfig: Record<string, any> = { maxOutputTokens: 300, temperature: 0.7 };
+    if (/^gemini-2\.5-flash/.test(model)) {
+      genConfig.thinkingConfig = { thinkingBudget: 0 };
+    } else if (/^gemini-2\.5/.test(model)) {
+      genConfig.maxOutputTokens = 8192;
+    }
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -666,7 +680,7 @@ export class AiAltTextService {
             ],
           },
         ],
-        generationConfig: { maxOutputTokens: 300, temperature: 0.7 },
+        generationConfig: genConfig,
       }),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
