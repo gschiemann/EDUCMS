@@ -131,6 +131,19 @@ export function AssetPicker({
           // the full reasoning. Without this, Supabase signed-URL
           // uploads default to `cache-control: no-cache` which forces
           // every player/browser to re-download on every fetch.
+          //
+          // 2026-06-09 Fable audit — this is INTENTIONALLY the full
+          // `public, …, immutable` string and NOT the bare `max-age=N`
+          // the SERVER uses (supabase-storage.service.ts:226). They differ
+          // because they hit different Supabase APIs: this browser path is
+          // a direct signed-URL PUT, which preserves the full string on the
+          // wire; the server path is a storage-js POST, which DROPS the full
+          // string (the 2026-05-30 regression — DB said immutable, wire said
+          // no-cache) and only honors bare `max-age=N`. Keep the full form
+          // here — `immutable` is strictly better (no revalidation 304 on a
+          // player reload, which matters across a screen fleet). Do NOT
+          // "unify" to bare without first moving the server to a signed-URL
+          // PUT, or you weaken fleet caching.
           'cache-control': 'public, max-age=31536000, immutable',
         },
         body: file,

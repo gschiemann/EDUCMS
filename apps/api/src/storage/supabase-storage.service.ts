@@ -348,11 +348,19 @@ export class SupabaseStorageService implements OnModuleInit {
   }
 
   /** Fetch the LIVE served Cache-Control header for a public object (used to
-   *  VERIFY a reset actually changed the wire header, not just the DB). */
+   *  VERIFY a reset actually changed the wire header, not just the DB).
+   *  2026-06-09 Fable audit: must use GET, not HEAD. Supabase/its CDN returns
+   *  `no-cache` on a HEAD for ALL objects (HEAD isn't cached the same way), so
+   *  a HEAD probe falsely reported every object as uncached. A ranged GET
+   *  (`bytes=0-0`) returns the REAL served Cache-Control + cf-cache-status
+   *  without downloading the whole object. */
   async servedCacheControl(filePath: string): Promise<{ cacheControl: string | null; cfCacheStatus: string | null; status: number }> {
     try {
       const { url } = this.supabaseConfig();
-      const res = await fetch(`${url}/storage/v1/object/public/${BUCKET}/${filePath}`, { method: 'HEAD' });
+      const res = await fetch(`${url}/storage/v1/object/public/${BUCKET}/${filePath}`, {
+        method: 'GET',
+        headers: { Range: 'bytes=0-0' },
+      });
       return {
         cacheControl: res.headers.get('cache-control'),
         cfCacheStatus: res.headers.get('cf-cache-status'),
