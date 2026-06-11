@@ -5017,7 +5017,7 @@ function PlayerPage() {
     // any parent transforms.
     return (
       <div
-        className="fixed bottom-40 left-4 right-4 mx-auto z-[9998] max-w-xl px-5 py-4 rounded-2xl bg-slate-900/95 text-white shadow-2xl border border-slate-700 backdrop-blur-md flex flex-wrap items-center justify-center gap-3"
+        className="fixed bottom-40 left-4 right-4 mx-auto z-[9998] max-w-xl px-5 py-4 rounded-2xl bg-slate-900/95 text-white shadow-2xl border border-slate-700 backdrop-blur-md flex flex-wrap items-center justify-center [&>*+*]:ml-3"
         role="status"
         aria-live="polite"
       >
@@ -5030,7 +5030,7 @@ function PlayerPage() {
             {connectivity.reason}{remainSec > 0 ? ` — retry in ${remainSec}s` : ' — retrying now'}
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex [&>*+*]:ml-2 shrink-0">
           <button
             onClick={() => {
               // Kick the resilient retry chain ahead of its timer.
@@ -5088,7 +5088,7 @@ function PlayerPage() {
   // reconnecting toast so they don't visually collide.
   const unsignedWsBanner = unsignedWsTokenWarning ? (
     <div
-      className="fixed bottom-6 right-6 z-[10001] max-w-md px-5 py-4 rounded-2xl bg-amber-500 text-amber-950 shadow-2xl border border-amber-300 flex items-start gap-3"
+      className="fixed bottom-6 right-6 z-[10001] max-w-md px-5 py-4 rounded-2xl bg-amber-500 text-amber-950 shadow-2xl border border-amber-300 flex items-start [&>*+*]:ml-3"
       role="alert"
       aria-live="assertive"
     >
@@ -7234,7 +7234,7 @@ function OtaProgressOverlay({
   // power-cycle it (BOOT_COMPLETED also triggers an OTA check).
   if (!bridgeAvailable) {
     return (
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10000] max-w-2xl px-6 py-4 rounded-2xl bg-amber-500 text-amber-950 shadow-2xl border border-amber-300 flex items-center gap-3">
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10000] max-w-2xl px-6 py-4 rounded-2xl bg-amber-500 text-amber-950 shadow-2xl border border-amber-300 flex items-center [&>*+*]:ml-3">
         <span className="text-2xl shrink-0">⚠️</span>
         <div className="flex-1 min-w-0">
           <div className="font-bold text-base">Update push received — but this kiosk needs an upgrade first</div>
@@ -7279,7 +7279,7 @@ function OtaProgressOverlay({
     : 'No version change after 5 minutes. The update will retry on next reboot, or sideload via ViPlex Express if it keeps failing.';
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10000] max-w-2xl px-6 py-4 rounded-2xl bg-indigo-600 text-white shadow-2xl border border-indigo-400/40 flex items-center gap-4">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10000] max-w-2xl px-6 py-4 rounded-2xl bg-indigo-600 text-white shadow-2xl border border-indigo-400/40 flex items-center [&>*+*]:ml-4">
       <span className="text-3xl shrink-0">{stageEmoji}</span>
       <div className="flex-1 min-w-0">
         <div className="font-bold text-base">{stageTitle}</div>
