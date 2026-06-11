@@ -109,10 +109,15 @@ function LogoStrip() {
   return (
     <div className="border-b border-slate-200 bg-[#fafbfc]">
       <div className="max-w-5xl mx-auto px-6 py-7 flex flex-wrap items-center justify-center gap-x-9 gap-y-3">
+        {/* Honest social proof: name the verticals VenueOS is built for, not
+            fabricated customers. The previous strip listed invented orgs
+            ("Lincoln USD", "Riverside Arena", …) under "Running on screens at"
+            — a false claim on a public marketing page (2026-06-09 Fable audit).
+            Swap to vertical categories until we have named, consented logos. */}
         <span className="text-[11px] font-semibold tracking-[0.12em] uppercase text-slate-400">
-          Running on screens at
+          Built for every screen in
         </span>
-        {['Lincoln USD', 'Riverside Arena', 'Northgate Market', 'Iron & Oak Fitness', 'Summit Hotels'].map(
+        {['K-12 Districts', 'Sports Venues', 'Restaurants & QSR', 'Fitness & Gyms', 'Hotels & Worship'].map(
           (d) => (
             <span key={d} className="text-sm font-semibold text-slate-400">
               {d}

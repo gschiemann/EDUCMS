@@ -160,8 +160,14 @@ export const CONSOLE_PROFILES: Record<ConsoleProfileId, ConsoleProfile> = {
     serial: { baudRate: 19200, dataBits: 8, stopBits: 1, parity: 'none' },
     transport: 'uart',
     defaultTty: '/dev/ttyS1',
-    status: 'stable',
-    notes: 'Enhanced RTD over RS-232 via the Port Expander.',
+    // 2026-06-09 Fable audit — honesty: the byte offsets (offsets.ts) are
+    // derived from third-party reverse-engineering tables with UNCERTAIN
+    // entries (playClock/possession) and have NOT been validated against a
+    // real All Sport 5000 RTD capture. 'provisional' until a captured RTD
+    // session confirms them (keep that capture as a test fixture, then
+    // promote to 'stable'). Same evidence bar the water-polo profile uses.
+    status: 'provisional',
+    notes: 'Enhanced RTD over RS-232 via the Port Expander. Byte offsets pending a real-hardware capture — playClock/possession fields unconfirmed.',
   },
 };
 

@@ -414,11 +414,15 @@ function LoginContent() {
               </div>
             )}
 
+            {/* Keep enabled when the EULA is unchecked (only `loading` disables)
+                so the handleLogin guard fires and surfaces the real "you must
+                accept the EULA" error on click/Enter. Previously disabled on
+                !eulaAccepted, which made that guard — and the Enter-key path —
+                silently dead for first-time users (2026-06-09 Fable audit). */}
             <button
               type="submit"
-              disabled={loading || !eulaAccepted}
+              disabled={loading}
               className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-              title={!eulaAccepted ? 'You must accept the EULA to sign in' : undefined}
             >
               {loading ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Signing in…</>

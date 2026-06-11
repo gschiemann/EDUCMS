@@ -55,11 +55,16 @@ describe('console-profiles registry', () => {
     expect(p.sports).toContain('water-polo');
   });
 
-  it('keeps Daktronics on the native UART', () => {
+  it('keeps Daktronics on the native UART, flagged provisional until a real-hardware capture', () => {
     const p = CONSOLE_PROFILES['daktronics-allsport'];
     expect(p.decoder).toBe('daktronics');
     expect(p.transport).toBe('uart');
     expect(p.defaultTty).toBe('/dev/ttyS1');
+    // 2026-06-09 Fable audit honesty pin: offsets are reverse-engineered +
+    // unvalidated (playClock/possession uncertain). Stays 'provisional' until
+    // a captured RTD session confirms them — do not flip to 'stable' without
+    // that fixture.
+    expect(p.status).toBe('provisional');
   });
 
   it('defaults to cts-gen6 so pre-existing installs are unchanged', () => {

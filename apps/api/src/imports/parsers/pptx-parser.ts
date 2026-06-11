@@ -325,6 +325,27 @@ function walkShapes(
 export async function parsePptx(buffer: Buffer): Promise<ParsedDocument> {
   const zip = await JSZip.loadAsync(buffer);
 
+  // 2026-06-09 Fable audit — decompression-bomb guard. MAX_BYTES (in the
+  // controller) caps the COMPRESSED upload (~50MB), but JSZip inflates slide
+  // XML + every media part unbounded below, so a crafted ~50MB archive can
+  // expand to GBs and OOM the shared API process. Sum the declared
+  // uncompressed sizes from the central directory and reject BEFORE any
+  // .async() decompression. (Catches the standard high-ratio bomb; a liar-zip
+  // that under-declares its sizes is a deeper attack — a per-part streaming
+  // cap is the follow-up. Import is ADMIN/CONTRIBUTOR-gated, not anonymous.)
+  // On throw the controller falls back to the legacy single-IMAGE template.
+  const MAX_UNCOMPRESSED_BYTES = 250 * 1024 * 1024; // 250MB inflated ceiling
+  let totalUncompressed = 0;
+  for (const f of Object.values(zip.files)) {
+    const sz = (f as any)?._data?.uncompressedSize;
+    if (typeof sz === 'number' && sz > 0) totalUncompressed += sz;
+    if (totalUncompressed > MAX_UNCOMPRESSED_BYTES) {
+      throw new Error(
+        `PPTX uncompressed size exceeds ${Math.round(MAX_UNCOMPRESSED_BYTES / (1024 * 1024))}MB (decompression-bomb guard)`,
+      );
+    }
+  }
+
   // 1. Slide dimensions from presentation.xml.
   let slideWEmu = DEFAULT_SLIDE_W_EMU;
   let slideHEmu = DEFAULT_SLIDE_H_EMU;
