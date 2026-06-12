@@ -1147,6 +1147,34 @@ function RunMode({
             {p.label}
           </button>
         ))}
+
+        {/* Penalty-box (exclusion) manager — open the box list to release a
+            player early (power-play goal), add, or clear. Gated to sports
+            that have a box (water polo / hockey / lacrosse). This was the
+            ONLY way to reach the box manager and it was never wired — the
+            onPenalties callback was passed in but never invoked, so the
+            release/list/misconduct controls were unreachable in Run mode.
+            2026-06-11 sports-venue audit P0. */}
+        {def.penaltyBox && (
+          <button
+            type="button"
+            title={`${def.penaltyBox.label} — add / release early / clear exclusions`}
+            onClick={onPenalties}
+            className={`ml-auto px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors shrink-0 flex items-center gap-1.5 ${
+              penaltyCount > 0
+                ? 'bg-amber-500 text-amber-950 hover:bg-amber-400'
+                : 'bg-white border border-slate-200 text-slate-500 hover:border-amber-400 hover:text-amber-700'
+            }`}
+          >
+            <span aria-hidden>⏱</span>
+            <span>{def.penaltyBox.label}</span>
+            {penaltyCount > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-amber-950 text-amber-50 text-[10px] tabular-nums">
+                {penaltyCount}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {/* T1-6 — Per-surface health pill row. Always visible regardless
@@ -2286,25 +2314,24 @@ function PlayerActionMenu({
     onClose();
   };
   const onPenalty = () => {
-    // Append a penalty to the game's stats.penalties array.
-    const currentStats = (ctl as any)._game?.stats || {};
-    const current = Array.isArray(currentStats.penalties) ? currentStats.penalties : [];
-    const pb = def.penaltyBox;
-    const sec = pb?.presets?.[0]?.sec || 20;
-    const next = [
-      ...current,
-      {
-        id: `pen-${Date.now()}`,
-        team: player.team === 'away' ? 'away' : 'home',
-        label: pb?.presets?.[0]?.label || `Penalty :${sec}`,
-        player: playerName,
-        number: player.number || '',
-        ms: sec * 1000,
-        running: true,
-        at: new Date().toISOString(),
-      },
-    ];
-    ctl.stats.mutate({ stats: { penalties: next } });
+    // Add a timed exclusion/penalty through the server's append-and-
+    // re-anchor endpoint (it reads the STORED box, prunes expired entries,
+    // then APPENDS). Previously broken: it read a phantom `ctl._game` (never
+    // set → always undefined), so `current` was always [] and it OVERWROTE
+    // stats.penalties with a single entry — wiping everyone already in the
+    // box. That broke THE water-polo exclusion mechanic (a 2nd exclusion
+    // erased the 1st). 2026-06-11 sports-venue audit P0.
+    const preset = def.penaltyBox?.presets?.[0];
+    const sec = preset?.sec || 20;
+    ctl.penalties.mutate({
+      action: 'add',
+      team: player.team === 'away' ? 'away' : 'home',
+      lenSec: sec,
+      label: preset?.label || `Penalty :${sec}`,
+      // Server stores the jersey/cap number (digits only); water-polo
+      // exclusions are tracked by cap #, which is what the box list shows.
+      player: String(player.number || ''),
+    });
     onClose();
   };
 
