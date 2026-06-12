@@ -487,6 +487,19 @@ export function CtsBridge({
   const portRef = useRef<SerialPortLite | null>(null);
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const disposedRef = useRef<boolean>(false);
+
+  // ── Web Serial auto-reconnect (2026-06-12, sports-venue audit P1) ──
+  // A kicked/replugged console cable used to kill the bridge until a
+  // human touched the kiosk: the 'disconnect' listener only set status,
+  // and the getPorts() auto-attach ran once on mount. After any
+  // UNEXPECTED drop we now poll getPorts() every 3s and reopen the
+  // re-granted port (replugging the same dongle needs no user gesture —
+  // the origin's grant persists). Operator-initiated Disconnect sets
+  // manualStopRef so the watcher never fights a human.
+  const manualStopRef = useRef(false);
+  const reconnectTimersRef = useRef<Map<number, ReturnType<typeof setInterval>>>(new Map());
+  const scheduleReconnectRef = useRef<(portIndex: 1 | 2, role: 'cts' | 'streamdeck' | 'aux' | 'off') => void>(() => {});
+  const [reconnectArmed, setReconnectArmed] = useState(false);
   const pendingSnapshotRef = useRef<CtsFullSnapshot | null>(null);
   const postTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPostAtRef = useRef<number>(0);
@@ -1298,15 +1311,56 @@ export function CtsBridge({
         try { await port.close(); } catch { /* ignore */ }
         if (portIndex === 1) portRef.current = null;
         else port2Ref.current = null;
-        if (!disposedRef.current) setStat('disconnected');
+        if (!disposedRef.current) {
+          setStat('disconnected');
+          scheduleReconnectRef.current(portIndex, role);
+        }
       } catch (e) {
         const msg = (e as Error).message;
         setError(msg);
         setStat('error');
+        if (!disposedRef.current) scheduleReconnectRef.current(portIndex, role);
       }
     },
     [runReadLoop, rs232_1Role],
   );
+
+  // Reconnect watcher body — defined after openAndRun (it reopens via it),
+  // published through scheduleReconnectRef so openAndRun's tail can call it.
+  const scheduleReconnect = useCallback(
+    (portIndex: 1 | 2, role: 'cts' | 'streamdeck' | 'aux' | 'off') => {
+      if (disposedRef.current || manualStopRef.current) return;
+      if (nativeMode || role === 'off') return; // native path has its own retry
+      const timers = reconnectTimersRef.current;
+      if (timers.has(portIndex)) return; // already watching this port
+      setReconnectArmed(true);
+      const t = setInterval(async () => {
+        if (disposedRef.current || manualStopRef.current) {
+          clearInterval(t);
+          timers.delete(portIndex);
+          if (timers.size === 0) setReconnectArmed(false);
+          return;
+        }
+        try {
+          const nav = navigator as unknown as SerialNavigatorLite;
+          const ports = (await nav.serial?.getPorts?.()) || [];
+          const port = ports[portIndex - 1] ?? ports[0];
+          if (!port) return; // still unplugged — keep polling
+          clearInterval(t);
+          timers.delete(portIndex);
+          if (timers.size === 0) setReconnectArmed(false);
+          // openAndRun's tail re-schedules if this open fails — so a
+          // half-seated plug keeps retrying at the same 3s cadence.
+          await openAndRun(port, portIndex, role);
+        } catch { /* keep polling */ }
+      }, 3000);
+      timers.set(portIndex, t);
+    },
+    [nativeMode, openAndRun],
+  );
+  useEffect(() => {
+    scheduleReconnectRef.current = scheduleReconnect;
+  }, [scheduleReconnect]);
 
   // On mount, try to reconnect to any previously-granted port. This
   // is the "game day morning" path — the operator paired the kiosk
@@ -1350,6 +1404,8 @@ export function CtsBridge({
   useEffect(() => {
     return () => {
       disposedRef.current = true;
+      for (const t of reconnectTimersRef.current.values()) clearInterval(t);
+      reconnectTimersRef.current.clear();
       if (postTimerRef.current) {
         clearTimeout(postTimerRef.current);
         postTimerRef.current = null;
@@ -1374,6 +1430,9 @@ export function CtsBridge({
       // (FTDI, Prolific, CH340) so we let the OS show all serial
       // devices. The operator picks the one labeled COMx that they
       // see in Device Manager.
+      manualStopRef.current = false; // operator re-engaged — re-arm auto-reconnect
+      const stale1 = reconnectTimersRef.current.get(1);
+      if (stale1) { clearInterval(stale1); reconnectTimersRef.current.delete(1); }
       const port = await nav.serial.requestPort();
       await openAndRun(port, 1, rs232_1Role);
     } catch (e) {
@@ -1397,6 +1456,9 @@ export function CtsBridge({
     const nav = navigator as unknown as SerialNavigatorLite;
     if (!nav.serial) return;
     try {
+      manualStopRef.current = false;
+      const stale2 = reconnectTimersRef.current.get(2);
+      if (stale2) { clearInterval(stale2); reconnectTimersRef.current.delete(2); }
       const port = await nav.serial.requestPort();
       await openAndRun(port, 2, rs232_2Role);
     } catch (e) {
@@ -1408,10 +1470,12 @@ export function CtsBridge({
 
   // Manual disconnect (operator click).
   const onDisconnect = useCallback(async () => {
+    manualStopRef.current = true; // operator intent — don't auto-reconnect
     try { readerRef.current?.cancel().catch(() => undefined); } catch { /* ignore */ }
     // The read loop will exit and `openAndRun` will close + null the port.
   }, []);
   const onDisconnect2 = useCallback(async () => {
+    manualStopRef.current = true;
     try { reader2Ref.current?.cancel().catch(() => undefined); } catch { /* ignore */ }
   }, []);
 
@@ -1515,7 +1579,10 @@ export function CtsBridge({
         <strong style={{ marginRight: 8 }}>
           {isDaktronics ? `Daktronics (${dakSport})` : 'CTS'} Bridge{nativeMode ? ' · ECBox' : ''}{gameId && feedToken ? ' · game' : ''}
         </strong>
-        <span style={{ opacity: 0.7 }}>P1:{rs232_1Role} {status}</span>
+        <span style={{ opacity: 0.7 }}>
+          P1:{rs232_1Role} {status}
+          {reconnectArmed ? ' · auto-reconnect armed' : ''}
+        </span>
       </div>
 
       {/* 2026-05-27 — EP6N port 2 status row. Only renders when the
