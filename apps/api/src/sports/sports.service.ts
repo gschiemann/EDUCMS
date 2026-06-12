@@ -2726,12 +2726,47 @@ export class SportsService {
     }
     if (hits.length === 0) return;
 
+    // Celebration mutex (2026-06-12, operator-reported double-fire): the
+    // designed scorer flow is "tap cue → pick player → fire (named
+    // cinematic) → tap +1 to record the score" — and the +1 then auto-fired
+    // a SECOND, unnamed GOAL cinematic for the same team. Suppress an AUTO
+    // fire when an OPERATOR-FIRED (non-auto) cue for the same team landed
+    // within the cinematic window — the named cue always wins; the auto
+    // path is the backstop for un-narrated scores, never a second show.
+    // Deliberately NOT mutexed: auto-after-auto. Two real goals seconds
+    // apart must BOTH celebrate (the ingest scoreChanged guard + the
+    // board's 6s event-id dedup already kill same-score refires).
+    const CELEBRATION_MUTEX_MS = 10_000;
+    const recentCues = await this.prisma.client.gameEvent.findMany({
+      where: {
+        gameId: id,
+        type: 'CUE',
+        createdAt: { gte: new Date(Date.now() - CELEBRATION_MUTEX_MS) },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 8,
+    });
+    const mutexedTeams = new Set<string>();
+    for (const ev of recentCues) {
+      const payload = ev.payload as { team?: unknown; auto?: unknown } | null;
+      if (payload?.auto === true) continue; // auto fires never mutex real scores
+      const evTeam = payload?.team;
+      if (evTeam === 'home' || evTeam === 'away') mutexedTeams.add(evTeam);
+    }
+    const firable = hits.filter((h) => !mutexedTeams.has(h.team));
+    if (firable.length < hits.length) {
+      this.logger.debug(
+        `auto-celebrate mutex: suppressed ${hits.length - firable.length} fire(s) for game ${id} (cue within ${CELEBRATION_MUTEX_MS}ms window)`,
+      );
+    }
+    if (firable.length === 0) return;
+
     // Audit-Fix 1: AuditLog attribution — 'feed' (machine ingest) or
     // 'manual' (dashboard quick-buttons / typo-fix). SUPER_ADMIN forensic
     // review can answer "which sponsor takeover fired off which path".
     const source: 'manual' | 'feed' = opts.source === 'manual' ? 'manual' : 'feed';
     const snapshot = this.cueSnapshot(next);
-    for (const h of hits) {
+    for (const h of firable) {
       const event = await this.record(id, 'CUE', {
         key: h.cue.key,
         label: h.cue.label,
@@ -3950,16 +3985,23 @@ export class SportsService {
     // doing it." (Greg's rule) — fire the same side-effect chain the
     // operator-path helpers run, scoped to what actually changed.
     //
-    // NOTE: ingestCtsSnapshot deliberately writes ONLY to stats.cts (the
-    // overlay namespace), never to the authoritative operator columns
-    // (clockMs, clockRunning, segment, homeScore, awayScore). That design
-    // is intentional — it allows operators to take over when CTS fails and
-    // prevents the CTS 5 Hz tick from clobbering a manual correction.
-    // The side effects below (GameEvents, celebrations, sync helpers) fire
-    // against the OPERATOR columns (game.*) so the helpers read the real
-    // game state, not the in-flight CTS snapshot. This is correct: the
-    // penalty box and shot clock are anchored to the operator clock columns,
-    // and syncing them to the CTS-reported running state keeps them aligned.
+    // NOTE — write-through contract (revised 2026-06-12, sports-venue audit
+    // P0): SCORE and SEGMENT now write THROUGH to the operator columns
+    // (homeScore/awayScore/segment) when the console reports a change,
+    // guarded by a 15s manual-override window (a recent operator SCORE
+    // event wins until the console's value next changes). Why the old
+    // overlay-only design was a game-night bug, twice over:
+    //   1. When the CTS feed dropped, the 5s render freshness window
+    //      expired and every public surface reverted to the operator
+    //      columns — which still said 0-0 from pre-game. The crowd saw the
+    //      wrong score within seconds of a serial hiccup.
+    //   2. AUTO celebrations compute deltas vs the operator columns; since
+    //      CTS never moved them, goal #2 arrived as delta=2 (no water-polo
+    //      cue matches) and auto-celebration silently died after goal #1.
+    // CLOCK columns (clockMs/clockRunning) intentionally REMAIN overlay-
+    // only: the 5 Hz tick stays out of the columns, and the penalty-box /
+    // shot-clock sync helpers below already consume the CTS-reported
+    // running state directly.
 
     // Prev scores come from OPERATOR columns, not from stats.cts, so the
     // delta math is consistent with adjustScore/setScore.
@@ -4044,9 +4086,41 @@ export class SportsService {
       if (synced) mergedStatsForWrite = { ...mergedStatsForWrite, ...synced, cts: nextCts };
     }
 
+    // 2026-06-12 P0 — score/segment write-through (see contract note above).
+    // Guard: a manual operator SCORE within the last 15s wins; the console
+    // re-asserts on its NEXT score change, so a typo-fix sticks until the
+    // real score moves again.
+    const columnWrites: Record<string, unknown> = {};
+    if (scoreChanged) {
+      let manualOverride = false;
+      try {
+        const lastScore = await this.prisma.client.gameEvent.findFirst({
+          where: {
+            gameId,
+            type: 'SCORE',
+            createdAt: { gte: new Date(Date.now() - 15_000) },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        const p = lastScore?.payload as { source?: unknown; team?: unknown } | null;
+        manualOverride = !!lastScore && p?.source !== 'cts' && p?.team !== 'cts';
+      } catch { /* guard is best-effort — write-through proceeds */ }
+      if (!manualOverride) {
+        if (cleaned.homeScore !== undefined) columnWrites.homeScore = cleaned.homeScore;
+        if (cleaned.awayScore !== undefined) columnWrites.awayScore = cleaned.awayScore;
+      } else {
+        this.logger.debug(
+          `cts write-through deferred for game ${gameId}: manual score within guard window`,
+        );
+      }
+    }
+    if (segmentChanged && cleaned.segment !== undefined) {
+      columnWrites.segment = cleaned.segment;
+    }
+
     await this.prisma.client.game.update({
       where: { id: gameId },
-      data: { stats: mergedStatsForWrite as any },
+      data: { stats: mergedStatsForWrite as any, ...columnWrites },
     });
     // Invalidate the board cache so the next /board/:id poll sees this
     // snapshot instantly. Without this the TTL would mask up to 1s of

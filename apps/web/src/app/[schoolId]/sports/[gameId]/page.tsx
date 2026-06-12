@@ -2386,19 +2386,39 @@ function PlayerActionMenu({
           {onAir ? '● ON AIR — Tap to clear spotlight' : '★ Spotlight on board + ribbon'}
         </button>
 
-        {/* Sport celebrations — fires with player attribution */}
+        {/* Sport celebrations — fires with player attribution. Scoring cues
+            (autoPoints) are ONE-TAP MACROS (2026-06-12): the tap fires the
+            named cinematic AND records the points — the operator no longer
+            fires a cue then separately taps +1 (which used to double-fire
+            the celebration; the server's 10s per-team mutex now suppresses
+            the score's auto-fire, so exactly one cinematic plays). */}
         <div className="grid grid-cols-2 gap-1.5 mb-2">
-          {def.celebrations.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              onClick={() => onFire(c.key)}
-              className="h-11 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <span>{c.emoji}</span>
-              <span>{c.label}</span>
-            </button>
-          ))}
+          {def.celebrations.map((c) => {
+            const pts =
+              Array.isArray(c.autoPoints) && c.autoPoints.length > 0 ? c.autoPoints[0] : 0;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => {
+                  onFire(c.key);
+                  if (pts > 0) {
+                    ctl.score.mutate({
+                      team: player.team === 'away' ? 'away' : 'home',
+                      delta: pts,
+                    });
+                  }
+                }}
+                className="h-11 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <span>{c.emoji}</span>
+                <span>
+                  {c.label}
+                  {pts > 0 ? ` +${pts}` : ''}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Penalty — sports with a penalty box only */}
