@@ -53,7 +53,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  CtsParser,
+  CtsWireParser,
   MockCtsFeed,
   REHEARSAL_SCRIPT,
   scriptGame,
@@ -437,7 +437,48 @@ export function CtsBridge({
   const [postCount, setPostCount] = useState<number>(0);
   const [postLastStatus, setPostLastStatus] = useState<string | null>(null);
 
-  const parserRef = useRef<CtsParser | null>(null);
+  const parserRef = useRef<CtsWireParser | null>(null);
+
+  // ── Capture mode (2026-06-12, WTTC bring-up deliverable) ──────────
+  // Records the RAW serial bytes (all roles, pre-decode) into a ring
+  // buffer the operator downloads as a .bin — the artifact that
+  // validates the Gen7/WA-2 decoder against the real console and
+  // promotes the profile from 'provisional'. Auto-arms with
+  // ?ctsCapture=1 so an install tech can start it from the URL alone.
+  const CAPTURE_CAP_BYTES = 1_048_576; // 1MB ≈ many minutes at 9600-115200 baud
+  const captureRef = useRef<number[] | null>(null);
+  const captureLenRef = useRef(0);
+  const [capturing, setCapturing] = useState<boolean>(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('ctsCapture') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [captureCount, setCaptureCount] = useState(0);
+  useEffect(() => {
+    if (capturing) {
+      if (!captureRef.current) captureRef.current = [];
+    }
+    // Stopping keeps the buffer so the operator can still download it.
+    const t = setInterval(() => setCaptureCount(captureLenRef.current), 1000);
+    return () => clearInterval(t);
+  }, [capturing]);
+  const onDownloadCapture = useCallback(() => {
+    const buf = captureRef.current;
+    if (!buf || buf.length === 0) return;
+    try {
+      const blob = new Blob([Uint8Array.from(buf)], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cts-capture-${Date.now()}.bin`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5_000);
+    } catch { /* download is operator-initiated; failure is visible */ }
+  }, []);
   // 2026-05-29 — Daktronics All Sport RTD parser. Only instantiated +
   // fed when the resolved profile is the Daktronics one; null on a CTS
   // install so the CTS path is untouched. Exactly one of the two
@@ -538,7 +579,7 @@ export function CtsBridge({
   }, []);
 
   // Initialize the parser for the selected console profile.
-  //   - CTS profile     → CtsParser (water polo seven-segment decoder)
+  //   - CTS profile     → CtsWireParser (real classic / Gen7-WA2 decode)
   //   - Daktronics      → DaktronicsParser (All Sport RTD buffer decoder)
   // Exactly one is live. Stream Deck line accumulators are profile-
   // independent (cue text is the same regardless of which scoreboard
@@ -548,7 +589,12 @@ export function CtsBridge({
       dakParserRef.current = new DaktronicsParser({ sport: dakSport });
       parserRef.current = null;
     } else {
-      parserRef.current = new CtsParser();
+      // 2026-06-12 real-wire cutover: CtsWireParser decodes the REAL
+      // framing (classic, validated vs real console captures; or the
+      // WTTC's Gen7/WA-2 RS-485 stream) per the profile's `wire` field.
+      // Same public API the old CtsParser exposed — feed/onUpdate/
+      // getState/reset/flush + the clock-cadence surface.
+      parserRef.current = new CtsWireParser({ wire: profile.wire ?? 'classic' });
       dakParserRef.current = null;
     }
     streamDeckLines1Ref.current = new LineAccumulator();
@@ -559,7 +605,7 @@ export function CtsBridge({
       streamDeckLines1Ref.current = null;
       streamDeckLines2Ref.current = null;
     };
-  }, [isDaktronics, dakSport]);
+  }, [isDaktronics, dakSport, profile.wire]);
 
   /**
    * 2026-05-27 — dispatch a Stream Deck command via the same
@@ -627,6 +673,14 @@ export function CtsBridge({
   const routeBytes = useCallback(
     (portIndex: 1 | 2, role: 'cts' | 'streamdeck' | 'aux' | 'off', bytes: Uint8Array) => {
       if (role === 'off' || bytes.length === 0) return;
+      // Capture tap — raw bytes, every role, BEFORE any decode. Ring-
+      // buffered so an hours-long bring-up can't grow unbounded.
+      const cap = captureRef.current;
+      if (cap) {
+        for (let i = 0; i < bytes.length; i++) cap.push(bytes[i]);
+        if (cap.length > CAPTURE_CAP_BYTES) cap.splice(0, cap.length - CAPTURE_CAP_BYTES);
+        captureLenRef.current = cap.length;
+      }
       if (role === 'cts') {
         // The 'cts' wiring role means "this port carries the scoreboard
         // console" — which console it actually is depends on the
@@ -1489,6 +1543,47 @@ export function CtsBridge({
           <span style={{ opacity: 0.7 }}>P2:{rs232_2Role} {status2}</span>
         </div>
       )}
+
+      {/* Capture mode — bring-up byte recorder (see refs above). */}
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+        <button
+          type="button"
+          onClick={() => setCapturing((c) => !c)}
+          style={{
+            background: capturing ? '#dc2626' : '#334155',
+            color: 'white',
+            border: 'none',
+            padding: '4px 10px',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontSize: 11,
+            marginRight: 6,
+          }}
+        >
+          {capturing ? '■ Stop capture' : '● Capture bytes'}
+        </button>
+        {captureCount > 0 && (
+          <button
+            type="button"
+            onClick={onDownloadCapture}
+            style={{
+              background: '#0e7490',
+              color: 'white',
+              border: 'none',
+              padding: '4px 10px',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontSize: 11,
+              marginRight: 6,
+            }}
+          >
+            ↓ Save .bin ({Math.round(captureCount / 1024)} KB)
+          </button>
+        )}
+        {capturing && captureCount === 0 && (
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>waiting for bytes…</span>
+        )}
+      </div>
 
       {/* Native mode: no buttons — auto-connect on mount + auto-
           reconnect on cable yank. Show the tty path so operators can

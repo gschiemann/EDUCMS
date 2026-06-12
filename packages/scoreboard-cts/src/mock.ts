@@ -12,12 +12,43 @@
  *      the operator can rehearse the show flow end-to-end.
  *
  * The mock emits the SAME bytes the real CTS console would put on the
- * wire, going through encodePacket() so the parser is exercised on
- * realistic input. Nothing here understands the parser's internals.
+ * wire. 2026-06-12 cutover: it now emits the REAL classic framing
+ * (encodeClassicLine — validated against real console captures) on the
+ * F872 water-polo channel layout, so the rehearsal exercises the exact
+ * decoder a real console exercises. The public API keeps the historic
+ * CTS_MODULE constants; pushModule() translates them to their F872
+ * (channel, offset) targets internally.
  */
 
 import { CTS_MODULE } from './types';
-import { encodePacket } from './parser';
+import { encodeClassicLine } from './classic';
+
+/** Old module constant → REAL F872 (channel, cell-offset) target.
+ *  Matches F872_WATER_POLO_MAP in grid.ts:
+ *    clock=ch1 · period=ch2[0] · shot=ch9 · score=ch5 (home[0-1],
+ *    away[2-3]) · ejects=ch4/3/11 (3 shared lines; side is venue-
+ *    configured, so home/away slot N land on the same line) ·
+ *    timeouts=ch12 (home) / ch6 (away).
+ *  HORN has no classic-wire channel (it was an invention of the old
+ *  synthetic framing) — horn pushes are dropped until a real capture
+ *  tells us how the console signals it. */
+const MODULE_TO_F872: Record<number, { channel: number; offset: number } | null> = {
+  [CTS_MODULE.GAME_CLOCK]: { channel: 1, offset: 0 },
+  [CTS_MODULE.PERIOD]: { channel: 2, offset: 0 },
+  [CTS_MODULE.HOME_SCORE]: { channel: 5, offset: 0 },
+  [CTS_MODULE.AWAY_SCORE]: { channel: 5, offset: 2 },
+  [CTS_MODULE.HOME_SHOT_CLOCK]: { channel: 9, offset: 0 },
+  [CTS_MODULE.AWAY_SHOT_CLOCK]: { channel: 9, offset: 0 },
+  [CTS_MODULE.HOME_EXCL_1]: { channel: 4, offset: 0 },
+  [CTS_MODULE.HOME_EXCL_2]: { channel: 3, offset: 0 },
+  [CTS_MODULE.HOME_EXCL_3]: { channel: 11, offset: 0 },
+  [CTS_MODULE.AWAY_EXCL_1]: { channel: 4, offset: 0 },
+  [CTS_MODULE.AWAY_EXCL_2]: { channel: 3, offset: 0 },
+  [CTS_MODULE.AWAY_EXCL_3]: { channel: 11, offset: 0 },
+  [CTS_MODULE.HOME_TIMEOUTS]: { channel: 12, offset: 0 },
+  [CTS_MODULE.AWAY_TIMEOUTS]: { channel: 6, offset: 0 },
+  [CTS_MODULE.HORN]: null,
+};
 
 /**
  * Low-level: push a Uint8Array of bytes through whatever consumer
@@ -33,9 +64,19 @@ export class MockCtsFeed {
     this.consumer(bytes);
   }
 
-  /** Convenience: encode + send one module packet. */
+  /** Convenience: encode + send one module write in REAL classic framing.
+   *  GAME_CLOCK inserts the display colon ("7:45") since the real wire
+   *  carries the colon as a character cell; decimal points can't ride the
+   *  classic wire, so sub-minute tenths are dropped (rehearsal-fidelity
+   *  trade documented in classic.ts). */
   pushModule(module: number, chars: string[]): void {
-    this.consumer(encodePacket(module, chars));
+    const target = MODULE_TO_F872[module];
+    if (!target) return; // HORN / unknown — no classic-wire equivalent
+    let text = chars.join('');
+    if (module === CTS_MODULE.GAME_CLOCK && chars.length >= 4) {
+      text = `${chars[0] ?? ' '}${chars[1] ?? ' '}:${chars[2] ?? ' '}${chars[3] ?? ' '}`;
+    }
+    this.consumer(encodeClassicLine(target.channel, text, target.offset));
   }
 
   /** Compose a full-state burst that initializes every relevant module. */

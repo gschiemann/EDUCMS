@@ -72,6 +72,12 @@ export interface ConsoleProfile {
   label: string;
   /** Which decoder package entry handles this console's bytes. */
   decoder: ConsoleDecoder;
+  /** CTS wire framing for decoder 'cts' (2026-06-12 real-wire cutover):
+   *  'classic' = legacy RS-232 (Gen 6 / System 6 / Gen 7's RS-232 jack —
+   *  validated against real console captures); 'gen7wa2' = the WTTC's
+   *  RS-485 Gen7/WA-2 stream (reference-parity, pending a venue capture).
+   *  Consumed by CtsWireParser; ignored for non-CTS decoders. */
+  wire?: 'classic' | 'gen7wa2';
   /** Default serial settings for this console family. */
   serial: SerialSettings;
   /** Physical read path (native UART vs USB-serial adapter). */
@@ -115,17 +121,19 @@ export const CONSOLE_PROFILES: Record<ConsoleProfileId, ConsoleProfile> = {
     id: 'cts-gen6',
     label: 'Colorado Time Systems (Gen 6 / System 6)',
     decoder: 'cts',
+    wire: 'classic',
     serial: { baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'even' },
     transport: 'uart',
     defaultTty: '/dev/ttyS1',
     sports: ['water-polo'],
     status: 'stable',
-    notes: 'Wired RS-232 (1/4" jack) into the box’s native UART.',
+    notes: 'Wired RS-232 (1/4" jack) into the box’s native UART. Decoder validated against real console captures (real-wire.test.ts).',
   },
   'cts-gen7': {
     id: 'cts-gen7',
     label: 'Colorado Time Systems (Gen 7 — RS-232 output)',
     decoder: 'cts',
+    wire: 'classic',
     // Gen 7 exposes TWO scoreboard outputs: RS-232 (the legacy "CTS"
     // protocol — what CtsParser decodes, identical bytes to Gen 6) and
     // RS-485 ("Gen7/WA-2" — a DIFFERENT protocol we do NOT decode yet).
@@ -137,21 +145,22 @@ export const CONSOLE_PROFILES: Record<ConsoleProfileId, ConsoleProfile> = {
     defaultTty: '/dev/ttyS1',
     sports: ['water-polo'],
     status: 'stable',
-    notes: 'Tap the Gen 7 RS-232 scoreboard output (legacy CTS protocol). Its RS-485 "Gen7/WA-2" output is a different protocol, not yet decoded.',
+    notes: 'Tap the Gen 7 RS-232 scoreboard output (legacy CTS protocol). For its RS-485 "Gen7/WA-2" output, pick the WTTC/Gen7-RS485 profile instead.',
   },
   'cts-wttc': {
     id: 'cts-wttc',
-    label: 'CTS Wireless Tabletop Controller (WTTC)',
+    label: 'CTS Wireless Tabletop (WTTC) — Gen7/WA-2 RS-485',
     decoder: 'cts',
-    // Starting point = CTS’s standard 9600/8/E/1. Confirm against a
-    // capture; override on-site with ?ctsBaud=/?ctsParity= if the WTTC
-    // SCBD/USB feed differs.
-    serial: { baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'even' },
+    wire: 'gen7wa2',
+    // Gen7/WA-2 RS-485 stream settings (from the open-source reference
+    // decoder): 115200 / 8 / NONE / 1 — NOT the legacy 9600/8/E/1.
+    // Override on-site with ?ctsBaud=/?ctsParity= if the capture differs.
+    serial: { baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none' },
     transport: 'usb-serial',
     defaultTty: '/dev/ttyUSB0',
     sports: ['water-polo'],
     status: 'provisional',
-    notes: 'USB-B → FTDI USB-serial (/dev/ttyUSB0). Byte format pending a real-hardware capture — see docs/research/2026-06-01-wttc-water-polo.',
+    notes: 'SCBD port (Conxall 3280-4PG-315) → FTDI USB-RS485-WE-1800-BT (pins 2=Data+, 3=Data−, 4=GND) → /dev/ttyUSB0. Gen7/WA-2 decoder is reference-parity but PENDING a real WTTC capture — run Capture mode at bring-up.',
   },
   'daktronics-allsport': {
     id: 'daktronics-allsport',

@@ -110,3 +110,5 @@ export {
   GEN7_MAPPINGS,
 } from './gen7';
 export type { Gen7ParserOptions, ScramblerState } from './gen7';
+export { CtsWireParser } from './wire';
+export type { CtsWireFormat, CtsWireParserOptions } from './wire';

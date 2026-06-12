@@ -94,8 +94,13 @@ export class ClassicCtsDecoder {
     }
     const nibble = b & 0x0f;
     const line = gridLine(this.grid, this.channel, 8);
-    line.chars[pos] = nibble === 0 && this.channel > 0 ? ' ' : String.fromCharCode(nibble ^ 63);
-    this.mutatedSinceEmit = true;
+    const ch = nibble === 0 && this.channel > 0 ? ' ' : String.fromCharCode(nibble ^ 63);
+    // Change-only mutation tracking — a console re-sending the same display
+    // image (idle refresh) must not churn extract/emit downstream.
+    if (line.chars[pos] !== ch) {
+      line.chars[pos] = ch;
+      this.mutatedSinceEmit = true;
+    }
   }
 }
 
@@ -103,12 +108,15 @@ export class ClassicCtsDecoder {
  * Encode one channel line in REAL classic framing — used by the emulator
  * / simulator so the practice stream is byte-identical to a real console.
  * Characters outside the encodable set ('0'-'9', ':', space) become blanks.
+ * `startPos` writes the text at an absolute cell offset within the line —
+ * needed for packed channels (e.g. F872 score line: home at 0, away at 2).
  */
-export function encodeClassicLine(channel: number, text: string): Uint8Array {
+export function encodeClassicLine(channel: number, text: string, startPos = 0): Uint8Array {
   const ch = channel & 0x1f;
   const control = 0x80 | (((ch ^ 0x1f) & 0x1f) << 1); // bit0=0 → readout
   const out: number[] = [control];
-  for (let pos = 0; pos < Math.min(text.length, 8); pos++) {
+  const max = Math.min(text.length, 8 - Math.max(0, startPos));
+  for (let pos = 0; pos < max; pos++) {
     const c = text[pos];
     let nibble: number;
     if (c === ' ') nibble = 0;
@@ -118,7 +126,7 @@ export function encodeClassicLine(channel: number, text: string): Uint8Array {
       // carried on this wire — blank them rather than corrupt the line.
       if (String.fromCharCode((nibble ^ 63) & 0x7f) !== c) nibble = 0;
     }
-    out.push(((pos & 0x07) << 4) | nibble);
+    out.push((((startPos + pos) & 0x07) << 4) | nibble);
   }
   return Uint8Array.from(out);
 }
