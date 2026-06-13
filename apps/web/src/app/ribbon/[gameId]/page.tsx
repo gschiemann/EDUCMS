@@ -501,6 +501,109 @@ function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>)
     return parts.length ? parts.join(SEP) : null;
   }
 
+  // ── Invasion sports — a tuned line per sport instead of a raw chip
+  //    dump. Each composes the broadcast-standard stats fans expect:
+  //    soccer shots + stoppage/added time, hockey shots + active power
+  //    play, lacrosse shots + ground balls, field hockey shots +
+  //    penalty corners. Cards / power-play state read from the same
+  //    Game.stats the console writes. ──
+  if (def.key === 'soccer') {
+    const parts: string[] = [];
+    const hs = num(stats.homeShots);
+    const as = num(stats.awayShots);
+    if (hs || as) parts.push(`SHOTS ${hs}-${as}`);
+    const added = num(stats.addedTime);
+    if (added > 0) parts.push(`+${added}' ADDED`);
+    // Cards only when at least one team has one — a 0-0 card line is noise.
+    const hCards = num(stats.homeRedCards) * 2 + num(stats.homeYellowCards);
+    const aCards = num(stats.awayRedCards) * 2 + num(stats.awayYellowCards);
+    if (num(stats.homeRedCards) || num(stats.awayRedCards)) {
+      parts.push(`RED ${num(stats.homeRedCards)}-${num(stats.awayRedCards)}`);
+    } else if (hCards || aCards) {
+      parts.push(`YC ${num(stats.homeYellowCards)}-${num(stats.awayYellowCards)}`);
+    }
+    return parts.length ? parts.join(SEP) : null;
+  }
+
+  if (def.key === 'hockey') {
+    const parts: string[] = [];
+    const hs = num(stats.homeShots);
+    const as = num(stats.awayShots);
+    if (hs || as) parts.push(`SHOTS ON GOAL ${hs}-${as}`);
+    // A team with active penalties → the other team is on the power play.
+    const hp = num(stats.homePenalties);
+    const ap = num(stats.awayPenalties);
+    if (hp > ap) parts.push('AWAY POWER PLAY');
+    else if (ap > hp) parts.push('HOME POWER PLAY');
+    else if (hp && ap) parts.push('4-ON-4');
+    return parts.length ? parts.join(SEP) : null;
+  }
+
+  if (def.key === 'lacrosse') {
+    const parts: string[] = [];
+    const hs = num(stats.homeShots);
+    const as = num(stats.awayShots);
+    if (hs || as) parts.push(`SHOTS ${hs}-${as}`);
+    const hg = num(stats.homeGroundBalls);
+    const ag = num(stats.awayGroundBalls);
+    if (hg || ag) parts.push(`GB ${hg}-${ag}`);
+    return parts.length ? parts.join(SEP) : null;
+  }
+
+  if (def.key === 'field_hockey') {
+    const parts: string[] = [];
+    const hs = num(stats.homeShots);
+    const as = num(stats.awayShots);
+    if (hs || as) parts.push(`SHOTS ${hs}-${as}`);
+    const hc = num(stats.homeCorners);
+    const ac = num(stats.awayCorners);
+    if (hc || ac) parts.push(`CORNERS ${hc}-${ac}`);
+    return parts.length ? parts.join(SEP) : null;
+  }
+
+  // ── Meet sports (LEADERBOARD) — real meet content, not a stat dump.
+  //    "NOW · {event}" for timed/judged meets; XC lead-runner + finisher
+  //    count; golf hole + vs-par. Uses ONLY the existing operator-entered
+  //    stats (currentEvent / currentApparatus / leadRunner / currentHole
+  //    / homePar / awayPar). The full per-event finish-place results model
+  //    is a deferred, separate feature — this is the live now-showing line. ──
+  if (def.mode === 'LEADERBOARD') {
+    const parts: string[] = [];
+    if (def.key === 'golf') {
+      const hole = num(stats.currentHole);
+      if (hole > 0) parts.push(`HOLE ${hole}`);
+      const hPar = String(stats.homePar || '').trim();
+      const aPar = String(stats.awayPar || '').trim();
+      if (hPar || aPar) {
+        parts.push(`HOME ${hPar || 'E'} / AWAY ${aPar || 'E'}`);
+      }
+      return parts.length ? parts.join(SEP) : null;
+    }
+    if (def.key === 'cross_country') {
+      const lead = String(stats.leadRunner || '').trim();
+      if (lead) parts.push(`${lead.toUpperCase()} LEADING`);
+      const fin = num(stats.finishers);
+      if (fin > 0) parts.push(`${fin} FINISHED`);
+      return parts.length ? parts.join(SEP) : null;
+    }
+    // Gymnastics rotates apparatus (Vault / Bars / Beam / Floor) rather
+    // than running named events. `currentApparatus` is the apparatus name.
+    if (def.key === 'gymnastics') {
+      const app = String(stats.currentApparatus || '').trim();
+      if (app) parts.push(`ON ${app.toUpperCase()}`);
+      return parts.length ? parts.join(SEP) : null;
+    }
+    if (def.key === 'competitive_cheer') {
+      const div = String(stats.division || '').trim();
+      if (div) parts.push(`DIVISION ${div.toUpperCase()}`);
+      return parts.length ? parts.join(SEP) : null;
+    }
+    // Track & field / swimming & diving — the currently-contested event.
+    const ev = String(stats.currentEvent || '').trim();
+    if (ev) parts.push(`NOW · ${ev.toUpperCase()}`);
+    return parts.length ? parts.join(SEP) : null;
+  }
+
   // Everything else — the SportDefinition stat chips that have a value.
   const chips = def.stats
     .map((s) => {

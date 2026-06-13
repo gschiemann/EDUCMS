@@ -148,7 +148,46 @@ export function segmentLabel(def: SportDefinition, data: BoardData): string {
   }
   if (def.segment.name === 'Quarter') return `Q${n}`;
   if (def.segment.name === 'Period') return `P${n}`;
+  // Meet-sport segments abbreviate too, so the scorebug center column
+  // matches the board/ribbon (R1 rotation, RD1 round) instead of a
+  // verbose "ROTATION 1" / "ROUND 1".
+  if (def.segment.name === 'Rotation') return `R${n}`;
+  if (def.segment.name === 'Round') return `RD${n}`;
   return `${def.segment.name.toUpperCase()} ${n}`;
+}
+
+/**
+ * The live meet context a LEADERBOARD sport surfaces below the segment
+ * label on the scorebug — the currently-contested event / apparatus /
+ * hole / division the operator has entered. Returns null when none is
+ * set (or for clock-based sports), so the center column simply shows
+ * the segment label as before. Reads ONLY existing operator-entered
+ * stats — the full per-event finish-place results model is a separate
+ * deferred feature.
+ */
+export function meetContextLabel(def: SportDefinition, data: BoardData): string | null {
+  if (def.clock.type !== 'none') return null;
+  const stats = data.stats || {};
+  const str = (k: string) => String(stats[k] || '').trim();
+  if (def.key === 'gymnastics') {
+    const app = str('currentApparatus');
+    return app ? app.toUpperCase() : null;
+  }
+  if (def.key === 'golf') {
+    const hole = Number(stats.currentHole);
+    return Number.isFinite(hole) && hole > 0 ? `HOLE ${hole}` : null;
+  }
+  if (def.key === 'cross_country') {
+    const lead = str('leadRunner');
+    return lead ? lead.toUpperCase() : null;
+  }
+  if (def.key === 'competitive_cheer') {
+    const div = str('division');
+    return div ? div.toUpperCase() : null;
+  }
+  // Track & field / swimming & diving — the currently-contested event.
+  const ev = str('currentEvent');
+  return ev ? ev.toUpperCase() : null;
 }
 
 /** Team code: explicit override → else first word, upper, ≤11 chars. */
@@ -402,6 +441,9 @@ export function ScorebugBug({
   const cueAbove = pos.v === 'bottom';
   const sit = view.stats || {};
   const showSit = hasSituational(def, sit);
+  // Meet sports (no clock) surface the live event/apparatus/hole context
+  // in the center column under the segment label.
+  const meetCtx = meetContextLabel(def, view);
 
   return (
     <>
@@ -495,15 +537,36 @@ export function ScorebugBug({
             )}
             <div
               style={{
-                fontSize: hasClock ? 14 : 30,
+                // When a meet sport has live event context to show, the
+                // segment label steps down so the event/apparatus line is
+                // the prominent datum (the board does the same).
+                fontSize: hasClock ? 14 : meetCtx ? 18 : 30,
                 fontWeight: 800,
                 letterSpacing: 2,
-                color: hasClock ? '#64748b' : '#e2e8f0',
+                color: hasClock ? '#64748b' : meetCtx ? '#94a3b8' : '#e2e8f0',
                 marginTop: hasClock ? 4 : 0,
               }}
             >
               {segmentLabel(def, view)}
             </div>
+            {meetCtx && (
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 900,
+                  letterSpacing: 1,
+                  color: '#fbbf24',
+                  marginTop: 3,
+                  maxWidth: 138,
+                  textAlign: 'center',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {meetCtx}
+              </div>
+            )}
           </div>
 
           <TeamBlock
