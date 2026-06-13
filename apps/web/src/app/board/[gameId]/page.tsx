@@ -184,15 +184,52 @@ function ordinal(n: number): string {
   return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
 }
 
+/** Low-score-wins sports: in cross country the team with the LOWEST point
+ *  total wins (fewest finish-position points), and in stroke-play golf the
+ *  fewest strokes wins. On those boards the leader is the team with the
+ *  SMALLER score, so the winner-highlight comparison must invert.
+ *  (The audit's preferred home for this is a `lowerWins` flag on
+ *  SportDefinition in packages/api-types; that file is owned by another
+ *  domain, so the board derives it from the sport key here — same effect,
+ *  in-scope.) */
+function isLowerWins(def: SportDefinition): boolean {
+  return def.key === 'cross_country' || def.key === 'golf';
+}
+
+/** Which side is currently leading — honoring low-score-wins sports.
+ *  Returns null on a tie or before the game has a meaningful score. */
+function leadingSide(def: SportDefinition, home: number, away: number): 'home' | 'away' | null {
+  if (home === away) return null;
+  const homeAhead = isLowerWins(def) ? home < away : home > away;
+  return homeAhead ? 'home' : 'away';
+}
+
 function segmentLabel(def: SportDefinition, data: BoardData): string {
   const n = data.segment;
-  if (n > def.segment.count) {
-    const ot = n - def.segment.count;
-    return ot > 1 ? `OT${ot}` : 'OT';
-  }
+  // Inning sports (baseball / softball) keep counting up past the
+  // regulation 7th/9th — extra innings are "10TH", NOT "OT". Decide by
+  // segment.name, BEFORE the overflow→OT check below (the config's own
+  // contract). This branch handles regulation AND extra innings.
   if (def.segment.name === 'Inning') {
     const half = String((data.stats || {}).half || '').toUpperCase();
     return `${half ? half + ' ' : ''}${ordinal(n)}`;
+  }
+  // Hole-based sports (golf) never roll into "OT" — clamp at the final
+  // hole and show "F" (finished) once the round is complete, the literal
+  // hole otherwise. (Shared overflow-label spec, hole-based branch.)
+  if (def.segment.name === 'Hole') {
+    if (n > def.segment.count) return 'F';
+    return `HOLE ${n}`;
+  }
+  if (n > def.segment.count) {
+    // Only period/quarter/half sports that declare overtime roll to OT.
+    if (def.segment.overtime) {
+      const ot = n - def.segment.count;
+      return ot > 1 ? `OT${ot}` : 'OT';
+    }
+    // A LEADERBOARD / non-overtime sport that somehow overflowed its
+    // segment count — show the literal segment, never a bogus "OT".
+    return `${def.segment.name.toUpperCase()} ${n}`;
   }
   return `${def.segment.name.toUpperCase()} ${n}`;
 }
@@ -635,17 +672,28 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
       }).catch(() => {}); // best-effort, never fail the board
     }
   }, [activeSlot, data.id]);
-  // Football possession — lights the 🏈 marker on the team panel.
-  const ballSide =
-    def.key === 'football'
-      ? (
-          typeof (data as any).possession === 'string' && (data as any).possession
-            ? (data as any).possession
-            : String((data.stats as Record<string, unknown> | undefined)?.possession || '')
-        )
-          .trim()
-          .toLowerCase()
-      : '';
+  // Possession — read Game.possession (first-class column) first; fall
+  // back to stats.possession for rows created before the migration. Used
+  // by football (lights the 🏈 marker on the team panel) AND basketball
+  // (the alternating-possession arrow in the center column, below).
+  const possessionSide = (
+    typeof (data as any).possession === 'string' && (data as any).possession
+      ? (data as any).possession
+      : String((data.stats as Record<string, unknown> | undefined)?.possession || '')
+  )
+    .trim()
+    .toLowerCase();
+  // Football lights the ball marker beside the leading team's name.
+  const ballSide = def.key === 'football' ? possessionSide : '';
+  // Basketball gets a persistent possession arrow in/near the center clock
+  // column — always on-screen, independent of the rotating footer.
+  const hoopsPoss =
+    def.key === 'basketball' && (possessionSide === 'home' || possessionSide === 'away')
+      ? (possessionSide as 'home' | 'away')
+      : null;
+
+  // Winner-highlight side — honors low-score-wins sports (XC / golf).
+  const lead = leadingSide(def, data.homeScore, data.awayScore);
 
   return (
     <div
@@ -713,7 +761,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           score={data.homeScore}
           color={homeColor}
           logoUrl={data.homeLogoUrl}
-          winning={data.homeScore > data.awayScore && data.status !== 'SCHEDULED'}
+          winning={lead === 'home' && data.status !== 'SCHEDULED'}
           hasPossession={ballSide === 'home'}
           penaltyNode={
             <PenaltyTimers
@@ -808,6 +856,37 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
               </span>
             </div>
           )}
+          {/* Basketball alternating-possession arrow — always on-screen in
+              the center column (mirrors the football 🏈 marker), pointing
+              toward whichever team has the ball. Reads stats.possession /
+              Game.possession, independent of the rotating footer. */}
+          {hoopsPoss && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                marginTop: 14,
+              }}
+            >
+              <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: 4, color: '#64748b' }}>
+                POSS
+              </span>
+              <span
+                aria-label={`${hoopsPoss === 'home' ? 'Home' : 'Away'} possession`}
+                style={{
+                  fontSize: 72,
+                  fontWeight: 900,
+                  lineHeight: 1,
+                  marginTop: 2,
+                  color: hoopsPoss === 'home' ? homeColor : awayColor,
+                  textShadow: `0 0 28px ${hoopsPoss === 'home' ? homeColor : awayColor}`,
+                }}
+              >
+                {hoopsPoss === 'home' ? '◀' : '▶'}
+              </span>
+            </div>
+          )}
           {def.key === 'football' && (
             <div
               style={{
@@ -849,7 +928,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           score={data.awayScore}
           color={awayColor}
           logoUrl={data.awayLogoUrl}
-          winning={data.awayScore > data.homeScore && data.status !== 'SCHEDULED'}
+          winning={lead === 'away' && data.status !== 'SCHEDULED'}
           hasPossession={ballSide === 'away'}
           penaltyNode={
             <PenaltyTimers
@@ -920,6 +999,436 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── meet / leaderboard scene (track, swim, XC, golf, gym, cheer) ───
+
+/** Pull a stat off the live game stats blob as a trimmed string. */
+function statStr(stats: Record<string, unknown> | undefined, key: string): string {
+  const v = (stats || {})[key];
+  return v === undefined || v === null ? '' : String(v).trim();
+}
+
+/** The meet's headline context line — the single most important live
+ *  datum the operator surfaces (current event / heat / hole / apparatus /
+ *  division). Falls back to the segment label so the banner is never
+ *  empty. Returns { eyebrow, headline }. */
+function meetContext(
+  def: SportDefinition,
+  data: BoardData,
+): { eyebrow: string; headline: string } {
+  const s = data.stats || {};
+  switch (def.key) {
+    case 'track_and_field':
+    case 'swimming_diving': {
+      const ev = statStr(s, 'currentEvent');
+      return { eyebrow: 'CURRENT EVENT', headline: ev || 'WARM-UPS' };
+    }
+    case 'cross_country': {
+      const lead = statStr(s, 'leadRunner');
+      return { eyebrow: 'RACE LEADER', headline: lead || 'RACE IN PROGRESS' };
+    }
+    case 'golf': {
+      const hole = statStr(s, 'currentHole');
+      const n = data.segment;
+      const holeLabel = hole
+        ? `HOLE ${hole}`
+        : n > def.segment.count
+          ? 'ROUND COMPLETE'
+          : `HOLE ${n}`;
+      return { eyebrow: 'NOW PLAYING', headline: holeLabel };
+    }
+    case 'gymnastics': {
+      const app = statStr(s, 'currentApparatus');
+      return { eyebrow: 'CURRENT ROTATION', headline: app || `ROTATION ${data.segment}` };
+    }
+    case 'competitive_cheer': {
+      const div = statStr(s, 'division');
+      return { eyebrow: 'DIVISION', headline: div || `ROUND ${data.segment}` };
+    }
+    default:
+      return { eyebrow: def.segment.name.toUpperCase(), headline: segmentLabel(def, data) };
+  }
+}
+
+/** A single team card in the meet's points tally. */
+function MeetTeamCard({
+  name,
+  score,
+  unit,
+  color,
+  logoUrl,
+  leading,
+  alignR,
+  context,
+}: {
+  name: string;
+  score: number;
+  unit: string;
+  color: string;
+  logoUrl: string | null;
+  leading: boolean;
+  alignR?: boolean;
+  context?: string;
+}) {
+  return (
+    <div
+      style={{
+        flex: 1,
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '0 48px',
+        background: `linear-gradient(${alignR ? '225deg' : '135deg'}, ${color}30, #0b0f1a 74%)`,
+        borderTop: `10px solid ${color}`,
+        position: 'relative',
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          width: 200,
+          height: 168,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            background: `radial-gradient(circle at 50% 48%, ${color}55, transparent 64%)`,
+          }}
+        />
+        {logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logoUrl}
+            alt=""
+            style={{
+              position: 'relative',
+              width: 168,
+              height: 168,
+              objectFit: 'contain',
+              filter: 'drop-shadow(0 8px 20px rgba(0,0,0,0.55))',
+            }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              position: 'relative',
+              width: 128,
+              height: 128,
+              borderRadius: '50%',
+              background: color,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 64,
+              fontWeight: 900,
+              color: '#fff',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            }}
+          >
+            {(name.trim()[0] || '?').toUpperCase()}
+          </div>
+        )}
+      </div>
+      <div
+        style={{
+          fontSize: 50,
+          fontWeight: 800,
+          letterSpacing: 1,
+          color: '#fff',
+          textAlign: 'center',
+          maxWidth: 640,
+          lineHeight: 1.05,
+          marginTop: 6,
+          textShadow: '0 4px 18px rgba(0,0,0,0.6)',
+        }}
+      >
+        {name}
+      </div>
+      <div
+        style={{
+          fontSize: 200,
+          fontWeight: 900,
+          color: '#fff',
+          lineHeight: 1,
+          marginTop: 4,
+          fontVariantNumeric: 'tabular-nums',
+          textShadow: leading ? `0 0 64px ${color}` : '0 8px 30px rgba(0,0,0,0.7)',
+        }}
+      >
+        {score}
+      </div>
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: 800,
+          letterSpacing: 4,
+          color: leading ? color : '#475569',
+          marginTop: 6,
+        }}
+      >
+        {leading ? 'LEADING' : unit.toUpperCase()}
+      </div>
+      {context ? (
+        <div
+          style={{
+            fontSize: 26,
+            fontWeight: 700,
+            letterSpacing: 1,
+            color: '#94a3b8',
+            marginTop: 12,
+            textAlign: 'center',
+            maxWidth: 640,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {context}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * LEADERBOARD board scene — the meet-sport render. Track / swim / cross
+ * country / golf / gymnastics / cheer are NOT head-to-head clock games,
+ * so the legacy BoardScene (which dropped a giant emoji where the clock
+ * would be) reads as broken. This scene instead promotes the live meet
+ * context (current event / heat / hole / apparatus / division) to a
+ * prominent banner, shows the team-points tally with a winner highlight
+ * (honoring low-score-wins XC / golf), and lists the per-side meet
+ * details that exist in the live game state (lead runner, finishers,
+ * vs-par, competitor counts).
+ *
+ * Per-athlete heat sheets / finish-place lists are a separate data-model
+ * buildout (deferred P2 — the Game state has no per-athlete rows yet);
+ * this is the highest-value version achievable from current live state.
+ *
+ * Chromium-83 safe: no inset shorthand / flex gap / backdrop-filter.
+ */
+function LeaderboardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
+  const status = STATUS_STYLE[data.status] || STATUS_STYLE.SCHEDULED;
+  const homeColor = data.homeColor || DEFAULT_HOME;
+  const awayColor = data.awayColor || DEFAULT_AWAY;
+  const { eyebrow, headline } = meetContext(def, data);
+  const lead = leadingSide(def, data.homeScore, data.awayScore);
+  const lowerWins = isLowerWins(def);
+
+  // Per-side meet detail line (right under each team's points), built from
+  // whatever live state the sport carries.
+  const sideDetail = (team: 'home' | 'away'): string => {
+    const s = data.stats || {};
+    if (def.key === 'golf') {
+      const par = statStr(s, team === 'home' ? 'homePar' : 'awayPar');
+      return par ? `${par} vs par` : '';
+    }
+    if (def.key === 'gymnastics' || def.key === 'track_and_field' || def.key === 'swimming_diving') {
+      const n = statStr(s, team === 'home' ? 'homeAthletes' : 'awayAthletes');
+      return n ? `${n} competing` : '';
+    }
+    if (def.key === 'competitive_cheer') {
+      return statStr(s, team === 'home' ? 'homeRoutine' : 'awayRoutine');
+    }
+    return '';
+  };
+
+  // A meet sub-line beneath the headline — e.g. XC finishers count, the
+  // round/rotation number, or the segment for context.
+  const subLine = (): string => {
+    const s = data.stats || {};
+    if (def.key === 'cross_country') {
+      const fin = statStr(s, 'finishers');
+      return fin ? `${fin} FINISHED` : 'RACE IN PROGRESS';
+    }
+    if (def.key === 'gymnastics') return `ROTATION ${data.segment} OF ${def.segment.count}`;
+    if (def.key === 'competitive_cheer') return `ROUND ${data.segment}`;
+    if (def.key === 'golf') return lowerWins ? 'LOW SCORE LEADS' : '';
+    return '';
+  };
+  const sub = subLine();
+
+  return (
+    <div
+      style={{
+        width: 1920,
+        height: 1080,
+        background: 'radial-gradient(ellipse at 50% 0%, #131a2e, #05070d 75%)',
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        color: '#fff',
+        overflow: 'hidden',
+      }}
+    >
+      {/* header strip — sport + status */}
+      <div
+        style={{
+          height: 92,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 44px',
+          background: '#05070d',
+          borderBottom: '2px solid #1e2638',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', fontSize: 40, fontWeight: 800, letterSpacing: 1 }}>
+          <span style={{ fontSize: 48, marginRight: 16 }}>{def.emoji}</span>
+          {def.name.toUpperCase()}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: status.bg,
+            padding: '12px 28px',
+            borderRadius: 999,
+            fontSize: 30,
+            fontWeight: 900,
+            letterSpacing: 3,
+            animation: status.pulse ? 'venuePulse 1.6s ease-in-out infinite' : undefined,
+          }}
+        >
+          {status.pulse && (
+            <span
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: 999,
+                background: '#fff',
+                marginRight: 14,
+                display: 'inline-block',
+              }}
+            />
+          )}
+          {status.label}
+        </div>
+      </div>
+
+      {/* meet-context banner — the headline live datum (event / hole /
+          apparatus / division), where a clock would sit on a timed sport */}
+      <div
+        style={{
+          minHeight: 196,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px 44px',
+          background: 'linear-gradient(180deg, #0b1226, #05070d)',
+          borderBottom: '2px solid #1e2638',
+        }}
+      >
+        <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: 8, color: '#818cf8' }}>
+          {eyebrow}
+        </div>
+        <div
+          style={{
+            fontSize: 96,
+            fontWeight: 900,
+            lineHeight: 1.05,
+            marginTop: 8,
+            color: '#fbbf24',
+            textShadow: '0 0 50px rgba(251,191,36,0.4)',
+            textAlign: 'center',
+            maxWidth: 1700,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {headline}
+        </div>
+        {sub ? (
+          <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: 4, color: '#64748b', marginTop: 10 }}>
+            {sub}
+          </div>
+        ) : null}
+      </div>
+
+      {/* team-points tally — two cards + a center divider */}
+      <div style={{ flex: 1, display: 'flex', position: 'relative' }}>
+        <MeetTeamCard
+          name={data.homeTeam}
+          score={data.homeScore}
+          unit={def.score.unit}
+          color={homeColor}
+          logoUrl={data.homeLogoUrl}
+          leading={lead === 'home' && data.status !== 'SCHEDULED'}
+          context={sideDetail('home')}
+        />
+        <div
+          style={{
+            width: 220,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#05070d',
+          }}
+        >
+          <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: 4, color: '#334155' }}>VS</div>
+          <div
+            style={{
+              fontSize: 22,
+              fontWeight: 700,
+              letterSpacing: 3,
+              color: '#475569',
+              marginTop: 18,
+              textAlign: 'center',
+            }}
+          >
+            {def.score.unit.toUpperCase()}
+          </div>
+        </div>
+        <MeetTeamCard
+          name={data.awayTeam}
+          score={data.awayScore}
+          unit={def.score.unit}
+          color={awayColor}
+          logoUrl={data.awayLogoUrl}
+          leading={lead === 'away' && data.status !== 'SCHEDULED'}
+          alignR
+          context={sideDetail('away')}
+        />
+      </div>
+
+      {/* broadcast spotlight — featured athlete (same as head-to-head) */}
+      {data.spotlight && data.spotlight.visible && data.spotlight.title ? (
+        <SpotlightBand spot={data.spotlight} expanded />
+      ) : (
+        <div
+          style={{
+            height: 64,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#05070d',
+            borderTop: '2px solid #1e2638',
+          }}
+        >
+          <span style={{ fontSize: 24, fontWeight: 800, letterSpacing: 5, color: '#475569' }}>
+            VENUEOS
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -2563,6 +3072,12 @@ export default function ScoreboardPage() {
   const isPreGame = status === 'PRE_GAME' || status === 'SCHEDULED';
   const isHalftime = status === 'HALFTIME';
   const isFinal = status === 'FINAL';
+  // Meet sports (track / swim / XC / golf / gymnastics / cheer) are NOT
+  // head-to-head clock games — gated on the config's own `mode`, never a
+  // hardcoded key list — so the LIVE (and any unexpected status) render
+  // uses the dedicated LeaderboardScene instead of the head-to-head clock
+  // shell that dropped a giant emoji where the clock would sit.
+  const isLeaderboard = def.mode === 'LEADERBOARD';
 
   return (
     <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -2578,14 +3093,23 @@ export default function ScoreboardPage() {
           transformOrigin: 'center center',
         }}
       >
-        {isLive && <BoardScene data={view} def={def} />}
+        {isLive &&
+          (isLeaderboard ? (
+            <LeaderboardScene data={view} def={def} />
+          ) : (
+            <BoardScene data={view} def={def} />
+          ))}
         {isPreGame && <PreGameScene data={view} def={def} />}
         {isHalftime && <HalftimeScene data={view} def={def} />}
         {isFinal && <FinalScene data={view} def={def} />}
-        {/* Fallback for any unexpected status — use the live board */}
-        {!isLive && !isPreGame && !isHalftime && !isFinal && (
-          <BoardScene data={view} def={def} />
-        )}
+        {/* Fallback for any unexpected status — use the live board (the
+            meet board for LEADERBOARD sports). */}
+        {!isLive && !isPreGame && !isHalftime && !isFinal &&
+          (isLeaderboard ? (
+            <LeaderboardScene data={view} def={def} />
+          ) : (
+            <BoardScene data={view} def={def} />
+          ))}
         {activeCue && (
           <CueOverlay
             cue={activeCue}

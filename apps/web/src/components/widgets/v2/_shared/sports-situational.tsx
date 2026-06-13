@@ -117,10 +117,9 @@ export function hasSituational(def: SportDefinition, stats: Record<string, unkno
   }
   // Basketball — timeout pips are always meaningful.
   if (def.key === 'basketball') return true;
-  // Rally sports show a serve indicator when a server is set.
-  if ((def.key === 'volleyball' || def.key === 'pickleball') && String(stats.serving || '').trim()) {
-    return true;
-  }
+  // Rally sports — the match set/game count is always worth showing, plus
+  // the serve indicator when a server is set.
+  if (def.key === 'volleyball' || def.key === 'pickleball') return true;
   // Everything else — only if at least one SportDefinition stat has a value.
   return def.stats.some((s) => {
     const raw = stats[s.key];
@@ -243,15 +242,35 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
         <TeamSit to={num(stats.awayTimeouts)} b={bonus(num(stats.awayFouls))} alignR />
       </>
     );
-  } else if (
-    (def.key === 'volleyball' || def.key === 'pickleball') &&
-    String(stats.serving || '').trim()
-  ) {
-    // ── Rally sports — serve indicator ──
+  } else if (def.key === 'volleyball' || def.key === 'pickleball') {
+    // ── Rally sports — match set/game count + serve indicator ──
+    // The MATCH story (e.g. SETS 2–1) belongs on every surface, not just
+    // the current-set points. Volleyball stores sets won in homeSets/
+    // awaySets; pickleball in homeGames/awayGames. Always show the match
+    // count; add the serve glyph + serving team when one is set. (The
+    // old branch was gated on `serving` being set, which suppressed the
+    // set count entirely when no serve was recorded.)
+    const wonKey = def.key === 'pickleball' ? 'Games' : 'Sets';
+    const homeWon = num(stats[`home${wonKey}`]);
+    const awayWon = num(stats[`away${wonKey}`]);
+    const serveSide = String(stats.serving || '').trim();
+    // Pickleball gets its own glyph (🥒) — def.emoji is sport-aware, so a
+    // bogus volleyball ball never shows on a pickleball board.
+    const serveGlyph = def.emoji || '🏐';
     content = (
-      <span style={{ fontSize: px(h, 0.06), fontWeight: 900, color: accent, letterSpacing: 1 }}>
-        🏐 SERVING — {String(stats.serving).trim().toUpperCase()}
-      </span>
+      <>
+        <span style={{ fontSize: px(h, 0.055), fontWeight: 900, color: ink, letterSpacing: 2 }}>
+          {wonKey.toUpperCase()}{' '}
+          <strong style={{ color: accent, fontVariantNumeric: 'tabular-nums' }}>
+            {homeWon}&ndash;{awayWon}
+          </strong>
+        </span>
+        {serveSide && (
+          <span style={{ fontSize: px(h, 0.06), fontWeight: 900, color: accent, letterSpacing: 1 }}>
+            {serveGlyph} SERVING &mdash; {serveSide.toUpperCase()}
+          </span>
+        )}
+      </>
     );
   } else {
     // ── Everything else — clean stat chips ──
