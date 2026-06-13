@@ -1178,6 +1178,157 @@ describe('T1-1 — ingestCtsSnapshot() unified side effects', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Task A — AUTO celebration fires on EVERY CTS goal (not just the first).
+//
+// Regression lock for commit 01ee1637's CTS score write-through: because
+// ingestCtsSnapshot now writes the console's score THROUGH to the operator
+// homeScore/awayScore columns, the next snapshot's `prevScores` (read from
+// those columns) is accurate, so maybeAutoCelebrate sees a +1 delta on each
+// goal — and water polo's `goal` celebration (autoPoints:[1]) auto-fires
+// every time, not only on goal #1.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Task A — CTS AUTO celebration fires on every goal', () => {
+  // Auto CUE payloads produced by the CTS ingest path.
+  const autoCues = (gameEvent: any) =>
+    gameEvent.rows
+      .filter((r: any) => r.type === 'CUE' && r.payload?.auto === true)
+      .map((r: any) => r.payload);
+
+  it('fires an AUTO goal CUE for EACH water-polo goal across 0-0 → 1-0 → 2-0 → 2-1', async () => {
+    const { service, game, gameEvent } = setup();
+    const g: any = await newGame(service, 'water_polo'); // 0-0, autoPoints goal:[1]
+
+    // Drive the live CTS feed goal-by-goal. Each call is one console
+    // snapshot; the write-through keeps game.homeScore/awayScore in sync so
+    // the next snapshot's delta is a clean +1.
+    await service.ingestCtsSnapshot(g.id, { homeScore: 1, awayScore: 0 }, {}); // 0-0 → 1-0
+    await service.ingestCtsSnapshot(g.id, { homeScore: 2, awayScore: 0 }, {}); // 1-0 → 2-0
+    await service.ingestCtsSnapshot(g.id, { homeScore: 2, awayScore: 1 }, {}); // 2-0 → 2-1
+
+    // The operator columns tracked the console (write-through), proving the
+    // prevScores delta math stayed correct goal over goal.
+    expect(game.rows[0].homeScore).toBe(2);
+    expect(game.rows[0].awayScore).toBe(1);
+
+    // THREE goals → THREE auto-fired goal celebrations (NOT just the first).
+    const fired = autoCues(gameEvent);
+    expect(fired).toHaveLength(3);
+    expect(fired.every((c: any) => c.key === 'goal')).toBe(true);
+    // Two home goals, one away goal — each themed to the scoring side.
+    expect(fired.filter((c: any) => c.team === 'home')).toHaveLength(2);
+    expect(fired.filter((c: any) => c.team === 'away')).toHaveLength(1);
+  });
+
+  it('also fires every goal for soccer (goal autoPoints:[1]) across three +1 snapshots', async () => {
+    const { service, game, gameEvent } = setup();
+    const g: any = await newGame(service, 'soccer');
+
+    await service.ingestCtsSnapshot(g.id, { homeScore: 1, awayScore: 0 }, {});
+    await service.ingestCtsSnapshot(g.id, { homeScore: 1, awayScore: 1 }, {});
+    await service.ingestCtsSnapshot(g.id, { homeScore: 2, awayScore: 1 }, {});
+
+    expect(game.rows[0].homeScore).toBe(2);
+    expect(game.rows[0].awayScore).toBe(1);
+    const fired = autoCues(gameEvent);
+    expect(fired).toHaveLength(3);
+    expect(fired.every((c: any) => c.key === 'goal')).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task D — /cts-cue-fired fabrication + replay guards (recordCueFired).
+//
+// The endpoint is PUBLIC + tokenless (the only legit caller is the ribbon
+// render surface, which has no feed token), and it drives the sponsor
+// proof-of-play report. recordCueFired must:
+//   (a) DROP a fabricated / unknown cueId (kills made-up-id inflation);
+//   (b) DEDUP a replayed (cueId, team) within the client cooldown;
+//   (c) still record a legitimate distinct cue.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Task D — recordCueFired fabrication + replay guards', () => {
+  const ctsCues = (gameEvent: any) =>
+    gameEvent.rows.filter((r: any) => r.type === 'CTS_CUE').map((r: any) => r.payload);
+
+  it('does NOT record a fabricated / unknown cueId', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'water_polo');
+
+    await service.recordCueFired(g.id, {
+      cueId: 'GOLAZO_FAKE_INFLATE', // not a real cue for this game
+      team: 'home',
+      source: 'auto',
+    });
+
+    expect(ctsCues(gameEvent)).toHaveLength(0);
+  });
+
+  it('records a legitimate cinematic catalog cue, then DEDUPS the immediate replay', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'water_polo');
+
+    // First fire of a real cinematic cue (the GOLAZO scenario) — recorded.
+    await service.recordCueFired(g.id, {
+      cueId: 'CEL_SOCCER_GOLAZO',
+      team: 'home',
+      source: 'auto',
+    });
+    expect(ctsCues(gameEvent)).toHaveLength(1);
+
+    // A replay flood of the SAME (cueId, team) within the cooldown — dropped.
+    await service.recordCueFired(g.id, { cueId: 'CEL_SOCCER_GOLAZO', team: 'home', source: 'auto' });
+    await service.recordCueFired(g.id, { cueId: 'CEL_SOCCER_GOLAZO', team: 'home', source: 'auto' });
+    expect(ctsCues(gameEvent)).toHaveLength(1); // still just the one
+  });
+
+  it('records a legitimate DISTINCT cue (different team / different cue) — not deduped', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'water_polo');
+
+    await service.recordCueFired(g.id, { cueId: 'CEL_SOCCER_GOAL', team: 'home', source: 'auto' });
+    // Same cue, DIFFERENT team → distinct → recorded.
+    await service.recordCueFired(g.id, { cueId: 'CEL_SOCCER_GOAL', team: 'away', source: 'auto' });
+    // DIFFERENT cue, same team → distinct → recorded.
+    await service.recordCueFired(g.id, { cueId: 'CEL_HOCKEY_GOAL', team: 'home', source: 'auto' });
+
+    const fired = ctsCues(gameEvent);
+    expect(fired).toHaveLength(3);
+  });
+
+  it('accepts a sport-specific celebration key (goal) as a known cue', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'water_polo'); // celebrations include 'goal'
+
+    await service.recordCueFired(g.id, { cueId: 'goal', team: 'home', source: 'manual' });
+    expect(ctsCues(gameEvent)).toHaveLength(1);
+
+    // But a celebration key from a DIFFERENT sport is not a real cue here.
+    await service.recordCueFired(g.id, { cueId: 'touchdown', team: 'home', source: 'manual' });
+    expect(ctsCues(gameEvent)).toHaveLength(1); // touchdown dropped (not a water-polo cue)
+  });
+
+  it('accepts an operator custom cue (custom:<id>) scoped to the game tenant', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'water_polo');
+    const cc: any = await service.createCue(TENANT, { name: 'Pool Supply Takeover' });
+
+    await service.recordCueFired(g.id, { cueId: `custom:${cc.id}`, team: 'home', source: 'manual' });
+    expect(ctsCues(gameEvent)).toHaveLength(1);
+
+    // A made-up custom id that isn't in the tenant's cue deck is dropped.
+    await service.recordCueFired(g.id, { cueId: 'custom:does-not-exist', team: 'home', source: 'manual' });
+    expect(ctsCues(gameEvent)).toHaveLength(1);
+  });
+
+  it('no-ops on a non-existent game id (never writes an orphan row)', async () => {
+    const { service, gameEvent } = setup();
+    await service.recordCueFired('no-such-game', { cueId: 'CEL_SOCCER_GOAL', team: 'home', source: 'auto' });
+    expect(ctsCues(gameEvent)).toHaveLength(0);
+  });
+});
+
 // ── callTimeout ─────────────────────────────────────────────────
 
 describe('SportsService — callTimeout', () => {

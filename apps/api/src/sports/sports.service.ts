@@ -60,6 +60,48 @@ type ClockAction = 'start' | 'pause' | 'set' | 'reset';
 const GAME_STATUSES = ['SCHEDULED', 'PRE_GAME', 'LIVE', 'HALFTIME', 'FINAL'];
 const CUE_FEED_WINDOW_MS = 20_000;
 
+// ── CTS cue-fired audit — fabrication / inflation guards (Task D) ──
+//
+// /sports/board/:id/cts-cue-fired is intentionally PUBLIC and tokenless:
+// the ONLY legitimate caller is the public ribbon render surface
+// (apps/web/.../CtsRibbonWidgets.tsx `auditCueFire`), which resolves the
+// gameId from the board URL and POSTs with no feed token. Because the
+// endpoint feeds the sponsor proof-of-play report, an attacker who knows a
+// public board game id could otherwise POST forged cue-fired events to
+// inflate sponsor impression counts. We can't gate on the feed token
+// without 401-ing the real caller, so we instead:
+//   (a) VALIDATE the incoming cueId against the game's KNOWN cue set
+//       (cinematic catalog ∪ sport celebration keys ∪ the game's custom
+//       cues) — an unknown id is silently dropped, killing fabricated-id
+//       inflation;
+//   (b) DEDUP a given (cueId, team) within the client cooldown window so a
+//       replay flood of one valid cue can't run the count up.
+//
+// CTS_CINEMATIC_CUE_IDS mirrors CUE_CATALOG in CtsRibbonWidgets.tsx — the
+// fixed library of cinematic scene ids the orchestrator round-robins
+// through (the dominant legitimate cueId namespace, e.g. CEL_SOCCER_GOLAZO
+// fired in front of a sponsor banner). Keep this list in sync when a new
+// CEL_* scene is added to the client catalog. Sport-specific celebration
+// keys (goal/touchdown/…) and operator custom cues are resolved per-game
+// at validation time, so only the catalog needs mirroring here.
+const CTS_CINEMATIC_CUE_IDS: ReadonlySet<string> = new Set<string>([
+  'CEL_SOCCER_GOAL', 'CEL_SOCCER_GOLAZO', 'CEL_SOCCER_FREEKICK', 'CEL_SOCCER_HATTRICK',
+  'CEL_HOCKEY_GOAL', 'CEL_HOCKEY_HATTRICK', 'CEL_HOCKEY_POWERPLAY', 'CEL_HOCKEY_EMPTYNET',
+  'CEL_SC_GOAL_RETRO', 'CEL_SC_GOAL_NEON', 'CEL_HK_GOAL_NEON', 'CEL_HK_GOAL_RETRO',
+  'CEL_LX_GOAL', 'CEL_LX_BEHINDTHEBACK',
+  'CEL_FOOTBALL_TOUCHDOWN', 'CEL_FOOTBALL_FIELDGOAL', 'CEL_BASKETBALL_BUZZER',
+  'CEL_BASKETBALL_THREE', 'CEL_BASKETBALL_DUNK',
+]);
+// Control cues the orchestrator / console can legitimately fire that are
+// neither cinematic scenes nor per-sport celebration keys.
+const CTS_CONTROL_CUE_IDS: ReadonlySet<string> = new Set<string>([
+  'pregame-intro', 'horn',
+]);
+// Server-side mirror of the client CUE_COOLDOWN_MS (CtsRibbonWidgets.tsx):
+// a given (cueId, team) is recorded at most once per this window so a
+// replay flood of the same valid cue can't inflate proof-of-play counts.
+const CTS_CUE_DEDUP_MS = 2_000;
+
 @Injectable()
 export class SportsService {
   private readonly logger = new Logger(SportsService.name);
@@ -3716,12 +3758,59 @@ export class SportsService {
     },
   ): Promise<void> {
     // Confirm the game exists (cheap select) so we don't write orphan
-    // GameEvent rows pointing at deleted / non-existent games.
+    // GameEvent rows pointing at deleted / non-existent games. Pull `sport`
+    // + `tenantId` too so we can validate the cueId against the game's
+    // KNOWN cue set (Task D — fabrication guard).
     const game = await this.prisma.client.game.findUnique({
       where: { id },
-      select: { id: true, homeScore: true, awayScore: true },
+      select: { id: true, tenantId: true, sport: true, homeScore: true, awayScore: true },
     });
     if (!game) return;
+
+    // (a) FABRICATION GUARD — only record a cueId that is a REAL cue for
+    // this game. Silently drop anything else so an attacker who POSTs a
+    // forged "GOLAZO_FAKE" (or any made-up id) to a public board url can't
+    // inflate the sponsor proof-of-play report. The legit tokenless caller
+    // (the ribbon orchestrator) only ever sends catalog ids, so this never
+    // 401s / rejects a real fire — it just no-ops invalid ones.
+    const known = await this.isKnownCue(game.tenantId, game.sport, dto.cueId);
+    if (!known) {
+      this.logger.debug(
+        `cts-cue-fired dropped unknown cueId "${String(dto.cueId).slice(0, 64)}" for game ${id}`,
+      );
+      return;
+    }
+
+    // (b) DEDUP GUARD — record a given (cueId, team) at most once per the
+    // client cooldown window. A replay flood that re-POSTs the same valid
+    // (cueId, team) can't run the proof-of-play count up; two genuinely
+    // distinct fires (different cue OR different team) still both record,
+    // and a re-fire after the cooldown elapses records again (matches the
+    // ribbon's own per-fire cadence). Best-effort — a read failure here
+    // falls through to recording, never blocks a legit cue.
+    try {
+      const since = new Date(Date.now() - CTS_CUE_DEDUP_MS);
+      // Scan a small recent window for an exact (cueId, team) match within
+      // the cooldown. take:8 caps the read on the hot path.
+      const recent = await this.prisma.client.gameEvent.findMany({
+        where: { gameId: id, type: 'CTS_CUE', createdAt: { gte: since } },
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+      });
+      const isReplay = recent.some((ev) => {
+        const p = ev.payload as { cueId?: unknown; team?: unknown } | null;
+        return p?.cueId === dto.cueId && p?.team === dto.team;
+      });
+      if (isReplay) {
+        this.logger.debug(
+          `cts-cue-fired deduped replay of (${dto.cueId}, ${dto.team}) for game ${id}`,
+        );
+        return;
+      }
+    } catch {
+      /* dedup is best-effort — fall through and record */
+    }
+
     await this.prisma.client.gameEvent.create({
       data: {
         gameId: id,
@@ -3735,6 +3824,52 @@ export class SportsService {
         },
       },
     });
+  }
+
+  /**
+   * Is `cueId` a REAL cue for this game? (Task D — fabrication guard.)
+   *
+   * The legitimate cueId namespace for the tokenless cts-cue-fired
+   * endpoint is the union of:
+   *   - the cinematic scene catalog (CTS_CINEMATIC_CUE_IDS) — what the
+   *     ribbon orchestrator round-robins through (the dominant caller);
+   *   - the sport's configured celebration keys (goal/touchdown/…), which
+   *     the Celebrations panel / Stream Deck path can fire;
+   *   - the game's tenant-scoped operator custom cues (`custom:<id>` or a
+   *     bare `<id>`);
+   *   - a small set of control cues (horn / pregame-intro).
+   * Anything outside that set is treated as fabricated and dropped.
+   *
+   * Best-effort: a DB read failure resolving custom cues falls back to the
+   * static (catalog ∪ sport-celebration ∪ control) allow-set rather than
+   * blocking a real fire.
+   */
+  private async isKnownCue(
+    tenantId: string,
+    sport: string,
+    cueId: unknown,
+  ): Promise<boolean> {
+    if (typeof cueId !== 'string' || !cueId) return false;
+    if (CTS_CINEMATIC_CUE_IDS.has(cueId)) return true;
+    if (CTS_CONTROL_CUE_IDS.has(cueId)) return true;
+    // Sport-specific celebration keys (goal, touchdown, threePointer, …).
+    const def = findSport(sport);
+    if (def && def.celebrations.some((c) => c.key === cueId)) return true;
+    // Operator custom cues, addressed as `custom:<id>` (fireCue's payload
+    // key) or a bare custom-cue id. Tenant-scoped lookup.
+    const customId = cueId.startsWith('custom:') ? cueId.slice('custom:'.length) : cueId;
+    if (customId) {
+      try {
+        const cc = await this.prisma.client.customCue.findFirst({
+          where: { id: customId, tenantId },
+          select: { id: true },
+        });
+        if (cc) return true;
+      } catch {
+        /* fall through — static allow-set already checked above */
+      }
+    }
+    return false;
   }
 
   // ── CTS snapshot ingest ──────────────────────────────────────
