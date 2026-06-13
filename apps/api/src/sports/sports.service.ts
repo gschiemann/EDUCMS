@@ -94,6 +94,9 @@ const CTS_CINEMATIC_CUE_IDS: ReadonlySet<string> = new Set<string>([
   // 2026-06-13 every-sport fix wave — baseball + pickleball cinematic scenes.
   'CEL_BASEBALL_HOMERUN', 'CEL_BASEBALL_GRANDSLAM', 'CEL_BASEBALL_STRIKEOUT', 'CEL_BASEBALL_DOUBLEPLAY',
   'CEL_PICKLEBALL_ACE', 'CEL_PICKLEBALL_WINNER', 'CEL_PICKLEBALL_GAMEWIN',
+  // 2026-06-13 P2 parity wave — lacrosse save + meet-sport (track / swim / golf) cinematics.
+  'CEL_LX_SAVE', 'CEL_TF_FIRSTPLACE', 'CEL_TF_RECORD', 'CEL_TF_PERSONALBEST',
+  'CEL_SW_FIRSTPLACE', 'CEL_SW_RECORD', 'CEL_GOLF_HOLEINONE', 'CEL_GOLF_EAGLE', 'CEL_GOLF_BIRDIE',
 ]);
 // Control cues the orchestrator / console can legitimately fire that are
 // neither cinematic scenes nor per-sport celebration keys.

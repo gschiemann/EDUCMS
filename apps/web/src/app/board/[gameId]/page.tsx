@@ -596,16 +596,35 @@ function LineScoreBox({
   def: SportDefinition;
   withRHE: boolean;
 }) {
-  const entries = readLineScore(data.stats);
-  if (entries.length === 0) return null;
+  const snaps = readLineScore(data.stats);
+  if (snaps.length === 0) return null;
 
-  // Column headers: 1..N segments. Show at least the regulation count so the
-  // grid reads like a real linescore even early in the game.
-  const maxSeg = Math.max(def.segment.count, ...entries.map((e) => e.segment));
+  // stats.lineScore stores CUMULATIVE totals at each completed-segment
+  // boundary (see sports.service.ts computeLineScore). Build the full
+  // cumulative-by-segment map, fold in the IN-PROGRESS segment from the
+  // live score, then DIFFERENCE consecutive cumulatives to get each
+  // segment's own value (runs this inning / points this quarter). The
+  // R / total column is the live score — never a sum of snapshots.
+  const cumBySeg = new Map<number, { home: number; away: number }>();
+  for (const e of snaps) cumBySeg.set(e.segment, { home: e.home, away: e.away });
+  const curSeg = Math.max(1, Math.round(Number(data.segment) || 1));
+  if (!cumBySeg.has(curSeg)) {
+    cumBySeg.set(curSeg, { home: Math.max(0, data.homeScore), away: Math.max(0, data.awayScore) });
+  }
+  const maxSeg = Math.max(def.segment.count, ...cumBySeg.keys());
   const segNums = Array.from({ length: maxSeg }, (_, i) => i + 1);
-  const bySeg = new Map(entries.map((e) => [e.segment, e]));
-  const homeTotal = entries.reduce((s, e) => s + e.home, 0);
-  const awayTotal = entries.reduce((s, e) => s + e.away, 0);
+  const bySeg = new Map<number, LineScoreEntry>();
+  let runH = 0;
+  let runA = 0;
+  for (let n = 1; n <= maxSeg; n++) {
+    const c = cumBySeg.get(n);
+    if (!c) continue; // unplayed segment → blank cell
+    bySeg.set(n, { segment: n, home: Math.max(0, c.home - runH), away: Math.max(0, c.away - runA) });
+    runH = c.home;
+    runA = c.away;
+  }
+  const homeTotal = Math.max(0, data.homeScore);
+  const awayTotal = Math.max(0, data.awayScore);
   const segAbbr = def.segment.name === 'Inning' ? '' : def.segment.name.charAt(0).toUpperCase();
 
   const cell = (txt: string, opts?: { head?: boolean; bold?: boolean; color?: string }): ReactNode => (
