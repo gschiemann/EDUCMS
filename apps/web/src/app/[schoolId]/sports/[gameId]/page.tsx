@@ -1122,7 +1122,19 @@ function RunMode({
   const showInlineLaunchpad = view === 'show';
   const showSurfacePreviews = view === 'show';
   const showPaSpotlight   = view === 'pa';
-  const showBottomTray    = showClockControls && (isBaseballSoftball || def.key === 'football');
+  // Sports whose live tray carries a per-player counter / one-tap macro.
+  const isBasketball      = def.key === 'basketball';
+  const isWaterPolo       = def.key === 'water_polo';
+  // The judged per-apparatus / per-routine sports — these get an
+  // event = apparatus / round variant of the meet results grid where the
+  // "mark" is a decimal judged score (Vault 9.850, Routine 285.5).
+  const isJudgedResults   = def.key === 'gymnastics' || def.key === 'competitive_cheer';
+  // LEADERBOARD sports (track / swim / cross-country / golf) + the judged
+  // sports all use the meet-results grid (finish order or apparatus scores).
+  const showResultsGrid   = (def.mode === 'LEADERBOARD' || isJudgedResults) && view !== 'pa';
+  const showBottomTray    =
+    showClockControls &&
+    (isBaseballSoftball || def.key === 'football' || isBasketball || isWaterPolo);
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -1217,6 +1229,19 @@ function RunMode({
                 ctl={ctl}
               />
             )}
+            {/* Meet results / per-apparatus grid. Leaderboard sports have
+                no team-tile scoring worth touching during a meet — finish
+                order IS the scoreboard — so the operator records places
+                + marks here. Gymnastics / cheer use the same grid in a
+                per-apparatus mode (event = apparatus, mark = judged score). */}
+            {showResultsGrid && (
+              <MeetResultsSection
+                g={g}
+                def={def}
+                ctl={ctl}
+                judged={isJudgedResults}
+              />
+            )}
             {showRibbonPreview && <RunRibbonPreview gameId={gameId} />}
           </div>
 
@@ -1238,11 +1263,24 @@ function RunMode({
             {showBottomTray && (
               <div className="flex flex-wrap items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
                 {isBaseballSoftball && (
-                  <BaseTrayBall
-                    stats={stats}
-                    onStat={(s) => ctl.stats.mutate({ stats: s })}
-                    onAdvanceHalf={() => advanceBaseballHalf(def, g, ctl)}
-                  />
+                  <>
+                    <BaseTrayBall
+                      stats={stats}
+                      onStat={(s) => ctl.stats.mutate({ stats: s })}
+                      onAdvanceHalf={() => advanceBaseballHalf(def, g, ctl)}
+                    />
+                    {/* One-tap home-run macro — picks runs (1-4), applies the
+                        score delta to the batting team AND fires the matching
+                        cinematic (home run / grand slam). Solves the ambiguous
+                        +1/+2/+3 delta that can't auto-celebrate. */}
+                    <HomeRunMacro g={g} def={def} ctl={ctl} stats={stats} />
+                  </>
+                )}
+                {isBasketball && (
+                  <PlayerFoulStepper gameId={gameId} g={g} ctl={ctl} stats={stats} />
+                )}
+                {isWaterPolo && (
+                  <PlayerExclusionStepper gameId={gameId} g={g} ctl={ctl} stats={stats} />
                 )}
                 {def.key === 'football' && (
                   <>
@@ -4093,6 +4131,761 @@ function BaseTrayBall({
         <span>{isBottom ? 'Bot ▼' : 'Top ▲'}</span>
       </button>
     </>
+  );
+}
+
+// ── HomeRunMacro ───────────────────────────────────────────────
+// One-tap home-run macro for baseball / softball. The ambiguous +1/+2/
+// +3 run delta can't auto-fire a celebration (a 2-run single looks the
+// same as a 2-run homer), so we make the homer EXPLICIT: tap HR → pick
+// how many runs scored (1-4) → it applies the score delta to the batting
+// team AND fires the matching cinematic (CEL_BASEBALL_HOMERUN, or the
+// grand-slam scene for 4). Batting team is derived from the inning half
+// (Top = away bats, Bottom = home bats).
+//
+// The cue fires through the same `key` path the Presentation cue tiles
+// use — `homeRun` / `grandSlam` are the sport's celebration keys, and
+// the board / ribbon map them to the baseball cinematics. (Softball's
+// def spreads BASEBALL so the same keys resolve to its 🥎 variants.)
+function HomeRunMacro({
+  g,
+  def,
+  ctl,
+  stats,
+}: {
+  g: any;
+  def: SportDefinition;
+  ctl: ReturnType<typeof useGameControl>;
+  stats: Record<string, unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [fired, setFired] = useState(false);
+  const firedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (firedTimer.current) clearTimeout(firedTimer.current); }, []);
+
+  // Top half → away team bats; Bottom half → home team bats.
+  const half = String(stats.half || 'Top').toUpperCase();
+  const battingTeam: 'home' | 'away' =
+    half === 'BOT' || half === 'BOTTOM' ? 'home' : 'away';
+  const battingName = battingTeam === 'home' ? g.homeTeam : g.awayTeam;
+
+  const fire = (runs: number) => {
+    // Score delta first — the runs that crossed on the swing.
+    ctl.score.mutate({ team: battingTeam, delta: runs });
+    // Then the cinematic. 4 runs = grand slam; otherwise a home run.
+    // `homeRun` / `grandSlam` are the sport's celebration keys — softball
+    // spreads BASEBALL so both resolve to its 🥎 variants — and the board /
+    // ribbon map them to the baseball cinematics.
+    ctl.cue.mutate({ key: runs >= 4 ? 'grandSlam' : 'homeRun', target: 'ALL' });
+    setOpen(false);
+    setFired(true);
+    if (firedTimer.current) clearTimeout(firedTimer.current);
+    firedTimer.current = setTimeout(() => setFired(false), 1600);
+  };
+
+  const RUNS: { n: number; label: string; sub: string }[] = [
+    { n: 1, label: 'Solo', sub: '+1' },
+    { n: 2, label: '2-run', sub: '+2' },
+    { n: 3, label: '3-run', sub: '+3' },
+    { n: 4, label: 'Grand Slam', sub: '+4' },
+  ];
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title={`Home run for ${battingName} — pick the runs that scored, fires the cinematic`}
+        aria-expanded={open}
+        className={`h-14 px-4 rounded-xl font-black text-base transition-colors flex flex-col items-center justify-center ${
+          fired
+            ? 'bg-green-600 text-white'
+            : 'bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 hover:from-amber-300 hover:to-amber-400'
+        }`}
+      >
+        <span className="text-[9px] font-black tracking-widest opacity-80">
+          {fired ? 'FIRED' : battingTeam === 'home' ? 'HOME BATS' : 'AWAY BATS'}
+        </span>
+        <span className="flex items-center gap-1">
+          <span aria-hidden>{def.key === 'softball' ? '🥎' : '⚾'}</span>
+          {fired ? 'Home Run!' : 'HR'}
+        </span>
+      </button>
+
+      {open && (
+        <>
+          {/* click-away backdrop */}
+          <div className="fixed top-0 right-0 bottom-0 left-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl">
+            <p className="px-1 pb-1.5 text-[11px] font-bold text-slate-500">
+              Runs scored on the homer — <span className="text-slate-800">{battingName}</span> bats
+            </p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {RUNS.map((r) => (
+                <button
+                  key={r.n}
+                  type="button"
+                  onClick={() => fire(r.n)}
+                  className={`rounded-lg border px-2 py-2 text-left transition-colors ${
+                    r.n >= 4
+                      ? 'border-amber-300 bg-amber-50 hover:bg-amber-100'
+                      : 'border-slate-200 hover:border-indigo-300 hover:bg-indigo-50'
+                  }`}
+                >
+                  <span className="block text-sm font-black text-slate-800">{r.label}</span>
+                  <span className="block text-[11px] font-semibold text-slate-400">{r.sub} runs</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── PlayerFoulStepper ──────────────────────────────────────────
+// Basketball per-player foul tracker. Writes stats.playerFouls (the
+// shared structured key) so the board can surface foul-trouble.
+// 5 fouls = fouled out (HS); we badge the player red at 4 (one away)
+// and grey-out + label OUT at 5. Reuses the roster for name/jersey so
+// the operator taps a name instead of typing. Falls back to a manual
+// jersey add when the roster is empty.
+type PlayerFoulRow = { team: 'home' | 'away'; jersey: number; name?: string; fouls: number };
+
+function PlayerFoulStepper({
+  gameId,
+  g,
+  ctl,
+  stats,
+}: {
+  gameId: string;
+  g: any;
+  ctl: ReturnType<typeof useGameControl>;
+  stats: Record<string, unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const roster = useGameRoster(gameId);
+  const players: any[] = Array.isArray(roster.data) ? roster.data : [];
+
+  const rows: PlayerFoulRow[] = Array.isArray(stats.playerFouls)
+    ? (stats.playerFouls as any[]).filter(
+        (r) => r && (r.team === 'home' || r.team === 'away'),
+      )
+    : [];
+
+  const writeRows = (next: PlayerFoulRow[]) =>
+    ctl.stats.mutate({ stats: { playerFouls: next } });
+
+  const setFouls = (team: 'home' | 'away', jersey: number, name: string | undefined, fouls: number) => {
+    const clamped = Math.max(0, Math.min(9, fouls));
+    const idx = rows.findIndex((r) => r.team === team && r.jersey === jersey);
+    let next: PlayerFoulRow[];
+    if (idx >= 0) {
+      next = rows.map((r, i) => (i === idx ? { ...r, fouls: clamped, name: name ?? r.name } : r));
+    } else {
+      next = [...rows, { team, jersey, name, fouls: clamped }];
+    }
+    // Drop zero-foul rows that aren't pinned by a name so the list stays tidy.
+    writeRows(next.filter((r) => r.fouls > 0 || r.name));
+  };
+
+  const totalFlagged = rows.filter((r) => r.fouls >= 4).length;
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title="Per-player fouls — 5 = fouled out"
+        className={`h-14 px-3 rounded-xl font-black text-sm transition-colors flex flex-col items-center justify-center border ${
+          totalFlagged > 0
+            ? 'bg-amber-500 border-amber-600 text-amber-950 hover:bg-amber-400'
+            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+        }`}
+      >
+        <span className="text-[9px] font-black tracking-widest text-slate-400">FOULS</span>
+        <span className="flex items-center gap-1">
+          Players
+          {totalFlagged > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-amber-950 text-amber-50 text-[10px] tabular-nums">
+              {totalFlagged}
+            </span>
+          )}
+        </span>
+      </button>
+
+      {open && (
+        <PlayerCounterPopover
+          title="Player fouls"
+          subtitle="5 = fouled out (HS). Tap a name to add a foul."
+          onClose={() => setOpen(false)}
+          homeTeam={g.homeTeam}
+          awayTeam={g.awayTeam}
+          players={players}
+          rows={rows.map((r) => ({ team: r.team, jersey: r.jersey, name: r.name, count: r.fouls }))}
+          max={5}
+          outLabel="FOULED OUT"
+          warnAt={4}
+          unit="foul"
+          onSet={(team, jersey, name, count) => setFouls(team, jersey, name, count)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── PlayerExclusionStepper ─────────────────────────────────────
+// Water-polo per-player exclusion (major foul) tracker. Writes
+// stats.playerExclusions. 3 exclusions = ejected (FINA), so we badge at
+// 2 and label EJECTED at 3. Same roster-backed picker pattern as fouls.
+type PlayerExclusionRow = { team: 'home' | 'away'; jersey: number; name?: string; count: number };
+
+function PlayerExclusionStepper({
+  gameId,
+  g,
+  ctl,
+  stats,
+}: {
+  gameId: string;
+  g: any;
+  ctl: ReturnType<typeof useGameControl>;
+  stats: Record<string, unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const roster = useGameRoster(gameId);
+  const players: any[] = Array.isArray(roster.data) ? roster.data : [];
+
+  const rows: PlayerExclusionRow[] = Array.isArray(stats.playerExclusions)
+    ? (stats.playerExclusions as any[]).filter(
+        (r) => r && (r.team === 'home' || r.team === 'away'),
+      )
+    : [];
+
+  const writeRows = (next: PlayerExclusionRow[]) =>
+    ctl.stats.mutate({ stats: { playerExclusions: next } });
+
+  const setCount = (team: 'home' | 'away', jersey: number, name: string | undefined, count: number) => {
+    const clamped = Math.max(0, Math.min(9, count));
+    const idx = rows.findIndex((r) => r.team === team && r.jersey === jersey);
+    let next: PlayerExclusionRow[];
+    if (idx >= 0) {
+      next = rows.map((r, i) => (i === idx ? { ...r, count: clamped, name: name ?? r.name } : r));
+    } else {
+      next = [...rows, { team, jersey, name, count: clamped }];
+    }
+    writeRows(next.filter((r) => r.count > 0 || r.name));
+  };
+
+  const totalFlagged = rows.filter((r) => r.count >= 2).length;
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title="Per-player exclusions — 3 = ejected"
+        className={`h-14 px-3 rounded-xl font-black text-sm transition-colors flex flex-col items-center justify-center border ${
+          totalFlagged > 0
+            ? 'bg-amber-500 border-amber-600 text-amber-950 hover:bg-amber-400'
+            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+        }`}
+      >
+        <span className="text-[9px] font-black tracking-widest text-slate-400">EXCLUSIONS</span>
+        <span className="flex items-center gap-1">
+          Players
+          {totalFlagged > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-amber-950 text-amber-50 text-[10px] tabular-nums">
+              {totalFlagged}
+            </span>
+          )}
+        </span>
+      </button>
+
+      {open && (
+        <PlayerCounterPopover
+          title="Player exclusions"
+          subtitle="3 = ejected (FINA). Tap a name to add an exclusion."
+          onClose={() => setOpen(false)}
+          homeTeam={g.homeTeam}
+          awayTeam={g.awayTeam}
+          players={players}
+          rows={rows.map((r) => ({ team: r.team, jersey: r.jersey, name: r.name, count: r.count }))}
+          max={3}
+          outLabel="EJECTED"
+          warnAt={2}
+          unit="exclusion"
+          onSet={(team, jersey, name, count) => setCount(team, jersey, name, count)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── PlayerCounterPopover ───────────────────────────────────────
+// Shared roster-backed counter popover for foul / exclusion trackers.
+// Shows the live counts grouped by team with a − / + stepper per row,
+// plus a roster-name picker to add a player and a manual jersey add when
+// the roster is empty. `max` is the disqualification threshold (5 fouls
+// / 3 exclusions); `warnAt` badges the at-risk player; `outLabel` is the
+// disqualified caption.
+type CounterRow = { team: 'home' | 'away'; jersey: number; name?: string; count: number };
+
+function PlayerCounterPopover({
+  title,
+  subtitle,
+  onClose,
+  homeTeam,
+  awayTeam,
+  players,
+  rows,
+  max,
+  outLabel,
+  warnAt,
+  unit,
+  onSet,
+}: {
+  title: string;
+  subtitle: string;
+  onClose: () => void;
+  homeTeam: string;
+  awayTeam: string;
+  players: any[];
+  rows: CounterRow[];
+  max: number;
+  outLabel: string;
+  warnAt: number;
+  unit: string;
+  onSet: (team: 'home' | 'away', jersey: number, name: string | undefined, count: number) => void;
+}) {
+  const [addTeam, setAddTeam] = useState<'home' | 'away'>('home');
+  const [manualJersey, setManualJersey] = useState('');
+
+  // Roster players for the add-picker, by team. Roster `team` is a
+  // free string; anything not 'away' counts as home (mirrors PaRosterPicker).
+  const rosterFor = (team: 'home' | 'away') =>
+    players.filter((p) => (team === 'away' ? p.team === 'away' : p.team !== 'away'));
+
+  const rowFor = (team: 'home' | 'away', jersey: number) =>
+    rows.find((r) => r.team === team && r.jersey === jersey);
+
+  const grouped: { team: 'home' | 'away'; label: string }[] = [
+    { team: 'home', label: homeTeam || 'Home' },
+    { team: 'away', label: awayTeam || 'Away' },
+  ];
+
+  const addManual = () => {
+    const j = parseInt(manualJersey, 10);
+    if (!Number.isFinite(j) || j < 0 || j > 999) return;
+    if (!rowFor(addTeam, j)) onSet(addTeam, j, undefined, 1);
+    setManualJersey('');
+  };
+
+  return (
+    <>
+      <div className="fixed top-0 right-0 bottom-0 left-0 z-40" onClick={onClose} />
+      <div className="absolute bottom-full right-0 z-50 mb-2 w-80 max-w-[90vw] rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
+        <div className="mb-2 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-bold text-slate-900">{title}</p>
+            <p className="text-[11px] text-slate-400">{subtitle}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-md px-2 py-1 text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="max-h-72 overflow-y-auto space-y-3">
+          {grouped.map((grp) => {
+            const teamRows = rows
+              .filter((r) => r.team === grp.team)
+              .sort((a, b) => a.jersey - b.jersey);
+            const rosterChoices = rosterFor(grp.team).filter(
+              (p) => !rowFor(grp.team, parseInt(String(p.number || ''), 10)),
+            );
+            return (
+              <div key={grp.team}>
+                <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  {grp.label}
+                </p>
+                {teamRows.length === 0 && (
+                  <p className="px-1 pb-1 text-[11px] text-slate-300">No {unit}s yet.</p>
+                )}
+                <div className="space-y-1">
+                  {teamRows.map((r) => {
+                    const out = r.count >= max;
+                    const warn = !out && r.count >= warnAt;
+                    return (
+                      <div
+                        key={`${r.team}-${r.jersey}`}
+                        className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${
+                          out
+                            ? 'border-red-200 bg-red-50'
+                            : warn
+                              ? 'border-amber-200 bg-amber-50'
+                              : 'border-slate-200'
+                        }`}
+                      >
+                        <span className="inline-flex items-center justify-center min-w-[28px] h-7 px-1 rounded-md bg-slate-900 text-white text-xs font-black tabular-nums">
+                          #{r.jersey}
+                        </span>
+                        <span className="flex-1 truncate text-xs font-semibold text-slate-700">
+                          {r.name || 'Player'}
+                          {out && (
+                            <span className="ml-1 text-[10px] font-black text-red-600">{outLabel}</span>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            aria-label={`Remove ${unit}`}
+                            onClick={() => onSet(r.team, r.jersey, r.name, r.count - 1)}
+                            className="h-7 w-7 rounded-md bg-slate-100 text-slate-600 font-black hover:bg-slate-200"
+                          >
+                            −
+                          </button>
+                          <span className="w-5 text-center text-sm font-black tabular-nums text-slate-900">
+                            {r.count}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Add ${unit}`}
+                            onClick={() => onSet(r.team, r.jersey, r.name, r.count + 1)}
+                            className="h-7 w-7 rounded-md bg-indigo-600 text-white font-black hover:bg-indigo-700"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Add a player to this team — roster names first, manual fallback. */}
+                {rosterChoices.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {rosterChoices.slice(0, 12).map((p) => {
+                      const j = parseInt(String(p.number || ''), 10);
+                      const jersey = Number.isFinite(j) ? j : 0;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => onSet(grp.team, jersey, p.name, 1)}
+                          className="rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600 hover:border-indigo-300 hover:bg-indigo-50"
+                        >
+                          #{p.number || '—'} {p.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Manual add — for the roster-empty case. */}
+        <div className="mt-2 border-t border-slate-100 pt-2">
+          <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+            Add by jersey
+          </p>
+          <div className="flex items-center gap-1.5">
+            <div className="flex gap-1">
+              {(['home', 'away'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setAddTeam(t)}
+                  className={`rounded-md px-2 py-1 text-[11px] font-bold transition-colors ${
+                    addTeam === t
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  {t === 'home' ? homeTeam || 'Home' : awayTeam || 'Away'}
+                </button>
+              ))}
+            </div>
+            <Input
+              value={manualJersey}
+              onChange={(e) => setManualJersey(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+              onKeyDown={(e) => { if (e.key === 'Enter') addManual(); }}
+              placeholder="#"
+              inputMode="numeric"
+              className="h-8 w-14 text-center text-sm font-bold"
+            />
+            <Button size="sm" onClick={addManual} disabled={!manualJersey}>
+              Add
+            </Button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── MeetResultsSection ─────────────────────────────────────────
+// Finish-results grid for LEADERBOARD meet sports (track / swim /
+// cross-country / golf) AND the per-apparatus / per-routine judged
+// sports (gymnastics / cheer). Writes stats.results — the shared
+// structured key the board reads.
+//
+// Shape: Array<{ event, order?, entries: [{ place, name, team, lane?, mark }] }>
+//   - For meet sports: event = "100m Free", mark = a time / distance.
+//   - For judged sports: event = the apparatus / round ("Vault"), mark =
+//     the decimal judged score ("9.850"). `judged` flips copy + presets.
+//
+// 30-second happy path: tap "Add event" → name it (or pick an apparatus
+// preset) → "Add finisher" → type place + name + mark → done. No nested
+// modals; every field is type-in-place and persists on blur/Enter.
+type ResultEntry = { place: number; name: string; team?: 'home' | 'away' | null; lane?: number; mark: string };
+type ResultEvent = { event: string; order?: number; entries: ResultEntry[] };
+
+const APPARATUS_PRESETS: Record<string, string[]> = {
+  gymnastics: ['Vault', 'Bars', 'Beam', 'Floor', 'All-Around'],
+  competitive_cheer: ['Round 1', 'Round 2', 'Finals', 'Game Day', 'Stunt'],
+};
+
+function MeetResultsSection({
+  g,
+  def,
+  ctl,
+  judged,
+}: {
+  g: any;
+  def: SportDefinition;
+  ctl: ReturnType<typeof useGameControl>;
+  judged: boolean;
+}) {
+  const stats: Record<string, unknown> = g.stats || {};
+  const events: ResultEvent[] = Array.isArray(stats.results)
+    ? (stats.results as any[])
+        .filter((e) => e && typeof e === 'object')
+        .map((e) => ({
+          event: String(e.event || ''),
+          order: typeof e.order === 'number' ? e.order : undefined,
+          entries: Array.isArray(e.entries)
+            ? (e.entries as any[]).map((en) => ({
+                place: typeof en.place === 'number' ? en.place : 0,
+                name: String(en.name || ''),
+                team: en.team === 'home' || en.team === 'away' ? en.team : null,
+                lane: typeof en.lane === 'number' ? en.lane : undefined,
+                mark: String(en.mark || ''),
+              }))
+            : [],
+        }))
+    : [];
+
+  const write = (next: ResultEvent[]) => ctl.stats.mutate({ stats: { results: next } });
+
+  const [newEvent, setNewEvent] = useState('');
+  const markLabel = judged ? 'Score' : 'Mark';
+  const markPlaceholder = judged
+    ? def.key === 'gymnastics' ? '9.850' : '285.5'
+    : def.key === 'golf' ? '72 (+1)' : def.key === 'swimming_diving' ? '1:52.31' : '11.42';
+  const eventNoun = judged ? (def.key === 'gymnastics' ? 'apparatus' : 'round') : 'event';
+  const lanesShown = def.key === 'swimming_diving';
+  const presets = APPARATUS_PRESETS[def.key] || [];
+
+  const addEvent = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    write([...events, { event: trimmed, order: events.length + 1, entries: [] }]);
+    setNewEvent('');
+  };
+  const removeEvent = (idx: number) => write(events.filter((_, i) => i !== idx));
+  const updateEvent = (idx: number, patch: Partial<ResultEvent>) =>
+    write(events.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
+
+  const addEntry = (evIdx: number) => {
+    const ev = events[evIdx];
+    const nextPlace = ev.entries.length + 1;
+    updateEvent(evIdx, {
+      entries: [...ev.entries, { place: nextPlace, name: '', team: null, mark: '' }],
+    });
+  };
+  const updateEntry = (evIdx: number, enIdx: number, patch: Partial<ResultEntry>) => {
+    const ev = events[evIdx];
+    updateEvent(evIdx, {
+      entries: ev.entries.map((en, i) => (i === enIdx ? { ...en, ...patch } : en)),
+    });
+  };
+  const removeEntry = (evIdx: number, enIdx: number) => {
+    const ev = events[evIdx];
+    updateEvent(evIdx, { entries: ev.entries.filter((_, i) => i !== enIdx) });
+  };
+
+  return (
+    <div className="bg-white border-t border-slate-200 px-4 py-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-black uppercase tracking-wide text-slate-700">
+              {judged ? 'Apparatus results' : 'Meet results'}
+            </h3>
+            <p className="text-[11px] text-slate-400">
+              {judged
+                ? 'Per-apparatus scores — these drive the leaderboard board.'
+                : 'Finish order per event — these drive the leaderboard board.'}
+            </p>
+          </div>
+        </div>
+
+        {/* Add an event / apparatus. Presets are one-tap for judged sports. */}
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          {presets.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => addEvent(p)}
+              disabled={events.some((e) => e.event.toLowerCase() === p.toLowerCase())}
+              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              + {p}
+            </button>
+          ))}
+          <Input
+            value={newEvent}
+            onChange={(e) => setNewEvent(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') addEvent(newEvent); }}
+            placeholder={judged ? `New ${eventNoun}…` : 'New event (e.g. 100m Free)…'}
+            className="h-9 w-48 text-sm"
+          />
+          <Button size="sm" onClick={() => addEvent(newEvent)} disabled={!newEvent.trim()}>
+            <Plus className="h-3.5 w-3.5 mr-1" />
+            Add {eventNoun}
+          </Button>
+        </div>
+
+        {events.length === 0 && (
+          <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-400">
+            {judged
+              ? `Add an ${eventNoun} above, then record each team's score.`
+              : 'Add an event above, then record the finish order.'}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {events.map((ev, evIdx) => (
+            <div key={evIdx} className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 border-b border-slate-200">
+                <Input
+                  value={ev.event}
+                  onChange={(e) => updateEvent(evIdx, { event: e.target.value })}
+                  placeholder={judged ? eventNoun : 'Event name'}
+                  className="h-8 flex-1 text-sm font-bold bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeEvent(evIdx)}
+                  aria-label="Remove event"
+                  className="rounded-md px-2 py-1 text-xs font-semibold text-slate-400 hover:bg-red-50 hover:text-red-600"
+                >
+                  Remove
+                </button>
+              </div>
+
+              {/* Column headers */}
+              <div className="flex items-center gap-2 px-3 pt-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <span className="w-12">{judged ? '#' : 'Place'}</span>
+                {lanesShown && <span className="w-12">Lane</span>}
+                <span className="flex-1">{judged ? 'Team / athlete' : 'Name'}</span>
+                <span className="w-20">Side</span>
+                <span className="w-24">{markLabel}</span>
+                <span className="w-8" />
+              </div>
+
+              <div className="px-3 py-2 space-y-1.5">
+                {ev.entries.map((en, enIdx) => (
+                  <div key={enIdx} className="flex items-center gap-2">
+                    <Input
+                      value={String(en.place || '')}
+                      onChange={(e) =>
+                        updateEntry(evIdx, enIdx, {
+                          place: Math.max(0, Math.min(999, parseInt(e.target.value.replace(/[^0-9]/g, '') || '0', 10))),
+                        })
+                      }
+                      inputMode="numeric"
+                      className="h-9 w-12 text-center text-sm font-black"
+                    />
+                    {lanesShown && (
+                      <Input
+                        value={typeof en.lane === 'number' ? String(en.lane) : ''}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/[^0-9]/g, '');
+                          updateEntry(evIdx, enIdx, { lane: v ? Math.max(0, Math.min(99, parseInt(v, 10))) : undefined });
+                        }}
+                        inputMode="numeric"
+                        placeholder="—"
+                        className="h-9 w-12 text-center text-sm"
+                      />
+                    )}
+                    <Input
+                      value={en.name}
+                      onChange={(e) => updateEntry(evIdx, enIdx, { name: e.target.value })}
+                      placeholder={judged ? 'Team / athlete' : 'Athlete name'}
+                      className="h-9 flex-1 text-sm"
+                    />
+                    {/* Side picker — Home / Away / neutral. */}
+                    <div className="flex w-20 gap-0.5">
+                      {([
+                        { v: 'home' as const, l: 'H' },
+                        { v: 'away' as const, l: 'A' },
+                        { v: null, l: '–' },
+                      ]).map((opt) => (
+                        <button
+                          key={String(opt.v)}
+                          type="button"
+                          onClick={() => updateEntry(evIdx, enIdx, { team: opt.v })}
+                          title={opt.v === 'home' ? g.homeTeam : opt.v === 'away' ? g.awayTeam : 'Neutral'}
+                          className={`flex-1 h-9 rounded-md text-xs font-black transition-colors ${
+                            en.team === opt.v
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                          }`}
+                        >
+                          {opt.l}
+                        </button>
+                      ))}
+                    </div>
+                    <Input
+                      value={en.mark}
+                      onChange={(e) => updateEntry(evIdx, enIdx, { mark: e.target.value })}
+                      placeholder={markPlaceholder}
+                      className="h-9 w-24 text-center text-sm font-bold tabular-nums"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeEntry(evIdx, enIdx)}
+                      aria-label="Remove finisher"
+                      className="h-9 w-8 rounded-md text-slate-300 hover:bg-red-50 hover:text-red-600 font-black"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => addEntry(evIdx)}
+                  className="mt-1 inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:border-indigo-300 hover:bg-indigo-50"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {judged ? 'Add score' : 'Add finisher'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
