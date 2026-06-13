@@ -62,6 +62,7 @@ import {
   defaultRibbonPresets,
   ribbonSpeedMultiplier,
   ribbonScoreRepeatCount,
+  formatScore,
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 // 2026-05-26 — replace the procedural CueBurst on the legacy ribbon

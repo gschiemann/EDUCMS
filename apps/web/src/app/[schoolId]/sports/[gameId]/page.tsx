@@ -2117,6 +2117,7 @@ function ScoreTile({
   side,
   increments,
   onScore,
+  onSetAbsolute,
   def,
   stats,
   onStat,
