@@ -23,6 +23,16 @@
  * Falls back to a sample state when no bridge is connected so the
  * builder canvas + gallery thumbnails are always alive.
  *
+ * NO FAKE SCORE ON A LIVE BOARD (audit P1, 2026-06-13): the SAMPLE
+ * (1-0, 7:42, Q3) is for the BUILDER / gallery thumbnail ONLY. On a LIVE
+ * player surface the WidgetRenderer passes `live={true}`; until a real
+ * CTS `edu:cts-game-state` event arrives the board renders NEUTRAL
+ * (—:— clock, "—" scores) — never the fabricated sample a water-polo
+ * crowd could mistake for the real game. The old code keyed only on
+ * "did a bridge event arrive?", which conflated "live board, no feed
+ * yet" with "builder" — that is the bug this closes. `cfg.preview`
+ * still forces the sample for an explicit off-route preview.
+ *
  * Chromium-safe — uses long-hand sides for position, per-child
  * margin instead of flex gap (Chromium 83 traps, see CLAUDE.md rule
  * #10). NOT designed for Chromium-83 because the CTS bridge itself
@@ -57,6 +67,21 @@ const SAMPLE: CtsScoreboardSnapshot = {
   horn: false,
 };
 
+// Neutral state for a LIVE board with no bridge feed yet — empty arrays,
+// 0:00 clock, period 1. The render special-cases scores + clock to a
+// dash (see `neutral` below) so nothing reads as a fabricated game.
+const NEUTRAL_SNAPSHOT: CtsScoreboardSnapshot = {
+  clock: '0:00',
+  period: 1,
+  homeScore: 0,
+  awayScore: 0,
+  homeExclusions: [],
+  awayExclusions: [],
+  homeShotClock: '',
+  awayShotClock: '',
+  horn: false,
+};
+
 export interface CtsScoreboardConfig {
   /** Two-letter home team abbreviation. Default "H". */
   homeAbbrev?: string;
@@ -71,20 +96,30 @@ export interface CtsScoreboardConfig {
   preview?: boolean;
 }
 
-export function CtsScoreboard({ cfg = {} }: { cfg?: CtsScoreboardConfig } = {}) {
-  const homeAbbrev = (cfg.homeAbbrev || 'H').slice(0, 3).toUpperCase();
-  const awayAbbrev = (cfg.awayAbbrev || 'A').slice(0, 3).toUpperCase();
-  const bgColor = cfg.bgColor || '#0f172a';
-  const accentColor = cfg.accentColor || '#f59e0b';
+export function CtsScoreboard(
+  // WidgetRenderer passes `config` + `live`; the legacy direct callers
+  // passed `cfg`. Accept both — `config` wins when present.
+  { cfg, config, live }: { cfg?: CtsScoreboardConfig; config?: CtsScoreboardConfig; live?: boolean } = {},
+) {
+  const c = config ?? cfg ?? {};
+  const homeAbbrev = (c.homeAbbrev || 'H').slice(0, 3).toUpperCase();
+  const awayAbbrev = (c.awayAbbrev || 'A').slice(0, 3).toUpperCase();
+  const bgColor = c.bgColor || '#0f172a';
+  const accentColor = c.accentColor || '#f59e0b';
+
+  // Live player surface = WidgetRenderer passed live === true. Builder /
+  // gallery thumbnail = live falsy. `cfg.preview` forces sample for an
+  // explicit off-route preview.
+  const isLiveSurface = live === true && !c.preview;
 
   const [snapshot, setSnapshot] = useState<CtsScoreboardSnapshot | null>(
-    cfg.preview ? SAMPLE : null,
+    c.preview ? SAMPLE : null,
   );
 
   // Subscribe to bridge updates. The CustomEvent is dispatched by
   // the player page WS handler whenever a GAME_STATE message arrives.
   useEffect(() => {
-    if (cfg.preview) return;
+    if (c.preview) return;
     const onUpdate = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail && typeof detail === 'object') {
@@ -107,7 +142,7 @@ export function CtsScoreboard({ cfg = {} }: { cfg?: CtsScoreboardConfig } = {}) 
     };
     window.addEventListener('edu:cts-game-state', onUpdate);
     return () => window.removeEventListener('edu:cts-game-state', onUpdate);
-  }, [cfg.preview]);
+  }, [c.preview]);
 
   // Scale-to-fit wrapper, same pattern as MainScoreboardWidget. Fixed
   // 480×208 px natural size — the design canvas the lead's water-polo
@@ -131,7 +166,14 @@ export function CtsScoreboard({ cfg = {} }: { cfg?: CtsScoreboardConfig } = {}) 
     return () => ro.disconnect();
   }, []);
 
-  const snap = snapshot ?? SAMPLE;
+  // Live surface with no bridge event yet → NEUTRAL (—:— clock, dash
+  // scores), never the SAMPLE. Builder / preview → SAMPLE so the tile is
+  // alive. A real snapshot always wins.
+  const neutral = isLiveSurface && snapshot == null;
+  const snap = snapshot ?? (isLiveSurface ? NEUTRAL_SNAPSHOT : SAMPLE);
+  const clockText = neutral ? '—:—' : snap.clock;
+  const homeScoreText = neutral ? '—' : pad2(snap.homeScore);
+  const awayScoreText = neutral ? '—' : pad2(snap.awayScore);
   const showExcl = snap.homeExclusions[0] || snap.awayExclusions[0];
   const exclSide = snap.homeExclusions[0] ? homeAbbrev : awayAbbrev;
   const exclColor = snap.homeExclusions[0] ? '#facc15' : '#fb923c';
@@ -177,7 +219,7 @@ export function CtsScoreboard({ cfg = {} }: { cfg?: CtsScoreboardConfig } = {}) 
               : `0 0 12px ${accentColor}66`,
           }}
         >
-          {snap.clock}
+          {clockText}
         </div>
         <div
           style={{
@@ -210,11 +252,11 @@ export function CtsScoreboard({ cfg = {} }: { cfg?: CtsScoreboardConfig } = {}) 
         >
           <span style={{ color: '#93c5fd', marginRight: 14 }}>{homeAbbrev}</span>
           <span style={{ color: 'white', minWidth: 50, textAlign: 'right' }}>
-            {pad2(snap.homeScore)}
+            {homeScoreText}
           </span>
           <span style={{ color: '#64748b', margin: '0 14px' }}>−</span>
           <span style={{ color: 'white', minWidth: 50, textAlign: 'left' }}>
-            {pad2(snap.awayScore)}
+            {awayScoreText}
           </span>
           <span style={{ color: '#fca5a5', marginLeft: 14 }}>{awayAbbrev}</span>
         </div>

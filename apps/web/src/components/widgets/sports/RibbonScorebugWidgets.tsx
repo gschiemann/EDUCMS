@@ -24,11 +24,19 @@
  * sample game in the builder. Brand-aware via flat config. Chromium-83
  * safe (long-hand sides, explicit margins, no inset shorthand, no
  * aspect-ratio).
+ *
+ * NO FAKE SCORES ON A LIVE BOARD (audit P1, 2026-06-13): the SAMPLE game
+ * (EAGLES 62 / TIGERS 58 / 7:42 / Q3) is for the BUILDER ONLY. On a live
+ * player surface (the GameStateProvider is mounted: `useGameState() !=
+ * null`) that has no snapshot yet, the score / clock / period / abbr
+ * render NEUTRAL ("—" / "—:—") — never SAMPLE's fabricated numbers, which
+ * a crowd or broadcast viewer could mistake for the real game.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 import { findSport } from '@cms/api-types';
 import { useGameState, fmtClock, fmtSegment, type GameSnapshot } from './GameStateContext';
+import { liveNeutral } from './cts-fields';
 import { FitOneLine } from './FitOneLine';
 
 const STATUS_BG: Record<string, string> = {
@@ -82,6 +90,9 @@ export interface RibbonCfg {
 export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
   const c = config ?? {};
   const s = useGameState();
+  // Live surface (provider present) with no snapshot → neutral, never the
+  // SAMPLE board. Builder (no provider) → SAMPLE so the tile is alive.
+  const isLiveNoData = s != null && !s.snapshot;
   const snap = s?.snapshot ?? SAMPLE;
   const clockMs = s?.snapshot ? s.liveClockMs : SAMPLE.clockMs;
   const def = findSport(snap.sport);
@@ -92,16 +103,24 @@ export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
   const awayColor = snap.awayColor || '#dc2626';
   const reel = (c.messages && c.messages.length ? c.messages : [c.sponsorText || 'YOUR SPONSOR HERE', 'GO TEAM!', 'NEXT HOME GAME FRI 7PM']).join('     •     ');
   const hasClock = def && def.clock.type !== 'none';
+  // What the score/abbr/clock/segment show: real on a live feed, sample
+  // in the builder, neutral on a live board with no data.
+  const homeScoreText = isLiveNoData ? liveNeutral('value') : String(snap.homeScore);
+  const awayScoreText = isLiveNoData ? liveNeutral('value') : String(snap.awayScore);
+  const homeAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.homeTeam);
+  const awayAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.awayTeam);
+  const clockText = isLiveNoData ? liveNeutral('clock') : fmtClock(clockMs);
+  const segmentText = isLiveNoData ? '' : (def ? fmtSegment(snap.sport, snap.segment) : '');
 
-  const TeamChip = ({ name, score, color, side }: { name: string; score: number; color: string; side: 'l' | 'r' }) => (
+  const TeamChip = ({ abbrText, scoreText, color, side }: { abbrText: string; scoreText: string; color: string; side: 'l' | 'r' }) => (
     <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
       {side === 'l' && <span style={{ width: px(0.5), height: px(0.5), borderRadius: '50%', background: color, marginRight: px(0.12), display: 'inline-block', flexShrink: 0 }} />}
       {/* abbr — 3 chars max, no overflow concern at px(0.4) */}
-      <span style={{ fontWeight: 900, fontSize: px(0.4), letterSpacing: 1, flexShrink: 0 }}>{abbr(name)}</span>
+      <span style={{ fontWeight: 900, fontSize: px(0.4), letterSpacing: 1, flexShrink: 0 }}>{abbrText}</span>
       {/* score — bounded slot so 3-digit values (e.g. 138) fit the ribbon chip */}
       <div style={{ width: px(1.05), height: '100%', marginLeft: px(0.1), marginRight: px(0.1), flexShrink: 0 }}>
         <FitOneLine maxFontPx={px(0.62)} style={{ fontWeight: 900, fontVariantNumeric: 'tabular-nums' }}>
-          {score}
+          {scoreText}
         </FitOneLine>
       </div>
       {side === 'r' && <span style={{ width: px(0.5), height: px(0.5), borderRadius: '50%', background: color, marginLeft: px(0.12), display: 'inline-block', flexShrink: 0 }} />}
@@ -113,22 +132,22 @@ export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
       <style>{`@keyframes ribbonReel{from{transform:translateX(0)}to{transform:translateX(-50%)}}`}</style>
       {/* score-follow anchor */}
       <div style={{ display: 'flex', alignItems: 'center', height: '100%', padding: `0 ${px(0.3)}px`, background: '#05070d', flexShrink: 0 }}>
-        <TeamChip name={snap.homeTeam} score={snap.homeScore} color={homeColor} side="l" />
+        <TeamChip abbrText={homeAbbrText} scoreText={homeScoreText} color={homeColor} side="l" />
         {/* center clock+period — bounded width so long clock strings ("90:00+02:13") fit the ribbon anchor */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: `0 ${px(0.3)}px`, width: px(1.6), flexShrink: 0 }}>
           {hasClock && (
             <div style={{ width: '100%', height: px(0.5) }}>
               <FitOneLine
                 maxFontPx={px(0.46)}
-                style={{ fontWeight: 900, color: snap.clockRunning ? '#fbbf24' : '#e2e8f0', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}
+                style={{ fontWeight: 900, color: !isLiveNoData && snap.clockRunning ? '#fbbf24' : '#e2e8f0', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}
               >
-                {fmtClock(clockMs)}
+                {clockText}
               </FitOneLine>
             </div>
           )}
-          <span style={{ fontWeight: 700, fontSize: px(0.22), letterSpacing: 2, color: '#94a3b8', marginTop: px(0.04) }}>{def ? fmtSegment(snap.sport, snap.segment) : ''}</span>
+          <span style={{ fontWeight: 700, fontSize: px(0.22), letterSpacing: 2, color: '#94a3b8', marginTop: px(0.04) }}>{segmentText}</span>
         </div>
-        <TeamChip name={snap.awayTeam} score={snap.awayScore} color={awayColor} side="r" />
+        <TeamChip abbrText={awayAbbrText} scoreText={awayScoreText} color={awayColor} side="r" />
       </div>
       {/* divider */}
       <div style={{ width: 2, height: '60%', background: '#1e2638', flexShrink: 0 }} />
@@ -155,6 +174,9 @@ const NAT_W = 760, NAT_H = 150;
 export function ScorebugWidget({ config }: { config?: ScorebugCfg }) {
   const c = config ?? {};
   const s = useGameState();
+  // Live surface (provider present) with no snapshot → neutral, never the
+  // SAMPLE board. Builder (no provider) → SAMPLE so the tile is alive.
+  const isLiveNoData = s != null && !s.snapshot;
   const snap = s?.snapshot ?? SAMPLE;
   const clockMs = s?.snapshot ? s.liveClockMs : SAMPLE.clockMs;
   const def = findSport(snap.sport);
@@ -164,17 +186,25 @@ export function ScorebugWidget({ config }: { config?: ScorebugCfg }) {
   const awayColor = c.awayColor || snap.awayColor || '#dc2626';
   const accent = c.accent || '#fbbf24';
   const hasClock = def && def.clock.type !== 'none';
-  // sport situational line (compact)
+  // What the score/clock/segment/situational show: real on a live feed,
+  // sample in the builder, neutral on a live board with no data.
+  const homeScoreText = isLiveNoData ? liveNeutral('value') : String(snap.homeScore);
+  const awayScoreText = isLiveNoData ? liveNeutral('value') : String(snap.awayScore);
+  const homeAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.homeTeam);
+  const awayAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.awayTeam);
+  const clockText = isLiveNoData ? liveNeutral('clock') : fmtClock(clockMs);
+  const segmentText = isLiveNoData ? '' : (def ? fmtSegment(snap.sport, snap.segment) : '');
+  // sport situational line (compact) — suppressed on a live board with no data.
   let sit = '';
-  if (def?.key === 'football') { const d = snap.stats?.down, dist = snap.stats?.distance; if (d) sit = `${['','1ST','2ND','3RD','4TH'][Number(d)] || ''} & ${dist ?? ''}`; }
-  else if (def?.key === 'baseball' || def?.key === 'softball') { sit = `${snap.stats?.balls ?? 0}-${snap.stats?.strikes ?? 0}, ${snap.stats?.outs ?? 0} OUT`; }
+  if (!isLiveNoData && def?.key === 'football') { const d = snap.stats?.down, dist = snap.stats?.distance; if (d) sit = `${['','1ST','2ND','3RD','4TH'][Number(d)] || ''} & ${dist ?? ''}`; }
+  else if (!isLiveNoData && (def?.key === 'baseball' || def?.key === 'softball')) { sit = `${snap.stats?.balls ?? 0}-${snap.stats?.strikes ?? 0}, ${snap.stats?.outs ?? 0} OUT`; }
 
-  const TeamBlock = ({ name, score, color }: { name: string; score: number; color: string }) => (
+  const TeamBlock = ({ abbrText, scoreText, color }: { abbrText: string; scoreText: string; color: string }) => (
     <div style={{ display: 'flex', alignItems: 'center', height: 92 }}>
       <div style={{ width: 10, height: 92, background: color }} />
       <div style={{ background: 'rgba(15,18,26,0.96)', height: 92, display: 'flex', alignItems: 'center', padding: '0 18px' }}>
-        <span style={{ fontWeight: 900, fontSize: 38, letterSpacing: 1, color: '#fff' }}>{abbr(name)}</span>
-        <span style={{ fontWeight: 900, fontSize: 52, marginLeft: 18, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{score}</span>
+        <span style={{ fontWeight: 900, fontSize: 38, letterSpacing: 1, color: '#fff' }}>{abbrText}</span>
+        <span style={{ fontWeight: 900, fontSize: 52, marginLeft: 18, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{scoreText}</span>
       </div>
     </div>
   );
@@ -183,15 +213,15 @@ export function ScorebugWidget({ config }: { config?: ScorebugCfg }) {
     <div ref={ref} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: 'transparent' }}>
       <div style={{ width: NAT_W, height: NAT_H, flexShrink: 0, transform: scale > 0 ? `scale(${scale})` : 'scale(0)', transformOrigin: 'center center', fontFamily: 'Inter, system-ui, sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'stretch', borderRadius: 10, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.45)' }}>
-          <TeamBlock name={snap.homeTeam} score={snap.homeScore} color={homeColor} />
+          <TeamBlock abbrText={homeAbbrText} scoreText={homeScoreText} color={homeColor} />
           {/* center clock/period */}
           <div style={{ background: 'rgba(5,7,13,0.96)', height: 92, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 22px', minWidth: 120 }}>
             {hasClock
-              ? <span style={{ fontWeight: 900, fontSize: 34, color: snap.clockRunning ? accent : '#e2e8f0', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmtClock(clockMs)}</span>
-              : <span style={{ fontSize: 28 }}>{def?.emoji ?? '•'}</span>}
-            <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: 2, color: '#94a3b8', marginTop: 4 }}>{def ? fmtSegment(snap.sport, snap.segment) : ''}</span>
+              ? <span style={{ fontWeight: 900, fontSize: 34, color: !isLiveNoData && snap.clockRunning ? accent : '#e2e8f0', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{clockText}</span>
+              : <span style={{ fontSize: 28 }}>{isLiveNoData ? '' : (def?.emoji ?? '•')}</span>}
+            <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: 2, color: '#94a3b8', marginTop: 4 }}>{segmentText}</span>
           </div>
-          <TeamBlock name={snap.awayTeam} score={snap.awayScore} color={awayColor} />
+          <TeamBlock abbrText={awayAbbrText} scoreText={awayScoreText} color={awayColor} />
         </div>
         {/* situational + network line */}
         {(sit || c.networkLabel) && (

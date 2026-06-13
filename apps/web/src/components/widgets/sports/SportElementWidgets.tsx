@@ -292,7 +292,9 @@ export function TimeoutsWidget({ config }: { config: ElCfg }) {
     config.statKey != null
       ? stats?.[config.statKey]
       : (stats?.[ctsKey] ?? stats?.[opKey]);
-  const left = raw != null ? Number(raw) : 3;
+  // Live surface (provider mounted) with no value → 0 lit pips, never a
+  // fabricated full "3". The sample "3" only shows in the builder.
+  const left = raw != null ? Number(raw) : (s != null ? 0 : 3);
   const max = 3;
   const accent = config.accentColor ?? config.color ?? '#fbbf24';
   return (
@@ -389,11 +391,13 @@ export function ShotClockWidget({ config }: { config: ElCfg }) {
   // len). Without this, a fresh per-side CTS shot clock would be hidden.
   const armed = len > 0 || !!(raw && raw.at && (Number(raw.ms) > 0 || raw.running));
   const ms = useSubClock(armed ? raw : null, s?.snapshot?.serverTime);
-  if (!armed && s?.snapshot) {
-    // sport has no shot clock right now — render nothing on a live board
+  // Live surface = provider mounted (s != null). On a live board with no
+  // shot-clock armed, render nothing — never the fabricated sample "24".
+  // The sample only shows in the builder/thumbnail (s == null).
+  if (!armed && s != null) {
     return <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent' }} />;
   }
-  const display = !s?.snapshot ? '24' : ms <= 5000 ? (ms / 1000).toFixed(1) : Math.ceil(ms / 1000);
+  const display = !armed ? '24' : ms <= 5000 ? (ms / 1000).toFixed(1) : Math.ceil(ms / 1000);
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitBox
@@ -415,8 +419,11 @@ export function AddedTimeWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const key = config.statKey ?? 'addedTime';
   const raw = s?.snapshot?.stats?.[key];
-  const n = raw != null && raw !== '' ? Number(raw) : (s?.snapshot ? 0 : 3);
-  if (s?.snapshot && (!n || n <= 0)) return <div style={{ width: '100%', height: '100%', background: 'transparent' }} />;
+  // Sample "+3" only in the builder (s == null). On a live surface (s !=
+  // null) added time is 0 unless a real value arrives — and 0/none hides
+  // the badge, so a live board never shows a fabricated "+3".
+  const n = raw != null && raw !== '' ? Number(raw) : (s != null ? 0 : 3);
+  if (s != null && (!n || n <= 0)) return <div style={{ width: '100%', height: '100%', background: 'transparent' }} />;
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'rgba(251,191,36,0.16)', overflow: 'hidden' }}>
       <FitOneLine
@@ -436,11 +443,15 @@ export function BonusLampWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const team = config.team ?? 'home';
   const key = config.statKey ?? (team === 'away' ? 'awayFouls' : 'homeFouls');
-  const fouls = Number(s?.snapshot?.stats?.[key] ?? (s?.snapshot ? 0 : 8));
+  // Sample fouls=8 (lit BONUS) only in the builder (s == null). On a live
+  // surface (s != null) the lamp follows the real foul count and stays
+  // DIM until a real value crosses the bonus threshold — never a
+  // fabricated lit lamp.
+  const fouls = Number(s?.snapshot?.stats?.[key] ?? (s != null ? 0 : 8));
   const bonus = fouls >= 7;
   const dbl = fouls >= 10;
   const onColor = dbl ? '#ef4444' : '#fbbf24';
-  const lit = bonus || !s?.snapshot;
+  const lit = bonus || s == null;
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden', opacity: lit ? 1 : 0.18 }}>
       <FitBox
@@ -488,7 +499,9 @@ export function TeamFoulsWidget({ config }: { config: ElCfg }) {
   const team = config.team ?? 'home';
   const key = config.statKey ?? (team === 'away' ? 'awayFouls' : 'homeFouls');
   const fouls = s?.snapshot?.stats?.[key];
-  const display = fouls != null ? String(fouls) : (s?.snapshot ? '0' : '4');
+  // Live value when present; sample "4" only in the builder (s == null);
+  // neutral "—" on a live surface with no data (never a fabricated "4").
+  const display = fouls != null ? String(fouls) : (s != null ? '—' : '4');
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitBox

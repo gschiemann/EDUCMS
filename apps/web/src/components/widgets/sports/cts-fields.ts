@@ -411,3 +411,68 @@ export function resolveCtsField(
   const v = stats[key];
   return v == null || v === '' ? null : String(v);
 }
+
+// ────────────────────────────────────────────────────────────────────
+// Builder-vs-live render mode — the fix for "fake SAMPLE scores show on
+// a LIVE board" (audit P1, 2026-06-13).
+//
+// THE TRAP these helpers close: a sport widget's only signal used to be
+// "is there a live snapshot?" (`useGameState()?.snapshot` non-null, or a
+// CTS `edu:cts-game-state` event having arrived). When that was false the
+// widget fell back to a *fabricated sample* ("HOME 24", "7:42", "Q3") —
+// which is CORRECT in the template builder / gallery thumbnail (the
+// operator is laying out a board), but WRONG on a live player surface
+// that simply has no data yet (provider mounted but snapshot null, or a
+// board bound to no/!live game). A water-polo crowd would see a fake
+// score on the big screen, indistinguishable from a real one save an
+// 8px grey dot.
+//
+// The reliable distinction already exists in the codebase:
+//   • GameStateContext widgets: `useGameState()` returns NON-null ONLY
+//     inside a <GameStateProvider> — i.e. the live /board route. The
+//     template builder + gallery thumbnail render OUTSIDE the provider,
+//     so it returns null. Provider-present ⇒ LIVE surface.
+//   • CTS CustomEvent widgets (CtsScoreboard / CtsRibbonWidgets): the
+//     WidgetRenderer threads a `live` prop (false in the builder /
+//     thumbnail, true when the player is actually running).
+//
+// So: BUILDER (no provider / live===false) → keep the sample so the tile
+// is alive and the operator can position it. LIVE (provider present /
+// live===true) with no data → render a NEUTRAL state ("—" / "—:—"),
+// NEVER a fabricated number.
+// ────────────────────────────────────────────────────────────────────
+
+/** A neutral, obviously-not-a-real-value glyph for a live surface that
+ *  has no data yet. `kind` lets a clock read "—:—" while a score reads
+ *  "—". Pure string — Chromium-83 / Taurus safe (no DOM, no CSS). */
+export function liveNeutral(kind: 'clock' | 'value' = 'value'): string {
+  return kind === 'clock' ? '—:—' : '—';
+}
+
+/**
+ * Choose what a single-value sport widget displays when its live value
+ * is absent (`resolved == null`).
+ *
+ * @param isLiveSurface  true when the widget is rendering on a LIVE
+ *                       player surface (provider present, or `live`
+ *                       prop true). false in the builder / thumbnail.
+ * @param resolved       the resolved live value, or null when absent.
+ * @param placeholder    the operator's sample text (builder only).
+ * @param neutralKind    glyph shape for the live-no-data case.
+ *
+ * Returns the live value if present; otherwise the sample in the
+ * builder, or the neutral glyph on a live surface — so a live board with
+ * no feed shows "—", never a fabricated score.
+ */
+export function displayOrNeutral(
+  isLiveSurface: boolean,
+  resolved: string | null | undefined,
+  placeholder: string | null | undefined,
+  neutralKind: 'clock' | 'value' = 'value',
+): string {
+  if (resolved != null && resolved !== '') return resolved;
+  if (isLiveSurface) return liveNeutral(neutralKind);
+  // Builder / thumbnail — sample text so the operator can lay out the
+  // board. Fall back to the neutral glyph if no placeholder is set.
+  return placeholder != null && placeholder !== '' ? placeholder : liveNeutral(neutralKind);
+}

@@ -9,6 +9,16 @@
  * config-driven, brand-aware (flat color/font config), Chromium-83 safe,
  * sample fallback in the builder.
  *
+ * NO FAKE STATS ON A LIVE BOARD (audit P1, 2026-06-13): the representative
+ * sample values ("2ND & 7", "157 LBS", a lit base diamond, …) are for the
+ * BUILDER ONLY. The "is this a live surface?" signal is `useGameState() !=
+ * null` — the GameStateProvider only mounts on the live /board route, NOT
+ * the builder canvas / gallery thumbnail. On a live surface that has no
+ * snapshot yet, these widgets render their NEUTRAL / empty state, never a
+ * fabricated value a crowd could read as the real game. (The OLD gate
+ * `s?.snapshot` conflated "live board, no data yet" with "builder" — that
+ * is the bug this closes.)
+ *
  * Football   · down&distance, ball-on, flag
  * Baseball   · count (B-S-O), base diamond, inning-half, pitch count, pitch speed
  * Hockey/Lax/WP · penalty box (stacked timers), power-play badge
@@ -33,7 +43,9 @@ export function DownDistanceWidget({ config }: { config: ElCfg }) {
   const down = stat(s, config.statKey ?? 'down');
   const dist = stat(s, 'distance');
   const ord = (n: number) => ['', '1ST', '2ND', '3RD', '4TH'][n] || `${n}TH`;
-  const display = s?.snapshot
+  // Builder (s == null) → sample "2ND & 7". Live surface → real value or
+  // a neutral "—" (never the fabricated sample).
+  const display = s != null
     ? (down ? `${ord(Number(down))} & ${dist ?? '—'}` : '—')
     : (config.placeholder ?? '2ND & 7');
   return (
@@ -52,7 +64,9 @@ export function DownDistanceWidget({ config }: { config: ElCfg }) {
 export function BallOnWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const ballOn = stat(s, config.statKey ?? 'ballOn');
-  const display = s?.snapshot ? (ballOn != null ? `BALL ON ${ballOn}` : '') : (config.placeholder ?? 'BALL ON 35');
+  // Builder (s == null) → sample. Live surface → real value or blank
+  // (never the fabricated "BALL ON 35").
+  const display = s != null ? (ballOn != null ? `BALL ON ${ballOn}` : '') : (config.placeholder ?? 'BALL ON 35');
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitOneLine
@@ -69,8 +83,11 @@ export function BallOnWidget({ config }: { config: ElCfg }) {
 export function FlagIndicatorWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const flag = stat(s, config.statKey ?? 'flag');
-  const lit = s?.snapshot ? !!flag : true;
-  if (s?.snapshot && !lit) return <div style={elRoot(config, { backgroundColor: 'transparent' })} />;
+  // Builder (s == null) → always lit so the operator sees the badge.
+  // Live surface → lit only on a real flag; hidden otherwise (never a
+  // fabricated FLAG).
+  const lit = s != null ? !!flag : true;
+  if (s != null && !lit) return <div style={elRoot(config, { backgroundColor: 'transparent' })} />;
   return (
     <div style={{ width: '100%', height: '100%', background: 'transparent', overflow: 'hidden' }}>
       <FitOneLine
@@ -88,9 +105,11 @@ export function FlagIndicatorWidget({ config }: { config: ElCfg }) {
 
 export function CountWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
-  const balls = s?.snapshot ? Number(stat(s, 'balls') ?? 0) : 2;
-  const strikes = s?.snapshot ? Number(stat(s, 'strikes') ?? 0) : 1;
-  const outs = s?.snapshot ? Number(stat(s, 'outs') ?? 0) : 1;
+  // Builder (s == null) → sample 2-1, 1 out. Live surface → real count
+  // (defaults to 0-0, 0 — never the fabricated sample).
+  const balls = s != null ? Number(stat(s, 'balls') ?? 0) : 2;
+  const strikes = s != null ? Number(stat(s, 'strikes') ?? 0) : 1;
+  const outs = s != null ? Number(stat(s, 'outs') ?? 0) : 1;
   const dot = (on: boolean, c: string) => (
     <span style={{ width: '0.5em', height: '0.5em', borderRadius: '50%', display: 'inline-block', marginLeft: '0.18em', background: on ? c : 'rgba(255,255,255,0.16)' }} />
   );
@@ -114,9 +133,11 @@ export function CountWidget({ config }: { config: ElCfg }) {
 export function BaseDiamondWidget({ config }: { config: ElCfg }) {
   // Visual diamond graphic — percentage-based sizing, no text overflow risk. Left alone.
   const s = useGameState();
-  const on1 = s?.snapshot ? !!Number(stat(s, 'on1B') ?? 0) : true;
-  const on2 = s?.snapshot ? !!Number(stat(s, 'on2B') ?? 0) : false;
-  const on3 = s?.snapshot ? !!Number(stat(s, 'on3B') ?? 0) : true;
+  // Builder (s == null) → sample runners on 1st + 3rd. Live surface →
+  // real base state (defaults to empty bases — never the fabricated sample).
+  const on1 = s != null ? !!Number(stat(s, 'on1B') ?? 0) : true;
+  const on2 = s != null ? !!Number(stat(s, 'on2B') ?? 0) : false;
+  const on3 = s != null ? !!Number(stat(s, 'on3B') ?? 0) : true;
   const lit = config.accentColor ?? '#fbbf24';
   const off = 'rgba(255,255,255,0.14)';
   const base = (on: boolean, style: React.CSSProperties) => (
@@ -135,8 +156,11 @@ export function BaseDiamondWidget({ config }: { config: ElCfg }) {
 
 export function InningHalfWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
+  // Builder (s == null) → sample "▲ 5TH". Live surface with no snapshot →
+  // neutral "—" (never the fabricated 5th-inning sample).
+  const liveNoData = s != null && !s.snapshot;
   const seg = s?.snapshot?.segment ?? 5;
-  const half = String(stat(s, 'half') ?? (s?.snapshot ? 'top' : 'top')).toLowerCase();
+  const half = String(stat(s, 'half') ?? 'top').toLowerCase();
   const ord = (n: number) => { const x = ['TH','ST','ND','RD']; const v = n % 100; return `${n}${x[(v-20)%10] || x[v] || x[0]}`; };
   const arrow = half.startsWith('b') ? '▼' : '▲';
   return (
@@ -146,7 +170,7 @@ export function InningHalfWidget({ config }: { config: ElCfg }) {
         align={config.align ?? 'center'}
         style={{ color: config.color ?? '#ffffff', fontWeight: config.fontWeight ?? 800, fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif', letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined }}
       >
-        {arrow} {ord(seg)}
+        {liveNoData ? '—' : `${arrow} ${ord(seg)}`}
       </FitOneLine>
     </div>
   );
@@ -157,7 +181,9 @@ export function PitchCountWidget({ config }: { config: ElCfg }) {
   const team = config.team ?? 'home';
   const key = config.statKey ?? (team === 'away' ? 'awayPitchCount' : 'homePitchCount');
   const pc = stat(s, key);
-  const display = pc != null ? String(pc) : (s?.snapshot ? '0' : '87');
+  // Real value when present; sample "87" only in the builder (s == null);
+  // neutral "—" on a live surface with no data.
+  const display = pc != null ? String(pc) : (s != null ? '—' : '87');
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitBox
@@ -175,8 +201,10 @@ export function PitchCountWidget({ config }: { config: ElCfg }) {
 export function PitchSpeedWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const v = stat(s, config.statKey ?? 'pitchSpeed');
-  const display = v != null && v !== '' ? `${v}` : (s?.snapshot ? '' : '94');
-  if (s?.snapshot && !display) return <div style={elRoot(config, { backgroundColor: 'transparent' })} />;
+  // Sample "94" only in the builder (s == null). Live surface → real
+  // speed or hidden (never a fabricated 94 mph).
+  const display = v != null && v !== '' ? `${v}` : (s != null ? '' : '94');
+  if (s != null && !display) return <div style={elRoot(config, { backgroundColor: 'transparent' })} />;
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitBox
@@ -210,9 +238,12 @@ export function PenaltyBoxWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const team = config.team ?? 'home';
   const all = stat(s, 'penalties');
+  // Sample penalty (#17) only in the builder (s == null). Live surface
+  // with no penalty data → empty box (the widget renders nothing) — never
+  // a fabricated player in the penalty box.
   const penalties: any[] = Array.isArray(all)
     ? all.filter((p) => (p?.team ?? 'home') === team)
-    : (s?.snapshot ? [] : [{ player: 17, ms: 95000, at: new Date().toISOString(), running: false }]);
+    : (s != null ? [] : [{ player: 17, ms: 95000, at: new Date().toISOString(), running: false }]);
   const color = (team === 'away' ? s?.snapshot?.awayColor : s?.snapshot?.homeColor) || config.accentColor || '#dc2626';
   if (penalties.length === 0) return <div style={elRoot(config, { backgroundColor: 'transparent' })} />;
   return (
@@ -231,7 +262,10 @@ export function PowerPlayBadgeWidget({ config }: { config: ElCfg }) {
   const myP = team === 'home' ? homeP : awayP;
   const oppP = team === 'home' ? awayP : homeP;
   let label = ''; let bg = '';
-  if (!s?.snapshot) { label = 'POWER PLAY'; bg = '#22c55e'; }
+  // Sample "POWER PLAY" only in the builder (s == null). On a live surface
+  // the badge follows the real penalty counts and stays hidden until a
+  // genuine power-play / kill exists — never a fabricated badge.
+  if (s == null) { label = 'POWER PLAY'; bg = '#22c55e'; }
   else if (oppP > myP) { label = `POWER PLAY${oppP - myP > 1 ? ` ${myP}-on-${myP + (oppP - myP)}` : ''}`; bg = '#22c55e'; }
   else if (myP > oppP) { label = 'PENALTY KILL'; bg = '#f59e0b'; }
   if (!label) return <div style={elRoot(config, { backgroundColor: 'transparent' })} />;
@@ -254,9 +288,12 @@ export function SetScoresWidget({ config }: { config: ElCfg }) {
   // Multi-column per-set scores: each set is a home/away pair — FitBox scales the whole row.
   const s = useGameState();
   const raw = stat(s, config.statKey ?? 'sets');
+  // Sample per-set scores only in the builder (s == null). On a live
+  // surface with no set data → a single neutral "—/—" column (never the
+  // fabricated 25-21 / 23-25 / 25-18 sample).
   const sets: Array<{ h?: number; a?: number }> = Array.isArray(raw) && raw.length
     ? (raw as any[])
-    : [{ h: 25, a: 21 }, { h: 23, a: 25 }, { h: 25, a: 18 }];
+    : (s != null ? [{}] : [{ h: 25, a: 21 }, { h: 23, a: 25 }, { h: 25, a: 18 }]);
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitBox
@@ -278,7 +315,11 @@ export function SetScoresWidget({ config }: { config: ElCfg }) {
 export function ServeIndicatorWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const team = config.team ?? 'home';
-  const serve = String(stat(s, config.statKey ?? 'serve') ?? (s?.snapshot ? 'home' : 'home')).toLowerCase();
+  const rawServe = stat(s, config.statKey ?? 'serve');
+  // Builder (s == null) → light the home indicator as a sample. Live
+  // surface → follow the real serve; with no serve data nothing is lit
+  // (never a fabricated serve indicator).
+  const serve = String(rawServe ?? (s == null ? 'home' : '')).toLowerCase();
   const lit = serve === team;
   return (
     <div style={{ width: '100%', height: '100%', background: 'transparent', overflow: 'hidden' }}>
@@ -301,8 +342,10 @@ export function CardCountWidget({ config }: { config: ElCfg }) {
   const team = config.team ?? 'home';
   const yKey = config.statKey ?? (team === 'away' ? 'awayYellow' : 'homeYellow');
   const rKey = team === 'away' ? 'awayRed' : 'homeRed';
-  const yellow = s?.snapshot ? Number(stat(s, yKey) ?? 0) : 2;
-  const red = s?.snapshot ? Number(stat(s, rKey) ?? 0) : 1;
+  // Builder (s == null) → sample 2 yellow / 1 red. Live surface → real
+  // counts (default 0 / 0 — never the fabricated sample).
+  const yellow = s != null ? Number(stat(s, yKey) ?? 0) : 2;
+  const red = s != null ? Number(stat(s, rKey) ?? 0) : 1;
   const card = (color: string, n: number) => (
     <div style={{ display: 'flex', alignItems: 'center', marginLeft: '0.3em' }}>
       <span style={{ width: '0.6em', height: '0.85em', background: color, borderRadius: 2, marginRight: '0.18em', display: 'inline-block' }} />
@@ -321,7 +364,9 @@ export function StatPairWidget({ config }: { config: ElCfg }) {
   // Generic labelled stat (shots, corners, possession %, etc.)
   const s = useGameState();
   const v = stat(s, config.statKey ?? 'shots');
-  const display = v != null && v !== '' ? `${v}` : (s?.snapshot ? '0' : '12');
+  // Real value when present; sample "12" only in the builder (s == null);
+  // neutral "—" on a live surface with no data.
+  const display = v != null && v !== '' ? `${v}` : (s != null ? '—' : '12');
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitBox
@@ -342,7 +387,9 @@ export function RidingTimeWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const raw = stat(s, config.statKey ?? 'ridingTime') as any;
   const ms = useSubClock(raw && raw.at ? raw : null, s?.snapshot?.serverTime);
-  const shown = s?.snapshot ? ms : 72000;
+  // Builder (s == null) → sample 1:12. Live surface → the real riding
+  // time (0:00 until a real anchor arrives — never the fabricated sample).
+  const shown = s != null ? ms : 72000;
   const m = Math.floor(shown / 60000);
   const sec = Math.floor((shown % 60000) / 1000);
   const advantage = shown >= 60000;
@@ -363,7 +410,9 @@ export function RidingTimeWidget({ config }: { config: ElCfg }) {
 export function WeightClassWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const w = stat(s, config.statKey ?? 'weightClass');
-  const display = w != null && w !== '' ? `${w}` : (s?.snapshot ? '' : '157 LBS');
+  // Real value when present; sample "157 LBS" only in the builder
+  // (s == null); blank on a live surface with no data.
+  const display = w != null && w !== '' ? `${w}` : (s != null ? '' : '157 LBS');
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitOneLine
@@ -382,7 +431,9 @@ export function TeamScoreRunningWidget({ config }: { config: ElCfg }) {
   const team = config.team ?? 'home';
   const key = config.statKey ?? (team === 'away' ? 'awayTeamScore' : 'homeTeamScore');
   const v = stat(s, key);
-  const display = v != null ? String(v) : (s?.snapshot ? '0' : team === 'away' ? '18' : '24');
+  // Real value when present; sample 24/18 only in the builder (s == null);
+  // neutral "—" on a live surface with no data (never a fabricated score).
+  const display = v != null ? String(v) : (s != null ? '—' : team === 'away' ? '18' : '24');
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitBox

@@ -10,6 +10,14 @@
  * thumbnail), it falls through to `cfg.placeholder` so the operator
  * can still see + position the widget while laying out a board.
  *
+ * CRITICAL (audit P1, 2026-06-13): the sample placeholder is ONLY shown
+ * in the builder. On a LIVE player surface (provider present) with no
+ * live value yet, the widget renders a NEUTRAL glyph ("—" / "—:—") via
+ * `displayOrNeutral` — NEVER a fabricated score. Otherwise a crowd could
+ * see fake numbers on the big board indistinguishable from a real game.
+ * The "is this a live surface?" signal is `useGameState() != null`
+ * (the provider only mounts on the live /board route, not the builder).
+ *
  * Chromium-83 safe — no `inset` shorthand, no flex `gap`, no
  * `backdrop-filter`. Long-hand sides, explicit margins, solid bgs.
  *
@@ -25,7 +33,7 @@
 
 import { useGameState } from './GameStateContext';
 import { FitOneLine, FitBox } from './FitOneLine';
-import { resolveCtsField, deriveCtsField } from './cts-fields';
+import { resolveCtsField, deriveCtsField, displayOrNeutral } from './cts-fields';
 
 interface BaseConfig {
   // Visual.
@@ -139,7 +147,9 @@ export function ScoreHomeWidget({ config }: { config: ScoreConfig }) {
   // derive from legacy cfg.team/cfg.statKey when cfg.ctsField is absent.
   const key = deriveCtsField('SCORE_HOME', config) ?? 'homeScore';
   const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key);
-  const display = resolved ?? (config.placeholder ?? '24');
+  // Live surface (provider present) with no value → neutral "—", never
+  // the fabricated sample. Builder (no provider) → keep the sample.
+  const display = displayOrNeutral(state != null, resolved, config.placeholder ?? '24');
 
   if (config.showLogo || config.showName) {
     const team = state?.snapshot?.homeTeam ?? 'HOME';
@@ -181,7 +191,7 @@ export function ScoreAwayWidget({ config }: { config: ScoreConfig }) {
   const state = useGameState();
   const key = deriveCtsField('SCORE_AWAY', config) ?? 'awayScore';
   const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key);
-  const display = resolved ?? (config.placeholder ?? '21');
+  const display = displayOrNeutral(state != null, resolved, config.placeholder ?? '21');
 
   if (config.showLogo || config.showName) {
     const team = state?.snapshot?.awayTeam ?? 'AWAY';
@@ -229,10 +239,9 @@ export function GameClockWidget({ config }: { config: ClockConfig }) {
   const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key, {
     showTenths: !!config.showTenths,
   });
-  if (resolved == null) {
-    return <FitValue config={config}>{config.placeholder ?? '07:42'}</FitValue>;
-  }
-  return <FitValue config={config}>{resolved}</FitValue>;
+  // Live surface with no clock → "—:—", never the sample "07:42".
+  const display = displayOrNeutral(state != null, resolved, config.placeholder ?? '07:42', 'clock');
+  return <FitValue config={config}>{display}</FitValue>;
 }
 
 // ── Segment ──────────────────────────────────────────────────────────
@@ -241,10 +250,9 @@ export function GameSegmentWidget({ config }: { config: SegmentConfig }) {
   const state = useGameState();
   const key = deriveCtsField('GAME_SEGMENT', config) ?? 'segment';
   const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key);
-  if (resolved == null) {
-    return <FitValue config={config}>{config.placeholder ?? 'Q3'}</FitValue>;
-  }
-  return <FitValue config={config}>{resolved}</FitValue>;
+  // Live surface with no segment → "—", never the sample "Q3".
+  const display = displayOrNeutral(state != null, resolved, config.placeholder ?? 'Q3');
+  return <FitValue config={config}>{display}</FitValue>;
 }
 
 // ── Stat (sport-specific) ────────────────────────────────────────────
@@ -256,14 +264,18 @@ export function GameStatWidget({ config }: { config: StatConfig }) {
   // through the catalog so re-pointing actually changes the value. Else
   // fall back to a manual Game.stats key (cfg.statKey) — operator-input
   // stats (down/fouls/…) that CTS doesn't transmit.
+  // Live surface (provider present) with no value → neutral "—", never
+  // the operator's sample placeholder. Builder → keep the sample.
+  const isLive = state != null;
   let display: string;
   if (config.ctsField) {
     const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, config.ctsField);
-    display = resolved ?? (config.placeholder ?? '—');
+    display = displayOrNeutral(isLive, resolved, config.placeholder ?? '—');
   } else {
     const key = config.statKey ?? 'down';
     const raw = state?.snapshot?.stats?.[key];
-    display = raw != null && raw !== '' ? String(raw) : (config.placeholder ?? '—');
+    const resolved = raw != null && raw !== '' ? String(raw) : null;
+    display = displayOrNeutral(isLive, resolved, config.placeholder ?? '—');
   }
 
   if (config.label) {

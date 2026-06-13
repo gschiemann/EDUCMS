@@ -82,6 +82,22 @@ const SAMPLE: CtsRibbonSnapshot = {
   receivedAt: 0,
 };
 
+// Neutral state for a LIVE ribbon with no bridge feed yet — empty
+// arrays, 0:00 clock. The render special-cases scores + clock to a dash
+// (via the `neutral` flag) so nothing reads as a fabricated game.
+const NEUTRAL_SNAPSHOT: CtsRibbonSnapshot = {
+  clock: '0:00',
+  period: 1,
+  homeScore: 0,
+  awayScore: 0,
+  homeShotClock: '',
+  awayShotClock: '',
+  homeExclusions: [],
+  awayExclusions: [],
+  horn: false,
+  receivedAt: 0,
+};
+
 // ─── Shared hook: subscribe to the live CTS feed ───────────────────
 
 /**
@@ -91,10 +107,14 @@ const SAMPLE: CtsRibbonSnapshot = {
  * latest snapshot. When no bridge is connected (or in builder preview),
  * returns null and the caller should fall back to SAMPLE.
  *
- * `live` flag distinguishes "real bridge connected" from "preview /
- * sample" so the widget can render a subtle live indicator.
+ * `live` flag = a real bridge event has arrived. `neutral` flag (audit
+ * P1, 2026-06-13) = this is a LIVE player surface (`isLiveSurface`, set
+ * from the WidgetRenderer `live` prop) that has NO feed yet — the caller
+ * must render dashes, not the fabricated SAMPLE. The OLD code keyed only
+ * on `live` (event arrived?) and so showed SAMPLE on a live board with
+ * no feed, indistinguishable from a real score save an 8px grey dot.
  */
-function useCtsGameState(): { snap: CtsRibbonSnapshot; live: boolean } {
+function useCtsGameState(isLiveSurface = false): { snap: CtsRibbonSnapshot; live: boolean; neutral: boolean } {
   const [snap, setSnap] = useState<CtsRibbonSnapshot | null>(null);
 
   useEffect(() => {
@@ -120,8 +140,16 @@ function useCtsGameState(): { snap: CtsRibbonSnapshot; live: boolean } {
     return () => window.removeEventListener('edu:cts-game-state', onUpdate);
   }, []);
 
-  return { snap: snap ?? SAMPLE, live: snap !== null };
+  // Live surface (player) with no event yet → neutral snapshot + flag.
+  // Builder / thumbnail → SAMPLE so the tile is alive.
+  const neutral = isLiveSurface && snap === null;
+  const resolved = snap ?? (isLiveSurface ? NEUTRAL_SNAPSHOT : SAMPLE);
+  return { snap: resolved, live: snap !== null, neutral };
 }
+
+/** A dash for a live-no-data value. Keeps every widget consistent. */
+const N_VALUE = '—';
+const N_CLOCK = '—:—';
 
 // ─── Shared layout primitives ──────────────────────────────────────
 
@@ -228,9 +256,9 @@ function LiveDot({ live, hideLiveDot }: { live: boolean; hideLiveDot?: boolean }
  * CtsClockWidget — just the game clock, big tabular figures.
  * Flashes red on horn rising edge.
  */
-export function CtsClockWidget({ config }: { config?: BgCfg }) {
+export function CtsClockWidget({ config, live: liveSurface }: { config?: BgCfg; live?: boolean }) {
   const cfg = config ?? {};
-  const { snap, live } = useCtsGameState();
+  const { snap, live, neutral } = useCtsGameState(liveSurface === true);
   const { ref, h } = useMeasuredHeight();
   const fs = Math.max(20, Math.round((h || 192) * 0.72));
   const color = snap.horn ? '#fca5a5' : (cfg.accentColor || '#f59e0b');
@@ -250,7 +278,7 @@ export function CtsClockWidget({ config }: { config?: BgCfg }) {
           lineHeight: 1,
         }}
       >
-        {snap.clock}
+        {neutral ? N_CLOCK : snap.clock}
       </span>
       <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
     </div>
@@ -262,9 +290,9 @@ export function CtsClockWidget({ config }: { config?: BgCfg }) {
  * want one widget that shows both scores + team abbrevs. For separate
  * home / away tiles use CtsScoreHomeWidget / CtsScoreAwayWidget.
  */
-export function CtsScoreCombinedWidget({ config }: { config?: TeamCfg }) {
+export function CtsScoreCombinedWidget({ config, live: liveSurface }: { config?: TeamCfg; live?: boolean }) {
   const cfg = config ?? {};
-  const { snap, live } = useCtsGameState();
+  const { snap, live, neutral } = useCtsGameState(liveSurface === true);
   const { ref, h } = useMeasuredHeight();
   const fs = Math.max(18, Math.round((h || 192) * 0.6));
   const labelFs = Math.max(12, Math.round((h || 192) * 0.32));
@@ -278,11 +306,11 @@ export function CtsScoreCombinedWidget({ config }: { config?: TeamCfg }) {
     <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a', position: 'relative' as const }}>
       <span style={{ color: homeColor, fontWeight: 900, fontSize: labelFs, letterSpacing: 1, marginRight: 12 }}>{homeAbbr}</span>
       <span style={{ color: 'white', fontWeight: 900, fontSize: fs, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-        {pad2(snap.homeScore)}
+        {neutral ? N_VALUE : pad2(snap.homeScore)}
       </span>
       <span style={{ color: '#475569', fontSize: Math.round(fs * 0.7), margin: '0 14px' }}>{'-'}</span>
       <span style={{ color: 'white', fontWeight: 900, fontSize: fs, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-        {pad2(snap.awayScore)}
+        {neutral ? N_VALUE : pad2(snap.awayScore)}
       </span>
       <span style={{ color: awayColor, fontWeight: 900, fontSize: labelFs, letterSpacing: 1, marginLeft: 12 }}>{awayAbbr}</span>
       <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
@@ -291,9 +319,9 @@ export function CtsScoreCombinedWidget({ config }: { config?: TeamCfg }) {
 }
 
 /** CtsScoreHomeWidget — home score only, big digits. */
-export function CtsScoreHomeWidget({ config }: { config?: TeamCfg }) {
+export function CtsScoreHomeWidget({ config, live: liveSurface }: { config?: TeamCfg; live?: boolean }) {
   const cfg = config ?? {};
-  const { snap, live } = useCtsGameState();
+  const { snap, live, neutral } = useCtsGameState(liveSurface === true);
   const { ref, h } = useMeasuredHeight();
   const fs = Math.max(20, Math.round((h || 192) * 0.78));
   const labelFs = Math.max(12, Math.round((h || 192) * 0.32));
@@ -304,7 +332,7 @@ export function CtsScoreHomeWidget({ config }: { config?: TeamCfg }) {
         {abbr(cfg.homeAbbrev) || 'HOME'}
       </span>
       <span style={{ color: 'white', fontWeight: 900, fontSize: fs, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-        {pad2(snap.homeScore)}
+        {neutral ? N_VALUE : pad2(snap.homeScore)}
       </span>
       <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
     </div>
@@ -312,9 +340,9 @@ export function CtsScoreHomeWidget({ config }: { config?: TeamCfg }) {
 }
 
 /** CtsScoreAwayWidget — away score only, big digits. */
-export function CtsScoreAwayWidget({ config }: { config?: TeamCfg }) {
+export function CtsScoreAwayWidget({ config, live: liveSurface }: { config?: TeamCfg; live?: boolean }) {
   const cfg = config ?? {};
-  const { snap, live } = useCtsGameState();
+  const { snap, live, neutral } = useCtsGameState(liveSurface === true);
   const { ref, h } = useMeasuredHeight();
   const fs = Math.max(20, Math.round((h || 192) * 0.78));
   const labelFs = Math.max(12, Math.round((h || 192) * 0.32));
@@ -325,7 +353,7 @@ export function CtsScoreAwayWidget({ config }: { config?: TeamCfg }) {
         {abbr(cfg.awayAbbrev) || 'AWAY'}
       </span>
       <span style={{ color: 'white', fontWeight: 900, fontSize: fs, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-        {pad2(snap.awayScore)}
+        {neutral ? N_VALUE : pad2(snap.awayScore)}
       </span>
       <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
     </div>
@@ -333,9 +361,9 @@ export function CtsScoreAwayWidget({ config }: { config?: TeamCfg }) {
 }
 
 /** CtsPeriodWidget — current quarter / OT indicator. */
-export function CtsPeriodWidget({ config }: { config?: BgCfg }) {
+export function CtsPeriodWidget({ config, live: liveSurface }: { config?: BgCfg; live?: boolean }) {
   const cfg = config ?? {};
-  const { snap, live } = useCtsGameState();
+  const { snap, live, neutral } = useCtsGameState(liveSurface === true);
   const { ref, h } = useMeasuredHeight();
   const fs = Math.max(18, Math.round((h || 192) * 0.62));
   return (
@@ -348,7 +376,7 @@ export function CtsPeriodWidget({ config }: { config?: BgCfg }) {
           color: cfg.accentColor || '#cbd5e1',
         }}
       >
-        {periodLabel(snap.period)}
+        {neutral ? N_VALUE : periodLabel(snap.period)}
       </span>
       <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
     </div>
@@ -365,9 +393,11 @@ interface ExclusionCfg extends TeamCfg {
    *  (auto = first active across both, home priority). */
   team?: 'home' | 'away' | 'auto';
 }
-export function CtsExclusionWidget({ config }: { config?: ExclusionCfg }) {
+export function CtsExclusionWidget({ config, live: liveSurface }: { config?: ExclusionCfg; live?: boolean }) {
   const cfg = config ?? {};
-  const { snap, live } = useCtsGameState();
+  // Live surface → NEUTRAL_SNAPSHOT (empty exclusions → "NO PENALTY"),
+  // never the SAMPLE's fabricated #7 exclusion.
+  const { snap, live } = useCtsGameState(liveSurface === true);
   const { ref, h } = useMeasuredHeight();
   const fs = Math.max(16, Math.round((h || 192) * 0.42));
   const labelFs = Math.max(10, Math.round((h || 192) * 0.22));
@@ -429,9 +459,11 @@ export function CtsExclusionWidget({ config }: { config?: ExclusionCfg }) {
  * Shows "PARKED" when the shot clock is empty.
  */
 interface ShotClockCfg extends TeamCfg { team?: 'home' | 'away' | 'either'; }
-export function CtsShotClockWidget({ config }: { config?: ShotClockCfg }) {
+export function CtsShotClockWidget({ config, live: liveSurface }: { config?: ShotClockCfg; live?: boolean }) {
   const cfg = config ?? {};
-  const { snap, live } = useCtsGameState();
+  // Live surface → NEUTRAL_SNAPSHOT (empty shot clocks → parked "—"),
+  // never the SAMPLE's fabricated "24".
+  const { snap, live } = useCtsGameState(liveSurface === true);
   const { ref, h } = useMeasuredHeight();
   const fs = Math.max(20, Math.round((h || 192) * 0.7));
   const labelFs = Math.max(10, Math.round((h || 192) * 0.22));
@@ -473,9 +505,9 @@ export function CtsShotClockWidget({ config }: { config?: ShotClockCfg }) {
  * fires. Useful as a small overlay tile so referees + crowd see the
  * horn even if their head is turned from the buzzer.
  */
-export function CtsHornFlashWidget({ config }: { config?: BgCfg }) {
+export function CtsHornFlashWidget({ config, live: liveSurface }: { config?: BgCfg; live?: boolean }) {
   const cfg = config ?? {};
-  const { snap } = useCtsGameState();
+  const { snap } = useCtsGameState(liveSurface === true);
   const horn = snap.horn === true;
   return (
     <div
@@ -1042,14 +1074,17 @@ interface CelebrationCfg extends TeamCfg {
  * celebration" button which dispatches a fake event — wired in a
  * follow-up; the widget already listens to the event today.
  */
-export function CtsCelebrationWidget({ config }: { config?: CelebrationCfg }) {
+export function CtsCelebrationWidget({ config, live: liveSurface }: { config?: CelebrationCfg; live?: boolean }) {
   const cfg = config ?? {};
   const text = cfg.text || 'GOAL!';
   const idleText = cfg.idleText || 'GO TEAM';
   const activeMs = cfg.activeMs || 6000;
   const hornTriggers = cfg.hornAlsoTriggers !== false;
 
-  const { snap, live } = useCtsGameState();
+  // On a live surface the baseline starts from NEUTRAL_SNAPSHOT (0-0), so
+  // the first real snapshot can't mis-fire a celebration off the SAMPLE
+  // 4-3 jump. Builder keeps the SAMPLE.
+  const { snap, live } = useCtsGameState(liveSurface === true);
   const [active, setActive] = useState<null | { team: 'home' | 'away' | 'horn'; until: number }>(null);
   const lastHomeRef = useRef<number>(snap.homeScore);
   const lastAwayRef = useRef<number>(snap.awayScore);
@@ -1303,7 +1338,7 @@ const DEFAULT_CUE_DECK: Required<OrchestratorCueDeck> = {
  * "CTS Water Polo Ribbon" preset does this at z-index 50). It does
  * not block clicks when idle.
  */
-export function CtsCelebrationOrchestratorWidget({ config }: { config?: CtsCelebrationOrchestratorCfg }) {
+export function CtsCelebrationOrchestratorWidget({ config, live: liveSurface }: { config?: CtsCelebrationOrchestratorCfg; live?: boolean }) {
   const cfg = config ?? {};
   const durationMs = cfg.durationMs || 6000;
   const cues = cfg.cues || {};
@@ -1312,7 +1347,10 @@ export function CtsCelebrationOrchestratorWidget({ config }: { config?: CtsCeleb
   const periodDeck = (cues.periodEnd && cues.periodEnd.length ? cues.periodEnd : DEFAULT_CUE_DECK.periodEnd).filter((c) => c in CUE_CATALOG);
   const hornDeck = (cues.horn && cues.horn.length ? cues.horn : DEFAULT_CUE_DECK.horn).filter((c) => c in CUE_CATALOG);
 
-  const { snap } = useCtsGameState();
+  // On a live surface the goal-delta baseline starts from NEUTRAL_SNAPSHOT
+  // (0-0) so the first real snapshot can't mis-fire a celebration off the
+  // SAMPLE 4-3 jump.
+  const { snap } = useCtsGameState(liveSurface === true);
   const [active, setActive] = useState<null | { cueId: CtsCueId; until: number; team: 'home' | 'away' | 'horn' }>(null);
 
   // Round-robin indices per deck. Refs (not state) because we don't

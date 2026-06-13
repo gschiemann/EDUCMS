@@ -18,6 +18,15 @@
  * the one template works live OR hand-typed. Outside a provider it
  * self-plays a sample so the builder tile is alive.
  *
+ * NO FAKE SCORES ON A LIVE BOARD (audit P1, 2026-06-13): the self-playing
+ * SAMPLE (EAGLES 62 / TIGERS 58 / 7:42 / Q3) is for the BUILDER ONLY. On a
+ * live player surface (provider present: `useGameState() != null`) that has
+ * no snapshot yet AND no operator override, the score / clock / period /
+ * shot-clock render NEUTRAL ("—" / "—:—") — never a fabricated number a
+ * crowd could mistake for the real game. Operator-typed overrides
+ * (c.homeScore / c.clock / …) still WIN, so a hand-configured board is
+ * unaffected.
+ *
  * APPROVED 2026-05-29 — matches scratch/design/scoreboards/hs.html,
  * screenshot-verified via apps/web/tests/e2e/scoreboard-shot.spec.ts.
  * DO NOT regress to vw/% units or the muted-panel look.
@@ -31,6 +40,7 @@ import { useEffect, useRef, useState } from 'react';
 import { findSport } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { useGameState, fmtClock, type GameSnapshot } from './GameStateContext';
+import { liveNeutral } from './cts-fields';
 import type { BaseCfg, WidgetProps } from '../v2/_shared/types';
 
 const DEFAULT_HOME = '#1e3a8a';
@@ -185,24 +195,48 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
   const stats = (snap.stats || {}) as Record<string, unknown>;
   const hasClock = def.clock.type !== 'none';
 
+  // ── No fake scores on a live board (audit P1) ──────────────────────
+  // We're on a LIVE player surface whenever the GameStateProvider is
+  // mounted (state != null) — that only happens on the /board route, not
+  // the builder/thumbnail. When it's mounted but no snapshot has arrived
+  // (game not live / no feed yet), the `snap` above fell back to SAMPLE,
+  // which would paint fabricated digits. So: on a live surface with no
+  // snapshot, the SAMPLE-sourced score / clock / period / shot read
+  // NEUTRAL instead. Operator overrides (c.*) still WIN — a hand-typed
+  // board is unaffected. The builder (state == null) keeps the self-
+  // playing SAMPLE so the tile stays alive.
+  const isLiveNoData = state != null && !state.snapshot;
+  const NEUTRAL = liveNeutral('value');
+
   // ── view = static config overrides layered over live/sample data ──
   const homeColor = pick(c.homeColor, snap.homeColor || DEFAULT_HOME);
   const awayColor = pick(c.awayColor, snap.awayColor || DEFAULT_AWAY);
   const accent = pick(c.accentColor, ACCENT_DEFAULT);
   const homeName = String(pick(c.homeName, snap.homeTeam) || 'HOME');
   const awayName = String(pick(c.awayName, snap.awayTeam) || 'AWAY');
-  const homeScore = pick(c.homeScore, snap.homeScore);
-  const awayScore = pick(c.awayScore, snap.awayScore);
+  // Score: operator override wins; else the live score; else NEUTRAL on a
+  // live surface with no data (never SAMPLE's 62 / 58).
+  const homeScore = pick(c.homeScore, isLiveNoData ? NEUTRAL : snap.homeScore);
+  const awayScore = pick(c.awayScore, isLiveNoData ? NEUTRAL : snap.awayScore);
   const homeLogoUrl = pick(c.homeLogoUrl, snap.homeLogoUrl);
   const awayLogoUrl = pick(c.awayLogoUrl, snap.awayLogoUrl);
   const status = String(pick(c.status, snap.status));
-  const isLive = status === 'LIVE' && live !== false;
-  const periodText = pick(c.period, segmentLabel(def, snap));
-  const clockText = pick(c.clock, hasClock ? fmtClock(clockMs) : '');
-  const clockUrgent = !c.clock && hasClock && snap.clockRunning && clockMs > 0 && clockMs < 60_000;
+  const isLive = status === 'LIVE' && live !== false && !isLiveNoData;
+  const periodText = pick(c.period, isLiveNoData ? NEUTRAL : segmentLabel(def, snap));
+  const clockText = pick(c.clock, hasClock ? (isLiveNoData ? liveNeutral('clock') : fmtClock(clockMs)) : '');
+  const clockUrgent = !c.clock && !isLiveNoData && hasClock && snap.clockRunning && clockMs > 0 && clockMs < 60_000;
 
+  // Shot clock: live value when present, sample only in the builder,
+  // hidden on a live surface with no data (handled by hasShot below).
   const shotClock = pick(c.shotClock, state?.snapshot ? num(stats.shotClock) : sampleShot);
-  const hasShot = (c.shotClock !== undefined || 'shotClock' in stats || !state?.snapshot) && shotClock > 0 && hasClock;
+  // Show the shot coin for: an operator override, a live shotClock, or
+  // the builder sample — but NOT a live board with no data (would show
+  // the fabricated sample 14). `num(NEUTRAL)` is 0, so even if it slips
+  // through, `shotClock > 0` would gate it; the explicit guard is clearer.
+  const hasShot =
+    (c.shotClock !== undefined || 'shotClock' in stats || (!state?.snapshot && !isLiveNoData)) &&
+    shotClock > 0 &&
+    hasClock;
   const poss = sideOf(pick(c.possession, stats.possession));
   const hasFouls = c.homeFouls !== undefined || c.awayFouls !== undefined || 'homeFouls' in stats || 'awayFouls' in stats;
   const hasTimeouts = c.homeTimeouts !== undefined || c.awayTimeouts !== undefined || 'homeTimeouts' in stats || 'awayTimeouts' in stats;
