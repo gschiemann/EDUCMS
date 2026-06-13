@@ -486,8 +486,10 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
     return () => clearInterval(t);
   }, [data.clockMs, data.clockRunning, data.clockUpdatedAt, data.serverTime, def]);
 
-  // Basketball shot clock — a second countdown, projected from its own
-  // anchor in stats.shotClock the same way as the game clock.
+  // Shot clock — a second countdown, projected from its own anchor in
+  // stats.shotClock the same way as the game clock. Driven by the sport's
+  // shotClock config (basketball 24/14, water polo 30/20, lacrosse 80/60),
+  // NOT a hardcoded sport key — so every shot-clock sport renders it.
   const [shotMs, setShotMs] = useState(0);
   const scRaw = (data.stats as Record<string, unknown> | undefined)?.shotClock;
   const sc = scRaw && typeof scRaw === 'object' ? (scRaw as Record<string, unknown>) : null;
@@ -780,7 +782,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
               {def.emoji}
             </div>
           )}
-          {def.key === 'basketball' && shotLen > 0 && (
+          {!!def.shotClock && shotLen > 0 && (
             <div
               style={{
                 display: 'flex',
