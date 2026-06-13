@@ -350,6 +350,13 @@ function segmentLabel(def: SportDefinition, data: BoardData): string {
   }
   if (def.segment.name === 'Quarter') return `Q${n}`;
   if (def.segment.name === 'Period') return `P${n}`;
+  // Cross-surface abbreviation parity (audit P2): the board + scorebug
+  // render the compact "H1 / R1 / RD1" broadcast form; abbreviate the
+  // ribbon's regulation Half / Rotation / Round here too so the three
+  // surfaces never disagree. (OT/inning/hole overflow handled above.)
+  if (def.segment.name === 'Half') return `H${n}`;
+  if (def.segment.name === 'Rotation') return `R${n}`;
+  if (def.segment.name === 'Round') return `RD${n}`;
   return `${def.segment.name.toUpperCase()} ${n}`;
 }
 function ordinal(n: number): string {

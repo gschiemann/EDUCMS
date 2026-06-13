@@ -124,11 +124,98 @@ export function hasSituational(def: SportDefinition, stats: Record<string, unkno
   // round (cheer) is always worth a broadcast situational line, so the
   // scorebug shows real meet context instead of a generic chip dump.
   if (def.key === 'gymnastics' || def.key === 'competitive_cheer') return true;
+  // Invasion sports — the broadcast-standard tuned line (shots / power
+  // play / ground balls / corners) ports from the ribbon so the board
+  // strip never falls to a raw chip dump. Only worth a frame once a stat
+  // has a value. (audit P2 — cross-surface parity with ribbonSituational)
+  if (def.key === 'soccer' || def.key === 'hockey' || def.key === 'lacrosse' || def.key === 'field_hockey') {
+    return curatedInvasion(def, stats) !== null;
+  }
+  // Remaining LEADERBOARD meet sports (golf / cross country / track /
+  // swim) — the now-showing meet line, again only when a stat is set.
+  if (def.mode === 'LEADERBOARD') {
+    return curatedLeaderboard(def, stats) !== null;
+  }
   // Everything else — only if at least one SportDefinition stat has a value.
   return def.stats.some((s) => {
     const raw = stats[s.key];
     return raw !== undefined && raw !== null && raw !== '';
   });
+}
+
+/**
+ * Curated invasion-sport situational line — the SAME tuned content the
+ * ribbon renders (ribbonSituational in app/ribbon/[gameId]/page.tsx) so
+ * the in-venue board strip and the ribbon never disagree. Returns an
+ * ordered list of plain text chips, or null when nothing is live.
+ */
+function curatedInvasion(def: SportDefinition, stats: Record<string, unknown>): string[] | null {
+  const parts: string[] = [];
+  if (def.key === 'soccer') {
+    const hs = num(stats.homeShots);
+    const as = num(stats.awayShots);
+    if (hs || as) parts.push(`SHOTS ${hs}-${as}`);
+    const added = num(stats.addedTime);
+    if (added > 0) parts.push(`+${added}' ADDED`);
+    // Cards only when at least one team has one — a 0-0 card line is noise.
+    if (num(stats.homeRedCards) || num(stats.awayRedCards)) {
+      parts.push(`RED ${num(stats.homeRedCards)}-${num(stats.awayRedCards)}`);
+    } else if (num(stats.homeYellowCards) || num(stats.awayYellowCards)) {
+      parts.push(`YC ${num(stats.homeYellowCards)}-${num(stats.awayYellowCards)}`);
+    }
+  } else if (def.key === 'hockey') {
+    const hs = num(stats.homeShots);
+    const as = num(stats.awayShots);
+    if (hs || as) parts.push(`SHOTS ON GOAL ${hs}-${as}`);
+    // A team with active penalties → the other team is on the power play.
+    const hp = num(stats.homePenalties);
+    const ap = num(stats.awayPenalties);
+    if (hp > ap) parts.push('AWAY POWER PLAY');
+    else if (ap > hp) parts.push('HOME POWER PLAY');
+    else if (hp && ap) parts.push('4-ON-4');
+  } else if (def.key === 'lacrosse') {
+    const hs = num(stats.homeShots);
+    const as = num(stats.awayShots);
+    if (hs || as) parts.push(`SHOTS ${hs}-${as}`);
+    const hg = num(stats.homeGroundBalls);
+    const ag = num(stats.awayGroundBalls);
+    if (hg || ag) parts.push(`GB ${hg}-${ag}`);
+  } else if (def.key === 'field_hockey') {
+    const hs = num(stats.homeShots);
+    const as = num(stats.awayShots);
+    if (hs || as) parts.push(`SHOTS ${hs}-${as}`);
+    const hc = num(stats.homeCorners);
+    const ac = num(stats.awayCorners);
+    if (hc || ac) parts.push(`CORNERS ${hc}-${ac}`);
+  }
+  return parts.length ? parts : null;
+}
+
+/**
+ * Curated meet (LEADERBOARD) situational line for the remaining meet
+ * sports the dedicated branches don't already handle — golf, cross
+ * country, and timed/judged track & swim. Mirrors ribbonSituational.
+ * Returns ordered text chips, or null when nothing is live.
+ */
+function curatedLeaderboard(def: SportDefinition, stats: Record<string, unknown>): string[] | null {
+  const parts: string[] = [];
+  if (def.key === 'golf') {
+    const hole = num(stats.currentHole);
+    if (hole > 0) parts.push(`HOLE ${hole}`);
+    const hPar = String(stats.homePar || '').trim();
+    const aPar = String(stats.awayPar || '').trim();
+    if (hPar || aPar) parts.push(`HOME ${hPar || 'E'} / AWAY ${aPar || 'E'}`);
+  } else if (def.key === 'cross_country') {
+    const lead = String(stats.leadRunner || '').trim();
+    if (lead) parts.push(`${lead.toUpperCase()} LEADING`);
+    const fin = num(stats.finishers);
+    if (fin > 0) parts.push(`${fin} FINISHED`);
+  } else {
+    // Track & field / swimming & diving — the currently-contested event.
+    const ev = String(stats.currentEvent || '').trim();
+    if (ev) parts.push(`NOW · ${ev.toUpperCase()}`);
+  }
+  return parts.length ? parts : null;
 }
 
 /** The broadcast situational strip — dispatches on sport. */
@@ -315,6 +402,42 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
             <strong style={{ color: ink }}>{routine.toUpperCase()}</strong>
           </span>
         )}
+      </>
+    );
+  } else if (
+    def.key === 'soccer' ||
+    def.key === 'hockey' ||
+    def.key === 'lacrosse' ||
+    def.key === 'field_hockey'
+  ) {
+    // ── Invasion sports — the SAME tuned broadcast line the ribbon shows
+    //    (shots / power play / ground balls / corners) instead of a raw
+    //    chip dump. Ported from ribbonSituational for cross-surface
+    //    parity. (audit P2) ──
+    const chips = curatedInvasion(def, stats);
+    if (!chips) return null;
+    content = (
+      <>
+        {chips.map((c) => (
+          <span key={c} style={{ fontSize: px(h, 0.055), fontWeight: 900, color: ink, letterSpacing: 1 }}>
+            {c}
+          </span>
+        ))}
+      </>
+    );
+  } else if (def.mode === 'LEADERBOARD') {
+    // ── Remaining meet sports (golf / cross country / track / swim) —
+    //    the now-showing meet line, ported from the ribbon. Gymnastics +
+    //    cheer are handled by their own branches above. (audit P2) ──
+    const chips = curatedLeaderboard(def, stats);
+    if (!chips) return null;
+    content = (
+      <>
+        {chips.map((c) => (
+          <span key={c} style={{ fontSize: px(h, 0.055), fontWeight: 900, color: accent, letterSpacing: 1 }}>
+            {c}
+          </span>
+        ))}
       </>
     );
   } else {

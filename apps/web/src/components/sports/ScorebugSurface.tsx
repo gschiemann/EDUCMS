@@ -148,6 +148,10 @@ export function segmentLabel(def: SportDefinition, data: BoardData): string {
   }
   if (def.segment.name === 'Quarter') return `Q${n}`;
   if (def.segment.name === 'Period') return `P${n}`;
+  // Soccer halves abbreviate to H1/H2 to match the big board (which
+  // already shows H1/H2). The verbose "HALF 1" / "HALF 2" was the only
+  // surface still out of parity. (audit P2)
+  if (def.segment.name === 'Half') return `H${n}`;
   // Meet-sport segments abbreviate too, so the scorebug center column
   // matches the board/ribbon (R1 rotation, RD1 round) instead of a
   // verbose "ROTATION 1" / "ROUND 1".

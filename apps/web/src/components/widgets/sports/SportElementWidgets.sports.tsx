@@ -361,6 +361,13 @@ export function ServeIndicatorWidget({ config }: { config: ElCfg }) {
   // (never a fabricated serve indicator).
   const serve = String(rawServe ?? (s == null ? 'home' : '')).toLowerCase();
   const lit = serve === team;
+  // Sport-aware serve glyph — a pickleball board must not show the
+  // volleyball ball. The sport rides on the live snapshot (s.snapshot.sport,
+  // same source `stat()` reads); in the builder (s == null) it defaults to
+  // the volleyball ball. Pickleball → paddle 🏓; volleyball / default → 🏐.
+  // (audit P2)
+  const sport = String(s?.snapshot?.sport ?? '').toLowerCase();
+  const glyph = sport === 'pickleball' ? '🏓' : '🏐';
   return (
     <div style={{ width: '100%', height: '100%', background: 'transparent', overflow: 'hidden' }}>
       <FitOneLine
@@ -368,7 +375,7 @@ export function ServeIndicatorWidget({ config }: { config: ElCfg }) {
         align={config.align ?? 'center'}
         style={{ opacity: lit ? 1 : 0.14, color: config.accentColor ?? config.color ?? '#fbbf24' }}
       >
-        🏐
+        {glyph}
       </FitOneLine>
     </div>
   );

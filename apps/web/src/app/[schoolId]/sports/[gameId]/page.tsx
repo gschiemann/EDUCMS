@@ -2293,6 +2293,30 @@ function ScoreTile({
 
             const value = Number(stats[s.key]) || 0;
 
+            // ── basketball bonus badge ──
+            // The board/ribbon/situational all read team-foul bonus off the
+            // SAME thresholds (>=7 BONUS, >=10 DOUBLE BONUS). Surface it in the
+            // console so the operator sees bonus state on the fouls row without
+            // reading the board. (audit P2). Console is not a player surface, so
+            // Tailwind utilities are fine here.
+            const isFoulStat = s.key.toLowerCase().endsWith('fouls');
+            const bonusBadge =
+              def.key === 'basketball' && isFoulStat
+                ? value >= 10
+                  ? 'DOUBLE BONUS'
+                  : value >= 7
+                    ? 'BONUS'
+                    : null
+                : null;
+            const BonusChip = bonusBadge ? (
+              <span
+                className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-black uppercase tracking-wider border border-amber-500/40"
+                title="Team is in the bonus — opponent shoots free throws on the next foul"
+              >
+                {bonusBadge}
+              </span>
+            ) : null;
+
             // ── ride-time mm:ss control ──
             if (isRideTime) {
               return (
@@ -2313,8 +2337,9 @@ function ScoreTile({
             if (wideRange) {
               return (
                 <div key={s.key} className="flex items-center justify-between text-xs gap-2">
-                  <span className="font-black uppercase tracking-widest text-slate-500 text-[10px] shrink-0">
+                  <span className="font-black uppercase tracking-widest text-slate-500 text-[10px] shrink-0 flex items-center">
                     {shortLabel(s.label)}
+                    {BonusChip}
                   </span>
                   <SideNumberTypeIn
                     value={value}
