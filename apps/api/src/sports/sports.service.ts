@@ -1978,6 +1978,79 @@ export class SportsService {
   }
 
   /**
+   * LINE SCORE producer — cross-domain contract with the board surface
+   * (2026-06-13 audit). The board renders the baseball per-inning grid
+   * and the football per-quarter box from `Game.stats.lineScore`, an
+   * array of CUMULATIVE-at-boundary snapshots:
+   *
+   *   stats.lineScore: { segment: number; home: number; away: number }[]
+   *
+   * `segment` is the segment that JUST FINISHED; `home`/`away` are the
+   * running TOTAL scores AT that boundary. The board computes a single
+   * segment's runs/points by DIFFERENCING consecutive snapshots (and the
+   * current live total against the last snapshot for the in-progress
+   * segment). We snapshot cumulative — not per-segment delta — because the
+   * running total is the one number we can read losslessly off the Game
+   * row at the boundary; deltas would have to reconstruct the segment's
+   * start, which the undo rail can perturb. (R-H-E uses the separate
+   * homeHits/awayHits/homeErrors/awayErrors stats added in the P1 wave.)
+   *
+   * Called ONLY on a FORWARD segment advance (oldSegment → newSegment,
+   * newSegment > oldSegment) for the two box-score sports: baseball /
+   * softball (segment = Inning) and football (segment = Quarter). It
+   * folds the snapshot into the merged stats object the caller is about
+   * to write — no extra DB round-trip. Idempotent: a snapshot for the
+   * same `segment` is replaced, never duplicated, so a re-advance after
+   * an undo can't leave a stale row.
+   *
+   * Returns the merged lineScore array, or null when this sport / move
+   * doesn't produce one (so the caller can skip touching stats).
+   */
+  private computeLineScore(
+    def: import('@cms/api-types').SportDefinition,
+    rawStats: unknown,
+    oldSegment: number,
+    newSegment: number,
+    homeScore: number,
+    awayScore: number,
+  ): Array<{ segment: number; home: number; away: number }> | null {
+    // Only the two box-score sports, and only on a forward advance.
+    const isBoxScore =
+      def.key === 'baseball' ||
+      def.key === 'softball' ||
+      def.key === 'football';
+    if (!isBoxScore) return null;
+    if (newSegment <= oldSegment) return null;
+
+    const home = Number.isFinite(homeScore) ? Math.max(0, Math.round(homeScore)) : 0;
+    const away = Number.isFinite(awayScore) ? Math.max(0, Math.round(awayScore)) : 0;
+
+    const stats: Record<string, unknown> =
+      rawStats && typeof rawStats === 'object'
+        ? (rawStats as Record<string, unknown>)
+        : {};
+    const prior = Array.isArray(stats.lineScore)
+      ? (stats.lineScore as unknown[]).filter(
+          (e): e is { segment: number; home: number; away: number } =>
+            !!e &&
+            typeof e === 'object' &&
+            typeof (e as { segment?: unknown }).segment === 'number',
+        )
+      : [];
+
+    // The boundary we just crossed snapshots the segment that finished.
+    // For a multi-step jump (rare — operator types segment 5 from 2) we
+    // backfill every skipped boundary at the same cumulative total so the
+    // grid has a cell per segment rather than a gap. Idempotent per segment.
+    const bySegment = new Map<number, { segment: number; home: number; away: number }>();
+    for (const e of prior) bySegment.set(e.segment, e);
+    for (let seg = oldSegment; seg < newSegment; seg++) {
+      bySegment.set(seg, { segment: seg, home, away });
+    }
+    return Array.from(bySegment.values()).sort((a, b) => a.segment - b.segment);
+  }
+
+  /**
    * Penalty box — the timed penalties of hockey, lacrosse, field
    * hockey and water polo. Each penalty counts a player out for a
    * fixed duration; the box runs and freezes WITH the game clock.
@@ -2102,7 +2175,16 @@ export class SportsService {
     const now = new Date();
     const data: Record<string, unknown> = { segment };
     if (def.clock.type !== 'none') {
-      data.clockMs = this.segmentStartMs(def);
+      // Football OT is untimed (possession-based, 1st-and-goal from the
+      // 25 in HS/NCAA) — re-anchoring the game clock to 12:00 in OT is
+      // wrong. When football crosses past the regulation quarter count,
+      // zero the game clock (and leave it stopped) so the board hides /
+      // zeros it for OT instead of showing a fake quarter clock. Every
+      // other countdown sport, and football's regulation quarters, keep
+      // the normal segment-start re-anchor. (2026-06-13 audit P2.)
+      const footballOT =
+        def.key === 'football' && segment > def.segment.count;
+      data.clockMs = footballOT ? 0 : this.segmentStartMs(def);
       data.clockRunning = false;
       data.clockUpdatedAt = now;
     }
@@ -2202,6 +2284,25 @@ export class SportsService {
     if (def.key === 'football' && mergedStats.playClock) {
       mergedStats.playClock = { ms: 40_000, at: now.toISOString(), running: false };
     }
+    // LINE SCORE (2026-06-13 audit — board cross-domain contract): on a
+    // FORWARD advance for baseball/softball (per-inning) and football
+    // (per-quarter), snapshot the cumulative score at the segment boundary
+    // into stats.lineScore so the board can render the box grid. The score
+    // is NOT mutated here (innings carry runs; quarters carry points), so
+    // we read the current game totals as the boundary snapshot. The board
+    // differences consecutive snapshots for per-segment values.
+    let lineScore: Array<{ segment: number; home: number; away: number }> | null = null;
+    if (advancingForward) {
+      lineScore = this.computeLineScore(
+        def,
+        mergedStats,
+        prevSegment,
+        segment,
+        prevHomeScore,
+        prevAwayScore,
+      );
+      if (lineScore) mergedStats.lineScore = lineScore;
+    }
     // Volleyball / pickleball: credit the just-finished set/game to its
     // leader (computed above) into the merged stats write.
     if (setGameWonKey) {
@@ -2218,6 +2319,18 @@ export class SportsService {
       prevSegment,
       prevClockMs,
     });
+
+    // LINE SCORE paper trail (board cross-domain contract) — a STAT event
+    // carrying the new lineScore so the per-inning / per-quarter box has a
+    // forensic record and the undo rail can target it. Only written when a
+    // box-score snapshot was actually produced.
+    if (lineScore) {
+      await this.record(id, 'STAT', {
+        stats: { lineScore },
+        source: 'line-score',
+        segment,
+      });
+    }
 
     // Volleyball / pickleball next-set: record a SCORE event carrying the
     // pre-zero score so the undo rail can restore the rally tally, plus a
@@ -2388,6 +2501,18 @@ export class SportsService {
         if (playClockPatch && typeof playClockPatch === 'object') {
           autoStats = { ...autoStats, ...(playClockPatch as Record<string, unknown>) };
         }
+        // LINE SCORE on the auto-advance path too (football is the only
+        // box-score sport with a clock, so it's the only one that reaches
+        // here). Snapshot the cumulative score at the quarter boundary.
+        const autoLineScore = this.computeLineScore(
+          def,
+          autoStats,
+          game.segment,
+          segment,
+          game.homeScore,
+          game.awayScore,
+        );
+        if (autoLineScore) autoStats.lineScore = autoLineScore;
         if (Object.keys(autoStats).length > 0) {
           autoData.stats = autoStats as any;
         }

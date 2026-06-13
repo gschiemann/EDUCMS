@@ -99,6 +99,76 @@ describe('Sport Engine', () => {
   });
 });
 
+describe('config+api P2 parity tweaks (2026-06-13 audit)', () => {
+  it('lacrosse offers the women’s 90s shot clock and an off option', () => {
+    const lax = findSport('lacrosse');
+    expect(lax?.shotClock?.options).toEqual([0, 60, 80, 90]);
+    // 0 (off) stays so HS / no-shot-clock play is representable.
+    expect(lax?.shotClock?.options).toContain(0);
+    expect(lax?.shotClock?.full).toBe(80); // NCAA men's default unchanged
+  });
+
+  it('swimming quick-add maps to NFHS place-point values', () => {
+    expect(findSport('swimming_diving')?.score.increments).toEqual([1, 2, 3, 4, 6, 8]);
+  });
+
+  it('track quick-add maps to NFHS dual place-point values', () => {
+    expect(findSport('track_and_field')?.score.increments).toEqual([1, 3, 5, 8]);
+  });
+
+  it('pickleball carries an optional server-number field (side-out scoring)', () => {
+    const pb = findSport('pickleball');
+    const sn = pb?.stats.find((s) => s.key === 'serverNum');
+    expect(sn).toBeDefined();
+    expect(sn?.scope).toBe('game');
+    expect(sn?.type).toBe('number');
+    expect(sn?.min).toBe(1);
+    expect(sn?.max).toBe(2);
+  });
+
+  it('baseball + softball carry an optional pitch-velocity field', () => {
+    for (const key of ['baseball', 'softball']) {
+      const def = findSport(key);
+      const mph = def?.stats.find((s) => s.key === 'lastPitchMph');
+      expect(mph).toBeDefined();
+      expect(mph?.scope).toBe('game');
+      expect(mph?.type).toBe('number');
+      expect(mph?.max).toBe(110);
+      expect(def?.stats.find((s) => s.key === 'lastPitchType')?.type).toBe('text');
+    }
+  });
+
+  it('only the grand slam auto-fires from a run delta (HR stays operator-fired)', () => {
+    for (const key of ['baseball', 'softball']) {
+      const def = findSport(key);
+      const hr = def?.celebrations.find((c) => c.key === 'homeRun');
+      const slam = def?.celebrations.find((c) => c.key === 'grandSlam');
+      // A +1/+2/+3 run delta is ambiguous, so homeRun must NOT auto-fire.
+      expect(hr?.autoPoints).toBeUndefined();
+      // A +4 in one plate appearance is unambiguously a grand slam.
+      expect(slam?.autoPoints).toEqual([4]);
+    }
+  });
+
+  it('wrestling carries a dual-meet team-points model with its own increments', () => {
+    // P1 (already shipped) — guarded here so the P2 increment set can't regress.
+    const w = findSport('wrestling');
+    expect(w?.teamScore?.homeKey).toBe('homeTeamPoints');
+    expect(w?.teamScore?.awayKey).toBe('awayTeamPoints');
+    // decision/major/tech/fall = 3/4/5/6 (distinct from per-bout [1,2,3,4]).
+    expect(w?.teamScore?.increments).toEqual([3, 4, 5, 6]);
+    expect(w?.score.increments).toEqual([1, 2, 3, 4]);
+  });
+
+  it('wrestling carries weight-class + bout-number + ride-time context', () => {
+    const w = findSport('wrestling');
+    expect(w?.stats.find((s) => s.key === 'weightClass')?.type).toBe('text');
+    expect(w?.stats.find((s) => s.key === 'boutNumber')?.type).toBe('number');
+    expect(w?.stats.find((s) => s.key === 'homeRideTime')).toBeDefined();
+    expect(w?.stats.find((s) => s.key === 'awayRideTime')).toBeDefined();
+  });
+});
+
 describe('decimal team scores (scaled-integer convention)', () => {
   const football = findSport('football');
   const gymnastics = findSport('gymnastics');

@@ -337,6 +337,84 @@ describe('SportsService — setSegment', () => {
     expect((await service.setSegment(TENANT, vb.id, { segment: 99 })).segment).toBe(5);
     expect((await service.setSegment(TENANT, vb.id, { segment: 0 })).segment).toBe(1);
   });
+
+  // ── config+api P2: football OT is untimed (2026-06-13 audit) ──
+  it('football OT zeroes the game clock instead of re-anchoring to 12:00', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'football'); // 4 quarters, overtime:true
+    // Jump straight to the first OT segment (count 4 → 5).
+    const ot = await service.setSegment(TENANT, g.id, { segment: 5 });
+    expect(ot.segment).toBe(5);
+    expect(ot.clockMs).toBe(0); // OT clock zeroed, not 12:00
+    expect(ot.clockRunning).toBe(false);
+  });
+
+  it('football regulation quarters still re-anchor to the segment length', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'football');
+    const q2 = await service.setSegment(TENANT, g.id, { segment: 2 });
+    expect(q2.clockMs).toBe(12 * 60_000); // regulation re-anchor unchanged
+  });
+});
+
+// ── config+api: LINE SCORE producer (board cross-domain contract) ──
+describe('SportsService — line score producer', () => {
+  it('baseball snapshots cumulative score per inning on a forward advance', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    // 1st inning: home plates 2 runs, then advance to the 2nd.
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 });
+    const r1: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(r1.segment).toBe(2);
+    expect(r1.stats.lineScore).toEqual([{ segment: 1, home: 2, away: 0 }]);
+    // 2nd inning: away plates 3; advance to the 3rd. Cumulative snapshot.
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 3 });
+    const r2: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(r2.stats.lineScore).toEqual([
+      { segment: 1, home: 2, away: 0 },
+      { segment: 2, home: 2, away: 3 },
+    ]);
+  });
+
+  it('football snapshots cumulative score per quarter on a forward advance', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'football');
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 7 });
+    const q2: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(q2.stats.lineScore).toEqual([{ segment: 1, home: 7, away: 0 }]);
+  });
+
+  it('does NOT produce a line score for a non-box-score sport (soccer)', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'soccer');
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 1 });
+    const h2: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(h2.stats?.lineScore).toBeUndefined();
+  });
+
+  it('does NOT snapshot on a backward (correction) move', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 1 });
+    await service.setSegment(TENANT, g.id, { delta: 1 }); // inning 2, snapshot seg 1
+    const back: any = await service.setSegment(TENANT, g.id, { delta: -1 });
+    expect(back.segment).toBe(1);
+    // The seg-1 snapshot from the forward move stays; no NEW entry on the
+    // backward move (no segment 0 / duplicate).
+    expect(back.stats.lineScore).toEqual([{ segment: 1, home: 1, away: 0 }]);
+  });
+
+  it('is idempotent per segment — re-advancing replaces, never duplicates', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 1 });
+    await service.setSegment(TENANT, g.id, { delta: 1 }); // → inning 2, snapshot seg1=1-0
+    await service.setSegment(TENANT, g.id, { delta: -1 }); // back to inning 1
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 1 }); // now 2-0
+    const again: any = await service.setSegment(TENANT, g.id, { delta: 1 }); // re-advance
+    // Exactly one seg-1 entry, refreshed to the current cumulative total.
+    expect(again.stats.lineScore).toEqual([{ segment: 1, home: 2, away: 0 }]);
+  });
 });
 
 describe('SportsService — stats', () => {

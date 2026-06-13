@@ -329,8 +329,22 @@ const BASEBALL: SportDefinition = {
     { key: 'awayHits', label: 'Away Hits', scope: 'away', type: 'number', min: 0, max: 99 },
     { key: 'homeErrors', label: 'Home Errors', scope: 'home', type: 'number', min: 0, max: 99 },
     { key: 'awayErrors', label: 'Away Errors', scope: 'away', type: 'number', min: 0, max: 99 },
+    // Marquee pitch-velocity element every broadcast / pro board shows.
+    // Optional: the operator (or a radar-gun integration) sets the speed
+    // of the last pitch and its type; surfaces show "94 MPH · FB" beside
+    // the count and clear it on the next pitch. 0 = no reading to show.
+    // (2026-06-13 audit P2 — pitch-speed / last-pitch-type display.)
+    { key: 'lastPitchMph', label: 'Last Pitch (mph)', scope: 'game', type: 'number', min: 0, max: 110 },
+    { key: 'lastPitchType', label: 'Last Pitch Type', scope: 'game', type: 'text' },
   ],
   celebrations: [
+    // Home runs are operator-fired (or one-tap "HR" macro on the console),
+    // NOT auto-fired from a run delta: a solo/2-run/3-run shot reports as
+    // +1/+2/+3 — indistinguishable from a single+single, a double+error,
+    // or a bases-clearing double. The ONLY unambiguous auto case is the
+    // grand slam (+4 in one plate appearance), so it alone carries
+    // autoPoints. True per-HR auto-celebration needs an event-typed feed
+    // (HR/SO/DP events), tracked separately. (2026-06-13 audit P2.)
     { key: 'homeRun', label: 'Home Run', emoji: '⚾' },
     { key: 'grandSlam', label: 'Grand Slam', emoji: '💎', autoPoints: [4] },
     { key: 'strikeout', label: 'Strikeout', emoji: '🔥' },
@@ -503,8 +517,14 @@ const LACROSSE: SportDefinition = {
   segment: { name: 'Quarter', count: 4, overtime: true },
   score: { unit: 'goals', increments: [1] },
   // 80s NCAA men's shot clock; 60s short reset on a re-start in the
-  // offensive half.
-  shotClock: { full: 80, short: 60, options: [0, 60, 80] },
+  // offensive half. Operator picks the length at setup:
+  //   0  → off (no shot clock — many HS leagues and women's lacrosse,
+  //          which has no shot clock at the NFHS level),
+  //   60 → the short reset / some HS variants,
+  //   80 → NCAA men's,
+  //   90 → NCAA women's free-position / draw shot-clock variant.
+  // (2026-06-13 audit P2 — women's / no-shot-clock nuance.)
+  shotClock: { full: 80, short: 60, options: [0, 60, 80, 90] },
   // T2-10: shot clock resets at every quarter boundary.
   segmentReset: {
     shotClock: true,
@@ -624,6 +644,12 @@ const PICKLEBALL: SportDefinition = {
     { key: 'homeGames', label: 'Home Games Won', scope: 'home', type: 'number', min: 0, max: 2 },
     { key: 'awayGames', label: 'Away Games Won', scope: 'away', type: 'number', min: 0, max: 2 },
     { key: 'serving', label: 'Serving', scope: 'game', type: 'text' },
+    // Side-out scoring: in traditional doubles each side has TWO servers
+    // (server 1 → side out → server 2 → side out → other team), so the
+    // venue board shows "SERVING HOME · SERVER 2". Optional — rally-scoring
+    // leagues (every point is a side-out, single server) can leave it at 1
+    // and the surfaces simply won't draw the qualifier. (2026-06-13 audit P2.)
+    { key: 'serverNum', label: 'Server # (1 / 2)', scope: 'game', type: 'number', min: 1, max: 2 },
   ],
   celebrations: [
     { key: 'ace', label: 'Ace', emoji: '🎯' },
@@ -651,7 +677,11 @@ const TRACK_AND_FIELD: SportDefinition = {
   // represents "continuous meet" so the segment counter stays
   // meaningful without implying a fixed event count.
   segment: { name: 'Event', count: 1, overtime: false },
-  score: { unit: 'points', increments: [1, 2, 3, 5, 8, 10] },
+  // NFHS dual-meet track scoring is place-based (1st=5, 2nd=3, 3rd=1 in a
+  // dual; relays / larger meets vary). The quick-add buttons map to the
+  // real place-point values an operator credits as each event finishes,
+  // rather than generic 1/2/3 steps. (2026-06-13 audit P2.)
+  score: { unit: 'points', increments: [1, 3, 5, 8] },
   stats: [
     { key: 'currentEvent', label: 'Current Event', scope: 'game', type: 'text' },
     { key: 'homeAthletes', label: 'Home Competitors', scope: 'home', type: 'number', min: 0, max: 999 },
@@ -672,7 +702,11 @@ const SWIMMING_DIVING: SportDefinition = {
   mode: 'LEADERBOARD',
   clock: { type: 'none' },
   segment: { name: 'Event', count: 1, overtime: false },
-  score: { unit: 'points', increments: [1, 2, 3, 5, 8, 9] },
+  // NFHS dual-meet swimming individual-event scoring is 6-4-3-2-1 (places
+  // 1-5); relays are 8-4-2 (double the top weights). The quick-add set
+  // covers the place-point values an operator credits as heats finish.
+  // (2026-06-13 audit P2.)
+  score: { unit: 'points', increments: [1, 2, 3, 4, 6, 8] },
   stats: [
     { key: 'currentEvent', label: 'Current Event', scope: 'game', type: 'text' },
     { key: 'homeAthletes', label: 'Home Competitors', scope: 'home', type: 'number', min: 0, max: 999 },
