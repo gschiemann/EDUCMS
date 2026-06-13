@@ -439,6 +439,189 @@ describe('SportsService — stats', () => {
     const after = await service.updateStats(TENANT, g.id, { stats: { down: { nested: 1 } } as any });
     expect((after.stats as any).down).toBeUndefined();
   });
+
+  it('still rejects an ARRAY value for a non-allowlisted key', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'football');
+    const after = await service.updateStats(TENANT, g.id, {
+      stats: { bogusList: [{ a: 1 }], down: 3 } as any,
+    });
+    // The structured branch only fires for results/playerFouls/playerExclusions;
+    // any other array-valued key is dropped exactly as before.
+    expect((after.stats as any).bogusList).toBeUndefined();
+    expect((after.stats as any).down).toBe(3);
+  });
+});
+
+describe('SportsService — structured stats (results / playerFouls / playerExclusions)', () => {
+  it('persists a valid results blob (meet finish + per-apparatus)', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'track_and_field');
+    const after = await service.updateStats(TENANT, g.id, {
+      stats: {
+        results: [
+          {
+            event: '100 Free',
+            order: 1,
+            entries: [
+              { place: 1, name: 'Ada Lovelace', team: 'home', lane: 4, mark: '52.31' },
+              { place: 2, name: 'Grace Hopper', team: 'away', lane: 3, mark: '53.10' },
+            ],
+          },
+        ],
+      } as any,
+    });
+    const results = (after.stats as any).results;
+    expect(Array.isArray(results)).toBe(true);
+    expect(results).toHaveLength(1);
+    expect(results[0].event).toBe('100 Free');
+    expect(results[0].order).toBe(1);
+    expect(results[0].entries).toHaveLength(2);
+    expect(results[0].entries[0]).toEqual({
+      place: 1,
+      name: 'Ada Lovelace',
+      mark: '52.31',
+      team: 'home',
+      lane: 4,
+    });
+  });
+
+  it('caps the top results array + nested entries array at 64, strings at 64 chars', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'gymnastics');
+    const bigEntries = Array.from({ length: 100 }, (_, i) => ({
+      place: i + 1,
+      name: 'x'.repeat(200),
+      mark: '9'.repeat(200),
+    }));
+    const bigResults = Array.from({ length: 100 }, (_, i) => ({
+      event: 'e'.repeat(200) + i,
+      entries: bigEntries,
+    }));
+    const after = await service.updateStats(TENANT, g.id, {
+      stats: { results: bigResults } as any,
+    });
+    const results = (after.stats as any).results;
+    expect(results).toHaveLength(64);
+    expect(results[0].event.length).toBe(64);
+    expect(results[0].entries).toHaveLength(64);
+    expect(results[0].entries[0].name.length).toBe(64);
+    expect(results[0].entries[0].mark.length).toBe(64);
+  });
+
+  it('drops malformed results members (no event / no entries / wrong type)', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'swimming_diving');
+    const after = await service.updateStats(TENANT, g.id, {
+      stats: {
+        results: [
+          { event: 'Good', entries: [{ place: 1, name: 'A', mark: '1:00' }] },
+          { entries: [{ place: 1, name: 'B', mark: '2:00' }] }, // no event — dropped
+          { event: 'NoEntries' }, // no entries array — dropped
+          'not-an-object', // dropped
+          null, // dropped
+        ],
+      } as any,
+    });
+    const results = (after.stats as any).results;
+    expect(results).toHaveLength(1);
+    expect(results[0].event).toBe('Good');
+  });
+
+  it('coerces a bad place / lane and a non-string mark inside an entry', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'cross_country');
+    const after = await service.updateStats(TENANT, g.id, {
+      stats: {
+        results: [
+          {
+            event: '5K',
+            entries: [
+              { place: 9999, name: 42, team: 'sideline', lane: -5, mark: 17 },
+            ],
+          },
+        ],
+      } as any,
+    });
+    const entry = (after.stats as any).results[0].entries[0];
+    expect(entry.place).toBe(999); // clamped to max
+    expect(entry.name).toBe('42'); // coerced to string
+    expect(entry.team).toBeNull(); // invalid side → null
+    expect(entry.lane).toBe(0); // clamped to min
+    expect(entry.mark).toBe('17'); // coerced to string
+  });
+
+  it('persists + bounds a playerFouls blob and drops members with no team', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'basketball');
+    const after = await service.updateStats(TENANT, g.id, {
+      stats: {
+        playerFouls: [
+          { team: 'home', jersey: 23, name: 'M. Jordan', fouls: 4 },
+          { team: 'away', jersey: 99, fouls: 99 }, // fouls clamped to 9
+          { jersey: 5, fouls: 2 }, // no team — dropped
+          { team: 'bench', jersey: 1, fouls: 1 }, // invalid team — dropped
+        ],
+      } as any,
+    });
+    const pf = (after.stats as any).playerFouls;
+    expect(pf).toHaveLength(2);
+    expect(pf[0]).toEqual({ team: 'home', jersey: 23, fouls: 4, name: 'M. Jordan' });
+    expect(pf[1].fouls).toBe(9); // clamped
+    expect(pf[1].name).toBeUndefined(); // no name supplied
+  });
+
+  it('persists + bounds a playerExclusions blob (water polo, count clamped 0-9)', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'water_polo');
+    const after = await service.updateStats(TENANT, g.id, {
+      stats: {
+        playerExclusions: [
+          { team: 'away', jersey: 7, name: 'Driver', count: 3 },
+          { team: 'home', jersey: 1000, count: 50 }, // jersey + count clamped
+        ],
+      } as any,
+    });
+    const px = (after.stats as any).playerExclusions;
+    expect(px).toHaveLength(2);
+    expect(px[0]).toEqual({ team: 'away', jersey: 7, count: 3, name: 'Driver' });
+    expect(px[1].jersey).toBe(999);
+    expect(px[1].count).toBe(9);
+  });
+
+  it('an operator clearing a list persists an empty array (not a drop)', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'basketball');
+    await service.updateStats(TENANT, g.id, {
+      stats: { playerFouls: [{ team: 'home', jersey: 1, fouls: 1 }] } as any,
+    });
+    const after = await service.updateStats(TENANT, g.id, { stats: { playerFouls: [] } as any });
+    expect((after.stats as any).playerFouls).toEqual([]);
+  });
+
+  it('a non-array structured value sanitizes to an empty array', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'basketball');
+    const after = await service.updateStats(TENANT, g.id, {
+      stats: { playerFouls: { not: 'an array' } } as any,
+    });
+    expect((after.stats as any).playerFouls).toEqual([]);
+  });
+
+  it('does NOT disturb scalar keys merged in the same call', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'basketball');
+    const after = await service.updateStats(TENANT, g.id, {
+      stats: {
+        homeFouls: 5,
+        playerFouls: [{ team: 'home', jersey: 1, fouls: 2 }],
+        bogusKey: 7,
+      } as any,
+    });
+    expect((after.stats as any).homeFouls).toBe(5); // scalar still merged
+    expect((after.stats as any).playerFouls).toHaveLength(1); // structured persisted
+    expect((after.stats as any).bogusKey).toBeUndefined(); // non-allowlisted dropped
+  });
 });
 
 describe('SportsService — cues & status', () => {

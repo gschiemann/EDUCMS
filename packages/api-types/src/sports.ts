@@ -221,6 +221,214 @@ export interface SportDefinition {
 
 export type GameStatus = 'SCHEDULED' | 'PRE_GAME' | 'LIVE' | 'HALFTIME' | 'FINAL';
 
+// ── Structured stat shapes (stored on Game.stats JSON; NO migration) ──
+/**
+ * VenueOS Sports — three structured stat blobs the operator console
+ * WRITES and every board surface READS. They ride on the existing
+ * `Game.stats` JSON column alongside the scalar stat keys — no Prisma
+ * migration, fully additive. The api owns validation (see
+ * `SportsService.updateStats`): each top array is capped at 64 entries,
+ * each nested array at 64, every string field sanitized to ≤64 chars,
+ * and every number coerced to a finite int in sane bounds. Malformed
+ * members are dropped, not rejected, so one bad row never voids the set.
+ *
+ * Strings the operator types are display-as-typed — `mark` carries a
+ * free-form result ("1:52.31", "9.850", "142-06", "72 (+1)") and the
+ * board renders it verbatim.
+ */
+
+/** One athlete/team line within a {@link MeetResult} finish event. */
+export interface ResultEntry {
+  /** finish place — 1 = winner. Sort key for the event's rows. */
+  place: number;
+  /** athlete or relay/team name — display-as-typed. */
+  name: string;
+  /** which side it counts for (dual meets), or null/absent for invites. */
+  team?: 'home' | 'away' | null;
+  /** lane / heat lane (track, swim) — optional. */
+  lane?: number;
+  /** the free-form result string: time / score / distance / strokes. */
+  mark: string;
+}
+
+/**
+ * A finish event's results — for LEADERBOARD sports (track / swim /
+ * cross-country / golf) AND for gymnastics / cheer per-apparatus, where
+ * `event` is the apparatus name ("Vault") and each `mark` is the decimal
+ * score ("9.850"). `entries` is sorted by `entry.place`.
+ */
+export interface MeetResult {
+  /** event / apparatus name — display-as-typed ("100 Free", "Vault"). */
+  event: string;
+  /** optional display order within the meet. */
+  order?: number;
+  entries: ResultEntry[];
+}
+
+/**
+ * Basketball foul-trouble — a per-player running foul count. 5 fouls =
+ * fouled out under HS rules; the board flags a player at the limit.
+ */
+export interface PlayerFoul {
+  team: 'home' | 'away';
+  /** jersey number. */
+  jersey: number;
+  /** player name — optional, display-as-typed. */
+  name?: string;
+  /** running foul count. */
+  fouls: number;
+}
+
+/**
+ * Water-polo per-player exclusions — 3 personals = ejected. The board
+ * surfaces players approaching the limit.
+ */
+export interface PlayerExclusion {
+  team: 'home' | 'away';
+  /** cap (jersey) number. */
+  jersey: number;
+  /** player name — optional, display-as-typed. */
+  name?: string;
+  /** running exclusion count. */
+  count: number;
+}
+
+// ── Structured-stat validation (api writes; board reads) ──────────
+/**
+ * The structured `Game.stats` keys the operator console writes and the
+ * board reads, distinct from the scalar sport-stat keys. Anything not in
+ * this set (and not a sport-stat / META key) is dropped by `updateStats`.
+ */
+export const STRUCTURED_STAT_KEYS = ['results', 'playerFouls', 'playerExclusions'] as const;
+export type StructuredStatKey = (typeof STRUCTURED_STAT_KEYS)[number];
+
+/** Caps the validator enforces — top array, nested array, string length. */
+export const STRUCTURED_STAT_MAX_ENTRIES = 64;
+export const STRUCTURED_STAT_MAX_STRING = 64;
+
+/** Clamp a value to a finite integer within [lo, hi]; non-finite → 0 (or lo if >0). */
+function clampInt(v: unknown, lo: number, hi: number): number {
+  const n = typeof v === 'number' && Number.isFinite(v) ? Math.trunc(v) : NaN;
+  if (!Number.isFinite(n)) return lo > 0 ? lo : 0;
+  return Math.min(hi, Math.max(lo, n));
+}
+
+/** Trim an untrusted value to a sanitized string ≤ STRUCTURED_STAT_MAX_STRING chars. */
+function clampStr(v: unknown): string {
+  return String(v ?? '').slice(0, STRUCTURED_STAT_MAX_STRING);
+}
+
+/** Normalize an untrusted team value to 'home' | 'away' | null. */
+function sideOf(v: unknown): 'home' | 'away' | null {
+  return v === 'home' || v === 'away' ? v : null;
+}
+
+/**
+ * Validate + sanitize the untrusted `results` blob into a bounded
+ * MeetResult[]. Caps the top array and each `entries` array at
+ * STRUCTURED_STAT_MAX_ENTRIES, sanitizes every string to ≤64 chars,
+ * coerces places/lanes to sane ints, drops malformed members (a member
+ * with no `event` string or no `entries` array is dropped). Returns []
+ * for any non-array input.
+ */
+export function sanitizeResults(input: unknown): MeetResult[] {
+  if (!Array.isArray(input)) return [];
+  const out: MeetResult[] = [];
+  for (const raw of input.slice(0, STRUCTURED_STAT_MAX_ENTRIES)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    if (typeof r.event !== 'string' || !Array.isArray(r.entries)) continue;
+    const entries: ResultEntry[] = [];
+    for (const e of (r.entries as unknown[]).slice(0, STRUCTURED_STAT_MAX_ENTRIES)) {
+      if (!e || typeof e !== 'object') continue;
+      const en = e as Record<string, unknown>;
+      const entry: ResultEntry = {
+        place: clampInt(en.place, 0, 999),
+        name: clampStr(en.name),
+        mark: clampStr(en.mark),
+      };
+      if ('team' in en) entry.team = sideOf(en.team);
+      if (typeof en.lane === 'number') entry.lane = clampInt(en.lane, 0, 999);
+      entries.push(entry);
+    }
+    const result: MeetResult = { event: clampStr(r.event), entries };
+    if (typeof r.order === 'number') result.order = clampInt(r.order, 0, 999);
+    out.push(result);
+  }
+  return out;
+}
+
+/**
+ * Validate + sanitize the untrusted `playerFouls` blob into a bounded
+ * PlayerFoul[]. Caps the array at STRUCTURED_STAT_MAX_ENTRIES, requires
+ * a valid team side, coerces jersey to [0,999] and fouls to [0,9],
+ * sanitizes the optional name. Drops members with no valid team.
+ */
+export function sanitizePlayerFouls(input: unknown): PlayerFoul[] {
+  if (!Array.isArray(input)) return [];
+  const out: PlayerFoul[] = [];
+  for (const raw of input.slice(0, STRUCTURED_STAT_MAX_ENTRIES)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    const team = sideOf(r.team);
+    if (!team) continue;
+    const row: PlayerFoul = {
+      team,
+      jersey: clampInt(r.jersey, 0, 999),
+      fouls: clampInt(r.fouls, 0, 9),
+    };
+    if ('name' in r) row.name = clampStr(r.name);
+    out.push(row);
+  }
+  return out;
+}
+
+/**
+ * Validate + sanitize the untrusted `playerExclusions` blob into a
+ * bounded PlayerExclusion[]. Same rules as {@link sanitizePlayerFouls}
+ * but with a `count` field clamped to [0,9].
+ */
+export function sanitizePlayerExclusions(input: unknown): PlayerExclusion[] {
+  if (!Array.isArray(input)) return [];
+  const out: PlayerExclusion[] = [];
+  for (const raw of input.slice(0, STRUCTURED_STAT_MAX_ENTRIES)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    const team = sideOf(r.team);
+    if (!team) continue;
+    const row: PlayerExclusion = {
+      team,
+      jersey: clampInt(r.jersey, 0, 999),
+      count: clampInt(r.count, 0, 9),
+    };
+    if ('name' in r) row.name = clampStr(r.name);
+    out.push(row);
+  }
+  return out;
+}
+
+/**
+ * Validate one structured stat key's untrusted value into its bounded
+ * shape — the single entry point `updateStats` calls. Returns the
+ * sanitized array (always an array, possibly empty), or `undefined` if
+ * `key` is not a structured-stat key (so the caller skips it).
+ */
+export function sanitizeStructuredStat(
+  key: string,
+  value: unknown,
+): MeetResult[] | PlayerFoul[] | PlayerExclusion[] | undefined {
+  switch (key) {
+    case 'results':
+      return sanitizeResults(value);
+    case 'playerFouls':
+      return sanitizePlayerFouls(value);
+    case 'playerExclusions':
+      return sanitizePlayerExclusions(value);
+    default:
+      return undefined;
+  }
+}
+
 const FOOTBALL: SportDefinition = {
   key: 'football',
   name: 'Football',

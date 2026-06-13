@@ -25,6 +25,8 @@ import {
   sanitizeRibbonPresets,
   sanitizeRibbonSpeed,
   sanitizeRibbonScoreRepeat,
+  STRUCTURED_STAT_KEYS,
+  sanitizeStructuredStat,
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
@@ -2596,12 +2598,33 @@ export class SportsService {
     const META_KEYS = new Set([
       'celebrationPack',
     ]);
+    // Structured (array-valued) stat keys — finish results, basketball
+    // foul-trouble, water-polo exclusions. These ride on Game.stats JSON
+    // alongside the scalar keys but are arrays, so the scalar branch below
+    // (which drops non-scalars) would otherwise reject them. Each is
+    // validated + bounded by the shared sanitizer in @cms/api-types so the
+    // board surfaces read a predictable, capped shape. Additive: any key
+    // NOT here and NOT a scalar/META key is still dropped exactly as before.
+    const STRUCTURED_KEYS = new Set<string>(STRUCTURED_STAT_KEYS);
     const current = (game.stats as Record<string, unknown>) || {};
     // Snapshot the old values for every key being mutated — used by the
     // undo rail to write `oldValue` into the STAT GameEvent payload.
     const oldValues: Record<string, unknown> = {};
     const next: Record<string, unknown> = { ...current };
     for (const [key, value] of Object.entries(dto.stats)) {
+      // Structured keys: validate + sanitize the whole array into its
+      // bounded shape (caps the array at 64, each nested array at 64, every
+      // string ≤64 chars, every number coerced to a finite int in bounds,
+      // malformed members dropped). The sanitizer always returns an array,
+      // so an operator clearing a list (passing []) persists an empty list.
+      if (STRUCTURED_KEYS.has(key)) {
+        const sanitized = sanitizeStructuredStat(key, value);
+        if (sanitized !== undefined) {
+          oldValues[key] = current[key] ?? null;
+          next[key] = sanitized;
+        }
+        continue;
+      }
       if (!allowed.has(key) && !META_KEYS.has(key)) continue;
       // Bound the value: strings capped at 200 chars, numbers/booleans
       // pass, anything else (object/array) dropped — so a stat edit
