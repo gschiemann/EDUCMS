@@ -154,6 +154,9 @@ If the pill stays "CTS not connected" after 30 seconds:
 - [ ] 1 spare 1/4" mono cable (in case the customer's existing CTS
   cable is bad and they need a swap)
 - [ ] Heat-shrink + cable ties for tidy install
+- [ ] **WTTC sites only:** 2× Conxall 3280-4PG-315 plug + 2× FTDI
+  USB-RS485-WE-1800-BT (long-lead — order ahead; see the WTTC variant
+  section below)
 
 ---
 
@@ -194,33 +197,76 @@ If the operator gets stuck (rare):
 
 ---
 
-## Variant: CTS **Wireless Tabletop Controller (WTTC)** — 2026-06-01
+## Variant: CTS **Wireless Tabletop Controller (WTTC)** — Gen7/WA-2 RS-485 (updated 2026-06-11)
 
 The page above is the **Gen 6 / System 6** path (wired RS-232 1/4" jack →
-native UART → `/dev/ttyS1`). The WTTC is a different unit and connects a
-different way — pick the **"CTS Wireless Tabletop (WTTC)"** console in the
-dashboard (Screen → Diagnostics drawer → Hardware → **Scoreboard console**),
-which switches the player to the USB-serial path:
+native UART → `/dev/ttyS1`). The **WTTC-1** is a different unit on a
+different wire: its **SCBD scoreboard ports speak Gen7/WA-2 over RS-485**
+(115200 / 8 / **NO** parity / 1 stop — NOT the legacy 9600/8/EVEN/1),
+reached through an FTDI USB-RS485 adapter into the EP6N's USB host port.
+In the dashboard pick the **"CTS Wireless Tabletop (WTTC) — Gen7/WA-2
+RS-485"** console (Screen → Diagnostics → Hardware → **Scoreboard
+console**); that selects the `gen7wa2` decoder + `/dev/ttyUSB0`.
 
 ```
-WTTC USB-B data port → [USB-A-female ↔ USB-B-male adapter]
-                     → [FTDI USB↔RS-232 adapter]   (the kit CTS recommends for a PC)
-                     → EP6N USB host port  →  /dev/ttyUSB0
-                     → Player APK → CtsParser → ribbon
+WTTC SCBD port (Conxall 3280 socket)
+   → [Conxall 3280-4PG-315 male plug, hand-wired to the FTDI flying leads]
+   → [FTDI USB-RS485-WE-1800-BT  (RS-485 ↔ USB, wire-ended)]
+   → EP6N USB host port  →  /dev/ttyUSB0
+   → Player APK → CtsWireParser('gen7wa2') → ChannelGrid → ribbon
 ```
 
-- **No Phoenix cable to build** for this path — it's off-the-shelf USB parts
-  (FTDI USB-serial + a USB-A-f→USB-B-m adapter). The EP6N is a Linux box with
-  USB host ports, so it reads the FTDI adapter exactly as a PC would.
-- **The APK needs no change**: `SerialPortBridge.connect()` already accepts any
-  `/dev/tty*` path, and `/dev/ttyUSB0` is configured via the profile's
-  `defaultTty` (override on-site with `?ctsTty=`). Permissions: same Device
-  Owner `chmod 0666 /dev/ttyUSB*` model as the native ports.
-- **⚠ Protocol not yet confirmed.** The WTTC is a WA-2/WA-3-generation unit, so
-  its byte format may be **Gen7/WA-2** rather than the legacy CTS protocol our
-  `CtsParser` decodes. The profile ships `status: 'provisional'` for this reason.
-  **Before the live event, capture real bytes** (open `/dev/ttyUSB0` / the PC COM
-  port in a terminal, press each control) and reconcile the parser. Full detail:
-  `docs/research/2026-06-01-wttc-water-polo/01-wttc-integration-findings.md`.
+### Order-ahead hardware (order BEFORE the install date — long-lead parts)
+
+| Part | Exact SKU | Source | Notes |
+|---|---|---|---|
+| Mating plug for the WTTC SCBD port | **Conxall / Switchcraft 3280-4PG-315** (4-pin male cable plug) | Digi-Key / Mouser | Mates the WTTC's SCBD socket. Order 2 (1 spare). |
+| USB ↔ RS-485 adapter, wire-ended | **FTDI USB-RS485-WE-1800-BT** | Digi-Key / Mouser / FTDI | "-WE" = wire-ended, so you land Data+/Data−/GND directly. 1.8 m lead. Order 2. |
+| (optional) 3-position screw terminal block | any | — | Tidier than solder for field swaps |
+
+### Pinout — WTTC SCBD plug ↔ FTDI leads
+
+SCBD socket (Conxall 3280), viewed from the **back of the console**:
+
+| SCBD pin | Signal | Wire colour (typical) | FTDI USB-RS485-WE lead |
+|---|---|---|---|
+| Pin 2 | **Data +** | orange | **A / Data+** (orange on the FTDI) |
+| Pin 3 | **Data −** | yellow | **B / Data−** (yellow on the FTDI) |
+| Pin 4 | **GND** | black | **GND** (black) |
+| Pin 1 | unused | — | insulate the FTDI's unused leads (VCC etc.) |
+
+> ⚠ These pin/colour assignments are **reference-derived (MIT
+> coloradoScoreboard + CTS field notes) and PROVISIONAL until the venue
+> bring-up capture confirms them.** Meter continuity before powering. If no
+> bytes flow, **try swapping Data+/Data−** — an RS-485 A/B reversal is the
+> #1 first-try miswire and is harmless (just inverted signalling).
+
+> Landing RS-485 on the **EP6N's native RS-485 terminal** (Phoenix block)
+> instead of the FTDI USB path: Pin 1 = B−, Pin 2 = A+, Pin 11 = GND (see
+> the pin map above). The profile defaults to the FTDI `/dev/ttyUSB0` USB
+> path; override to the native tty with `?ctsTty=`.
+
+### On arrival — bring-up steps
+
+1. Wire the Conxall plug to the FTDI leads per the table; meter continuity;
+   insulate unused FTDI leads.
+2. Plug the FTDI into an EP6N USB host port; plug the Conxall plug into the
+   WTTC SCBD port. Power both.
+3. In the dashboard pick the **WTTC — Gen7/WA-2 RS-485** console.
+4. **Run Capture mode FIRST** (append `?ctsCapture=1` to the player/CtsBridge
+   URL → "● Capture bytes" → exercise every control on the WTTC → "↓ Save
+   .bin"). Keep that `.bin` — it is the fixture that promotes the `gen7wa2`
+   decoder from `provisional` to `stable` and reconciles any venue
+   Define-Module channel deviations.
+5. Confirm the Setup-tab CTS pill flips to "receiving" and the Run-mode board
+   mirror shows live numbers within ~5 s of a clock/score change.
+
+- **The APK needs no rebuild** — `SerialPortBridge.connect()` accepts any
+  `/dev/tty*`; the profile's `defaultTty` (`/dev/ttyUSB0`) + serial settings
+  (115200/8/N/1) drive it. Permissions: same Device Owner `chmod 0666
+  /dev/ttyUSB*` model as the native ports.
 - **Safety net unchanged:** the operator phone console + auto-celebration runs
-  with zero serial connection, so the event isn't gated on the auto-decode.
+  with ZERO serial connection, so game night is never gated on the auto-decode.
+
+Full protocol extraction + build notes:
+`docs/research/2026-06-11-wttc-gen7-buildout/00-VERIFIED-STATE.md`.

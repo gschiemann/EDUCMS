@@ -29,6 +29,23 @@ wait for the cable batch.
 
 **Order 5 cables.** One for the customer install, one spare on-site, three in your van for emergency replacement. Cables are the #1 install failure point — never deploy without spares.
 
+### 1b. WTTC (Gen7/WA-2 RS-485) sites — order the RS-485 parts NOW
+
+If the venue runs a CTS **Wireless Tabletop Controller (WTTC)** rather than
+a wired Gen 6 console, the wire is **RS-485 (115200 / 8 / N / 1)**, not the
+1/4" RS-232 above — different, long-lead parts:
+
+| Part | Exact SKU | Qty | Notes |
+|---|---|---|---|
+| Mating plug for the WTTC SCBD port | Conxall / Switchcraft **3280-4PG-315** | 2 | hand-wire to the FTDI leads |
+| USB↔RS-485 adapter, wire-ended | FTDI **USB-RS485-WE-1800-BT** | 2 | lands Data+/Data−/GND directly |
+
+SCBD pinout: Pin 2 = Data+ (orange), Pin 3 = Data− (yellow), Pin 4 = GND
+(black), Pin 1 unused. Full wiring + on-arrival bring-up (incl. **Capture
+mode** to promote the decoder from provisional) is in the WTTC variant
+section of `docs/EP6N_CTS_CABLE.md`. Decoder ships `provisional` until the
+venue capture confirms the byte format.
+
 ### 2. Confirm Goodview reseller email contact
 
 Ask whoever sold you the ECBox: "Can you provide an OEM image with `/dev/ttyS1` and `/dev/ttyS2` set to mode 0666 in the init.d?" Most Goodview AV-integrator partners offer this in 1-2 days. If they say no, you fall back to Device Owner provisioning (path A in the setup doc).
