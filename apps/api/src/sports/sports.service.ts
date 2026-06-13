@@ -2149,7 +2149,11 @@ export class SportsService {
           game.stats && typeof game.stats === 'object'
             ? Number((game.stats as Record<string, unknown>)[setGameWonKey]) || 0
             : 0;
-        setGameWonVal = cur + 1;
+        // Clamp to the stat's configured max (homeSets/awaySets max 3 best-of-5,
+        // homeGames/awayGames max 2) so a stray forward advance past a finished
+        // match can't push the set/game count past its legal ceiling.
+        const wonMax = def.stats.find((s) => s.key === setGameWonKey)?.max;
+        setGameWonVal = typeof wonMax === 'number' ? Math.min(cur + 1, wonMax) : cur + 1;
       }
     }
 
