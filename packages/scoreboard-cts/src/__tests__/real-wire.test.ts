@@ -177,6 +177,23 @@ describe('Gen7Parser framing + grid', () => {
     p.feed(horns, 2000);
     expect(p.getSnapshot().horn).toBe(true);
   });
+
+  it('a universal-flagged module mirrors module 0 shared digits (clock)', () => {
+    const p = new Gen7Parser();
+    // Reference semantics (ctsScoreboardasync.js GetTime): a module flagged
+    // universal (header bit 0x40) carries no digits of its own — its display
+    // mirrors module 0's shared digits. Flag the F872 clock channel (1)
+    // universal, put the clock in module 0, and confirm the extractor reads
+    // through to module 0 instead of clock-channel 1's empty line.
+    const univ1 = encodeGen7ModulePacket(1, [], { universal: true });
+    const mod0 = encodeGen7ModulePacket(
+      0,
+      '7:32  '.split('').map((c, i) => ({ pos: i, char: c })),
+    );
+    p.feed(univ1, 1000); // module 1 flagged universal (no digits, no extract)
+    p.feed(mod0, 1100); // shared digits land in module 0 → ch1 reads through
+    expect(p.getSnapshot().clock).toContain('7:32');
+  });
 });
 
 
@@ -215,6 +232,19 @@ describe('extractWaterPolo (F872 map)', () => {
     const snap = extractWaterPolo(grid, F872_WATER_POLO_MAP, emptySnapshot(), false, 1000);
     expect(snap.homeScore).toBe(12);
     expect(snap.awayScore).toBe(9);
+  });
+
+  it('packed line reads away as the LAST numeric group, with the clock in the middle', () => {
+    // "HH 88:88 AA" — home · clock · away. The exact away cell offset
+    // varies by firmware; tokenizing the line and taking the last numeric
+    // group reads the away score regardless. (A hardcoded awayStart=6 here
+    // would read the clock's seconds digits, not the away score.)
+    const grid = createGrid();
+    const packed = gridLine(grid, 7, 12);
+    '05 0730 03'.split('').forEach((c, i) => (packed.chars[i] = c)); // home 5, clk 07:30, away 3
+    const snap = extractWaterPolo(grid, F872_WATER_POLO_MAP, emptySnapshot(), false, 1000);
+    expect(snap.homeScore).toBe(5);
+    expect(snap.awayScore).toBe(3);
   });
 
   it('persists last-known values for idle channels (no flicker to zero)', () => {

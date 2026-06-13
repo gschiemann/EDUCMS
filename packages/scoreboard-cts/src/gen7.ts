@@ -291,6 +291,11 @@ export class Gen7Parser {
       if (this.currentModule === 31) {
         this.inModuleCommand = true; // command channel — consumed, unused
       } else {
+        // Per-module header flags (reference ctsScoreboardasync.js ~511):
+        // 0x40 = "universal" (this module mirrors module 0's shared digits;
+        // readers fall back to module 0 — see grid.ts gridText), 0x20 = HORN.
+        const line = gridLine(this.grid, this.currentModule, 31);
+        line.univ = (inc & 0x40) === 0x40;
         if ((inc & 0x20) === 0x20) this.hornSeen = true;
         this.dataByte1 = true;
         this.inCommand = false;

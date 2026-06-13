@@ -43,6 +43,12 @@ import type {
 export interface ChannelLine {
   chars: string[];
   decPoints: boolean[];
+  /** Gen7 "universal" flag (module header bit 0x40). When set, this
+   *  module mirrors module 0's shared digits — readers redirect to
+   *  module 0 (reference ctsScoreboardasync.js GetTime/GetDigits:
+   *  `module1 = Univ ? 0 : module`). The legacy "classic" decoder never
+   *  sets it, so it is a no-op for that transport. */
+  univ?: boolean;
 }
 
 /** The decoded display image: channel number → line. */
@@ -67,9 +73,16 @@ export function gridLine(grid: ChannelGrid, channel: number, width = 8): Channel
   return line;
 }
 
-/** Read a slice of a channel as a trimmed string ('' when absent). */
+/** Read a slice of a channel as a trimmed string ('' when absent).
+ *  Honors the Gen7 "universal" flag: a channel flagged univ mirrors
+ *  module 0's shared digits, so the read redirects there (reference
+ *  ctsScoreboardasync.js GetTime: `module1 = Univ ? 0 : module`). No-op
+ *  for classic (never sets univ) and for module 0 itself. */
 export function gridText(grid: ChannelGrid, channel: number, start = 0, count?: number): string {
-  const line = grid.get(channel);
+  let line = grid.get(channel);
+  if (line?.univ && channel !== 0) {
+    line = grid.get(0) ?? line;
+  }
   if (!line) return '';
   const end = count == null ? line.chars.length : Math.min(start + count, line.chars.length);
   return line.chars.slice(start, end).join('');
@@ -227,8 +240,20 @@ export function extractWaterPolo(
   let awayScoreRaw = sliceText(grid, map.awayScore);
   if (!digits(homeScoreRaw) && !digits(awayScoreRaw) && map.packedLine) {
     const p = map.packedLine;
-    homeScoreRaw = gridText(grid, p.channel, p.homeStart, p.homeCount);
-    awayScoreRaw = gridText(grid, p.channel, p.awayStart, p.awayCount);
+    // Packed line is "HH 88:88 AA" (home · clock · away). The exact cell
+    // offsets vary by console/firmware (this is the idle-score fallback),
+    // so tokenize the whole channel into numeric groups and take
+    // home = first group, away = LAST group — robust to spacing/colon
+    // cells and to the away digits sitting at 6, 8, or 9. Falls back to
+    // the configured offsets only if tokenizing finds < 2 groups.
+    const groups = gridText(grid, p.channel, 0).split(/[^0-9]+/).filter(Boolean);
+    if (groups.length >= 2) {
+      homeScoreRaw = groups[0];
+      awayScoreRaw = groups[groups.length - 1];
+    } else {
+      homeScoreRaw = gridText(grid, p.channel, p.homeStart, p.homeCount);
+      awayScoreRaw = gridText(grid, p.channel, p.awayStart, p.awayCount);
+    }
   }
 
   const { home: homeExclusions, away: awayExclusions } = parseEjects(grid, map.ejects);
