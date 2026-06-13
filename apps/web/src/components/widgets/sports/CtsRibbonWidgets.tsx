@@ -1236,7 +1236,7 @@ import { CelSoccerGoalWidget, CelSoccerGolazoWidget, CelSoccerFreeKickWidget, Ce
 import { CelHockeyGoalWidget, CelHockeyHatTrickWidget, CelHockeyPowerPlayWidget, CelHockeyEmptyNetWidget } from '../v2/CelebrationsHockeyWidgets';
 import { CelFootballTouchdownWidget, CelFootballFieldGoalWidget } from '../v2/CelebrationsFootballWidgets';
 import { CelBasketballThreeWidget, CelBasketballBuzzerWidget, CelBasketballDunkWidget } from '../v2/CelebrationsBasketballWidgets';
-import { ScGoalRetroWidget, ScGoalNeonWidget, HkGoalNeonWidget, HkGoalRetroWidget, LxGoalWidget, LxBehindTheBackWidget, TnAceWidget, TnWinnerWidget, TnMatchPointWidget } from '../v2/CelebrationsOtherSportsWidgets';
+import { ScGoalRetroWidget, ScGoalNeonWidget, HkGoalNeonWidget, HkGoalRetroWidget, LxGoalWidget, LxBehindTheBackWidget, LxBigSaveWidget, TnAceWidget, TnWinnerWidget, TnMatchPointWidget, GfAceWidget, GfEagleWidget, GfBirdieWidget, TrWorldRecordWidget, TrFinishWidget, TrPersonalBestWidget, SwRecordWidget, SwFinishWidget } from '../v2/CelebrationsOtherSportsWidgets';
 import { CelBaseballHomeRunWidget, CelBaseballGrandSlamWidget, CelBaseballStrikeoutWidget, CelBaseballDoublePlayWidget } from '../v2/CelebrationsBaseballWidgets';
 
 /**
@@ -1268,6 +1268,7 @@ const CUE_CATALOG = {
   CEL_HK_GOAL_RETRO: { Component: HkGoalRetroWidget, label: 'Hockey Goal · Retro', defaults: { scorer: 'SCORER', period: 1 } },
   CEL_LX_GOAL: { Component: LxGoalWidget, label: 'Lacrosse Goal', defaults: { scorer: 'SCORER', number: '7', score: '1-0' } },
   CEL_LX_BEHINDTHEBACK: { Component: LxBehindTheBackWidget, label: 'Behind-the-Back Goal', defaults: { player: 'SCORER', distance: '10 YD' } },
+  CEL_LX_SAVE: { Component: LxBigSaveWidget, label: 'Lacrosse Big Save', defaults: { goalie: 'KEEPER', saves: 1 } },
   // ─── Baseball / softball scenes (the diamond sports) ────────────
   // Before 2026-06-13 these had NO cinematic in the CTS catalog, so
   // every baseball/softball home-run, grand-slam, strikeout, and
@@ -1285,6 +1286,26 @@ const CUE_CATALOG = {
   CEL_PICKLEBALL_ACE: { Component: TnAceWidget, label: 'Pickleball ACE (serve)', defaults: { player: 'SERVER', speed: '', aces: 1 } },
   CEL_PICKLEBALL_WINNER: { Component: TnWinnerWidget, label: 'Pickleball WINNER (rally)', defaults: { player: 'PLAYER', shot: 'PUT-AWAY', winners: 1 } },
   CEL_PICKLEBALL_GAMEWIN: { Component: TnMatchPointWidget, label: 'Pickleball GAME / MATCH POINT', defaults: { player: 'PLAYER', score: '11-9' } },
+  // ─── Meet sports (track / swim / cross-country / golf) ──────────
+  // 2026-06-13 — before today no cinematic existed for ANY meet sport,
+  // so firstPlace / newRecord / personalBest / eagle / birdie /
+  // holeInOne fired only as a basic emoji+text slam. These reuse the
+  // already-shipped meet-sport cinematics in CelebrationsOtherSportsWidgets:
+  //   • Track/XC: TrWorldRecord (record), TrFinish (podium / first place),
+  //               TrPersonalBest (PB).
+  //   • Swimming: SwRecord (record), SwFinish (heat podium / first place).
+  //   • Golf:     GfAce (hole-in-one), GfEagle, GfBirdie.
+  // The operator overrides athlete / event / time / player copy per cue
+  // via cueOverrides. They read correctly on any meet ribbon — XC reuses
+  // the track scenes (same finish-line / record metaphor).
+  CEL_TF_FIRSTPLACE: { Component: TrFinishWidget, label: 'Track/XC · First Place (podium)', defaults: { event: 'FINAL' } },
+  CEL_TF_RECORD: { Component: TrWorldRecordWidget, label: 'Track/XC · New Record', defaults: { athlete: 'ATHLETE', event: 'EVENT', time: '', country: '' } },
+  CEL_TF_PERSONALBEST: { Component: TrPersonalBestWidget, label: 'Track/XC · Personal Best', defaults: { athlete: 'ATHLETE', event: 'EVENT', time: '', delta: '' } },
+  CEL_SW_FIRSTPLACE: { Component: SwFinishWidget, label: 'Swim · First Place (heat)', defaults: { event: 'FINAL' } },
+  CEL_SW_RECORD: { Component: SwRecordWidget, label: 'Swim · New Record', defaults: { athlete: 'ATHLETE', event: 'EVENT', time: '' } },
+  CEL_GOLF_HOLEINONE: { Component: GfAceWidget, label: 'Golf · HOLE-IN-ONE', defaults: { player: 'GOLFER', hole: 1, yards: 0 } },
+  CEL_GOLF_EAGLE: { Component: GfEagleWidget, label: 'Golf · Eagle', defaults: { player: 'GOLFER', hole: 1, score: '' } },
+  CEL_GOLF_BIRDIE: { Component: GfBirdieWidget, label: 'Golf · Birdie', defaults: { player: 'GOLFER', hole: 1, score: '' } },
   // ─── End-of-period / horn / big-moment scenes ───────────────────
   CEL_FOOTBALL_TOUCHDOWN: { Component: CelFootballTouchdownWidget, label: 'Football TOUCHDOWN', defaults: { player: 'TEAM', distance: 'END OF PERIOD', score: '' } },
   CEL_FOOTBALL_FIELDGOAL: { Component: CelFootballFieldGoalWidget, label: 'Football Field Goal', defaults: { kicker: '', distance: '' } },

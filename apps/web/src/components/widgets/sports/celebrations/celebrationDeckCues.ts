@@ -257,6 +257,121 @@ export const CELEBRATION_DECK_CUES: Record<string, CelebrationDeckCfg> = {
     sub1: 'MARINA TAKES SET 4', sub2: '25  —  22',
     burst: 'confetti', motif: 'plus1', motifText: 'SET',
   },
+  // 2026-06-13 — deck-cue parity for the signature attack. The MARQUEE
+  // path already has a bespoke volleyball-kill.html hero; this entry
+  // gives the deck/alias path (feed / pickDeckCue) a matching scene so a
+  // 'kill' resolved through the integration path no longer falls to
+  // generic confetti. A hard downward spike: the ball drives steeply
+  // from above the attacker into the floor at the net.
+  'volleyball-kill': {
+    scene: 'gym', headline: 'KILL!', headSize: 240,
+    sub1: 'TERMINATED AT THE NET',
+    sub2: 'SET 4  ·  KILL  ·  #7 NGUYEN',
+    burst: 'fire',
+    impactPt: (P) => P.net || { x: 960, y: 760 },
+    projectile: { ball: 'volleyball', from: [820, 200], t0: 600, t1: 1000, arc: 0, r: 32, ease: 'lin' },
+  },
+
+  // ── FIELD HOCKEY ──────────────────────────────────────────────
+  // 2026-06-13 — field hockey had ZERO cinematics; even the marquee
+  // GOAL played only the generic burst. A grass-pitch goal scene reads
+  // correctly (stick-and-cage sport on turf). GOAL drives the ball into
+  // the cage; SAVE stops the shot at the keeper (the giant denial X).
+  'fieldhockey-goal': {
+    scene: 'grass', headline: 'GOAL!', headSize: 240,
+    sub1: 'WARRIORS  2  —  1  HAWKS',
+    sub2: 'Q3  ·  FIELD GOAL  ·  #11 PATEL',
+    burst: 'fire',
+    projectile: { ball: 'soccer', from: [380, 760], t0: 600, t1: 1000, arc: 90, r: 26, shrink: true },
+  },
+  // SAVE reuses the proven waterpolo-save pattern: a glove motif pops up
+  // in front of the goal and the ball flies INTO it (impactPt = glove),
+  // so it reads as "stopped" not "scored". The engine has no denial-X
+  // (that's an HTML-only concept); the glove + energy burst sells it.
+  'fieldhockey-save': {
+    scene: 'grass', headline: 'SAVE!',
+    sub1: 'KEEPER STANDS TALL',
+    sub2: 'Q2  ·  BIG SAVE  ·  #1 GK',
+    burst: 'energy', motif: 'glove',
+    impactPt: () => ({ x: 960, y: 540 }),
+    projectile: { ball: 'soccer', from: [-160, 700], t0: 600, t1: 1000, arc: 90, r: 26 },
+  },
+
+  // ── LACROSSE ──────────────────────────────────────────────────
+  // 2026-06-13 — the CTS widget path had a CEL_LX_GOAL scene, but the
+  // operator-console→board (celebrationSrc) path had nothing, so a
+  // lacrosse marquee GOAL fell to the generic burst. A grass/turf goal
+  // scene reads correctly for the stick-and-net field sport.
+  'lacrosse-goal': {
+    scene: 'grass', headline: 'GOAL!', headSize: 240,
+    sub1: 'EAGLES  6  —  4  RAMS',
+    sub2: 'Q3  ·  GOAL  ·  #7 BRENNAN',
+    burst: 'fire',
+    projectile: { ball: 'soccer', from: [400, 740], t0: 600, t1: 1000, arc: 110, r: 26, shrink: true },
+  },
+  'lacrosse-save': {
+    scene: 'grass', headline: 'SAVE!',
+    sub1: 'DENIED AT THE CREASE',
+    sub2: 'Q2  ·  BIG SAVE  ·  #30 GK',
+    burst: 'energy', motif: 'glove',
+    impactPt: () => ({ x: 960, y: 540 }),
+    projectile: { ball: 'soccer', from: [-160, 720], t0: 600, t1: 1000, arc: 90, r: 26 },
+  },
+
+  // ── GYMNASTICS ────────────────────────────────────────────────
+  // 2026-06-13 — judged meet sport. No goal-in-net concept; the floor
+  // scene (the `mat` circle in perspective) reads as a spotlit floor
+  // routine. Perfect score / stuck landing / all-around lead are the
+  // marquee moments. Scores are the operator-entered judged totals
+  // (sub1 gets replaced by the live scoreline at fire time where the
+  // caller supplies it).
+  'gymnastics-perfectscore': {
+    scene: 'mat', headline: 'PERFECT 10!', headSize: 200,
+    sub1: 'FLAWLESS ROUTINE',
+    sub2: 'FLOOR  ·  10.000  ·  #4 REYES',
+    burst: 'fireworks', motif: 'plus1', motifText: '10',
+    impactPt: () => ({ x: 960, y: 680 }),
+  },
+  'gymnastics-sticklanding': {
+    scene: 'mat', headline: 'STUCK IT!', headSize: 180,
+    sub1: 'STUCK THE LANDING',
+    sub2: 'VAULT  ·  NO STEP  ·  #9 KIM',
+    burst: 'energy', motif: 'plus1', motifText: '★',
+    impactPt: () => ({ x: 960, y: 700 }),
+  },
+  'gymnastics-allaround': {
+    scene: 'mat', headline: 'ALL-AROUND!', headSize: 160,
+    sub1: 'ALL-AROUND LEAD',
+    sub2: 'MEET  ·  TOP SCORE  ·  #11 NOVAK',
+    burst: 'confetti', motif: 'plus1', motifText: 'AA',
+    impactPt: () => ({ x: 960, y: 680 }),
+  },
+
+  // ── COMPETITIVE CHEER ─────────────────────────────────────────
+  // 2026-06-13 — judged routine sport on a spring floor. Reuses the
+  // `mat` spotlight-floor scene. Full-out / perfect stunt / round win
+  // are the marquee moments. Confetti + energy bursts sell the crowd.
+  'cheer-fullout': {
+    scene: 'mat', headline: 'FULL OUT!', headSize: 200,
+    sub1: 'HIT ZERO — FLAWLESS RUN',
+    sub2: 'FINALS  ·  CLEAN ROUTINE',
+    burst: 'fireworks', motif: 'plus1', motifText: '★',
+    impactPt: () => ({ x: 960, y: 680 }),
+  },
+  'cheer-perfectstunt': {
+    scene: 'mat', headline: 'PERFECT STUNT!', headSize: 150,
+    sub1: 'HIT AND HELD',
+    sub2: 'ROUND 2  ·  FLAWLESS',
+    burst: 'energy', motif: 'plus1', motifText: '★',
+    impactPt: () => ({ x: 960, y: 700 }),
+  },
+  'cheer-roundwin': {
+    scene: 'mat', headline: 'ROUND WIN!', headSize: 160,
+    sub1: 'TAKES THE ROUND',
+    sub2: 'ROUND  ·  TOP SCORE',
+    burst: 'confetti', motif: 'plus1', motifText: 'WIN',
+    impactPt: () => ({ x: 960, y: 680 }),
+  },
 
   // ── WRESTLING ─────────────────────────────────────────────────
   'wrestling-pin': {
@@ -323,7 +438,12 @@ export function pickDeckCue(
     s === 'baseball' || s === 'softball' ? 'baseball' :
     s === 'volleyball' ? 'volleyball' :
     s === 'soccer'     ? 'soccer'     :
-    s === 'wrestling'  ? 'wrestling'  : '';
+    s === 'wrestling'  ? 'wrestling'  :
+    // 2026-06-13 — compound-name field/judged sports now resolve too.
+    s === 'fieldhockey' ? 'fieldhockey' :
+    s === 'lacrosse'    ? 'lacrosse'    :
+    s === 'gymnastics'  ? 'gymnastics'  :
+    s === 'competitivecheer' || s === 'cheer' ? 'cheer' : '';
   if (sportPrefix) {
     const composite = `${sportPrefix}-${k}`;
     const m = CELEBRATION_DECK_CUES[composite];
@@ -362,6 +482,7 @@ export function pickDeckCue(
     interception: 'football-turnover',
     ace: 'volleyball-ace',
     block: 'volleyball-block',
+    kill: 'volleyball-kill',
     setwon: 'volleyball-setwon',
     yellow: 'soccer-yellow',
     yellowcard: 'soccer-yellow',
@@ -372,6 +493,20 @@ export function pickDeckCue(
     penalty: 'soccer-penalty',
     penaltykill: 'hockey-penaltykill',
     'penalty-kill': 'hockey-penaltykill',
+    // Gymnastics (judged floor sport) — 2026-06-13.
+    perfectscore: 'gymnastics-perfectscore',
+    'perfect-score': 'gymnastics-perfectscore',
+    sticklanding: 'gymnastics-sticklanding',
+    'stick-landing': 'gymnastics-sticklanding',
+    allaround: 'gymnastics-allaround',
+    'all-around': 'gymnastics-allaround',
+    // Competitive cheer (judged routine sport) — 2026-06-13.
+    fullout: 'cheer-fullout',
+    'full-out': 'cheer-fullout',
+    perfectstunt: 'cheer-perfectstunt',
+    'perfect-stunt': 'cheer-perfectstunt',
+    roundwin: 'cheer-roundwin',
+    'round-win': 'cheer-roundwin',
   };
   const aliased = aliases[k];
   if (aliased && CELEBRATION_DECK_CUES[aliased]) {

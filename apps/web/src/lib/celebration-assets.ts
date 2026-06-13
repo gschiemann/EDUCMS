@@ -21,6 +21,11 @@ const MARQUEE: Record<string, string> = {
   'baseball/homeRun': 'baseball-homerun',
   'softball/homeRun': 'baseball-homerun',
   'volleyball/kill': 'volleyball-kill',
+  // 2026-06-13 — field hockey + lacrosse are stick-and-cage field sports;
+  // the hockey goal-in-net marquee hero reads correctly for both. Until
+  // 2026-06-13 their marquee GOAL fired only the generic burst.
+  'field_hockey/goal': 'hockey-goal',
+  'lacrosse/goal': 'hockey-goal',
 };
 
 const DECK: Record<string, string> = {
@@ -71,6 +76,22 @@ const DECK: Record<string, string> = {
   'wrestling/takedown': 'wrestling-takedown',
   'wrestling/nearFall': 'wrestling-nearfall',
   'wrestling/techFall': 'wrestling-techfall',
+  // field hockey — GOAL is a MARQUEE hero (see above); SAVE is a deck
+  // scene (goalie-glove stop on the grass-pitch goal). 2026-06-13.
+  'field_hockey/save': 'fieldhockey-save',
+  // lacrosse — GOAL is a MARQUEE hero (see above); SAVE is a deck scene.
+  'lacrosse/save': 'lacrosse-save',
+  // gymnastics — judged floor sport; no goal-in-net. The spotlit-floor
+  // deck scenes (mat circle in perspective) cover the marquee moments.
+  // 2026-06-13: were falling through to generic emoji/confetti.
+  'gymnastics/perfectScore': 'gymnastics-perfectscore',
+  'gymnastics/stickLanding': 'gymnastics-sticklanding',
+  'gymnastics/allAround': 'gymnastics-allaround',
+  // competitive cheer — judged routine sport on a spring floor; reuses
+  // the spotlit-floor deck scenes. 2026-06-13.
+  'competitive_cheer/fullOut': 'cheer-fullout',
+  'competitive_cheer/perfectStunt': 'cheer-perfectstunt',
+  'competitive_cheer/roundWin': 'cheer-roundwin',
 };
 
 // 2026-05-27 — v2 cue pack. Same canvas engine, two render targets
