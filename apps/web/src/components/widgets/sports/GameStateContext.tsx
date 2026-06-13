@@ -8,6 +8,15 @@
  * read live values from the same un-authed `GET /sports/board/:id`
  * endpoint that `/board/[gameId]/page.tsx` already polls.
  *
+ * Like every other public sports surface (board / ribbon / scorebug),
+ * this provider runs each polled snapshot through `applyCtsOverlay`
+ * (apps/web/src/lib/cts-merge.ts) BEFORE storing it — so when a CTS
+ * console is broadcasting, custom-template widgets render the live CTS
+ * score / clock / segment / shot-clock / exclusions, and fall back to
+ * operator-input columns the moment the CTS heartbeat goes stale. Without
+ * this, a board built from a custom template would silently ignore the
+ * CTS feed and show only the operator's manual inputs.
+ *
  * Two render modes:
  *
  *   1. Inside a `<GameStateProvider gameId="...">` — widgets read real
@@ -27,6 +36,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { API_URL } from '@/lib/api-url';
+import { applyCtsOverlay } from '@/lib/cts-merge';
 import { findSport } from '@cms/api-types';
 
 export interface GameSnapshot {
@@ -69,8 +79,14 @@ export function GameStateProvider({
   initial?: GameSnapshot | null;
   children: ReactNode;
 }) {
-  const [snapshot, setSnapshot] = useState<GameSnapshot | null>(initial ?? null);
-  const [liveClockMs, setLiveClockMs] = useState<number>(initial?.clockMs ?? 0);
+  // Overlay the warm cache too (lazy initializers run once on mount), so
+  // the cold-boot frame already shows CTS data when its heartbeat is fresh.
+  const [snapshot, setSnapshot] = useState<GameSnapshot | null>(
+    () => (initial ? applyCtsOverlay(initial) : null),
+  );
+  const [liveClockMs, setLiveClockMs] = useState<number>(
+    () => (initial ? applyCtsOverlay(initial).clockMs : 0),
+  );
 
   // Poll the un-authed scoreboard endpoint at the same 750ms cadence
   // the /board/[gameId] page uses, so a template-driven board stays
@@ -85,7 +101,10 @@ export function GameStateProvider({
         });
         if (alive && res.ok) {
           const json = (await res.json()) as GameSnapshot;
-          setSnapshot(json);
+          // Same CTS source-of-truth merge the board/ribbon/scorebug run:
+          // fresh CTS heartbeat → its score/clock/segment/shot-clock/
+          // exclusions win; stale/absent → operator-input columns win.
+          setSnapshot(applyCtsOverlay(json));
         }
       } catch {
         // Network blip — keep last snapshot, next tick retries.
