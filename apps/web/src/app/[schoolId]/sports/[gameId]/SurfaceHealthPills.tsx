@@ -1,17 +1,37 @@
 'use client';
 
 /**
- * SurfaceHealthPills — T1-6
+ * SurfaceHealthPills — T1-6 (render-proof, audit P1 — 2026-06-13)
  *
  * A fixed horizontal pill row pinned inside the Run-mode top area.
  * Each pill represents one screen paired to the tenant, showing:
  *   - Colored status dot (+ shape/icon for color-blind parity per CLAUDE.md §18)
  *   - Surface-kind icon (board / ribbon / concourse / off)
  *   - Screen name (truncated)
- *   - Age sub-text ("On air · scoreboard", "Off", "Offline")
+ *   - Age sub-text ("Scoreboard", "Frozen", "Off", "Offline")
  *
- * Data source: useGameScreens() which polls every 10 s. No new
- * server endpoints — only reads from the existing polling query.
+ * ── Why this is render-PROOF (the audit P1 fix) ─────────────────
+ * The pill used to read ONLY the raw device `Screen.status`
+ * (ONLINE/OFFLINE), which is derived from `lastPingAt` — "is the box
+ * TCP-reachable + JS alive," NOT "are pixels painting." A kiosk whose
+ * renderer wedged (crashed React tree / black/frozen frame) keeps
+ * answering the heartbeat, so it stayed GREEN for 5-7 minutes after the
+ * board actually died — the operator was told all was well while the
+ * crowd watched a dead screen.
+ *
+ * Now we join the SERVER's render-proof verdict (`renderHealth` /
+ * `renderStale`) — already computed by deriveRenderHealth and already
+ * shipped on the `GET /screens` fleet list the dashboard polls every
+ * 10 s via useScreens() — into each pill by screen id. A surface showing
+ * the game but no longer painting flips out of GREEN to a distinct
+ * `frozen` pill within ~90 s of the freeze (the render-proof window) +
+ * one 10 s poll — instead of 5-7 minutes. Green is earned ONLY by
+ * positive, recent paint proof; the "no proof yet" case (older player
+ * build / fresh pair) shows a distinct `live-unverified` pill rather
+ * than a false GREEN. Pure status logic lives in `./surface-health`.
+ *
+ * Data source: useGameScreens() (game→screen assignment, polls 10 s) +
+ * useScreens() (fleet render-proof, polls 10 s). No new server endpoints.
  *
  * Click pill → side drawer slides in from the right with a live
  * iframe preview of that surface (using the existing SurfacePreview
@@ -29,23 +49,24 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { MonitorPlay, RectangleHorizontal, Monitor, WifiOff } from 'lucide-react';
-import { useGameScreens } from '@/hooks/use-api';
+import {
+  MonitorPlay,
+  RectangleHorizontal,
+  Monitor,
+  WifiOff,
+  AlertTriangle,
+  HelpCircle,
+} from 'lucide-react';
+import { useGameScreens, useScreens } from '@/hooks/use-api';
 import { SurfacePreview } from './SurfacePreview';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import {
+  toPillStatus,
+  type PillStatus,
+  type RenderProofSignal,
+} from './surface-health';
 
 // ── Pill status model ──────────────────────────────────────────
-
-/**
- * Five possible health states for a screen pill.
- * Color-blind pair: each gets a distinct symbol PLUS color.
- */
-type PillStatus =
-  | 'online-showing'   // 🟢 ONLINE + showing this game
-  | 'online-off'       // ⚪ ONLINE but not showing this game
-  | 'showing-other'    // 🟡 ONLINE + showing a different game
-  | 'offline'          // 🔴 OFFLINE
-  | 'unknown';         // ⚫ status unknown / pending
 
 interface PillData {
   id: string;
@@ -53,58 +74,67 @@ interface PillData {
   status: PillStatus;
   surface: string | null;  // 'BOARD' | 'RIBBON' | 'SCOREBUG' | null
   otherGame: string | null;
-}
-
-function toPillStatus(raw: {
-  status: string;
-  showing: boolean;
-  showingOther: boolean;
-}): PillStatus {
-  if (raw.status !== 'ONLINE') return 'offline';
-  if (raw.showing) return 'online-showing';
-  if (raw.showingOther) return 'showing-other';
-  return 'online-off';
+  /** Seconds since the surface last proved a paint — drives the "Frozen Ns"
+   *  sub-text on a frozen pill so the operator sees how long it's been dark. */
+  renderStaleSeconds: number | null;
 }
 
 // ── Status visual descriptors ──────────────────────────────────
 
 const STATUS_DOT: Record<PillStatus, string> = {
-  'online-showing': 'bg-green-500',
-  'online-off':     'bg-slate-400',
-  'showing-other':  'bg-amber-400',
-  'offline':        'bg-red-500',
-  'unknown':        'bg-slate-600',
+  'online-showing':  'bg-green-500',
+  'live-unverified': 'bg-green-500',
+  'frozen':          'bg-red-500',
+  'online-off':      'bg-slate-400',
+  'showing-other':   'bg-amber-400',
+  'offline':         'bg-red-500',
+  'unknown':         'bg-slate-600',
 };
 
 /** Color-blind-safe symbol beside the dot (shape / letter, not just hue). */
 const STATUS_SYMBOL: Record<PillStatus, string> = {
-  'online-showing': '●',  // filled circle — "live"
-  'online-off':     '○',  // empty circle — "ready but off"
-  'showing-other':  '⚠',  // warning triangle — "occupied"
-  'offline':        '✕',  // cross — "dead"
-  'unknown':        '?',  // question mark
+  'online-showing':  '●',  // filled circle — "live, painting"
+  'live-unverified': '◐',  // half-filled — "live but no paint proof yet"
+  'frozen':          '❄',  // snowflake — "reachable but FROZEN, not painting"
+  'online-off':      '○',  // empty circle — "ready but off"
+  'showing-other':   '⚠',  // warning triangle — "occupied"
+  'offline':         '✕',  // cross — "dead / unreachable"
+  'unknown':         '?',  // question mark
 };
 
 const STATUS_SYMBOL_COLOR: Record<PillStatus, string> = {
-  'online-showing': 'text-green-500',
-  'online-off':     'text-slate-400',
-  'showing-other':  'text-amber-400',
-  'offline':        'text-red-500',
-  'unknown':        'text-slate-600',
+  'online-showing':  'text-green-500',
+  'live-unverified': 'text-green-400',
+  'frozen':          'text-red-500',
+  'online-off':      'text-slate-400',
+  'showing-other':   'text-amber-400',
+  'offline':         'text-red-500',
+  'unknown':         'text-slate-600',
 };
 
 const STATUS_RING: Record<PillStatus, string> = {
-  'online-showing': 'border-green-700 bg-green-950/60',
-  'online-off':     'border-slate-700 bg-slate-800/60',
-  'showing-other':  'border-amber-700 bg-amber-950/60',
-  'offline':        'border-red-800 bg-red-950/60',
-  'unknown':        'border-slate-700 bg-slate-900/60',
+  'online-showing':  'border-green-700 bg-green-950/60',
+  // Slightly desaturated green ring so "live but unverified" reads as
+  // distinct from a proof-backed live pill at a glance.
+  'live-unverified': 'border-emerald-800 bg-emerald-950/40',
+  'frozen':          'border-red-800 bg-red-950/60',
+  'online-off':      'border-slate-700 bg-slate-800/60',
+  'showing-other':   'border-amber-700 bg-amber-950/60',
+  'offline':         'border-red-800 bg-red-950/60',
+  'unknown':         'border-slate-700 bg-slate-900/60',
 };
 
 function statusLabel(p: PillData): string {
   switch (p.status) {
     case 'online-showing':
       return surfaceLabel(p.surface);
+    case 'live-unverified':
+      // Reachable + assigned, but the player hasn't proven a paint yet.
+      return 'Live · no proof';
+    case 'frozen':
+      return p.renderStaleSeconds != null
+        ? `Frozen ${formatStale(p.renderStaleSeconds)}`
+        : 'Frozen';
     case 'online-off':
       return 'Off';
     case 'showing-other':
@@ -113,6 +143,32 @@ function statusLabel(p: PillData): string {
       return 'Offline';
     default:
       return 'Unknown';
+  }
+}
+
+/** "Frozen 95s" / "Frozen 4m" — compact age of the last proven paint. */
+function formatStale(seconds: number): string {
+  if (seconds < 120) return `${seconds}s`;
+  return `${Math.round(seconds / 60)}m`;
+}
+
+/** Full hover tooltip for a pill — spells out the render-proof verdict. */
+function pillTooltip(p: PillData): string {
+  switch (p.status) {
+    case 'online-showing':
+      return `${p.name} · On air (${surfaceLabel(p.surface)}) — painting normally`;
+    case 'live-unverified':
+      return `${p.name} · On air (${surfaceLabel(p.surface)}) — reachable, no render proof yet`;
+    case 'frozen':
+      return p.renderStaleSeconds != null
+        ? `${p.name} · FROZEN — reachable but no frame painted in ${formatStale(p.renderStaleSeconds)}`
+        : `${p.name} · FROZEN — reachable but not painting`;
+    case 'showing-other':
+      return `${p.name} · Showing ${p.otherGame ?? 'another game'}`;
+    case 'offline':
+      return `${p.name} · Offline`;
+    default:
+      return `${p.name} · Not showing this game`;
   }
 }
 
@@ -130,7 +186,9 @@ function surfaceLabel(surface: string | null): string {
 
 function SurfaceIcon({ surface, status }: { surface: string | null; status: PillStatus }) {
   const cls = 'h-3 w-3 shrink-0';
-  if (status === 'offline')    return <WifiOff className={cls} />;
+  if (status === 'offline')         return <WifiOff className={cls} />;
+  if (status === 'frozen')          return <AlertTriangle className={cls} />;
+  if (status === 'live-unverified') return <HelpCircle className={cls} />;
   if (!surface || surface === 'BOARD' || surface === 'SCOREBUG')
     return <MonitorPlay className={cls} />;
   if (surface === 'RIBBON')    return <RectangleHorizontal className={cls} />;
@@ -230,7 +288,50 @@ function PillDrawer({
               </p>
             </div>
           ) : (
-            <SurfacePreview gameId={gameId} />
+            <>
+              {/* Render-proof warning. The iframe below is the operator's
+                  OWN live mirror of the surface — it will look perfect even
+                  when the PHYSICAL screen is wedged. So when render-proof
+                  says the screen stopped painting, say so loudly: don't let
+                  a healthy-looking preview reassure the operator about a dead
+                  board in the building. */}
+              {screen.status === 'frozen' && (
+                <div className="mb-3 flex items-start gap-2 rounded-lg border border-red-700 bg-red-950/70 p-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-red-200">
+                      Screen looks frozen
+                      {screen.renderStaleSeconds != null
+                        ? ` — no frame painted in ${formatStale(screen.renderStaleSeconds)}`
+                        : ''}
+                    </p>
+                    <p className="mt-0.5 text-[11px] leading-snug text-red-300/80">
+                      The screen is still reachable but has stopped advancing its
+                      picture — the crowd may be seeing a stuck or black frame.
+                      The preview below is your own live mirror, not the screen
+                      itself. Check the physical display or restart the player.
+                    </p>
+                  </div>
+                </div>
+              )}
+              {screen.status === 'live-unverified' && (
+                <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-700/70 bg-amber-950/40 p-3">
+                  <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-amber-200">
+                      Live, but render not yet confirmed
+                    </p>
+                    <p className="mt-0.5 text-[11px] leading-snug text-amber-300/80">
+                      The screen is reachable and assigned this game, but the
+                      player hasn&apos;t reported a painted frame yet (older
+                      build or just connected). It should confirm within a
+                      minute.
+                    </p>
+                  </div>
+                </div>
+              )}
+              <SurfacePreview gameId={gameId} />
+            </>
           )}
         </div>
       </div>
@@ -250,18 +351,51 @@ function PillDrawer({
  */
 export function SurfaceHealthPills({ gameId }: { gameId: string }) {
   const { data, isLoading } = useGameScreens(gameId);
-  const [activeScreen, setActiveScreen] = useState<PillData | null>(null);
+  // The fleet list carries the SERVER's render-proof verdict per screen
+  // (renderHealth / renderStale / renderStaleSeconds). Same 10 s poll cadence
+  // as useGameScreens — and React Query dedupes the shared ['screens'] query,
+  // so adding this consumer costs no extra network. This is the render-proof
+  // signal that makes a dead board drop out of green in SECONDS, not minutes.
+  const { data: fleet } = useScreens();
+
+  // Track only the active screen ID; re-derive its live PillData from the
+  // freshly-polled list below so the open drawer reflects a freeze that
+  // happens WHILE it's open (instead of a stale click-time snapshot).
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  // screenId → render-proof signal, from the fleet list.
+  const proofById = new Map<string, RenderProofSignal>();
+  if (Array.isArray(fleet)) {
+    for (const f of fleet as any[]) {
+      if (f && typeof f.id === 'string') {
+        proofById.set(f.id, {
+          renderHealth: f.renderHealth ?? null,
+          renderStale: f.renderStale ?? null,
+          renderStaleSeconds: f.renderStaleSeconds ?? null,
+        });
+      }
+    }
+  }
 
   const screens: PillData[] = (() => {
     if (!Array.isArray(data)) return [];
-    return (data as any[]).map((s) => ({
-      id:         s.id,
-      name:       s.name,
-      status:     toPillStatus({ status: s.status, showing: s.showing, showingOther: s.showingOther }),
-      surface:    s.surface ?? null,
-      otherGame:  s.otherGame ?? null,
-    }));
+    return (data as any[]).map((s) => {
+      const proof = proofById.get(s.id) ?? null;
+      return {
+        id:         s.id,
+        name:       s.name,
+        status:     toPillStatus(
+          { status: s.status, showing: s.showing, showingOther: s.showingOther },
+          proof,
+        ),
+        surface:    s.surface ?? null,
+        otherGame:  s.otherGame ?? null,
+        renderStaleSeconds: proof?.renderStaleSeconds ?? null,
+      };
+    });
   })();
+
+  const activeScreen = activeId ? screens.find((s) => s.id === activeId) ?? null : null;
 
   // Nothing to show — don't waste vertical space
   if (isLoading || screens.length === 0) return null;
@@ -283,19 +417,11 @@ export function SurfaceHealthPills({ gameId }: { gameId: string }) {
           <button
             key={s.id}
             type="button"
-            onClick={() => setActiveScreen((prev) => (prev?.id === s.id ? null : s))}
-            aria-pressed={activeScreen?.id === s.id}
-            title={
-              s.status === 'online-showing'
-                ? `${s.name} · On air (${surfaceLabel(s.surface)})`
-                : s.status === 'showing-other'
-                  ? `${s.name} · Showing ${s.otherGame ?? 'another game'}`
-                  : s.status === 'offline'
-                    ? `${s.name} · Offline`
-                    : `${s.name} · Not showing this game`
-            }
+            onClick={() => setActiveId((prev) => (prev === s.id ? null : s.id))}
+            aria-pressed={activeId === s.id}
+            title={pillTooltip(s)}
             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors shrink-0 ${STATUS_RING[s.status]} ${
-              activeScreen?.id === s.id
+              activeId === s.id
                 ? 'ring-1 ring-white ring-offset-1 ring-offset-slate-900'
                 : 'hover:brightness-125'
             }`}
@@ -309,8 +435,16 @@ export function SurfaceHealthPills({ gameId }: { gameId: string }) {
             </span>
             <SurfaceIcon surface={s.surface} status={s.status} />
             <span className="text-slate-200 max-w-[96px] truncate">{s.name}</span>
-            {s.status === 'online-showing' && (
-              <span className="text-[9px] text-green-400 font-black ml-0.5">
+            {/* Surface badge for any pill assigned to this game — green when
+                proven painting / unverified, RED when frozen. */}
+            {(s.status === 'online-showing' ||
+              s.status === 'live-unverified' ||
+              s.status === 'frozen') && (
+              <span
+                className={`text-[9px] font-black ml-0.5 ${
+                  s.status === 'frozen' ? 'text-red-400' : 'text-green-400'
+                }`}
+              >
                 {s.surface === 'RIBBON' ? 'RBN' : s.surface === 'SCOREBUG' ? 'BUG' : 'BRD'}
               </span>
             )}
@@ -323,7 +457,7 @@ export function SurfaceHealthPills({ gameId }: { gameId: string }) {
         <PillDrawer
           gameId={gameId}
           screen={activeScreen}
-          onClose={() => setActiveScreen(null)}
+          onClose={() => setActiveId(null)}
         />
       )}
     </>
