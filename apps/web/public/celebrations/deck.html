@@ -72,13 +72,18 @@
     'volleyball-ace':{scene:'gym',headline:'ACE!',sub1:'MARINA  25  —  23  LAGUNA',sub2:'SET 5  ·  ACE  ·  #1 PARK',burst:'dust',projectile:{ball:'volleyball',from:[300,340],t0:620,t1:1000,arc:0,r:30}},
     'volleyball-block':{scene:'gym',headline:'BLOCK!',sub1:'STUFFED AT THE NET',sub2:'SET 3  ·  #12 RUIZ',burst:'energy',impactPt:function(){return{x:960,y:560};},projectile:{ball:'volleyball',from:[760,330],t0:640,t1:1000,arc:0,r:30}},
     'volleyball-setwon':{scene:'gym',headline:'SET WON!',headSize:150,sub1:'MARINA TAKES SET 4',sub2:'25  —  22',burst:'confetti',motif:'plus1',motifText:'SET'},
+    // ── PICKLEBALL ──
+    // The signature dink rally: a soft, controlled exchange just over
+    // the net in the non-volley zone (the "kitchen"). Reuses the gym
+    // net-court scene; a low, slow arc over the net sells the touch shot.
+    'pickleball-dink':{scene:'gym',headline:'DINK RALLY!',headSize:160,sub1:'KITCHEN BATTLE  —  SOFT HANDS',sub2:'GAME 3  ·  WON AT THE NET',burst:'energy',impactPt:function(P){return P.net||{x:960,y:760};},projectile:{ball:'volleyball',from:[420,560],t0:600,t1:1000,arc:60,r:24}},
     // ── WRESTLING ──
     'wrestling-pin':{scene:'mat',headline:'PIN!',headSize:260,sub1:'MISSION VIEJO  def.  EDISON',sub2:'2ND PD  ·  FALL  ·  113 LBS',burst:'energy',motif:'whistle',shake:22,impactPt:function(){return{x:960,y:680};}},
     'wrestling-takedown':{scene:'mat',headline:'TAKEDOWN!',headSize:150,sub1:'TWO POINTS',sub2:'1ST PD  ·  #145 LOPEZ',burst:'energy',motif:'plus1',motifText:'+2',impactPt:function(){return{x:960,y:680};}},
     'wrestling-nearfall':{scene:'mat',headline:'NEAR FALL!',headSize:150,sub1:'BACK POINTS',sub2:'3RD PD  ·  #160',burst:'energy',motif:'plus1',motifText:'+3',impactPt:function(){return{x:960,y:680};}},
     'wrestling-techfall':{scene:'mat',headline:'TECH FALL!',headSize:150,sub1:'15-POINT LEAD — MATCH OVER',sub2:'#132 WARREN',burst:'energy',motif:'plus1',motifText:'15',impactPt:function(){return{x:960,y:680};}}
   };
-  var GROUPS={Soccer:['soccer-penalty','soccer-yellow','soccer-red'],'Water polo':['waterpolo-save','waterpolo-exclusion','waterpolo-powerplay'],Basketball:['basketball-dunk','basketball-buzzer','basketball-steal'],Hockey:['hockey-powerplay','hockey-penaltykill','hockey-hattrick','hockey-save'],Baseball:['baseball-grandslam','baseball-strikeout','baseball-doubleplay'],Football:['football-firstdown','football-sack','football-turnover'],Volleyball:['volleyball-ace','volleyball-block','volleyball-setwon'],Wrestling:['wrestling-pin','wrestling-takedown','wrestling-nearfall','wrestling-techfall']};
+  var GROUPS={Soccer:['soccer-penalty','soccer-yellow','soccer-red'],'Water polo':['waterpolo-save','waterpolo-exclusion','waterpolo-powerplay'],Basketball:['basketball-dunk','basketball-buzzer','basketball-steal'],Hockey:['hockey-powerplay','hockey-penaltykill','hockey-hattrick','hockey-save'],Baseball:['baseball-grandslam','baseball-strikeout','baseball-doubleplay'],Football:['football-firstdown','football-sack','football-turnover'],Volleyball:['volleyball-ace','volleyball-block','volleyball-setwon'],Pickleball:['pickleball-dink'],Wrestling:['wrestling-pin','wrestling-takedown','wrestling-nearfall','wrestling-techfall']};
 
   var q=new URLSearchParams(location.search), cue=q.get('cue');
   if(cue&&CUES[cue]){

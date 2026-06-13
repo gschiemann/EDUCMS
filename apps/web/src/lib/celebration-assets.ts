@@ -56,6 +56,16 @@ const DECK: Record<string, string> = {
   'volleyball/ace': 'volleyball-ace',
   'volleyball/block': 'volleyball-block',
   'volleyball/setWin': 'volleyball-setwon',
+  // pickleball — a paddle/net sport with tennis-shaped scoring. Until
+  // 2026-06-13 it had ZERO cinematics and every cue fell to generic
+  // confetti. The serve-ace + put-away winner read cleanly on the
+  // volleyball deck scenes; the signature dink rally gets its OWN
+  // bespoke scene (pickleball-dink), and a game win reuses the set-won
+  // confetti scene.
+  'pickleball/ace': 'volleyball-ace',
+  'pickleball/winner': 'volleyball-block',
+  'pickleball/dink': 'pickleball-dink',
+  'pickleball/gameWin': 'volleyball-setwon',
   // wrestling
   'wrestling/pin': 'wrestling-pin',
   'wrestling/takedown': 'wrestling-takedown',

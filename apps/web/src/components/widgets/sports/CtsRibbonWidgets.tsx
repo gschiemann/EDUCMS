@@ -1236,7 +1236,8 @@ import { CelSoccerGoalWidget, CelSoccerGolazoWidget, CelSoccerFreeKickWidget, Ce
 import { CelHockeyGoalWidget, CelHockeyHatTrickWidget, CelHockeyPowerPlayWidget, CelHockeyEmptyNetWidget } from '../v2/CelebrationsHockeyWidgets';
 import { CelFootballTouchdownWidget, CelFootballFieldGoalWidget } from '../v2/CelebrationsFootballWidgets';
 import { CelBasketballThreeWidget, CelBasketballBuzzerWidget, CelBasketballDunkWidget } from '../v2/CelebrationsBasketballWidgets';
-import { ScGoalRetroWidget, ScGoalNeonWidget, HkGoalNeonWidget, HkGoalRetroWidget, LxGoalWidget, LxBehindTheBackWidget } from '../v2/CelebrationsOtherSportsWidgets';
+import { ScGoalRetroWidget, ScGoalNeonWidget, HkGoalNeonWidget, HkGoalRetroWidget, LxGoalWidget, LxBehindTheBackWidget, TnAceWidget, TnWinnerWidget, TnMatchPointWidget } from '../v2/CelebrationsOtherSportsWidgets';
+import { CelBaseballHomeRunWidget, CelBaseballGrandSlamWidget, CelBaseballStrikeoutWidget, CelBaseballDoublePlayWidget } from '../v2/CelebrationsBaseballWidgets';
 
 /**
  * Available cue catalog. Operator picks cue IDs from this list to
@@ -1267,6 +1268,23 @@ const CUE_CATALOG = {
   CEL_HK_GOAL_RETRO: { Component: HkGoalRetroWidget, label: 'Hockey Goal · Retro', defaults: { scorer: 'SCORER', period: 1 } },
   CEL_LX_GOAL: { Component: LxGoalWidget, label: 'Lacrosse Goal', defaults: { scorer: 'SCORER', number: '7', score: '1-0' } },
   CEL_LX_BEHINDTHEBACK: { Component: LxBehindTheBackWidget, label: 'Behind-the-Back Goal', defaults: { player: 'SCORER', distance: '10 YD' } },
+  // ─── Baseball / softball scenes (the diamond sports) ────────────
+  // Before 2026-06-13 these had NO cinematic in the CTS catalog, so
+  // every baseball/softball home-run, grand-slam, strikeout, and
+  // double-play fell back to the generic confetti burst. Now they get
+  // their bespoke scenes (CelebrationsBaseballWidgets.tsx).
+  CEL_BASEBALL_HOMERUN: { Component: CelBaseballHomeRunWidget, label: 'Baseball HOME RUN', defaults: { player: 'SLUGGER', distance: '418 FT', exitVelo: '108 MPH EXIT VELOCITY' } },
+  CEL_BASEBALL_GRANDSLAM: { Component: CelBaseballGrandSlamWidget, label: 'Baseball GRAND SLAM', defaults: { player: 'SLUGGER', score: '1-0' } },
+  CEL_BASEBALL_STRIKEOUT: { Component: CelBaseballStrikeoutWidget, label: 'Baseball STRIKEOUT', defaults: { pitcher: 'ACE', kCount: 1, team: 'starting rotation' } },
+  CEL_BASEBALL_DOUBLEPLAY: { Component: CelBaseballDoublePlayWidget, label: 'Baseball DOUBLE PLAY', defaults: { combo: '6-4-3', players: ['SS', '2B', '1B'] } },
+  // ─── Pickleball / paddle-sport scenes ───────────────────────────
+  // Pickleball had ZERO cinematics. It is a paddle/racquet sport with
+  // tennis-shaped scoring (serve ace, winner, game/match point), so the
+  // tennis scene set reads correctly on a pickleball ribbon. Operator
+  // overrides the player/score copy per cue via cueOverrides.
+  CEL_PICKLEBALL_ACE: { Component: TnAceWidget, label: 'Pickleball ACE (serve)', defaults: { player: 'SERVER', speed: '', aces: 1 } },
+  CEL_PICKLEBALL_WINNER: { Component: TnWinnerWidget, label: 'Pickleball WINNER (rally)', defaults: { player: 'PLAYER', shot: 'PUT-AWAY', winners: 1 } },
+  CEL_PICKLEBALL_GAMEWIN: { Component: TnMatchPointWidget, label: 'Pickleball GAME / MATCH POINT', defaults: { player: 'PLAYER', score: '11-9' } },
   // ─── End-of-period / horn / big-moment scenes ───────────────────
   CEL_FOOTBALL_TOUCHDOWN: { Component: CelFootballTouchdownWidget, label: 'Football TOUCHDOWN', defaults: { player: 'TEAM', distance: 'END OF PERIOD', score: '' } },
   CEL_FOOTBALL_FIELDGOAL: { Component: CelFootballFieldGoalWidget, label: 'Football Field Goal', defaults: { kicker: '', distance: '' } },
