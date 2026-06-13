@@ -24,7 +24,7 @@ import { SituationalRow } from '@/components/widgets/v2/_shared/sports-situation
 import { celebrationSrc, celebrationLiveDataFromCue } from '@/lib/celebration-assets';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
-import { findSport } from '@cms/api-types';
+import { findSport, formatScore } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 // Sprint 13 — custom-template scoreboard renderer. Used iff
 // Game.scoreboardTemplateId is non-null; otherwise the legacy
@@ -353,6 +353,7 @@ function TeamPanel({
   side,
   name,
   score,
+  scoreText,
   color,
   logoUrl,
   winning,
@@ -361,7 +362,12 @@ function TeamPanel({
 }: {
   side: 'home' | 'away';
   name: string;
+  /** Raw scaled score — kept for comparison/layout; never rendered when
+   *  `scoreText` is supplied. */
   score: number;
+  /** Pre-formatted display string (decimals for judged sports). When
+   *  absent, the raw `score` int is shown — backwards-compatible. */
+  scoreText?: string;
   color: string;
   logoUrl: string | null;
   winning: boolean;
@@ -493,7 +499,7 @@ function TeamPanel({
           textShadow: winning ? `0 0 64px ${color}` : '0 8px 30px rgba(0,0,0,0.7)',
         }}
       >
-        {score}
+        {scoreText ?? score}
       </div>
       {penaltyNode}
     </div>
@@ -759,6 +765,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           side="home"
           name={data.homeTeam}
           score={data.homeScore}
+          scoreText={formatScore(def, data.homeScore)}
           color={homeColor}
           logoUrl={data.homeLogoUrl}
           winning={lead === 'home' && data.status !== 'SCHEDULED'}
@@ -926,6 +933,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           side="away"
           name={data.awayTeam}
           score={data.awayScore}
+          scoreText={formatScore(def, data.awayScore)}
           color={awayColor}
           logoUrl={data.awayLogoUrl}
           winning={lead === 'away' && data.status !== 'SCHEDULED'}
@@ -1057,6 +1065,7 @@ function meetContext(
 function MeetTeamCard({
   name,
   score,
+  scoreText,
   unit,
   color,
   logoUrl,
@@ -1065,7 +1074,11 @@ function MeetTeamCard({
   context,
 }: {
   name: string;
+  /** Raw scaled score — kept for layout; never rendered when
+   *  `scoreText` is supplied. */
   score: number;
+  /** Pre-formatted display string (decimals for judged sports). */
+  scoreText?: string;
   unit: string;
   color: string;
   logoUrl: string | null;
@@ -1171,7 +1184,7 @@ function MeetTeamCard({
           textShadow: leading ? `0 0 64px ${color}` : '0 8px 30px rgba(0,0,0,0.7)',
         }}
       >
-        {score}
+        {scoreText ?? score}
       </div>
       <div
         style={{
@@ -1368,6 +1381,7 @@ function LeaderboardScene({ data, def }: { data: BoardData; def: SportDefinition
         <MeetTeamCard
           name={data.homeTeam}
           score={data.homeScore}
+          scoreText={formatScore(def, data.homeScore)}
           unit={def.score.unit}
           color={homeColor}
           logoUrl={data.homeLogoUrl}
@@ -1401,6 +1415,7 @@ function LeaderboardScene({ data, def }: { data: BoardData; def: SportDefinition
         <MeetTeamCard
           name={data.awayTeam}
           score={data.awayScore}
+          scoreText={formatScore(def, data.awayScore)}
           unit={def.score.unit}
           color={awayColor}
           logoUrl={data.awayLogoUrl}
@@ -1656,13 +1671,18 @@ function SpotlightBand({ spot, expanded }: { spot: Spotlight; expanded?: boolean
 function BigTeamBlock({
   name,
   score,
+  scoreText,
   logoUrl,
   color,
   showScore,
   accent,
 }: {
   name: string;
+  /** Raw scaled score — gates display via `showScore`; never rendered
+   *  when `scoreText` is supplied. */
   score?: number;
+  /** Pre-formatted display string (decimals for judged sports). */
+  scoreText?: string;
   logoUrl: string | null;
   color: string;
   showScore?: boolean;
@@ -1781,7 +1801,7 @@ function BigTeamBlock({
             textShadow: accent ? `0 0 72px ${color}` : '0 8px 30px rgba(0,0,0,0.7)',
           }}
         >
-          {score}
+          {scoreText ?? score}
         </div>
       )}
     </div>
@@ -2034,6 +2054,7 @@ function HalftimeScene({ data, def }: { data: BoardData; def: SportDefinition })
         <BigTeamBlock
           name={data.homeTeam}
           score={data.homeScore}
+          scoreText={formatScore(def, data.homeScore)}
           logoUrl={data.homeLogoUrl}
           color={homeColor}
           showScore
@@ -2067,6 +2088,7 @@ function HalftimeScene({ data, def }: { data: BoardData; def: SportDefinition })
         <BigTeamBlock
           name={data.awayTeam}
           score={data.awayScore}
+          scoreText={formatScore(def, data.awayScore)}
           logoUrl={data.awayLogoUrl}
           color={awayColor}
           showScore
@@ -2188,6 +2210,7 @@ function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
         <BigTeamBlock
           name={data.homeTeam}
           score={data.homeScore}
+          scoreText={formatScore(def, data.homeScore)}
           logoUrl={data.homeLogoUrl}
           color={homeColor}
           showScore
@@ -2236,6 +2259,7 @@ function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
         <BigTeamBlock
           name={data.awayTeam}
           score={data.awayScore}
+          scoreText={formatScore(def, data.awayScore)}
           logoUrl={data.awayLogoUrl}
           color={awayColor}
           showScore
@@ -2702,9 +2726,13 @@ function CueOverlay({
               <span style={{ color: snap.homeColor || '#fff', letterSpacing: 2 }}>
                 {teamCode(snap.homeTeam)}
               </span>
-              <span style={{ margin: '0 20px' }}>{snap.homeScore}</span>
+              <span style={{ margin: '0 20px' }}>
+                {formatScore(findSport(sport), snap.homeScore)}
+              </span>
               <span style={{ color: '#475569', fontSize: 52 }}>–</span>
-              <span style={{ margin: '0 20px' }}>{snap.awayScore}</span>
+              <span style={{ margin: '0 20px' }}>
+                {formatScore(findSport(sport), snap.awayScore)}
+              </span>
               <span style={{ color: snap.awayColor || '#fff', letterSpacing: 2 }}>
                 {teamCode(snap.awayTeam)}
               </span>

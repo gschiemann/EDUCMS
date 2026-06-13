@@ -57,7 +57,7 @@ import {
   useTemplates,
   type SponsorInput,
 } from '@/hooks/use-api';
-import { findSport, PLAYER_STATS } from '@cms/api-types';
+import { findSport, formatScore, parseScoreInput, PLAYER_STATS } from '@cms/api-types';
 import type { SportDefinition, SportStatField } from '@cms/api-types';
 import { computeCtsStatus, type CtsStatus } from '@/lib/cts-merge';
 import { RosterPanel } from './RosterPanel';
@@ -577,7 +577,7 @@ function GameControl() {
           {/* Hidden in show / pa views where the strip would crowd the
               reduced-control layout. */}
           {(view === '' || view === 'score') && (
-            <RecentEventsBar gameId={gameId} />
+            <RecentEventsBar gameId={gameId} sport={(g as any)?.sport} />
           )}
         </div>
       )}
@@ -1464,7 +1464,7 @@ function PaAnnouncerView({
               className="text-4xl font-black tabular-nums"
               style={{ color: homeColor }}
             >
-              {g.homeScore}
+              {formatScore(def, g.homeScore)}
             </span>
           </div>
           {/* Clock */}
@@ -1490,7 +1490,7 @@ function PaAnnouncerView({
               className="text-4xl font-black tabular-nums"
               style={{ color: awayColor }}
             >
-              {g.awayScore}
+              {formatScore(def, g.awayScore)}
             </span>
           </div>
         </div>
@@ -1670,6 +1670,7 @@ function RunInteractiveScoreboard({
           side="home"
           increments={def.score.increments}
           onScore={(d) => ctl.score.mutate({ team: 'home', delta: d })}
+          onSetAbsolute={(scaled) => ctl.score.mutate({ homeScore: scaled })}
           def={def}
           stats={stats}
           onStat={(s) => ctl.stats.mutate({ stats: s })}
@@ -1793,6 +1794,7 @@ function RunInteractiveScoreboard({
           side="away"
           increments={def.score.increments}
           onScore={(d) => ctl.score.mutate({ team: 'away', delta: d })}
+          onSetAbsolute={(scaled) => ctl.score.mutate({ awayScore: scaled })}
           def={def}
           stats={stats}
           onStat={(s) => ctl.stats.mutate({ stats: s })}
@@ -2127,6 +2129,10 @@ function ScoreTile({
   side: 'home' | 'away';
   increments: number[];
   onScore: (delta: number) => void;
+  /** Absolute-set callback — used by judged sports (gymnastics / cheer)
+   *  whose total is a decimal you can't reach by +1 chips. Receives the
+   *  already-scaled int from parseScoreInput, passed straight to setScore. */
+  onSetAbsolute?: (scaled: number) => void;
   def: SportDefinition;
   stats: Record<string, unknown>;
   onStat: (s: Record<string, number | string>) => void;
@@ -2134,6 +2140,20 @@ function ScoreTile({
    *  timeout count — fires callTimeout instead of raw stat edit. */
   onTimeout?: (type?: 'full' | 'short') => void;
 }) {
+  // Judged sports carry a decimal team total (gymnastics 195.825, cheer
+  // 285.5) stored as a scaled int. The +/- chips can't reach a decimal,
+  // so those sports get an absolute decimal-entry field instead.
+  const isJudged = typeof def.scoreDecimals === 'number' && def.scoreDecimals > 0;
+  const [scoreDraft, setScoreDraft] = useState('');
+  // When not actively editing, mirror the live score into the field.
+  const [editingScore, setEditingScore] = useState(false);
+  const liveScoreText = formatScore(def, score);
+  const commitScore = () => {
+    setEditingScore(false);
+    const text = scoreDraft.trim();
+    if (text === '') return; // empty → leave score unchanged
+    onSetAbsolute?.(parseScoreInput(def, text));
+  };
   // 2026-05-27 — Per-team stat rows inside the tile. Operator: "i
   // wanted that integrated into the score boards cleanly some how".
   // Filter the sport-def stats for ones that belong to this side
@@ -2184,32 +2204,59 @@ function ScoreTile({
         className="text-6xl sm:text-7xl font-black tabular-nums leading-none my-2"
         style={{ color }}
       >
-        {score}
+        {liveScoreText}
       </div>
-      {/* Subtle +/- chips — small, neutral, sport-aware. Sits at the
-          bottom of the tile so the tile itself looks like a scoreboard
-          panel with quiet controls underneath. */}
-      <div className="flex items-center gap-1.5 mt-1">
-        {increments.map((inc) => (
+      {isJudged ? (
+        // Judged sports — type the team's absolute total (e.g. 195.825).
+        // Increment chips make no sense at 3-decimal precision, so the
+        // operator enters the full score and commits it.
+        <div className="flex items-center gap-1.5 mt-1">
+          <input
+            type="text"
+            inputMode="decimal"
+            aria-label={`${side === 'home' ? 'Home' : 'Away'} team total`}
+            value={editingScore ? scoreDraft : liveScoreText}
+            onFocus={() => {
+              setEditingScore(true);
+              setScoreDraft(liveScoreText);
+            }}
+            onChange={(e) => setScoreDraft(e.target.value)}
+            onBlur={commitScore}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            className="h-9 w-28 rounded-md bg-slate-800 text-center text-white font-bold text-base transition-colors border border-slate-700 focus:border-amber-500 focus:outline-none tabular-nums"
+            title="Type the team's total score, then Enter"
+          />
+        </div>
+      ) : (
+        /* Subtle +/- chips — small, neutral, sport-aware. Sits at the
+           bottom of the tile so the tile itself looks like a scoreboard
+           panel with quiet controls underneath. */
+        <div className="flex items-center gap-1.5 mt-1">
+          {increments.map((inc) => (
+            <button
+              key={`+${inc}`}
+              type="button"
+              onClick={() => onScore(inc)}
+              className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm transition-colors border border-slate-700"
+              title={`Add ${inc}`}
+            >
+              +{inc}
+            </button>
+          ))}
           <button
-            key={`+${inc}`}
             type="button"
-            onClick={() => onScore(inc)}
-            className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm transition-colors border border-slate-700"
-            title={`Add ${inc}`}
+            onClick={() => onScore(-1)}
+            className="h-8 w-8 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-sm transition-colors border border-slate-700"
+            title="Subtract 1 (fix a mis-tap)"
           >
-            +{inc}
+            −
           </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => onScore(-1)}
-          className="h-8 w-8 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-sm transition-colors border border-slate-700"
-          title="Subtract 1 (fix a mis-tap)"
-        >
-          −
-        </button>
-      </div>
+        </div>
+      )}
       {/* Per-team stat rows — Shots, Exclusions, Timeouts for water
           polo; fouls + timeouts for basketball; etc. Compact: small
           label on the left, −value+ stepper on the right.

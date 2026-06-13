@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { useGames, useCreateGame, useDeleteGame, useDuplicateGame, useScrapeBranding, useTemplates } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
-import { SPORTS, findSport } from '@cms/api-types';
+import { SPORTS, findSport, formatScore } from '@cms/api-types';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 
 const STATUS_BADGE: Record<string, string> = {
@@ -163,7 +163,7 @@ function SportsHub() {
                     <div className="text-xs text-slate-400">Home</div>
                   </div>
                   <div className="px-4 text-3xl font-black text-slate-900 tabular-nums">
-                    {g.homeScore} <span className="text-slate-300">–</span> {g.awayScore}
+                    {formatScore(def, g.homeScore)} <span className="text-slate-300">–</span> {formatScore(def, g.awayScore)}
                   </div>
                   <div className="flex-1 text-right">
                     <div className="text-base font-bold text-slate-900 truncate">{g.awayTeam}</div>

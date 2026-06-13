@@ -1589,8 +1589,12 @@ function ScoreZone({
 
   // The score is the hero — size it off the zone HEIGHT, with a width
   // cap that widens with the score's digit count so a 3-digit
-  // basketball score never overflows the zone.
-  const digits = Math.max(1, String(Math.max(data.homeScore, data.awayScore, 0)).length);
+  // basketball score never overflows the zone. For judged sports the
+  // DISPLAYED total carries decimals (gymnastics "195.825"), so size
+  // off the formatted strings — not the raw scaled int.
+  const homeScoreText = formatScore(def, data.homeScore);
+  const awayScoreText = formatScore(def, data.awayScore);
+  const digits = Math.max(1, homeScoreText.length, awayScoreText.length);
   const u = Math.min(h * 1.35, w / (1.02 + 0.51 * digits));
   const score = Math.round(u * 0.4);
   const logo = Math.round(u * 0.28);
@@ -1662,7 +1666,7 @@ function ScoreZone({
             lineHeight: 1,
           }}
         >
-          {data.homeScore}
+          {homeScoreText}
         </span>
         <span style={{ fontSize: dash, fontWeight: 800, color: '#475569' }}>–</span>
         <span
@@ -1675,7 +1679,7 @@ function ScoreZone({
             lineHeight: 1,
           }}
         >
-          {data.awayScore}
+          {awayScoreText}
         </span>
         {mark(data.awayLogoUrl, awayColor)}
       </div>
@@ -2299,7 +2303,7 @@ function LookUnit({
             marginLeft: cu * 0.12,
           }}
         >
-          {data.homeScore}
+          {formatScore(def, data.homeScore)}
         </span>
         <span
           style={{
@@ -2321,7 +2325,7 @@ function LookUnit({
             marginRight: cu * 0.12,
           }}
         >
-          {data.awayScore}
+          {formatScore(def, data.awayScore)}
         </span>
         <span
           style={{
@@ -3051,7 +3055,7 @@ function RibbonCueOverlay({
             <CelebrationErrorBoundary
               cueKey={cue.key}
               fallback={
-                <CueBurst cue={cue} w={seg.width} h={h} />
+                <CueBurst cue={cue} w={seg.width} h={h} sport={sport} />
               }
             >
               <RibbonCelebrationStrip
@@ -3103,7 +3107,7 @@ function RibbonCueOverlay({
             overflow: 'hidden',
           }}
         >
-          <CueBurst cue={cue} w={seg.width} h={h} />
+          <CueBurst cue={cue} w={seg.width} h={h} sport={sport} />
         </div>
       ))}
     </div>
@@ -3119,8 +3123,21 @@ function RibbonCueOverlay({
  * Chromium-83 safe: long-hand insets, per-child margin (no flex
  * `gap`), animation is transform / opacity only.
  */
-function CueBurst({ cue, w, h }: { cue: Cue; w: number; h: number }) {
+function CueBurst({
+  cue,
+  w,
+  h,
+  sport,
+}: {
+  cue: Cue;
+  w: number;
+  h: number;
+  /** Sport key — lets the frozen score format with decimals for
+   *  judged sports (gymnastics / competitive cheer). */
+  sport?: string;
+}) {
   const snap = cue.snapshot;
+  const sportDef = findSport(sport);
   const energy = cue.color || '#fbbf24';
   const ch = Math.min(h * 0.86, 540);
   const glow = ch * 3.4;
@@ -3232,9 +3249,9 @@ function CueBurst({ cue, w, h }: { cue: Cue; w: number; h: number }) {
             }}
           >
             <span style={{ color: snap.homeColor || '#fff' }}>{teamNick(snap.homeTeam)}</span>
-            <span style={{ margin: `0 ${ch * 0.08}px` }}>{snap.homeScore}</span>
+            <span style={{ margin: `0 ${ch * 0.08}px` }}>{formatScore(sportDef, snap.homeScore)}</span>
             <span style={{ color: '#475569' }}>–</span>
-            <span style={{ margin: `0 ${ch * 0.08}px` }}>{snap.awayScore}</span>
+            <span style={{ margin: `0 ${ch * 0.08}px` }}>{formatScore(sportDef, snap.awayScore)}</span>
             <span style={{ color: snap.awayColor || '#fff' }}>{teamNick(snap.awayTeam)}</span>
           </span>
         )}

@@ -25,6 +25,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, RotateCcw, Loader2, ScrollText } from 'lucide-react';
 import { useGameEvents, useUndoGameEvent, type GameEventRow } from '@/hooks/use-api';
+import { findSport, formatScore } from '@cms/api-types';
 
 // ── helpers ───────────────────────────────────────────────────
 
@@ -76,9 +77,15 @@ function eventTone(ev: GameEventRow): string {
 
 /**
  * Summarise an event in one short phrase for the operator.
+ *
+ * `sport` lets the SCORE rows render decimal totals for judged sports
+ * (gymnastics / cheer) — the stored homeScore/awayScore are scaled ints.
  */
-function eventSummary(ev: GameEventRow): string {
+function eventSummary(ev: GameEventRow, sport?: string): string {
   const p = ev.payload;
+  const def = findSport(sport);
+  const fmt = (v: unknown) =>
+    v == null ? '?' : formatScore(def, Number(v));
 
   // Undo marker rows
   if (p.undoOf) {
@@ -88,12 +95,12 @@ function eventSummary(ev: GameEventRow): string {
   switch (ev.type) {
     case 'SCORE': {
       if (String(p.team) === 'set') {
-        return `Score set  ${p.homeScore ?? '?'} – ${p.awayScore ?? '?'}`;
+        return `Score set  ${fmt(p.homeScore)} – ${fmt(p.awayScore)}`;
       }
       const team = String(p.team) === 'away' ? 'Away' : 'Home';
       const d = Number(p.delta);
       const sign = d >= 0 ? '+' : '';
-      return `${team} ${sign}${d}  →  ${p.homeScore ?? '?'} – ${p.awayScore ?? '?'}`;
+      return `${team} ${sign}${d}  →  ${fmt(p.homeScore)} – ${fmt(p.awayScore)}`;
     }
     case 'CLOCK': {
       const action = String(p.action || '');
@@ -147,7 +154,7 @@ function eventSummary(ev: GameEventRow): string {
 
 // ── component ─────────────────────────────────────────────────
 
-export function RecentEventsBar({ gameId }: { gameId: string }) {
+export function RecentEventsBar({ gameId, sport }: { gameId: string; sport?: string }) {
   const [collapsed, setCollapsed] = useState(false);
   const { data: events, isLoading } = useGameEvents(gameId);
   const undo = useUndoGameEvent(gameId);
@@ -215,7 +222,7 @@ export function RecentEventsBar({ gameId }: { gameId: string }) {
             events &&
             events.map((ev) => {
               const isUndoing = undoingId === ev.id;
-              const summary = eventSummary(ev);
+              const summary = eventSummary(ev, sport);
               const segStr = segLabel(ev.payload);
               const tone = eventTone(ev);
 

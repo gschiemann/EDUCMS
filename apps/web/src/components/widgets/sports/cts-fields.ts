@@ -70,6 +70,7 @@
  */
 
 import { fmtClock, fmtSegment, type GameSnapshot } from './GameStateContext';
+import { findSport, formatScore } from '@cms/api-types';
 
 /** Optgroup buckets, in display order. */
 export type CtsFieldGroup =
@@ -386,6 +387,17 @@ export function resolveCtsField(
     // Period — sport-aware label ("Q3", "Inning 5", "Set 2").
     case 'segment':
       return fmtSegment(snapshot.sport, snapshot.segment);
+    // Team scores — judged sports (gymnastics / cheer) store a SCALED
+    // int and display with decimals (195.825); integer sports are
+    // unchanged (formatScore is String(n)).
+    case 'homeScore': {
+      const v = (snapshot as unknown as Record<string, unknown>).homeScore;
+      return v == null ? null : formatScore(findSport(snapshot.sport), Number(v));
+    }
+    case 'awayScore': {
+      const v = (snapshot as unknown as Record<string, unknown>).awayScore;
+      return v == null ? null : formatScore(findSport(snapshot.sport), Number(v));
+    }
     // Shot clocks — short countdown string.
     case 'homeShotClock':
       return fmtShotClock(stats.homeShotClock as ShotClockEntry);

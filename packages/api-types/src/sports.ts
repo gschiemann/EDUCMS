@@ -153,6 +153,23 @@ export interface SportDefinition {
   /** score unit + the increments the control offers as quick buttons */
   score: { unit: string; increments: number[] };
   /**
+   * Decimal places the DISPLAYED score carries — for judged sports whose
+   * team total is a decimal (gymnastics 195.825, competitive cheer 285.5).
+   *
+   * The DB column `Game.homeScore` / `awayScore` is an `Int`, so we never
+   * migrate: the stored value is a SCALED integer — the decimal score
+   * times `10 ** scoreDecimals` (195.825 → 195825 at 3 dp). Every render
+   * site runs the stored int back through {@link formatScore}, and the
+   * console enters an absolute total via {@link parseScoreInput}.
+   *
+   * `undefined` = an integer sport: the stored int IS the score, and
+   * {@link formatScore} / {@link parseScoreInput} are the identity (modulo
+   * rounding) — so EVERY existing sport behaves exactly as it did before.
+   * Score COMPARISONS (leadingSide / winner highlight) always run on the
+   * raw scaled int and are correct without formatting.
+   */
+  scoreDecimals?: number;
+  /**
    * Some sports run TWO score layers at once — the head-to-head match
    * score the +/- chips drive (e.g. a single wrestler's match points)
    * AND a separate team tally the venue actually shows (e.g. a dual
@@ -703,9 +720,11 @@ const GYMNASTICS: SportDefinition = {
   // A gymnastics meet rotates through apparatus events (vault, bars,
   // beam, floor). "Rotation" is the standard meet term.
   segment: { name: 'Rotation', count: 4, overtime: false },
-  // Team score accumulates across all apparatus; increments reflect
-  // typical deduction-based scoring deltas per routine.
+  // Team score accumulates across all apparatus and is a 3-decimal
+  // judged total (e.g. 195.825). Stored as a scaled int (195825); the
+  // console enters the absolute total, surfaces format it back.
   score: { unit: 'points', increments: [1, 5, 10] },
+  scoreDecimals: 3,
   stats: [
     { key: 'currentApparatus', label: 'Current Apparatus', scope: 'game', type: 'text' },
     { key: 'homeAthletes', label: 'Home Competitors', scope: 'home', type: 'number', min: 0, max: 50 },
@@ -756,9 +775,11 @@ const COMPETITIVE_CHEER: SportDefinition = {
   // Cheer competitions are judged across routine divisions / rounds;
   // "Round" is the common term at invitational and state-level meets.
   segment: { name: 'Round', count: 2, overtime: false },
-  // Score is a judge-assigned decimal — increments reflect typical
-  // score deltas entered after each routine.
+  // Score is a judge-assigned 1-decimal routine total (e.g. 285.5).
+  // Stored as a scaled int (2855); the console enters the absolute
+  // total, surfaces format it back.
   score: { unit: 'points', increments: [1, 5, 10] },
+  scoreDecimals: 1,
   stats: [
     { key: 'division', label: 'Division', scope: 'game', type: 'text' },
     { key: 'homeRoutine', label: 'Home Routine', scope: 'home', type: 'text' },
@@ -804,6 +825,68 @@ export const SPORTS: SportDefinition[] = [
 /** Look up a sport definition by key; undefined if unknown. */
 export function findSport(key: string | null | undefined): SportDefinition | undefined {
   return key ? SPORT_DEFINITIONS[key] : undefined;
+}
+
+// ── Decimal team scores for judged sports (scaled-integer convention) ──
+/**
+ * Format a stored (scaled-integer) score for DISPLAY.
+ *
+ * For a judged sport with `def.scoreDecimals` set, the DB stores the
+ * decimal team total times `10 ** scoreDecimals` (gymnastics 195.825 →
+ * 195825), so this divides back down and fixes the decimal places:
+ * `formatScore(gymnastics, 195825) === '195.825'`.
+ *
+ * For every other sport (`scoreDecimals` undefined) the stored int IS
+ * the score and this is just `String(raw)` —
+ * `formatScore(football, 7) === '7'`. Never throws: a null / undefined /
+ * NaN raw becomes `'0'` (or `'0.000'` for a 3-decimal sport), so a
+ * surface always has a printable string.
+ *
+ * Only the DISPLAYED text uses this — score COMPARISONS (leadingSide,
+ * winner highlight) run on the raw scaled int and are already correct.
+ */
+export function formatScore(
+  def: SportDefinition | undefined,
+  raw: number,
+): string {
+  const decimals =
+    def && typeof def.scoreDecimals === 'number' && def.scoreDecimals > 0
+      ? def.scoreDecimals
+      : 0;
+  const n = typeof raw === 'number' && Number.isFinite(raw) ? raw : 0;
+  if (decimals > 0) {
+    return (n / 10 ** decimals).toFixed(decimals);
+  }
+  return String(Math.trunc(n));
+}
+
+/**
+ * Parse an operator's decimal score entry into the stored (scaled-integer)
+ * value — the inverse of {@link formatScore}. This is what the console
+ * passes to the `setScore` mutation.
+ *
+ * For a judged sport (`def.scoreDecimals` set), the operator types the
+ * absolute team total (e.g. "195.825") and this returns the scaled int
+ * (`Math.round(195.825 * 1000) === 195825`). For an integer sport the
+ * entry is rounded to a whole number. Never throws: a non-numeric / NaN
+ * entry becomes `0`, and the result is clamped to `>= 0` (a score is
+ * never negative).
+ */
+export function parseScoreInput(
+  def: SportDefinition | undefined,
+  text: string,
+): number {
+  const decimals =
+    def && typeof def.scoreDecimals === 'number' && def.scoreDecimals > 0
+      ? def.scoreDecimals
+      : 0;
+  const parsed = parseFloat(text);
+  if (!Number.isFinite(parsed)) return 0;
+  const scaled =
+    decimals > 0
+      ? Math.round(parsed * 10 ** decimals)
+      : Math.round(parsed);
+  return scaled < 0 ? 0 : scaled;
 }
 
 /**

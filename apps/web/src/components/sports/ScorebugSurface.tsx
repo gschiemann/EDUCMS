@@ -42,7 +42,7 @@ import {
   hasSituational,
 } from '@/components/widgets/v2/_shared/sports-situational';
 import { API_URL } from '@/lib/api-url';
-import { findSport } from '@cms/api-types';
+import { findSport, formatScore } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 
 // ── types ──────────────────────────────────────────────────────
@@ -463,6 +463,7 @@ export function ScorebugBug({
           <TeamBlock
             code={teamCode(view.homeTeam, homeOverride)}
             score={view.homeScore}
+            scoreText={formatScore(def, view.homeScore)}
             color={homeColor}
             logoUrl={view.homeLogoUrl}
             side="home"
@@ -508,6 +509,7 @@ export function ScorebugBug({
           <TeamBlock
             code={teamCode(view.awayTeam, awayOverride)}
             score={view.awayScore}
+            scoreText={formatScore(def, view.awayScore)}
             color={awayColor}
             logoUrl={view.awayLogoUrl}
             side="away"
@@ -548,12 +550,17 @@ export function ScorebugBug({
 function TeamBlock({
   code,
   score,
+  scoreText,
   color,
   logoUrl,
   side,
 }: {
   code: string;
+  /** Raw scaled score — kept for parity; never rendered when
+   *  `scoreText` is supplied. */
   score: number;
+  /** Pre-formatted display string (decimals for judged sports). */
+  scoreText?: string;
   color: string;
   logoUrl: string | null;
   side: 'home' | 'away';
@@ -623,7 +630,7 @@ function TeamBlock({
           lineHeight: 1,
         }}
       >
-        {score}
+        {scoreText ?? score}
       </span>
     </div>
   );

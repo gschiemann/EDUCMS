@@ -37,7 +37,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { findSport } from '@cms/api-types';
+import { findSport, formatScore } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { useGameState, fmtClock, type GameSnapshot } from './GameStateContext';
 import { liveNeutral } from './cts-fields';
@@ -218,6 +218,12 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
   // live surface with no data (never SAMPLE's 62 / 58).
   const homeScore = pick(c.homeScore, isLiveNoData ? NEUTRAL : snap.homeScore);
   const awayScore = pick(c.awayScore, isLiveNoData ? NEUTRAL : snap.awayScore);
+  // Judged sports (gymnastics / cheer) store a SCALED int — format the
+  // displayed value with decimals. Non-number values (NEUTRAL '—', a
+  // hand-typed string override) pass through untouched. Integer sports:
+  // formatScore is String(n), so this is a no-op for them.
+  const fmtScoreVal = (v: number | string) =>
+    typeof v === 'number' ? formatScore(def, v) : v;
   const homeLogoUrl = pick(c.homeLogoUrl, snap.homeLogoUrl);
   const awayLogoUrl = pick(c.awayLogoUrl, snap.awayLogoUrl);
   const status = String(pick(c.status, snap.status));
@@ -322,7 +328,7 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
         </div>
         <div style={nameStyle('home')}>{homeName.toUpperCase()}</div>
         <div style={tagStyle('home')}>HOME</div>
-        <div style={scoreStyle('home')}>{homeScore}</div>
+        <div style={scoreStyle('home')}>{fmtScoreVal(homeScore)}</div>
 
         {/* AWAY side */}
         <div style={sideBlock('away')} />
@@ -334,7 +340,7 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
         </div>
         <div style={nameStyle('away')}>{awayName.toUpperCase()}</div>
         <div style={tagStyle('away')}>AWAY</div>
-        <div style={scoreStyle('away')}>{awayScore}</div>
+        <div style={scoreStyle('away')}>{fmtScoreVal(awayScore)}</div>
 
         {/* CENTER COLUMN */}
         <div style={{ position: 'absolute', top: 0, left: BLOCK_W, width: 680, height: 1080 }}>

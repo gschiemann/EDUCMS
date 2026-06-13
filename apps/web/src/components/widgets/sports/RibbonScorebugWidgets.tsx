@@ -34,7 +34,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { findSport } from '@cms/api-types';
+import { findSport, formatScore } from '@cms/api-types';
 import { useGameState, fmtClock, fmtSegment, type GameSnapshot } from './GameStateContext';
 import { liveNeutral } from './cts-fields';
 import { FitOneLine } from './FitOneLine';
@@ -105,8 +105,8 @@ export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
   const hasClock = def && def.clock.type !== 'none';
   // What the score/abbr/clock/segment show: real on a live feed, sample
   // in the builder, neutral on a live board with no data.
-  const homeScoreText = isLiveNoData ? liveNeutral('value') : String(snap.homeScore);
-  const awayScoreText = isLiveNoData ? liveNeutral('value') : String(snap.awayScore);
+  const homeScoreText = isLiveNoData ? liveNeutral('value') : formatScore(def, snap.homeScore);
+  const awayScoreText = isLiveNoData ? liveNeutral('value') : formatScore(def, snap.awayScore);
   const homeAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.homeTeam);
   const awayAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.awayTeam);
   const clockText = isLiveNoData ? liveNeutral('clock') : fmtClock(clockMs);
@@ -188,8 +188,8 @@ export function ScorebugWidget({ config }: { config?: ScorebugCfg }) {
   const hasClock = def && def.clock.type !== 'none';
   // What the score/clock/segment/situational show: real on a live feed,
   // sample in the builder, neutral on a live board with no data.
-  const homeScoreText = isLiveNoData ? liveNeutral('value') : String(snap.homeScore);
-  const awayScoreText = isLiveNoData ? liveNeutral('value') : String(snap.awayScore);
+  const homeScoreText = isLiveNoData ? liveNeutral('value') : formatScore(def, snap.homeScore);
+  const awayScoreText = isLiveNoData ? liveNeutral('value') : formatScore(def, snap.awayScore);
   const homeAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.homeTeam);
   const awayAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.awayTeam);
   const clockText = isLiveNoData ? liveNeutral('clock') : fmtClock(clockMs);

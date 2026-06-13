@@ -28,7 +28,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { findSport } from '@cms/api-types';
+import { findSport, formatScore } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import type { WidgetProps } from './_shared/types';
 import type { WidgetStyle } from './_shared/styleSystem';
@@ -529,7 +529,7 @@ function HsScene({
       </div>
       <div style={nameStyle('home')}>{(board.homeTeam || 'HOME').toUpperCase()}</div>
       <div style={tagStyle('home')}>HOME</div>
-      <div style={scoreStyle('home')}>{board.homeScore}</div>
+      <div style={scoreStyle('home')}>{formatScore(def, board.homeScore)}</div>
 
       {/* AWAY side */}
       <div style={sideBlock('away')} />
@@ -542,7 +542,7 @@ function HsScene({
       </div>
       <div style={nameStyle('away')}>{(board.awayTeam || 'AWAY').toUpperCase()}</div>
       <div style={tagStyle('away')}>AWAY</div>
-      <div style={scoreStyle('away')}>{board.awayScore}</div>
+      <div style={scoreStyle('away')}>{formatScore(def, board.awayScore)}</div>
 
       {/* CENTER COLUMN */}
       <div style={{ position: 'absolute', top: 0, left: BLOCK_W, width: 680, height: 1080 }}>
