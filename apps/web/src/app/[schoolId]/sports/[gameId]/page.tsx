@@ -1236,15 +1236,30 @@ function RunMode({
               <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
             )}
             {showBottomTray && (
-              <div className="flex items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
+              <div className="flex flex-wrap items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
                 {isBaseballSoftball && (
-                  <BaseTrayBall stats={stats} onStat={(s) => ctl.stats.mutate({ stats: s })} />
+                  <BaseTrayBall
+                    stats={stats}
+                    onStat={(s) => ctl.stats.mutate({ stats: s })}
+                    onAdvanceHalf={() => advanceBaseballHalf(def, g, ctl)}
+                  />
                 )}
                 {def.key === 'football' && (
-                  <PlayClockBtn
-                    stats={stats}
-                    onAction={(a, v) => ctl.playClock.mutate({ action: a, value: v })}
-                  />
+                  <>
+                    {/* Down & distance + Ball On + possession — the live
+                        football control set. Was dead code (only reachable
+                        through the never-rendered TeamZone); now mounted in
+                        the operator's bottom tray. (audit: console P0) */}
+                    <FootballControls
+                      def={def}
+                      stats={stats}
+                      onStat={(s) => ctl.stats.mutate({ stats: s })}
+                    />
+                    <PlayClockBtn
+                      stats={stats}
+                      onAction={(a, v) => ctl.playClock.mutate({ action: a, value: v })}
+                    />
+                  </>
                 )}
               </div>
             )}
@@ -1667,11 +1682,19 @@ function RunInteractiveScoreboard({
             button; just a slim chip. */}
         <div className="flex flex-col items-center justify-between bg-slate-950 border border-slate-800 rounded-xl px-4 pt-5 pb-3 min-h-[280px] min-w-[240px]">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest">
-            {/* Destructive: resets clock to segment start — hold-to-confirm */}
+            {/* Destructive: resets clock to segment start — hold-to-confirm.
+                For Inning sports (baseball / softball) the chips walk the
+                half (Top→Bot→next-inning-Top) instead of jumping a whole
+                inning, so the operator can advance the half from the
+                scoreboard header too. (audit: console P0) */}
             <HoldChip
               label="−"
               ariaLabel="Previous segment"
-              onConfirm={() => ctl.segment.mutate({ delta: -1 })}
+              onConfirm={() =>
+                def.segment.name === 'Inning'
+                  ? retreatBaseballHalf(def, g, ctl)
+                  : ctl.segment.mutate({ delta: -1 })
+              }
               className="h-6 w-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center text-sm font-bold border border-slate-700"
             />
             <span className="min-w-[80px] text-center text-amber-400 text-sm font-black tracking-widest">
@@ -1681,7 +1704,11 @@ function RunInteractiveScoreboard({
             <HoldChip
               label="+"
               ariaLabel="Next segment"
-              onConfirm={() => ctl.segment.mutate({ delta: 1 })}
+              onConfirm={() =>
+                def.segment.name === 'Inning'
+                  ? advanceBaseballHalf(def, g, ctl)
+                  : ctl.segment.mutate({ delta: 1 })
+              }
               className="h-6 w-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center text-sm font-bold border border-slate-700"
             />
           </div>
@@ -1772,6 +1799,296 @@ function RunInteractiveScoreboard({
           onTimeout={() => ctl.callTimeout.mutate({ team: 'away' })}
         />
       </div>
+
+      {/* Game-scope live data editor — the single most important live
+          datum for many sports lives in a scope:'game' text/number
+          field that had NO editor anywhere in the console before:
+          cheer Division, track/swim Current Event, XC Lead Runner,
+          gymnastics Current Apparatus, golf Current Hole, volleyball
+          Serving. This row makes every one editable in Run mode.
+          (audit: console P0 cheer + meet-sports, P1 gymnastics) */}
+      <GameScopeStatEditor def={def} g={g} ctl={ctl} />
+
+      {/* Volleyball / pickleball one-tap "End set → next set" macro:
+          credits the set win to the leader, zeroes both point scores,
+          fires the setWin cue, and advances the segment — all in one
+          action so the operator never carries a stale score into the
+          next set. (audit: console P1 — volleyball set advance) */}
+      {def.clock.type === 'none' &&
+        def.score.unit === 'points' &&
+        (def.segment.name === 'Set' || def.segment.name === 'Game') && (
+          <EndSetMacro def={def} g={g} ctl={ctl} />
+        )}
+    </div>
+  );
+}
+
+// ── GameScopeStatEditor ────────────────────────────────────────
+// The live-data editor for scope:'game' stats that have no dedicated
+// tray/chip control. Text fields → labeled text input (or a Home/Away
+// toggle for serve/possession); wide-range numbers → type-in; small
+// ranges → +/- stepper. Keys already owned by the football/baseball
+// trays or the possession arrow chip are excluded so a stat is never
+// editable in two places. (audit: console P0 cheer + meet sports;
+// P1 gymnastics apparatus)
+//
+// The keys this surfaced for the first time, per sport:
+//   competitive_cheer  → Division (text)
+//   track_and_field    → Current Event (text)
+//   swimming_diving    → Current Event (text)
+//   cross_country      → Lead Runner (text), Finishers (number)
+//   gymnastics         → Current Apparatus (text)
+//   golf               → Current Hole (number)
+//   volleyball         → Serving (home/away)
+const GAME_STAT_TRAY_OWNED = new Set([
+  // football tray
+  'down',
+  'distance',
+  'ballOn',
+  // baseball tray
+  'balls',
+  'strikes',
+  'outs',
+  'half',
+  'on1B',
+  'on2B',
+  'on3B',
+  // possession arrow chip (basketball / football)
+  'possession',
+]);
+
+function GameScopeStatEditor({
+  def,
+  g,
+  ctl,
+}: {
+  def: SportDefinition;
+  g: any;
+  ctl: ReturnType<typeof useGameControl>;
+}) {
+  const stats: Record<string, unknown> = g.stats || {};
+  const fields = (def.stats || []).filter(
+    (s) => s.scope === 'game' && !GAME_STAT_TRAY_OWNED.has(s.key),
+  );
+  if (fields.length === 0) return null;
+  return (
+    <div className="max-w-6xl mx-auto mt-3 flex flex-wrap items-end gap-3 px-1">
+      {fields.map((s) => {
+        // Serve / possession-style home-away picker.
+        if (s.key === 'serving') {
+          return (
+            <GameScopeToggle
+              key={s.key}
+              label={s.label}
+              value={stats[s.key]}
+              homeTeam={g.homeTeam}
+              awayTeam={g.awayTeam}
+              onSet={(v) => ctl.stats.mutate({ stats: { [s.key]: v } })}
+            />
+          );
+        }
+        if (s.type === 'text') {
+          return (
+            <GameScopeText
+              key={s.key}
+              label={s.label}
+              value={stats[s.key]}
+              onCommit={(v) => ctl.stats.mutate({ stats: { [s.key]: v } })}
+            />
+          );
+        }
+        // number — wide range gets a type-in, small range a stepper.
+        // StatNumberField / StatChip render their own label caption.
+        const range = (s.max ?? 0) - (s.min ?? 0);
+        if (range > 8) {
+          return (
+            <StatNumberField
+              key={s.key}
+              label={s.label}
+              value={stats[s.key]}
+              min={s.min ?? 0}
+              max={s.max ?? 999}
+              onCommit={(n) => ctl.stats.mutate({ stats: { [s.key]: n } })}
+            />
+          );
+        }
+        const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
+        return (
+          <StatChip
+            key={s.key}
+            label={s.label}
+            value={stats[s.key]}
+            onAdd={() => ctl.stats.mutate({ stats: { [s.key]: Math.min(cur + 1, s.max ?? 9999) } })}
+            onSub={() => ctl.stats.mutate({ stats: { [s.key]: Math.max(cur - 1, s.min ?? 0) } })}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// A labeled free-text editor for a game-scope text stat (Division,
+// Current Event, Lead Runner, Current Apparatus, …). Commits on
+// blur / Enter; shows the live value when idle.
+function GameScopeText({
+  label,
+  value,
+  onCommit,
+}: {
+  label: string;
+  value: unknown;
+  onCommit: (v: string) => void;
+}) {
+  const live = value === undefined || value === null ? '' : String(value);
+  const [text, setText] = useState('');
+  const [editing, setEditing] = useState(false);
+  const commit = () => {
+    if (!editing) return;
+    onCommit(text.trim());
+    setEditing(false);
+  };
+  return (
+    <label className="flex flex-col">
+      <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase mb-0.5">
+        {label}
+      </span>
+      <input
+        type="text"
+        value={editing ? text : live}
+        onFocus={() => {
+          setText(live);
+          setEditing(true);
+        }}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            commit();
+            e.currentTarget.blur();
+          } else if (e.key === 'Escape') {
+            setEditing(false);
+            e.currentTarget.blur();
+          }
+        }}
+        placeholder="—"
+        className="h-9 min-w-[140px] rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-sm font-bold text-white outline-none focus:border-indigo-500"
+      />
+    </label>
+  );
+}
+
+// Home/Away picker for a game-scope text stat that stores 'home' /
+// 'away' (volleyball Serving). Mirrors PossessionToggle but writes the
+// raw stat string.
+function GameScopeToggle({
+  label,
+  value,
+  homeTeam,
+  awayTeam,
+  onSet,
+}: {
+  label: string;
+  value: unknown;
+  homeTeam?: string;
+  awayTeam?: string;
+  onSet: (v: string) => void;
+}) {
+  const cur = String(value || '').toLowerCase();
+  const opt = (side: 'home' | 'away', name?: string) => (
+    <button
+      type="button"
+      onClick={() => onSet(cur === side ? '' : side)}
+      aria-pressed={cur === side}
+      className={`h-9 px-3 rounded-lg text-sm font-black transition-colors border ${
+        cur === side
+          ? 'bg-indigo-600 text-white border-indigo-700'
+          : 'bg-slate-900 text-slate-400 border-slate-700 hover:bg-slate-800'
+      }`}
+    >
+      {(name || side).slice(0, 10)}
+    </button>
+  );
+  return (
+    <div className="flex flex-col">
+      <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase mb-0.5">
+        {label}
+      </span>
+      <div className="flex items-stretch gap-1">
+        {opt('home', homeTeam)}
+        {opt('away', awayTeam)}
+      </div>
+    </div>
+  );
+}
+
+// ── EndSetMacro ────────────────────────────────────────────────
+// Volleyball / pickleball: one tap to close the current set. Credits
+// the set/game-won stat to whichever side led, zeroes both point
+// scores (so a stale score never carries into the next set), fires the
+// setWin celebration cue, and advances the segment. (audit: console
+// P1 — advancing a set never zeroed the points). Safe + idempotent
+// regardless of any server-side auto-zero (config+api domain) landing.
+function EndSetMacro({
+  def,
+  g,
+  ctl,
+}: {
+  def: SportDefinition;
+  g: any;
+  ctl: ReturnType<typeof useGameControl>;
+}) {
+  const stats: Record<string, unknown> = g.stats || {};
+  const home = Number(g.homeScore) || 0;
+  const away = Number(g.awayScore) || 0;
+  // The set/game-won counter key, if the sport tracks one.
+  const setKeyHome = def.stats.some((s) => s.key === 'homeSets')
+    ? 'homeSets'
+    : def.stats.some((s) => s.key === 'homeGames')
+      ? 'homeGames'
+      : null;
+  const setKeyAway = setKeyHome === 'homeSets' ? 'awaySets' : setKeyHome === 'homeGames' ? 'awayGames' : null;
+  // The win cue is 'setWin' (volleyball) or 'gameWin' (pickleball) — fire
+  // whichever the sport declares, if either.
+  const winCueKey = def.celebrations.some((c) => c.key === 'setWin')
+    ? 'setWin'
+    : def.celebrations.some((c) => c.key === 'gameWin')
+      ? 'gameWin'
+      : null;
+
+  const endSet = () => {
+    if (home === away) return; // tie can't end a set — guard the no-op
+    const winner: 'home' | 'away' = home > away ? 'home' : 'away';
+    // 1. Credit the set/game win to the leader (if the sport counts them).
+    if (setKeyHome && setKeyAway) {
+      const curWon = Number(stats[winner === 'home' ? setKeyHome : setKeyAway]) || 0;
+      ctl.stats.mutate({ stats: { [winner === 'home' ? setKeyHome : setKeyAway]: curWon + 1 } });
+    }
+    // 2. Zero both point scores via the dedicated score mutation (records
+    //    a SCORE GameEvent for the undo rail).
+    ctl.score.mutate({ homeScore: 0, awayScore: 0 });
+    // 3. Fire the set/game-won celebration cue if the sport has one.
+    if (winCueKey) ctl.cue.mutate({ key: winCueKey, target: 'ALL' });
+    // 4. Advance to the next set / game.
+    ctl.segment.mutate({ delta: 1 });
+  };
+
+  const tied = home === away;
+  return (
+    <div className="max-w-6xl mx-auto mt-3 flex justify-center px-1">
+      <button
+        type="button"
+        onClick={endSet}
+        disabled={tied}
+        title={
+          tied
+            ? 'Scores are level — a set ends with a leader'
+            : 'End this set: credit the winner, reset points, fire the cue, advance the set'
+        }
+        className="h-10 px-4 rounded-xl bg-emerald-600 text-white font-black text-sm hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+      >
+        <Check className="h-4 w-4" />
+        End {def.segment.name} → next {def.segment.name}
+      </button>
     </div>
   );
 }
@@ -1827,7 +2144,9 @@ function ScoreTile({
   const prefix = side === 'home' ? 'home' : 'away';
   const sideStats = (def.stats || []).filter(
     (s) =>
-      s.type === 'number' &&
+      // Per-team number AND text stats (e.g. golf homePar/awayPar are
+      // text — they had no editor anywhere before). (audit: console P0)
+      (s.type === 'number' || s.type === 'text') &&
       s.key.toLowerCase().startsWith(prefix) &&
       // Skip clock-related stats — the clock tile owns those.
       !s.key.toLowerCase().includes('clock'),
@@ -1899,9 +2218,67 @@ function ScoreTile({
       {sideStats.length > 0 && (
         <div className="w-full mt-3 pt-3 border-t border-slate-800 space-y-1">
           {sideStats.map((s) => {
-            const value = Number(stats[s.key]) || 0;
             const min = s.min ?? 0;
             const max = s.max ?? 99;
+            const isText = s.type === 'text';
+            // Ride-time advantage is entered in seconds but is far easier
+            // to set as mm:ss than by tapping +/-1 up to 600. (audit P1)
+            const isRideTime = s.key.toLowerCase().includes('ridetime');
+            // A wide range (ride time 0-600, etc.) can't be set with a
+            // +/-1 stepper — give it a type-in instead. (audit P1)
+            const wideRange = !isText && max - min > 8;
+
+            // ── per-team text stat (e.g. golf homePar/awayPar) ──
+            if (isText) {
+              return (
+                <div key={s.key} className="flex items-center justify-between text-xs gap-2">
+                  <span className="font-black uppercase tracking-widest text-slate-500 text-[10px] shrink-0">
+                    {shortLabel(s.label)}
+                  </span>
+                  <SideTeamText
+                    value={stats[s.key]}
+                    onCommit={(v) => onStat({ [s.key]: v })}
+                  />
+                </div>
+              );
+            }
+
+            const value = Number(stats[s.key]) || 0;
+
+            // ── ride-time mm:ss control ──
+            if (isRideTime) {
+              return (
+                <div key={s.key} className="flex items-center justify-between text-xs gap-2">
+                  <span className="font-black uppercase tracking-widest text-slate-500 text-[10px] shrink-0">
+                    {shortLabel(s.label).replace(/\(S\)/i, '').trim()}
+                  </span>
+                  <SideRideTime
+                    seconds={value}
+                    maxSeconds={max}
+                    onCommit={(secs) => onStat({ [s.key]: secs })}
+                  />
+                </div>
+              );
+            }
+
+            // ── wide-range number type-in ──
+            if (wideRange) {
+              return (
+                <div key={s.key} className="flex items-center justify-between text-xs gap-2">
+                  <span className="font-black uppercase tracking-widest text-slate-500 text-[10px] shrink-0">
+                    {shortLabel(s.label)}
+                  </span>
+                  <SideNumberTypeIn
+                    value={value}
+                    min={min}
+                    max={max}
+                    onCommit={(n) => onStat({ [s.key]: n })}
+                  />
+                </div>
+              );
+            }
+
+            // ── small-range +/- stepper (the original control) ──
             const canDec = value > min;
             const canInc = value < max;
             const isTimeoutStat = s.key.toLowerCase().includes('timeout');
@@ -1955,6 +2332,156 @@ function ScoreTile({
         </div>
       )}
     </div>
+  );
+}
+
+// ── ScoreTile per-team field editors (dark theme) ──────────────
+// Compact controls used inside the dark ScoreTile for per-team stats
+// that a +/-1 stepper can't reasonably set.
+
+// Free-text per-team stat (golf homePar / awayPar). Commits on
+// blur / Enter. (audit: console P0 — golf vs-par was uneditable)
+function SideTeamText({
+  value,
+  onCommit,
+}: {
+  value: unknown;
+  onCommit: (v: string) => void;
+}) {
+  const live = value === undefined || value === null ? '' : String(value);
+  const [text, setText] = useState('');
+  const [editing, setEditing] = useState(false);
+  const commit = () => {
+    if (!editing) return;
+    onCommit(text.trim());
+    setEditing(false);
+  };
+  return (
+    <input
+      type="text"
+      value={editing ? text : live}
+      onFocus={() => {
+        setText(live);
+        setEditing(true);
+      }}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          commit();
+          e.currentTarget.blur();
+        } else if (e.key === 'Escape') {
+          setEditing(false);
+          e.currentTarget.blur();
+        }
+      }}
+      placeholder="—"
+      className="h-7 w-20 rounded bg-slate-800 border border-slate-700 px-2 text-sm font-black text-white tabular-nums text-center outline-none focus:border-indigo-500"
+    />
+  );
+}
+
+// Wide-range per-team number type-in (clamps to min/max on commit).
+function SideNumberTypeIn({
+  value,
+  min,
+  max,
+  onCommit,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  onCommit: (n: number) => void;
+}) {
+  const [text, setText] = useState('');
+  const [editing, setEditing] = useState(false);
+  const commit = () => {
+    if (!editing) return;
+    const n = parseInt(text, 10);
+    if (Number.isFinite(n)) onCommit(Math.max(min, Math.min(max, n)));
+    setEditing(false);
+  };
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={editing ? text : String(value)}
+      onFocus={() => {
+        setText(String(value));
+        setEditing(true);
+      }}
+      onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          commit();
+          e.currentTarget.blur();
+        } else if (e.key === 'Escape') {
+          setEditing(false);
+          e.currentTarget.blur();
+        }
+      }}
+      className="h-7 w-14 rounded bg-slate-800 border border-slate-700 px-2 text-sm font-black text-white tabular-nums text-center outline-none focus:border-indigo-500"
+    />
+  );
+}
+
+// mm:ss entry for wrestling ride-time advantage. Stores seconds; the
+// operator types a familiar 1:12 instead of tapping 72 times. (audit P1)
+function SideRideTime({
+  seconds,
+  maxSeconds,
+  onCommit,
+}: {
+  seconds: number;
+  maxSeconds: number;
+  onCommit: (secs: number) => void;
+}) {
+  const fmt = (s: number) => {
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${String(r).padStart(2, '0')}`;
+  };
+  const [text, setText] = useState('');
+  const [editing, setEditing] = useState(false);
+  const commit = () => {
+    if (!editing) return;
+    // Parse "m:ss" or a bare seconds count.
+    const t = text.trim();
+    let secs = 0;
+    if (t.includes(':')) {
+      const [m, s] = t.split(':');
+      secs = (parseInt(m, 10) || 0) * 60 + (parseInt(s, 10) || 0);
+    } else {
+      secs = parseInt(t, 10) || 0;
+    }
+    onCommit(Math.max(0, Math.min(maxSeconds, secs)));
+    setEditing(false);
+  };
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={editing ? text : fmt(seconds)}
+      onFocus={() => {
+        setText(fmt(seconds));
+        setEditing(true);
+      }}
+      onChange={(e) => setText(e.target.value.replace(/[^0-9:]/g, '').slice(0, 5))}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          commit();
+          e.currentTarget.blur();
+        } else if (e.key === 'Escape') {
+          setEditing(false);
+          e.currentTarget.blur();
+        }
+      }}
+      placeholder="0:00"
+      title="Ride-time advantage (m:ss)"
+      className="h-7 w-16 rounded bg-slate-800 border border-slate-700 px-2 text-sm font-black text-white tabular-nums text-center outline-none focus:border-indigo-500"
+    />
   );
 }
 
@@ -3029,195 +3556,14 @@ function PenaltyBoxControl({
   );
 }
 
-// ── TeamZone ───────────────────────────────────────────────────
-
-function TeamZone({
-  label,
-  score,
-  color,
-  side,
-  increments,
-  onScore,
-  def,
-  stats,
-  onStat,
-}: {
-  label: string;
-  score: number;
-  color: string;
-  side: 'home' | 'away';
-  increments: number[];
-  onScore: (d: number) => void;
-  def: SportDefinition;
-  stats: Record<string, unknown>;
-  onStat: (s: Record<string, number | string>) => void;
-}) {
-  const isHome = side === 'home';
-  const isBaseballSoftball = def.key === 'baseball' || def.key === 'softball';
-
-  // Which stats belong to this zone?
-  // Home zone: shared stats + home-specific (fouls, etc.)
-  // Away zone: away-team stats only (hits, errors for baseball)
-  // For simplicity: home zone shows all shared stats, away shows away-specific ones.
-  // The actual field list comes from the sport def; we label by key prefix convention.
-  const zoneStats = def.stats.filter((s) => {
-    if (isBaseballSoftball) {
-      // For baseball the count is in the tray; zone shows hits/errors split by side
-      if (isHome) return ['hits', 'lob'].includes(s.key);
-      return ['hits_away', 'errors'].includes(s.key);
-    }
-    // For basketball/football/etc: home zone shows shared stats
-    if (isHome) return !s.key.startsWith('away_');
-    return s.key.startsWith('away_');
-  });
-
-  // Initial letter of the team for the logo avatar
-  const initial = label.trim().charAt(0).toUpperCase();
-
-  return (
-    <div
-      className={`flex-1 flex flex-col p-4 ${isHome ? 'border-r border-slate-200' : ''}`}
-      style={{
-        backgroundColor: `${color}10`,
-        borderTop: `4px solid ${color}`,
-      }}
-    >
-      {/* zone header — team identity + side label.
-          2026-05-27 — score number + score buttons were here previously
-          but lived in two other places (StateBar + the new
-          RunInteractiveScoreboard). Operator: "the score shows 4 times
-          in this little area, we need just one on the score board and
-          one on the ribbon score". This zone is now stat-tray-only;
-          all score control lives in the interactive scoreboard up top. */}
-      <div className="flex items-center gap-2 mb-3">
-        <span
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-black text-lg shrink-0"
-          style={{ backgroundColor: color }}
-        >
-          {initial}
-        </span>
-        <span className="text-lg font-black truncate" style={{ color }}>
-          {label}
-        </span>
-        <span className="ml-auto text-[10px] font-black tracking-widest text-slate-400">
-          {isHome ? 'HOME' : 'AWAY'}
-        </span>
-      </div>
-
-      {/* quick-stat chips — sport-specific inline controls */}
-      {!isBaseballSoftball && def.stats.length > 0 && (
-        <QuickStatChips def={def} stats={stats} onStat={onStat} side={side} />
-      )}
-
-      {/* baseball: show hits/errors for each side */}
-      {isBaseballSoftball && zoneStats.length > 0 && (
-        <div className="flex gap-2 mt-auto">
-          {zoneStats.map((s) => (
-            <StatChip
-              key={s.key}
-              label={s.label}
-              value={stats[s.key]}
-              onAdd={() => {
-                const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
-                onStat({ [s.key]: cur + 1 });
-              }}
-              onSub={() => {
-                const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
-                onStat({ [s.key]: Math.max(0, cur - 1) });
-              }}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── QuickStatChips ─────────────────────────────────────────────
-// Renders the sport-aware quick-stat row inside a team zone.
-// Basketball: fouls, bonus, possession. Football: down, distance, etc.
-// Each chip is a compact tap-to-increment / label display.
-
-function QuickStatChips({
-  def,
-  stats,
-  onStat,
-  side,
-}: {
-  def: SportDefinition;
-  stats: Record<string, unknown>;
-  onStat: (s: Record<string, number | string>) => void;
-  side: 'home' | 'away';
-}) {
-  // Football gets a dedicated control set — the down selector, TYPED
-  // yardage fields, and a possession toggle — in the home zone only.
-  if (def.key === 'football') {
-    return side === 'home' ? (
-      <FootballControls def={def} stats={stats} onStat={onStat} />
-    ) : null;
-  }
-
-  // Every other sport: the home zone shows each shared stat with the
-  // RIGHT control for its shape — a Home/Away toggle for possession &
-  // serve, a type-in for wide-range numbers (you never tap +1 thirty
-  // times), a +/- stepper only for genuinely small ranges.
-  if (side !== 'home') return null;
-  const fields = def.stats.filter(
-    (s) => !s.key.startsWith('away_') && !s.key.startsWith('home_'),
-  );
-  if (fields.length === 0) return null;
-
-  return (
-    <div className="flex flex-wrap gap-2 mt-auto">
-      {fields.map((s) => {
-        // possession / serve — who has the ball or the serve.
-        if (s.key === 'possession' || s.key === 'serving') {
-          return (
-            <PossessionToggle
-              key={s.key}
-              label={s.key === 'serving' ? 'Serve' : 'Poss'}
-              value={stats[s.key]}
-              onSet={(v) => onStat({ [s.key]: v })}
-            />
-          );
-        }
-        // other free-text fields want a picker (a later pass) — skip
-        // rather than render a broken numeric stepper on them.
-        if (s.type === 'text') return null;
-        // wide-range number → type-in; the operator should never tap
-        // +1 dozens of times to reach a value.
-        if ((s.max ?? 0) - (s.min ?? 0) > 8) {
-          return (
-            <StatNumberField
-              key={s.key}
-              label={s.label}
-              value={stats[s.key]}
-              min={s.min ?? 0}
-              max={s.max ?? 999}
-              onCommit={(n) => onStat({ [s.key]: n })}
-            />
-          );
-        }
-        // small bounded range → +/- stepper chip.
-        return (
-          <StatChip
-            key={s.key}
-            label={s.label}
-            value={stats[s.key]}
-            onAdd={() => {
-              const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
-              onStat({ [s.key]: Math.min(cur + 1, s.max ?? 9999) });
-            }}
-            onSub={() => {
-              const cur = typeof stats[s.key] === 'number' ? (stats[s.key] as number) : 0;
-              onStat({ [s.key]: Math.max(cur - 1, s.min ?? 0) });
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
+// NOTE — the legacy TeamZone + QuickStatChips components were removed
+// here (audit: console). They were DEAD CODE: TeamZone was never
+// rendered (the live console uses RunInteractiveScoreboard), and
+// QuickStatChips was reachable only from TeamZone — so the football
+// down/distance/Ball-On controls inside it (FootballControls) never
+// reached the operator. FootballControls is now mounted directly in
+// the football bottom tray; per-team stats render in ScoreTile; and
+// game-scope text/number stats render in GameScopeStatEditor.
 
 // ── FootballControls ───────────────────────────────────────────
 // Football's home-zone control set: the down selector, TYPED yardage
@@ -3503,36 +3849,133 @@ function CompactDownControl({ value, onSet }: { value: number; onSet: (n: number
   );
 }
 
+// ── advanceBaseballHalf ────────────────────────────────────────
+// One-tap half-inning advance for baseball / softball. The half model:
+//   Top → Bottom  (same inning — flip the half, clear the count + bases)
+//   Bottom → Top  (next inning — bump the segment, clear the count + bases)
+// The segment `+` chip calls this for Inning sports so the operator
+// walks Top→Bot→next-inning-Top instead of only bumping the inning
+// number. The bottom-tray "Top/Bot" pill also calls it. (audit: console P0)
+function advanceBaseballHalf(
+  def: SportDefinition,
+  g: any,
+  ctl: ReturnType<typeof useGameControl>,
+) {
+  const stats: Record<string, unknown> = g.stats || {};
+  const cur = String(stats.half || '').toUpperCase();
+  const goingToBottom = cur !== 'BOT' && cur !== 'BOTTOM';
+  // Clear the count + bases at every half change (a new half is a
+  // fresh frame). The half label uses 'Top' / 'Bot' so the board's
+  // segment label reads "Top #3" / "Bot #3".
+  const reset: Record<string, number | string> = {
+    half: goingToBottom ? 'Bot' : 'Top',
+    balls: 0,
+    strikes: 0,
+    outs: 0,
+    on1B: 0,
+    on2B: 0,
+    on3B: 0,
+  };
+  ctl.stats.mutate({ stats: reset });
+  // Going from Bottom back to Top means a new inning — bump the segment.
+  if (!goingToBottom) {
+    ctl.segment.mutate({ delta: 1 });
+  }
+}
+
+// Reverse of advanceBaseballHalf — the segment `−` chip. Bottom→Top
+// (same inning); Top→Bottom of the previous inning (segment-1).
+function retreatBaseballHalf(
+  def: SportDefinition,
+  g: any,
+  ctl: ReturnType<typeof useGameControl>,
+) {
+  const stats: Record<string, unknown> = g.stats || {};
+  const cur = String(stats.half || '').toUpperCase();
+  const isBottom = cur === 'BOT' || cur === 'BOTTOM';
+  const reset: Record<string, number | string> = {
+    half: isBottom ? 'Top' : 'Bot',
+    balls: 0,
+    strikes: 0,
+    outs: 0,
+    on1B: 0,
+    on2B: 0,
+    on3B: 0,
+  };
+  ctl.stats.mutate({ stats: reset });
+  // Top → previous inning's Bottom — step the segment back.
+  if (!isBottom) {
+    ctl.segment.mutate({ delta: -1 });
+  }
+}
+
 // ── BaseTrayBall ───────────────────────────────────────────────
-// Baseball / softball bottom tray: Ball, Strike / Foul / Out buttons.
+// Baseball / softball bottom tray: Ball / Strike / Foul / Out, the
+// Top/Bottom half toggle, and the three base-runner toggles. Foul is a
+// no-op at 2 strikes (it must NOT register a 3rd strike → false
+// strikeout). "Out" retires the batter via the outs stat — the API
+// rolls the side over at 3 outs — instead of faking a strikeout.
+// (audit: console P0 — half toggle + Out + base runners; P1 — Foul guard)
 
 function BaseTrayBall({
   stats,
   onStat,
+  onAdvanceHalf,
 }: {
   stats: Record<string, unknown>;
   onStat: (s: Record<string, number>) => void;
+  onAdvanceHalf: () => void;
 }) {
   const num = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : 0);
   const balls = num(stats.balls);
   const strikes = num(stats.strikes);
   const outs = num(stats.outs);
+  const half = String(stats.half || '').toUpperCase();
+  const isBottom = half === 'BOT' || half === 'BOTTOM';
+  const bases: { key: 'on1B' | 'on2B' | 'on3B'; label: string }[] = [
+    { key: 'on1B', label: '1B' },
+    { key: 'on2B', label: '2B' },
+    { key: 'on3B', label: '3B' },
+  ];
   return (
     <>
       <button
         type="button"
-        onClick={() => onStat({ balls: balls + 1 })}
-        className="flex-1 h-14 rounded-xl bg-red-600 text-white font-black text-lg hover:bg-red-700 transition-colors"
+        onClick={() => onStat({ balls: Math.min(3, balls + 1) })}
+        className="flex-1 min-w-[64px] h-14 rounded-xl bg-red-600 text-white font-black text-lg hover:bg-red-700 transition-colors"
       >
         Ball
       </button>
       <button
         type="button"
-        onClick={() => onStat({ strikes: strikes + 1 })}
-        className="flex-1 h-14 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-sm hover:bg-slate-100 transition-colors flex flex-col items-center justify-center"
+        onClick={() => onStat({ strikes: Math.min(2, strikes + 1) })}
+        className="flex-1 min-w-[64px] h-14 rounded-xl bg-slate-800 text-white font-black text-lg hover:bg-slate-700 transition-colors"
       >
-        <span>Strike</span>
-        <span className="text-[10px] text-slate-400">· Foul · Out</span>
+        Strike
+      </button>
+      {/* Foul — adds a strike UNLESS already at 2 (a foul never makes
+          the third strike). No-op at 2 strikes so a foul ball can't
+          fake a strikeout + fire the auto-celebration. (audit P1) */}
+      <button
+        type="button"
+        onClick={() => {
+          if (strikes < 2) onStat({ strikes: strikes + 1 });
+        }}
+        disabled={strikes >= 2}
+        title={strikes >= 2 ? 'Foul at 2 strikes — count stays 2' : 'Foul ball (adds a strike under 2)'}
+        className="flex-1 min-w-[56px] h-14 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-sm hover:bg-slate-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        Foul
+      </button>
+      {/* Out — retires the batter. The backend rolls the side over and
+          resets the count at 3 outs. Distinct from Strike so a routine
+          out (groundout / flyout) isn't recorded as a strikeout. */}
+      <button
+        type="button"
+        onClick={() => onStat({ outs: outs + 1, balls: 0, strikes: 0 })}
+        className="flex-1 min-w-[56px] h-14 rounded-xl bg-amber-600 text-white font-black text-base hover:bg-amber-700 transition-colors"
+      >
+        Out
       </button>
       {/* live count indicator */}
       <div className="flex flex-col items-center justify-center bg-white border border-slate-200 rounded-xl px-3 h-14 shrink-0">
@@ -3542,6 +3985,40 @@ function BaseTrayBall({
         </span>
         <span className="text-[9px] text-slate-400">{outs} out</span>
       </div>
+      {/* Base-runner diamond toggles — light the board's diamond. */}
+      <div className="flex items-stretch gap-1 shrink-0">
+        {bases.map((b) => {
+          const on = num(stats[b.key]) > 0;
+          return (
+            <button
+              key={b.key}
+              type="button"
+              onClick={() => onStat({ [b.key]: on ? 0 : 1 })}
+              aria-pressed={on}
+              title={`Runner on ${b.label}`}
+              className={`h-14 w-12 rounded-xl font-black text-sm transition-colors border ${
+                on
+                  ? 'bg-emerald-600 text-white border-emerald-700'
+                  : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              {b.label}
+            </button>
+          );
+        })}
+      </div>
+      {/* Top / Bottom half toggle — advances Top→Bot→next-inning-Top.
+          This is the ONLY place the operator can move the half forward;
+          `half` was never written anywhere in the console before. */}
+      <button
+        type="button"
+        onClick={onAdvanceHalf}
+        title="Advance half-inning (Top → Bottom → next inning)"
+        className="h-14 px-3 rounded-xl bg-indigo-600 text-white font-black text-sm hover:bg-indigo-700 transition-colors flex flex-col items-center justify-center shrink-0"
+      >
+        <span className="text-[9px] font-black tracking-widest text-indigo-200">HALF</span>
+        <span>{isBottom ? 'Bot ▼' : 'Top ▲'}</span>
+      </button>
     </>
   );
 }
@@ -3973,13 +4450,22 @@ function TrayClockBtn({
 
 function segmentText(def: SportDefinition, g: any): string {
   const n = g.segment;
-  if (n > def.segment.count) {
-    const ot = n - def.segment.count;
-    return ot > 1 ? `OT${ot}` : 'OT';
-  }
+  // Inning sports (baseball / softball) never read "OT" — extra
+  // innings just keep counting (Top 10th, Bot 11th…). This branch
+  // MUST precede the overtime check (audit: console copy of the
+  // OT-before-Inning bug — extra innings were showing "OT").
   if (def.segment.name === 'Inning') {
     const half = String((g.stats || {}).half || '').toUpperCase();
     return `${half ? half + ' ' : ''}#${n}`;
+  }
+  if (n > def.segment.count) {
+    // Leaderboard / hole-based meet sports never overflow into "OT" —
+    // clamp the label to the segment name (Hole 18, Event N) instead.
+    if (def.mode === 'LEADERBOARD' || def.segment.overtime === false) {
+      return `${def.segment.name} ${Math.min(n, def.segment.count)}`;
+    }
+    const ot = n - def.segment.count;
+    return ot > 1 ? `OT${ot}` : 'OT';
   }
   return `${def.segment.name} ${n}`;
 }
@@ -5106,7 +5592,8 @@ function SpotlightControl({
 // ── Unused import guard (StatField kept for possible future use) ─
 // StatField was used in the old scrolling layout for the stats
 // section inside the live-control group. In the v4 layout the same
-// data is surfaced via StatChip / QuickStatChips in the team zones.
+// data is surfaced via ScoreTile (per-team), GameScopeStatEditor
+// (game-scope text / number), and the sport bottom trays.
 // Keeping it here avoids a "declared but never used" TS error while
 // the hook signature types still reference SportStatField.
 function _StatField({
