@@ -2104,6 +2104,52 @@ export class SportsService {
       data.clockUpdatedAt = now;
     }
 
+    // Volleyball / pickleball: a clockless set/game sport carries its
+    // rally score (points-to-target) across NO clock boundary — so a
+    // manual FORWARD segment advance ("next set") must zero the point
+    // score, or the new set opens showing the old set's tally. (Baseball
+    // is also clockless, but its segment is an Inning and the score is
+    // cumulative — only set/game sports zero.) Best-in-industry: credit
+    // the just-finished set/game to whichever side led it, so the match
+    // set count (e.g. 2–1) stays correct even when the operator advances
+    // by hand instead of scoring the set-winning point.
+    const isSetGameSport =
+      def.clock.type === 'none' &&
+      (def.segment.name === 'Set' || def.segment.name === 'Game');
+    const advancingForward = segment > prevSegment;
+    const prevHomeScore = Number(game.homeScore) || 0;
+    const prevAwayScore = Number(game.awayScore) || 0;
+    let zeroedScores = false;
+    // The set/game-won credit (homeSets/awaySets or homeGames/awayGames)
+    // is merged into the stats write below; null = no credit this advance.
+    let setGameWonKey: string | null = null;
+    let setGameWonVal = 0;
+    if (isSetGameSport && advancingForward) {
+      // Only zero if there's actually a carried-over score to clear.
+      if (prevHomeScore !== 0 || prevAwayScore !== 0) {
+        data.homeScore = 0;
+        data.awayScore = 0;
+        zeroedScores = true;
+      }
+      // Credit the set/game won to the leader of the set just finished.
+      if (prevHomeScore !== prevAwayScore) {
+        const isPickle = def.key === 'pickleball';
+        const homeLed = prevHomeScore > prevAwayScore;
+        setGameWonKey = isPickle
+          ? homeLed
+            ? 'homeGames'
+            : 'awayGames'
+          : homeLed
+            ? 'homeSets'
+            : 'awaySets';
+        const cur =
+          game.stats && typeof game.stats === 'object'
+            ? Number((game.stats as Record<string, unknown>)[setGameWonKey]) || 0
+            : 0;
+        setGameWonVal = cur + 1;
+      }
+    }
+
     // T2-10: apply per-sport segment-reset rules AND T2-7's football
     // play-clock reset in one merged stats write. Both are
     // complementary: T2-10 handles homeFouls/awayFouls/timeouts/shot
@@ -2149,6 +2195,11 @@ export class SportsService {
     if (def.key === 'football' && mergedStats.playClock) {
       mergedStats.playClock = { ms: 40_000, at: now.toISOString(), running: false };
     }
+    // Volleyball / pickleball: credit the just-finished set/game to its
+    // leader (computed above) into the merged stats write.
+    if (setGameWonKey) {
+      mergedStats[setGameWonKey] = setGameWonVal;
+    }
     if (Object.keys(mergedStats).length > 0) {
       data.stats = mergedStats as any;
     }
@@ -2160,6 +2211,32 @@ export class SportsService {
       prevSegment,
       prevClockMs,
     });
+
+    // Volleyball / pickleball next-set: record a SCORE event carrying the
+    // pre-zero score so the undo rail can restore the rally tally, plus a
+    // STAT event for the set/game-won credit.
+    if (zeroedScores) {
+      await this.record(id, 'SCORE', {
+        homeScore: 0,
+        awayScore: 0,
+        prevHomeScore,
+        prevAwayScore,
+        source: 'set-advance',
+        segment,
+      });
+    }
+    if (setGameWonKey) {
+      const oldVal =
+        game.stats && typeof game.stats === 'object'
+          ? (game.stats as Record<string, unknown>)[setGameWonKey] ?? null
+          : null;
+      await this.record(id, 'STAT', {
+        stats: { [setGameWonKey]: setGameWonVal },
+        oldValues: { [setGameWonKey]: oldVal },
+        source: 'set-advance',
+        segment,
+      });
+    }
 
     // T2-10: write individual STAT GameEvents for each reset field so the
     // undo rail can target them independently.
@@ -2208,7 +2285,18 @@ export class SportsService {
       if (!def || def.clock.type === 'none') continue;
       const segMs = def.clock.segmentMs ?? 0;
       const live = this.liveClockMs(game);
-      const expired = def.clock.type === 'countdown' ? live <= 0 : live >= segMs;
+      // Soccer-fix: a count-up clock (soccer halves) must NOT auto-advance
+      // the instant it hits regulation — stoppage / added time runs WITH
+      // the clock past 40:00. Push the expiry threshold out by the
+      // operator-set `addedTime` (minutes, stored on Game.stats) so the
+      // half only auto-rolls once added time has elapsed too. addedTime=0
+      // (the default) preserves the old behaviour exactly.
+      const addedMs =
+        def.clock.type === 'countup' && game.stats && typeof game.stats === 'object'
+          ? Math.max(0, Number((game.stats as Record<string, unknown>).addedTime) || 0) * 60_000
+          : 0;
+      const expired =
+        def.clock.type === 'countdown' ? live <= 0 : live >= segMs + addedMs;
       if (!expired) continue;
 
       const now = new Date();
@@ -2399,7 +2487,10 @@ export class SportsService {
     const preBalls = typeof next.balls === 'number' ? next.balls : 0;
     const preOuts = typeof next.outs === 'number' ? next.outs : 0;
     const isBaseballSport = game.sport === 'baseball' || game.sport === 'softball';
-    const segmentDelta = isBaseballSport ? this.applyBaseballCount(next) : 0;
+    const cascade = isBaseballSport
+      ? this.applyBaseballCount(next)
+      : { segmentDelta: 0, runsScored: 0 };
+    const segmentDelta = cascade.segmentDelta;
     // Detect what event(s) the cascade produced.
     const postStrikes = typeof next.strikes === 'number' ? next.strikes : 0;
     const postOuts = typeof next.outs === 'number' ? next.outs : 0;
@@ -2411,16 +2502,26 @@ export class SportsService {
       const max = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
       data.segment = Math.min(max, game.segment + segmentDelta);
     }
+    // A bases-loaded walk forces in a run — credit it to the team at bat.
+    // Top of the inning the AWAY team bats; Bottom, the HOME team bats.
+    // `next.half` is always set by applyBaseballCount and reflects the
+    // half the walk happened in (a walk never flips the half).
+    if (cascade.runsScored > 0) {
+      const battingTop = !String(next.half ?? 'Top').toLowerCase().startsWith('b');
+      const scoreCol = battingTop ? 'awayScore' : 'homeScore';
+      data[scoreCol] = { increment: cascade.runsScored };
+    }
 
     const updated = await this.prisma.client.game.update({ where: { id }, data });
     // Include oldValues alongside newValues so the undo rail can restore.
     await this.record(id, 'STAT', { stats: next, oldValues });
     if (segmentDelta) await this.record(id, 'SEGMENT', { segment: data.segment });
 
-    // T2-10: fire celebration CUEs for strikeout. Walk is informational
-    // but the sport def has no 'walk' celebration, so only fire strikeout.
-    // `wasWalk` is detected here for future extension — it's intentionally
-    // not wired to a CUE since the baseball def has no walk celebration.
+    // T2-10: fire celebration CUEs for strikeout. The walk's mechanical
+    // effects (count reset, force-advance, forced run) are handled in the
+    // cascade above; `wasWalk` is detected here only for completeness —
+    // it's intentionally not wired to a CUE since the baseball def has no
+    // 'walk' celebration.
     void wasWalk; // suppress unused warning
     if (wasStrikeout) {
       const strikeoutCue = def.celebrations.find((c) => c.key === 'strikeout');
@@ -2445,21 +2546,29 @@ export class SportsService {
 
   /**
    * Baseball / softball count rules, applied in place to the merged
-   * stats. Returns how many innings to advance (0 or 1).
+   * stats. Returns the inning advance (0 or 1) and any runs FORCED in
+   * by a bases-loaded walk so the caller can credit the batting team.
    *   · 3rd strike → out; the count resets.
-   *   · 4th ball   → walk; the count resets, no out.
+   *   · 4th ball   → walk; the count resets, no out, and the batter
+   *                  takes 1B — runners advance only when FORCED (the
+   *                  base behind them is occupied). A bases-loaded walk
+   *                  forces the runner on 3B home for a run.
    *   · 3rd out    → side retired: outs + count reset, the bases
    *                  clear, half flips Top↔Bottom; advancing past
    *                  the bottom bumps the inning.
    */
-  private applyBaseballCount(s: Record<string, unknown>): number {
+  private applyBaseballCount(
+    s: Record<string, unknown>,
+  ): { segmentDelta: number; runsScored: number } {
     const n = (v: unknown) =>
       typeof v === 'number' && isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+    const onBase = (v: unknown) => (n(v) > 0 ? 1 : 0);
     let balls = n(s.balls);
     let strikes = n(s.strikes);
     let outs = n(s.outs);
     let half = String(s.half || 'Top');
     let segmentDelta = 0;
+    let runsScored = 0;
 
     // A strikeout takes precedence over a walk if both somehow trip in
     // one update (a single click only ever moves one count).
@@ -2470,6 +2579,32 @@ export class SportsService {
     } else if (balls >= 4) {
       balls = 0;
       strikes = 0;
+      // Walk — the batter takes 1B and FORCES runners ahead only when
+      // the base behind is occupied. Worked from the front of the line:
+      //   1B occupied → that runner forced to 2B
+      //     2B then occupied → forced to 3B
+      //       3B then occupied → forced home (a run scores)
+      // A runner NOT forced (e.g. man on 2B with 1B empty) stays put.
+      // This lights the diamond correctly on every walk instead of
+      // leaving 1B dark.
+      let r1 = onBase(s.on1B);
+      let r2 = onBase(s.on2B);
+      let r3 = onBase(s.on3B);
+      if (r1) {
+        // 1B was occupied — the chain of forces moves up.
+        if (r2) {
+          if (r3) {
+            // Bases loaded: the runner on 3B is forced home.
+            runsScored = 1;
+          }
+          r3 = 1; // runner from 2B forced to 3B
+        }
+        r2 = 1; // runner from 1B forced to 2B
+      }
+      r1 = 1; // the batter always takes 1B on a walk
+      s.on1B = r1;
+      s.on2B = r2;
+      s.on3B = r3;
     }
 
     if (outs >= 3) {
@@ -2494,7 +2629,7 @@ export class SportsService {
     s.strikes = strikes;
     s.outs = outs;
     s.half = half;
-    return segmentDelta;
+    return { segmentDelta, runsScored };
   }
 
   /**
@@ -2996,11 +3131,20 @@ export class SportsService {
 
   /** Short segment label — "Q3", "3RD INN", "SET 2", "OT". */
   private segmentLabelOf(def: SportDefinition, n: number): string {
+    const name = def.segment.name;
+    // SHARED-SPEC segment-overflow label — a segment past the regulation
+    // count must NOT blindly read "OT":
+    //   · Inning (baseball/softball) → the inning ordinal ("10TH INN"),
+    //     never "OT" — extra innings just keep counting.
+    //   · hole-based / LEADERBOARD (golf, track, etc.) → clamp at the
+    //     last segment and show "F" (final); a meet/round never "OT"s.
+    //   · period/quarter/half sports with overtime:true → "OT"/"2OT".
     if (n > def.segment.count) {
+      if (name === 'Inning') return `${this.ordinal(n)} INN`;
+      if (def.mode === 'LEADERBOARD' || def.segment.overtime === false) return 'F';
       const ot = n - def.segment.count;
       return ot > 1 ? `OT${ot}` : 'OT';
     }
-    const name = def.segment.name;
     if (name === 'Quarter') return `Q${n}`;
     if (name === 'Period') return `P${n}`;
     if (name === 'Inning') return `${this.ordinal(n)} INN`;

@@ -144,10 +144,33 @@ export interface SportDefinition {
   /** countdown = clock runs to 0 (US football/basketball); countup =
    *  clock counts up (soccer); none = no clock (baseball/volleyball) */
   clock: { type: ClockType; segmentMs?: number };
-  /** the period structure — "Quarter" × 4, "Inning" × 7, "Set" × 5 … */
-  segment: { name: string; count: number; overtime: boolean };
+  /** the period structure — "Quarter" × 4, "Inning" × 7, "Set" × 5 …
+   *  `countOptions` — when present, the operator picks the regulation
+   *  segment count at setup (e.g. golf 9-hole vs 18-hole HS matches).
+   *  `count` is the default; the chosen value is stored per-game and
+   *  the surfaces clamp / label off it. Omitted = the count is fixed. */
+  segment: { name: string; count: number; overtime: boolean; countOptions?: number[] };
   /** score unit + the increments the control offers as quick buttons */
   score: { unit: string; increments: number[] };
+  /**
+   * Some sports run TWO score layers at once — the head-to-head match
+   * score the +/- chips drive (e.g. a single wrestler's match points)
+   * AND a separate team tally the venue actually shows (e.g. a dual
+   * meet's running team score). When present, the surfaces render a
+   * dedicated team-points line and the operator gets its own quick-add
+   * set so match-points and team-points are never conflated.
+   *
+   * `homeKey` / `awayKey` are the Game.stats JSON keys the team tally
+   * lives under; `increments` are the team-points quick-add buttons
+   * (distinct from `score.increments`, which stays the per-bout set).
+   */
+  teamScore?: {
+    /** short label for the team tally line, e.g. "Team Score" / "Dual" */
+    label: string;
+    homeKey: string;
+    awayKey: string;
+    increments: number[];
+  };
   stats: SportStatField[];
   celebrations: SportCelebration[];
   /**
@@ -365,8 +388,30 @@ const WRESTLING: SportDefinition = {
   mode: 'HEAD_TO_HEAD',
   clock: { type: 'countdown', segmentMs: 2 * 60_000 },
   segment: { name: 'Period', count: 3, overtime: true },
+  // The +/- chips drive the CURRENT BOUT's match points — a single
+  // wrestler scores 1 (escape) / 2 (takedown/reversal) / 3 (near fall)
+  // / 4 (near fall) per move. This is NOT the team score.
   score: { unit: 'points', increments: [1, 2, 3, 4] },
+  // Dual-meet team score: a separate running tally awarded per bout
+  // result — decision +3, major +4, tech fall +5, pin/forfeit +6. The
+  // venue board shows the TEAM score (Lions 24, Tigers 18) while the
+  // match score shows the wrestler-on-the-mat's points. The increments
+  // here are the result-value quick-adds so the operator credits a bout
+  // win without conflating it with match points.
+  teamScore: {
+    label: 'Team Score',
+    homeKey: 'homeTeamPoints',
+    awayKey: 'awayTeamPoints',
+    increments: [3, 4, 5, 6],
+  },
   stats: [
+    // Team-points tally — surfaced on board/page as the dual-meet score.
+    { key: 'homeTeamPoints', label: 'Home Team Points', scope: 'home', type: 'number', min: 0, max: 99 },
+    { key: 'awayTeamPoints', label: 'Away Team Points', scope: 'away', type: 'number', min: 0, max: 99 },
+    // Per-bout context — the weight class + bout number the current
+    // match points belong to, so the board reads "152 lbs · Bout 7".
+    { key: 'weightClass', label: 'Weight Class', scope: 'game', type: 'text' },
+    { key: 'boutNumber', label: 'Bout #', scope: 'game', type: 'number', min: 1, max: 14 },
     { key: 'homeRideTime', label: 'Home Ride Time (s)', scope: 'home', type: 'number', min: 0, max: 600 },
     { key: 'awayRideTime', label: 'Away Ride Time (s)', scope: 'away', type: 'number', min: 0, max: 600 },
   ],
@@ -674,8 +719,11 @@ const GOLF: SportDefinition = {
   mode: 'LEADERBOARD',
   clock: { type: 'none' },
   // HS / college matches are typically 9 or 18 holes. 18 is the
-  // standard; count covers the full round.
-  segment: { name: 'Hole', count: 18, overtime: false },
+  // standard default; `countOptions` lets the operator pick a 9-hole
+  // round at setup so the hole counter fits the match. `overtime`
+  // stays false — a leaderboard sport never goes to "OT"; surfaces
+  // clamp at the last hole and label "F" (final) past the round.
+  segment: { name: 'Hole', count: 18, overtime: false, countOptions: [9, 18] },
   // Golf scoring: strokes relative to par. Increments represent
   // single-stroke changes as players report in.
   score: { unit: 'strokes', increments: [1] },

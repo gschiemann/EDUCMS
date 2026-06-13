@@ -7,6 +7,7 @@
  * bounding, cues, and the scoreboard-to-screen push. No DB required.
  */
 import { BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { SPORT_DEFINITIONS } from '@cms/api-types';
 import { SportsService } from './sports.service';
 
 // ── in-memory Prisma fake ──────────────────────────────────────
@@ -737,6 +738,173 @@ describe('SportsService — set-sport rules', () => {
     expect(r.homeScore).toBe(0);
     expect(r.stats).toMatchObject({ homeGames: 1 });
     expect(r.segment).toBe(2);
+  });
+});
+
+describe('SportsService — baseball walk advances the runner (config+api P1)', () => {
+  it('a walk with bases empty puts the batter on 1B', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    const r: any = await service.updateStats(TENANT, g.id, { stats: { balls: 4 } });
+    expect(r.stats).toMatchObject({ balls: 0, strikes: 0, on1B: 1, on2B: 0, on3B: 0 });
+  });
+
+  it('a walk with a runner on 1B forces him to 2B (1B stays occupied)', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    await service.updateStats(TENANT, g.id, { stats: { on1B: 1 } });
+    const r: any = await service.updateStats(TENANT, g.id, { stats: { balls: 4 } });
+    expect(r.stats).toMatchObject({ on1B: 1, on2B: 1, on3B: 0 });
+  });
+
+  it('a walk with a runner on 2B only does NOT force him (2B unchanged, 1B fills)', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    await service.updateStats(TENANT, g.id, { stats: { on2B: 1 } });
+    const r: any = await service.updateStats(TENANT, g.id, { stats: { balls: 4 } });
+    expect(r.stats).toMatchObject({ on1B: 1, on2B: 1, on3B: 0 });
+  });
+
+  it('a bases-loaded walk forces in a run for the batting team', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball'); // starts Top → AWAY bats
+    await service.updateStats(TENANT, g.id, { stats: { on1B: 1, on2B: 1, on3B: 1 } });
+    const r: any = await service.updateStats(TENANT, g.id, { stats: { balls: 4 } });
+    expect(r.stats).toMatchObject({ on1B: 1, on2B: 1, on3B: 1 });
+    expect(r.awayScore).toBe(1); // Top of the inning → away team scores
+    expect(r.homeScore).toBe(0);
+  });
+
+  it('a bases-loaded walk in the bottom scores for the HOME team', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    await service.updateStats(TENANT, g.id, {
+      stats: { half: 'Bottom', on1B: 1, on2B: 1, on3B: 1 },
+    });
+    const r: any = await service.updateStats(TENANT, g.id, { stats: { balls: 4 } });
+    expect(r.homeScore).toBe(1);
+    expect(r.awayScore).toBe(0);
+  });
+});
+
+describe('SportsService — volleyball next-set auto-zero (config+api P1)', () => {
+  it('a manual forward set advance zeroes the carried-over point score', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'volleyball');
+    // 24-20 hasn't reached the set target by 2, so applySetWin doesn't
+    // auto-fire — the operator ends the set by hand via setSegment.
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 24 });
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 20 });
+    const r: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(r.segment).toBe(2);
+    expect(r.homeScore).toBe(0);
+    expect(r.awayScore).toBe(0);
+  });
+
+  it('credits the just-finished set to the team that led it', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'volleyball');
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 24 });
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 20 });
+    const r: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(r.stats).toMatchObject({ homeSets: 1 });
+  });
+
+  it('pickleball forward advance credits awayGames / zeroes the rally', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'pickleball');
+    // 10-5 hasn't hit the 11-point game target, so no auto game-win.
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 10 });
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 5 });
+    const r: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(r.homeScore).toBe(0);
+    expect(r.awayScore).toBe(0);
+    expect(r.stats).toMatchObject({ awayGames: 1 });
+  });
+
+  it('does NOT zero a baseball inning advance (clockless but cumulative score)', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'baseball');
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 3 });
+    const r: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(r.homeScore).toBe(3); // baseball runs carry across innings
+  });
+
+  it('does NOT credit a set on a backward (segment-correction) move', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'volleyball');
+    await service.setSegment(TENANT, g.id, { delta: 1 }); // now set 2, scores 0
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 10 });
+    const r: any = await service.setSegment(TENANT, g.id, { delta: -1 });
+    expect(r.segment).toBe(1);
+    expect(r.stats?.homeSets ?? 0).toBe(0); // no credit going backward
+    expect(r.homeScore).toBe(10); // backward move leaves the score alone
+  });
+});
+
+describe('SportsService — soccer added-time auto-advance (config+api P1)', () => {
+  // Helper: stand a soccer game up LIVE with a running count-up clock
+  // reading `liveMs`, with `addedTime` minutes configured.
+  function liveSoccer(game: any, liveMs: number, addedTime: number) {
+    const row = game.rows[0];
+    row.status = 'LIVE';
+    row.clockMs = liveMs;
+    row.clockRunning = true;
+    row.clockUpdatedAt = new Date();
+    row.stats = { addedTime };
+  }
+
+  it('auto-advances the half once regulation passes when no added time is set', async () => {
+    const { service, game } = setup();
+    const g = await newGame(service, 'soccer'); // 40-min halves
+    liveSoccer(game, 40 * 60_000 + 1_000, 0);
+    expect(g.segment).toBe(1);
+    const changed = await service.autoAdvanceExpiredClocks();
+    expect(changed).toBe(1);
+    expect(game.rows[0].segment).toBe(2);
+  });
+
+  it('does NOT auto-advance during added time (clock runs past regulation)', async () => {
+    const { service, game } = setup();
+    await newGame(service, 'soccer');
+    // 1 minute past regulation, 3 minutes of added time configured.
+    liveSoccer(game, 40 * 60_000 + 60_000, 3);
+    const changed = await service.autoAdvanceExpiredClocks();
+    expect(changed).toBe(0);
+    expect(game.rows[0].segment).toBe(1); // still in the first half
+  });
+
+  it('auto-advances once added time has also elapsed', async () => {
+    const { service, game } = setup();
+    await newGame(service, 'soccer');
+    // Past regulation + past the 2 minutes of added time.
+    liveSoccer(game, 40 * 60_000 + 2 * 60_000 + 1_000, 2);
+    const changed = await service.autoAdvanceExpiredClocks();
+    expect(changed).toBe(1);
+    expect(game.rows[0].segment).toBe(2);
+  });
+});
+
+describe('SportsService — config: wrestling team model + golf round (config+api P1)', () => {
+  it('wrestling carries a dual-meet team-points model distinct from match points', () => {
+    const wrestling: any = SPORT_DEFINITIONS.wrestling;
+    expect(wrestling.teamScore).toBeDefined();
+    expect(wrestling.teamScore.homeKey).toBe('homeTeamPoints');
+    expect(wrestling.teamScore.awayKey).toBe('awayTeamPoints');
+    // Decision / major / tech / pin result values.
+    expect(wrestling.teamScore.increments).toEqual([3, 4, 5, 6]);
+    // The per-bout match-points set stays separate.
+    expect(wrestling.score.increments).toEqual([1, 2, 3, 4]);
+    const statKeys = wrestling.stats.map((s: any) => s.key);
+    expect(statKeys).toEqual(
+      expect.arrayContaining(['homeTeamPoints', 'awayTeamPoints', 'weightClass', 'boutNumber']),
+    );
+  });
+
+  it('golf round length is operator-selectable 9 / 18 and never overtimes', () => {
+    const golf: any = SPORT_DEFINITIONS.golf;
+    expect(golf.segment.countOptions).toEqual([9, 18]);
+    expect(golf.segment.overtime).toBe(false);
   });
 });
 
