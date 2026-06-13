@@ -334,10 +334,21 @@ function readableInk(color: string | null | undefined): string {
 
 function segmentLabel(def: SportDefinition, data: BoardData): string {
   const n = data.segment;
-  if (n > def.segment.count) return n - def.segment.count > 1 ? `OT${n - def.segment.count}` : 'OT';
+  // Inning sports (baseball/softball) NEVER read "OT" past regulation — extra
+  // innings are still innings. Render the ordinal regardless of count.
+  if (def.segment.name === 'Inning') return `${ordinal(n)} INN`;
+  if (n > def.segment.count) {
+    // Period/Quarter/Half sports with overtime → "OT"/"2OT". Hole-based and
+    // other non-overtime segment sports (golf, meet events) clamp to the last
+    // segment label instead of mislabeling it overtime.
+    if (def.segment.overtime) {
+      const ot = n - def.segment.count;
+      return ot > 1 ? `OT${ot}` : 'OT';
+    }
+    return `${def.segment.name.toUpperCase()} ${def.segment.count}`;
+  }
   if (def.segment.name === 'Quarter') return `Q${n}`;
   if (def.segment.name === 'Period') return `P${n}`;
-  if (def.segment.name === 'Inning') return `${ordinal(n)} INN`;
   return `${def.segment.name.toUpperCase()} ${n}`;
 }
 function ordinal(n: number): string {
@@ -467,6 +478,26 @@ function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>)
   if (def.key === 'volleyball' || def.key === 'pickleball') {
     const serving = String(stats.serving || '').trim();
     return serving ? `SERVING — ${serving.toUpperCase()}` : null;
+  }
+
+  // Wrestling — ride-time advantage (the net of the two ride clocks),
+  // weight class + period, instead of dumping raw "HOME RIDE TIME (S) 42".
+  if (def.key === 'wrestling') {
+    const parts: string[] = [];
+    const weight = String(stats.weightClass || '').trim();
+    if (weight) parts.push(`${weight} LBS`);
+    const homeRT = num(stats.homeRideTime);
+    const awayRT = num(stats.awayRideTime);
+    const adv = homeRT - awayRT; // positive → home advantage
+    const fmt = (sec: number) => {
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return `${m}:${String(s).padStart(2, '0')}`;
+    };
+    if (adv !== 0) {
+      parts.push(`RIDE TIME ${fmt(Math.abs(adv))} ADV ${adv > 0 ? 'HOME' : 'AWAY'}`);
+    }
+    return parts.length ? parts.join(SEP) : null;
   }
 
   // Everything else — the SportDefinition stat chips that have a value.

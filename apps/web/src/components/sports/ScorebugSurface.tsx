@@ -131,13 +131,20 @@ function ordinal(n: number): string {
 
 export function segmentLabel(def: SportDefinition, data: BoardData): string {
   const n = data.segment;
-  if (n > def.segment.count) {
-    const ot = n - def.segment.count;
-    return ot > 1 ? `OT${ot}` : 'OT';
-  }
+  // Inning sports (baseball/softball) NEVER read "OT" past regulation — extra
+  // innings are still innings. Resolve the ordinal (+ Top/Bottom half) first.
   if (def.segment.name === 'Inning') {
     const half = String((data.stats || {}).half || '').toUpperCase();
     return `${half ? half + ' ' : ''}${ordinal(n)}`;
+  }
+  if (n > def.segment.count) {
+    // Period/Quarter/Half overtime sports → "OT"/"2OT". Non-overtime segment
+    // sports (golf holes, meet events) clamp instead of mislabeling overtime.
+    if (def.segment.overtime) {
+      const ot = n - def.segment.count;
+      return ot > 1 ? `OT${ot}` : 'OT';
+    }
+    return `${def.segment.name.toUpperCase()} ${def.segment.count}`;
   }
   if (def.segment.name === 'Quarter') return `Q${n}`;
   if (def.segment.name === 'Period') return `P${n}`;

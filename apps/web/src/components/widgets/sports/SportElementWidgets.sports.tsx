@@ -287,13 +287,49 @@ export function PowerPlayBadgeWidget({ config }: { config: ElCfg }) {
 export function SetScoresWidget({ config }: { config: ElCfg }) {
   // Multi-column per-set scores: each set is a home/away pair — FitBox scales the whole row.
   const s = useGameState();
+  // A per-set history array (`stats.sets`) is the broadcast-correct shape, but
+  // NO code path populates it today (the volleyball config exposes only the
+  // match set-count via `homeSets`/`awaySets`). So when no per-set array
+  // exists on a LIVE board, fall back to the data that DOES exist: the
+  // match set-count won by each side (e.g. "2 / 1"), instead of a permanent
+  // "—/—". If a future server snapshot ever fills `sets[]`, that path still
+  // renders the per-set columns unchanged.
   const raw = stat(s, config.statKey ?? 'sets');
-  // Sample per-set scores only in the builder (s == null). On a live
-  // surface with no set data → a single neutral "—/—" column (never the
-  // fabricated 25-21 / 23-25 / 25-18 sample).
-  const sets: Array<{ h?: number; a?: number }> = Array.isArray(raw) && raw.length
-    ? (raw as any[])
-    : (s != null ? [{}] : [{ h: 25, a: 21 }, { h: 23, a: 25 }, { h: 25, a: 18 }]);
+  const setsArray: Array<{ h?: number; a?: number }> | null =
+    Array.isArray(raw) && raw.length ? (raw as any[]) : null;
+
+  // Builder (s == null) and no real per-set array → representative sample.
+  if (s == null && !setsArray) {
+    return (
+      <SetScoresColumns
+        config={config}
+        sets={[{ h: 25, a: 21 }, { h: 23, a: 25 }, { h: 25, a: 18 }]}
+      />
+    );
+  }
+
+  // Live board with a real per-set history → per-set columns (broadcast shape).
+  if (setsArray) {
+    return <SetScoresColumns config={config} sets={setsArray} />;
+  }
+
+  // Live board, no per-set history → the match set-count that actually exists.
+  const homeSets = Number(stat(s, 'homeSets') ?? 0) || 0;
+  const awaySets = Number(stat(s, 'awaySets') ?? 0) || 0;
+  return (
+    <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
+      <FitOneLine
+        maxFontPx={config.fontSize ?? 800}
+        align={config.align ?? 'center'}
+        style={{ color: config.color ?? '#fff', fontWeight: 900, fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif' }}
+      >
+        {homeSets}<span style={{ color: config.accentColor ?? '#94a3b8', margin: '0 0.25em' }}>SETS</span>{awaySets}
+      </FitOneLine>
+    </div>
+  );
+}
+
+function SetScoresColumns({ config, sets }: { config: ElCfg; sets: Array<{ h?: number; a?: number }> }) {
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitBox
@@ -315,7 +351,11 @@ export function SetScoresWidget({ config }: { config: ElCfg }) {
 export function ServeIndicatorWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const team = config.team ?? 'home';
-  const rawServe = stat(s, config.statKey ?? 'serve');
+  // The console / feed / ribbon / situational ALL write & read `stats.serving`
+  // (volleyball config key is 'serving'). The old default 'serve' key never
+  // exists on a live game, so the indicator was permanently dark — read the
+  // real key.
+  const rawServe = stat(s, config.statKey ?? 'serving');
   // Builder (s == null) → light the home indicator as a sample. Live
   // surface → follow the real serve; with no serve data nothing is lit
   // (never a fabricated serve indicator).
