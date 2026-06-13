@@ -91,6 +91,9 @@ const CTS_CINEMATIC_CUE_IDS: ReadonlySet<string> = new Set<string>([
   'CEL_LX_GOAL', 'CEL_LX_BEHINDTHEBACK',
   'CEL_FOOTBALL_TOUCHDOWN', 'CEL_FOOTBALL_FIELDGOAL', 'CEL_BASKETBALL_BUZZER',
   'CEL_BASKETBALL_THREE', 'CEL_BASKETBALL_DUNK',
+  // 2026-06-13 every-sport fix wave — baseball + pickleball cinematic scenes.
+  'CEL_BASEBALL_HOMERUN', 'CEL_BASEBALL_GRANDSLAM', 'CEL_BASEBALL_STRIKEOUT', 'CEL_BASEBALL_DOUBLEPLAY',
+  'CEL_PICKLEBALL_ACE', 'CEL_PICKLEBALL_WINNER', 'CEL_PICKLEBALL_GAMEWIN',
 ]);
 // Control cues the orchestrator / console can legitimately fire that are
 // neither cinematic scenes nor per-sport celebration keys.

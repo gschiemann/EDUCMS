@@ -305,6 +305,13 @@ const BASEBALL: SportDefinition = {
     // on a pitching change. HS leagues enforce pitch-count limits.
     { key: 'homePitchCount', label: 'Home Pitch Count', scope: 'home', type: 'number', min: 0, max: 200 },
     { key: 'awayPitchCount', label: 'Away Pitch Count', scope: 'away', type: 'number', min: 0, max: 200 },
+    // R-H-E line — hits + errors per side (runs = the score). The console's
+    // per-side stat rows render any home*/away* number stat, so these surface
+    // the classic Runs-Hits-Errors box automatically (2026-06-13 audit P1).
+    { key: 'homeHits', label: 'Home Hits', scope: 'home', type: 'number', min: 0, max: 99 },
+    { key: 'awayHits', label: 'Away Hits', scope: 'away', type: 'number', min: 0, max: 99 },
+    { key: 'homeErrors', label: 'Home Errors', scope: 'home', type: 'number', min: 0, max: 99 },
+    { key: 'awayErrors', label: 'Away Errors', scope: 'away', type: 'number', min: 0, max: 99 },
   ],
   celebrations: [
     { key: 'homeRun', label: 'Home Run', emoji: '⚾' },
