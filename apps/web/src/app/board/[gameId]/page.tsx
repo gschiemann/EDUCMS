@@ -204,6 +204,42 @@ function leadingSide(def: SportDefinition, home: number, away: number): 'home' |
   return homeAhead ? 'home' : 'away';
 }
 
+/** Penalty-box sports where a man-advantage ("power play") is a live game
+ *  state worth surfacing. */
+function hasPenaltyBox(def: SportDefinition): boolean {
+  return (
+    def.key === 'hockey' ||
+    def.key === 'lacrosse' ||
+    def.key === 'field_hockey' ||
+    def.key === 'water_polo'
+  );
+}
+
+/** Derive the man-advantage from the live penalties array — the team with
+ *  FEWER players in the box is "on the power play" (audit P2). Counts only
+ *  active penalties (running, or frozen-at-stoppage but not expired). The
+ *  team WITH the advantage is the one whose opponent has more boxed players;
+ *  the differential gives 5-on-4 / 5-on-3 strength. Returns null at even
+ *  strength. */
+function powerPlay(
+  stats: Record<string, unknown> | undefined,
+): { team: 'home' | 'away'; diff: number } | null {
+  const raw = stats && Array.isArray(stats.penalties) ? (stats.penalties as unknown[]) : [];
+  let home = 0;
+  let away = 0;
+  for (const p of raw) {
+    if (!p || typeof p !== 'object') continue;
+    const rec = p as Record<string, unknown>;
+    // A penalty still counts toward the box until its remaining ms hits 0.
+    if ((Number(rec.ms) || 0) <= 0) continue;
+    if (rec.team === 'home') home += 1;
+    else if (rec.team === 'away') away += 1;
+  }
+  if (home === away) return null;
+  // FEWER boxed players ⇒ that team is up a skater (on the power play).
+  return home < away ? { team: 'home', diff: away - home } : { team: 'away', diff: home - away };
+}
+
 function segmentLabel(def: SportDefinition, data: BoardData): string {
   const n = data.segment;
   // Inning sports (baseball / softball) keep counting up past the
@@ -231,6 +267,15 @@ function segmentLabel(def: SportDefinition, data: BoardData): string {
     // segment count — show the literal segment, never a bogus "OT".
     return `${def.segment.name.toUpperCase()} ${n}`;
   }
+  // Cross-surface abbreviation parity: the scorebug + ribbon render the
+  // compact "Q1 / P1 / H1" broadcast form, but the big board used to show
+  // the verbose "QUARTER 1 / PERIOD 1 / HALF 1". Match the abbreviated
+  // form so all three surfaces agree (audit P2). Other segment names
+  // (Inning/Hole handled above; Rotation/Round for meet sports) keep their
+  // descriptive label since the LEADERBOARD scene reads them by name.
+  if (def.segment.name === 'Quarter') return `Q${n}`;
+  if (def.segment.name === 'Period') return `P${n}`;
+  if (def.segment.name === 'Half') return `H${n}`;
   return `${def.segment.name.toUpperCase()} ${n}`;
 }
 
@@ -506,6 +551,141 @@ function TeamPanel({
   );
 }
 
+/** A per-segment scoring entry on Game.stats.lineScore. CROSS-DOMAIN
+ *  CONTRACT (see 01-FIX-PLAN.md): each entry is the per-segment value (runs
+ *  this inning / points this quarter) for `segment` — NOT a cumulative
+ *  total. The board sums them for the R / total column; R-H-E hits + errors
+ *  come from the homeHits / awayHits / homeErrors / awayErrors stats. The
+ *  config+api agent appends one entry per segment boundary. */
+interface LineScoreEntry {
+  segment: number;
+  home: number;
+  away: number;
+}
+
+function readLineScore(stats: Record<string, unknown> | undefined): LineScoreEntry[] {
+  const raw = stats && Array.isArray(stats.lineScore) ? (stats.lineScore as unknown[]) : [];
+  return raw
+    .map((e) => {
+      if (!e || typeof e !== 'object') return null;
+      const rec = e as Record<string, unknown>;
+      const seg = Number(rec.segment);
+      if (!Number.isFinite(seg)) return null;
+      return { segment: seg, home: Number(rec.home) || 0, away: Number(rec.away) || 0 };
+    })
+    .filter((e): e is LineScoreEntry => e !== null)
+    .sort((a, b) => a.segment - b.segment);
+}
+
+const numStat = (stats: Record<string, unknown> | undefined, key: string): number => {
+  const n = Number((stats || {})[key]);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** The canonical baseball linescore (R-H-E per-inning grid) and the football
+ *  quarter-by-quarter scoring box — both fed by Game.stats.lineScore (audit
+ *  P2). Renders nothing when no per-segment data has been recorded yet, so it
+ *  never shows a fake empty grid. `withRHE` adds the Hits / Errors columns
+ *  for baseball / softball. */
+function LineScoreBox({
+  data,
+  def,
+  withRHE,
+}: {
+  data: BoardData;
+  def: SportDefinition;
+  withRHE: boolean;
+}) {
+  const entries = readLineScore(data.stats);
+  if (entries.length === 0) return null;
+
+  // Column headers: 1..N segments. Show at least the regulation count so the
+  // grid reads like a real linescore even early in the game.
+  const maxSeg = Math.max(def.segment.count, ...entries.map((e) => e.segment));
+  const segNums = Array.from({ length: maxSeg }, (_, i) => i + 1);
+  const bySeg = new Map(entries.map((e) => [e.segment, e]));
+  const homeTotal = entries.reduce((s, e) => s + e.home, 0);
+  const awayTotal = entries.reduce((s, e) => s + e.away, 0);
+  const segAbbr = def.segment.name === 'Inning' ? '' : def.segment.name.charAt(0).toUpperCase();
+
+  const cell = (txt: string, opts?: { head?: boolean; bold?: boolean; color?: string }): ReactNode => (
+    <div
+      style={{
+        minWidth: 56,
+        padding: '6px 4px',
+        textAlign: 'center',
+        fontSize: opts?.head ? 22 : 30,
+        fontWeight: opts?.bold || opts?.head ? 900 : 700,
+        color: opts?.color || (opts?.head ? '#64748b' : '#e2e8f0'),
+        fontVariantNumeric: 'tabular-nums',
+        letterSpacing: opts?.head ? 2 : 0,
+      }}
+    >
+      {txt}
+    </div>
+  );
+
+  const teamRow = (
+    side: 'home' | 'away',
+    name: string,
+    color: string,
+    total: number,
+  ): ReactNode => (
+    <div style={{ display: 'flex', alignItems: 'center', borderTop: '1px solid #1e2638' }}>
+      <div
+        style={{
+          minWidth: 220,
+          padding: '6px 16px',
+          fontSize: 28,
+          fontWeight: 800,
+          color: '#fff',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          borderLeft: `8px solid ${color}`,
+        }}
+      >
+        {name}
+      </div>
+      {segNums.map((n) => {
+        const e = bySeg.get(n);
+        return (
+          <div key={n}>{cell(e ? String(side === 'home' ? e.home : e.away) : '·')}</div>
+        );
+      })}
+      {cell(String(total), { bold: true, color: '#fbbf24' })}
+      {withRHE && cell(String(numStat(data.stats, side === 'home' ? 'homeHits' : 'awayHits')), { bold: true })}
+      {withRHE && cell(String(numStat(data.stats, side === 'home' ? 'homeErrors' : 'awayErrors')), { bold: true })}
+    </div>
+  );
+
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        flexDirection: 'column',
+        background: '#080b14',
+        border: '1px solid #1e2638',
+        borderRadius: 12,
+        overflow: 'hidden',
+      }}
+    >
+      {/* header row */}
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <div style={{ minWidth: 220, padding: '6px 16px' }} />
+        {segNums.map((n) => (
+          <div key={n}>{cell(`${segAbbr}${n}`, { head: true })}</div>
+        ))}
+        {cell('R', { head: true, color: '#fbbf24' })}
+        {withRHE && cell('H', { head: true })}
+        {withRHE && cell('E', { head: true })}
+      </div>
+      {teamRow('away', data.awayTeam, data.awayColor || DEFAULT_AWAY, awayTotal)}
+      {teamRow('home', data.homeTeam, data.homeColor || DEFAULT_HOME, homeTotal)}
+    </div>
+  );
+}
+
 function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   const [clockMs, setClockMs] = useState(data.clockMs);
 
@@ -592,7 +772,14 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   const status = STATUS_STYLE[data.status] || STATUS_STYLE.SCHEDULED;
   const homeColor = data.homeColor || DEFAULT_HOME;
   const awayColor = data.awayColor || DEFAULT_AWAY;
-  const hasClock = def.clock.type !== 'none';
+  // HS / college football overtime is UNTIMED — each team gets a possession
+  // from the 25 with no game clock running. Showing a frozen "12:00" in OT
+  // is wrong (audit P2), so suppress the clock for football past regulation
+  // and surface an "OT — UNTIMED" marker instead. Other OT sports (hoops,
+  // hockey, soccer) keep their timed overtime clock.
+  const inOvertime = def.segment.overtime && data.segment > def.segment.count;
+  const footballUntimedOT = def.key === 'football' && inOvertime;
+  const hasClock = def.clock.type !== 'none' && !footballUntimedOT;
 
   const statChips = def.stats
     .map((s) => ({ ...s, value: (data.stats || {})[s.key] }))
@@ -700,6 +887,23 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
 
   // Winner-highlight side — honors low-score-wins sports (XC / golf).
   const lead = leadingSide(def, data.homeScore, data.awayScore);
+
+  // Power play / penalty kill — derived from the live penalty box for
+  // hockey / lacrosse / field hockey / water polo (audit P2). Null at even
+  // strength, so the badge only appears when a team is genuinely up a
+  // skater. The badge re-derives every poll, so it clears the instant the
+  // box empties or evens out.
+  const pp = hasPenaltyBox(def) ? powerPlay(data.stats) : null;
+
+  // Soccer added (stoppage) time — the broadcast "+N" beside the count-up
+  // clock once the half has run its regulation length (audit P2). Only
+  // soccer is count-up with operator-set addedTime; show it whenever an
+  // added-time minute count is set, mirroring the on-pitch fourth-official
+  // board convention. (Score format unchanged; this is a clock annotation.)
+  const addedTimeMin =
+    def.key === 'soccer'
+      ? Math.max(0, Math.round(Number((data.stats as Record<string, unknown> | undefined)?.addedTime) || 0))
+      : 0;
 
   return (
     <div
@@ -823,6 +1027,39 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
               }}
             >
               {fmtClock(clockMs)}
+              {addedTimeMin > 0 && (
+                <sup
+                  style={{
+                    fontSize: 64,
+                    fontWeight: 900,
+                    color: '#fbbf24',
+                    verticalAlign: 'super',
+                    marginLeft: 10,
+                    lineHeight: 0,
+                  }}
+                >
+                  +{addedTimeMin}
+                </sup>
+              )}
+            </div>
+          ) : footballUntimedOT ? (
+            // Football OT is untimed — no clock, just an "UNTIMED" marker so
+            // the board never lies with a frozen 12:00 in overtime (P2). The
+            // segment label above already reads "OT".
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                marginTop: 24,
+              }}
+            >
+              <span style={{ fontSize: 96, fontWeight: 900, lineHeight: 1, color: '#fbbf24', letterSpacing: 2 }}>
+                {def.emoji}
+              </span>
+              <span style={{ fontSize: 34, fontWeight: 900, letterSpacing: 8, color: '#94a3b8', marginTop: 14 }}>
+                UNTIMED
+              </span>
             </div>
           ) : (
             <div
@@ -835,6 +1072,38 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
               }}
             >
               {def.emoji}
+            </div>
+          )}
+          {/* Power play / penalty kill — man-advantage badge derived from the
+              live penalty box (audit P2). Team-colored, with the man-advantage
+              differential ("UP 1" / "UP 2"). Clears at even strength. */}
+          {pp && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                marginTop: 16,
+                padding: '10px 26px',
+                borderRadius: 14,
+                background: `${(pp.team === 'home' ? homeColor : awayColor)}26`,
+                border: `3px solid ${pp.team === 'home' ? homeColor : awayColor}`,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 30,
+                  fontWeight: 900,
+                  letterSpacing: 6,
+                  color: pp.team === 'home' ? homeColor : awayColor,
+                }}
+              >
+                POWER PLAY
+              </span>
+              <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: '#cbd5e1', marginTop: 4 }}>
+                {pp.team === 'home' ? data.homeTeam.toUpperCase() : data.awayTeam.toUpperCase()}
+                {` · UP ${pp.diff}`}
+              </span>
             </div>
           )}
           {!!def.shotClock && shotLen > 0 && (
@@ -947,6 +1216,29 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
             />
           }
         />
+
+        {/* Linescore band — the canonical baseball R-H-E per-inning grid and
+            the football quarter-by-quarter scoring box (audit P2). Pinned to
+            the bottom-center of the main row over the (empty, for these
+            sports) lower panel area. Renders nothing until per-segment
+            data exists on stats.lineScore, so it never shows an empty grid.
+            Hidden while a spotlight is up so the two never collide. */}
+        {(def.segment.name === 'Inning' || def.key === 'football') &&
+          !(data.spotlight && data.spotlight.visible) && (
+            <div
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 28,
+                display: 'flex',
+                justifyContent: 'center',
+                pointerEvents: 'none',
+              }}
+            >
+              <LineScoreBox data={data} def={def} withRHE={def.segment.name === 'Inning'} />
+            </div>
+          )}
       </div>
 
       {/* broadcast spotlight — featured player / promo panel.
@@ -1219,6 +1511,52 @@ function MeetTeamCard({
   );
 }
 
+/** The four women's gymnastics apparatus in standard meet-rotation order.
+ *  A meet rotates through these; the board lights the current one. */
+const GYM_APPARATUS = ['VAULT', 'BARS', 'BEAM', 'FLOOR'] as const;
+
+/** Per-apparatus rotation strip for the gymnastics meet board (audit P2).
+ *  Highlights the live apparatus — matched by name from
+ *  stats.currentApparatus when set, otherwise by the rotation number
+ *  (data.segment, 1-based) so the strip stays meaningful even before the
+ *  operator types the apparatus. Pure-render off existing state. */
+function ApparatusRotation({ data }: { data: BoardData }) {
+  const current = statStr(data.stats, 'currentApparatus').toUpperCase();
+  // Match the typed apparatus to the canonical list (substring-tolerant:
+  // "Uneven Bars" → BARS, "Balance Beam" → BEAM).
+  let activeIdx = GYM_APPARATUS.findIndex((a) => current.includes(a));
+  if (activeIdx < 0 && data.segment >= 1 && data.segment <= GYM_APPARATUS.length) {
+    activeIdx = data.segment - 1;
+  }
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        marginTop: 22,
+      }}
+    >
+      {GYM_APPARATUS.map((a, i) => (
+        <div
+          key={a}
+          style={{
+            fontSize: 18,
+            fontWeight: i === activeIdx ? 900 : 700,
+            letterSpacing: 3,
+            color: i === activeIdx ? '#fbbf24' : '#475569',
+            marginTop: i === 0 ? 0 : 8,
+            textShadow: i === activeIdx ? '0 0 18px rgba(251,191,36,0.5)' : 'none',
+          }}
+        >
+          {i === activeIdx ? '▸ ' : ''}
+          {a}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * LEADERBOARD board scene — the meet-sport render. Track / swim / cross
  * country / golf / gymnastics / cheer are NOT head-to-head clock games,
@@ -1411,6 +1749,12 @@ function LeaderboardScene({ data, def }: { data: BoardData; def: SportDefinition
           >
             {def.score.unit.toUpperCase()}
           </div>
+          {/* Gymnastics per-apparatus rotation structure (audit P2): the four
+              women's apparatus in standard rotation order, with the current
+              one (matched by stats.currentApparatus name, else by the live
+              rotation number) lit. Built from existing state — no new data
+              model. */}
+          {def.key === 'gymnastics' && <ApparatusRotation data={data} />}
         </div>
         <MeetTeamCard
           name={data.awayTeam}

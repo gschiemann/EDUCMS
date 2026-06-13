@@ -120,6 +120,10 @@ export function hasSituational(def: SportDefinition, stats: Record<string, unkno
   // Rally sports — the match set/game count is always worth showing, plus
   // the serve indicator when a server is set.
   if (def.key === 'volleyball' || def.key === 'pickleball') return true;
+  // Judged meet sports — the apparatus/rotation (gymnastics) or division/
+  // round (cheer) is always worth a broadcast situational line, so the
+  // scorebug shows real meet context instead of a generic chip dump.
+  if (def.key === 'gymnastics' || def.key === 'competitive_cheer') return true;
   // Everything else — only if at least one SportDefinition stat has a value.
   return def.stats.some((s) => {
     const raw = stats[s.key];
@@ -268,6 +272,47 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
         {serveSide && (
           <span style={{ fontSize: px(h, 0.06), fontWeight: 900, color: accent, letterSpacing: 1 }}>
             {serveGlyph} SERVING &mdash; {serveSide.toUpperCase()}
+          </span>
+        )}
+      </>
+    );
+  } else if (def.key === 'gymnastics') {
+    // ── Gymnastics — current apparatus + competitor count (judged meet) ──
+    // The shared row only receives `stats` (no segment number), so the
+    // rotation count lives on the LEADERBOARD board scene; here we surface
+    // the apparatus the operator is on + how many gymnasts are competing
+    // — both real stat keys (currentApparatus / home|awayAthletes).
+    const apparatus = String(stats.currentApparatus || '').trim();
+    const homeAth = num(stats.homeAthletes);
+    const awayAth = num(stats.awayAthletes);
+    content = (
+      <>
+        <span style={{ fontSize: px(h, 0.06), fontWeight: 900, color: accent, letterSpacing: 2 }}>
+          🤸 {apparatus ? apparatus.toUpperCase() : 'WARM-UPS'}
+        </span>
+        {(homeAth > 0 || awayAth > 0) && (
+          <span style={{ fontSize: px(h, 0.05), fontWeight: 800, color: dim, letterSpacing: 2 }}>
+            <strong style={{ color: ink, fontVariantNumeric: 'tabular-nums' }}>{homeAth + awayAth}</strong>{' '}
+            COMPETING
+          </span>
+        )}
+      </>
+    );
+  } else if (def.key === 'competitive_cheer') {
+    // ── Competitive cheer — division + routine context (judged meet) ──
+    // `division` is a real stat key; the round number is the segment and
+    // lives on the board scene, not in `stats`. Surface the division and,
+    // when set, the home routine name (home|awayRoutine stat keys).
+    const division = String(stats.division || '').trim();
+    const routine = String(stats.homeRoutine || stats.awayRoutine || '').trim();
+    content = (
+      <>
+        <span style={{ fontSize: px(h, 0.06), fontWeight: 900, color: accent, letterSpacing: 2 }}>
+          📣 {division ? division.toUpperCase() : 'COMPETITION'}
+        </span>
+        {routine && (
+          <span style={{ fontSize: px(h, 0.05), fontWeight: 800, color: dim, letterSpacing: 2 }}>
+            <strong style={{ color: ink }}>{routine.toUpperCase()}</strong>
           </span>
         )}
       </>
