@@ -20,7 +20,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { applyCtsOverlay } from '@/lib/cts-merge';
-import { SituationalRow } from '@/components/widgets/v2/_shared/sports-situational';
+import {
+  SituationalRow,
+  readResults,
+  readPlayerExclusions,
+  type ResultEvent,
+} from '@/components/widgets/v2/_shared/sports-situational';
 import { celebrationSrc, celebrationLiveDataFromCue } from '@/lib/celebration-assets';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
@@ -389,6 +394,68 @@ function PenaltyTimers({
             </span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/** Water-polo per-player exclusion panel — each player's running major-
+ *  foul count ("X of 3"; 3 = ejected for the game). Reads the structured
+ *  stats.playerExclusions contract for ONE team. Renders nothing when the
+ *  team has no exclusions, so a clean water-polo board shows no panel.
+ *  Chromium-83 safe: per-child margins, no flex gap / inset shorthand. */
+function ExclusionPanel({
+  team,
+  stats,
+  color,
+}: {
+  team: 'home' | 'away';
+  stats: Record<string, unknown> | undefined;
+  color: string;
+}) {
+  const mine = readPlayerExclusions(stats)
+    .filter((p) => p.team === team && p.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 4);
+  if (mine.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 16 }}>
+      <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: 4, color: '#64748b' }}>
+        EXCLUSIONS
+      </span>
+      <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+        {mine.map((p, i) => {
+          const ejected = p.count >= 3;
+          return (
+            <div
+              key={`${p.jersey}-${i}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                background: '#0f172a',
+                border: `3px solid ${ejected ? '#dc2626' : color}`,
+                borderRadius: 12,
+                padding: '8px 18px',
+                marginLeft: i ? 14 : 0,
+                marginBottom: 8,
+              }}
+            >
+              <span style={{ fontSize: 32, fontWeight: 900, color: ejected ? '#f87171' : color, marginRight: 12 }}>
+                #{p.jersey}
+              </span>
+              <span
+                style={{
+                  fontSize: 30,
+                  fontWeight: 900,
+                  color: ejected ? '#f87171' : '#ffffff',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {ejected ? 'EJECTED' : `${p.count} of 3`}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -994,12 +1061,19 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           winning={lead === 'home' && data.status !== 'SCHEDULED'}
           hasPossession={ballSide === 'home'}
           penaltyNode={
-            <PenaltyTimers
-              team="home"
-              stats={data.stats}
-              serverTime={data.serverTime}
-              color={homeColor}
-            />
+            <>
+              <PenaltyTimers
+                team="home"
+                stats={data.stats}
+                serverTime={data.serverTime}
+                color={homeColor}
+              />
+              {/* Water-polo per-player exclusion count ("X of 3"), pinned
+                  beneath the team's penalty box near the penalty area. */}
+              {def.key === 'water_polo' && (
+                <ExclusionPanel team="home" stats={data.stats} color={homeColor} />
+              )}
+            </>
           }
         />
 
@@ -1227,12 +1301,17 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           winning={lead === 'away' && data.status !== 'SCHEDULED'}
           hasPossession={ballSide === 'away'}
           penaltyNode={
-            <PenaltyTimers
-              team="away"
-              stats={data.stats}
-              serverTime={data.serverTime}
-              color={awayColor}
-            />
+            <>
+              <PenaltyTimers
+                team="away"
+                stats={data.stats}
+                serverTime={data.serverTime}
+                color={awayColor}
+              />
+              {def.key === 'water_polo' && (
+                <ExclusionPanel team="away" stats={data.stats} color={awayColor} />
+              )}
+            </>
           }
         />
 
@@ -1577,6 +1656,148 @@ function ApparatusRotation({ data }: { data: BoardData }) {
 }
 
 /**
+ * The current-event finish-results panel for a meet board (place / name /
+ * mark), fed by the structured stats.results contract the console writes
+ * and the api persists. For gymnastics / cheer the "events" are the
+ * apparatus (event = "Vault", mark = the decimal score "9.850"); for
+ * track / swim / XC / golf they are the finish events (mark = a time /
+ * distance / stroke string). Renders the MOST RECENT event (the highest
+ * `order`, else the last in the array) so the board always shows the
+ * just-completed result, with a winner-highlight on 1st place. Renders
+ * NOTHING when there are no results — never a fake grid.
+ *
+ * Chromium-83 safe: no inset shorthand / flex gap / backdrop-filter.
+ */
+function MeetResultsBox({ data }: { data: BoardData }) {
+  const events = readResults(data.stats);
+  if (events.length === 0) return null;
+  // Show the latest event: prefer the highest `order`, else array order.
+  const current: ResultEvent = events.reduce((best, e) => {
+    const bo = best.order ?? -Infinity;
+    const eo = e.order ?? -Infinity;
+    if (eo > bo) return e;
+    if (eo === bo) return e; // later array index wins on a tie
+    return best;
+  }, events[events.length - 1]);
+  const homeColor = data.homeColor || DEFAULT_HOME;
+  const awayColor = data.awayColor || DEFAULT_AWAY;
+  // Top 8 finishers fit the board cleanly; the operator types the
+  // headline finishers, not a full heat sheet.
+  const rows = current.entries.slice(0, 8);
+
+  const placeText = (place: number): string => (place > 0 ? ordinal(place) : '—');
+
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        flexDirection: 'column',
+        background: '#080b14',
+        border: '1px solid #1e2638',
+        borderRadius: 14,
+        overflow: 'hidden',
+        minWidth: 560,
+        maxWidth: 760,
+        boxShadow: '0 18px 48px rgba(0,0,0,0.6)',
+      }}
+    >
+      {/* event title row */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 22px',
+          background: '#0b1226',
+          borderBottom: '1px solid #1e2638',
+        }}
+      >
+        <span style={{ fontSize: 24, fontWeight: 900, letterSpacing: 3, color: '#fbbf24' }}>
+          {current.event.toUpperCase()}
+        </span>
+        <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: 4, color: '#64748b' }}>
+          RESULTS
+        </span>
+      </div>
+      {rows.map((r, i) => {
+        const teamColor =
+          r.team === 'home' ? homeColor : r.team === 'away' ? awayColor : '#334155';
+        const isWinner = r.place === 1;
+        return (
+          <div
+            key={`${r.place}-${r.name}-${i}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '8px 18px',
+              borderTop: i === 0 ? 'none' : '1px solid #131a2b',
+              background: isWinner ? `${teamColor}1f` : 'transparent',
+            }}
+          >
+            {/* place */}
+            <div
+              style={{
+                minWidth: 64,
+                fontSize: 28,
+                fontWeight: 900,
+                color: isWinner ? '#fbbf24' : '#94a3b8',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {placeText(r.place)}
+            </div>
+            {/* team color tab */}
+            <div
+              style={{
+                width: 6,
+                height: 30,
+                borderRadius: 3,
+                background: teamColor,
+                marginRight: 16,
+                flex: 'none',
+              }}
+            />
+            {/* name (+ optional lane) */}
+            <div
+              style={{
+                flex: 1,
+                minWidth: 0,
+                fontSize: 28,
+                fontWeight: 800,
+                color: '#fff',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {r.name || '—'}
+              {r.lane ? (
+                <span style={{ fontSize: 18, fontWeight: 700, color: '#64748b', marginLeft: 12 }}>
+                  LN {r.lane}
+                </span>
+              ) : null}
+            </div>
+            {/* mark */}
+            <div
+              style={{
+                fontSize: 30,
+                fontWeight: 900,
+                color: '#e2e8f0',
+                fontVariantNumeric: 'tabular-nums',
+                marginLeft: 18,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {r.mark || '—'}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * LEADERBOARD board scene — the meet-sport render. Track / swim / cross
  * country / golf / gymnastics / cheer are NOT head-to-head clock games,
  * so the legacy BoardScene (which dropped a giant emoji where the clock
@@ -1587,9 +1808,12 @@ function ApparatusRotation({ data }: { data: BoardData }) {
  * details that exist in the live game state (lead runner, finishers,
  * vs-par, competitor counts).
  *
- * Per-athlete heat sheets / finish-place lists are a separate data-model
- * buildout (deferred P2 — the Game state has no per-athlete rows yet);
- * this is the highest-value version achievable from current live state.
+ * When the operator records finish / per-apparatus results (the
+ * stats.results contract), the current event's finish list (place /
+ * name / mark) overlays the center of the tally via MeetResultsBox —
+ * including the gymnastics per-apparatus decimal scores. The box
+ * renders nothing until results exist, so an un-scored meet shows the
+ * clean team-points tally exactly as before.
  *
  * Chromium-83 safe: no inset shorthand / flex gap / backdrop-filter.
  */
@@ -1786,6 +2010,27 @@ function LeaderboardScene({ data, def }: { data: BoardData; def: SportDefinition
           alignR
           context={sideDetail('away')}
         />
+
+        {/* current-event finish results (place / name / mark) + gymnastics
+            per-apparatus decimal scores. Overlaid on the center of the
+            tally so the just-completed event is glanceable above the
+            team-points cards. Renders nothing until results exist, and is
+            hidden while a spotlight is up so the two never collide. */}
+        {!(data.spotlight && data.spotlight.visible && data.spotlight.title) && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 32,
+              display: 'flex',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+            }}
+          >
+            <MeetResultsBox data={data} />
+          </div>
+        )}
       </div>
 
       {/* broadcast spotlight — featured athlete (same as head-to-head) */}

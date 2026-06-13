@@ -44,6 +44,135 @@ export interface SituationalColors {
   hairline: string;
 }
 
+// ── Structured-stat readers (SHARED DATA CONTRACTS) ─────────────
+//
+// These parse the three structured keys the api persists + the console
+// writes onto Game.stats. ONE reader per shape so the board, ribbon, and
+// scorebug never disagree about how a result/foul/exclusion is decoded
+// (the lineScore cumulative-vs-per-segment drift is the failure to avoid).
+// Each reader is defensive: anything malformed is dropped, never thrown,
+// and an empty/absent key yields an empty array (callers render NOTHING —
+// never a fake grid).
+
+/** stats.results — finish / per-apparatus results for LEADERBOARD sports
+ *  (track / swim / cross-country / golf) AND gymnastics / cheer per-
+ *  apparatus. `mark` is a free display string (times "1:52.31", decimal
+ *  scores "9.850", distances "142-06", strokes "72 (+1)"). */
+export interface ResultEntry {
+  place: number;
+  name: string;
+  team: 'home' | 'away' | null;
+  lane?: number;
+  mark: string;
+}
+export interface ResultEvent {
+  event: string;
+  order?: number;
+  entries: ResultEntry[];
+}
+
+export function readResults(stats: Record<string, unknown> | undefined): ResultEvent[] {
+  const raw = stats && Array.isArray(stats.results) ? (stats.results as unknown[]) : [];
+  return raw
+    .map((e): ResultEvent | null => {
+      if (!e || typeof e !== 'object') return null;
+      const rec = e as Record<string, unknown>;
+      const event = String(rec.event ?? '').trim();
+      if (!event) return null;
+      const entriesRaw = Array.isArray(rec.entries) ? rec.entries : [];
+      const entries = entriesRaw
+        .map((x): ResultEntry | null => {
+          if (!x || typeof x !== 'object') return null;
+          const er = x as Record<string, unknown>;
+          const name = String(er.name ?? '').trim();
+          const mark = String(er.mark ?? '').trim();
+          // A finish row with neither a competitor nor a mark is noise.
+          if (!name && !mark) return null;
+          const out: ResultEntry = {
+            place: Math.max(0, Math.round(num(er.place))),
+            name,
+            team: side(er.team),
+            mark,
+          };
+          const lane = Math.round(num(er.lane));
+          if (lane > 0) out.lane = lane;
+          return out;
+        })
+        .filter((x): x is ResultEntry => x !== null)
+        // Place ascending; un-placed (0) rows sink to the bottom — matches
+        // the contract's "sorted by entry.place for finish events".
+        .sort((a, b) => (a.place || 9999) - (b.place || 9999));
+      if (entries.length === 0) return null;
+      const order = num(rec.order);
+      return { event, order: Number.isFinite(order) ? order : undefined, entries };
+    })
+    .filter((e): e is ResultEvent => e !== null);
+}
+
+/** stats.playerFouls — basketball foul-trouble (5 = fouled out HS). */
+export interface PlayerFoul {
+  team: 'home' | 'away';
+  jersey: number;
+  name?: string;
+  fouls: number;
+}
+export function readPlayerFouls(stats: Record<string, unknown> | undefined): PlayerFoul[] {
+  const raw = stats && Array.isArray(stats.playerFouls) ? (stats.playerFouls as unknown[]) : [];
+  return raw
+    .map((p): PlayerFoul | null => {
+      if (!p || typeof p !== 'object') return null;
+      const rec = p as Record<string, unknown>;
+      const team = side(rec.team);
+      if (!team) return null;
+      const name = String(rec.name ?? '').trim();
+      const out: PlayerFoul = {
+        team,
+        jersey: Math.max(0, Math.round(num(rec.jersey))),
+        fouls: Math.max(0, Math.round(num(rec.fouls))),
+      };
+      if (name) out.name = name;
+      return out;
+    })
+    .filter((p): p is PlayerFoul => p !== null);
+}
+
+/** stats.playerExclusions — water-polo per-player exclusions (3 = ejected). */
+export interface PlayerExclusion {
+  team: 'home' | 'away';
+  jersey: number;
+  name?: string;
+  count: number;
+}
+export function readPlayerExclusions(stats: Record<string, unknown> | undefined): PlayerExclusion[] {
+  const raw =
+    stats && Array.isArray(stats.playerExclusions) ? (stats.playerExclusions as unknown[]) : [];
+  return raw
+    .map((p): PlayerExclusion | null => {
+      if (!p || typeof p !== 'object') return null;
+      const rec = p as Record<string, unknown>;
+      const team = side(rec.team);
+      if (!team) return null;
+      const name = String(rec.name ?? '').trim();
+      const out: PlayerExclusion = {
+        team,
+        jersey: Math.max(0, Math.round(num(rec.jersey))),
+        count: Math.max(0, Math.round(num(rec.count))),
+      };
+      if (name) out.name = name;
+      return out;
+    })
+    .filter((p): p is PlayerExclusion => p !== null);
+}
+
+/** Short label for a foul-trouble / exclusion chip: "#23 (4)" or
+ *  "#23 RIVERA (4)" when a name is present. Capped so a long name can't
+ *  overrun the strip. */
+export function playerChip(p: { jersey: number; name?: string }, count: number): string {
+  const name = (p.name || '').trim();
+  const who = `#${p.jersey}${name ? ' ' + name.toUpperCase().slice(0, 14) : ''}`;
+  return `${who} (${count})`;
+}
+
 /** A row of N pips, `filled` of them solid — the iconic count display. */
 function Pips({ n, filled, color, dim, size }: { n: number; filled: number; color: string; dim: string; size: number }) {
   return (
@@ -135,6 +264,16 @@ export function hasSituational(def: SportDefinition, stats: Record<string, unkno
   // swim) — the now-showing meet line, again only when a stat is set.
   if (def.mode === 'LEADERBOARD') {
     return curatedLeaderboard(def, stats) !== null;
+  }
+  // Water polo — the exclusion ("X of 3") line + shots. Worth a frame
+  // once a shot is recorded OR any player has an exclusion on the
+  // structured stats.playerExclusions contract.
+  if (def.key === 'water_polo') {
+    return (
+      num(stats.homeShots) > 0 ||
+      num(stats.awayShots) > 0 ||
+      readPlayerExclusions(stats).some((p) => p.count > 0)
+    );
   }
   // Everything else — only if at least one SportDefinition stat has a value.
   return def.stats.some((s) => {
@@ -324,6 +463,14 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
         )}
       </span>
     );
+    // Foul-trouble surface — players at 4+ personal fouls (one away from
+    // fouling out at the HS 5-foul limit). Reads the structured
+    // stats.playerFouls contract the console writes; renders nothing
+    // when the array is empty so we never show a fake foul line.
+    const inTrouble = readPlayerFouls(stats)
+      .filter((p) => p.fouls >= 4)
+      .sort((a, b) => b.fouls - a.fouls)
+      .slice(0, 4);
     content = (
       <>
         <TeamSit to={num(stats.homeTimeouts)} b={bonus(num(stats.homeFouls))} />
@@ -331,6 +478,37 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
           {poss === 'home' ? '◀ ' : ''}POSS{poss === 'away' ? ' ▶' : ''}
         </span>
         <TeamSit to={num(stats.awayTimeouts)} b={bonus(num(stats.awayFouls))} alignR />
+        {inTrouble.length > 0 && (
+          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <span
+              style={{
+                fontSize: px(h, 0.045),
+                fontWeight: 900,
+                letterSpacing: 1,
+                color: '#dc2626',
+                marginRight: px(h, 0.025),
+              }}
+            >
+              FOUL TROUBLE
+            </span>
+            {inTrouble.map((p) => (
+              <span
+                key={`${p.team}-${p.jersey}`}
+                style={{
+                  fontSize: px(h, 0.05),
+                  fontWeight: 900,
+                  letterSpacing: 1,
+                  // 5 = fouled out (HS); flag in red, 4 in amber.
+                  color: p.fouls >= 5 ? '#dc2626' : '#f59e0b',
+                  marginRight: px(h, 0.025),
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {playerChip(p, p.fouls)}
+              </span>
+            ))}
+          </span>
+        )}
       </>
     );
   } else if (def.key === 'volleyball' || def.key === 'pickleball') {
@@ -438,6 +616,64 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
             {c}
           </span>
         ))}
+      </>
+    );
+  } else if (def.key === 'water_polo') {
+    // ── Water polo — per-player exclusion ("X of 3") surface. A player
+    //    is ejected for the game at the 3rd major foul, so the broadcast
+    //    standard is to show each excluded player's running count. Reads
+    //    the structured stats.playerExclusions contract; renders the shot
+    //    chips + any exclusions, and falls through to NOTHING when neither
+    //    is set (no fake line). ──
+    const wpShots: ReactNode[] = [];
+    const hs = num(stats.homeShots);
+    const as = num(stats.awayShots);
+    if (hs || as) {
+      wpShots.push(
+        <span key="wpshots" style={{ fontSize: px(h, 0.055), fontWeight: 900, color: ink, letterSpacing: 1 }}>
+          SHOTS {hs}-{as}
+        </span>,
+      );
+    }
+    const excluded = readPlayerExclusions(stats)
+      .filter((p) => p.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4);
+    if (wpShots.length === 0 && excluded.length === 0) return null;
+    content = (
+      <>
+        {wpShots}
+        {excluded.length > 0 && (
+          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <span
+              style={{
+                fontSize: px(h, 0.045),
+                fontWeight: 900,
+                letterSpacing: 1,
+                color: '#dc2626',
+                marginRight: px(h, 0.025),
+              }}
+            >
+              EXCLUSIONS
+            </span>
+            {excluded.map((p) => (
+              <span
+                key={`${p.team}-${p.jersey}`}
+                style={{
+                  fontSize: px(h, 0.05),
+                  fontWeight: 900,
+                  letterSpacing: 1,
+                  // 3 = ejected; flag in red, fewer in amber.
+                  color: p.count >= 3 ? '#dc2626' : '#f59e0b',
+                  marginRight: px(h, 0.025),
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {`#${p.jersey}${p.name ? ' ' + p.name.toUpperCase().slice(0, 14) : ''} ${p.count} OF 3`}
+              </span>
+            ))}
+          </span>
+        )}
       </>
     );
   } else {

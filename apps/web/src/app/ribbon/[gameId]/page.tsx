@@ -65,6 +65,11 @@ import {
   formatScore,
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
+import {
+  readResults,
+  readPlayerFouls,
+  readPlayerExclusions,
+} from '@/components/widgets/v2/_shared/sports-situational';
 // 2026-05-26 — replace the procedural CueBurst on the legacy ribbon
 // path with the cinematic CEL_* library. Operator (2026-05-26):
 // "should my cues trigger? the goal was to just replace all the
@@ -418,6 +423,37 @@ function effectiveStatsWithPossession(
   return stats;
 }
 
+/**
+ * A compact one-line meet result for the ribbon, built from the latest
+ * event on the structured stats.results contract. Shows the winner +
+ * runner-up of the most-recent event:
+ *   "100M FREE — 1 RIVERA 50.21 · 2 OKAFOR 50.88"
+ * (For gymnastics/cheer the "event" is the apparatus and the mark is the
+ * decimal score.) Returns null when no results exist, so the ribbon falls
+ * back to the live now-showing line instead of inventing a result row.
+ */
+function ribbonResultsLine(stats: Record<string, unknown>): string | null {
+  const events = readResults(stats);
+  if (events.length === 0) return null;
+  const current = events.reduce((best, e) => {
+    const bo = best.order ?? -Infinity;
+    const eo = e.order ?? -Infinity;
+    return eo >= bo ? e : best;
+  }, events[events.length - 1]);
+  const top = current.entries.slice(0, 2);
+  if (top.length === 0) return null;
+  const body = top
+    .map((r) => {
+      const place = r.place > 0 ? `${r.place} ` : '';
+      const who = r.name ? r.name.toUpperCase() : '';
+      const mark = r.mark ? ` ${r.mark}` : '';
+      return `${place}${who}${mark}`.trim();
+    })
+    .filter(Boolean)
+    .join('  ·  ');
+  return body ? `${current.event.toUpperCase()} — ${body}` : null;
+}
+
 function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>): string | null {
   const num = (v: unknown): number => {
     const n = Number(v);
@@ -469,7 +505,8 @@ function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>)
     return parts.length ? parts.join(SEP) : null;
   }
 
-  // Basketball — team bonus + possession arrow.
+  // Basketball — team bonus + possession arrow + foul-trouble (players
+  // at 4+ personal fouls, the broadcast "FOUL TROUBLE: #23 (4)" line).
   if (def.key === 'basketball') {
     const bonus = (f: number) => (f >= 10 ? 'DOUBLE BONUS' : f >= 7 ? 'BONUS' : null);
     const parts: string[] = [];
@@ -479,6 +516,13 @@ function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>)
     if (ab) parts.push(`AWAY ${ab}`);
     const poss = side(stats.possession);
     if (poss) parts.push(`POSS ${poss.toUpperCase()}`);
+    // Foul-trouble — players one away from fouling out (HS 5-foul limit).
+    const trouble = readPlayerFouls(stats)
+      .filter((p) => p.fouls >= 4)
+      .sort((a, b) => b.fouls - a.fouls)
+      .slice(0, 3)
+      .map((p) => `#${p.jersey}${p.name ? ' ' + p.name.toUpperCase().slice(0, 14) : ''} (${p.fouls})`);
+    if (trouble.length) parts.push(`FOUL TROUBLE: ${trouble.join(', ')}`);
     return parts.length ? parts.join(SEP) : null;
   }
 
@@ -568,14 +612,35 @@ function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>)
     return parts.length ? parts.join(SEP) : null;
   }
 
+  // Water polo — shots + per-player exclusion ("X of 3"; 3 = ejected),
+  // the broadcast standard. Reads the structured stats.playerExclusions
+  // contract; null when nothing is live.
+  if (def.key === 'water_polo') {
+    const parts: string[] = [];
+    const hs = num(stats.homeShots);
+    const as = num(stats.awayShots);
+    if (hs || as) parts.push(`SHOTS ${hs}-${as}`);
+    const excl = readPlayerExclusions(stats)
+      .filter((p) => p.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
+      .map((p) => `#${p.jersey}${p.name ? ' ' + p.name.toUpperCase().slice(0, 14) : ''} ${p.count} OF 3`);
+    if (excl.length) parts.push(`EXCLUSIONS: ${excl.join(', ')}`);
+    return parts.length ? parts.join(SEP) : null;
+  }
+
   // ── Meet sports (LEADERBOARD) — real meet content, not a stat dump.
   //    "NOW · {event}" for timed/judged meets; XC lead-runner + finisher
-  //    count; golf hole + vs-par. Uses ONLY the existing operator-entered
+  //    count; golf hole + vs-par. Uses the existing operator-entered live
   //    stats (currentEvent / currentApparatus / leadRunner / currentHole
-  //    / homePar / awayPar). The full per-event finish-place results model
-  //    is a deferred, separate feature — this is the live now-showing line. ──
+  //    / homePar / awayPar) PLUS, when the operator has recorded finish /
+  //    per-apparatus results (the stats.results contract), a compact
+  //    just-completed result line ("100M FREE — 1 RIVERA 50.21 · 2 …").
+  //    The result line leads; the now-showing line follows. ──
   if (def.mode === 'LEADERBOARD') {
     const parts: string[] = [];
+    const results = ribbonResultsLine(stats);
+    if (results) parts.push(results);
     if (def.key === 'golf') {
       const hole = num(stats.currentHole);
       if (hole > 0) parts.push(`HOLE ${hole}`);
@@ -584,30 +649,24 @@ function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>)
       if (hPar || aPar) {
         parts.push(`HOME ${hPar || 'E'} / AWAY ${aPar || 'E'}`);
       }
-      return parts.length ? parts.join(SEP) : null;
-    }
-    if (def.key === 'cross_country') {
+    } else if (def.key === 'cross_country') {
       const lead = String(stats.leadRunner || '').trim();
       if (lead) parts.push(`${lead.toUpperCase()} LEADING`);
       const fin = num(stats.finishers);
       if (fin > 0) parts.push(`${fin} FINISHED`);
-      return parts.length ? parts.join(SEP) : null;
-    }
-    // Gymnastics rotates apparatus (Vault / Bars / Beam / Floor) rather
-    // than running named events. `currentApparatus` is the apparatus name.
-    if (def.key === 'gymnastics') {
+    } else if (def.key === 'gymnastics') {
+      // Gymnastics rotates apparatus (Vault / Bars / Beam / Floor) rather
+      // than running named events. `currentApparatus` is the apparatus name.
       const app = String(stats.currentApparatus || '').trim();
       if (app) parts.push(`ON ${app.toUpperCase()}`);
-      return parts.length ? parts.join(SEP) : null;
-    }
-    if (def.key === 'competitive_cheer') {
+    } else if (def.key === 'competitive_cheer') {
       const div = String(stats.division || '').trim();
       if (div) parts.push(`DIVISION ${div.toUpperCase()}`);
-      return parts.length ? parts.join(SEP) : null;
+    } else {
+      // Track & field / swimming & diving — the currently-contested event.
+      const ev = String(stats.currentEvent || '').trim();
+      if (ev) parts.push(`NOW · ${ev.toUpperCase()}`);
     }
-    // Track & field / swimming & diving — the currently-contested event.
-    const ev = String(stats.currentEvent || '').trim();
-    if (ev) parts.push(`NOW · ${ev.toUpperCase()}`);
     return parts.length ? parts.join(SEP) : null;
   }
 
