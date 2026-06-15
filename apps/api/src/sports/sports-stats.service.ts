@@ -6,6 +6,8 @@ import {
   parseStatValue,
 } from '@cms/api-types';
 import type { StatSemantic } from '@cms/api-types';
+import type { PrismaClient, Prisma } from '@cms/database';
+import { withDbRetry } from '../prisma/with-db-retry';
 
 /**
  * VenueOS Sports — Phase 1-A of the player-stats engine.
@@ -300,6 +302,617 @@ export function computePlayerSurfaces(
     // Fail-open — a bug here must NEVER break the board.
     return empty;
   }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// PHASE 2 — Persistent season/career AGGREGATION engine
+// ════════════════════════════════════════════════════════════════════
+//
+// Phase 1 above is PURE + read-only (no DB). The functions below are the
+// finalize-time persistence layer (spec §PHASE 2): when a game goes
+// FINAL, roll each LINKED roster player's per-game COUNTING stats up into
+// the materialized `PlayerSeasonStat` / `PlayerCareerStat` tables that the
+// cross-game leaderboard endpoints read.
+//
+// Load-bearing invariants (spec C8 + §PHASE 2 verification):
+//   • tenantId-scoped on EVERY query.
+//   • Only `kind:'counting'` stats aggregate. Rate stats (AVG, judged
+//     scores, golf PAR, race marks) are per-game — NEVER summed.
+//   • Only roster rows WHERE personId != null aggregate. Unlinked rows
+//     (opponents, typos, one-offs) are ignored so they never pollute the
+//     persistent tables.
+//   • IDEMPOTENT: a per-game marker (`game.stats.statsFinalizedAt`),
+//     checked AND set inside the same transaction, makes re-FINAL a
+//     no-op — re-running finalize must NOT double-count.
+//   • The whole roll-up runs in ONE `$transaction` wrapped in
+//     `withDbRetry` (transient pool blips retried; logic errors thrown).
+//   • FAIL-OPEN is the CALLER's job (the setStatus hook wraps this in
+//     try/catch so a stats bug never blocks "end game"). This fn may
+//     throw on a real DB error; it's safe to call and validates inputs.
+//
+// The reads (`getStatLeaders` / `getAthleteCareer`) hit the indexed
+// aggregate tables — fast, never the GameEvent stream, never on the poll.
+
+/** Marker key stamped into `Game.stats` once a game's stats are rolled up. */
+const STATS_FINALIZED_MARKER = 'statsFinalizedAt';
+
+/**
+ * One cross-game leaderboard row — a persistent person's MATERIALIZED
+ * aggregate for a single stat. NOTE: distinct from the Phase 1 `Leader`
+ * (the per-game, in-memory top-roster-player shape) — this one carries
+ * the persistent `personId` + the rolled-up numeric `statValue`. The
+ * spec's `getStatLeaders(): Promise<Leader[]>` maps to `StatLeader[]`
+ * here (the name `Leader` is already taken by Phase 1 in this file).
+ */
+export interface StatLeader {
+  personId: string;
+  fullName: string;
+  number: string | null;
+  photoUrl: string | null;
+  teamId: string | null;
+  statKey: string;
+  statValue: number;
+  displayValue: string | null;
+  gamesPlayed: number;
+}
+
+/** A persistent athlete's full season+career line, for the career page. */
+export interface AthleteCareer {
+  personId: string;
+  fullName: string;
+  number: string | null;
+  position: string | null;
+  photoUrl: string | null;
+  teamId: string | null;
+  gradYear: number | null;
+  season: Array<{
+    season: string;
+    statKey: string;
+    statValue: number;
+    displayValue: string | null;
+    gamesPlayed: number;
+  }>;
+  career: Array<{
+    statKey: string;
+    statValue: number;
+    displayValue: string | null;
+    gamesPlayed: number;
+  }>;
+}
+
+/**
+ * Normalize a person/team display name for find-or-create dedup —
+ * lowercase + collapse internal whitespace + trim. Mirrors the
+ * `normalizedKey` contract on `SportsPerson` (the CSV-reimport dedup key).
+ */
+function normalizeName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Format an aggregated numeric value back into a display string for the
+ * materialized `displayValue` column. Counting stats are integers (the
+ * only kind we aggregate), so this rounds to the semantic's `decimals`
+ * (default 0). Kept local — api-types ships no formatter.
+ */
+function formatStatValue(value: number, sem?: StatSemantic): string {
+  const decimals = sem?.decimals ?? 0;
+  if (!Number.isFinite(value)) return '0';
+  return value.toFixed(decimals);
+}
+
+/**
+ * Derive the season string for a game. Game has no `season` column, so
+ * we key off the calendar year the game was played:
+ *   startedAt (when the game actually went LIVE) → "YYYY"
+ *   else createdAt → "YYYY"
+ *   else the current year → "YYYY"
+ * Simple + stable: a finalize and a re-finalize derive the SAME season,
+ * and leaderboards can filter by it. A richer "2025-26" academic-season
+ * string is a future refinement (would need a Game.season column).
+ */
+export function deriveSeason(game: {
+  startedAt?: Date | null;
+  createdAt?: Date | null;
+}): string {
+  const d = game.startedAt ?? game.createdAt ?? new Date();
+  const year =
+    d instanceof Date && !Number.isNaN(d.getTime())
+      ? d.getFullYear()
+      : new Date().getFullYear();
+  return String(year);
+}
+
+/**
+ * Link a per-game `RosterPlayer` to a persistent `SportsPerson`
+ * (OUR-team-only, manual — opponents/typos never get persisted). Two paths:
+ *
+ *   • `personId` given → set `RosterPlayer.personId` directly (operator
+ *     picked an existing athlete).
+ *   • else `fullName` given → find-or-create a `SportsPerson` by
+ *     `normalizedKey` within `(tenantId, teamId)` using the
+ *     `tenant_person_identity` unique, then link.
+ *
+ * tenantId-scoped throughout: the roster row, the target person, and the
+ * created person all carry/verify the tenantId. Returns the linked
+ * `personId`.
+ */
+export async function linkRosterPlayerToPerson(
+  prisma: PrismaClient,
+  args: {
+    tenantId: string;
+    rosterPlayerId: string;
+    personId?: string;
+    fullName?: string;
+    teamId?: string;
+  },
+): Promise<{ personId: string }> {
+  const { tenantId, rosterPlayerId } = args;
+  if (!tenantId) throw new Error('linkRosterPlayerToPerson: tenantId required');
+  if (!rosterPlayerId)
+    throw new Error('linkRosterPlayerToPerson: rosterPlayerId required');
+
+  // Ownership gate — the roster row must belong to this tenant.
+  const roster = await withDbRetry(
+    () =>
+      prisma.rosterPlayer.findFirst({
+        where: { id: rosterPlayerId, tenantId },
+        select: { id: true, name: true, number: true, photoUrl: true, position: true },
+      }),
+    { label: 'sports-stats.link.roster.find' },
+  );
+  if (!roster) {
+    throw new Error(
+      `linkRosterPlayerToPerson: roster player ${rosterPlayerId} not found for tenant`,
+    );
+  }
+
+  // Path 1 — explicit personId. Verify it's this tenant's person.
+  if (args.personId) {
+    const person = await withDbRetry(
+      () =>
+        prisma.sportsPerson.findFirst({
+          where: { id: args.personId, tenantId },
+          select: { id: true },
+        }),
+      { label: 'sports-stats.link.person.find' },
+    );
+    if (!person) {
+      throw new Error(
+        `linkRosterPlayerToPerson: person ${args.personId} not found for tenant`,
+      );
+    }
+    await withDbRetry(
+      () =>
+        prisma.rosterPlayer.update({
+          where: { id: rosterPlayerId },
+          data: { personId: person.id, teamId: args.teamId ?? undefined },
+        }),
+      { label: 'sports-stats.link.roster.update' },
+    );
+    return { personId: person.id };
+  }
+
+  // Path 2 — find-or-create by normalizedKey within (tenantId, teamId).
+  const fullName = (args.fullName ?? roster.name ?? '').trim();
+  if (!fullName) {
+    throw new Error(
+      'linkRosterPlayerToPerson: fullName (or a named roster row) required to find-or-create a person',
+    );
+  }
+  const normalizedKey = normalizeName(fullName);
+  const teamId = args.teamId ?? null;
+
+  // Find-or-create by the dedup identity (tenantId, teamId, normalizedKey).
+  // NOTE: the `tenant_person_identity` unique also includes the nullable
+  // `gradYear`. We intentionally do NOT `upsert` on the named compound
+  // unique here, because Postgres treats NULLs as DISTINCT in a unique
+  // index — an upsert keyed on `gradYear: null` would not reliably match
+  // an existing null-gradYear row and could spawn duplicates. A manual
+  // link has no class year, so we find-or-create on the (tenant, team,
+  // name) triple with a null gradYear and let the unique guard genuine
+  // collisions.
+  let person = await withDbRetry(
+    () =>
+      prisma.sportsPerson.findFirst({
+        where: { tenantId, teamId, normalizedKey, gradYear: null },
+        select: { id: true },
+      }),
+    { label: 'sports-stats.link.person.find2' },
+  );
+  if (!person) {
+    person = await withDbRetry(
+      () =>
+        prisma.sportsPerson.create({
+          data: {
+            tenantId,
+            teamId,
+            fullName,
+            normalizedKey,
+            number: roster.number ?? undefined,
+            position: roster.position ?? undefined,
+            photoUrl: roster.photoUrl ?? undefined,
+          },
+          select: { id: true },
+        }),
+      { label: 'sports-stats.link.person.create' },
+    );
+  }
+
+  await withDbRetry(
+    () =>
+      prisma.rosterPlayer.update({
+        where: { id: rosterPlayerId },
+        data: { personId: person.id, teamId: teamId ?? undefined },
+      }),
+    { label: 'sports-stats.link.roster.update2' },
+  );
+
+  return { personId: person.id };
+}
+
+/**
+ * Finalize a game's player stats: roll each LINKED roster player's
+ * per-game COUNTING stats into the persistent season + career aggregates.
+ * Called by the setStatus(FINAL) hook (another agent), AFTER the status
+ * commit, wrapped by the caller in try/catch (fail-open).
+ *
+ * Idempotent via the `game.stats.statsFinalizedAt` marker (checked + set
+ * inside the same transaction): re-FINAL returns
+ * `{ aggregated: 0, skipped: 'already-finalized' }` and double-counts
+ * nothing. Multi-replica safe — two concurrent finalizes converge: the
+ * first to commit the marker wins, the second sees the marker and no-ops.
+ *
+ * @returns `{ aggregated }` — count of distinct LINKED players rolled up.
+ *          `{ aggregated: 0, skipped }` when nothing was done.
+ */
+export async function finalizeGameStats(
+  prisma: PrismaClient,
+  tenantId: string,
+  gameId: string,
+): Promise<{ aggregated: number; skipped?: string }> {
+  if (!tenantId) throw new Error('finalizeGameStats: tenantId required');
+  if (!gameId) throw new Error('finalizeGameStats: gameId required');
+
+  return withDbRetry(
+    () =>
+      prisma.$transaction(async (tx) => {
+        // Load the game tenant-scoped. Missing/cross-tenant → skip.
+        const game = await tx.game.findFirst({
+          where: { id: gameId, tenantId },
+          select: {
+            id: true,
+            sport: true,
+            stats: true,
+            startedAt: true,
+            createdAt: true,
+          },
+        });
+        if (!game) return { aggregated: 0, skipped: 'game-not-found' };
+
+        // ── Idempotency guard (inside the tx) ──
+        const stats =
+          game.stats && typeof game.stats === 'object' && !Array.isArray(game.stats)
+            ? (game.stats as Record<string, unknown>)
+            : {};
+        if (stats[STATS_FINALIZED_MARKER]) {
+          return { aggregated: 0, skipped: 'already-finalized' };
+        }
+
+        const sport = game.sport;
+        const season = deriveSeason(game);
+
+        // Only LINKED roster rows (personId != null) aggregate.
+        const roster = await tx.rosterPlayer.findMany({
+          where: { gameId, tenantId, personId: { not: null } },
+          select: { personId: true, teamId: true, stats: true },
+        });
+
+        let aggregated = 0;
+
+        for (const rp of roster) {
+          const personId = rp.personId;
+          if (!personId) continue; // narrow (where already guards)
+
+          const rpStats =
+            rp.stats && typeof rp.stats === 'object' && !Array.isArray(rp.stats)
+              ? (rp.stats as Record<string, unknown>)
+              : {};
+
+          // Build this player's parsed COUNTING deltas for this game.
+          const deltas: Array<{ statKey: string; delta: number; sem?: StatSemantic }> = [];
+          for (const key of PLAYER_STATS[sport] ?? []) {
+            const sem = statSemantic(sport, key);
+            // ONLY counting stats accumulate. Rate stats (AVG, judged
+            // scores, PAR, marks) are per-game — never summed.
+            if (sem?.kind !== 'counting') continue;
+            const rawVal = rpStats[key];
+            if (rawVal == null) continue;
+            if (typeof rawVal !== 'string' && typeof rawVal !== 'number') continue;
+            const parsed = parseStatValue(rawVal, sem);
+            if (parsed == null) continue; // unparseable → skip, never throw
+            deltas.push({ statKey: key, delta: parsed, sem });
+          }
+
+          // A linked player with no parseable counting stat this game
+          // still "played" — but with nothing to roll up there's no row
+          // to touch, so they don't count toward `aggregated` and don't
+          // get a gamesPlayed bump (no row exists to bump). This keeps
+          // gamesPlayed = games that contributed to that stat row.
+          if (deltas.length === 0) continue;
+
+          aggregated += 1;
+
+          for (const { statKey, delta, sem } of deltas) {
+            // ── SEASON upsert: ADD the delta ──
+            const existingSeason = await tx.playerSeasonStat.findUnique({
+              where: {
+                person_season_stat: { personId, season, statKey },
+              },
+              select: { statValue: true, gamesPlayed: true },
+            });
+            const newSeasonValue = (existingSeason?.statValue ?? 0) + delta;
+            const newSeasonGames = (existingSeason?.gamesPlayed ?? 0) + 1;
+
+            await tx.playerSeasonStat.upsert({
+              where: {
+                person_season_stat: { personId, season, statKey },
+              },
+              update: {
+                statValue: newSeasonValue,
+                gamesPlayed: newSeasonGames,
+                displayValue: formatStatValue(newSeasonValue, sem),
+                lastGameId: gameId,
+                teamId: rp.teamId ?? undefined,
+              },
+              create: {
+                tenantId,
+                personId,
+                teamId: rp.teamId ?? undefined,
+                sport,
+                season,
+                statKey,
+                statValue: newSeasonValue,
+                gamesPlayed: newSeasonGames,
+                displayValue: formatStatValue(newSeasonValue, sem),
+                lastGameId: gameId,
+              },
+            });
+
+            // ── CAREER recompute: SUM all of this person's season rows
+            //    for this statKey (canonical — converges even if a season
+            //    row is later corrected). ──
+            const seasonRows = await tx.playerSeasonStat.findMany({
+              where: { personId, statKey },
+              select: { statValue: true, gamesPlayed: true },
+            });
+            const careerValue = seasonRows.reduce((s, r) => s + r.statValue, 0);
+            const careerGames = seasonRows.reduce((s, r) => s + r.gamesPlayed, 0);
+
+            await tx.playerCareerStat.upsert({
+              where: { person_career_stat: { personId, statKey } },
+              update: {
+                statValue: careerValue,
+                gamesPlayed: careerGames,
+                displayValue: formatStatValue(careerValue, sem),
+                lastGameId: gameId,
+                teamId: rp.teamId ?? undefined,
+              },
+              create: {
+                tenantId,
+                personId,
+                teamId: rp.teamId ?? undefined,
+                sport,
+                statKey,
+                statValue: careerValue,
+                gamesPlayed: careerGames,
+                displayValue: formatStatValue(careerValue, sem),
+                lastGameId: gameId,
+              },
+            });
+          }
+        }
+
+        // ── Stamp the idempotency marker (same tx) ──
+        // Merge into the existing stats JSON so we never clobber the
+        // operator's live stat values.
+        await tx.game.update({
+          where: { id: gameId },
+          data: {
+            stats: {
+              ...stats,
+              [STATS_FINALIZED_MARKER]: new Date().toISOString(),
+            } as Prisma.InputJsonValue,
+          },
+        });
+
+        return { aggregated };
+      }),
+    { label: 'sports-stats.finalizeGameStats' },
+  );
+}
+
+/**
+ * Read the cross-game leaderboard for a stat from the MATERIALIZED
+ * aggregate tables (never the GameEvent stream — fast + indexed). Honors
+ * `higherBetter` from STAT_SEMANTICS when ordering.
+ *
+ * @param scope 'SEASON' reads `PlayerSeasonStat` (season required — falls
+ *   back to all-seasons if omitted); 'CAREER' reads `PlayerCareerStat`.
+ */
+export async function getStatLeaders(
+  prisma: PrismaClient,
+  args: {
+    tenantId: string;
+    sport: string;
+    season?: string;
+    statKey: string;
+    scope: 'SEASON' | 'CAREER';
+    limit: number;
+  },
+): Promise<StatLeader[]> {
+  const { tenantId, sport, season, statKey, scope } = args;
+  if (!tenantId) throw new Error('getStatLeaders: tenantId required');
+  if (!sport || !statKey) throw new Error('getStatLeaders: sport + statKey required');
+
+  const limit = Math.max(1, Math.min(args.limit || 10, 100));
+  const sem = statSemantic(sport, statKey);
+  const order: Prisma.SortOrder = sem?.higherBetter === false ? 'asc' : 'desc';
+
+  if (scope === 'CAREER') {
+    const rows = await withDbRetry(
+      () =>
+        prisma.playerCareerStat.findMany({
+          where: { tenantId, sport, statKey },
+          orderBy: { statValue: order },
+          take: limit,
+          select: {
+            personId: true,
+            teamId: true,
+            statKey: true,
+            statValue: true,
+            displayValue: true,
+            gamesPlayed: true,
+            person: {
+              select: { fullName: true, number: true, photoUrl: true },
+            },
+          },
+        }),
+      { label: 'sports-stats.leaders.career' },
+    );
+    return rows.map((r) => ({
+      personId: r.personId,
+      fullName: r.person?.fullName ?? '',
+      number: r.person?.number ?? null,
+      photoUrl: r.person?.photoUrl ?? null,
+      teamId: r.teamId ?? null,
+      statKey: r.statKey,
+      statValue: r.statValue,
+      displayValue: r.displayValue ?? null,
+      gamesPlayed: r.gamesPlayed,
+    }));
+  }
+
+  // SEASON scope.
+  const rows = await withDbRetry(
+    () =>
+      prisma.playerSeasonStat.findMany({
+        where: {
+          tenantId,
+          sport,
+          statKey,
+          ...(season ? { season } : {}),
+        },
+        orderBy: { statValue: order },
+        take: limit,
+        select: {
+          personId: true,
+          teamId: true,
+          statKey: true,
+          statValue: true,
+          displayValue: true,
+          gamesPlayed: true,
+          person: {
+            select: { fullName: true, number: true, photoUrl: true },
+          },
+        },
+      }),
+    { label: 'sports-stats.leaders.season' },
+  );
+  return rows.map((r) => ({
+    personId: r.personId,
+    fullName: r.person?.fullName ?? '',
+    number: r.person?.number ?? null,
+    photoUrl: r.person?.photoUrl ?? null,
+    teamId: r.teamId ?? null,
+    statKey: r.statKey,
+    statValue: r.statValue,
+    displayValue: r.displayValue ?? null,
+    gamesPlayed: r.gamesPlayed,
+  }));
+}
+
+/**
+ * Read one athlete's full materialized stat line — every season row + the
+ * career roll-up — for the athlete career endpoint. tenantId-scoped (a
+ * cross-tenant personId returns null). Reads the aggregate tables only.
+ */
+export async function getAthleteCareer(
+  prisma: PrismaClient,
+  args: { tenantId: string; personId: string },
+): Promise<AthleteCareer | null> {
+  const { tenantId, personId } = args;
+  if (!tenantId) throw new Error('getAthleteCareer: tenantId required');
+  if (!personId) throw new Error('getAthleteCareer: personId required');
+
+  const person = await withDbRetry(
+    () =>
+      prisma.sportsPerson.findFirst({
+        where: { id: personId, tenantId },
+        select: {
+          id: true,
+          fullName: true,
+          number: true,
+          position: true,
+          photoUrl: true,
+          teamId: true,
+          gradYear: true,
+        },
+      }),
+    { label: 'sports-stats.career.person' },
+  );
+  if (!person) return null;
+
+  const [seasonRows, careerRows] = await withDbRetry(
+    () =>
+      Promise.all([
+        prisma.playerSeasonStat.findMany({
+          where: { tenantId, personId },
+          orderBy: [{ season: 'desc' }, { statKey: 'asc' }],
+          select: {
+            season: true,
+            statKey: true,
+            statValue: true,
+            displayValue: true,
+            gamesPlayed: true,
+          },
+        }),
+        prisma.playerCareerStat.findMany({
+          where: { tenantId, personId },
+          orderBy: { statKey: 'asc' },
+          select: {
+            statKey: true,
+            statValue: true,
+            displayValue: true,
+            gamesPlayed: true,
+          },
+        }),
+      ]),
+    { label: 'sports-stats.career.stats' },
+  );
+
+  return {
+    personId: person.id,
+    fullName: person.fullName,
+    number: person.number ?? null,
+    position: person.position ?? null,
+    photoUrl: person.photoUrl ?? null,
+    teamId: person.teamId ?? null,
+    gradYear: person.gradYear ?? null,
+    season: seasonRows.map((r) => ({
+      season: r.season,
+      statKey: r.statKey,
+      statValue: r.statValue,
+      displayValue: r.displayValue ?? null,
+      gamesPlayed: r.gamesPlayed,
+    })),
+    career: careerRows.map((r) => ({
+      statKey: r.statKey,
+      statValue: r.statValue,
+      displayValue: r.displayValue ?? null,
+      gamesPlayed: r.gamesPlayed,
+    })),
+  };
 }
 
 /**
