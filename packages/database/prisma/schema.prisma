@@ -10,23 +10,23 @@ datasource db {
 }
 
 model Tenant {
-  id                              String           @id @default(uuid())
-  parentId                        String?          @map("parent_id")
+  id                              String             @id @default(uuid())
+  parentId                        String?            @map("parent_id")
   name                            String
-  slug                            String           @unique
-  emergencyStatus                 String           @default("INACTIVE") @map("emergency_status")
-  createdAt                       DateTime         @default(now()) @map("created_at")
-  emergencyPlaylistId             String?          @map("emergency_playlist_id")
-  panicEvacuatePlaylistId         String?          @map("panic_evacuate_playlist_id")
-  panicLockdownPlaylistId         String?          @map("panic_lockdown_playlist_id")
-  panicWeatherPlaylistId          String?          @map("panic_weather_playlist_id")
+  slug                            String             @unique
+  emergencyStatus                 String             @default("INACTIVE") @map("emergency_status")
+  createdAt                       DateTime           @default(now()) @map("created_at")
+  emergencyPlaylistId             String?            @map("emergency_playlist_id")
+  panicEvacuatePlaylistId         String?            @map("panic_evacuate_playlist_id")
+  panicLockdownPlaylistId         String?            @map("panic_lockdown_playlist_id")
+  panicWeatherPlaylistId          String?            @map("panic_weather_playlist_id")
   // SRP (Standard Response Protocol) expansion — most US K-12 districts
   // train on these specific actions. Hold + Secure + Medical added so
   // operators don't have to over-trigger Lockdown for hallway clearing
   // (Hold), outside-only threats (Secure), or medical events (Medical).
-  panicHoldPlaylistId             String?          @map("panic_hold_playlist_id")
-  panicSecurePlaylistId           String?          @map("panic_secure_playlist_id")
-  panicMedicalPlaylistId          String?          @map("panic_medical_playlist_id")
+  panicHoldPlaylistId             String?            @map("panic_hold_playlist_id")
+  panicSecurePlaylistId           String?            @map("panic_secure_playlist_id")
+  panicMedicalPlaylistId          String?            @map("panic_medical_playlist_id")
   // Per-orientation portrait variants. When a portrait screen (Nova
   // 4K vertical wall, hallway pillar, etc.) fetches the manifest
   // during an emergency, the controller prefers the *_portrait_*
@@ -34,13 +34,13 @@ model Tenant {
   // above if not. Admin configures both once; each screen auto-picks.
   // `emergencyPortraitPlaylistId` is the currently-active portrait
   // playlist (set atomically at trigger time alongside emergencyPlaylistId).
-  emergencyPortraitPlaylistId     String?          @map("emergency_portrait_playlist_id")
-  panicEvacuatePortraitPlaylistId String?          @map("panic_evacuate_portrait_playlist_id")
-  panicLockdownPortraitPlaylistId String?          @map("panic_lockdown_portrait_playlist_id")
-  panicWeatherPortraitPlaylistId  String?          @map("panic_weather_portrait_playlist_id")
-  panicHoldPortraitPlaylistId     String?          @map("panic_hold_portrait_playlist_id")
-  panicSecurePortraitPlaylistId   String?          @map("panic_secure_portrait_playlist_id")
-  panicMedicalPortraitPlaylistId  String?          @map("panic_medical_portrait_playlist_id")
+  emergencyPortraitPlaylistId     String?            @map("emergency_portrait_playlist_id")
+  panicEvacuatePortraitPlaylistId String?            @map("panic_evacuate_portrait_playlist_id")
+  panicLockdownPortraitPlaylistId String?            @map("panic_lockdown_portrait_playlist_id")
+  panicWeatherPortraitPlaylistId  String?            @map("panic_weather_portrait_playlist_id")
+  panicHoldPortraitPlaylistId     String?            @map("panic_hold_portrait_playlist_id")
+  panicSecurePortraitPlaylistId   String?            @map("panic_secure_portrait_playlist_id")
+  panicMedicalPortraitPlaylistId  String?            @map("panic_medical_portrait_playlist_id")
   assetFolders                    AssetFolder[]
   assets                          Asset[]
   auditLogs                       AuditLog[]
@@ -51,15 +51,25 @@ model Tenant {
   screens                         Screen[]
   templates                       Template[]
   notifications                   Notification[]
-  parent                          Tenant?          @relation("TenantHierarchy", fields: [parentId], references: [id])
-  children                        Tenant[]         @relation("TenantHierarchy")
+  parent                          Tenant?            @relation("TenantHierarchy", fields: [parentId], references: [id])
+  children                        Tenant[]           @relation("TenantHierarchy")
   users                           User[]
   ssoConfig                       TenantSSOConfig?
-  cleverDistrictId                String?          @unique @map("clever_district_id")
-  cleverAccessToken               String?          @map("clever_access_token")
-  cleverConnectedAt               DateTime?        @map("clever_connected_at")
+  cleverDistrictId                String?            @unique @map("clever_district_id")
+  cleverAccessToken               String?            @map("clever_access_token")
+  cleverConnectedAt               DateTime?          @map("clever_connected_at")
   cleverSyncLogs                  CleverSyncLog[]
   userInvites                     UserInvite[]
+  // VenueOS Sports — Phase 2 persistent player-stats / records engine.
+  // Back-relations for the tenant-owned persistent identity + aggregate
+  // tables (see the Sports Phase 2 block near the end of this file).
+  sportsTeams                     Team[]
+  sportsPersons                   SportsPerson[]
+  playerSeasonStats               PlayerSeasonStat[]
+  playerCareerStats               PlayerCareerStat[]
+  statRecords                     StatRecord[]
+  statMilestoneDefs               StatMilestoneDef[]
+  playerMilestones                PlayerMilestone[]
   // USB sneakernet ingest (Sprint 7B). Off by default; admins opt in per
   // tenant. The HMAC key signs every USB bundle's manifest.json so a
   // random/stolen stick can't push content to a paired screen. Rotated
@@ -71,7 +81,7 @@ model Tenant {
   // flag is OFF the manifest endpoint ignores any per-screen override
   // columns even if they're populated, so flipping the toggle is a
   // reversible no-op for the player fleet.
-  locationBasedEmergencyEnabled   Boolean          @default(false) @map("location_based_emergency_enabled")
+  locationBasedEmergencyEnabled   Boolean            @default(false) @map("location_based_emergency_enabled")
   // Auto-update for paired Android players (2026-04-27). Operator:
   // "we shouldnt be auto updating screens unless we check a box or
   // something on that... i would hate to break a perfectly good
@@ -80,7 +90,7 @@ model Tenant {
   // the admin manually clicked Push for that specific screen (the
   // controller stores Screen.forceApkUpdatePendingAt and respects a
   // 30-min window). ON: kiosks pull updates on their own 6h cadence.
-  autoUpdatePlayerEnabled         Boolean          @default(false) @map("auto_update_player_enabled")
+  autoUpdatePlayerEnabled         Boolean            @default(false) @map("auto_update_player_enabled")
   // OTA maintenance window (Sprint 11, Phase A).
   // Operator: "we cant have screens flashing all the time" + "find the
   // bigger picture solution for uninterrupted service across all
@@ -100,9 +110,9 @@ model Tenant {
   // Timezone is an IANA name (America/Chicago, etc.). Null fields
   // mean "no window configured" → updates fire immediately (current
   // behavior, backward-compatible).
-  otaWindowStart                  String?          @map("ota_window_start") // "HH:MM"
-  otaWindowEnd                    String?          @map("ota_window_end")   // "HH:MM"
-  otaWindowTimezone               String?          @map("ota_window_timezone") // IANA tz
+  otaWindowStart                  String?            @map("ota_window_start") // "HH:MM"
+  otaWindowEnd                    String?            @map("ota_window_end") // "HH:MM"
+  otaWindowTimezone               String?            @map("ota_window_timezone") // IANA tz
   // Sprint 11 Phase B — canary rollout. canaryFleetPercent < 100 means
   // only the deterministic hash bucket of screens (0..pct-1 mod 100)
   // is eligible for the latest APK; the rest get `uptoDate:true` even
@@ -117,47 +127,47 @@ model Tenant {
   //                     starts the soak timer
   // canaryAutoPromote   if true, cron promotes to 100 after soak;
   //                     if false, operator must promote manually
-  canaryFleetPercent              Int              @default(100) @map("canary_fleet_percent")
-  canarySetAt                     DateTime?        @map("canary_set_at")
-  canaryAutoPromote               Boolean          @default(true) @map("canary_auto_promote")
-  canarySoakHours                 Int              @default(24) @map("canary_soak_hours")
-  usbIngestEnabled                Boolean          @default(false) @map("usb_ingest_enabled")
-  usbIngestKey                    String?          @map("usb_ingest_key") // 64-char hex (HMAC-SHA256 secret)
-  usbIngestKeyRotatedAt           DateTime?        @map("usb_ingest_key_rotated_at")
+  canaryFleetPercent              Int                @default(100) @map("canary_fleet_percent")
+  canarySetAt                     DateTime?          @map("canary_set_at")
+  canaryAutoPromote               Boolean            @default(true) @map("canary_auto_promote")
+  canarySoakHours                 Int                @default(24) @map("canary_soak_hours")
+  usbIngestEnabled                Boolean            @default(false) @map("usb_ingest_enabled")
+  usbIngestKey                    String?            @map("usb_ingest_key") // 64-char hex (HMAC-SHA256 secret)
+  usbIngestKeyRotatedAt           DateTime?          @map("usb_ingest_key_rotated_at")
   usbIngestEvents                 UsbIngestEvent[]
   games                           Game[]
   sponsors                        Sponsor[]
   // Industry vertical — drives default templates, widget palette, and
   // pricing tier. Tenants are isolated regardless; this is just metadata
   // + UI personalization.
-  vertical                        String           @default("K12") // K12 | GYM | RETAIL | CORPORATE | QSR | FASHION | BAR | HEALTHCARE | HOSPITALITY | RESTAURANT | SPORTS — canonical list: packages/api-types/src/verticals.ts (VERTICALS)
+  vertical                        String             @default("K12") // K12 | GYM | RETAIL | CORPORATE | QSR | FASHION | BAR | HEALTHCARE | HOSPITALITY | RESTAURANT | SPORTS — canonical list: packages/api-types/src/verticals.ts (VERTICALS)
   // 2026-05-25 — Per-location physical address. Sprint 8's fleet map
   // view plots tenants + screens by lat/lng; collecting address here
   // (optional at signup + on add-location) means every new account
   // auto-populates the map without manual placement. Geocoded via
   // OpenStreetMap Nominatim (free, rate-limited) on save when address
   // changes; manual lat/lng entry is also supported.
-  address                         String?          @map("address")
-  latitude                        Float?           @map("latitude")
-  longitude                       Float?           @map("longitude")
+  address                         String?            @map("address")
+  latitude                        Float?             @map("latitude")
+  longitude                       Float?             @map("longitude")
   // BYOK AI integration (2026-05-04) — operator's own provider
   // credentials, so cost shifts to them. ai_provider null means use
   // platform default key (process.env.ANTHROPIC_API_KEY) — current
   // free-trial behavior. Encrypted key never returned to clients.
-  aiProvider                      String?          @map("ai_provider") // 'anthropic' | 'openai' | 'google'
+  aiProvider                      String?            @map("ai_provider") // 'anthropic' | 'openai' | 'google'
   // 2026-05-25 — operator-selected model id from the catalog in
   // apps/api/src/ai/ai-providers.ts. Null means "use the provider's
   // default cheapest model" — same as legacy behavior pre-picker.
   // Validated against isKnownModel() before dispatch.
-  aiModel                         String?          @map("ai_model")
-  aiKeyEncrypted                  String?          @map("ai_key_encrypted")
-  aiKeySetAt                      DateTime?        @map("ai_key_set_at")
-  aiKeySetByUserId                String?          @map("ai_key_set_by_user_id")
+  aiModel                         String?            @map("ai_model")
+  aiKeyEncrypted                  String?            @map("ai_key_encrypted")
+  aiKeySetAt                      DateTime?          @map("ai_key_set_at")
+  aiKeySetByUserId                String?            @map("ai_key_set_by_user_id")
   // Platform free-tier monthly quota tracking. month = 'YYYY-MM'.
   // Cap value lives in AI_FREE_TIER_CAP env var (default 200) so we
   // can tune it globally without a migration. BYOK tenants bypass.
-  aiPlatformUsageMonth            String?          @map("ai_platform_usage_month")
-  aiPlatformUsageCount            Int              @default(0) @map("ai_platform_usage_count")
+  aiPlatformUsageMonth            String?            @map("ai_platform_usage_month")
+  aiPlatformUsageCount            Int                @default(0) @map("ai_platform_usage_count")
   // Per-screen billing meter. One License row per Tenant; absence means
   // "Pilot" (free tier with cap of 3 screens, no expiry). License flips
   // when an admin runs a Stripe checkout or the SUPER_ADMIN comps seats.
@@ -221,18 +231,18 @@ model TenantApiKey {
 /// verify the X-VenueOS-Signature header on incoming POSTs. Returned
 /// to the operator ONCE at creation; rotating means delete + recreate.
 model TenantWebhook {
-  id                  String    @id @default(uuid())
-  tenantId            String    @map("tenant_id")
-  name                String
-  url                 String
-  events              String    @default("[]")
-  signingSecret       String    @map("signing_secret")
-  isActive            Boolean   @default(true) @map("is_active")
-  lastDeliveryAt      DateTime? @map("last_delivery_at")
-  lastDeliveryStatus  Int?      @map("last_delivery_status")
-  lastDeliveryError   String?   @map("last_delivery_error")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  createdByUserId     String?   @map("created_by_user_id")
+  id                 String    @id @default(uuid())
+  tenantId           String    @map("tenant_id")
+  name               String
+  url                String
+  events             String    @default("[]")
+  signingSecret      String    @map("signing_secret")
+  isActive           Boolean   @default(true) @map("is_active")
+  lastDeliveryAt     DateTime? @map("last_delivery_at")
+  lastDeliveryStatus Int?      @map("last_delivery_status")
+  lastDeliveryError  String?   @map("last_delivery_error")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  createdByUserId    String?   @map("created_by_user_id")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -259,26 +269,26 @@ model TenantWebhook {
 /// HMAC-SHA256(secret, `${signedTimestamp}.${body}`) signature — receivers
 /// that dedup on the signature/delivery-id see the retry as the same event.
 model WebhookDelivery {
-  id               String    @id @default(uuid())
-  webhookId        String    @map("webhook_id")
-  tenantId         String    @map("tenant_id")
-  event            String
+  id              String    @id @default(uuid())
+  webhookId       String    @map("webhook_id")
+  tenantId        String    @map("tenant_id")
+  event           String
   // The exact JSON body that was (or will be) POSTed. Persisted so retries
   // reproduce a byte-identical payload + signature.
-  body             String
+  body            String
   // UNIX-ms timestamp that was folded into the signature at first send.
   // Stays constant across retries so the signature stays constant.
-  signedTimestamp  BigInt    @map("signed_timestamp")
+  signedTimestamp BigInt    @map("signed_timestamp")
   // PENDING (queued/in-flight) | DELIVERED | FAILED (permanent, gave up).
-  status           String    @default("PENDING")
-  attempts         Int       @default(0)
+  status          String    @default("PENDING")
+  attempts        Int       @default(0)
   // Null once terminal (DELIVERED / FAILED). Otherwise the earliest time a
   // worker may claim this row for the next attempt.
-  nextRetryAt      DateTime? @map("next_retry_at")
-  lastStatusCode   Int?      @map("last_status_code")
-  lastError        String?   @map("last_error")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  nextRetryAt     DateTime? @map("next_retry_at")
+  lastStatusCode  Int?      @map("last_status_code")
+  lastError       String?   @map("last_error")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   webhook TenantWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
 
@@ -477,16 +487,16 @@ model PasswordResetToken {
 //                       to sort the device list + warn on dormant keys
 // On user deletion: cascade — passkeys without a user are useless.
 model Passkey {
-  id              String    @id @default(uuid())
-  userId          String    @map("user_id")
-  credentialId    String    @unique @map("credential_id") // base64url
-  publicKey       Bytes     @map("public_key")
-  counter         BigInt    @default(0) @map("counter")
-  transports      String[]  @default([]) @map("transports")
-  deviceLabel     String?   @map("device_label")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  lastUsedAt      DateTime? @map("last_used_at")
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  credentialId String    @unique @map("credential_id") // base64url
+  publicKey    Bytes     @map("public_key")
+  counter      BigInt    @default(0) @map("counter")
+  transports   String[]  @default([]) @map("transports")
+  deviceLabel  String?   @map("device_label")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  lastUsedAt   DateTime? @map("last_used_at")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("passkeys")
@@ -517,24 +527,24 @@ model UserInvite {
 // register() would push currentSeats above seatLimit, we reject with a
 // LICENSE_EXHAUSTED error and instruct the admin to add seats.
 model License {
-  id                   String    @id @default(uuid())
-  tenantId             String    @unique @map("tenant_id")
-  tier                 String // PILOT | STANDARD | ENTERPRISE | EDU_DISTRICT | RESTAURANT_CHAIN | (custom)
-  seatLimit            Int       @default(3) @map("seat_limit")
-  billingMode          String    @default("CARD") @map("billing_mode") // CARD | INVOICE | PURCHASE_ORDER | COMP
-  status               String    @default("ACTIVE") // ACTIVE | PAST_DUE | SUSPENDED | CANCELLED
-  monthlyPriceCents    Int?      @map("monthly_price_cents") // null for COMP / EDU_DISTRICT custom
+  id                       String    @id @default(uuid())
+  tenantId                 String    @unique @map("tenant_id")
+  tier                     String // PILOT | STANDARD | ENTERPRISE | EDU_DISTRICT | RESTAURANT_CHAIN | (custom)
+  seatLimit                Int       @default(3) @map("seat_limit")
+  billingMode              String    @default("CARD") @map("billing_mode") // CARD | INVOICE | PURCHASE_ORDER | COMP
+  status                   String    @default("ACTIVE") // ACTIVE | PAST_DUE | SUSPENDED | CANCELLED
+  monthlyPriceCents        Int?      @map("monthly_price_cents") // null for COMP / EDU_DISTRICT custom
   // Stripe wire-up slots — populated when the customer runs in-app
   // checkout. Empty for COMP, INVOICE, PURCHASE_ORDER customers.
-  stripeCustomerId     String?   @map("stripe_customer_id")
-  stripeSubscriptionId String?   @map("stripe_subscription_id")
+  stripeCustomerId         String?   @map("stripe_customer_id")
+  stripeSubscriptionId     String?   @map("stripe_subscription_id")
   // Expiry / renewal. Null = perpetual (e.g. PILOT, COMP).
-  currentPeriodStart   DateTime? @map("current_period_start")
-  currentPeriodEnd     DateTime? @map("current_period_end")
-  expiresAt            DateTime? @map("expires_at")
+  currentPeriodStart       DateTime? @map("current_period_start")
+  currentPeriodEnd         DateTime? @map("current_period_end")
+  expiresAt                DateTime? @map("expires_at")
   // Free-form notes from the SUPER_ADMIN (e.g. "manually comp'd 5 seats
   // through 2026-09-01 — ARRA grant").
-  notes                String?
+  notes                    String?
   // 2026-05-26 P0-7 audit (Stripe webhook idempotency): the UNIX-second
   // creation timestamp of the most-recent Stripe event that mutated this
   // License. Stripe events are NOT ordered — a stale
@@ -543,9 +553,9 @@ model License {
   // to ACTIVE incorrectly. The webhook handler rejects any state-flipping
   // event whose `event.created` is older than this stored value.
   stripeLastEventCreatedAt DateTime? @map("stripe_last_event_created_at")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at")
-  tenant               Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @default(now()) @updatedAt @map("updated_at")
+  tenant                   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("licenses")
 }
@@ -963,30 +973,30 @@ model Asset {
 }
 
 model Playlist {
-  id              String         @id @default(uuid())
-  tenantId        String         @map("tenant_id")
-  name            String
-  templateId      String?        @map("template_id")
+  id               String         @id @default(uuid())
+  tenantId         String         @map("tenant_id")
+  name             String
+  templateId       String?        @map("template_id")
   // Set on a playlist COPY distributed from a parent (corporate) playlist down
   // to a child location. Enables idempotent re-publish (update the existing
   // copy instead of duplicating) + a "from HQ" badge. Null on originals.
-  sourcePlaylistId String?       @map("source_playlist_id")
-  createdByUserId String?        @map("created_by_user_id")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @default(now()) @updatedAt @map("updated_at")
+  sourcePlaylistId String?        @map("source_playlist_id")
+  createdByUserId  String?        @map("created_by_user_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at")
   // Protected playlists are owned by the system (e.g. emergency content
   // bound to Tenant.panicLockdownPlaylistId). They are hidden from the
   // /playlists list and cannot be deleted by an admin — preventing the
   // "I accidentally deleted the lockdown playlist mid-emergency" failure
   // mode. Created automatically by the panic-content endpoints and
   // managed only through that surface.
-  isProtected     Boolean        @default(false) @map("is_protected")
-  protectedKind   String?        @map("protected_kind") // 'lockdown' | 'weather' | 'evacuate' | null
-  items           PlaylistItem[]
-  tenant          Tenant         @relation(fields: [tenantId], references: [id])
-  template        Template?      @relation(fields: [templateId], references: [id])
-  createdBy       User?          @relation("PlaylistCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  schedules       Schedule[]
+  isProtected      Boolean        @default(false) @map("is_protected")
+  protectedKind    String?        @map("protected_kind") // 'lockdown' | 'weather' | 'evacuate' | null
+  items            PlaylistItem[]
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  template         Template?      @relation(fields: [templateId], references: [id])
+  createdBy        User?          @relation("PlaylistCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  schedules        Schedule[]
 
   @@index([tenantId, isProtected])
   @@index([tenantId, updatedAt])
@@ -1103,17 +1113,17 @@ model Notification {
 }
 
 model Template {
-  id             String         @id @default(uuid())
-  tenantId       String?        @map("tenant_id")
+  id             String          @id @default(uuid())
+  tenantId       String?         @map("tenant_id")
   name           String
   description    String?
-  category       String         @default("CUSTOM")
-  orientation    String         @default("LANDSCAPE")
+  category       String          @default("CUSTOM")
+  orientation    String          @default("LANDSCAPE")
   // Filter chip on /templates — 'ELEMENTARY' | 'MIDDLE' | 'HIGH' | 'UNIVERSAL'.
   // Stored as a free string so we don't need a DB enum migration each time
   // a new level (PRE_K, ADULT_ED, etc.) comes along. Defaults to UNIVERSAL
   // so existing templates stay visible under every filter.
-  schoolLevel    String         @default("UNIVERSAL") @map("school_level")
+  schoolLevel    String          @default("UNIVERSAL") @map("school_level")
   // Industry vertical — gates which templates appear in a tenant's
   // gallery. System templates are tagged with the vertical they were
   // designed for; the /templates list endpoint filters by the
@@ -1121,14 +1131,14 @@ model Template {
   // templates and vice versa. Custom tenant templates inherit the
   // tenant's own vertical. Defaults K12 because that's the original
   // product + the vast majority of pre-existing rows.
-  vertical       String         @default("K12") @map("vertical") // K12 | GYM | RETAIL | CORPORATE | QSR | FASHION | BAR | HEALTHCARE | HOSPITALITY | RESTAURANT | SPORTS — canonical list: packages/api-types/src/verticals.ts (VERTICALS)
-  screenWidth    Int            @default(1920) @map("screen_width")
-  screenHeight   Int            @default(1080) @map("screen_height")
-  isSystem       Boolean        @default(false) @map("is_system")
-  status         String         @default("ACTIVE")
-  bgColor        String?        @map("bg_color")
-  bgImage        String?        @map("bg_image")
-  bgGradient     String?        @map("bg_gradient")
+  vertical       String          @default("K12") @map("vertical") // K12 | GYM | RETAIL | CORPORATE | QSR | FASHION | BAR | HEALTHCARE | HOSPITALITY | RESTAURANT | SPORTS — canonical list: packages/api-types/src/verticals.ts (VERTICALS)
+  screenWidth    Int             @default(1920) @map("screen_width")
+  screenHeight   Int             @default(1080) @map("screen_height")
+  isSystem       Boolean         @default(false) @map("is_system")
+  status         String          @default("ACTIVE")
+  bgColor        String?         @map("bg_color")
+  bgImage        String?         @map("bg_image")
+  bgGradient     String?         @map("bg_gradient")
   thumbnail      String?
   // Per-template Brand Kit. Distinct from the tenant-wide
   // `TenantBranding` row that themes the CMS dashboard chrome.
@@ -1152,12 +1162,12 @@ model Template {
   //     sourceUrl: string | null,
   //     scrapedAt: ISO date string,
   //   }
-  brandKit       Json?          @map("brand_kit")
-  createdById    String?        @map("created_by_id")
-  isTouchEnabled Boolean        @default(false) @map("is_touch_enabled")
-  idleResetMs    Int            @default(60000) @map("idle_reset_ms")
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at")
+  brandKit       Json?           @map("brand_kit")
+  createdById    String?         @map("created_by_id")
+  isTouchEnabled Boolean         @default(false) @map("is_touch_enabled")
+  idleResetMs    Int             @default(60000) @map("idle_reset_ms")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @default(now()) @updatedAt @map("updated_at")
   zones          TemplateZone[]
   // 2026-05-12 — Phase D2 multi-scene relation. One template can
   // have many scenes (Figma-style frames). Scenes are populated by
@@ -1165,8 +1175,8 @@ model Template {
   // "Default" scene + all current zones repointed to it).
   scenes         TemplateScene[]
   playlists      Playlist[]
-  createdBy      User?          @relation("TemplateCreator", fields: [createdById], references: [id])
-  tenant         Tenant?        @relation(fields: [tenantId], references: [id])
+  createdBy      User?           @relation("TemplateCreator", fields: [createdById], references: [id])
+  tenant         Tenant?         @relation(fields: [tenantId], references: [id])
 
   // 2026-05-19 — Sprint 13 scoreboard builder. A template can be the
   // scoreboard / ribbon / scorebug for any number of Games (the FK
@@ -1251,14 +1261,14 @@ model TemplateZone {
 /// starts there on first render. Operator-deletable scenes can't
 /// delete the default — a guard on the controller blocks it.
 model TemplateScene {
-  id          String         @id @default(uuid())
-  templateId  String         @map("template_id")
-  name        String
-  sortOrder   Int            @default(0) @map("sort_order")
-  isDefault   Boolean        @default(false) @map("is_default")
-  createdAt   DateTime       @default(now()) @map("created_at")
-  template    Template       @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  zones       TemplateZone[]
+  id         String         @id @default(uuid())
+  templateId String         @map("template_id")
+  name       String
+  sortOrder  Int            @default(0) @map("sort_order")
+  isDefault  Boolean        @default(false) @map("is_default")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  template   Template       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  zones      TemplateZone[]
 
   @@unique([templateId, name])
   @@index([templateId, sortOrder])
@@ -1289,17 +1299,17 @@ model TemplateScene {
 //   clientTs     — Client-side timestamp from the player; trusted within ±5 min
 //   createdAt    — Server-side ingest time; used for retention sweeps
 model TouchEvent {
-  id          String   @id @default(uuid())
-  tenantId    String   @map("tenant_id")
-  screenId    String?  @map("screen_id")
-  templateId  String   @map("template_id")
-  zoneId      String?  @map("zone_id")
-  sceneId     String?  @map("scene_id")
-  actionType  String?  @map("action_type")
-  actionTarget String? @map("action_target")
-  clientTs    DateTime @map("client_ts")
-  createdAt   DateTime @default(now()) @map("created_at")
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  screenId     String?  @map("screen_id")
+  templateId   String   @map("template_id")
+  zoneId       String?  @map("zone_id")
+  sceneId      String?  @map("scene_id")
+  actionType   String?  @map("action_type")
+  actionTarget String?  @map("action_target")
+  clientTs     DateTime @map("client_ts")
+  createdAt    DateTime @default(now()) @map("created_at")
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
 
   // Hot path: "show me taps for THIS template over the last 30 days"
   @@index([tenantId, templateId, createdAt])
@@ -1639,8 +1649,8 @@ model PosProviderConnection {
   updatedAt         DateTime  @updatedAt @map("updated_at")
   createdByUserId   String    @map("created_by_user_id")
 
-  items      PosMenuItem[]
-  categories PosCategory[]
+  items        PosMenuItem[]
+  categories   PosCategory[]
   // Menu-mgmt-at-scale (2026-05-29) — provider-side locations synced
   // under this connection (one per store for a multi-location chain).
   posLocations PosLocation[]
@@ -1754,17 +1764,17 @@ model ProcessedPosEvent {
 // operator typically has one catalog (or a few — breakfast vs all-day)
 // and overrides per location, never 50 separate menus.
 model MenuCatalog {
-  id          String   @id @default(uuid())
-  tenantId    String   @map("tenant_id")
-  name        String
-  description String?
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  name         String
+  description  String?
   // Optional link to the POS connection this catalog syncs from. Null
   // for hand-built / custom-webhook catalogs that aren't tied to one
   // provider connection.
-  connectionId String? @map("connection_id")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  connectionId String?  @map("connection_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   categories MenuCategory[]
   items      MenuItem[]
@@ -1802,35 +1812,35 @@ model MenuCategory {
 // the source POS catalog object (Square `item:variation` id, Toast guid,
 // or a custom-webhook id) so a sync can upsert by it.
 model MenuItem {
-  id               String   @id @default(uuid())
-  tenantId         String   @map("tenant_id")
-  catalogId        String   @map("catalog_id")
-  categoryId       String?  @map("category_id")
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  catalogId         String   @map("catalog_id")
+  categoryId        String?  @map("category_id")
   // Provider-side id (Square/Toast/custom). Unique per catalog so a sync
   // upserts the same item in place across runs. Null for purely
   // hand-authored items that never came from a POS.
-  externalId       String?  @map("external_id")
-  name             String
-  description      String?
+  externalId        String?  @map("external_id")
+  name              String
+  description       String?
   // The base price every location inherits absent an override.
-  defaultPriceCents Int     @map("default_price_cents")
-  imageUrl         String?  @map("image_url")
+  defaultPriceCents Int      @map("default_price_cents")
+  imageUrl          String?  @map("image_url")
   // Dietary / allergen chips ("V" / "GF" / "DF" / "contains-nuts").
-  allergens        String[] @default([])
+  allergens         String[] @default([])
   // Free-form merchandising tags ("popular" / "new" / "spicy").
-  tags             String[] @default([])
+  tags              String[] @default([])
   // Optional size / option price variants, catalog-level (v1). A JSON
   // array of { label: string, priceCents: number } — e.g. Small/Med/Large
   // or "12oz" / "16oz". Null/absent = single-price item. Per-location
   // overrides adjust the base defaultPriceCents only; variant prices are
   // not (yet) location-overridable.
-  variants         Json?    @map("variants")
-  sortOrder        Int      @default(0) @map("sort_order")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  variants          Json?    @map("variants")
+  sortOrder         Int      @default(0) @map("sort_order")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
-  catalog   MenuCatalog        @relation(fields: [catalogId], references: [id], onDelete: Cascade)
-  category  MenuCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  catalog   MenuCatalog            @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  category  MenuCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   overrides MenuLocationOverride[]
 
   // A POS catalog object maps to exactly one item per catalog.
@@ -1915,7 +1925,7 @@ model Daypart {
   name       String
   daysOfWeek Int[]    @default([]) @map("days_of_week")
   timeStart  String   @map("time_start") // "HH:MM"
-  timeEnd    String   @map("time_end")   // "HH:MM"
+  timeEnd    String   @map("time_end") // "HH:MM"
   timezone   String
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
@@ -1930,10 +1940,10 @@ model Daypart {
 // `catalog.version.updated` / `SearchCatalogObjects begin_time` lets us
 // pull only what changed since `lastCatalogVersion` / `lastSyncedAt`.
 model MenuSyncCursor {
-  connectionId      String   @id @map("connection_id")
-  lastCatalogVersion String? @map("last_catalog_version")
-  lastSyncedAt      DateTime? @map("last_synced_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  connectionId       String    @id @map("connection_id")
+  lastCatalogVersion String?   @map("last_catalog_version")
+  lastSyncedAt       DateTime? @map("last_synced_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   @@map("menu_sync_cursors")
 }
@@ -2043,22 +2053,22 @@ model AdRevenueDaily {
 model Game {
   id             String    @id @default(uuid())
   tenantId       String    @map("tenant_id")
-  sport          String                                  // SportDefinition key
+  sport          String // SportDefinition key
   homeTeam       String    @map("home_team")
   awayTeam       String    @map("away_team")
   homeScore      Int       @default(0) @map("home_score")
   awayScore      Int       @default(0) @map("away_score")
-  segment        Int       @default(1)                   // current quarter/inning/set/period
-  clockMs        Int       @default(0) @map("clock_ms")   // clock reading at clockUpdatedAt
+  segment        Int       @default(1) // current quarter/inning/set/period
+  clockMs        Int       @default(0) @map("clock_ms") // clock reading at clockUpdatedAt
   clockRunning   Boolean   @default(false) @map("clock_running")
   clockUpdatedAt DateTime  @default(now()) @map("clock_updated_at")
-  stats          Json      @default("{}")                 // sport-specific stat values
-  spotlight      Json      @default("{}")                 // broadcast spotlight: featured player / promo
-  status         String    @default("SCHEDULED")          // SCHEDULED|PRE_GAME|LIVE|HALFTIME|FINAL
-  screenGroupId  String?   @map("screen_group_id")        // surfaces showing this game
+  stats          Json      @default("{}") // sport-specific stat values
+  spotlight      Json      @default("{}") // broadcast spotlight: featured player / promo
+  status         String    @default("SCHEDULED") // SCHEDULED|PRE_GAME|LIVE|HALFTIME|FINAL
+  screenGroupId  String?   @map("screen_group_id") // surfaces showing this game
   homeColor      String?   @map("home_color")
   awayColor      String?   @map("away_color")
-  homeLogoUrl    String?   @map("home_logo_url")          // team brand mark on the scoreboard
+  homeLogoUrl    String?   @map("home_logo_url") // team brand mark on the scoreboard
   awayLogoUrl    String?   @map("away_logo_url")
   startedAt      DateTime? @map("started_at")
   endedAt        DateTime? @map("ended_at")
@@ -2071,7 +2081,7 @@ model Game {
   // is nullable so existing Game rows are unaffected (migration is
   // additive-only). Display surfaces fall back to stats.possession for
   // backward compat when this column is null.
-  possession   String?   // 'home' | 'away' | null
+  possession String? // 'home' | 'away' | null
 
   // 2026-05-31 — Sprint 13 feed-token REVOCATION. The external score-feed
   // credential (sports-feed-token.ts) is a stateless game-scoped HMAC handed
@@ -2098,18 +2108,32 @@ model Game {
   ribbonTemplateId     String? @map("ribbon_template_id")
   scorebugTemplateId   String? @map("scorebug_template_id")
 
-  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // 2026-06-15 — Sprint 13 player-stats / records engine (Phase 2).
+  // Optional links from a game's two sides to a persistent `Team`
+  // program. Drives record-scoping ("school record across all Varsity
+  // Basketball seasons") which plain `homeTeam`/`awayTeam` strings can't
+  // express reliably. Nullable everywhere — existing games keep their
+  // string sides; SetNull so deleting a Team never wipes a game row.
+  homeTeamId String? @map("home_team_id")
+  awayTeamId String? @map("away_team_id")
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   events GameEvent[]
   roster RosterPlayer[]
 
   scoreboardTemplate Template? @relation("GameScoreboardTemplate", fields: [scoreboardTemplateId], references: [id], onDelete: SetNull)
-  ribbonTemplate     Template? @relation("GameRibbonTemplate",     fields: [ribbonTemplateId],     references: [id], onDelete: SetNull)
-  scorebugTemplate   Template? @relation("GameScorebugTemplate",   fields: [scorebugTemplateId],   references: [id], onDelete: SetNull)
+  ribbonTemplate     Template? @relation("GameRibbonTemplate", fields: [ribbonTemplateId], references: [id], onDelete: SetNull)
+  scorebugTemplate   Template? @relation("GameScorebugTemplate", fields: [scorebugTemplateId], references: [id], onDelete: SetNull)
+
+  homeTeamRef Team? @relation("GameHomeTeam", fields: [homeTeamId], references: [id], onDelete: SetNull)
+  awayTeamRef Team? @relation("GameAwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
   @@index([scoreboardTemplateId])
   @@index([ribbonTemplateId])
   @@index([scorebugTemplateId])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
   @@map("games")
 }
 
@@ -2123,19 +2147,33 @@ model RosterPlayer {
   id        String   @id @default(uuid())
   tenantId  String   @map("tenant_id")
   gameId    String   @map("game_id")
-  team      String                                   // 'home' | 'away'
+  team      String // 'home' | 'away'
   name      String
-  number    String?                                  // jersey number — string ("00", "G")
+  number    String? // jersey number — string ("00", "G")
   position  String?
   photoUrl  String?  @map("photo_url")
-  stats     Json     @default("{}")                  // flexible { AVG: ".312", HR: "19", … }
+  stats     Json     @default("{}") // flexible { AVG: ".312", HR: "19", … }
   sortOrder Int      @default(0) @map("sort_order")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
-  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  // 2026-06-15 — Sprint 13 player-stats / records engine (Phase 2).
+  // The back-link from a per-game appearance to the persistent athlete
+  // identity (`SportsPerson`) + the program (`Team`). Both nullable:
+  // null = today's behavior exactly (a one-off / unlinked roster row).
+  // The aggregation in finalizeGameStats only rolls up appearances where
+  // personId is set, so opponents / typos never pollute the persistent
+  // tables. SetNull on both so deleting a person/team never wipes the
+  // game's roster history.
+  personId String? @map("person_id")
+  teamId   String? @map("team_id")
+
+  game    Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  person  SportsPerson? @relation("PersonAppearances", fields: [personId], references: [id], onDelete: SetNull)
+  teamRef Team?         @relation("TeamRosterAppearances", fields: [teamId], references: [id], onDelete: SetNull)
 
   @@index([gameId, team, sortOrder])
+  @@index([personId])
   @@map("roster_players")
 }
 
@@ -2146,7 +2184,7 @@ model RosterPlayer {
 model GameEvent {
   id        String   @id @default(uuid())
   gameId    String   @map("game_id")
-  type      String                                       // SCORE|CLOCK|SEGMENT|STAT|CUE|STATUS
+  type      String // SCORE|CLOCK|SEGMENT|STAT|CUE|STATUS
   payload   Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -2176,21 +2214,21 @@ model GameEvent {
 // Additive — one new table, safe for live pilot tenants.
 // ─────────────────────────────────────────────────────────────
 model Sponsor {
-  id                String    @id @default(uuid())
-  tenantId          String    @map("tenant_id")
-  name              String
-  logoUrl           String?   @map("logo_url")
-  tagline           String?
-  color             String?                                  // brand hex for the banner accent
-  tier              String?                                  // freeform label: Title | Gold | Community …
-  weight            Int       @default(1)                    // rotation slots per cycle
-  active            Boolean   @default(true)
+  id                  String    @id @default(uuid())
+  tenantId            String    @map("tenant_id")
+  name                String
+  logoUrl             String?   @map("logo_url")
+  tagline             String?
+  color               String? // brand hex for the banner accent
+  tier                String? // freeform label: Title | Gold | Community …
+  weight              Int       @default(1) // rotation slots per cycle
+  active              Boolean   @default(true)
   // Ad-ops flight window — null = no bound on that side.
-  flightStartAt     DateTime? @map("flight_start_at")       // inclusive; null = always started
-  flightEndAt       DateTime? @map("flight_end_at")         // exclusive; null = never expires
-  frequencyCapPerHour Int?    @map("frequency_cap_per_hour") // max airings / hr; null = uncapped
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at")
+  flightStartAt       DateTime? @map("flight_start_at") // inclusive; null = always started
+  flightEndAt         DateTime? @map("flight_end_at") // exclusive; null = never expires
+  frequencyCapPerHour Int?      @map("frequency_cap_per_hour") // max airings / hr; null = uncapped
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at")
 
   tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   impressions SponsorImpression[]
@@ -2210,7 +2248,7 @@ model SponsorImpression {
   id          String   @id @default(uuid())
   sponsorId   String   @map("sponsor_id")
   gameId      String   @map("game_id")
-  surfaceKind String   @map("surface_kind")  // 'board' | 'ribbon' | 'scorebug'
+  surfaceKind String   @map("surface_kind") // 'board' | 'ribbon' | 'scorebug'
   ts          DateTime @default(now())
 
   sponsor Sponsor @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
@@ -2226,21 +2264,21 @@ model SponsorImpression {
 // and reusable across every game — the operator builds the deck once.
 // Additive — one new table, no FK; safe for live pilot tenants.
 model CustomCue {
-  id         String   @id @default(uuid())
-  tenantId   String   @map("tenant_id")
-  name       String                                  // trigger button label
-  mediaUrl   String?  @map("media_url")               // uploaded graphic
-  color      String?                                  // accent / background color
-  durationMs Int      @default(6000) @map("duration_ms")
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String // trigger button label
+  mediaUrl    String?  @map("media_url") // uploaded graphic
+  color       String? // accent / background color
+  durationMs  Int      @default(6000) @map("duration_ms")
   // 2026-05-20 — operator: "the custom cues took over the entire screen,
   // they should overlay." How the cue renders on the board:
   //   overlay  → board stays visible; media drops into a lower band
   //   takeover → full-screen opaque media (the original behavior)
   // Defaults to overlay (the expected behavior); takeover is opt-in.
-  displayMode String @default("overlay") @map("display_mode")
-  sortOrder  Int      @default(0) @map("sort_order")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
+  displayMode String   @default("overlay") @map("display_mode")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@index([tenantId, sortOrder])
   @@map("custom_cues")
@@ -2301,4 +2339,218 @@ model Bug {
   @@index([status, createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
   @@map("bugs")
+}
+
+// ═════════════════════════════════════════════════════════════════
+// VenueOS Sports — Phase 2: persistent player-stats / records engine.
+// 2026-06-15. Spec: docs/research/2026-06-15-sports-pro-gap-analysis/
+// 01-STATS-ENGINE-SPEC.md (PHASE 2).
+//
+// Phase 1 already ships per-game `RosterPlayer` rows (a player on ONE
+// game's home/away side). Phase 2 adds the PERSISTENT spine on top:
+//
+//   Team           — a program/squad ("Varsity Boys Basketball"); NOT
+//                    a game side. `isHome` marks OUR programs.
+//   SportsPerson   — the persistent athlete; `normalizedKey` dedups on
+//                    CSV re-import; `RosterPlayer.personId` links each
+//                    appearance back to one of these.
+//   PlayerSeasonStat / PlayerCareerStat — materialized aggregates the
+//                    finalize pass upserts; leaderboards read the
+//                    `(…, statValue Desc)` index, never recompute.
+//   StatRecord     — the record book (one row per scope/stat slot);
+//                    `holderName` denormalized so deleting a person
+//                    doesn't blank the board.
+//   StatMilestoneDef — seeded milestone definitions; `tenantId = null`
+//                    is a global default, a tenant row shadows it.
+//   PlayerMilestone  — fired-milestone ledger; `(personId, dedupeKey)`
+//                    unique is the replay-defense (multi-replica safe).
+//
+// DB is pre-customer (no live sports data), so these are clean models —
+// FK columns added to `Game`/`RosterPlayer` above are nullable so the
+// pilot's existing string-sided games keep working untouched.
+// ═════════════════════════════════════════════════════════════════
+
+// A program / squad — "Varsity Boys Basketball" — owned by a tenant.
+// NOT a game side (Game.homeTeam/awayTeam stay plain strings for
+// opponents). `isHome` = true means this is OUR program: only our
+// programs' athletes roll up into the persistent stat tables.
+model Team {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  name         String // "Varsity Boys Basketball"
+  sport        String // SportDefinition key
+  season       String? // e.g. "2025-26"; null = all-seasons program
+  gender       String? // "boys" | "girls" | "coed" | …
+  level        String? // "Varsity" | "JV" | "Freshman" | …
+  colorPrimary String?  @map("color_primary") // brand hex for the program
+  logoUrl      String?  @map("logo_url")
+  isHome       Boolean  @default(true) @map("is_home") // true = OUR program
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant            Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  persons           SportsPerson[]
+  rosterAppearances RosterPlayer[] @relation("TeamRosterAppearances")
+  homeGames         Game[]         @relation("GameHomeTeam")
+  awayGames         Game[]         @relation("GameAwayTeam")
+
+  @@index([tenantId, sport, season])
+  @@map("sports_teams")
+}
+
+// The persistent athlete. Survives across games and seasons. A
+// per-game `RosterPlayer` links to one of these via `personId`.
+// `normalizedKey` (lowercased/trimmed name) is the CSV-reimport dedup
+// key; `externalRef` is the forward-hook for GameChanger/MaxPreps ids.
+model SportsPerson {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  teamId        String?  @map("team_id")
+  fullName      String   @map("full_name")
+  firstName     String?  @map("first_name")
+  lastName      String?  @map("last_name")
+  number        String? // jersey number — string ("00", "G")
+  position      String?
+  photoUrl      String?  @map("photo_url")
+  gradYear      Int?     @map("grad_year")
+  normalizedKey String   @map("normalized_key") // lowercased/trimmed name → dedup
+  externalRef   String?  @map("external_ref") // GameChanger/MaxPreps id (future)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  team        Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  appearances RosterPlayer[]     @relation("PersonAppearances")
+  seasonStats PlayerSeasonStat[]
+  careerStats PlayerCareerStat[]
+  milestones  PlayerMilestone[]
+
+  @@unique([tenantId, teamId, normalizedKey, gradYear], name: "tenant_person_identity")
+  @@index([tenantId, teamId])
+  @@map("sports_persons")
+}
+
+// Materialized per-person-per-season-per-stat aggregate. The finalize
+// pass upserts these on FINAL; leaderboards read the
+// (sport, season, statKey, statValue Desc) index directly.
+model PlayerSeasonStat {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  personId     String   @map("person_id")
+  teamId       String?  @map("team_id")
+  sport        String // SportDefinition key
+  season       String
+  statKey      String   @map("stat_key") // key from PLAYER_STATS
+  statValue    Float    @default(0) @map("stat_value")
+  gamesPlayed  Int      @default(0) @map("games_played")
+  displayValue String?  @map("display_value")
+  lastGameId   String?  @map("last_game_id")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  person SportsPerson @relation(fields: [personId], references: [id], onDelete: Cascade)
+  Tenant Tenant       @relation(fields: [tenantId], references: [id])
+
+  @@unique([personId, season, statKey], name: "person_season_stat")
+  @@index([tenantId, sport, season, statKey, statValue(sort: Desc)])
+  @@map("player_season_stats")
+}
+
+// Materialized per-person-per-stat CAREER aggregate (same shape as
+// PlayerSeasonStat, minus `season`). Recomputed by the finalize pass.
+model PlayerCareerStat {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  personId     String   @map("person_id")
+  teamId       String?  @map("team_id")
+  sport        String // SportDefinition key
+  statKey      String   @map("stat_key") // key from PLAYER_STATS
+  statValue    Float    @default(0) @map("stat_value")
+  gamesPlayed  Int      @default(0) @map("games_played")
+  displayValue String?  @map("display_value")
+  lastGameId   String?  @map("last_game_id")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  person SportsPerson @relation(fields: [personId], references: [id], onDelete: Cascade)
+  Tenant Tenant       @relation(fields: [tenantId], references: [id])
+
+  @@unique([personId, statKey], name: "person_career_stat")
+  @@index([tenantId, sport, statKey, statValue(sort: Desc)])
+  @@map("player_career_stats")
+}
+
+// The record book — one row per (scope, stat) slot holding the CURRENT
+// best. `teamId = null` = school-wide. `holderName` is denormalized so
+// a deleted person doesn't blank the board. `higherIsBetter` lets a
+// stat where lower is better (e.g. ERA) record correctly.
+model StatRecord {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  teamId         String?   @map("team_id") // null = school-wide
+  sport          String // SportDefinition key
+  statKey        String    @map("stat_key")
+  scope          String    @default("SCHOOL") // SCHOOL | TEAM | …
+  season         String? // null for career/school totals
+  recordType     String    @default("SINGLE_GAME") @map("record_type") // SINGLE_GAME | SEASON_TOTAL | CAREER_TOTAL
+  value          Float
+  displayValue   String?   @map("display_value")
+  holderPersonId String?   @map("holder_person_id")
+  holderName     String    @map("holder_name") // denormalized — survives person delete
+  gameId         String?   @map("game_id")
+  setOn          DateTime? @map("set_on")
+  higherIsBetter Boolean   @default(true) @map("higher_is_better")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, teamId, sport, statKey, scope, season, recordType], name: "record_slot")
+  @@map("stat_records")
+}
+
+// Seeded milestone definitions. `tenantId = null` is a global default
+// (seeded from MILESTONE_DEFS); a tenant row shadows the global one.
+// `kind` = THRESHOLD (hit N), RECORD (broke a record), NTH (Nth of X).
+model StatMilestoneDef {
+  id        String   @id @default(uuid())
+  tenantId  String?  @map("tenant_id") // null = global default; tenant rows shadow
+  sport     String // SportDefinition key
+  statKey   String   @map("stat_key")
+  kind      String // THRESHOLD | RECORD | NTH
+  threshold Float?
+  label     String
+  cueKey    String   @map("cue_key") // e.g. 'CEL_MILESTONE_RECORD'
+  emoji     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, sport])
+  @@map("stat_milestone_defs")
+}
+
+// Fired-milestone ledger. `(personId, dedupeKey)` unique is the
+// replay-defense (multi-replica safe — DB-level, not in-memory).
+// `celebratedAt` latches when the board plays it so it fires once.
+model PlayerMilestone {
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  personId     String    @map("person_id")
+  gameId       String?   @map("game_id")
+  sport        String // SportDefinition key
+  statKey      String    @map("stat_key")
+  label        String
+  cueKey       String    @map("cue_key")
+  dedupeKey    String    @map("dedupe_key") // replay defense
+  celebratedAt DateTime? @map("celebrated_at")
+  firedAt      DateTime  @default(now()) @map("fired_at")
+
+  person SportsPerson @relation(fields: [personId], references: [id], onDelete: Cascade)
+  Tenant Tenant       @relation(fields: [tenantId], references: [id])
+
+  @@unique([personId, dedupeKey], name: "person_milestone_dedupe")
+  @@index([tenantId, gameId])
+  @@map("player_milestones")
 }
