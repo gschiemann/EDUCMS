@@ -149,6 +149,30 @@ interface BoardData {
   scoreboardTemplateId?: string | null;
   ribbonTemplateId?: string | null;
   scorebugTemplateId?: string | null;
+  // Phase 1 (sports-pro stats engine, P1-B) — auto stat-leaders +
+  // Player-of-the-Game, computed server-side from the already-shipped
+  // per-game roster. Present ONLY when the `sports_player_stats` flag is
+  // ON for the tenant AND the data is non-empty; OMITTED entirely
+  // otherwise — so a flag-off board's payload is byte-identical to today
+  // and these render nothing extra. Spec:
+  // docs/research/2026-06-15-sports-pro-gap-analysis/01-STATS-ENGINE-SPEC.md
+  leaders?: Array<{
+    statKey: string;
+    label: string;
+    team: 'home' | 'away';
+    playerName: string;
+    playerNumber: string | null;
+    photoUrl: string | null;
+    value: string;
+  }>;
+  playerOfGame?: {
+    name: string;
+    number: string | null;
+    team: 'home' | 'away';
+    photoUrl: string | null;
+    headline: string;
+    lines: Array<{ label: string; value: string }>;
+  } | null;
 }
 
 // Athletic neutral defaults — an uncustomized game should read like a
@@ -935,7 +959,10 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   // no sponsors the footer just shows stats (no rotation).
   const sponsors = data.sponsors || [];
   const spotSeconds = data.sponsorSpotSeconds || 8;
-  const sponsorKey = JSON.stringify(sponsors);
+  // Whether the auto stat-leaders slot is present drives the rotation
+  // length, so it must invalidate the slot memo alongside the sponsor set.
+  const hasLeaders = !!(data.leaders && data.leaders.length > 0);
+  const sponsorKey = JSON.stringify(sponsors) + `|leaders:${hasLeaders}`;
 
   // T2-9: track when each sponsor was shown (sliding 60-min window) for
   // frequency-cap enforcement. Per-render instance; reset on game change.
@@ -946,7 +973,14 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   const buildSlots = () => {
     const now = Date.now();
     const oneHourAgo = now - 3_600_000;
-    const s: ({ kind: 'stats' } | { kind: 'sponsor'; sponsor: Sponsor })[] = [{ kind: 'stats' }];
+    const s: ({ kind: 'stats' } | { kind: 'leaders' } | { kind: 'sponsor'; sponsor: Sponsor })[] = [
+      { kind: 'stats' },
+    ];
+    // Phase 1 (P1-B): auto stat-leaders ride the footer rotation, but ONLY
+    // when the server shipped a non-empty `leaders` array (flag-gated +
+    // omitted-when-off). Absent → this slot never joins the rotation, so a
+    // flag-off board rotates exactly as it does today.
+    if (data.leaders && data.leaders.length > 0) s.push({ kind: 'leaders' });
     for (const sp of sponsors) {
       // Flight-end re-check: if flightEndAt is set and has passed, skip.
       if (sp.flightEndAt && new Date(sp.flightEndAt).getTime() <= now) continue;
@@ -1049,6 +1083,19 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
     def.key === 'soccer'
       ? Math.max(0, Math.round(Number((data.stats as Record<string, unknown> | undefined)?.addedTime) || 0))
       : 0;
+
+  // Spotlight resolution (Phase 1, P1-B): a MANUAL operator spotlight
+  // ALWAYS wins. When none is visible AND the server shipped a
+  // Player-of-the-Game, fall back to the POTG through the same
+  // SpotlightBand via the spotFromPotg adapter. When neither exists this
+  // is null and the board renders exactly as it does today.
+  const manualSpot = data.spotlight && data.spotlight.visible && data.spotlight.title ? data.spotlight : null;
+  const resolvedSpot: Spotlight | null = manualSpot
+    ? manualSpot
+    : data.playerOfGame
+      ? spotFromPotg(data.playerOfGame)
+      : null;
+  const spotShowing = !!resolvedSpot;
 
   return (
     <div
@@ -1399,39 +1446,39 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
             sports) lower panel area. Renders nothing until per-segment
             data exists on stats.lineScore, so it never shows an empty grid.
             Hidden while a spotlight is up so the two never collide. */}
-        {(def.segment.name === 'Inning' || def.key === 'football') &&
-          !(data.spotlight && data.spotlight.visible) && (
-            <div
-              style={{
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                bottom: 28,
-                display: 'flex',
-                justifyContent: 'center',
-                pointerEvents: 'none',
-              }}
-            >
-              <LineScoreBox data={data} def={def} withRHE={def.segment.name === 'Inning'} />
-            </div>
-          )}
+        {(def.segment.name === 'Inning' || def.key === 'football') && !spotShowing && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 28,
+              display: 'flex',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+            }}
+          >
+            <LineScoreBox data={data} def={def} withRHE={def.segment.name === 'Inning'} />
+          </div>
+        )}
       </div>
 
-      {/* broadcast spotlight — featured player / promo panel.
-          When the spotlight is active the footer is hidden so the
-          spotlight can use the freed vertical space. */}
-      {data.spotlight && data.spotlight.visible && data.spotlight.title ? (
-        <SpotlightBand spot={data.spotlight} expanded />
-      ) : null}
+      {/* broadcast spotlight — featured player / promo panel. A manual
+          operator spotlight always wins; otherwise the auto
+          Player-of-the-Game (P1-B) fills it via spotFromPotg. When the
+          spotlight is active the footer is hidden so the spotlight can use
+          the freed vertical space. */}
+      {resolvedSpot ? <SpotlightBand spot={resolvedSpot} expanded /> : null}
 
-      {/* footer strip — rotates between sport stats and sponsor banners.
-          Hidden while a player spotlight is showing so it can expand. */}
+      {/* footer strip — rotates between sport stats, auto stat-leaders, and
+          sponsor banners. Hidden while a player spotlight is showing so it
+          can expand. */}
       <div
         style={{
-          height: data.spotlight && data.spotlight.visible ? 0 : 132,
+          height: spotShowing ? 0 : 132,
           overflow: 'hidden',
           background: '#05070d',
-          borderTop: data.spotlight && data.spotlight.visible ? 'none' : '2px solid #1e2638',
+          borderTop: spotShowing ? 'none' : '2px solid #1e2638',
           position: 'relative',
           zIndex: 1,
           transition: 'height 0.35s ease-in-out',
@@ -1454,6 +1501,10 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
         >
           {activeSlot && activeSlot.kind === 'sponsor' ? (
             <SponsorBanner sponsor={activeSlot.sponsor} />
+          ) : activeSlot && activeSlot.kind === 'leaders' && data.leaders ? (
+            /* Phase 1 (P1-B): auto stat-leaders — "PTS — #23 JONES 30"
+               with the player's team color as the accent. */
+            <LeadersStrip leaders={data.leaders} homeColor={homeColor} awayColor={awayColor} />
           ) : statChips.length === 0 ? (
             <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: 4, color: '#334155' }}>
               {data.homeTeam.toUpperCase()} vs {data.awayTeam.toUpperCase()}
@@ -1937,6 +1988,17 @@ function LeaderboardScene({ data, def }: { data: BoardData; def: SportDefinition
   };
   const sub = subLine();
 
+  // Spotlight resolution (Phase 1, P1-B) — identical rule to the
+  // head-to-head board: a MANUAL operator spotlight always wins; otherwise
+  // the auto Player-of-the-Game (the meet's top performer) fills it.
+  const manualSpot =
+    data.spotlight && data.spotlight.visible && data.spotlight.title ? data.spotlight : null;
+  const resolvedSpot: Spotlight | null = manualSpot
+    ? manualSpot
+    : data.playerOfGame
+      ? spotFromPotg(data.playerOfGame)
+      : null;
+
   return (
     <div
       style={{
@@ -2097,7 +2159,7 @@ function LeaderboardScene({ data, def }: { data: BoardData; def: SportDefinition
             tally so the just-completed event is glanceable above the
             team-points cards. Renders nothing until results exist, and is
             hidden while a spotlight is up so the two never collide. */}
-        {!(data.spotlight && data.spotlight.visible && data.spotlight.title) && (
+        {!resolvedSpot && (
           <div
             style={{
               position: 'absolute',
@@ -2114,9 +2176,11 @@ function LeaderboardScene({ data, def }: { data: BoardData; def: SportDefinition
         )}
       </div>
 
-      {/* broadcast spotlight — featured athlete (same as head-to-head) */}
-      {data.spotlight && data.spotlight.visible && data.spotlight.title ? (
-        <SpotlightBand spot={data.spotlight} expanded />
+      {/* broadcast spotlight — featured athlete (same as head-to-head): a
+          manual operator spotlight always wins; otherwise the auto
+          Player-of-the-Game (P1-B) fills it via spotFromPotg. */}
+      {resolvedSpot ? (
+        <SpotlightBand spot={resolvedSpot} expanded />
       ) : (
         <div
           style={{
@@ -2232,6 +2296,166 @@ function SponsorBanner({ sponsor }: { sponsor: Sponsor }) {
       >
         PROUD SPONSOR
       </div>
+    </div>
+  );
+}
+
+// ── auto stat-leaders + Player-of-the-Game (Phase 1, P1-B) ─────
+// These render ONLY when getBoardFresh ships `leaders` / `playerOfGame`
+// (flag-gated server-side, omitted when off/empty). When the fields are
+// absent the board is byte-identical to today.
+
+type PlayerOfGame = NonNullable<BoardData['playerOfGame']>;
+type StatLeader = NonNullable<BoardData['leaders']>[number];
+
+/** Adapt the server's Player-of-the-Game shape into the Spotlight shape so
+ *  it can ride the existing SpotlightBand. The POTG only ever fills the
+ *  Spotlight when NO manual operator spotlight is visible (manual wins). */
+function spotFromPotg(potg: PlayerOfGame): Spotlight {
+  const num = (potg.number || '').trim();
+  // "#23 MARCUS JONES" — number prefix when present, name always.
+  const title = num ? `#${num.replace(/^#/, '')} ${potg.name}` : potg.name;
+  return {
+    visible: true,
+    title,
+    photoUrl: potg.photoUrl,
+    subtitle: potg.headline,
+    lines: potg.lines,
+  };
+}
+
+/** Broadcast stat-leaders strip — rides the footer rotation alongside the
+ *  situational graphics + sponsors. Reads at 8ft: each leader shows the
+ *  stat label, the player's number + name, and the value, with the
+ *  player's TEAM color as the accent rail. Taurus / Chromium-83 safe:
+ *  fixed-px sizing, longhand top/right/bottom/left, per-child marginRight
+ *  (no flex `gap`), no `inset`, no `backdrop-filter`. */
+function LeadersStrip({
+  leaders,
+  homeColor,
+  awayColor,
+}: {
+  leaders: StatLeader[];
+  homeColor: string;
+  awayColor: string;
+}) {
+  // Cap at the four most impactful so each tile stays legible at distance.
+  const shown = leaders.slice(0, 4);
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+      }}
+    >
+      {shown.map((l, i) => {
+        const accent = l.team === 'home' ? homeColor : awayColor;
+        const num = (l.playerNumber || '').trim().replace(/^#/, '');
+        const isLast = i === shown.length - 1;
+        return (
+          <div
+            key={`${l.statKey}-${i}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              // Per-child margin (NOT flex gap — Chromium-83 / Taurus).
+              marginRight: isLast ? 0 : 28,
+              paddingLeft: 18,
+              paddingRight: 22,
+              paddingTop: 12,
+              paddingBottom: 12,
+              background: '#0b1226',
+              borderLeft: `6px solid ${accent}`,
+              borderRadius: 10,
+              maxWidth: 440,
+            }}
+          >
+            {l.photoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={l.photoUrl}
+                alt=""
+                style={{
+                  width: 72,
+                  height: 72,
+                  objectFit: 'cover',
+                  borderRadius: 8,
+                  border: `2px solid ${accent}`,
+                  background: '#05070d',
+                  marginRight: 16,
+                  flex: 'none',
+                }}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ) : null}
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  letterSpacing: 3,
+                  color: accent,
+                  textTransform: 'uppercase',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {l.label}
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  marginTop: 4,
+                  maxWidth: 320,
+                }}
+              >
+                {num ? (
+                  <span
+                    style={{
+                      fontSize: 28,
+                      fontWeight: 900,
+                      color: '#94a3b8',
+                      marginRight: 10,
+                      flex: 'none',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    #{num}
+                  </span>
+                ) : null}
+                <span
+                  style={{
+                    fontSize: 30,
+                    fontWeight: 900,
+                    color: '#fff',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {(l.playerName || '').toUpperCase()}
+                </span>
+                <span
+                  style={{
+                    fontSize: 34,
+                    fontWeight: 900,
+                    color: accent,
+                    marginLeft: 16,
+                    flex: 'none',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {l.value}
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
