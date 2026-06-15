@@ -33,7 +33,13 @@ import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
 import { makeFeedToken } from './sports-feed-token';
 // Phase 1-A player-stats engine — PURE leaders + player-of-the-game
 // computed from the roster already in the board payload (no DB query).
-import { computePlayerSurfaces } from './sports-stats.service';
+import {
+  computePlayerSurfaces,
+  finalizeGameStats,
+  getStatLeaders,
+  getAthleteCareer,
+  linkRosterPlayerToPerson,
+} from './sports-stats.service';
 import { FeatureFlagsService, FLAGS } from '../feature-flags/feature-flags.service';
 
 /**
@@ -3269,9 +3275,71 @@ export class SportsService {
         source: 'status-transition',
         snapshot: this.cueSnapshot(updated as Parameters<typeof this.cueSnapshot>[0]),
       });
+
+      // PHASE 2 — finalize player stats. POST-COMMIT (the status write +
+      // CUE above have already landed), FAIL-OPEN (a stats/aggregation
+      // error must NEVER block or roll back the operator's "end game"),
+      // and gated behind SPORTS_PLAYER_STATS for this tenant. The engine
+      // roll-up is idempotent (a per-game marker), so a re-FINAL is a
+      // no-op and double-counts nothing.
+      try {
+        const statsOn = await this.flags.isEnabledAsync(
+          FLAGS.SPORTS_PLAYER_STATS,
+          { tenantId },
+        );
+        if (statsOn) {
+          const result = await finalizeGameStats(this.prisma.client, tenantId, id);
+          this.logger.log(
+            `finalizeGameStats game=${id} tenant=${tenantId} aggregated=${result.aggregated}${
+              result.skipped ? ` skipped=${result.skipped}` : ''
+            }`,
+          );
+        }
+      } catch (err) {
+        // Swallow + log — the game is already FINAL; stats are best-effort.
+        this.logger.error(
+          `finalizeGameStats failed (non-fatal) game=${id} tenant=${tenantId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
 
     return updated;
+  }
+
+  // ── PHASE 2 — persistent season/career stat reads + roster→person link ──
+  //
+  // Thin pass-throughs to the engine in sports-stats.service.ts. The reads
+  // hit the materialized aggregate tables (fast, indexed — never the board
+  // poll). tenantId comes from the authed context at the controller.
+
+  /** Cross-game stat leaderboard for a stat (season or career scope). */
+  async getLeaders(args: {
+    tenantId: string;
+    sport: string;
+    season?: string;
+    statKey: string;
+    scope: 'SEASON' | 'CAREER';
+    limit: number;
+  }) {
+    return getStatLeaders(this.prisma.client, args);
+  }
+
+  /** One athlete's full season + career stat line for the career page. */
+  async getAthleteCareer(args: { tenantId: string; personId: string }) {
+    return getAthleteCareer(this.prisma.client, args);
+  }
+
+  /** Link a per-game roster row to a persistent SportsPerson. */
+  async linkPlayer(args: {
+    tenantId: string;
+    rosterPlayerId: string;
+    personId?: string;
+    fullName?: string;
+    teamId?: string;
+  }) {
+    return linkRosterPlayerToPerson(this.prisma.client, args);
   }
 
   /**

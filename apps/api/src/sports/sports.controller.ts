@@ -943,6 +943,91 @@ export class SportsController {
     return this.sports.deletePlayer(req.user.tenantId, id, playerId);
   }
 
+  /**
+   * PHASE 2 — link a per-game roster row to a persistent SportsPerson so
+   * its finalized COUNTING stats roll up into the season/career aggregates.
+   * Two paths: pass `personId` to link to an existing athlete, OR pass
+   * `fullName` to find-or-create one (defaults to the roster row's name).
+   * These are authed writes — NOT on the public board poll.
+   */
+  @Post('games/:id/roster/:rosterPlayerId/link')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  linkRosterPlayer(
+    @Request() req: any,
+    @Param('rosterPlayerId') rosterPlayerId: string,
+    @Body() body: { personId?: string; fullName?: string; teamId?: string },
+  ) {
+    return this.sports.linkPlayer({
+      tenantId: req.user.tenantId,
+      rosterPlayerId,
+      personId: body?.personId,
+      fullName: body?.fullName,
+      teamId: body?.teamId,
+    });
+  }
+
+  // ── PHASE 2 — cross-game leaderboards + athlete career ─────────
+  //
+  // Persistent reads off the materialized aggregate tables. Authed,
+  // tenant-scoped; NOT on the public board poll.
+
+  /**
+   * Cross-game stat leaderboard for one stat. `scope=SEASON` reads the
+   * per-season table (optional `season=YYYY` filter); `scope=CAREER`
+   * reads the career roll-up. `limit` is clamped 1..100 in the engine.
+   */
+  @Get('leaders')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+    AppRole.RESTRICTED_VIEWER,
+  )
+  getLeaders(
+    @Request() req: any,
+    @Query('sport') sport: string,
+    @Query('statKey') statKey: string,
+    @Query('scope') scope?: string,
+    @Query('season') season?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = Number.parseInt(String(limit ?? ''), 10);
+    return this.sports.getLeaders({
+      tenantId: req.user.tenantId,
+      sport: String(sport || ''),
+      statKey: String(statKey || ''),
+      scope: scope === 'CAREER' ? 'CAREER' : 'SEASON',
+      season: season || undefined,
+      limit: Number.isFinite(parsedLimit) ? parsedLimit : 10,
+    });
+  }
+
+  /** One athlete's full season + career stat line. 404 if not in tenant. */
+  @Get('athletes/:id/career')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+    AppRole.RESTRICTED_VIEWER,
+  )
+  async athleteCareer(@Request() req: any, @Param('id') id: string) {
+    const result = await this.sports.getAthleteCareer({
+      tenantId: req.user.tenantId,
+      personId: id,
+    });
+    if (!result) {
+      throw new NotFoundException('Athlete not found');
+    }
+    return result;
+  }
+
   // ── Undo rail ─────────────────────────────────────────────────
 
   /**
