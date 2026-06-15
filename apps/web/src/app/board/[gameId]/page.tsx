@@ -31,6 +31,17 @@ import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import { findSport, formatScore } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
+// 2026-06-15 sports-pro polish — shared crowd-surface motion primitives
+// (score-pop on change, ambient idle drift) + vector sport/possession marks.
+// All transform/opacity-only keyframes → Chromium-83 (NovaStar Taurus) safe.
+import {
+  SCORE_MOTION_KEYFRAMES,
+  SCORE_POP_ANIM,
+  SCORE_GLOW_ANIM,
+  AMBIENT_DRIFT_ANIM,
+  useScoreFlip,
+} from '@/components/sports/score-motion';
+import { SportMark, PossessionGlyph } from '@/components/sports/SportGlyph';
 // Sprint 13 — custom-template scoreboard renderer. Used iff
 // Game.scoreboardTemplateId is non-null; otherwise the legacy
 // BoardScene + status-aware scenes below render unchanged.
@@ -140,8 +151,11 @@ interface BoardData {
   scorebugTemplateId?: string | null;
 }
 
-const DEFAULT_HOME = '#4f46e5';
-const DEFAULT_AWAY = '#dc2626';
+// Athletic neutral defaults — an uncustomized game should read like a
+// scoreboard (deep stadium navy vs crimson), NOT the product's SaaS indigo.
+// Same constant lives only in this file. (2026-06-15 sports-pro polish.)
+const DEFAULT_HOME = '#1e3a5f';
+const DEFAULT_AWAY = '#9b1c2e';
 
 /** This is the scoreboard surface — it plays BOARD- and ALL-targeted
  *  cues (and legacy untargeted ones); a RIBBON-only cue is skipped. */
@@ -471,6 +485,8 @@ function TeamPanel({
   winning,
   hasPossession,
   penaltyNode,
+  flipKey,
+  flipDir,
 }: {
   side: 'home' | 'away';
   name: string;
@@ -485,6 +501,10 @@ function TeamPanel({
   winning: boolean;
   hasPossession?: boolean;
   penaltyNode?: ReactNode;
+  /** Score-change motion — `flipKey` retriggers the pop via React remount;
+   *  `flipDir` null on first paint so a cold board never pops on load. */
+  flipKey?: number;
+  flipDir?: 'up' | 'down' | null;
 }) {
   return (
     <div
@@ -568,11 +588,13 @@ function TeamPanel({
           marginTop: 6,
         }}
       >
-        {/* possession marker — the football icon sits by whoever has
-            the ball, the way every broadcast scoreboard shows it */}
+        {/* possession marker — a vector chevron (team-tinted) points toward
+            whoever has the ball, the way every broadcast scoreboard shows it.
+            Vector, not the 🏈 emoji, so it renders identically at 8-foot
+            distance and on a livestream. */}
         {hasPossession && (
-          <span aria-hidden style={{ fontSize: 40, lineHeight: 1, marginRight: 14 }}>
-            🏈
+          <span style={{ marginRight: 14, display: 'inline-flex', alignItems: 'center' }}>
+            <PossessionGlyph dir={side} size={40} color={color} title="Possession" />
           </span>
         )}
         <div
@@ -600,18 +622,44 @@ function TeamPanel({
       >
         {side === 'home' ? 'HOME' : 'AWAY'}
       </div>
-      <div
-        style={{
-          fontSize: 264,
-          fontWeight: 900,
-          color: '#fff',
-          lineHeight: 1,
-          marginTop: 2,
-          fontVariantNumeric: 'tabular-nums',
-          textShadow: winning ? `0 0 64px ${color}` : '0 8px 30px rgba(0,0,0,0.7)',
-        }}
-      >
-        {scoreText ?? score}
+      {/* score — pops on change (key remount retriggers the CSS pop), with a
+          brief team-color glow flash behind the digits on the changed side.
+          flipDir is null on first paint so a cold-boot board never pops. */}
+      <div style={{ position: 'relative', marginTop: 2 }}>
+        {flipKey !== undefined && flipDir && (
+          <div
+            key={`glow-${flipKey}`}
+            aria-hidden
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              width: 360,
+              height: 360,
+              marginLeft: -180,
+              marginTop: -180,
+              borderRadius: 999,
+              background: `radial-gradient(circle, ${color}66 0%, ${color}1a 46%, rgba(5,7,13,0) 68%)`,
+              animation: SCORE_GLOW_ANIM,
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+        <div
+          key={flipKey}
+          style={{
+            position: 'relative',
+            fontSize: 264,
+            fontWeight: 900,
+            color: '#fff',
+            lineHeight: 1,
+            fontVariantNumeric: 'tabular-nums',
+            textShadow: winning ? `0 0 64px ${color}` : '0 8px 30px rgba(0,0,0,0.7)',
+            animation: flipDir ? SCORE_POP_ANIM : undefined,
+          }}
+        >
+          {scoreText ?? score}
+        </div>
       </div>
       {penaltyNode}
     </div>
@@ -775,6 +823,11 @@ function LineScoreBox({
 function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   const [clockMs, setClockMs] = useState(data.clockMs);
 
+  // Score-change motion — the instant the whole crowd looks at the board.
+  // First paint does NOT pop (dir = null) so a cold-boot board is calm.
+  const homeFlip = useScoreFlip(data.homeScore);
+  const awayFlip = useScoreFlip(data.awayScore);
+
   // Tick the clock locally off the stored anchor. The server never
   // ticks — clockMs is the reading at clockUpdatedAt; we project it.
   useEffect(() => {
@@ -802,7 +855,13 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   const [shotMs, setShotMs] = useState(0);
   const scRaw = (data.stats as Record<string, unknown> | undefined)?.shotClock;
   const sc = scRaw && typeof scRaw === 'object' ? (scRaw as Record<string, unknown>) : null;
-  const shotLen = Number(sc?.len) || 0;
+  // 2026-06-15 — the CTS feed now derives stats.shotClock per-side (cts-merge)
+  // but often WITHOUT `len`. When a shot-clock object IS present but carries no
+  // length, fall back to the sport's configured full length so the ring/digits
+  // still render on a live CTS basketball / water-polo game. Operator-armed
+  // games (which set `len`) are unchanged. No object present → stays hidden.
+  const scLen = Number(sc?.len) || 0;
+  const shotLen = sc ? (scLen > 0 ? scLen : Number(def.shotClock?.full) || 0) : 0;
   const shotAnchorMs = Math.max(0, Number(sc?.ms) || 0);
   const shotAnchorAt = String(sc?.at || '');
   const shotRunning = !!sc?.running;
@@ -994,6 +1053,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   return (
     <div
       style={{
+        position: 'relative',
         width: 1920,
         height: 1080,
         background: 'radial-gradient(ellipse at 50% 0%, #131a2e, #05070d 75%)',
@@ -1004,9 +1064,31 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
         overflow: 'hidden',
       }}
     >
+      {/* idle ambient motion — a very slow, almost-subliminal sheen drift on
+          the LIVE board background so it reads as "live / premium" instead of
+          a frozen PNG between scores. transform-only (14s) → Taurus safe;
+          aria-hidden + pointerEvents:none so it never affects layout or a11y.
+          Sits at zIndex 0 behind the flow content (which is bumped to zIndex 1). */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          left: -120,
+          right: -120,
+          top: -160,
+          height: 900,
+          zIndex: 0,
+          pointerEvents: 'none',
+          background:
+            'radial-gradient(ellipse 60% 70% at 50% 0%, rgba(56,89,148,0.18), rgba(5,7,13,0) 70%)',
+          animation: AMBIENT_DRIFT_ANIM,
+        }}
+      />
       {/* header strip */}
       <div
         style={{
+          position: 'relative',
+          zIndex: 1,
           height: 92,
           display: 'flex',
           alignItems: 'center',
@@ -1017,7 +1099,9 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', fontSize: 40, fontWeight: 800, letterSpacing: 1 }}>
-          <span style={{ fontSize: 48, marginRight: 16 }}>{def.emoji}</span>
+          <span style={{ marginRight: 16, display: 'inline-flex', alignItems: 'center' }}>
+            <SportMark sport={data.sport} fallbackEmoji={def.emoji} size={48} color="#cbd5e1" title={def.name} />
+          </span>
           {def.name.toUpperCase()}
         </div>
         <div
@@ -1050,7 +1134,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
       </div>
 
       {/* main row: HOME | center | AWAY */}
-      <div style={{ flex: 1, display: 'flex', position: 'relative' }}>
+      <div style={{ flex: 1, display: 'flex', position: 'relative', zIndex: 1 }}>
         <TeamPanel
           side="home"
           name={data.homeTeam}
@@ -1060,6 +1144,8 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           logoUrl={data.homeLogoUrl}
           winning={lead === 'home' && data.status !== 'SCHEDULED'}
           hasPossession={ballSide === 'home'}
+          flipKey={homeFlip.flipKey}
+          flipDir={homeFlip.dir}
           penaltyNode={
             <>
               <PenaltyTimers
@@ -1147,24 +1233,14 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
                 marginTop: 24,
               }}
             >
-              <span style={{ fontSize: 96, fontWeight: 900, lineHeight: 1, color: '#fbbf24', letterSpacing: 2 }}>
-                {def.emoji}
-              </span>
+              <SportMark sport={data.sport} fallbackEmoji={def.emoji} size={120} color="#fbbf24" title={def.name} />
               <span style={{ fontSize: 34, fontWeight: 900, letterSpacing: 8, color: '#94a3b8', marginTop: 14 }}>
                 UNTIMED
               </span>
             </div>
           ) : (
-            <div
-              style={{
-                fontSize: 150,
-                fontWeight: 900,
-                lineHeight: 1,
-                marginTop: 24,
-                color: '#e2e8f0',
-              }}
-            >
-              {def.emoji}
+            <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <SportMark sport={data.sport} fallbackEmoji={def.emoji} size={150} color="#e2e8f0" title={def.name} />
             </div>
           )}
           {/* Power play / penalty kill — man-advantage badge derived from the
@@ -1300,6 +1376,8 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           logoUrl={data.awayLogoUrl}
           winning={lead === 'away' && data.status !== 'SCHEDULED'}
           hasPossession={ballSide === 'away'}
+          flipKey={awayFlip.flipKey}
+          flipDir={awayFlip.dir}
           penaltyNode={
             <>
               <PenaltyTimers
@@ -1355,6 +1433,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           background: '#05070d',
           borderTop: data.spotlight && data.spotlight.visible ? 'none' : '2px solid #1e2638',
           position: 'relative',
+          zIndex: 1,
           transition: 'height 0.35s ease-in-out',
         }}
       >
@@ -1884,7 +1963,9 @@ function LeaderboardScene({ data, def }: { data: BoardData; def: SportDefinition
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', fontSize: 40, fontWeight: 800, letterSpacing: 1 }}>
-          <span style={{ fontSize: 48, marginRight: 16 }}>{def.emoji}</span>
+          <span style={{ marginRight: 16, display: 'inline-flex', alignItems: 'center' }}>
+            <SportMark sport={data.sport} fallbackEmoji={def.emoji} size={48} color="#cbd5e1" title={def.name} />
+          </span>
           {def.name.toUpperCase()}
         </div>
         <div
@@ -2448,7 +2529,9 @@ function PreGameScene({ data, def }: { data: BoardData; def: SportDefinition }) 
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', fontSize: 40, fontWeight: 800, letterSpacing: 1 }}>
-          <span style={{ fontSize: 48, marginRight: 16 }}>{def.emoji}</span>
+          <span style={{ marginRight: 16, display: 'inline-flex', alignItems: 'center' }}>
+            <SportMark sport={data.sport} fallbackEmoji={def.emoji} size={48} color="#cbd5e1" title={def.name} />
+          </span>
           {def.name.toUpperCase()}
         </div>
         <div
@@ -2510,7 +2593,11 @@ function PreGameScene({ data, def }: { data: BoardData; def: SportDefinition }) 
           showScore={false}
         />
 
-        {/* VS divider */}
+        {/* VS divider — team-tinted + legible (was dark-#1e2638 on dark, near
+            invisible). A home→away color gradient on the "VS" plus a soft
+            two-tone halo reads as a real matchup. The label is time-agnostic
+            ("GAME DAY") because the board payload carries no start time — we
+            do NOT invent a field or fetch (2026-06-15 sports-pro polish). */}
         <div
           style={{
             display: 'flex',
@@ -2519,29 +2606,53 @@ function PreGameScene({ data, def }: { data: BoardData; def: SportDefinition }) 
             justifyContent: 'center',
             width: 200,
             flexShrink: 0,
+            position: 'relative',
           }}
         >
+          {/* two-tone halo so the VS sits on a faint glow, not flat dark */}
+          <div
+            aria-hidden
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              width: 240,
+              height: 240,
+              marginLeft: -120,
+              marginTop: -120,
+              borderRadius: 999,
+              background: `radial-gradient(circle at 32% 50%, ${homeColor}33, transparent 60%), radial-gradient(circle at 68% 50%, ${awayColor}33, transparent 60%)`,
+              pointerEvents: 'none',
+            }}
+          />
           <div
             style={{
-              fontSize: 100,
+              position: 'relative',
+              fontSize: 104,
               fontWeight: 900,
-              color: '#1e2638',
               lineHeight: 1,
               letterSpacing: 4,
+              background: `linear-gradient(135deg, ${homeColor}, #ffffff 50%, ${awayColor})`,
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              color: '#fff',
+              filter: 'drop-shadow(0 4px 18px rgba(0,0,0,0.55))',
             }}
           >
             VS
           </div>
           <div
             style={{
+              position: 'relative',
               marginTop: 16,
               fontSize: 22,
               fontWeight: 800,
               letterSpacing: 5,
-              color: '#334155',
+              color: '#94a3b8',
             }}
           >
-            TONIGHT
+            GAME DAY
           </div>
         </div>
 
@@ -2605,7 +2716,9 @@ function HalftimeScene({ data, def }: { data: BoardData; def: SportDefinition })
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', fontSize: 40, fontWeight: 800, letterSpacing: 1 }}>
-          <span style={{ fontSize: 48, marginRight: 16 }}>{def.emoji}</span>
+          <span style={{ marginRight: 16, display: 'inline-flex', alignItems: 'center' }}>
+            <SportMark sport={data.sport} fallbackEmoji={def.emoji} size={48} color="#cbd5e1" title={def.name} />
+          </span>
           {def.name.toUpperCase()}
         </div>
         <div
@@ -2724,16 +2837,25 @@ function HalftimeScene({ data, def }: { data: BoardData; def: SportDefinition })
   );
 }
 
-/** FINAL — score with winner emphasis; tie = no winner accent. */
+/** FINAL — score with winner cinematic; tie = no winner accent.
+ *  2026-06-15 sports-pro polish: a clear WINNER treatment — champion glow +
+ *  slow confetti tinted to the winner, a "WINNER" star banner over the
+ *  winning team, and the score highlighted (the emotional peak). Honors
+ *  low-score-wins sports (XC / golf) so the right side is crowned. */
 function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   const homeColor = data.homeColor || DEFAULT_HOME;
   const awayColor = data.awayColor || DEFAULT_AWAY;
   const tie = data.homeScore === data.awayScore;
-  const homeWins = !tie && data.homeScore > data.awayScore;
-  const awayWins = !tie && data.awayScore > data.homeScore;
+  // leadingSide honors low-score-wins sports; at FINAL the leader IS the winner.
+  const winSide = tie ? null : leadingSide(def, data.homeScore, data.awayScore);
+  const homeWins = winSide === 'home';
+  const awayWins = winSide === 'away';
+  const winColor = homeWins ? homeColor : awayWins ? awayColor : '#fbbf24';
+  const winName = homeWins ? data.homeTeam : awayWins ? data.awayTeam : '';
   return (
     <div
       style={{
+        position: 'relative',
         width: 1920,
         height: 1080,
         background: 'radial-gradient(ellipse at 50% 0%, #131a2e, #05070d 75%)',
@@ -2744,9 +2866,58 @@ function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
         overflow: 'hidden',
       }}
     >
+      {/* Champion cinematic — only when there's a winner (a tie shows none).
+          A slow winner-tinted glow breath + slow continuous confetti, behind
+          all content (zIndex 0). transform/opacity-only → Taurus + WebKit safe.
+          pointerEvents:none + aria-hidden so it never affects layout or a11y. */}
+      {!tie && (
+        <div
+          aria-hidden
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}
+        >
+          {/* champion glow breath, centered behind the winning team's side */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 120,
+              left: homeWins ? 220 : awayWins ? 1140 : 660,
+              width: 560,
+              height: 560,
+              borderRadius: 999,
+              background: `radial-gradient(circle, ${hexA(winColor, 0.42)} 0%, ${hexA(winColor, 0.12)} 46%, rgba(5,7,13,0) 70%)`,
+              animation: 'venueFinalGlow 4.5s ease-in-out infinite',
+            }}
+          />
+          {/* slow confetti — winner color + white + gold */}
+          {Array.from({ length: 22 }, (_, i) => {
+            const palette = [winColor, '#ffffff', '#fde047'];
+            const c = palette[i % palette.length];
+            const size = 12 + ((i * 7) % 14);
+            const tall = i % 3 === 0;
+            return (
+              <div
+                key={i}
+                style={{
+                  position: 'absolute',
+                  left: `${(i * 53) % 100}%`,
+                  top: -60,
+                  width: tall ? size : size + 6,
+                  height: tall ? size + 10 : size,
+                  background: c,
+                  borderRadius: 2,
+                  opacity: 0.9,
+                  animation: `venueFinalConfetti ${(6 + (i % 5)).toFixed(0)}s ${(i * 0.31).toFixed(2)}s linear infinite`,
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
       {/* header */}
       <div
         style={{
+          position: 'relative',
+          zIndex: 1,
           height: 92,
           display: 'flex',
           alignItems: 'center',
@@ -2757,7 +2928,9 @@ function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', fontSize: 40, fontWeight: 800, letterSpacing: 1 }}>
-          <span style={{ fontSize: 48, marginRight: 16 }}>{def.emoji}</span>
+          <span style={{ marginRight: 16, display: 'inline-flex', alignItems: 'center' }}>
+            <SportMark sport={data.sport} fallbackEmoji={def.emoji} size={48} color="#cbd5e1" title={def.name} />
+          </span>
           {def.name.toUpperCase()}
         </div>
         <div
@@ -2784,8 +2957,73 @@ function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           alignItems: 'center',
           justifyContent: 'center',
           position: 'relative',
+          zIndex: 1,
         }}
       >
+        {/* WINNER champion banner — top-centered, winner-tinted, with a
+            twinkling star. Only shown when there's a winner (tie → omitted). */}
+        {!tie && winName && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 22,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '12px 34px',
+              borderRadius: 999,
+              background: `${hexA(winColor, 0.16)}`,
+              border: `2px solid ${winColor}`,
+              boxShadow: `0 0 42px ${hexA(winColor, 0.45)}`,
+              maxWidth: 1200,
+              animation: 'venueFinalWordmark 0.7s ease-out',
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                fontSize: 40,
+                lineHeight: 1,
+                marginRight: 16,
+                color: '#fde047',
+                display: 'inline-block',
+                animation: 'venueFinalStar 2.6s ease-in-out infinite',
+                textShadow: '0 0 18px rgba(253,224,71,0.7)',
+              }}
+            >
+              ★
+            </span>
+            <span
+              style={{
+                fontSize: 34,
+                fontWeight: 900,
+                letterSpacing: 6,
+                color: winColor,
+                marginRight: 18,
+              }}
+            >
+              WINNER
+            </span>
+            <span
+              style={{
+                fontSize: 38,
+                fontWeight: 900,
+                letterSpacing: 1,
+                color: '#fff',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: 760,
+                textShadow: '0 3px 14px rgba(0,0,0,0.6)',
+              }}
+            >
+              {winName.toUpperCase()}
+            </span>
+          </div>
+        )}
+
         {/* left gradient — brighter when home wins */}
         <div
           style={{
@@ -2825,7 +3063,7 @@ function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
           accent={homeWins}
         />
 
-        {/* center divider */}
+        {/* center divider — a bold FINAL wordmark (or TIE), then the dash */}
         <div
           style={{
             display: 'flex',
@@ -2836,32 +3074,19 @@ function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
             flexShrink: 0,
           }}
         >
-          {tie ? (
-            <div
-              style={{
-                fontSize: 26,
-                fontWeight: 900,
-                letterSpacing: 4,
-                color: '#64748b',
-                marginBottom: 12,
-              }}
-            >
-              TIE
-            </div>
-          ) : (
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 900,
-                letterSpacing: 4,
-                color: '#64748b',
-                marginBottom: 12,
-              }}
-            >
-              FINAL
-            </div>
-          )}
-          <div style={{ fontSize: 80, fontWeight: 900, color: '#1e2638', lineHeight: 1 }}>–</div>
+          <div
+            style={{
+              fontSize: tie ? 34 : 40,
+              fontWeight: 900,
+              letterSpacing: 6,
+              color: tie ? '#64748b' : '#e2e8f0',
+              marginBottom: 14,
+              textShadow: tie ? 'none' : '0 4px 18px rgba(0,0,0,0.6)',
+            }}
+          >
+            {tie ? 'TIE' : 'FINAL'}
+          </div>
+          <div style={{ fontSize: 80, fontWeight: 900, color: '#334155', lineHeight: 1 }}>–</div>
         </div>
 
         <BigTeamBlock
@@ -2878,6 +3103,8 @@ function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
       {/* footer */}
       <div
         style={{
+          position: 'relative',
+          zIndex: 1,
           height: 80,
           background: '#05070d',
           borderTop: '2px solid #1e2638',
@@ -3526,6 +3753,7 @@ export default function ScoreboardPage() {
 
   const keyframes = (
     <style>{`
+      ${SCORE_MOTION_KEYFRAMES}
       @keyframes venuePulse { 0%,100%{opacity:1} 50%{opacity:0.55} }
       @keyframes venueFooterFade { 0%{opacity:0} 100%{opacity:1} }
       @keyframes venueCelebScrim { 0%{opacity:0} 7%{opacity:1} 90%{opacity:1} 100%{opacity:0} }
@@ -3591,6 +3819,28 @@ export default function ScoreboardPage() {
         6%{opacity:1}
         84%{opacity:1}
         100%{opacity:0;transform:translate(95px,1230px) rotate(-640deg)}
+      }
+      /* FINAL winner cinematic — steady-state (the FINAL scene is not a
+         3.9s burst). A slow champion-glow breath behind the winner, a
+         gentle star twinkle, and slow continuous confetti. transform/opacity
+         only → Chromium-83 (Taurus) + WebKit safe. */
+      @keyframes venueFinalGlow {
+        0%,100%{opacity:0.55;transform:scale(1)}
+        50%{opacity:0.95;transform:scale(1.06)}
+      }
+      @keyframes venueFinalStar {
+        0%,100%{opacity:0.85;transform:scale(1) rotate(0deg)}
+        50%{opacity:1;transform:scale(1.18) rotate(8deg)}
+      }
+      @keyframes venueFinalWordmark {
+        0%{opacity:0;transform:translateY(14px) scale(0.96)}
+        100%{opacity:1;transform:translateY(0) scale(1)}
+      }
+      @keyframes venueFinalConfetti {
+        0%{opacity:0;transform:translateY(-60px) rotate(0deg)}
+        8%{opacity:0.9}
+        92%{opacity:0.9}
+        100%{opacity:0;transform:translateY(1180px) rotate(420deg)}
       }
     `}</style>
   );
