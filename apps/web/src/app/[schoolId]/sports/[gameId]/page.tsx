@@ -1076,27 +1076,23 @@ function RunMode({
   // badge for the penalty-box sports (hockey, lacrosse, …).
   const penaltyCount = def.penaltyBox ? livePenalties(stats).length : 0;
 
-  // Single-level undo for score changes — the #1 operator mis-tap.
-  // We keep the exact last score mutation so Undo applies its inverse.
-  const [lastAction, setLastAction] = useState<string>('');
-  const [lastScore, setLastScore] = useState<{ team: 'home' | 'away'; delta: number } | null>(null);
+  // ── "Send this view to another device" share sheet ───────────
+  // The multi-operator differentiator: a second person (PA in the
+  // booth, a kid running the ribbon) joins by opening a role-scoped
+  // URL on their own phone. We surface a copy-link + QR for each
+  // role view so nobody has to type a URL by hand. State is local to
+  // RunMode — the sheet is a lightweight popover, no parent plumbing.
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareCopied, setShareCopied] = useState<ConsoleView | null>(null);
 
-  const scoreHome = (d: number) => {
-    ctl.score.mutate({ team: 'home', delta: d });
-    setLastAction(`${g.homeTeam} ${d > 0 ? '+' + d : d}`);
-    setLastScore({ team: 'home', delta: d });
-  };
-  const scoreAway = (d: number) => {
-    ctl.score.mutate({ team: 'away', delta: d });
-    setLastAction(`${g.awayTeam} ${d > 0 ? '+' + d : d}`);
-    setLastScore({ team: 'away', delta: d });
-  };
-  const undoScore = () => {
-    if (!lastScore) return;
-    ctl.score.mutate({ team: lastScore.team, delta: -lastScore.delta });
-    setLastScore(null);
-    setLastAction('');
-  };
+  // NOTE (2026-06-15 console-UX): the old single-shot in-memory undo
+  // state (lastAction/lastScore/scoreHome/scoreAway/undoScore) was
+  // removed here. It was self-referential dead code — never consumed by
+  // ScoreTile (which calls ctl.score.mutate directly) or any render
+  // path. The authoritative undo is now the server-backed per-row Undo
+  // in <RecentEventsBar> (POST /events/:id/undo), which survives reloads
+  // and multi-operator sessions. Per CLAUDE.md §9, no dead code that
+  // looks like a feature.
 
   // ── View-role switcher pill row ──────────────────────────────
   // Sits at the top of Run mode so any operator can switch their
@@ -1139,10 +1135,23 @@ function RunMode({
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
-      {/* ── View-role switcher ────────────────────────────────── */}
-      <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-slate-200 bg-slate-50 shrink-0">
-        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mr-1 shrink-0">
-          View
+      {/* ── View-role switcher + live action rail ─────────────────
+          The switcher pills changed a tablet's role (Scorekeeper /
+          Show Caller / PA). The right-hand rail carries the
+          always-available live actions every operator reaches for
+          mid-game: Cues (the full launchpad), Spotlight (the sponsor-
+          activation moment), the penalty box, and "Send to device"
+          (hand a role view to a second operator's phone). All targets
+          are ≥44px so a wet-fingered volunteer can't fat-finger them. */}
+      <div className="flex items-center gap-1.5 px-3 sm:px-4 py-2 border-b border-slate-200 bg-slate-50 shrink-0 overflow-x-auto">
+        {/* Clearer than the old tiny 11px "VIEW" — an icon + an
+            explicit verb so a first-timer knows this row switches roles. */}
+        <span
+          className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 mr-1 shrink-0"
+          title="Switch what this device shows — hand each role to a different operator"
+        >
+          <Tv className="h-4 w-4 text-slate-400" />
+          <span className="hidden sm:inline">Switch view</span>
         </span>
         {VIEW_PILLS.map((p) => (
           <button
@@ -1150,44 +1159,176 @@ function RunMode({
             type="button"
             title={p.title}
             onClick={() => onViewChange(p.key)}
-            className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors shrink-0 ${
+            className={`min-h-[44px] px-3.5 py-1.5 rounded-full text-[13px] font-bold transition-colors shrink-0 ${
               view === p.key
                 ? 'bg-indigo-600 text-white'
-                : 'bg-white border border-slate-200 text-slate-500 hover:border-indigo-400 hover:text-indigo-700'
+                : 'bg-white border border-slate-200 text-slate-600 hover:border-indigo-400 hover:text-indigo-700'
             }`}
           >
             {p.label}
           </button>
         ))}
 
-        {/* Penalty-box (exclusion) manager — open the box list to release a
-            player early (power-play goal), add, or clear. Gated to sports
-            that have a box (water polo / hockey / lacrosse). This was the
-            ONLY way to reach the box manager and it was never wired — the
-            onPenalties callback was passed in but never invoked, so the
-            release/list/misconduct controls were unreachable in Run mode.
-            2026-06-11 sports-venue audit P0. */}
-        {def.penaltyBox && (
+        {/* ── Live action rail (right) ──────────────────────────── */}
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          {/* CUES — the full cue launchpad. The onShowCues callback was
+              passed into RunMode but never invoked anywhere in its body,
+              so the launchpad popup was unreachable from Run mode. Wired
+              here as a discoverable button. (2026-06-15 console-UX P0) */}
           <button
             type="button"
-            title={`${def.penaltyBox.label} — add / release early / clear exclusions`}
-            onClick={onPenalties}
-            className={`ml-auto px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors shrink-0 flex items-center gap-1.5 ${
-              penaltyCount > 0
-                ? 'bg-amber-500 text-amber-950 hover:bg-amber-400'
-                : 'bg-white border border-slate-200 text-slate-500 hover:border-amber-400 hover:text-amber-700'
-            }`}
+            onClick={onShowCues}
+            title="Open the cue launchpad — fire celebrations, replays, sponsor reads"
+            className="min-h-[44px] px-3.5 py-1.5 rounded-full text-[13px] font-bold transition-colors shrink-0 flex items-center gap-1.5 bg-white border border-slate-200 text-slate-600 hover:border-indigo-400 hover:text-indigo-700"
           >
-            <span aria-hidden>⏱</span>
-            <span>{def.penaltyBox.label}</span>
-            {penaltyCount > 0 && (
-              <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-amber-950 text-amber-50 text-[10px] tabular-nums">
-                {penaltyCount}
-              </span>
-            )}
+            <Radio className="h-4 w-4" />
+            <span className="hidden sm:inline">Cues</span>
           </button>
-        )}
+
+          {/* SPOTLIGHT — the custom promo / player Spotlight. Same orphan
+              as Cues: onHighlights was passed in but never invoked. This
+              is the sponsor-activation moment ADs sell, so it gets a
+              first-class trigger. (2026-06-15 console-UX P1) */}
+          <button
+            type="button"
+            onClick={onHighlights}
+            title="Spotlight a player or sponsor on the scoreboard AND the ribbon"
+            className="min-h-[44px] px-3.5 py-1.5 rounded-full text-[13px] font-bold transition-colors shrink-0 flex items-center gap-1.5 bg-white border border-slate-200 text-slate-600 hover:border-amber-400 hover:text-amber-700"
+          >
+            <Star className="h-4 w-4" />
+            <span className="hidden sm:inline">Spotlight</span>
+          </button>
+
+          {/* Penalty-box (exclusion) manager — open the box list to release
+              a player early (power-play goal), add, or clear. Gated to sports
+              that have a box (water polo / hockey / lacrosse). The onPenalties
+              callback wiring landed 2026-06-11 (sports-venue audit P0). */}
+          {def.penaltyBox && (
+            <button
+              type="button"
+              title={`${def.penaltyBox.label} — add / release early / clear exclusions`}
+              onClick={onPenalties}
+              className={`min-h-[44px] px-3.5 py-1.5 rounded-full text-[13px] font-bold transition-colors shrink-0 flex items-center gap-1.5 ${
+                penaltyCount > 0
+                  ? 'bg-amber-500 text-amber-950 hover:bg-amber-400'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:border-amber-400 hover:text-amber-700'
+              }`}
+            >
+              <span aria-hidden>⏱</span>
+              <span className="hidden sm:inline">{def.penaltyBox.label}</span>
+              {penaltyCount > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-5 px-1 rounded-full bg-amber-950 text-amber-50 text-[11px] tabular-nums">
+                  {penaltyCount}
+                </span>
+              )}
+            </button>
+          )}
+
+          {/* SEND TO DEVICE — the multi-operator differentiator. Opens a
+              sheet with a copy-link + QR for each role view so a second
+              operator (PA in the booth, a kid on the ribbon) joins from
+              their own phone without typing a URL. (2026-06-15 console-UX) */}
+          <button
+            type="button"
+            onClick={() => setShareOpen(true)}
+            title="Send a role view (Scorekeeper / Show Caller / PA) to another phone or tablet"
+            className="min-h-[44px] px-3.5 py-1.5 rounded-full text-[13px] font-bold transition-colors shrink-0 flex items-center gap-1.5 bg-white border border-slate-200 text-slate-600 hover:border-indigo-400 hover:text-indigo-700"
+          >
+            <ExternalLink className="h-4 w-4" />
+            <span className="hidden sm:inline">Send to device</span>
+          </button>
+        </div>
       </div>
+
+      {/* ── SEND TO DEVICE sheet ──────────────────────────────────
+          A second operator opens one of these role-scoped URLs on their
+          own phone and instantly joins the same live game in the right
+          role. We render a tap-to-copy link + a QR (via a public QR
+          image service, same as a paired-screen QR elsewhere) for each
+          view. Backdrop click / ✕ closes. */}
+      {shareOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-3 sm:items-center sm:p-4"
+          onClick={() => setShareOpen(false)}
+        >
+          <div
+            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-1 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900">Send a view to another device</h2>
+              <button
+                type="button"
+                onClick={() => setShareOpen(false)}
+                className="rounded-md px-2 py-1 text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="mb-3 text-[12px] text-slate-500">
+              Hand one of these to a second operator — they open it on their
+              own phone and join this live game in that role. No login menu,
+              no typing a URL.
+            </p>
+            <div className="space-y-2.5">
+              {VIEW_PILLS.map((p) => {
+                // Build an absolute, role-scoped URL for this game. `Full`
+                // (key '') drops the param so it's a clean console link.
+                const base =
+                  typeof window !== 'undefined' ? window.location.origin + window.location.pathname : '';
+                const url = p.key ? `${base}?view=${p.key}` : base;
+                const qr = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=${encodeURIComponent(
+                  url,
+                )}`;
+                return (
+                  <div
+                    key={p.key || 'full'}
+                    className="flex items-center gap-3 rounded-xl border border-slate-200 p-2.5"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={qr}
+                      alt={`QR code to open the ${p.label} view`}
+                      className="h-[72px] w-[72px] shrink-0 rounded-md bg-white"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] font-bold text-slate-900">{p.label}</div>
+                      <div className="truncate text-[11px] text-slate-400">{p.title}</div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard?.writeText(url);
+                            setShareCopied(p.key);
+                            setTimeout(
+                              () => setShareCopied((cur) => (cur === p.key ? null : cur)),
+                              1800,
+                            );
+                          } catch {
+                            /* clipboard blocked (insecure ctx) — QR still works */
+                          }
+                        }}
+                        className="mt-1.5 inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-indigo-50 px-2.5 py-1 text-[12px] font-bold text-indigo-700 hover:bg-indigo-100"
+                      >
+                        {shareCopied === p.key ? (
+                          <>
+                            <Check className="h-3.5 w-3.5 text-emerald-600" /> Copied link
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5" /> Copy link
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* T1-6 — Per-surface health pill row. Always visible regardless
           of view — status is universal information. */}
@@ -1734,7 +1875,7 @@ function RunInteractiveScoreboard({
                   ? retreatBaseballHalf(def, g, ctl)
                   : ctl.segment.mutate({ delta: -1 })
               }
-              className="h-6 w-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center text-sm font-bold border border-slate-700"
+              className="min-h-[44px] min-w-[44px] rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-lg font-bold border border-slate-700"
             />
             <span className="min-w-[80px] text-center text-amber-400 text-sm font-black tracking-widest">
               {segLabel}
@@ -1748,7 +1889,7 @@ function RunInteractiveScoreboard({
                   ? advanceBaseballHalf(def, g, ctl)
                   : ctl.segment.mutate({ delta: 1 })
               }
-              className="h-6 w-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center text-sm font-bold border border-slate-700"
+              className="min-h-[44px] min-w-[44px] rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-lg font-bold border border-slate-700"
             />
           </div>
           {hasClock ? (
@@ -1760,33 +1901,35 @@ function RunInteractiveScoreboard({
               >
                 {fmtClock(liveMs)}
               </div>
-              {/* Subtle clock controls — start/stop, reset, ±1s as a
-                  single row of chips. No giant green-button START. */}
-              <div className="flex items-center gap-1.5 mt-1">
+              {/* Clock controls — start/stop, reset, ±1s. Start/Stop is the
+                  primary control so it's the widest; all are ≥44px so the
+                  operator can't fat-finger Reset (hold-to-confirm) when they
+                  meant Stop. (2026-06-15 console-UX P0) */}
+              <div className="flex items-center gap-1.5 mt-1 flex-wrap justify-center">
                 <button
                   type="button"
                   onClick={() => ctl.clock.mutate({ action: running ? 'pause' : 'start' })}
                   className={
                     running
-                      ? 'h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold text-sm transition-colors border border-amber-700 flex items-center gap-1'
-                      : 'h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold text-sm transition-colors border border-emerald-700 flex items-center gap-1'
+                      ? 'min-h-[44px] px-4 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-amber-400 font-bold text-base transition-colors border border-amber-700 flex items-center gap-1.5'
+                      : 'min-h-[44px] px-4 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-emerald-400 font-bold text-base transition-colors border border-emerald-700 flex items-center gap-1.5'
                   }
                   title={running ? 'Stop clock' : 'Start clock'}
                 >
-                  {running ? <><Pause className="h-3 w-3" /> Stop</> : <><Play className="h-3 w-3" /> Start</>}
+                  {running ? <><Pause className="h-4 w-4" /> Stop</> : <><Play className="h-4 w-4" /> Start</>}
                 </button>
                 {/* Destructive: resets clock to segment start — hold-to-confirm */}
                 <HoldChip
                   ariaLabel="Reset clock to segment start"
                   onConfirm={() => ctl.clock.mutate({ action: 'reset' })}
-                  className="h-8 w-8 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 text-sm transition-colors border border-slate-700 flex items-center justify-center"
+                  className="min-h-[44px] min-w-[44px] rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 transition-colors border border-slate-700 flex items-center justify-center"
                 >
-                  <RotateCcw className="h-3 w-3" />
+                  <RotateCcw className="h-4 w-4" />
                 </HoldChip>
                 <button
                   type="button"
                   onClick={() => ctl.clock.mutate({ action: 'set', ms: Math.max(0, liveMs - 1000) })}
-                  className="h-8 px-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-xs transition-colors border border-slate-700"
+                  className="min-h-[44px] min-w-[44px] px-3 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 font-bold text-sm transition-colors border border-slate-700"
                   title="−1s"
                 >
                   −1s
@@ -1794,7 +1937,7 @@ function RunInteractiveScoreboard({
                 <button
                   type="button"
                   onClick={() => ctl.clock.mutate({ action: 'set', ms: liveMs + 1000 })}
-                  className="h-8 px-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-xs transition-colors border border-slate-700"
+                  className="min-h-[44px] min-w-[44px] px-3 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 font-bold text-sm transition-colors border border-slate-700"
                   title="+1s"
                 >
                   +1s
@@ -2266,21 +2409,24 @@ function ScoreTile({
                 (e.target as HTMLInputElement).blur();
               }
             }}
-            className="h-9 w-28 rounded-md bg-slate-800 text-center text-white font-bold text-base transition-colors border border-slate-700 focus:border-amber-500 focus:outline-none tabular-nums"
+            className="min-h-[56px] w-32 rounded-xl bg-slate-800 text-center text-white font-bold text-xl transition-colors border border-slate-700 focus:border-amber-500 focus:outline-none tabular-nums"
             title="Type the team's total score, then Enter"
           />
         </div>
       ) : (
-        /* Subtle +/- chips — small, neutral, sport-aware. Sits at the
-           bottom of the tile so the tile itself looks like a scoreboard
-           panel with quiet controls underneath. */
-        <div className="flex items-center gap-1.5 mt-1">
+        /* Score chips — the BIGGEST, most-tapped control on the
+           console. Scoring is the one thing a volunteer does every few
+           seconds, so the +N chips are ≥56px tall (well above the 44px
+           touch floor) and the −1 fix-a-mistake chip is ≥44px but visually
+           quieter so it can't be confused with a scoring tap during live
+           play. (2026-06-15 console-UX P0 — thumb-sized targets) */
+        <div className="flex items-center gap-2 mt-1 w-full justify-center flex-wrap">
           {increments.map((inc) => (
             <button
               key={`+${inc}`}
               type="button"
               onClick={() => onScore(inc)}
-              className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm transition-colors border border-slate-700"
+              className="min-h-[56px] min-w-[56px] px-4 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-white font-black text-xl transition-colors border border-slate-700"
               title={`Add ${inc}`}
             >
               +{inc}
@@ -2289,8 +2435,9 @@ function ScoreTile({
           <button
             type="button"
             onClick={() => onScore(-1)}
-            className="h-8 w-8 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-sm transition-colors border border-slate-700"
+            className="min-h-[44px] min-w-[44px] rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-slate-700 text-slate-400 font-bold text-lg transition-colors border border-slate-700"
             title="Subtract 1 (fix a mis-tap)"
+            aria-label="Subtract one point"
           >
             −
           </button>
@@ -2399,40 +2546,45 @@ function ScoreTile({
                 <span className="font-black uppercase tracking-widest text-slate-500 text-[10px]">
                   {shortLabel(s.label)}
                 </span>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   {/* Timeout button — fires callTimeout (pause + decrement + CUE).
-                      Styled as a compact amber chip matching the chip style
-                      used elsewhere on the page (shot-clock reset, etc.).
-                      Disabled when no timeouts remain. */}
+                      Styled as an amber chip matching the chip style used
+                      elsewhere on the page (shot-clock reset, etc.). Sized to
+                      the 44px touch floor. Disabled when no timeouts remain.
+                      (2026-06-15 console-UX P0) */}
                   {isTimeoutStat && onTimeout && (
                     <button
                       type="button"
                       onClick={() => onTimeout()}
                       disabled={atZero}
-                      className="h-6 px-2 rounded bg-amber-800 hover:bg-amber-700 text-amber-200 text-[10px] font-black border border-amber-700 disabled:opacity-30 disabled:cursor-not-allowed uppercase tracking-wide"
+                      className="min-h-[44px] px-3 rounded-lg bg-amber-800 hover:bg-amber-700 text-amber-200 text-xs font-black border border-amber-700 disabled:opacity-30 disabled:cursor-not-allowed uppercase tracking-wide"
                       title={atZero ? 'No timeouts remaining' : `Call ${side} timeout`}
                     >
                       T.O.
                     </button>
                   )}
+                  {/* Per-team stat steppers — ≥44px so two adjacent ones can't
+                      be mis-tapped with a wet finger during live play. */}
                   <button
                     type="button"
                     onClick={() => onStat({ [s.key]: Math.max(min, value - 1) })}
                     disabled={!canDec}
-                    className="h-6 w-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-bold border border-slate-700 disabled:opacity-30"
+                    className="min-h-[44px] min-w-[44px] rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 text-lg font-bold border border-slate-700 disabled:opacity-30"
                     title={`−1 ${s.label}`}
+                    aria-label={`Decrease ${s.label}`}
                   >
                     −
                   </button>
-                  <span className="font-black tabular-nums text-white w-7 text-center text-sm">
+                  <span className="font-black tabular-nums text-white w-9 text-center text-base">
                     {value}
                   </span>
                   <button
                     type="button"
                     onClick={() => onStat({ [s.key]: Math.min(max, value + 1) })}
                     disabled={!canInc}
-                    className="h-6 w-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-bold border border-slate-700 disabled:opacity-30"
+                    className="min-h-[44px] min-w-[44px] rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 text-lg font-bold border border-slate-700 disabled:opacity-30"
                     title={`+1 ${s.label}`}
+                    aria-label={`Increase ${s.label}`}
                   >
                     +
                   </button>
@@ -2487,7 +2639,7 @@ function SideTeamText({
         }
       }}
       placeholder="—"
-      className="h-7 w-20 rounded bg-slate-800 border border-slate-700 px-2 text-sm font-black text-white tabular-nums text-center outline-none focus:border-indigo-500"
+      className="min-h-[44px] w-20 rounded-lg bg-slate-800 border border-slate-700 px-2 text-sm font-black text-white tabular-nums text-center outline-none focus:border-indigo-500"
     />
   );
 }
@@ -2532,7 +2684,7 @@ function SideNumberTypeIn({
           e.currentTarget.blur();
         }
       }}
-      className="h-7 w-14 rounded bg-slate-800 border border-slate-700 px-2 text-sm font-black text-white tabular-nums text-center outline-none focus:border-indigo-500"
+      className="min-h-[44px] w-14 rounded-lg bg-slate-800 border border-slate-700 px-2 text-sm font-black text-white tabular-nums text-center outline-none focus:border-indigo-500"
     />
   );
 }
@@ -2591,7 +2743,7 @@ function SideRideTime({
       }}
       placeholder="0:00"
       title="Ride-time advantage (m:ss)"
-      className="h-7 w-16 rounded bg-slate-800 border border-slate-700 px-2 text-sm font-black text-white tabular-nums text-center outline-none focus:border-indigo-500"
+      className="min-h-[44px] w-16 rounded-lg bg-slate-800 border border-slate-700 px-2 text-sm font-black text-white tabular-nums text-center outline-none focus:border-indigo-500"
     />
   );
 }
@@ -2662,15 +2814,18 @@ function RunShotClockMini({
   const fullSec = def.shotClock?.full ?? 30;
   const shortSec = def.shotClock?.short ?? 20;
   return (
-    <div className="flex items-center gap-1 mt-2 pt-2 border-t border-slate-700 w-full">
-      <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Shot</span>
-      <span className="text-xl font-black tabular-nums text-amber-400 leading-none min-w-[28px] text-center">
+    // Shot-clock controls bumped to the 44px touch floor (2026-06-15
+    // console-UX P0) — reset-to-full / reset-to-short / start-stop are all
+    // live-play taps, so they can't be 28px chips a wet finger misses.
+    <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-700 w-full flex-wrap justify-center">
+      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Shot</span>
+      <span className="text-2xl font-black tabular-nums text-amber-400 leading-none min-w-[32px] text-center">
         {sec}
       </span>
       <button
         type="button"
         onClick={() => ctl.shotClock.mutate({ action: 'reset', value: fullSec })}
-        className="h-7 px-1.5 rounded bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold"
+        className="min-h-[44px] min-w-[44px] px-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white text-sm font-bold"
         title={`Reset to ${fullSec}`}
       >
         {fullSec}
@@ -2678,7 +2833,7 @@ function RunShotClockMini({
       <button
         type="button"
         onClick={() => ctl.shotClock.mutate({ action: 'reset', value: shortSec })}
-        className="h-7 px-1.5 rounded bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold"
+        className="min-h-[44px] min-w-[44px] px-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white text-sm font-bold"
         title={`Reset to ${shortSec}`}
       >
         {shortSec}
@@ -2688,10 +2843,11 @@ function RunShotClockMini({
         onClick={() => ctl.shotClock.mutate({ action: shotRunning ? 'stop' : 'start' })}
         className={
           shotRunning
-            ? 'h-7 px-2 rounded bg-red-600 hover:bg-red-700 text-white text-[10px] font-black'
-            : 'h-7 px-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black'
+            ? 'min-h-[44px] min-w-[44px] px-3 rounded-lg bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-base font-black'
+            : 'min-h-[44px] min-w-[44px] px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-base font-black'
         }
         title={shotRunning ? 'Stop' : 'Start'}
+        aria-label={shotRunning ? 'Stop shot clock' : 'Start shot clock'}
       >
         {shotRunning ? '⏸' : '▶'}
       </button>
@@ -4542,23 +4698,26 @@ function PlayerCounterPopover({
                             <span className="ml-1 text-[10px] font-black text-red-600">{outLabel}</span>
                           )}
                         </span>
-                        <div className="flex items-center gap-1">
+                        {/* Per-player foul/exclusion steppers — ≥44px so two
+                            adjacent rows can't be mis-tapped during live play.
+                            (2026-06-15 console-UX P0) */}
+                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
                             aria-label={`Remove ${unit}`}
                             onClick={() => onSet(r.team, r.jersey, r.name, r.count - 1)}
-                            className="h-7 w-7 rounded-md bg-slate-100 text-slate-600 font-black hover:bg-slate-200"
+                            className="min-h-[44px] min-w-[44px] rounded-lg bg-slate-100 text-slate-600 text-lg font-black hover:bg-slate-200 active:bg-slate-300"
                           >
                             −
                           </button>
-                          <span className="w-5 text-center text-sm font-black tabular-nums text-slate-900">
+                          <span className="w-6 text-center text-base font-black tabular-nums text-slate-900">
                             {r.count}
                           </span>
                           <button
                             type="button"
                             aria-label={`Add ${unit}`}
                             onClick={() => onSet(r.team, r.jersey, r.name, r.count + 1)}
-                            className="h-7 w-7 rounded-md bg-indigo-600 text-white font-black hover:bg-indigo-700"
+                            className="min-h-[44px] min-w-[44px] rounded-lg bg-indigo-600 text-white text-lg font-black hover:bg-indigo-700 active:bg-indigo-800"
                           >
                             +
                           </button>
